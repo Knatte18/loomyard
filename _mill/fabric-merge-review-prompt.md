@@ -186,58 +186,70 @@ Treat each of these as an INVARIANT you must actively verify against real git re
 
 ## Round context seeded from prior-round verification
 
-**Round 2. Round 1 ran a full broad review, found nine defects and fixed all nine. The orchestrator then verified that work independently and it left three things standing. Those three are your assignment — this is NOT "review it again".**
+**Round 3. Rounds 1 and 2 have run. Round 1 was a broad review (nine defects, all fixed). Round 2 drove the three residuals round 1's verification left standing, found two BLOCKING data-integrity defects there, and closed all three residuals. The orchestrator has independently verified round 2's work in full. This round's assignment is the residue that verification left — this is NOT "review it again".**
 
 ### CLOSED-AND-VERIFIED — do not re-litigate these
 
-The orchestrator reproduced every one of these itself, from a cold state on the committed tree. Each was sabotage-proven: the production mechanism was neutered, the test was watched to fail at its intended assertion, and the code restored to an empty diff.
+Every item below was reproduced by the orchestrator itself, from cold, on the committed tree. Each was sabotage-proven: the production mechanism was neutered, the test watched to fail *at its intended assertion*, then the code restored to an empty diff.
 
-- **F1** (`51426758`) — `MergeContinue` refuses an attempt whose record shows an empty outcome on either side. Re-driven live: the refusal fires, zero mutations, nothing lands, and `--abort` is the working recovery which restores both sides and deletes the record.
-- **F2** (`a20dc2ca`) — merge verbs refuse a detached HEAD on either side. Re-driven live on both sides and both verbs, including `merge --squash` as the strongest mode: refused with an empty mutation record, nothing moved.
-- **F3's `Committed` half** (`6c92de71`) — `MergeResult.Committed` derived from `mergeState.landedConcludeCommit()`. Sabotage-proven. **Its `AlreadyUpToDate` half is NOT closed — see residual 1.**
-- **F4** (`536384b2`) — `--ff` pinned in `MergeStart` so `merge.ff=only` / `merge.ff=false` cannot break or distort a merge. Sabotage-proven.
-- **F5** (`7fe3da72`) — `Remove` refuses a pair some other pair's merge is consuming, via `mergeSourceInFlight`. Sabotage-proven.
-- **F7 / F8** (`9edf37eb`) — `Conflicts` empty-never-nil on `MergeContinue`/`MergeAbort`; `-m` rejected alongside `--abort` while still accepted with `--continue`. Both sabotage-proven, including the companion direction (broadening the rejection to `--continue` correctly fails the companion test).
+From round 1 — `F1` (`MergeContinue` refuses an attempt whose record shows an empty outcome), `F2` (merge verbs refuse a detached HEAD on either side), `F3`'s `Committed` half, `F4` (`--ff` pinned in `MergeStart`), `F5` (`Remove` refuses a pair another merge is consuming), `F7`/`F8` (`Conflicts` empty-never-nil; `-m` rejected with `--abort`, accepted with `--continue`). Both BLOCKING ones were also re-driven live.
 
-Gates reproduced by the orchestrator from cold on the committed tree, all green: `go build`, `go vet`, `go test -count=5` (hermetic), and `go test -tags integration -count=1` across `fabricengine` / `fabriccli` / `gitrepo`.
+From round 2:
 
-### Residual 1 (PRIMARY — a proof gap, not a code bug) — `bothSidesAlreadyUpToDate` is untested
+- **R1** (`cb3ffe1e`) — `gitrepo.MergeStart` now probes `MergeHeadPresent()` and classifies a live `MERGE_HEAD` as `MergeStaged`. Sabotage-proven in both places: neutering the probe fails the gitrepo-level test at `outcome = 3; want 0`, and fails the pair-level test at seven assertions covering every documented harm. Re-driven live by the orchestrator on a fresh hub: `merge-in` of an empty-result non-ancestor merge now reports `already_up_to_date:false, committed:true` with four honest mutations, no `MERGE_HEAD` on either side, both HEADs advanced onto two-parent merge commits, record deleted, and the pair **not** bricked — `--abort` and `--continue` correctly report `no merge in progress` rather than `ErrForeignMergeState`.
+- **R2** (`e30253f9`) — `MergeAbort` refuses via `concludeLandedReason` when a conclude may already have landed. Sabotage-proven in three directions: guard disabled (both arms fail); guard kept but the HEAD-moved clause neutered (**only** the invisible arm fails, proving the second clause is load-bearing and the two arms are not testing the same thing); and guard returning the correct error while the reset still runs (the "landed commit survives" and "zero mutations" assertions fire, proving those assertions are load-bearing and not merely decorative). Re-driven live end to end: half-conclude leaves the warp commit and retains the record, `merge --abort` refuses with `merge conclude already landed` and **zero mutations** with the operator's hand-written resolution intact, and after the underlying failure is fixed `merge --continue` skips the warp side, commits only the weft, and deletes the record.
+- **Residual 1 closed** (`a5b1f117`) — `TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord`, reaching the derived field through a `merge --squash` of a non-ancestor source with an empty result tree. **Decisive check reproduced by the orchestrator:** with `bothSidesAlreadyUpToDate` hardwired to `return false`, this is the *only* failing test in the entire `-tags integration` `fabricengine` tier, failing at `AlreadyUpToDate = false; want true`. The proof gap that survived round 1 is closed.
+- **R3** (`f81d84df`) — the dangling `mergeReasonNoMergeInProgress` deleted from the closed set and all three pin-lists, with the membership rule written into the const block. Confirmed gone by grep.
+- **R5** (`6bdabe9c`) — `doc.go`'s justification for the `CheckoutDetached`/`RestoreBranch` exemption replaced with what actually holds.
 
-`internal/fabricengine/mergestate.go` — `(*mergeState).bothSidesAlreadyUpToDate()`, consumed at `merge.go:236` and `merge.go:430` as `MergeResult.AlreadyUpToDate`.
+Gates reproduced by the orchestrator from cold on the committed tree, all green, tiers named: `go build ./...`; `go vet` on the three packages; `go test -count=5` hermetic across `fabricengine`/`fabriccli`/`gitrepo`/`cmd/lyx`; `go test -tags integration -count=1` across the three packages (fabricengine 43.6 s, fabriccli 4.5 s, gitrepo 2.5 s).
 
-The orchestrator hardwired that method to `return false` and ran the **entire** suite — hermetic and `-tags integration`, `fabricengine` and `fabriccli`. **Everything stayed green.** The method has zero test coverage.
+### Residual A (PRIMARY) — the closed-set "closure" test does not verify closure
 
-Worse, there is a test that looks like it covers it and does not: `TestMergeCrucible_ResultFlagsDescribeWhatHappened/SecondCallReportsAlreadyUpToDateNotCommitted` asserts `AlreadyUpToDate == true`, but a plain second call is caught by the **pre-lock** probe at `merge.go:122`, which returns a hardcoded `AlreadyUpToDate: true` from a completely different return site. The subtest passes without the derived field ever being read.
+`internal/fabricengine/mergevocab_test.go:127`, `TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree`.
 
-This is exactly the campaign's sharpest failure mode: a green run that never executed the code it claims to exercise is indistinguishable from a fix.
+Its doc comment claims it enforces the same-commit rule: *"adding a member without updating this test fails loudly"*. **It does not.** The test compares two lists that are *both* hand-maintained inside the test — a `want` list of literals and a `got` list of constant references. Nothing reads the const block in `mergeerrors.go`. A new member added to the set and used in production code is completely invisible to it.
 
-The code path only fires when both sides' **post-lock** `MergeStart` outcomes are `up_to_date` — that is, when another process landed the same merge between this call's pre-lock probe and its lock acquisition. That is the concurrency-loser case round 1 originally found live, so it is reachable; it is just never asserted.
+The orchestrator proved this by sabotage: adding a tenth constant to the closed set in `mergeerrors.go` and running the package's whole hermetic tier leaves **everything green**. The mechanism cannot detect the thing it says it detects. That is the campaign's sharpest failure mode applied to an invariant test rather than to a fix.
+
+Note the same applies to `mergeerrors_test.go`'s pin-list and to `TestMergeVocabulary_ErrorsAreSideFree`, which also hand-lists the members.
 
 Your job:
-- Build a test that genuinely reaches the derived field, and **prove** it does by confirming it fails when `bothSidesAlreadyUpToDate` is hardwired to `false`. If your test still passes under that sabotage, your test is wrong, not the code.
-- If the only honest way to reach it is a deterministic seam rather than a real race, say so and build the seam rather than shipping a test that passes for the wrong reason. A racy test that flakes is worse than an honest hermetic one.
-- Also check whether the pre-lock hardcoded `AlreadyUpToDate: true` at `merge.go:122` and the derived value can ever disagree in a way that matters.
+- Decide whether this is worth closing properly and, if so, close it. This repo already has precedent for AST-scanning invariant tests — see `cmd/lyx/registration_test.go`, `cmd/lyx/boardguard_test.go`, `cmd/lyx/tiersleep_test.go`, all of which parse Go source with `go/ast` to enforce a structural rule. A test that reads the const block and asserts the set's membership against a pinned list would make the same-commit rule real.
+- Whatever you build, **prove it detects**: add a constant to the set, watch your test fail, remove it, confirm the empty diff. A closure test that cannot fail on an added member is the bug you were asked to fix.
+- If you conclude it should stay as it is, argue it on evidence and fix the doc comment, which currently claims a guarantee the code does not provide.
 
-### Residual 2 — an unenumerated countable class: post-record error returns
+### Residual B — four states where the operator's only recovery is plain git
 
-Round 1 drove twelve live scenarios but never **enumerated** a class it kept brushing against: every error return that executes after the merge-state record has been written and does **not** delete the record.
+Round 2's enumeration (`_mill/fabric-merge-review-opus-medium-r2.md`, the 45-row table) identifies rows 27, 28, 30 and 31: the sites where `concludeMergeSides` lands a `git commit` and then fails on `CurrentSHA` or `saveMergeState`, so the record never learns the conclude happened.
 
-Enumerate it exhaustively across `MergeIn`, `Merge`, `MergeContinue`, `MergeAbort` and everything `concludeMergeSides` reaches. Present a table with a row for **every** site — including the ones you judge correct, with the reason — plus the total and the enumeration method as reproducible shell.
+R2's guard correctly stops `MergeAbort` from destroying those. But round 2 also observed — and **deliberately declined to close** — that `MergeContinue` is *stuck* in exactly those four states: it retries a conclude git has already performed, fails again, and returns `ErrMergeIncomplete` forever. Its stated reasoning: being stuck is strictly better than silent destruction, and the operator has plain git as a documented last resort.
 
-For each row, answer the question that actually matters: **with the record left in that state, what does the next `MergeContinue` do, and what does the next `MergeAbort` do?** Flag specifically any site where the record survives after a conclude-commit has already landed on either side, because `MergeAbort` restores from the recorded pre-merge SHAs and would therefore discard committed work. Two sites are documented as deliberate retention (`selfAbortMergeAttempt`'s reset-failure path, and the `ErrMergeIncomplete` conclude-failure path) — adjudicate them like any other row rather than assuming the doc comment settles it.
+That reasoning is defensible and was accepted rather than overridden. Re-examine it on your own evidence rather than inheriting it:
+- Drive one of those four states for real and see what the operator actually experiences.
+- Is the plain-git escape hatch genuinely documented where an operator would find it, in the words the CLI actually prints?
+- Is there a cheap way for the conclude to become idempotent — e.g. recognising that the side's HEAD has already moved past its recorded start onto a merge commit whose second parent is the merge source — that does not add a schema field or a new failure mode?
+- If you agree it should stay open, say so plainly and make sure the doc says what the recovery is. If you can close it cheaply and safely, close it.
 
-The orchestrator has pre-counted this class into a file you must not read. Report your own honest number and decompose it; being above a naive count is the correct direction.
+### Residual C — round 2's per-site adjudication was not independently re-verified
 
-### Residual 3 — a dangling member of the closed guard-reason set
+The orchestrator reproduced round 2's enumeration **method** exactly — the same awk sweep over the same eight functions yields the same raw total of **94** error-returning statements — and accepted that the reproducible shell does what it claims.
 
-`internal/fabricengine/mergeerrors.go:24` — `mergeReasonNoMergeInProgress = "no merge in progress"` is declared in the closed reason set and referenced by **nothing** except the vocabulary tests that pin the set's own contents. No code path ever produces it; the no-merge case returns the typed `*ErrNoMergeInProgress` instead.
+What the orchestrator did **not** do is re-adjudicate all 45 rows by hand. The in-class count (41), the destructive count (17 = 13 visible + 4 invisible), and each row's "next continue / next abort" verdict are round 2's own judgement, unchecked.
 
-Decide whether it should be produced somewhere or deleted from the set, and make the vocabulary assertions move in the same commit either way. Small, but it is exactly the kind of NIT that re-surfaces for rounds if left.
+This matters less than it looks, and you should understand why before spending effort here: R2's guard is evaluated at the top of `MergeAbort` from the record and the two HEADs, so it does not care *which* error return left the record in that state. The fix is count-independent. A wrong count would be an accuracy problem in the report, not a hole in the guard.
+
+So: spot-check the rows most likely to be wrong rather than re-deriving all 45, and only escalate if you find a row whose verdict is wrong in a way the guard does **not** cover. A row the guard already covers being miscounted is a NIT at most.
+
+For calibration, the orchestrator's own pre-count of this class before round 2 ran was 27 in-class / 12 post-conclude, hand-read with no reproducible command behind it. Round 2 corrected both upward. The orchestrator's number is the one more likely to be wrong.
 
 ### Scope for this round
 
-Residuals 1–3, plus whatever your own adversarial work turns up in the regions they take you through.
-You are **not** asked to redo round 1's broad review, and the CLOSED-AND-VERIFIED list above is off-limits — but if you find one of those fixes is wrong or incomplete, say so loudly; a verified fix that is actually broken outranks everything else in this prompt.
+Residuals A–C, plus whatever your own adversarial work turns up in the regions they take you through.
+
+You are **not** asked to redo the broad review, and the CLOSED-AND-VERIFIED list is off-limits — but if you find one of those fixes is wrong or incomplete, say so loudly; a verified fix that is actually broken outranks everything else in this prompt.
+
+Two rounds have now driven this surface hard and the obvious defects are gone. Expect the remaining yield to be in **proof quality** rather than in behaviour: tests that pass for the wrong reason, invariants asserted by mechanisms that cannot detect a violation, doc claims the code does not back. Residual A is exactly that shape and it was found by sabotaging a *test* rather than a fix. Look for more of the same.
 
 **The merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the gate.
 A stress-amplifier result — a timeout under an artificial N-way CPU peg — is a diagnostic signal, not a merge blocker.
@@ -339,10 +351,11 @@ The orchestrator has pre-counted several classes into a file you must not read. 
 
 ## Deferred items from the prior round — RE-EVALUATE these
 
-Round 1 deferred nothing — all nine of its findings were fixed in-round. Two items it consciously did NOT record as findings, which you should re-evaluate on your own evidence rather than inherit:
+Round 2 deferred nothing: all five of its findings (R1, R2, R3, R5, and R4 which it withdrew on evidence) were closed in-round. Two items it consciously did NOT record as findings, plus one it recorded and left open by choice:
 
-- **A sibling verb slipping through the unlocked guard window** between `mergeRecordExists()` and `saveMergeState`. Round 1 reasoned about it, failed to reproduce it across repeated attempts, and correctly declined to record it. If you can make it happen, it is a finding; if you cannot, say so and move on. Do not report it on reasoning alone.
-- **`CheckoutDetached` / `RestoreBranch` abandoning a merge in progress.** Round 1 logged this as an accepted hazard belonging to webster's surface rather than the merge primitive's, on the argument that F2's attached-HEAD precondition closes the harmful direction. Re-examine that argument: F2 stops a merge from *starting* while detached, but these primitives can detach a checkout that is *already* mid-merge. Decide whether that is genuinely out of scope or whether the reasoning was convenient.
+- **A sibling verb slipping through the unlocked guard window.** Round 1 could not reproduce it. Round 2 attempted it properly — 75 runs across three arms (interleaved, a strictly-sequential control, and an independent second hub), 0/75 — and, importantly, discarded two earlier detector versions because they fired on the sequential control. That is a sound negative. **Do not spend this round's budget re-running it.** If you happen to construct a genuinely different mechanism, that is a finding; a fourth null run is not.
+- **The narrow `CheckoutDetached` window.** Git itself refuses `checkout --detach` while unmerged index entries exist, which closes the long conflicted window. What stays open is the resolved-but-not-concluded window, where `checkout --detach` succeeds and silently drops `MERGE_HEAD`, stranding the record. Both rounds classed this as webster's surface, not the merge primitive's. Re-examine only if you can show the hazard is reachable from an ordinary fabric workflow rather than from webster's bisect.
+- **`MergeContinue` stuck in the four invisible-conclude states** — this is residual B above, and it is the one deliberate open item worth your attention.
 
 ## Fixing — after the review
 
