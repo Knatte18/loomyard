@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-verify-logic
+phase: approved-quarry-live-and-equivalence
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-quarry-cli-infra  '2026-08-20T15:05:26Z'
 approved-port-engine  '2026-08-20T15:25:42Z'
 approved-port-cli  '2026-08-20T15:41:15Z'
 self-resolved-verify-logic  '2026-08-20T16:03:38Z'
+approved-quarry-live-and-equivalence  '2026-08-20T16:07:38Z'
 ```
 
 ## Batches
@@ -61,9 +62,10 @@ batches:
     commit_sha: 93265ae6c84236e683b25415c68f26e63ffa65ff
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: quarry-live-and-equivalence
-    state: running
+    state: approved
     implementer_session: 3af5617f-662c-43d3-a42e-d43af5e81b86
     start_sha: 0875403df4c6020751f0037aa106f8a1c71cfa5e
+    commit_sha: 7b5d4ce24a208858328d823b0c9ddd226f549637
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: lyx-removal
     state: pending
