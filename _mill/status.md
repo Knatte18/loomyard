@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-port-engine
+phase: approved-port-cli
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-08-20T14:50:54Z'
 approved-quarry-scaffold  '2026-08-20T14:58:14Z'
 approved-quarry-cli-infra  '2026-08-20T15:05:26Z'
 approved-port-engine  '2026-08-20T15:25:42Z'
+approved-port-cli  '2026-08-20T15:41:15Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: c63cd94db7580bea01c5240bafb0549a4fb2f178
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: port-cli
-    state: running
+    state: approved
     implementer_session: 8cb3cacf-0fad-42b9-b600-0331b982e502
     start_sha: 334c6b15b76e51c7248362ccf370c5fe6ae640fe
+    commit_sha: 93265ae6c84236e683b25415c68f26e63ffa65ff
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: quarry-live-and-equivalence
     state: pending
