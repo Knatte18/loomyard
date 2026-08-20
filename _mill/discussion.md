@@ -91,6 +91,9 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
     An empty `ledger` list is legal (a first ledger carries no prior findings).
     Prose after the frontmatter is the distilled cross-round narrative.
     Every entry from the previous ledger is carried forward, open or resolved, never dropped — the prompt states this, and the Go side does not enforce it.
+    **Known soft spot, deliberately accepted in this task:** because carry-forward is prompt-enforced only, a misbehaving judge LLM can silently drop a ledger entry with nothing at the Go layer catching it, which would lose a recurring finding from the cross-round record.
+    Go-side enforcement is a real feature rather than a one-line addition — the parser would have to diff the new ledger's key set against the *previous* ledger's and decide what a missing key means (reject, or re-open with a warning) — so it is scoped out here and left as a candidate follow-up.
+    The plan should treat this as a named soft spot, not a gap to close: the `judge` template must state the carry-forward rule prominently, and a parser test should assert the *absence* of enforcement so the gap is explicit in the test record rather than merely unmentioned.
   - **Focus file** — frontmatter carries `round` (positive int), `exclude_lenses` (list of strings, possibly empty), and `focus` (list of strings, possibly empty).
     Prose after is optional rationale.
     Unknown extra keys are tolerated in all three files (no `KnownFields`), matching `reviewHeader` and `judgeHeader`.
@@ -308,6 +311,7 @@ TDD candidates — write these before the implementation, in this order:
    Cover, for each file type: missing opening `---`; missing closing `---`; empty frontmatter; invalid YAML; prose correctly extracted and CRLF-normalised; unknown extra keys tolerated.
    Verdict-specific: each legal spelling accepted; a wrong-case spelling rejected; an unknown verdict rejected; empty or whitespace-only rationale rejected.
    Ledger-specific: empty ledger list legal; empty `key` rejected; empty `rounds` rejected; non-positive round in `rounds` rejected; a status outside `open`/`resolved` rejected; non-positive `round` rejected.
+   Also assert the *absence* of carry-forward enforcement — a ledger that drops a key present in the previous ledger parses cleanly — so the known soft spot recorded under "The three file contracts" is visible in the test record rather than merely unmentioned.
    Focus-specific: empty `exclude_lenses` and empty `focus` both legal; non-positive `round` rejected; a non-list where a list is required rejected.
 2. **The focus-file writer, round-tripped through the focus parser.**
    Property-shaped: what the writer emits, the parser accepts and yields back unchanged.
