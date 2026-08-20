@@ -53,10 +53,10 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
 ### Card 6: writeLaunchers writes the run launcher
 
 - **Context:**
-  - `internal/fabricengine/launcher_content.go`
   - `internal/fabricengine/mutation.go`
 - **Edits:**
   - `internal/fabricengine/launchers.go`
+  - `internal/fabricengine/launcher_content.go`
   - `internal/fabricengine/launcher_content_test.go`
 - **Creates:** none
 - **Deletes:** none
