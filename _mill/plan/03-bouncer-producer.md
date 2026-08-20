@@ -123,6 +123,12 @@ That path still consults `cancelErr` before returning its own error, exactly as 
   Archive rather than overwrite: a focus file the judge wrote but the parser rejected is the evidence of whatever malformed the judge's output, and overwriting it with two empty lists would erase the only record.
   A present, parsing file is left byte-identical.
 
+  `ensureFocus` returns nothing.
+  Its own `archiveStaleOutputs` or `writeFocus` failure is logged via `logger.Warn` and swallowed there, never propagated and never allowed to change `Call`'s outcome, pointer, or error.
+  This is what keeps the rule "never discard a judgment that provably happened" true at `settle`'s `BLOCKING` branch, where `Call` has already committed to returning the recorded verdict with its ledger pointer: a failure to write the *next* round's targeting hint must not retract *this* round's verdict.
+  The cost of the swallow is bounded and visible — the round producer runs its next round without a focus file, which the warning names — whereas letting it override the result would trade a real verdict for an unrelated write failure.
+  The same swallow applies at the seed call's site, where `Call` returns `shedengine.Stuck` regardless.
+
   Declare `settle(ctx context.Context, round int, spawned bool)`: read and `parseVerdict` the round's verdict file, which `judged(round)` has already proved parses.
   On `verdictApproved` return `shedengine.Done` with `shedengine.OutputPointer{Path: ledgerPath(b.cfg.RunDir, round)}` and a nil error.
   On `verdictBlocking` call `ensureFocus(round + 1)`, then return `shedengine.Stuck` with the same ledger pointer and a nil error.
@@ -177,6 +183,8 @@ That path still consults `cancelErr` before returning its own error, exactly as 
   - `internal/shedadapters/bouncer_config_test.go`
   - `contracts/stencils/bouncer/bouncer-template-seed.md`
   - `contracts/stencils/bouncer/bouncer-template-judge.md`
+  - `contracts/stencils/stencils.go`
+  - `internal/treadleengine/judge_test.go`
   - `internal/shuttleengine/spec.go`
   - `internal/shedengine/producer.go`
   - `_mill/discussion.md`
@@ -187,7 +195,8 @@ That path still consults `cancelErr` before returning its own error, exactly as 
 - **Moves:** none
 - **Requirements:**
   Create `internal/shedadapters/bouncer_seed_test.go`, reusing the existing `fakeShuttle` from `internal/shedadapters/singlellm_test.go` (its `duringRun` hook is what writes the files a real agent would have written) and `fixedClock` from `internal/shedadapters/archive_test.go`.
-  Reuse the stencils-fixture helper card 5 added in `internal/shedadapters/bouncer_config_test.go`, and seed it with the real template bytes read from `contracts/stencils/bouncer/bouncer-template-seed.md` and `contracts/stencils/bouncer/bouncer-template-judge.md` so the marker contract is pinned against the shipped templates rather than against a stand-in.
+  Reuse the stencils-fixture helper card 5 added in `internal/shedadapters/bouncer_config_test.go`, and seed it with the shipped template bytes taken from the `contracts/stencils` package's own exported vars, `stencils.BouncerTemplateSeed` and `stencils.BouncerTemplateJudge`, so the marker contract is pinned against the shipped templates rather than against a stand-in.
+  Import the package rather than reading a relative path off disk, mirroring `internal/treadleengine/judge_test.go`, which seeds its own fixture from `stencils.TreadleTemplateJudgeCircling` and its siblings.
 
   Cover these scenarios, each asserting on the recorded `shuttleengine.Spec` as well as on the returned outcome, pointer, and error.
   Seed call, happy path: an empty run dir returns `shedengine.Stuck`, an empty pointer, and a nil error; `round-1-focus.md` exists and parses afterwards; exactly one spawn happened, against the seed template; no verdict and no ledger file was written.
@@ -207,6 +216,9 @@ That path still consults `cancelErr` before returning its own error, exactly as 
 
 - **Context:**
   - `internal/shedadapters/bouncer.go`
+  - `internal/shedadapters/perch.go`
+  - `internal/shedadapters/singlellm.go`
+  - `internal/shedadapters/webster.go`
   - `_mill/discussion.md`
 - **Edits:**
   - `internal/shedadapters/doc.go`
@@ -225,7 +237,8 @@ That path still consults `cancelErr` before returning its own error, exactly as 
   State the exists-or-empty rule and why it matters: `Shed` never stats a pointer, so a pointer naming an unwritten file is caught nowhere and is simply persisted into the history for a human to read as though the artifact were there.
 
   `# Told, never derived`: add the Bouncer's told inputs — `RunDir`, `StencilsDir`, the resolved `(Model, Effort, Version)` triple, and the report-name convention as a function.
-  Note that this is the one constructor in the package returning an error, and why: the other three either validate nothing or take already-constructed engines that validated themselves, whereas the Bouncer has eleven inputs with real invariants, two of which must be absolute paths, and validating lazily at first `Call` would turn a wiring typo into a mid-run failure in an unattended segment.
+  Note that it is the second validating, error-returning constructor in the package, after `NewPerchProducer`, and contrast it with the two that return a bare pointer: `NewSingleLLMProducer`, whose `Spec` is validated downstream by `shuttleengine`, and `NewWebsterProducer`.
+  State why the Bouncer takes the error-returning shape: eleven inputs with real invariants, two of which must be absolute paths, and validating lazily at first `Call` would turn a wiring typo into a mid-run failure in an unattended segment.
 
   `# Shared cancellation rule`: add the Bouncer, noting that its genuine-success exception covers a *harvested* verdict, not only a `shuttleengine` completion — a parsed verdict is returned as its mapped `Done` or `Stuck` with its pointer regardless of cancellation.
 

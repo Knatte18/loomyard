@@ -74,7 +74,7 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
   Each asserts `shedengine.Stuck`, a nil error, an empty pointer, and a warning logged.
   Assert in every one of these cases that the outcome is not `shedengine.Done` — that is the single property that must never regress.
 
-  Harvest: the fake writes the verdict and the ledger but not the focus file, and reports a non-completion outcome.
+  Harvest: the fake writes the verdict and the ledger but not the focus file, and then reports a failure — one case reporting a non-completion outcome and a second reporting a `Run` error, matching card 7's seed-side symmetry, since `judged(n)` is evaluated regardless of which of the two the run reported.
   `Call` still acts on the recorded verdict — `shedengine.Done` on `APPROVED`, `shedengine.Stuck` on `BLOCKING` — rather than degrading, and it synthesizes `round-<N+1>-focus.md` on the `BLOCKING` branch.
   Contrast case: the fake writes nothing and reports a non-completion outcome, which degrades to `shedengine.Stuck` with an empty pointer.
 
