@@ -5,7 +5,7 @@ task: "Extract scout into its own standalone repo"
 batch: "quarry-live-and-equivalence"
 number: 5
 cards: 4
-verify: go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./...
+verify: go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./... -count=1
 depends-on: [4]
 ```
 

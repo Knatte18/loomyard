@@ -173,7 +173,10 @@ Batch-local decisions:
   In `manifest/roadmap.md`, handle nine reference sites in three different ways.
   The Someday items about *consuming* scout — the plan-sweep stub note, the scout-backed plan symbol fields item and its design link, the plan-sweep build item and its two supporting lines, the producers-standalone item's uniformity-pass mention, and the plan-format item's deferred symbol fields — all stay, reworded so they name quarry as an external Go module dependency rather than an in-repo module.
   The scout defect item about the `"resolution":"complete"` trust marker on interface-method noise is closed out of the roadmap rather than reworded: it is the same defect already filed as quarry issue 1, and tracking it in two places guarantees drift.
-  The Someday `scout` item itself — the LSP-backed code intelligence entry, including its line about two entry points and its pointer at the package documentation — is removed, since the thing it describes has shipped and left.
+  The **Done** `scout` item — the LSP-backed code intelligence entry in the `## Done` section, including its line about two entry points and its pointer at the package documentation — is removed.
+  This is a deliberate exception to the file's convention that Done entries persist as a shipped-work ledger: a Done entry earns its place by pointing at the durable documentation of what shipped, and that documentation is `internal/scoutengine`'s package doc, which leaves the repo in card 38.
+  An entry pointing at a package that no longer exists is worse than no entry, so it goes rather than being reworded.
+  Say so in the commit message, since this deviates from how every other Done entry is treated.
   The two meta-lines that use `scout` as an example of cross-referencing convention and of a firmly-committed Someday item need a different example each;
   pick items that remain in the file.
   In `manifest/parallel-work.md`, remove the note saying scout extraction is discussed but not yet a wiki task — this task resolves it.

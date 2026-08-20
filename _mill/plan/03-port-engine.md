@@ -251,7 +251,12 @@ Batch-local decisions:
   The remaining files carry one to six occurrences each, mostly in comments and fixture names.
   Do not change any test's assertions or subjects in this card — it is a comment and identifier-naming sweep only, and a behavioural change made here would be invisible in the port diff.
   Two production files are in this card's `Edits:` even though cards 14 and 16 already touched them, because those cards' scopes were narrower than the vocabulary they leave behind.
-  In `ensureserver.go`, card 14 rewrote only the parameter rename and the file header, leaving six doc-comment mentions untouched — at the source's lines 40, 160, 257, 260, 357, and 496, describing a daemon lyx spawned to outlive the call, a lyx-owned supervised daemon, this worktree's future lyx invocations, the `.lyx/scout/<lang>/` directory, and a Windows Job Object lyx itself created.
+  In `ensureserver.go`, card 14 rewrote only the parameter rename and the file header, leaving six doc-comment mentions untouched, one per source line: line 40 describes dialling into a daemon lyx spawned to outlive the call;
+  line 160 notes that after a `finalizeConnection` failure lyx makes no second spawn attempt;
+  line 257 describes a lyx-owned supervised daemon behind a worktree-scoped advisory lock;
+  line 260 names this worktree's own future lyx invocations as the reconnecting callers;
+  line 357 names the `.lyx/scout/<lang>/` directory;
+  and line 496 describes breaking away from a Windows Job Object lyx itself created.
   In `toolchain.go`, card 16 rewrote the two path joins and the citation, leaving the same line's mention of routing through `internal/lyxcwd` and the Cwd Resolution Invariant, which quarry does not have.
   Finish by running `grep -ric 'lyx' /home/knatte/Code/quarry/wts/quarry/quarry/` and confirming every remaining hit is zero;
   files card 18 through 22 rewrite are allowed to still carry hits at the end of this card, so run the grep again after card 22 rather than treating a non-zero count here as a blocker.

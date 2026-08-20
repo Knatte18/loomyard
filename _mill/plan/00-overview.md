@@ -41,7 +41,7 @@ batches:
     name: quarry-live-and-equivalence
     file: 05-quarry-live-and-equivalence.md
     depends-on: [4]
-    verify: go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./...
+    verify: go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./... -count=1
   - number: 6
     name: lyx-removal
     file: 06-lyx-removal.md
@@ -100,8 +100,9 @@ batches:
 ### Decision: one opt-in test tag, `lsp`
 
 - **Decision:** every quarry test needing a real language-server binary on `$PATH` carries `//go:build lsp`.
-  The five `//go:build scout` files and the one `//go:build integration` file collapse onto it during the port.
-  Verification is `go test ./...` (hermetic) and `go test -tags lsp ./...` (live).
+  Five of the six tagged scout files collapse onto it during the port — the five `//go:build scout` engine files.
+  The sixth, `internal/scoutcli/cli_integration_test.go`, is `//go:build integration` and does not survive in any tagged form: its subject is `lookupContext`'s in-hub branch, which this task deletes, so batch 4 drops it and replaces it with an untagged `resolve_test.go` covering the resolution that now occupies that seam.
+  Verification is `go test ./...` (hermetic) and `go test -tags lsp ./... -count=1` (live).
 - **Rationale:** a verify command spelled `-tags integration` would have run one file out of six while appearing green.
   `lsp` names the actual precondition;
   `scout` is dead vocabulary once the tool is called quarry.
