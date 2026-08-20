@@ -60,7 +60,9 @@ batches:
     commit_sha: 93265ae6c84236e683b25415c68f26e63ffa65ff
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: quarry-live-and-equivalence
-    state: pending
+    state: running
+    implementer_session: 3af5617f-662c-43d3-a42e-d43af5e81b86
+    start_sha: 0875403df4c6020751f0037aa106f8a1c71cfa5e
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: lyx-removal
     state: pending
