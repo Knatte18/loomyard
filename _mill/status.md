@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomengine-checkseed
+phase: approved-wire-two-rows
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-08-20T09:25:28Z'
 implementing  '2026-08-20T09:26:03Z'
 approved-preflightshed-package  '2026-08-20T09:38:47Z'
 approved-loomengine-checkseed  '2026-08-20T09:45:26Z'
+approved-wire-two-rows  '2026-08-20T09:54:31Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: a07d1f4e724fb04497ba22c947deb52483b3adcb
     verify_baseline_failures: []
   - name: wire-two-rows
-    state: running
+    state: approved
     implementer_session: cc9ab4f4-f932-418f-beb6-09b297ef73f0
     start_sha: 71e3e30013d4efc5f28cc5b54af6f8ebfcbc6a06
+    commit_sha: 39a42c6ad748df25fef68aca9b87661d080e77e9
     verify_baseline_failures: []
   - name: delete-composite
     state: pending
