@@ -151,6 +151,8 @@ It is untagged and its only reason to exist is `gitkit.HermeticGitEnv()` for tha
   - `contracts/specs/loom-status-spec.md`
 - **Edits:**
   - `internal/loomengine/status.go`
+  - `internal/loomengine/seed.go`
+  - `internal/loomengine/coherence.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
