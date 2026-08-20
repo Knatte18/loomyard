@@ -74,7 +74,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// The reference matcher is pinned to a real fabricengine.NewRefScanner(location), built
 		// eagerly because that constructor only compiles a regexp and cannot fail. It must never be
 		// the never-matching stand-in: that stand-in is permitted only in standalone, where there is
-		// no weft worktree for the guard to protect, and loom is hub-only.
+		// no wired fabric for the guard to protect, and loom is hub-only.
 		RefMatcher: fabricengine.NewRefScanner(location),
 		// The bisector opener stays a lazy closure over fabricengine.Open(location) and must not be
 		// opened here: opening stat-checks the paired sibling, and this pre-run must not fail

@@ -1,6 +1,6 @@
 // run.go implements the `run` loom verb: the session bootstrap.
 // It resolves the recorded parent branch, seeds the status file when absent, commits that seed
-// weft-side, ensures the reed substrate and its status strand, spawns the detached driver when none
+// into the fabric, ensures the reed substrate and its status strand, spawns the detached driver when none
 // is already alive, waits for the handshake that confirms the driver took the run lock, and finally
 // hands the operator's terminal to a tmux attach.
 // Every fallible step runs pre-flight, on the envelope; only the terminal handover at the very end
@@ -49,7 +49,7 @@ func (c *loomCLI) runCmd() *cobra.Command {
 		Long: `run is the session bootstrap. It performs four steps in order:
 
   1. resolve the recorded parent branch, seed the status file when it is
-     absent, and commit that seed weft-side before anything else touches it
+     absent, and commit that seed into the fabric before anything else touches it
   2. ensure the worktree's tmux session is up and its status strand exists
   3. spawn the detached loom driver, unless one is already alive -- a second
      invocation while a driver is running ensures substrate and attaches
@@ -102,23 +102,23 @@ Example:
 				return nil
 			}
 
-			// Step 3: commit the seed and the provenance record, weft-side, unconditionally on
+			// Step 3: commit the seed and the provenance record into the fabric, unconditionally on
 			// every invocation -- not gated on this invocation's own writeOrigin. The origin
 			// record's path is included every time for the same reason the status file's path
 			// always is: if a prior invocation wrote the record to disk (step 1) but crashed
 			// before this step committed it, resolveParentBranch's next read finds the record
 			// present with a matching value and reports write == false, even though the record
-			// is still untracked in the weft. Including the path unconditionally makes that
+			// is still untracked in the fabric. Including the path unconditionally makes that
 			// state self-heal on the very next `loom run`, exactly as the status file already
 			// does -- and costs nothing on the ordinary path, since committing an already-clean,
 			// already-tracked path is a no-op (StageAndCommit reports committed == false).
 			// This must precede the driver spawn: the phase machine's very first precondition row
-			// scans the weft including untracked files, and neither file is on the never-tracked
+			// scans the fabric including untracked files, and neither file is on the never-tracked
 			// exclude list, so an uncommitted seed or record would fail that check immediately.
 			commitPaths := []string{loomengine.LoomStatusRel(), fabricengine.OriginRecordRel()}
-			weftRec := fabricengine.NewMutations("")
+			commitRec := fabricengine.NewMutations("")
 			commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
-			if _, _, err := fabricengine.CommitWeftPaths(weftRec, fabricengine.WeftWorktree(c.location), c.location.AnchorRel, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
+			if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}

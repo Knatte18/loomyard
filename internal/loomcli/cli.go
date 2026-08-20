@@ -4,8 +4,8 @@
 // *lyxcwd.Location and delegates the whole engine-stack construction to c.wire (wiring.go), storing
 // the resolved ingredients on loomCLI exactly once per invocation.
 // loom is hub-only: it resolves through lyxcwd.Resolve the way internal/reedcli does, never through
-// preflight.ResolveMode's degrade-to-standalone probe -- loom needs a wired fabric and a real weft
-// sibling to commit its seed into, so there is no meaningful standalone mode (see the plan's
+// preflight.ResolveMode's degrade-to-standalone probe -- loom needs a wired fabric to commit its
+// seed into, so there is no meaningful standalone mode (see the plan's
 // hub-only-resolution-for-loom decision). The resolved value is named "location" throughout, never
 // "loc" or "cwd".
 package loomcli

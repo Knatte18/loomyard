@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // weftCommitPathspec returns the pathspec entries for relPaths, scoped under anchorRel.
@@ -79,4 +80,17 @@ func CommitWeftPaths(rec *Mutations, weftPath, anchorRel string, relPaths []stri
 		rec.Append(KindCommitCreated, weftPath, sha)
 	}
 	return sha, committed, nil
+}
+
+// CommitAnchoredPaths is CommitWeftPaths's fabric-vocabulary-neutral wrapper: it resolves the
+// commit target from l itself (mirroring ReadOrigin/WriteOrigin's own l-in, no-path-out shape,
+// per the weft-visibility-leak closure recorded in fabric-unified-view.md's "Slice 8"), so a
+// caller outside the owner set -- internal/loomcli's session-bootstrap commit is the first one --
+// can reach this narrow, no-push, explicit-paths commit shape without ever naming a weft path,
+// importing internal/weftname, or otherwise learning that weft exists.
+//
+// relPaths are anchor-relative, the same shape OriginRecordRel and LoomStatusRel already return,
+// so a caller building its commit path list never joins AnchorRel itself.
+func CommitAnchoredPaths(rec *Mutations, l *lyxcwd.Location, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
+	return CommitWeftPaths(rec, WeftWorktree(l), l.AnchorRel, relPaths, msg, opts)
 }

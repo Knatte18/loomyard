@@ -61,7 +61,7 @@ func DiscussionSupportLog(l *lyxcwd.Location) string {
 
 // LoomStatusRel returns the worktree-anchor-relative form of LoomStatusFile's path: the join of
 // lyxdirs.LyxDirName, loomDirName, and loomStatusFileName.
-// It exists so a caller building a weft commit pathspec never has to name a directory segment loom
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment loom
 // owns.
 func LoomStatusRel() string {
 	return filepath.Join(lyxdirs.LyxDirName, loomDirName, loomStatusFileName)
