@@ -6,6 +6,7 @@ slug: shedengine-segments-bounce-budget
 branch: shedengine-segments-bounce-budget
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'shedengine: per-producer bounce budget + explicit OnDone routing'
 task_description: |
   shedengine: per-producer bounce budget + explicit OnDone routing
@@ -34,11 +35,17 @@ implementing  '2026-08-20T09:52:16Z'
 ```yaml
 batches:
   - name: engine-fields-and-validation
-    state: pending
+    state: running
+    implementer_session: 32dd9167-a0f5-49ee-8f2f-8597412693f3
+    start_sha: 569888269ea72bf7f2e670ff3ea3a2faf8c1b842
+    verify_baseline_failures: []
   - name: run-routing-and-budget
     state: pending
+    verify_baseline_failures: []
   - name: loomshed-migration
     state: pending
+    verify_baseline_failures: []
   - name: docs-sweep
     state: pending
+    verify_baseline_failures: []
 ```
