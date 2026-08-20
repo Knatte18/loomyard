@@ -95,7 +95,7 @@ type Deps struct {
 // -- an unresolvable conflict against the parent's current state, an unreachable remote service, a
 // drifting parent, and a pull request awaiting human review are all things only a human fixes.
 //
-// Plan-Sweep is deliberately not a row here: its scout-inventory work is deferred (see
+// Plan-Sweep is deliberately not a row here: its quarry-inventory work is deferred (see
 // manifest/roadmap.md's Someday "loom: build Plan-Sweep for real" item) and it has no consumer --
 // Plan-Write reads only decision-record.md today -- so a stub row with nothing to feed and nothing
 // to bounce to would be dead weight, not a placeholder worth carrying. It returns as a row only

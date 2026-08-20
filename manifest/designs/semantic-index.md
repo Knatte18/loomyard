@@ -1,11 +1,11 @@
 # semantic-index — semantic search over docstrings and descriptive text
 
-> **Status: Speculative, not scoped.** Inspired by [Enzyme](https://www.enzyme.garden/blog/an-lsp-for-your-notes), a semantic search system for personal note vaults. This is the "deferred idea" [`internal/scoutengine`](../../internal/scoutengine/doc.go)'s own design proposal referred to ("a semantic/conceptual index... a separate, further-out idea, not part of this proposal") and the relationship-table row from the original scout proposal ("have we written something conceptually similar, without shared vocabulary? — embeddings + temporal-decay weighting; not part of this proposal") — now named, not yet designed in depth. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning package's doc when it lands; if abandoned, this file is simply deleted.
+> **Status: Speculative, not scoped.** Inspired by [Enzyme](https://www.enzyme.garden/blog/an-lsp-for-your-notes), a semantic search system for personal note vaults. This is the "deferred idea" [quarry](https://github.com/Knatte18/quarry)'s own design proposal referred to ("a semantic/conceptual index... a separate, further-out idea, not part of this proposal") and the relationship-table row from the original quarry proposal ("have we written something conceptually similar, without shared vocabulary? — embeddings + temporal-decay weighting; not part of this proposal") — now named, not yet designed in depth. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning package's doc when it lands; if abandoned, this file is simply deleted.
 
 ## The problem this responds to
 
 Grep/text-search finds literal keyword matches.
-It cannot answer "find code that does X" when the code implementing X uses none of the words a caller would naturally search for — e.g. "show me the error-handling patterns in this codebase" when error handling is spelled out in prose inside docstrings and comments but never literally contains the word "error" everywhere it matters. `scout` (see [`internal/scoutengine`](../../internal/scoutengine/doc.go)) doesn't solve this either — it answers "what exactly references/defines this symbol," a precise, compiler-derived question, not "what have we conceptually written that's similar to this."
+It cannot answer "find code that does X" when the code implementing X uses none of the words a caller would naturally search for — e.g. "show me the error-handling patterns in this codebase" when error handling is spelled out in prose inside docstrings and comments but never literally contains the word "error" everywhere it matters. `quarry` (see [quarry](https://github.com/Knatte18/quarry)) doesn't solve this either — it answers "what exactly references/defines this symbol," a precise, compiler-derived question, not "what have we conceptually written that's similar to this."
 
 ## Core mechanism, adapted from Enzyme
 
@@ -23,13 +23,13 @@ the same shape maps onto a codebase's descriptive text (docstrings, comments, pa
 4. **Semantic retrieval.**
    An agent searches catalyst vectors instead of guessing grep terms, surfacing conceptually related code across files/packages that share no literal vocabulary.
 
-## Relationship to `scout` and `raddle` — complementary, not overlapping
+## Relationship to `quarry` and `raddle` — complementary, not overlapping
 
-Same three-way split the original scout proposal drew, now with a name for the third row:
+Same three-way split the original quarry proposal drew, now with a name for the third row:
 
 | Module | Answers | Mechanism |
 |---|---|---|
-| `scout` | "What exactly references/defines this symbol, right now?" | Deterministic, compiler-derived (LSP) |
+| `quarry` | "What exactly references/defines this symbol, right now?" | Deterministic, compiler-derived (LSP) |
 | `raddle` | "Where does this conceptually belong, and why?" | LLM-authored/maintained narrative docs |
 | `semantic-index` (this) | "Have we written something conceptually similar, without shared vocabulary?" | Embeddings + temporal-decay weighting |
 
@@ -45,13 +45,13 @@ None of these three replace either of the others — different question, differe
 - **Temporal decay source.**
   Whether it reuses `gitrepo`'s `ChangedFilesSince`/SHA machinery directly, or needs its own recency signal.
 - **Standalone vs. baked into loomyard.**
-  Same question asked of `scout` and `raddle` — lean build-inside-first, extract only once a second concrete consumer exists.
+  Same question asked of `quarry` and `raddle` — lean build-inside-first, extract only once a second concrete consumer exists.
 - **Consumer.**
   Presumably the planner (finding existing similar implementations before writing a card) and webster forks (finding a pattern to follow) — not yet concretely designed.
 
 ## Related
 
-- [`internal/scoutengine`](../../internal/scoutengine/doc.go) — the precise, compiler-derived sibling;
-  scout's own design proposal named this as an out-of-scope, deferred idea.
+- [quarry](https://github.com/Knatte18/quarry) — the precise, compiler-derived sibling;
+  quarry's own design proposal named this as an out-of-scope, deferred idea.
 - [raddle.md](raddle.md) — the curated-narrative sibling.
 - [`internal/gitrepo`](../../internal/gitrepo/doc.go) — plausible source of the temporal-decay recency signal.

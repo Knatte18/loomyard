@@ -191,7 +191,7 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 			// _lyx/ in the repo and start writing" the natural operator
 			// mistake this guard exists to catch.
 			// `.lyx` is the one exception: content under it is always lyx's own
-			// machine-local scratch (the logger, reed, shuttle, scout and
+			// machine-local scratch (the logger, reed, shuttle, and
 			// burler all write it unconditionally), so "never touch what might
 			// be the user's hand-authored content" does not apply there.
 			// Every worktree in existence today has a real `.lyx` for exactly
@@ -230,7 +230,7 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 // adoptDotLyxContent merges every entry from the warp-side real directory at link into the weft-side
 // target, then removes the now-empty warp directory and creates the junction in its place.
 // It is the only path seedLyxJunction takes for `.lyx`: every worktree in existence before this
-// change holds a real `.lyx` (the logger, reed, shuttle, scout and burler all write it
+// change holds a real `.lyx` (the logger, reed, shuttle, and burler all write it
 // unconditionally), so without adoption the first `reconcile` after `.lyx` joined the wired name-set
 // would hard-error everywhere.
 //
@@ -253,7 +253,7 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 // exactly as it found them.
 //
 // A rename failure is wrapped in an actionable error naming the entry and instructing the operator to
-// stop reed/scout and re-run `lyx fabric reconcile` — on Windows, moving a directory with an open
+// stop reed and re-run `lyx fabric reconcile` — on Windows, moving a directory with an open
 // handle inside it fails, and that is the expected cause.
 // The error names whatever was already moved, so a partial move is never reported as success.
 //
@@ -355,7 +355,7 @@ func mergeAdoptionTree(src, dst, rootLink, rootTarget string) error {
 		if _, dstErr := os.Lstat(dstPath); os.IsNotExist(dstErr) {
 			if renameErr := os.Rename(srcPath, dstPath); renameErr != nil {
 				return fmt.Errorf(
-					"adopt %s into %s: move %s failed: %w — stop reed/scout (an open handle inside %s is the expected cause on Windows) and re-run `lyx fabric reconcile`",
+					"adopt %s into %s: move %s failed: %w — stop reed (an open handle inside %s is the expected cause on Windows) and re-run `lyx fabric reconcile`",
 					rootLink, rootTarget, srcPath, renameErr, rootLink,
 				)
 			}

@@ -134,10 +134,10 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 
 	// The new hub is created in this directory, never the process cwd: an empty --into
 	// yields the seam cwd unchanged, an absolute --into is cleaned as given, and a
-	// relative --into resolves against the seam cwd, exactly like the --target-dir
-	// rebase in internal/scoutcli/cli.go — resolving against the process cwd here would
-	// reintroduce the very dependency this task removes, in the one verb where cwd is a
-	// destination rather than a lookup anchor.
+	// relative --into resolves against the seam cwd, the same --target-dir-rebase shape
+	// quarry's own CLI uses for its resolveContext seam — resolving against the process
+	// cwd here would reintroduce the very dependency this task removes, in the one verb
+	// where cwd is a destination rather than a lookup anchor.
 	dest := cwd
 	switch {
 	case into == "":
