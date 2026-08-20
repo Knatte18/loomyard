@@ -27,6 +27,7 @@ Batch-local decision differing from `## Shared Decisions`: nothing.
   - `internal/shedadapters/singlellm.go`
   - `internal/shedadapters/ctx.go`
   - `internal/shedadapters/archive.go`
+  - `internal/shedengine/producer.go`
 - **Edits:**
   - `internal/shedadapters/doc.go`
 - **Creates:** none

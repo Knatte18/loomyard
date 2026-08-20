@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: shedadapters-burler-producer
 branch: shedadapters-burler-producer
 plan: _mill/plan
@@ -22,4 +22,6 @@ plan-review-r1  '2026-08-20T15:41:15Z'
 plan-fix-r1  '2026-08-20T15:41:15Z'
 plan-review-r2  '2026-08-20T15:51:25Z'
 plan-fix-r2  '2026-08-20T15:51:25Z'
+plan-review-r3  '2026-08-20T15:59:25Z'
+plan-fix-r3  '2026-08-20T15:59:25Z'
 ```
