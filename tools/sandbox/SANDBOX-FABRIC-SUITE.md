@@ -463,6 +463,11 @@ It must **refuse**, naming `merge conclude already landed`, and the warp conclud
 An abort that reports `"ok": true` here and silently resets the warp past its landed conclude-commit is destroying committed work -- in the conflict flow that commit carries your own hand-written resolutions.
 Remove the hook and confirm `lyx fabric merge --continue` finishes the job, skipping the side that already landed.
 
+Last, the invisible landed conclude -- the crash shape where a side's conclude-commit landed but the record never learned its SHA.
+Build a conflicted `merge-in`, resolve the conflict, `git add` it, then commit it yourself with plain `git commit --no-edit` in that checkout -- on-disk state now identical to a kill between fabric's conclude-commit and its record re-save (`*_committed` still empty, HEAD on the merge commit, no `MERGE_HEAD`).
+`lyx fabric merge --abort` must refuse (`merge conclude already landed`), and `lyx fabric merge --continue` must **succeed by adoption**: `"committed": true`, a `merge_committed` mutation carrying the hand-landed SHA, HEAD unmoved (no second commit), record gone, sibling verbs unblocked.
+A `--continue` that loops forever on *merge conclude did not finish; run MergeContinue again* here is the failure mode: the pair is then permanently wedged, since no fabric verb can clear the record and plain git cannot reach it.
+
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---

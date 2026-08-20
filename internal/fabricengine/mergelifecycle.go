@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -17,6 +18,12 @@ import (
 // A side whose recorded outcome is fast_forwarded or up_to_date is skipped — no commit is fabricated
 // on a no-op side — and a side whose committed SHA is already recorded is skipped too, for
 // idempotency across a resumed MergeContinue.
+// Idempotency also covers a conclude the record never learned about: a crash (or I/O failure)
+// between a side's `git commit` and the record re-save leaves that side's commit landed with its
+// recorded SHA still empty, and re-running `git commit` there fails forever on a clean tree.
+// sideConcludeAlreadyLanded detects that shape — HEAD moved off the recorded pre-merge SHA with no
+// live MERGE_HEAD — and the landed commit is adopted into the record instead of re-committed, so
+// MergeContinue finishes exactly the states MergeAbort's concludeLandedReason refuses to destroy.
 // Every caller must have established that both recorded outcomes are non-empty first: an empty
 // outcome means MergeStart never ran on that side, and concluding it would commit one side of a
 // merge whose other side does not exist. MergeIn and Merge satisfy that by construction;
@@ -34,14 +41,20 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	}
 
 	if st.WarpOutcome != mergeOutcomeFastForwarded && st.WarpOutcome != mergeOutcomeAlreadyUpToDate && st.WarpCommitted == "" {
-		if err := f.warp.MergeConclude(effectiveMsg); err != nil {
-			logger.Warn("fabricengine: merge conclude failed", "side", "warp", "error", err)
-			return &ErrMergeIncomplete{}
-		}
-		sha, err := f.warp.CurrentSHA()
+		sha, landed, err := sideConcludeAlreadyLanded(f.warp, st.WarpStart)
 		if err != nil {
-			logger.Warn("fabricengine: resolve warp HEAD after conclude failed", "error", err)
-			return &ErrMergeIncomplete{}
+			return err
+		}
+		if !landed {
+			if err := f.warp.MergeConclude(effectiveMsg); err != nil {
+				logger.Warn("fabricengine: merge conclude failed", "side", "warp", "error", err)
+				return &ErrMergeIncomplete{}
+			}
+			sha, err = f.warp.CurrentSHA()
+			if err != nil {
+				logger.Warn("fabricengine: resolve warp HEAD after conclude failed", "error", err)
+				return &ErrMergeIncomplete{}
+			}
 		}
 		st.WarpCommitted = sha
 		if err := f.saveMergeState(st); err != nil {
@@ -51,14 +64,20 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	}
 
 	if st.WeftOutcome != mergeOutcomeFastForwarded && st.WeftOutcome != mergeOutcomeAlreadyUpToDate && st.WeftCommitted == "" {
-		if err := f.weft.MergeConclude(effectiveMsg); err != nil {
-			logger.Warn("fabricengine: merge conclude failed", "side", "weft", "error", err)
-			return &ErrMergeIncomplete{}
-		}
-		sha, err := f.weft.CurrentSHA()
+		sha, landed, err := sideConcludeAlreadyLanded(f.weft, st.WeftStart)
 		if err != nil {
-			logger.Warn("fabricengine: resolve weft HEAD after conclude failed", "error", err)
-			return &ErrMergeIncomplete{}
+			return err
+		}
+		if !landed {
+			if err := f.weft.MergeConclude(effectiveMsg); err != nil {
+				logger.Warn("fabricengine: merge conclude failed", "side", "weft", "error", err)
+				return &ErrMergeIncomplete{}
+			}
+			sha, err = f.weft.CurrentSHA()
+			if err != nil {
+				logger.Warn("fabricengine: resolve weft HEAD after conclude failed", "error", err)
+				return &ErrMergeIncomplete{}
+			}
 		}
 		st.WeftCommitted = sha
 		if err := f.saveMergeState(st); err != nil {
@@ -68,6 +87,37 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	}
 
 	return nil
+}
+
+// sideConcludeAlreadyLanded reports whether one side already carries a conclude-commit its record
+// never learned about, returning the landed SHA for adoption when it does.
+// The shape it detects is the crash between a side's `git commit` and the record re-save: the
+// caller's arm has already established the side's outcome is staged/conflicted with no recorded
+// conclude SHA, so HEAD moved off its recorded pre-merge start with no live MERGE_HEAD means the
+// commit landed and only the bookkeeping is missing — the same reading concludeLandedReason's
+// per-side predicate trusts when it refuses MergeAbort, minus the states a live MERGE_HEAD still
+// makes concludable.
+// Adoption is recorded as KindMergeCommitted by the caller even though this call ran no `git
+// commit`: the commit is this merge's own conclude, and the resumed call is the first one whose
+// record can honestly account for it.
+// Probe failures propagate raw rather than as *ErrMergeIncomplete — nothing has been mutated yet,
+// matching MergeContinue's own pre-lock probes.
+func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start string) (sha string, landed bool, err error) {
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: resolve HEAD to classify conclude state: %w", err)
+	}
+	if head == start {
+		return "", false, nil
+	}
+	mergeHeadPresent, err := repo.MergeHeadPresent()
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: check merge head to classify conclude state: %w", err)
+	}
+	if mergeHeadPresent {
+		return "", false, nil
+	}
+	return head, true, nil
 }
 
 // mergeStateOrForeignErr resolves the disposition shared by MergeContinue and MergeAbort when no

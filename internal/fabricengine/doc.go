@@ -888,7 +888,13 @@
 // the operator's own hand-written resolutions, reset away under `force: true`. So `MergeAbort`
 // refuses such a record with the guard reason `merge conclude already landed`, and `MergeContinue`
 // is the one correct recovery — it skips a side whose committed SHA is recorded, so a resumed run is
-// idempotent. The two refusals are exact mirrors: whichever way an attempt is half-finished, exactly
+// idempotent. Idempotency extends to a conclude the record never learned about: a crash between a
+// side's `git commit` and the record re-save leaves the commit landed with the recorded SHA still
+// empty, and re-running `git commit` there would fail forever on a clean tree. A resumed
+// `MergeContinue` detects that shape — HEAD moved off the recorded pre-merge SHA with no live
+// `MERGE_HEAD` — and adopts the landed commit into the record instead of re-committing, so it
+// finishes exactly the states `MergeAbort` refuses to destroy. The two refusals are exact mirrors:
+// whichever way an attempt is half-finished, exactly
 // one verb of the pair will finish it and neither will destroy anything.
 // The precondition is deliberately wider than the recorded conclude SHA. A side counts as possibly
 // concluded when its recorded SHA is set **or** its recorded outcome is `staged`/`conflicted` and its
@@ -898,8 +904,11 @@
 // an `up_to_date` side is never concluded and cannot move, a `fast_forwarded` side moved legitimately
 // and is still reset, an empty-outcome side never started, and only a `staged`/`conflicted` side can
 // have had a commit put on it by anything but the conclude.
-// If the underlying git failure cannot be fixed and neither verb will finish, plain git in the two
-// checkouts is the last resort — the same escape hatch foreign merge state already has.
+// If the underlying git failure cannot be fixed by retrying, plain git in the two checkouts is the
+// last resort — resolve and commit each unfinished side by hand, then run `MergeContinue`, whose
+// adoption arm accounts for the hand-landed commits and clears the record. Plain git alone can
+// never finish the job: the record lives in the weft gitdir where no git command touches it, and
+// while it exists every guarded sibling verb keeps refusing.
 //
 // **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
 // `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
