@@ -41,6 +41,31 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 			wantUnified:   []string{"backend/_lyx/pattern/foo.md"},
 		},
 		{
+			// A multi-segment anchor is reachable (`lyx fabric clone --subpath apps/backend`) and is
+			// the shape the separator bug bites on Windows, where ValidateAnchorRel hands this
+			// function `apps\backend`. On Linux the value is already slash-form, so this row guards
+			// the mapping itself rather than the conversion.
+			name:          "weft identity mapping at a multi-segment subpath anchor",
+			warpConflicts: nil,
+			weftConflicts: []string{"apps/backend/_lyx/pattern/foo.md"},
+			anchorRel:     "apps/backend",
+			wiredNames:    []string{"_lyx"},
+			wantUnified:   []string{"apps/backend/_lyx/pattern/foo.md"},
+		},
+		{
+			// A backslash is an ordinary filename character on Linux, so an anchor directory really
+			// can be named `weird\name` there and git reports it verbatim. This row is what pins the
+			// conversion as filepath.ToSlash (identity when the OS separator is already '/') rather
+			// than a blanket strings.ReplaceAll, which would rewrite the name into a component
+			// boundary that does not exist and make every conflict under it unmappable.
+			name:          "single anchor segment containing a backslash is not split",
+			warpConflicts: nil,
+			weftConflicts: []string{`weird\name/_lyx/foo.md`},
+			anchorRel:     `weird\name`,
+			wiredNames:    []string{"_lyx"},
+			wantUnified:   []string{`weird\name/_lyx/foo.md`},
+		},
+		{
 			name:           "weft path outside the wired set is unmappable",
 			warpConflicts:  nil,
 			weftConflicts:  []string{"README.md"},

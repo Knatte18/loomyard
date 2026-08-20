@@ -6,6 +6,7 @@ package fabricengine
 
 import (
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -36,11 +37,26 @@ func resolveMergeGeometry(l *lyxcwd.Location) (anchorRel string, wiredNames []st
 // The junction geometry guarantees the weft checkout mirrors the anchor subpath, so a path that
 // passes this check *is* the visible worktree-relative path, unchanged — no transformation, only a
 // membership test.
+//
+// The two arguments do not arrive in the same separator convention, and reconciling them is what
+// filepath.ToSlash is doing here rather than decoration. weftPath is git's own output, which is
+// always forward-slash. anchorRel comes from lyxcwd.ValidateAnchorRel, which returns
+// filepath.Clean(filepath.FromSlash(raw)) — an OS-separator path. On Windows a multi-segment anchor
+// recorded in .lyx-anchor as "apps/backend" therefore arrives as `apps\backend`, and joining it with
+// the slash-only path package yields the prefix `apps\backend/_lyx/` while git reports
+// `apps/backend/_lyx/…`. The prefix test then fails for a perfectly mappable conflict,
+// unifyConflictPaths marks it unmappable, and MergeIn self-aborts the entire merge on both sides
+// with *ErrUnmergeableState. Single-segment anchors and "." carry no separator and were never
+// affected, which is why every existing fixture passes either way.
+// filepath.ToSlash — not strings.ReplaceAll — is the correct conversion because it is identity when
+// the OS separator already is '/', so a Linux directory whose name legitimately contains a backslash
+// is never rewritten into a path component boundary that does not exist.
 func weftPathVisible(weftPath, anchorRel string, wiredNames []string) bool {
+	slashAnchorRel := filepath.ToSlash(anchorRel)
 	for _, name := range wiredNames {
 		prefix := name + "/"
-		if anchorRel != "." {
-			prefix = path.Join(anchorRel, name) + "/"
+		if slashAnchorRel != "." {
+			prefix = path.Join(slashAnchorRel, name) + "/"
 		}
 		if strings.HasPrefix(weftPath, prefix) {
 			return true
@@ -58,8 +74,9 @@ func weftPathVisible(weftPath, anchorRel string, wiredNames []string) bool {
 // collision) — the caller aborts the merge on both sides and returns *ErrUnmergeableState in either
 // case.
 // Path comparison and the returned list both use forward-slash git-style paths throughout, since
-// that is git's own output form; anchorRel is normalized with path.Join semantics, never
-// filepath's OS-dependent one.
+// that is git's own output form. anchorRel is the one argument that does NOT arrive that way — it is
+// an OS-separator path — so weftPathVisible converts it with filepath.ToSlash before joining;
+// see that function's own comment for what breaks on Windows without the conversion.
 // The result is empty-never-nil, and carries no duplicate: warp/weft entries never repeat within
 // their own side (git's own conflicted-file listing does not), and a same-path entry from both
 // sides is exactly the collision case that sets unmappable instead of appearing twice.
