@@ -49,7 +49,9 @@ batches:
     commit_sha: 3bd6133401aeb4287281d351dd80042c8f572277
     verify_baseline_failures: []
   - name: loomshed-migration
-    state: pending
+    state: running
+    implementer_session: 6ef01e26-bfbf-4de1-a84b-88ac2ee809cf
+    start_sha: d4006c8934eca3abb83f5d85ce51d40aec4afe9b
     verify_baseline_failures: []
   - name: docs-sweep
     state: pending
