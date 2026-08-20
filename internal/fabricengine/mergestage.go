@@ -25,6 +25,16 @@ type StageResult struct {
 // error.
 // MergeContinue's own conflict guard is deliberately left untouched by this verb — the two are
 // independent gates, not one relocated one.
+//
+// This is the one mutating verb in the merge surface that takes NO weft write lock and asserts no
+// merge-record precondition, and that is a decision rather than an omission. With no merge in
+// progress both sides' ConflictedFiles() are empty, so every path fails the partition above and the
+// call errors before staging anything — there is no state it can reach where it writes outside a
+// merge. While a merge IS in progress the four guarded sibling verbs (Commit, Pull, Topology's
+// Checkout and Remove) already refuse on the record, so no other fabric writer can be in either
+// index concurrently. A lock here would serialize this verb against nothing.
+// The contrast with Merge's pre-merge sync — which does need the lock, because it mutates before
+// the record exists — is what makes the difference load-bearing rather than stylistic.
 func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()

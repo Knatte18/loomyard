@@ -280,8 +280,12 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	}
 
 	// Aggregate every guard, evaluating each member regardless of an earlier failure, so the
-	// reported reason set never discloses evaluation order. The guard stage is strictly read-only:
-	// nothing mutates here, including the sync step, which runs only after every guard passed.
+	// reported reason set never discloses evaluation order. The guard stage mutates no worktree, no
+	// index, no branch tip and no fabric record — the sync step, which does, runs only after every
+	// guard passed. It is not literally read-only, and saying so would be a claim a reader could
+	// check and find false: resolveMergeSources runs a best-effort Fetch() on both sides, which
+	// updates remote-tracking refs and FETCH_HEAD. Nothing a caller can observe as a change to the
+	// pair moves here.
 	var reasons []string
 	inProgressReasons, err := mergeInProgressReason(f)
 	if err != nil {

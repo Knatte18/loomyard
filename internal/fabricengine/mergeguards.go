@@ -2,9 +2,12 @@
 // merge-source resolution with the freshness rule, the attached-HEAD precondition, the
 // upstream-sync helper batch 4's Merge guard set builds on, and MergeAbort's own
 // conclude-already-landed precondition.
-// Every helper here returns reasons for aggregation via newMergeGuardError and mutates nothing — the
-// upstream sync itself (a mutation) is deliberately not here; it is a batch-4 pre-merge step, per
-// the guards decision.
+// Every helper here returns reasons for aggregation via newMergeGuardError and mutates no worktree,
+// index, branch tip or fabric record — the upstream sync itself, which does, is deliberately not
+// here; it is a batch-4 pre-merge step, per the guards decision.
+// The one thing this file does mutate is remote-tracking state: resolveMergeSources runs a
+// best-effort Fetch() on both sides before resolving, so "mutates nothing" would be false as
+// written. Nothing a caller can observe as a change to the pair happens here.
 
 package fabricengine
 
