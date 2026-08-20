@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-BurlerProducer
+phase: approved-docs
 slug: shedadapters-burler-producer
 branch: shedadapters-burler-producer
 plan: _mill/plan
@@ -36,6 +36,7 @@ implementing  '2026-08-20T16:37:51Z'
 approved-burlerengine ClusterExclude  '2026-08-20T16:42:15Z'
 approved-focus-file contract  '2026-08-20T16:45:52Z'
 approved-BurlerProducer  '2026-08-20T16:57:45Z'
+approved-docs  '2026-08-20T17:03:26Z'
 ```
 
 ## Batches
@@ -61,8 +62,9 @@ batches:
     commit_sha: 67579e13c14c0a4629b4cdc3795cf12dd5ed207b
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: 4b298a8f-05e7-451b-9e80-9a45cf0650cc
     start_sha: ef7b4008633dc2bf447bb2a657ddbe75dc404c0f
+    commit_sha: f12bc16d73981a9404a8c0b03bde208e5f6f393e
     verify_baseline_failures: []
 ```
