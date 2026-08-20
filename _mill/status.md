@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-reviewing  '2026-08-19T19:36:28Z'
 holistic-fixing  '2026-08-20T06:29:00Z'
 nits-fixed-holistic  '2026-08-20T06:32:58Z'
 holistic-approved  '2026-08-20T06:33:06Z'
+done  '2026-08-20T06:34:01Z'
 ```
 
 ## Batches
