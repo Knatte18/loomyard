@@ -1081,6 +1081,86 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	}
 }
 
+// TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead pins
+// sideConcludeAlreadyLanded's live-MERGE_HEAD clause, which no other test reaches: replacing that
+// clause with a no-op left the entire integration suite green.
+// The state it guards is reachable. The operator hand-lands this merge's conclude (HEAD moves off
+// the recorded start, MERGE_HEAD clears — the adoptable shape), and then, before running
+// MergeContinue, starts a SECOND merge of their own in the same checkout that merges cleanly. The
+// index carries no conflicts, so MergeContinue's own guard passes and control reaches the adoption
+// probe with HEAD moved, no recorded conclude SHA, and a live MERGE_HEAD belonging to a merge fabric
+// never started.
+// Adopting there is the documented disaster shape: fabric would report the merge concluded, record
+// correspondence, delete its record, and walk away leaving a live MERGE_HEAD in the checkout that no
+// fabric verb can then clear — MergeAbort included, since with the record gone the state reads as
+// foreign. That is exactly the wedge TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned
+// exists to prevent, and the assertion that discriminates is the same one: a verb that returns
+// without error must never leave git-level merge state behind on either side.
+func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead(t *testing.T) {
+	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+
+	// The decoy is built first, off the pre-merge tip, so merging it later is a clean non-fast-forward.
+	commitOnWarpBranch("decoy", "decoy.txt", "the operator's own second merge\n", "decoy: unrelated branch")
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
+	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v", err)
+	}
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want the single warp-side conflict", res.Conflicts)
+	}
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+
+	// Resolve and hand-land this merge's conclude with plain git — the adoptable shape.
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "clash.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolved clash.txt: %v", err)
+	}
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-q", "--no-edit")
+	concludeSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+
+	// The operator now starts a second merge of their own and leaves it uncommitted.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "--no-ff", "decoy")
+
+	// Preconditions, asserted rather than assumed: the hand-landed conclude really is the adoptable
+	// shape, and a live MERGE_HEAD from the operator's own second merge really is present with a
+	// conflict-free index — so nothing but the MERGE_HEAD clause can change the outcome.
+	parents := commitParentsForTest(t, h.PrimeWorktree(), concludeSHA)
+	if len(parents) != 2 || parents[0] != st.WarpStart || parents[1] != st.WarpSource {
+		t.Fatalf("hand-landed conclude parents = %v; want [%s %s] — the adoptable shape", parents, st.WarpStart, st.WarpSource)
+	}
+	if !mergeHeadPresentInCheckout(t, h.PrimeWorktree()) {
+		t.Fatal("warp checkout carries no live MERGE_HEAD; the second-merge state this test needs is not present")
+	}
+	if st.WarpCommitted != "" {
+		t.Fatalf("recorded WarpCommitted = %q; want empty — the record must not have learned the conclude", st.WarpCommitted)
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	if _, err := fresh.MergeContinue(""); err != nil {
+		t.Fatalf("MergeContinue() over a landed conclude with a second merge live: error = %v", err)
+	}
+
+	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) {
+		t.Error("warp checkout still carries a live MERGE_HEAD after MergeContinue returned without error; the pair is wedged — no fabric verb can clear it once the record is gone")
+	}
+	if mergeHeadPresentInCheckout(t, h.PrimeWeft()) {
+		t.Error("weft checkout still carries a live MERGE_HEAD after MergeContinue returned without error")
+	}
+	if !isAncestorForTest(t, h.PrimeWorktree(), st.WarpSource, fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())) {
+		t.Errorf("recorded source %q is not an ancestor of warp HEAD; the merge did not actually land", st.WarpSource)
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || exists {
+		t.Errorf("MergeRecordExistsForTest() after MergeContinue = (%v, %v); want (false, nil)", exists, err)
+	}
+}
+
 // TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted is the test the squash
 // refusal actually needs, and the reason it exists is a proof gap rather than a new behaviour.
 // TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted above looks like it pins the `squash`
