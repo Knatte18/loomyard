@@ -1,6 +1,5 @@
-// seed.go implements CheckSeed, loom's own seed-coherence check (check 4), retargeted onto told
-// absolute paths so it can run as an exported, directly-testable function rather than a private
-// half of Preflight's composite call.
+// seed.go implements CheckSeed, loom's own seed-coherence check, over told absolute paths so it
+// can run as an exported, directly-testable function.
 
 package loomengine
 
@@ -19,7 +18,8 @@ import (
 // named expectedProducer, tolerating a history entry naming any producer in toleratedProducers.
 //
 // statusPath and statusLockPath are told absolute paths -- CheckSeed resolves no geometry of its
-// own, unlike Preflight, which composes tiers 1-2's worktree/fabric checks ahead of this one.
+// own, unlike internal/preflight's Check, which composes tiers 1-2's worktree/fabric checks ahead
+// of this one.
 // expectedProducer and toleratedProducers are likewise told by the caller, never derived here,
 // because they are the caller's own durable row identities: see checkCoherence's own doc comment
 // for what each parameter means.

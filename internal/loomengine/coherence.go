@@ -53,7 +53,7 @@ func checkCoherence(shed shedengine.Status, product Status, expectedProducer str
 
 	switch shed.State {
 	case shedengine.StateRunning, shedengine.StatePaused, shedengine.StateBlocked, shedengine.StateFailed:
-		// Every non-terminal state is tolerated: a blocked or failed run at Preflight is exactly
+		// Every non-terminal state is tolerated: a blocked or failed run at this row is exactly
 		// the resumable half-finished shape the fresh-start check below narrows onto.
 	case shedengine.StateDone:
 		failures = append(failures, Failure{
