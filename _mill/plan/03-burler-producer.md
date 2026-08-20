@@ -82,6 +82,7 @@ Batch-local decision differing from `## Shared Decisions`: nothing.
   - `internal/shedengine/producer.go`
   - `internal/burlerengine/engine.go`
   - `internal/burlerengine/profile.go`
+  - `internal/burlerengine/verdict.go`
   - `internal/shuttleengine/engine.go`
 - **Edits:**
   - `internal/shedadapters/burler.go`
