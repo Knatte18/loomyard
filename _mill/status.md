@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: shedadapters-burler-producer
 branch: shedadapters-burler-producer
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-focus-file contract  '2026-08-20T16:45:52Z'
 approved-BurlerProducer  '2026-08-20T16:57:45Z'
 approved-docs  '2026-08-20T17:03:26Z'
 holistic-reviewing  '2026-08-20T17:03:49Z'
+holistic-fixing  '2026-08-20T17:09:32Z'
 ```
 
 ## Batches
