@@ -3,7 +3,7 @@
 ```yaml
 task: 'Bouncer: the generic review-gate producer'
 slug: 'shedadapters-generic-bouncer-producer'
-approved: false
+approved: true
 started: '20260820-153008'
 parent: 'main'
 root: ""
