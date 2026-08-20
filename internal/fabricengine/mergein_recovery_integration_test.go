@@ -734,6 +734,181 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	}
 }
 
+// TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted pins the first-parent clause of the
+// adoption evidence, which no other test exercises: deleting `parents[0] != start` from
+// sideConcludeAlreadyLanded left the whole suite green, because the unrelated-commit test's fixture
+// is a ONE-parent commit that `len(parents) < 2` refuses on its own.
+// The shape only the first-parent clause refuses: the operator plain-git-aborts the recorded merge,
+// lands a commit of their own, and then merges the recorded source SHA on top of it — a genuine
+// two-parent merge of the RIGHT source on the WRONG base. Adopting it would record correspondence
+// against a base the paired side never saw; doc.go names this exact shape as not-adopted, and its
+// plain-git recovery instructions (reset to the recorded start first) exist because of it.
+func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
+	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v", err)
+	}
+	if len(res.Conflicts) != 2 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted", res.Conflicts)
+	}
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+
+	// Warp: abort the recorded merge, land an unrelated base commit, then hand-merge the RECORDED
+	// source SHA onto it and resolve — parents [unrelated, recorded source].
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
+	commitOnCurrentBranch(t, h.PrimeWorktree(), "wrong-base.txt", "operator's own base\n", "unrelated base commit")
+	wrongBaseSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	runGitExpectingConflict(t, h.PrimeWorktree(), "merge", st.WarpSource)
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "clash.txt"), []byte("resolved on the wrong base\n"), 0o644); err != nil {
+		t.Fatalf("write resolved clash.txt: %v", err)
+	}
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+
+	// Weft: abort back to its recorded start, so MergeContinue's unresolved-conflicts guard passes
+	// and the call genuinely reaches the warp adoption probe.
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
+
+	// Precondition, asserted rather than assumed: the hand-landed commit is a two-parent merge whose
+	// SECOND parent is the recorded source and whose FIRST parent is NOT the recorded start — the one
+	// shape only the first-parent clause can refuse.
+	parents := commitParentsForTest(t, h.PrimeWorktree(), handSHA)
+	if len(parents) != 2 || parents[0] != wrongBaseSHA || parents[1] != st.WarpSource {
+		t.Fatalf("hand-landed commit parents = %v; want [%s %s] — a merge of the recorded source on the wrong base", parents, wrongBaseSHA, st.WarpSource)
+	}
+	if parents[0] == st.WarpStart {
+		t.Fatalf("hand-landed commit's first parent equals the recorded start %q; the wrong-base shape this test needs is not present", st.WarpStart)
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	contRes, err := fresh.MergeContinue("")
+	var incompleteErr *fabricengine.ErrMergeIncomplete
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("MergeContinue() over a wrong-base source merge: (committed %v, error %v (%T)); want *fabricengine.ErrMergeIncomplete and no adoption", contRes.Committed, err, err)
+	}
+	for _, entry := range contRes.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — a wrong-base merge is a merge of a different base", entry)
+		}
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil)", exists, err)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != handSHA {
+		t.Errorf("warp HEAD after the refusal = %q; want the operator's own merge %q left untouched", got, handSHA)
+	}
+}
+
+// TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted pins the source-membership clause of
+// the adoption evidence — the mirror of the wrong-base test above: a genuine two-parent merge on
+// the RIGHT base whose merged-in tip is NOT the recorded source. Only the "one of the remaining
+// parents is the recorded source SHA" clause refuses it; without that clause adoption would claim a
+// merge of some other branch as this merge's conclude.
+func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
+	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	// A decoy branch off the current warp HEAD with one non-conflicting commit, so a plain merge of
+	// it onto the recorded start auto-concludes into a two-parent commit.
+	commitOnBranch(t, h.PrimeWorktree(), "decoy", "decoy.txt", "nothing to do with feature\n", "decoy commit")
+	decoySHA := resolveSHAForTest(t, h.PrimeWorktree(), "decoy")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v", err)
+	}
+	if len(res.Conflicts) != 2 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted", res.Conflicts)
+	}
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+
+	// Warp: abort back to the recorded start, then merge the decoy — parents [start, decoy].
+	// --no-ff, because the decoy sits one commit ahead of the start and a plain merge would
+	// fast-forward without creating the two-parent commit this fixture is about.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-ff", "--no-edit", decoySHA)
+	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+
+	// Weft: abort back to its recorded start so the unresolved-conflicts guard passes.
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
+
+	// Precondition, asserted rather than assumed: right base, wrong source.
+	parents := commitParentsForTest(t, h.PrimeWorktree(), handSHA)
+	if len(parents) != 2 || parents[0] != st.WarpStart || parents[1] != decoySHA {
+		t.Fatalf("hand-landed commit parents = %v; want [%s %s] — a merge of the wrong source on the recorded start", parents, st.WarpStart, decoySHA)
+	}
+	if parents[1] == st.WarpSource {
+		t.Fatalf("decoy tip equals the recorded source %q; the wrong-source shape this test needs is not present", st.WarpSource)
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	contRes, err := fresh.MergeContinue("")
+	var incompleteErr *fabricengine.ErrMergeIncomplete
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("MergeContinue() over a wrong-source merge: (committed %v, error %v (%T)); want *fabricengine.ErrMergeIncomplete and no adoption", contRes.Committed, err, err)
+	}
+	for _, entry := range contRes.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — a merge of some other branch is not this merge's conclude", entry)
+		}
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil)", exists, err)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != handSHA {
+		t.Errorf("warp HEAD after the refusal = %q; want the operator's own merge %q left untouched", got, handSHA)
+	}
+}
+
+// runGitExpectingConflict runs git with args in dir, tolerating the nonzero exit a conflicted merge
+// returns and failing the test on any spawn-level error.
+func runGitExpectingConflict(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("git %v in %s: %v", args, dir, err)
+		}
+	}
+}
+
+// commitParentsForTest reads sha's parent SHAs in dir via plain git, first parent first — the
+// independent read the adoption-evidence tests assert their fixture's parentage with.
+func commitParentsForTest(t *testing.T, dir, sha string) []string {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-list", "--parents", "-n", "1", sha)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-list --parents -n 1 %s in %s: %v", sha, dir, err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 || fields[0] != sha {
+		t.Fatalf("git rev-list --parents -n 1 %s in %s = %q; want the commit itself first", sha, dir, out)
+	}
+	return fields[1:]
+}
+
 // TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted drives the squash shape of the same
 // question, which prior rounds reasoned about but never executed.
 // `git merge --squash` writes no MERGE_HEAD and its conclude is an ORDINARY one-parent commit, so
