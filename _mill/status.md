@@ -39,7 +39,9 @@ batches:
     commit_sha: b0c261b3870e9a1f76553ef0837d5da4169ac381
     verify_baseline_failures: ["FAIL\t./internal/... [setup failed]"]
   - name: quarry-cli-infra
-    state: pending
+    state: running
+    implementer_session: 9a2aa8ae-ec24-4c3b-abe9-be0c713bb706
+    start_sha: fea8b9c277382cef0093641ddc1c9538df159bc0
     verify_baseline_failures: ["FAIL\t./internal/... [setup failed]"]
   - name: port-engine
     state: pending
