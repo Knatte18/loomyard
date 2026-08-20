@@ -1,9 +1,0 @@
-{"status":"success","commit_sha":"ec01e786112ccb773fc80bac1c0f3c177a144cd3","session_id":"6ef01e26-bfbf-4de1-a84b-88ac2ee809cf","cards_done":[12,13,14]}
-
-All 3 of 3 cards in this batch (loomshed-migration) were committed this turn:
-
-- Card 12 — `feat(loomshed): route all 12 rows through explicit OnDone` (commit `1b4e32b7`) — edited `/home/knatte/Code/loomyard/wts/shedengine-segments-bounce-budget/internal/loomshed/loomshed.go`: added explicit `OnDone` to all twelve `producers` entries in `New`, updated `New`'s doc comment to state each row's `OnDone` target and note list order no longer routes, and updated `Deps.MaxBounces`'s doc comment for the per-producer/episode-scoped budget.
-- Card 13 — `test(loomshed): pin the full OnDone chain across all 12 rows` (commit `0c6d5774`) — edited `/home/knatte/Code/loomyard/wts/shedengine-segments-bounce-budget/internal/loomshed/loomshed_test.go`: added `onDone` to `wantProducerRow`/`wantProducerTable`, extended `TestNew_ProducerTable` to assert `OnDone`, `Segment == ""`, and `MaxBounces == 0` exhaustively, and re-read `TestNew_PassesShedValidation`'s comment for per-producer semantics.
-- Card 14 — `test(loomshed): re-read the bounce scenario against per-producer episode semantics` (commit `ec01e786`) — edited `/home/knatte/Code/loomyard/wts/shedengine-segments-bounce-budget/internal/loomshed/resume_test.go`: rewrote `TestBounceRouting_BudgetExhaustionBlocks`'s doc comment and count-assertion comment for per-producer, episode-scoped semantics. `fixture_test.go` and `sequence_test.go` were re-read per the card's requirement and confirmed correct as-is — no edit needed.
-
-`verify: go test ./internal/loomshed/...` passed (`ok github.com/Knatte18/loomyard/internal/loomshed`), all pre-existing tests still present and passing, `git status --porcelain --untracked-files=no` is clean, and all commits were pushed.
