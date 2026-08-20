@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-docs  '2026-08-20T10:12:04Z'
 holistic-reviewing  '2026-08-20T10:12:30Z'
 holistic-fixing  '2026-08-20T10:20:26Z'
 holistic-reviewing  '2026-08-20T10:26:53Z'
+holistic-approved  '2026-08-20T10:31:23Z'
 ```
 
 ## Batches
