@@ -1,0 +1,1 @@
+- roadmap.md: stale "three" flattening-group count after the Done move: **Location:** `manifest/roadmap.md:39,48,53`

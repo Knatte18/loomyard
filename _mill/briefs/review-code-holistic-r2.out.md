@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: shedengine: per-producer bounce budget + explicit OnDone routing — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-20
+```
+
+## Findings
+
+### [NIT:consistency] Segment:"" OnStuck pairing has no distinctly-named passing case
+**Location:** `internal/shedengine/validate_test.go:101-107`
+**Issue:** Card 4 asked for a passing case explicitly pinning "OnStuck between two producers that both keep Segment: '' … the existing loom shape." The behavior is exercised (both rows default to Segment "" in "forward OnStuck reference is accepted"), but no case is named for that specific property.
+**Fix:** Optionally add a distinctly-named case or a comment on the existing one noting it also pins the both-empty-Segment shape.
+
+## Verdict
+
+APPROVE
+All four batches match the plan's Shared Decisions, cross-batch contracts hold, and coverage is thorough.
+MILL_REVIEW_END
