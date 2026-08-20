@@ -48,7 +48,9 @@ batches:
     commit_sha: 8bc8308e9569aa648affc292d56aedfc16ec73d0
     verify_baseline_failures: []
   - name: bouncer-producer
-    state: pending
+    state: running
+    implementer_session: d5fcc1a3-620c-470e-b474-5f21d7d7d150
+    start_sha: aece60caa490389d555e1e78cfe1079c4bcbb652
     verify_baseline_failures: []
   - name: judge-replay-coverage
     state: pending
