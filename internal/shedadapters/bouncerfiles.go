@@ -10,6 +10,7 @@ package shedadapters
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -192,6 +193,56 @@ func parseFocus(content []byte) (focusFile, error) {
 		Focus:         focus,
 		Prose:         frontmatterProse(content),
 	}, nil
+}
+
+// renderFocus marshals f into a bouncer focus file's bytes: a YAML frontmatter header carrying
+// round, exclude_lenses, and focus, wrapped between an opening and a closing "---" line, with
+// f.Prose appended below the closing delimiter when non-empty.
+// Marshalling the header through yaml.Marshal rather than hand-formatting it is what makes a lens
+// name containing a YAML metacharacter round-trip instead of corrupting the file.
+// Both list fields render as an explicit empty list rather than as null when f's corresponding
+// slice is empty, so the emitted file satisfies parseFocus's always-present-list shape.
+func renderFocus(f focusFile) ([]byte, error) {
+	excludeLenses := f.ExcludeLenses
+	if excludeLenses == nil {
+		excludeLenses = []string{}
+	}
+	focus := f.Focus
+	if focus == nil {
+		focus = []string{}
+	}
+
+	header := focusHeader{
+		Round:         f.Round,
+		ExcludeLenses: excludeLenses,
+		Focus:         focus,
+	}
+	headerBytes, err := yaml.Marshal(header)
+	if err != nil {
+		return nil, fmt.Errorf("bouncer: render focus file frontmatter: %w", err)
+	}
+
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.Write(headerBytes)
+	b.WriteString("---\n")
+	if f.Prose != "" {
+		b.WriteString(f.Prose)
+		b.WriteString("\n")
+	}
+	return []byte(b.String()), nil
+}
+
+// writeFocus renders f via renderFocus and writes the result to path at mode 0o644.
+func writeFocus(path string, f focusFile) error {
+	content, err := renderFocus(f)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		return fmt.Errorf("bouncer: write focus file %s: %w", path, err)
+	}
+	return nil
 }
 
 // splitFrontmatter extracts the YAML header text between the file's opening and closing "---"

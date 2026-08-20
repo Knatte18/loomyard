@@ -1,8 +1,12 @@
 package shedadapters
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // TestSplitFrontmatterCommonRules exercises the frontmatter-delimiter and
@@ -370,5 +374,100 @@ func TestParseFocusSpecific(t *testing.T) {
 				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestRenderFocus_RoundTripsThroughParseFocus asserts that
+// parseFocus(renderFocus(f)) yields back a value equal to f, for a range of
+// focusFile shapes including the seed-fallback shape, a lens name carrying
+// YAML metacharacters, and a value carrying prose.
+func TestRenderFocus_RoundTripsThroughParseFocus(t *testing.T) {
+	tests := []struct {
+		name string
+		f    focusFile
+	}{
+		{
+			name: "seed-fallback shape: round 1, both lists empty",
+			f:    focusFile{Round: 1, ExcludeLenses: []string{}, Focus: []string{}},
+		},
+		{
+			name: "nil lists render as empty lists",
+			f:    focusFile{Round: 1},
+		},
+		{
+			name: "populated lists",
+			f: focusFile{
+				Round:         4,
+				ExcludeLenses: []string{"security", "performance"},
+				Focus:         []string{"the new parser", "the writer round-trip"},
+			},
+		},
+		{
+			name: "lens name with a colon and a space",
+			f: focusFile{
+				Round:         2,
+				ExcludeLenses: []string{"lens: with a colon and a space"},
+				Focus:         []string{},
+			},
+		},
+		{
+			name: "carries prose",
+			f: focusFile{
+				Round:         3,
+				ExcludeLenses: []string{},
+				Focus:         []string{"tighten the error messages"},
+				Prose:         "the judge found the error text too terse in round 2.",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered, err := renderFocus(tt.f)
+			if err != nil {
+				t.Fatalf("renderFocus(%+v) = %v; want nil error", tt.f, err)
+			}
+			got, err := parseFocus(rendered)
+			if err != nil {
+				t.Fatalf("parseFocus(renderFocus(%+v)) = %v; want nil error", tt.f, err)
+			}
+			want := tt.f
+			if want.ExcludeLenses == nil {
+				want.ExcludeLenses = []string{}
+			}
+			if want.Focus == nil {
+				want.Focus = []string{}
+			}
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Errorf("parseFocus(renderFocus(f)) mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestWriteFocus_WritesReadableFile writes a focusFile into a t.TempDir()
+// and reads it back through parseFocus, exercising writeFocus end to end.
+func TestWriteFocus_WritesReadableFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "round-1-focus.md")
+	f := focusFile{
+		Round:         1,
+		ExcludeLenses: []string{},
+		Focus:         []string{},
+	}
+
+	if err := writeFocus(path, f); err != nil {
+		t.Fatalf("writeFocus(%q, %+v) = %v; want nil", path, f, err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) = %v; want nil", path, err)
+	}
+	got, err := parseFocus(content)
+	if err != nil {
+		t.Fatalf("parseFocus(written file) = %v; want nil", err)
+	}
+	if diff := cmp.Diff(f, got); diff != "" {
+		t.Errorf("parseFocus(written file) mismatch (-want +got):\n%s", diff)
 	}
 }
