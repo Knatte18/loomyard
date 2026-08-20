@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-burlerengine ClusterExclude
 slug: shedadapters-burler-producer
 branch: shedadapters-burler-producer
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-fix-r6  '2026-08-20T16:29:43Z'
 plan-review-r7  '2026-08-20T16:37:13Z'
 planned  '2026-08-20T16:37:23Z'
 implementing  '2026-08-20T16:37:51Z'
+approved-burlerengine ClusterExclude  '2026-08-20T16:42:15Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ implementing  '2026-08-20T16:37:51Z'
 ```yaml
 batches:
   - name: burlerengine ClusterExclude
-    state: running
+    state: approved
     implementer_session: e323bf39-8875-46c4-a88f-1b37944db3b8
     start_sha: 54703278e5407fa3e70cbf4c48dd018ed120e224
+    commit_sha: e1a41de84c7e03569966adcd810a08505aec6eb7
     verify_baseline_failures: []
   - name: focus-file contract
     state: pending
