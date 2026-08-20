@@ -68,6 +68,8 @@ batches:
     commit_sha: 7b5d4ce24a208858328d823b0c9ddd226f549637
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: lyx-removal
-    state: pending
+    state: running
+    implementer_session: 1338f62a-0db5-4442-89b8-0e223ad92d73
+    start_sha: 74abbc3a7ff0f19f570c032e6e186b72b5d73fc8
     verify_baseline_failures: []
 ```
