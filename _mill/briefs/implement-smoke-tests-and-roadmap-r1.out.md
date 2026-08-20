@@ -1,0 +1,13 @@
+Both cards' commits are present in the log (card 32's commit `4bcb800c` matching its `Commit:` message, card 33's commit `543bf63b` matching its `Commit:` message; the plan-extension commit `e1307347` was the required protocol step for touching `run.go` outside the declared scope). 2 of 2 cards committed — full completion.
+
+{"status":"success","commit_sha":"543bf63b2db0ebc5a9618278482ca3a53ee2acc2","session_id":"f5b064d9-d142-41e0-babe-e1e07467cf29","cards_done":[32,33]}
+
+Summary of work: Both cards in batch `smoke-tests-and-roadmap` are complete (2 of 2 cards committed).
+
+**Card 32** — created `/home/knatte/Code/loomyard/wts/loom-session-bootstrap/internal/loomcli/smoke_test.go`, the `smoke`-tagged suite covering all 9 required cases (a)-(i): bootstrap bring-up, idempotent re-invocation, standalone driver advance/refuse/fail-before-persist, launcher add/remove, cleanliness ordering, concurrent-spawn handshake, and handshake-failure refusal. While validating the suite against a real tmux server, it surfaced a genuine production bug in `internal/loomcli/run.go`: the spawned driver process was never `Wait()`-ed, so a fast-finishing driver (the common case on any fresh task) became a zombie that `proc.IsAlive` reported as perpetually alive, making the spawn handshake spin its full 30s deadline and falsely refuse. Per the batch protocol, I added `run.go` to card 32's `Edits:` in `/home/knatte/Code/loomyard/wts/loom-session-bootstrap/_mill/plan/07-smoke-tests-and-roadmap.md` first (committed separately as `plan: extend smoke-tests-and-roadmap refs for run.go driver-reap fix`), then fixed it with a one-line reaping goroutine, then re-validated the whole suite (stable across repeated runs).
+
+**Card 33** — updated `/home/knatte/Code/loomyard/wts/loom-session-bootstrap/manifest/roadmap.md`, moving the session-bootstrap item from Planned to Done, naming what actually shipped (four verbs, root alias, seed-before-spawn ordering, spawn handshake, the origin-record provenance, the third launcher script).
+
+Verify passed: `go vet -tags smoke ./internal/loomcli/` and `go test ./internal/loomcli/` both exit 0. Pre-existing, out-of-scope failure noted for the record: `go test ./internal/lyxcwd/` (`TestEnforcement_FabricVocabulary`) fails on bare weft/warp tokens in `internal/loomcli/{cli,run,wiring}.go` and `internal/loomengine/config.go` — confirmed present before any of this batch's commits (introduced by batch 5), not part of this batch's verify command, and untouched by this batch.
+
+{"status":"success","commit_sha":"543bf63b2db0ebc5a9618278482ca3a53ee2acc2","session_id":"f5b064d9-d142-41e0-babe-e1e07467cf29","cards_done":[32,33]}

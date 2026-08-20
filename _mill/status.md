@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-registration-and-guards
+phase: approved-smoke-tests-and-roadmap
 slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-loomcli-core  '2026-08-19T19:10:00Z'
 approved-fabric-add-and-launcher  '2026-08-19T19:22:06Z'
 approved-loomcli-run-bootstrap  '2026-08-19T19:31:22Z'
 approved-registration-and-guards  '2026-08-19T19:37:44Z'
+approved-smoke-tests-and-roadmap  '2026-08-20T06:53:46Z'
 ```
 
 ## Batches
@@ -74,8 +75,9 @@ batches:
     commit_sha: 67bb209f95cef260afbd5c1a02d1647504b110e5
     verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: smoke-tests-and-roadmap
-    state: running
+    state: approved
     implementer_session: f5b064d9-d142-41e0-babe-e1e07467cf29
     start_sha: 124d9b66f17702d0c3294c0880d0b3251bf5c3b6
+    commit_sha: 543bf63b2db0ebc5a9618278482ca3a53ee2acc2
     verify_baseline_failures: []
 ```
