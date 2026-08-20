@@ -31,7 +31,9 @@ Landing this while the task already touches `ProducerDef`/`validate()` is cheape
 - `internal/shedengine/validate.go` — three new rules (`OnDone` must exist, `OnDone` must not self-reference, `OnStuck` must share `Segment`) plus a negative per-producer `MaxBounces` rule.
 - `internal/shedengine/shed.go` — `Shed.MaxBounces`'s doc comment: it becomes the inherited default for `ProducerDef.MaxBounces: 0`, not a run-wide total.
 - `internal/loomshed/loomshed.go` — an explicit `OnDone` on all 12 rows preserving today's linear behavior; `New`'s doc comment updated.
-- Tests: `internal/shedengine/run_routing_test.go`, `internal/shedengine/validate_test.go`, `internal/loomshed/resume_test.go`, `internal/loomshed/loomshed_test.go`.
+- Tests, new or substantially rewritten: `internal/shedengine/run_routing_test.go`, `internal/shedengine/validate_test.go`, `internal/loomshed/resume_test.go`, `internal/loomshed/loomshed_test.go`.
+- Tests, mechanical re-wiring only (every scenario that relies on sequential `Done` advance needs an explicit `OnDone` chain, but no scenario changes meaning): `internal/shedengine/run_pause_test.go`, `internal/shedengine/run_persist_test.go`, `internal/shedengine/testsupport_test.go` (a linear-chain builder helper), `internal/loomshed/fixture_test.go`, `internal/loomshed/sequence_test.go`.
+  Any other package whose tests drive a `Shed` to completion is in scope for the same mechanical re-wiring — `go test ./...` is the authority, not this list.
 - Docs, same commit: `manifest/designs/shed.md`, `internal/shedengine/doc.go`, `manifest/designs/loom.md`'s stale sequential-routing sentence.
 
 **Out:**
@@ -75,7 +77,12 @@ Landing this while the task already touches `ProducerDef`/`validate()` is cheape
 
 - Decision: the count spans the whole persisted `history[]`, not only the entries this `Run` invocation appended.
   A run that blocked on an exhausted budget and is then resumed by a human re-blocks on that producer's next `Stuck`.
-  The escape hatches are raising `MaxBounces` for that producer (or `Shed.MaxBounces`) and editing the status file — both explicit human acts, and both documented in `shed.md`.
+  **The `Stuck` entry written on the block path itself counts.**
+  `run.go`'s `Stuck` arm appends the history entry (`nextHistory := appendHistory()`, `run.go:188`) *before* the inner switch decides, so the budget-exhausted block persists that entry too — after a block, producer X's history holds `budget + 1` `Stuck` entries, and every subsequent resume that re-blocks adds one more.
+  This is accepted rather than special-cased: a `Stuck` entry is appended on *every* `Stuck` route including the `OnStuck: ""` escalation, `contracts/specs/loom-status-spec.md`'s fresh-start check already depends on that unconditional append, and a block-path entry is not distinguishable from a bounce-path entry by reading the history alone.
+  The escape hatch is therefore stated in terms of the count, not the old budget: **raise the producer's `MaxBounces` (or `Shed.MaxBounces`) strictly above that producer's current `Stuck`-entry count in `history[]`** — which is `budget + 1` immediately after the first block, not `budget`, so raising it by one is never enough.
+  Editing the status file is the other escape hatch.
+  Both are explicit human acts, and `shed.md` must state the arithmetic (including the `+ 1` and the per-resume growth) rather than leaving an operator to discover it by re-blocking.
 - Rationale: this deliberately inverts today's documented rationale (`run.go`'s `bouncesRemaining` comment and `shed.md`'s "per-`Run`-call and held in memory" paragraph), which grants a full fresh budget on every new invocation.
   The thing the budget guards is total wasted spend before a human is pulled in, and a crash-restart loop under the old rule is unbounded.
   The failure mode the change introduces is narrow: after a human fixes the underlying problem the producer returns `Done` and never consults the budget at all, so an immediate re-block only happens when the fix did not work — which is exactly when blocking again is correct.
@@ -115,7 +122,14 @@ Landing this while the task already touches `ProducerDef`/`validate()` is cheape
 - Rationale: `Done` routing consumes no budget, so `OnDone: <self>` is a statically certain infinite loop and worth one cheap rule.
   `OnStuck: <self>` stays legal — it is budgeted, therefore bounded.
   Reachability cannot be checked because `validate()` does not know the entry producer: it comes from the seeded status file's `current_producer`, which `Shed` never writes first and never guesses.
-  A multi-producer `Done` cycle is not statically infinite — any member may exit via `OnStuck` — so detecting it would reject legitimate backward jumps; it is a config error a human owns, and it is documented as such in `shed.md`.
+  A multi-producer `Done` cycle is not statically infinite — any member may exit via `OnStuck` — so detecting it would reject legitimate backward jumps.
+- **Runtime disposition for a `Done` cycle: accepted as unbounded and human-owned, with no iteration cap in `Run`.**
+  This is a real behavior change and is stated rather than glossed: today `Done` only ever advances forward, so `Run`'s `for {}` terminates by list length alone; once `OnDone` permits backward jumps and `Done` consumes no budget, a `Done` cycle whose every member keeps returning `Done` runs forever.
+  Accepted for three reasons.
+  First, a runtime cap would be a new concept — every budget mechanism in `Shed` today is `Stuck`-based, and any total-iteration limit needs an arbitrary number that is either too low for a legitimate long run or too high to bound anything worth bounding.
+  Second, `Done` routing is entirely author-configured and statically visible in one producer list, unlike `Stuck` routing whose reachability depends on producer verdicts — a `Done` cycle is a config bug a reader can see, not an emergent runtime condition.
+  Third, and decisively, the loop is **not un-interruptible**: step 3 re-reads the status file and checks `pause_requested` *and* `ctx.Err()` at the top of every iteration, so an operator stops a runaway with Ctrl-C or by writing `pause_requested: true`, and the run exits cleanly as paused.
+  `shed.md` states this explicitly — that a `Done` cycle is unbounded by design, that `validate()` catches only the single-producer self-reference case, and that pause/cancellation is the stop mechanism — so a future reader does not mistake the absence of a cap for an oversight.
 - Rejected: adding reachability or cycle rules speculatively — YAGNI, and both produce false rejections on configurations the design explicitly permits.
 
 ### `Shed.MaxBounces` keeps its name
@@ -159,6 +173,8 @@ Nothing in this task needs a new import.
   `indexAfter` sits at the bottom of the file, just above `persist`, and is called from exactly one site.
 - `internal/shedengine/validate.go` (67 lines) — a flat sequence of field checks, then one loop collecting the `seen` name set, then a second loop checking `OnStuck` against it.
   The second loop is the natural home for the `OnDone` existence and `Segment` rules; the `MaxBounces < 0` per-producer check belongs in the first.
+  **The existing `seen` map does not suffice for the `Segment` rule:** it is a `map[string]bool` carrying only name presence, so the `OnStuck` same-`Segment` check needs either a second name→`Segment` map built in the first loop, or a `findProducer`-style lookup per check.
+  Widening `seen` to `map[string]string` (name → `Segment`) is not free either, since presence is currently tested as `!seen[p.OnStuck]` and an empty-string `Segment` is a legitimate value — a plan must pick one of the two shapes deliberately rather than assume the current map extends.
   The file's own doc comment explains why the non-obvious rules exist — new rules follow that pattern.
 - `internal/shedengine/shed.go` (54 lines) — `Shed.MaxBounces`'s doc comment and `defaultMaxBounces`.
 - `internal/shedengine/doc.go` (54 lines) — package documentation; check it for statements about sequential `Done` routing and the run-wide budget.
@@ -232,6 +248,7 @@ Assert each error message is distinct from every other rule's, matching the file
 - Inheritance: `ProducerDef.MaxBounces: 0` inherits `Shed.MaxBounces`; `Shed.MaxBounces: 0` in turn inherits the internal default of ten (this is `TestRun_MaxBouncesZeroResolvesToDefault`, now two-level).
 - History derivation across invocations: seed a status file whose `history[]` already contains N `Stuck` entries for a producer, run, and assert the budget accounts for them — the direct test of the all-time decision, and the one that would fail under a per-`Run`-call count.
 - Attribution: `Stuck` entries authored by a *different* producer do not consume this producer's budget, even when that other producer's `OnStuck` targets it.
+- The block-path entry: after a budget-exhausted block, the producer's `Stuck` count in `history[]` is `budget + 1`, and a resumed run whose `MaxBounces` was raised by exactly one blocks again immediately while raising it above the current count lets the run proceed — this pins the escape-hatch arithmetic the decision commits to, and is the test an operator's bug report would otherwise write.
 - Unchanged: `Stuck` with `OnStuck: ""` still blocks with `"stuck with no OnStuck target"`, ahead of any budget check.
 
 **`internal/loomshed`** — `loomshed_test.go`'s row-shape assertions gain the `OnDone` chain (and should assert it exhaustively, since an omitted `OnDone` silently ends the run rather than failing loud); `resume_test.go`'s bounce scenario re-read against per-producer semantics with its explanatory comment rewritten.
@@ -255,4 +272,6 @@ A cheap high-value addition: assert `New`'s returned `Shed` passes `validate()` 
 - **Q:** Negative `ProducerDef.MaxBounces`? **A:** [auto-pick] `validate()` rejects it, mirroring the existing `Shed.MaxBounces` rule.
 - **Q:** Is there a way to express "this producer may never bounce"? **A:** [auto-pick] `OnStuck: ""` already is it; `MaxBounces: 0` stays "inherit", never "no bounces allowed". **Why:** preserves the existing convention across both fields.
 - **Q:** Which docs land in the same commit? **A:** [auto-pick] `manifest/designs/shed.md`, `internal/shedengine/doc.go`, `loomshed.go`'s `New` doc comment, `manifest/designs/loom.md`'s stale sequential-routing sentence, plus the roadmap item moving to Shipped.
+- **Q:** (review r1 gap) `Done` cycles are unbounded at runtime once `OnDone` permits backward jumps — cap them in `Run`, or accept? **A:** [auto-pick] Accept as unbounded and human-owned, no iteration cap. **Why:** any cap needs an arbitrary number, `Done` routing is statically visible config rather than an emergent runtime condition, and step 3's per-iteration `pause_requested`/`ctx.Err()` check means an operator can always stop a runaway cleanly.
+- **Q:** (review r1 gap) Does the `Stuck` entry written on the budget-exhausted block path itself count toward the all-time budget? **A:** [auto-pick] Yes, it counts. **Why:** the append is unconditional in the `Stuck` arm and `loom-status-spec.md`'s fresh-start check depends on that; the escape hatch is restated as "raise `MaxBounces` above the producer's current `Stuck` count", since after a block that count is `budget + 1` and grows by one per re-block.
 - **Q:** Test approach? **A:** [auto-pick] Extend the existing suites in place — `run_routing_test.go` and `validate_test.go` in the engine, `resume_test.go` and `loomshed_test.go` in loomshed — rather than adding a new test file.
