@@ -647,6 +647,80 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 	}
 }
 
+// mustGitSmoke runs a git subcommand against dir, failing the test on any non-zero exit -- the plain
+// direct-exec shape smoke tests already use for weftCommitCount/weftHeadChangedFiles, extended here to
+// a general run-and-fail helper for the legacy-pair rig below.
+func mustGitSmoke(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git -C %s %v: %v; output: %s", dir, args, err, out)
+	}
+}
+
+// (g2) the regression guard for the origin-record self-healing gap the holistic review found: a
+// legacy pair whose provenance record was written to disk (step 1 of "loom run") but never committed
+// weft-side (step 3), because the process died in between. The very next "loom run" must find the
+// record already present on disk with a matching value -- resolveParentBranch's ordinary re-run row,
+// requesting no write of its own -- and still commit the still-untracked record, exactly as the status
+// file already self-heals, rather than leaving it stranded as an untracked file that permanently fails
+// fabricengine.Clean's own first Preflight precondition row.
+func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *testing.T) {
+	tmuxBinaryPath(t)
+	exe := buildLyxBinary(t)
+	_, loc, worktree, slug := newWiredPairFixture(t)
+	registerBootstrapTeardown(t, loc, worktree)
+
+	weftDir := fabricengine.WeftWorktree(loc)
+	originRel := filepath.Join(loc.AnchorRel, fabricengine.OriginRecordRel())
+
+	// Roll the pair back to a legacy shape: no origin record tracked at all, as if the pair had been
+	// created before the record existed.
+	mustGitSmoke(t, weftDir, "rm", "-q", "--", originRel)
+	mustGitSmoke(t, weftDir, "commit", "-m", "smoke: simulate legacy pair with no origin record")
+
+	// Simulate the crash: write the record straight to disk through the same production primitive
+	// step 1 itself uses, but never commit it -- the exact state a process death between steps 1 and
+	// 3 would leave behind.
+	rec := fabricengine.NewMutations("")
+	if err := fabricengine.WriteOrigin(rec, loc, slug, fabricengine.Origin{ParentBranch: "main"}); err != nil {
+		t.Fatalf("WriteOrigin (simulated crash write): %v", err)
+	}
+
+	if status := weftPathspecStatus(t, weftDir, originRel); status == "" {
+		t.Fatalf("origin record status before the healing run = clean; want the simulated crash to leave it uncommitted")
+	}
+
+	// The next "loom run" needs no --parent: ReadOrigin finds the just-written record on disk with a
+	// matching value, so resolveParentBranch reports write == false -- the exact row the finding says
+	// used to strand the record forever.
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	if err != nil {
+		t.Fatalf("healing loom run: %v; output: %s", err, stdout)
+	}
+
+	// The origin record specifically must now be committed and clean. The overall weft is not
+	// asserted clean here: once a driver actually runs, its own persists rewrite the status file's
+	// working-tree content on every phase transition without ever committing those rewrites (see
+	// TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit's doc comment), which legitimately dirties
+	// the weft again for a reason that has nothing to do with the origin-record healing this case
+	// exists to pin.
+	if status := weftPathspecStatus(t, weftDir, originRel); status != "" {
+		t.Errorf("origin record status after the healing run = %q; want it committed and clean", status)
+	}
+}
+
+// weftPathspecStatus returns dir's `git status --porcelain` output scoped to relPath, empty when
+// relPath is fully committed and unchanged.
+func weftPathspecStatus(t *testing.T, dir, relPath string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--", relPath).Output()
+	if err != nil {
+		t.Fatalf("git -C %s status --porcelain -- %s: %v", dir, relPath, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // (h) the spawn handshake -- two bootstrap invocations started concurrently produce exactly one
 // driver process and no already-running refusal in the driver log. This is the other named regression
 // guard: the pre-fix defect was the run lock being taken by the child long after the spawn call

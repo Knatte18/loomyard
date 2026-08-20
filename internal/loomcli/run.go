@@ -102,14 +102,20 @@ Example:
 				return nil
 			}
 
-			// Step 3: commit the seed, and the provenance record when step 1 wrote one, weft-side.
+			// Step 3: commit the seed and the provenance record, weft-side, unconditionally on
+			// every invocation -- not gated on this invocation's own writeOrigin. The origin
+			// record's path is included every time for the same reason the status file's path
+			// always is: if a prior invocation wrote the record to disk (step 1) but crashed
+			// before this step committed it, resolveParentBranch's next read finds the record
+			// present with a matching value and reports write == false, even though the record
+			// is still untracked in the weft. Including the path unconditionally makes that
+			// state self-heal on the very next `loom run`, exactly as the status file already
+			// does -- and costs nothing on the ordinary path, since committing an already-clean,
+			// already-tracked path is a no-op (StageAndCommit reports committed == false).
 			// This must precede the driver spawn: the phase machine's very first precondition row
-			// scans the weft including untracked files, and the status file is not on the
-			// never-tracked exclude list, so an uncommitted seed would fail that check immediately.
-			commitPaths := []string{loomengine.LoomStatusRel()}
-			if writeOrigin {
-				commitPaths = append(commitPaths, fabricengine.OriginRecordRel())
-			}
+			// scans the weft including untracked files, and neither file is on the never-tracked
+			// exclude list, so an uncommitted seed or record would fail that check immediately.
+			commitPaths := []string{loomengine.LoomStatusRel(), fabricengine.OriginRecordRel()}
 			weftRec := fabricengine.NewMutations("")
 			commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
 			if _, _, err := fabricengine.CommitWeftPaths(weftRec, fabricengine.WeftWorktree(c.location), c.location.AnchorRel, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
