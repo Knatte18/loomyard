@@ -9,7 +9,7 @@ parent: main
 
 ## Problem
 
-`scout` — LSP-backed code intelligence, `internal/scoutengine` (~5 700 lines with tests) plus `internal/scoutcli` (~1 900 lines) — has grown into a tool with its own reason to exist.
+`scout` — LSP-backed code intelligence, `internal/scoutengine` (7 011 lines across 35 files: 2 737 production, 4 274 test) plus `internal/scoutcli` (1 962 lines: 937 production, 1 025 test) — has grown into a tool with its own reason to exist.
 It answers "where is this symbol referenced / defined / declared" across five languages, and nothing about that job is specific to lyx.
 Keeping it inside Loomyard means every change to it moves through lyx's release, lyx's constraints, and lyx's module table, for a capability lyx itself barely uses.
 
@@ -210,7 +210,7 @@ Every site, enumerated:
 - `cmd/lyx/hermeticenv_test.go:38` (the `internal/scoutengine` subprocess-justification entry).
 - `cmd/lyx/notransients_test.go:7,27,82-83` and `cmd/lyx/constructoranchoring_test.go:7,25,45,106-107` (`DaemonStateFile`/`DaemonLock` anchoring assertions).
 - `cmd/lyx/configstrictness_test.go:17` (comment naming `internal/scoutengine`).
-- `CONSTRAINTS.md:195-208` — the whole **Scout Engine-Seam Invariant** section; `:77` — remove `internal/scoutengine` from the told-geometry review-obligation list; `:440` — the `scout-redesign.md` prose-mention example, which must be repointed at another live example rather than left dangling.
+- `CONSTRAINTS.md:195-208` — the whole **Scout Engine-Seam Invariant** section; `:77` — remove `internal/scoutengine` from the told-geometry review-obligation list; `:440` — the `scout-redesign.md` prose-mention example, which must be repointed at another live example rather than left dangling. Note this line is doubly stale: it cites `manifest/roadmap.md:98`, but that reference moved to `:138` in the `b01ffc3b` roadmap cleanup, and this task edits `manifest/roadmap.md` again so the number will shift once more. Pick a replacement example that is not scout-related, and prefer a citation form that does not pin a line number.
 - `docs/overview.md:293` (module table entry), `:431` (package-doc list entry), `:190` (prose listing scout among `.lyx`-writing modules).
 - `manifest/roadmap.md` — lines 51, 138, 148, 150, 160, 172-174, 206, 263 all reference scout. Most are Someday items about *consuming* scout (`Plan-Sweep`, `scout-backed plan symbol fields`); those stay but must be reworded to name quarry as an external dependency. Line 160 is a scout defect item that moves to quarry's issue tracker (it is the same defect as [quarry#1](https://github.com/Knatte18/quarry/issues/1) — close it out of the roadmap rather than reword).
 - `contracts/specs/loom-plan-spec.md`, `internal/loomshed/loomshed.go`, `internal/websterengine/doc.go`, `internal/gitrepo/doc.go`, `internal/fabriccli/clone.go`, `internal/fabricengine/junction.go` — all mention scout in prose or comments; audit each and reword.
@@ -239,7 +239,7 @@ Discovered during discussion:
 
 ## Testing
 
-The test suite is the extraction's proof. ~4 400 lines of tests move with the code, and the acceptance criterion for the whole task is that they pass in quarry unchanged in intent.
+The test suite is the extraction's proof. 5 299 lines of tests move with the code (4 274 from `scoutengine`, 1 025 from `scoutcli`), and the acceptance criterion for the whole task is that they pass in quarry unchanged in intent.
 
 **Ported unchanged (pure logic, no fixtures):** `definition_test.go`, `detect_test.go`, `position_test.go`, `symbol_test.go`, `registry_test.go`, `load_test.go`, `refs_test.go`, `lspclient_test.go`, `daemonstate_test.go`, `ensureserver_test.go`, `supervised_test.go`, `toolchain_test.go`, `cli_test.go`. Only import paths and package clauses change. Any test needing more than that is a signal the port drifted and must be investigated, not patched.
 
