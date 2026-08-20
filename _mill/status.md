@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: shedadapters-burler-producer
 branch: shedadapters-burler-producer
 plan: _mill/plan
@@ -42,6 +42,7 @@ holistic-fixing  '2026-08-20T17:09:32Z'
 nits-fixed-holistic  '2026-08-20T17:11:09Z'
 holistic-approved  '2026-08-20T17:11:21Z'
 done  '2026-08-20T17:12:40Z'
+pr-pending  '2026-08-20T17:21:07Z'
 ```
 
 ## Batches
