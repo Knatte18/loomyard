@@ -13,9 +13,17 @@ Several items below touch `internal/loomshed/loomshed.go` — expected, resolved
 - **preflight: split into two Shed rows** (`preflight-loom-agnostic`)
 - **scout: extract into its own standalone repo** (`scout-extract-standalone-repo`) — independent of everything else on this map; nothing outside `internal/scoutengine` imports it except `internal/scoutcli`.
 
-## Waiting on shedengine above
+Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, the `fabric-merge-crucible-hardening` crucible campaign (wiki-tracked only, no `roadmap.md` entry), and now `shedengine: per-producer bounce budget + explicit OnDone routing` have all landed. Priority now shifts to the remainder of the "Perch → Shed flattening" group below.
 
-Not a hard `depends_on`, but both read on its new `OnDone` field — start early only if the wait is what's inconvenient.
+## Can start now, no caveats
+
+- **preflight: split into two Shed rows** — no `depends_on` beyond the Done `loom: phase-machine scaffolding`.
+
+`loom: Discussion-Write producer`/`loom: Plan-Write producer` are deliberately NOT listed here despite having no `depends_on` either: `roadmap.md` groups all five producer tasks (these two plus the three review-producer tasks below) as "the only items in this initiative that touch LLM-prompt content, and stay deliberately last relative to everything above" — a standing policy call, not a code dependency, and this map does not override it. They belong with the rest of that group, see below.
+
+## Can start now, dependency met
+
+`shedengine: per-producer bounce budget + explicit OnDone routing` has landed, so the precondition these two tasks were cleanest waiting on is now satisfied: both read directly on its `OnDone` field (Bouncer's entry-point/exit wiring, Burler's always-`Stuck`-never-`Done` hand-off), not just its `Segment`/`MaxBounces` fields.
 
 - **shedadapters: Burler-round producer**
 - **Bouncer: the generic review-gate producer**

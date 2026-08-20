@@ -21,6 +21,11 @@ import "fmt"
 // The equal-lock-paths rule exists to convert a deadlock into an error: internal/state acquires
 // its lock with the blocking form, so a Shed whose two lock paths name one file would hang on its
 // first persist rather than failing.
+//
+// OnDone: <self> is rejected while OnStuck: <self> stays legal, and that asymmetry is
+// deliberate: Done routing consumes no bounce budget, so a self-referencing OnDone is a
+// statically certain infinite loop, while a self-referencing OnStuck is budgeted and therefore
+// bounded.
 func (s *Shed) validate() error {
 	if s.StatusPath == "" {
 		return fmt.Errorf("shedengine: StatusPath must not be empty")
@@ -42,6 +47,10 @@ func (s *Shed) validate() error {
 	}
 
 	seen := make(map[string]bool, len(s.Producers))
+	// segmentByName records each producer's Segment under its Name, built alongside seen rather
+	// than by widening seen itself: an empty-string Segment is a legitimate value, and it would
+	// collide with seen's own presence semantics if seen carried Segment instead of a bool.
+	segmentByName := make(map[string]string, len(s.Producers))
 	for i, p := range s.Producers {
 		if p.Name == "" {
 			return fmt.Errorf("shedengine: producer at index %d has an empty name", i)
@@ -52,14 +61,27 @@ func (s *Shed) validate() error {
 		if seen[p.Name] {
 			return fmt.Errorf("shedengine: producer %q at index %d is a duplicate of an earlier entry", p.Name, i)
 		}
+		if p.MaxBounces < 0 {
+			return fmt.Errorf("shedengine: producer %q at index %d has a negative MaxBounces", p.Name, i)
+		}
 		seen[p.Name] = true
+		segmentByName[p.Name] = p.Segment
 	}
 
-	// OnStuck is checked after the whole name set is collected, so a forward reference to a
-	// later producer is legal.
+	// OnStuck and OnDone are checked after the whole name set is collected, so a forward
+	// reference to a later producer is legal for both.
 	for i, p := range s.Producers {
+		if p.OnDone != "" && !seen[p.OnDone] {
+			return fmt.Errorf("shedengine: producer %q at index %d has OnDone %q naming no producer in the list", p.Name, i, p.OnDone)
+		}
+		if p.OnDone != "" && p.OnDone == p.Name {
+			return fmt.Errorf("shedengine: producer %q at index %d has OnDone naming itself", p.Name, i)
+		}
 		if p.OnStuck != "" && !seen[p.OnStuck] {
 			return fmt.Errorf("shedengine: producer %q at index %d has OnStuck %q naming no producer in the list", p.Name, i, p.OnStuck)
+		}
+		if p.OnStuck != "" && segmentByName[p.OnStuck] != p.Segment {
+			return fmt.Errorf("shedengine: producer %q at index %d has OnStuck %q naming a producer in a different Segment", p.Name, i, p.OnStuck)
 		}
 	}
 

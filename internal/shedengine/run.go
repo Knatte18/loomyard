@@ -16,16 +16,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// findProducer looks up name in producers, returning the matching definition, its index, and
-// whether it was found. It never guesses: a caller that gets found == false must hard-error
-// rather than fabricate a fallback, exactly as the loop's own lookup step does.
-func findProducer(producers []ProducerDef, name string) (ProducerDef, int, bool) {
-	for i, p := range producers {
+// findProducer looks up name in producers, returning the matching definition and whether it was
+// found. It never guesses: a caller that gets found == false must hard-error rather than
+// fabricate a fallback, exactly as the loop's own lookup step does.
+func findProducer(producers []ProducerDef, name string) (ProducerDef, bool) {
+	for _, p := range producers {
 		if p.Name == name {
-			return p, i, true
+			return p, true
 		}
 	}
-	return ProducerDef{}, 0, false
+	return ProducerDef{}, false
 }
 
 // Run walks the whole six-step loop in one call, from wherever the status file's current_producer
@@ -33,6 +33,8 @@ func findProducer(producers []ProducerDef, name string) (ProducerDef, int, bool)
 // error.
 // Result is meaningless unless the returned error is nil -- every hard-error path below returns an
 // unpopulated Result alongside its error, and a caller must check error before reading Outcome.
+// The producer list itself carries zero routing meaning once Done routes by OnDone: it is
+// storage, plus validate's iteration order, plus cosmetic display order, nothing else.
 func (s *Shed) Run(ctx context.Context) (Result, error) {
 	if err := s.validate(); err != nil {
 		return Result{}, err
@@ -61,15 +63,6 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %q", ErrShedBusy, s.LockPath)
 	}
 	defer runLock.Release()
-
-	// The bounce counter is per-Run-call and in-memory by design -- deliberately unpersisted, so a
-	// crash-restart or a human-resumed blocked run starts again with the full budget, because
-	// every event that resets it is a new human-initiated invocation, which is exactly the outcome
-	// the budget exists to force.
-	bouncesRemaining := s.MaxBounces
-	if bouncesRemaining == 0 {
-		bouncesRemaining = defaultMaxBounces
-	}
 
 	for {
 		// Step 1, the read gate. A found of false is a hard error: Shed never seeds a status
@@ -105,7 +98,7 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		// Step 2, the lookup. Not found is a hard error that changes nothing on disk: Shed
 		// never guesses, neither restarting from the first producer nor advancing to the
 		// nearest match, because both fabricate a status nobody confirmed.
-		def, _, ok := findProducer(s.Producers, st.CurrentProducer)
+		def, ok := findProducer(s.Producers, st.CurrentProducer)
 		if !ok {
 			return Result{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written", st.CurrentProducer, s.StatusPath)
 		}
@@ -198,10 +191,12 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 					Reason:         reason,
 					History:        nextHistory,
 				}, nil
-			case bouncesRemaining <= 0:
-				// The boundary is pinned exactly: MaxBounces bounces are permitted, and the
-				// next Stuck that would otherwise route is the one refused, so a budget of
-				// three performs three bounce-backs and blocks on the fourth Stuck.
+			// The count argument is st.History, the slice read at step 1, and never
+			// nextHistory: a post-append read shifts the boundary by one and would look
+			// like an off-by-one bug rather than the semantic change it would actually be.
+			case episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces):
+				// The boundary is pinned exactly, restated per-producer: a budget of three
+				// performs three bounce-backs and blocks on the fourth Stuck.
 				reason := "bounce budget exhausted"
 				if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
 					return Result{}, err
@@ -213,7 +208,6 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 					History:        nextHistory,
 				}, nil
 			default:
-				bouncesRemaining--
 				if err := s.persist(def.OnStuck, StateRunning, "", nextHistory, false); err != nil {
 					return Result{}, err
 				}
@@ -222,12 +216,13 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 
 		case outcome == Done:
 			nextHistory := appendHistory()
-			if def.Name == s.Producers[len(s.Producers)-1].Name {
+			if def.OnDone == "" {
 				// current_producer keeps this producer's own name -- never the empty string --
 				// because activity.now is defined as current_producer's name and
 				// HaltedProducer as the producer current_producer named when Run returned, so
 				// an empty value would leave both fields meaningless at the happy-path
-				// terminal a reader of a finished status file most wants to understand.
+				// terminal a reader of a finished status file most wants to understand. The
+				// terminal is now chosen by an empty OnDone, not by list position.
 				if err := s.persist(def.Name, StateDone, "", nextHistory, false); err != nil {
 					return Result{}, err
 				}
@@ -237,8 +232,10 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 					History:        nextHistory,
 				}, nil
 			}
-			nextName := s.Producers[indexAfter(s.Producers, def.Name)].Name
-			if err := s.persist(nextName, StateRunning, "", nextHistory, false); err != nil {
+			// A non-empty OnDone needs no lookup here: validate has already rejected an OnDone
+			// naming no producer in the list, so the name is persisted as-is and resolved by
+			// step 2's lookup on the next iteration.
+			if err := s.persist(def.OnDone, StateRunning, "", nextHistory, false); err != nil {
 				return Result{}, err
 			}
 			continue
@@ -266,17 +263,43 @@ func nowRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// indexAfter returns the index of the producer immediately following the one named name in
-// producers. It is only ever called when name is known to be present and not the last entry, both
-// already established by the caller.
-func indexAfter(producers []ProducerDef, name string) int {
-	for i, p := range producers {
-		if p.Name == name {
-			return i + 1
+// episodeStuckCount walks history backward from the end and counts the Stuck entries authored by
+// name within its current episode: the run of entries since name's own most recent Done. It
+// returns immediately at the first entry whose Producer equals name and whose Outcome is Done, and
+// otherwise counts the entries whose Producer equals name and whose Outcome is Stuck; entries
+// authored by other producers are skipped and never terminate the scan, so a Done by some other
+// producer does not end this producer's episode.
+// A done entry written by the hard-failure arm also terminates the scan, and that is accepted
+// rather than special-cased: the engine records the verdict a producer actually returned, and
+// state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
+func episodeStuckCount(history []HistoryEntry, name string) int {
+	count := 0
+	for i := len(history) - 1; i >= 0; i-- {
+		entry := history[i]
+		if entry.Producer != name {
+			continue
+		}
+		if entry.Outcome == Done {
+			return count
+		}
+		if entry.Outcome == Stuck {
+			count++
 		}
 	}
-	// Unreachable: callers only invoke this with a name already confirmed present.
-	return 0
+	return count
+}
+
+// effectiveMaxBounces resolves def's own bounce budget, inheriting at two levels: def.MaxBounces
+// when it is greater than zero, else shedMax when that is greater than zero, else
+// defaultMaxBounces. A zero value never means "no bounces allowed" at either level.
+func effectiveMaxBounces(def ProducerDef, shedMax int) int {
+	if def.MaxBounces > 0 {
+		return def.MaxBounces
+	}
+	if shedMax > 0 {
+		return shedMax
+	}
+	return defaultMaxBounces
 }
 
 // persist is the single write path for the whole loop: one state.UpdateJSON call whose mutate

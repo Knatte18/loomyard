@@ -1,5 +1,6 @@
 // shed.go defines the Shed engine struct and the run-level result vocabulary: RunOutcome, Result,
-// and the default bounce budget Run falls back to when the caller leaves MaxBounces unset.
+// and the two-level default the bounce budget falls back to when a ProducerDef and then Shed
+// itself leave MaxBounces unset.
 
 package shedengine
 
@@ -17,8 +18,15 @@ type Shed struct {
 	// LockPath, because internal/state acquires it with the blocking form, so one shared path
 	// would hang on the first persist rather than failing.
 	StatusLockPath string
-	// MaxBounces is the total Stuck-routed bounce budget for one Run call, in-memory and never
-	// persisted. 0 means "use the internal default of 10", never "no bounces allowed".
+	// MaxBounces is the default a ProducerDef.MaxBounces of 0 inherits; 0 here in turn falls back
+	// to the internal default of ten. The budget it seeds is per-producer and episode-scoped,
+	// counted from the persisted history[] rather than held in memory.
+	//
+	// This is an inversion from an earlier design, worth naming explicitly: the budget used to
+	// be run-wide, held in an in-memory counter that was deliberately reset on every new Run
+	// call. That reset made a crash-restart loop unbounded -- each restart handed the loop a
+	// fresh budget -- which is why this task overturned it in favor of the persisted,
+	// per-producer count above. Read the missing reset as intentional, not an omission.
 	MaxBounces int
 }
 
@@ -50,5 +58,6 @@ type Result struct {
 	History []HistoryEntry
 }
 
-// defaultMaxBounces is the bounce budget Run uses when Shed.MaxBounces is 0.
+// defaultMaxBounces is the default an unset budget resolves to at the second level: when both a
+// ProducerDef.MaxBounces and Shed.MaxBounces are 0.
 const defaultMaxBounces = 10

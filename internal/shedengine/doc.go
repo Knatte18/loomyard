@@ -2,7 +2,9 @@
 // with no predefined slots, honoring resume, crash-recovery, and pause uniformly at producer
 // granularity.
 // What makes a product a product -- loom, or the eventual Hardener -- is purely which producers are
-// in its list and in what order; Shed itself has no opinion on that list's contents.
+// in its list; Shed itself has no opinion on that list's contents.
+// The list's order is display and enumeration order only -- see "Routing: OnDone and OnStuck, no
+// positional fallback" below for why order carries no routing meaning of its own.
 //
 // # What Shed is
 //
@@ -12,8 +14,27 @@
 // Everything that used to look "special" -- Preflight, Finalize, review gates -- is just a producer
 // like any other in the list.
 // A product built on Shed is nothing more than Shed plus that product's own producer list: what
-// makes loom "loom" versus Hardener "Hardener" is purely which producers are in the list and in what
-// order, configuration rather than architecture.
+// makes loom "loom" versus Hardener "Hardener" is purely which producers are in the list,
+// configuration rather than architecture; list order is cosmetic, carrying zero routing meaning of
+// its own.
+//
+// # Routing: OnDone and OnStuck, no positional fallback
+//
+// Every routing decision is a per-producer field read off the ProducerDef that just ran, never the
+// entry's position in Producers.
+// A Stuck outcome routes via OnStuck: "" escalates to a human (state: "blocked"), and a non-empty
+// value bounces back to the Name it names, forward or backward, budget permitting.
+// A Done outcome routes via OnDone the same way: "" finishes the whole run from any list position
+// (state: "done"), and a non-empty value jumps to the Name it names with no positional fallback of
+// any kind -- an omitted OnDone is indistinguishable from an intended terminal one and ends the run
+// quietly, so a caller assembling a producer list is responsible for asserting its own routing table
+// exhaustively rather than relying on Shed to catch a missing entry.
+// The bounce budget backing OnStuck is per-producer and episode-scoped: it is counted from the
+// persisted history[] rather than held in memory, as the number of Stuck entries a producer has
+// authored since its own most recent Done entry (all of them, if it has never returned Done), so the
+// count spans invocations, crashes, and human resumes rather than resetting on every new Run call.
+// See manifest/designs/shed.md's own routing and bounce-budget sections for the full design and its
+// rationale; this package documentation states the contract, not the argument for it.
 //
 // # Told, never derived
 //
