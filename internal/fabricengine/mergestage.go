@@ -26,13 +26,25 @@ type StageResult struct {
 // MergeContinue's own conflict guard is deliberately left untouched by this verb — the two are
 // independent gates, not one relocated one.
 //
+// Foreign git-level merge state — a MERGE_HEAD or unmerged index entries fabric did not itself
+// start — refuses the whole call with *ErrForeignMergeState, leaving that state untouched, exactly
+// as every other mutating merge verb does. The probe runs only when no fabric record exists, the
+// same record-then-probe arm MergeIn and Merge use, so it costs one record read during a real merge
+// and never mistakes fabric's own conflicts for someone else's.
+// That refusal is not belt-and-braces: it is the case the no-lock argument below would otherwise be
+// wrong about. "No merge in progress" and "no conflicted paths" are NOT the same condition — an
+// operator's own conflicted `git merge` in the warp checkout leaves MergeInProgress() false while
+// ConflictedFiles() is non-empty, so without this arm the partition below would happily route those
+// paths to `git add -A` and stage into a merge fabric has no record of and no lock over.
+//
 // This is the one mutating verb in the merge surface that takes NO weft write lock and asserts no
-// merge-record precondition, and that is a decision rather than an omission. With no merge in
-// progress both sides' ConflictedFiles() are empty, so every path fails the partition above and the
-// call errors before staging anything — there is no state it can reach where it writes outside a
-// merge. While a merge IS in progress the four guarded sibling verbs (Commit, Pull, Topology's
-// Checkout and Remove) already refuse on the record, so no other fabric writer can be in either
-// index concurrently. A lock here would serialize this verb against nothing.
+// merge-record precondition, and that is a decision rather than an omission. With the foreign case
+// refused above, the only remaining no-record state has both sides' ConflictedFiles() empty, so every
+// path fails the partition below and the call errors before staging anything — there is no state it
+// can reach where it writes outside a merge. While a merge IS in progress the four guarded sibling
+// verbs (Commit, Pull, Topology's Checkout and Remove) already refuse on the record, so no other
+// fabric writer can be in either index concurrently. A lock here would serialize this verb against
+// nothing.
 // The contrast with Merge's pre-merge sync — which does need the lock, because it mutates before
 // the record exists — is what makes the difference load-bearing rather than stylistic.
 func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error) {
@@ -41,6 +53,20 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 
 	if len(paths) == 0 {
 		return StageResult{}, nil
+	}
+
+	recordExists, err := f.mergeRecordExists()
+	if err != nil {
+		return StageResult{}, err
+	}
+	if !recordExists {
+		foreign, err := f.foreignMergeStatePresent()
+		if err != nil {
+			return StageResult{}, err
+		}
+		if foreign {
+			return StageResult{}, &ErrForeignMergeState{}
+		}
 	}
 
 	warpConflicts, err := f.warp.ConflictedFiles()

@@ -1030,10 +1030,13 @@
 // touch filesystem links, never an index or a ref; `Add` builds a new pair off a branch tip;
 // `RebuildIndex` rewrites an explicitly rebuildable cache; `RecordCorrespondence` must stay
 // unguarded, since the merge verbs call it themselves while their own record is still live;
-// `MergeStageResolved` is unguarded and unlocked because it can only ever write DURING a merge
-// (with no merge in progress no path is conflicted and the call errors before staging anything,
-// and while one IS in progress the guarded siblings already keep every other fabric writer out —
-// see its own godoc in mergestage.go for the full argument); and
+// `MergeStageResolved` carries the foreign-state refusal every mutating merge verb carries, but no
+// record precondition and no lock, because with foreign state refused it can only ever write DURING
+// a merge (no fabric merge and no foreign merge means no path is conflicted, so the call errors
+// before staging anything, and while a fabric merge IS in progress the guarded siblings already keep
+// every other fabric writer out — see its own godoc in mergestage.go for the full argument, and note
+// that "no merge in progress" and "nothing conflicted" are not the same condition, which is exactly
+// what the foreign arm covers); and
 // `ResetHard`'s `force: false` plus tracked-dirtiness gate already refuses against a merge worktree,
 // which is dirty by definition.
 // `CheckoutDetached`/`RestoreBranch` are the one knowing exception — raw primitives driven only by
