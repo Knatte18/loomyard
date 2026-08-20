@@ -9,23 +9,9 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
 
-### In flight
-
-1. **loom: write and wire in the real LLM producers** — the only task in this initiative that touches LLM-prompt content, deliberately last.
-   - Write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists).
-   - Write `Plan-Review`'s rubric from scratch — does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria.
-   - Write `Webster-Review`'s rubric from scratch — same gap, same reason.
-   - Replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
-   - Replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
-   - Build `Plan-Sweep` for real, here rather than in scaffolding — it has no consumer until `Plan-Write` is real. Lowest priority within this task too: `scout`-backed work is low-priority project-wide, and `Plan-Sweep` is the only row in this initiative that touches `scout`. Mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-scout-inventory-spec`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
-   - Replace the `Discussion-Review`/`Plan-Review`/`Webster-Review` stubs with real `perch` adapters (`shedadapters.NewPerchProducer`) driven by the rubrics above.
-   - Explicitly untouched by this task: `perch`'s round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s A/B round machinery, `webster`'s own engine — all already-shipped Go infrastructure this task plugs profiles into, not something it builds.
-
-Also currently running, wiki-tracked only per the crucible method's own convention (no dedicated roadmap entry, see the Done `fabric: merge-conflict primitive` item's own package doc): a crucible hardening campaign scoped to that item's `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` surface (wiki slug `fabric-merge-crucible-hardening`).
-
 ### Perch → Shed flattening
 
-Next up once the in-flight group above lands — `perch`'s own round-loop (`internal/treadleengine`) gets replaced by two ordinary `Shed` rows per review, not rewritten.
+Priority now — `perch`'s own round-loop (`internal/treadleengine`) gets replaced by two ordinary `Shed` rows per review, not rewritten. The real-LLM-producer work below waits on this group, both because the three review-producer tasks depend on it directly and because it's the higher priority right now regardless.
 
 1. **shedengine: per-producer bounce budget + explicit `OnDone` routing** — replaces `Run`'s single run-wide `bouncesRemaining` counter with a per-producer budget derived from `Status.History` (count prior `Stuck` entries for the same producer name, no new persisted field needed), and adds two new `ProducerDef` fields: `MaxBounces int` (0 = inherit `Shed`'s own default, same convention `Shed.MaxBounces` already uses) and `Segment string` (a grouping label, empty = standalone).
    **`OnDone string`, parallel to the existing `OnStuck`, replaces `Done`'s implicit sequential-next routing entirely — no fallback.** Set → `Done` jumps to the named producer (forward or backward, same freedom `OnStuck` already has). Empty → `Done` here finishes the whole `Shed`, not "because it happens to be the last entry in the list." `run.go`'s `indexAfter` helper and its "is this producer physically last" check are removed outright — the producer list becomes pure storage plus `validate()`'s iteration order plus cosmetic display order, with zero routing meaning of its own. Motivation, surfaced by the Bouncer/Burler segment shape below rather than invented in the abstract: a hybrid where some producers route by physical position and others by an explicit field is harder to read than either pure form, since a reader must first check which mode a given `ProducerDef` is in before trusting list order at all — going fully explicit means one `ProducerDef` read in isolation always tells the whole story.

@@ -10,21 +10,16 @@ The real constraint is semantic: does task B need a type, function, or construct
 
 ## Running now
 
-- **landing: Publish + Finalize producers**
-- **loom: session bootstrap**
-- **fabric-merge-crucible-hardening** — crucible campaign, wiki-tracked only, no `roadmap.md` entry (see `roadmap.md`'s "In flight" note)
+Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, and the `fabric-merge-crucible-hardening` crucible campaign (wiki-tracked only, no `roadmap.md` entry) all landed via the `producers-standalone` squash-merge. Priority now shifts to the "Perch → Shed flattening" group below.
 
-## Can start in parallel with all three of the above, no caveats
-
-Touch no code any of the three running tasks or each other produce.
+## Can start now, no caveats
 
 - **shedengine: per-producer bounce budget + explicit `OnDone` routing** — `internal/shedengine` only.
 - **preflight: split into two Shed rows** — no `depends_on` beyond the Done `loom: phase-machine scaffolding`.
 
-Two candidates, on top of the three already running — up to five tasks in flight at once with no forced ordering between them.
 `loom: Discussion-Write producer`/`loom: Plan-Write producer` are deliberately NOT listed here despite having no `depends_on` either: `roadmap.md` groups all five producer tasks (these two plus the three review-producer tasks below) as "the only items in this initiative that touch LLM-prompt content, and stay deliberately last relative to everything above" — a standing policy call, not a code dependency, and this map does not override it. They belong with the rest of that group, see below.
 
-## Can start in parallel too, with a light caveat
+## Can start now too, with a light caveat
 
 No *hard* dependency, but cleanest if `shedengine: per-producer bounce budget + explicit OnDone routing` lands first — both downstream tasks now read directly on its `OnDone` field (Bouncer's entry-point/exit wiring, Burler's always-`Stuck`-never-`Done` hand-off), not just its `Segment`/`MaxBounces` fields, so the coupling is a little tighter than before, though still not a hard `depends_on`.
 Starting them anyway and reconciling at integration is a legitimate call, not a mistake, if the wait is what's inconvenient.
