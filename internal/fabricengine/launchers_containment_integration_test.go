@@ -79,7 +79,7 @@ func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
 			}
 
 			// No launcher script may have landed in the out-of-hub target.
-			for _, name := range []string{"ide.sh", "fabric-checkout.sh", "ide-menu.sh"} {
+			for _, name := range []string{"ide.sh", "fabric-checkout.sh", "run.sh", "ide-menu.sh"} {
 				if _, statErr := os.Stat(filepath.Join(outside, name)); statErr == nil {
 					t.Fatalf("launcher %s was written outside the hub through the escaping symlink", name)
 				}

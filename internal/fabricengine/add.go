@@ -1,6 +1,7 @@
 // add.go implements the transactional Add: it creates the warp worktree, portal, and launchers,
-// then pushes last, performing a best-effort full rollback on any post-creation failure so a
-// partial worktree PAIR is never left behind.
+// wires junctions, records and commits the pair's parent-branch provenance, then pushes last,
+// performing a best-effort full rollback on any post-creation failure so a partial worktree PAIR
+// is never left behind.
 // One residue the rollback cannot always clear is the warp branch this Add created: the gate deletes
 // it only when it can prove the branch is fabric's (a non-empty branch_prefix, or a -weft weft
 // branch), so under the default empty prefix the bare-slug warp branch is left behind — see
@@ -39,8 +40,8 @@ type AddResult struct {
 }
 
 // Add creates a new paired warp and weft git worktree with the given slug.
-// It validates the slug, creates both worktrees, wires junctions, and pushes branches, rolling back
-// all changes on any failure.
+// It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
+// parent-branch provenance, and pushes branches, rolling back all changes on any failure.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -198,6 +199,21 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
+	// (10c) Record and commit the pair's provenance now that the pair is fully wired, and
+	// before step 11's warp push and step 12's weft push — the weft push that already runs at
+	// step 12 carries this commit to the remote, so no new push call is added here.
+	if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch}); err != nil {
+		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+		return AddResult{}, fmt.Errorf("record parent branch: %w", err)
+	}
+	// The commit's sha and committed returns are not read here: CommitWeftPaths records the
+	// KindCommitCreated entry itself, at its own success site, per the
+	// origin-record-records-both-its-write-and-its-commit decision.
+	if _, _, err := CommitWeftPaths(rec, weftPath, l.AnchorRel, []string{OriginRecordRel()}, "fabric: record parent branch for "+slug, opts); err != nil {
+		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+		return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
+	}
+
 	// (11) Push warp branch (LAST step for warp)
 	if _, err := gitexec.Run([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath()); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
@@ -235,6 +251,11 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 // (its own removeGitWorktree and deleteBranch, plus removeWeftWorktree, removeWarpJunction,
 // removePortal and removeLaunchers), so a rollback's own destructions land in the same record as
 // Add's creations, in execution order.
+// The origin record needs no removal step of its own: on the created-branch path the existing
+// weft-worktree and weft-branch removal (step 1) takes the record with it, and on the
+// adopted-weft-branch path the record's commit is deliberately left in place — reverting or
+// resetting an adopted branch to undo one commit is exactly the pre-existing-history destruction
+// the !weftBranchAdopted guard above exists to prevent.
 func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBranch, weftBranch, target string, weftBranchAdopted bool, warpTok createdToken) error {
 	var firstErr error
 

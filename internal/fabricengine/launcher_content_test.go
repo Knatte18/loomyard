@@ -3,7 +3,7 @@
 // Because launcherScript and launcherExt take goos as a parameter rather than reading runtime.GOOS,
 // both branches are exercised on any warp, including this Windows dev box.
 // The fabric-checkout case asserts fabric's own checkout script content ("fabric checkout" lyx
-// args).
+// args), and the run case asserts the run launcher's own command line ("loom run" lyx args).
 
 package fabricengine
 
@@ -66,6 +66,14 @@ func TestLauncherScript(t *testing.T) {
 			wantMode: 0o644,
 		},
 		{
+			name:     "windows run nested climb",
+			goos:     "windows",
+			climbRel: "../../myslug/sub",
+			lyxArgs:  "loom run",
+			want:     "@cd /d \"%~dp0..\\..\\myslug\\sub\" && lyx loom run\r\n",
+			wantMode: 0o644,
+		},
+		{
 			name:     "linux ide spawn empty climb",
 			goos:     "linux",
 			climbRel: "",
@@ -87,6 +95,14 @@ func TestLauncherScript(t *testing.T) {
 			climbRel: "../sub",
 			lyxArgs:  "ide menu",
 			want:     "#!/usr/bin/env bash\ncd \"$(dirname \"$0\")/../sub\" && lyx ide menu\n",
+			wantMode: 0o755,
+		},
+		{
+			name:     "linux run nested climb",
+			goos:     "linux",
+			climbRel: "../../myslug/sub",
+			lyxArgs:  "loom run",
+			want:     "#!/usr/bin/env bash\ncd \"$(dirname \"$0\")/../../myslug/sub\" && lyx loom run\n",
 			wantMode: 0o755,
 		},
 	}

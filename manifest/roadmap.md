@@ -11,10 +11,15 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### In flight
 
-1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the Done `loom: phase-machine scaffolding` item's phase machine actually reachable.
-   - `lyx loom run`: ensure the worktree's tmux session is up, add the status strand (`lyx loom status --watch`), spawn the `loom` driver detached via `internal/proc`, attach the terminal to the tmux session.
-   - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
-   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap).
+1. **loom: write and wire in the real LLM producers** — the only task in this initiative that touches LLM-prompt content, deliberately last.
+   - Write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists).
+   - Write `Plan-Review`'s rubric from scratch — does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria.
+   - Write `Webster-Review`'s rubric from scratch — same gap, same reason.
+   - Replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
+   - Replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
+   - Build `Plan-Sweep` for real, here rather than in scaffolding — it has no consumer until `Plan-Write` is real. Lowest priority within this task too: `scout`-backed work is low-priority project-wide, and `Plan-Sweep` is the only row in this initiative that touches `scout`. Mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-scout-inventory-spec`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
+   - Replace the `Discussion-Review`/`Plan-Review`/`Webster-Review` stubs with real `perch` adapters (`shedadapters.NewPerchProducer`) driven by the rubrics above.
+   - Explicitly untouched by this task: `perch`'s round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s A/B round machinery, `webster`'s own engine — all already-shipped Go infrastructure this task plugs profiles into, not something it builds.
 
 Also currently running, wiki-tracked only per the crucible method's own convention (no dedicated roadmap entry, see the Done `fabric: merge-conflict primitive` item's own package doc): a crucible hardening campaign scoped to that item's `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` surface (wiki slug `fabric-merge-crucible-hardening`).
 
@@ -187,6 +192,11 @@ No build order is implied between these items.
    The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
 
 ## Done
+
+1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine actually reachable, shipped with all four verbs: `run` (the bootstrap), `drive` (the no-tmux foreground escape hatch), `status` (one-shot and `--watch`), and `pause`.
+   `run` seeds the status file and commits it weft-side before the driver ever spawns — the ordering that makes loom's own first Preflight precondition row pass immediately rather than blocking on the seed's own dirt — then spawns the detached driver and waits on a handshake for it to take the run lock, so a re-entrant invocation ensures substrate and attaches rather than double-spawning.
+   The pair-creating fabric verb now writes and commits a parent-branch provenance record (`_lyx/fabric/origin.json`) at pair-creation time, which `run` reads rather than infers, and the per-worktree launcher set gained a third script, `run<ext>`, alongside the existing `ide`/`fabric-checkout` scripts.
+   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap) and the `internal/loomcli` package documentation.
 
 1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. `Publish` opens a pull request when the parent branch requires one and returns `stuck` (never `done`) while it awaits review, so `Shed` cannot advance past it and merge seconds later; `Finalize` always syncs against the parent through the shared `internal/mergeresolve` engine, then merges the task branch back, with Raddle regeneration folded into that same merge critical section rather than a separate step.
    See the `internal/landingshed` and `internal/mergeresolve` package documentation.

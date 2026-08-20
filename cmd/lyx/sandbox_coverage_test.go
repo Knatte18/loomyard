@@ -29,6 +29,7 @@ var excludedModules = map[string]string{
 	"ide":        "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
 	"selfreport": "create files a real GitHub issue",
 	"scout":      "requires an external language-server binary (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build scout tests, not the black-box sandbox suite",
+	"run":        "alias of loom's own bootstrap verb; covered by the loom module's scenario",
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.

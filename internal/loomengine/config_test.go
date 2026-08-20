@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // seedLoomConfig creates <baseDir>/_lyx/config/loom.yaml with the given contents.
@@ -101,5 +104,73 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	want := `not initialized here; run "lyx fabric reconcile"`
 	if err.Error() != want {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
+	}
+}
+
+// TestLoomStatusRel verifies LoomStatusRel is exactly the durable directory name joined with the
+// loom subdirectory and the status filename -- the anchor-relative form a weft commit pathspec
+// caller builds from.
+func TestLoomStatusRel(t *testing.T) {
+	want := filepath.Join(lyxdirs.LyxDirName, "loom", "status.json")
+	if got := LoomStatusRel(); got != want {
+		t.Errorf("LoomStatusRel() = %q; want %q", got, want)
+	}
+}
+
+// TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel is the regression guard that card
+// 11's refactor -- rewriting LoomStatusFile to join through LoomStatusRel -- left the returned
+// value byte-identical to a plain AnchorPath()/LoomStatusRel() join.
+func TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    filepath.Join("sub", "dir"),
+	}
+
+	want := filepath.Join(l.AnchorPath(), LoomStatusRel())
+	if got := LoomStatusFile(l); got != want {
+		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
+	}
+}
+
+// TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an
+// unanchored and a subpath-anchored *lyxcwd.Location, hand-built rather than spawned.
+func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
+	tests := []struct {
+		name      string
+		anchorRel string
+	}{
+		{"unanchored", "."},
+		{"subpath-anchored", filepath.Join("sub", "dir")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &lyxcwd.Location{
+				HubPath:      filepath.Join("home", "user", "repo-HUB"),
+				WorktreeName: "repo",
+				AnchorRel:    tt.anchorRel,
+			}
+
+			wantDriverLog := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "driver.log")
+			if got := LoomDriverLog(l); got != wantDriverLog {
+				t.Errorf("LoomDriverLog() = %q; want %q", got, wantDriverLog)
+			}
+
+			wantBootstrapLock := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "bootstrap.lock")
+			if got := LoomBootstrapLock(l); got != wantBootstrapLock {
+				t.Errorf("LoomBootstrapLock() = %q; want %q", got, wantBootstrapLock)
+			}
+
+			// Three distinct lock files is a correctness property, not a coincidence:
+			// LoomBootstrapLock must never collide with either the per-persist status
+			// lock or the whole-run lock.
+			if got := LoomBootstrapLock(l); got == LoomStatusLock(l) {
+				t.Errorf("LoomBootstrapLock() = %q; must differ from LoomStatusLock() = %q", got, LoomStatusLock(l))
+			}
+			if got := LoomBootstrapLock(l); got == LoomRunLock(l) {
+				t.Errorf("LoomBootstrapLock() = %q; must differ from LoomRunLock() = %q", got, LoomRunLock(l))
+			}
+		})
 	}
 }
