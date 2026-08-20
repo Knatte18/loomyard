@@ -235,6 +235,8 @@ github.com/Knatte18/loomyard/
 ├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, perch, Webster) over shuttle/perch/websterengine
 ├── internal/loomcli/             loom's cobra module: the session bootstrap plus the driver, status, and pause verbs
 ├── internal/loomshed/            loom's own 13-row producer list over `shedengine`
+├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
+├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type

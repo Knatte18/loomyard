@@ -137,6 +137,24 @@ func (r *Repo) ConflictedFiles() ([]string, error) {
 	return files, nil
 }
 
+// StageResolved stages paths, repo-root-relative, that a caller has resolved on disk mid-merge,
+// including removals.
+// An empty or nil paths is a no-op, returning nil without invoking git at all.
+// It runs `git add -A -- <paths>`, the -A form rather than the plain form StageAndCommit uses,
+// because a delete/modify conflict is legitimately resolved by the file being gone: the plain
+// `add --` form errors on a missing pathspec, while -A stages the removal.
+func (r *Repo) StageResolved(paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	args := append([]string{"add", "-A", "--"}, paths...)
+	if _, err := r.runChecked(args...); err != nil {
+		return fmt.Errorf("gitrepo: git add -A in %s: %w", r.path, err)
+	}
+	return nil
+}
+
 // MergeHeadPresent reports whether MERGE_HEAD exists, via
 // `git rev-parse --verify --quiet MERGE_HEAD`.
 func (r *Repo) MergeHeadPresent() (bool, error) {

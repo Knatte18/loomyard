@@ -1,0 +1,4 @@
+require_pr_to_base: ["main"]  # list of base branch names Publish requires a pull request against; a list rather than a bool because tasks branch off other tasks, and a bool would force a pull request on every intermediate task-to-task merge
+squash: true  # whether Finalize's parent-side merge squashes; true because a run produces one commit per card and an ordinary merge floods the parent with implementation noise
+conflict: opus[effort=high]  # model-spec for the conflict-resolution session both producers' resolver runs under (see docs/reference/model-spec.md)
+conflict_timeout_min: 60  # minutes the conflict-resolution session's shuttle run is allowed to run

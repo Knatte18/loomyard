@@ -168,6 +168,7 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"CloneResult", "internal/fabricengine/clone.go"},
 	{"PushResult", "internal/fabricengine/weftgit.go"},
 	{"MergeResult", "internal/fabricengine/merge.go"},
+	{"StageResult", "internal/fabricengine/mergestage.go"},
 }
 
 // destructiveGuardReadOnlyResultTypes is the companion table of the read-only verbs' result types

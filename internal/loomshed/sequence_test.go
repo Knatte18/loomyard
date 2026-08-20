@@ -8,15 +8,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// wantSequenceOrder is the full 13-row name sequence a clean Run over buildSequenceFixture must
+// wantSequenceOrder is the row 1-11 name sequence a clean Run over buildSequenceFixture must
 // produce. Asserted against this literal expected list rather than a computed one, so a reordering
 // in loomshed.go's producer table is a test failure rather than a silently-agreeing derivation.
+//
+// The sequence stops at Publish (row 11) deliberately: Publish's OnStuck is "" (escalate), so a
+// Stuck verdict blocks the run and row 12 (Finalize) is never invoked. Driving both producers'
+// real merge logic through a Shed run needs a genuine two-worktree pair and therefore git, which
+// this batch's own decision keeps out of this package's untagged tier.
 var wantSequenceOrder = []string{
 	NamePreflight,
 	NameDiscussionWrite,
 	NameDiscussionValidate,
 	NameDiscussionReview,
-	NamePlanSweep,
 	NamePlanWrite,
 	NamePlanValidate,
 	NamePlanReview,
@@ -24,12 +28,12 @@ var wantSequenceOrder = []string{
 	NameWebster,
 	NameWebsterReview,
 	NamePublish,
-	NameFinalize,
 }
 
-// TestSequence_FullRunReachesDone is the task's own verify requirement: the full 13-row sequence
-// running to completion against the real list.
-func TestSequence_FullRunReachesDone(t *testing.T) {
+// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the 12-row list runs
+// rows 1 through 11 (Preflight through Publish) and blocks on Publish's Stuck verdict, never
+// reaching Finalize (row 12) -- see wantSequenceOrder's own doc comment for why.
+func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, deps := buildSequenceFixture(t)
 
 	shed, err := New(deps)
@@ -41,11 +45,11 @@ func TestSequence_FullRunReachesDone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
 	}
-	if result.Outcome != shedengine.RunDone {
-		t.Fatalf("Run() outcome = %q; want %q (reason: %s)", result.Outcome, shedengine.RunDone, result.Reason)
+	if result.Outcome != shedengine.RunBlocked {
+		t.Fatalf("Run() outcome = %q; want %q (reason: %s)", result.Outcome, shedengine.RunBlocked, result.Reason)
 	}
-	if result.HaltedProducer != NameFinalize {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, NameFinalize)
+	if result.HaltedProducer != NamePublish {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, NamePublish)
 	}
 
 	if len(result.History) != len(wantSequenceOrder) {
@@ -56,8 +60,12 @@ func TestSequence_FullRunReachesDone(t *testing.T) {
 		if entry.Producer != wantName {
 			t.Errorf("History[%d].Producer = %q; want %q", i, entry.Producer, wantName)
 		}
-		if entry.Outcome != shedengine.Done {
-			t.Errorf("History[%d] (%s).Outcome = %q; want %q", i, entry.Producer, entry.Outcome, shedengine.Done)
+		wantOutcome := shedengine.Done
+		if wantName == NamePublish {
+			wantOutcome = shedengine.Stuck
+		}
+		if entry.Outcome != wantOutcome {
+			t.Errorf("History[%d] (%s).Outcome = %q; want %q", i, entry.Producer, entry.Outcome, wantOutcome)
 		}
 	}
 
@@ -68,10 +76,10 @@ func TestSequence_FullRunReachesDone(t *testing.T) {
 	if !found {
 		t.Fatalf("status file not found after Run()")
 	}
-	if got.State != shedengine.StateDone {
-		t.Errorf("persisted State = %q; want %q", got.State, shedengine.StateDone)
+	if got.State != shedengine.StateBlocked {
+		t.Errorf("persisted State = %q; want %q", got.State, shedengine.StateBlocked)
 	}
-	if got.CurrentProducer != NameFinalize {
-		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must still name the final row on the happy-path terminal", got.CurrentProducer, NameFinalize)
+	if got.CurrentProducer != NamePublish {
+		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, NamePublish)
 	}
 }

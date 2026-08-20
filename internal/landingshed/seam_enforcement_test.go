@@ -1,18 +1,17 @@
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
-// code in internal/loomshed takes every absolute path it operates on from its caller and has no
-// direct production import of internal/lyxcwd. Named seam_enforcement_test.go rather than
-// leaf_enforcement_test.go on purpose -- that second filename pairs with a TestLeafInvariant_
-// AllowlistOnly name on genuine zero-or-one-dependency leaves, and loomshed imports six internal
-// packages, so it is structurally a seam, not a leaf, exactly like internal/shedengine's own
-// seam_enforcement_test.go this file is modelled on.
+// code in internal/landingshed takes every absolute path it operates on from its caller and has no
+// direct production import of internal/lyxcwd. Modelled directly on internal/loomshed's own
+// seam_enforcement_test.go: same walk, same imports-only parse, same stdlib rule, same
+// allowlist-membership shape.
 //
 // The allowlist below is deliberately a membership list rather than a bare internal/lyxcwd denylist:
 // it catches the excluded import and anything else that would drag geometry resolution in, with no
-// list maintenance beyond a genuine new dependency. internal/loomengine appearing on the allowlist
-// is legal despite loomengine itself importing internal/lyxcwd, because the invariant's membership
-// predicate is about a direct production import and transitive is explicitly fine.
+// list maintenance beyond a genuine new dependency. A transitive reach through an allowlisted
+// dependency (internal/fabricengine and internal/githubclient both import internal/lyxcwd
+// themselves) is explicitly fine -- the invariant's membership predicate is about a direct
+// production import, and transitive is never policed.
 
-package loomshed
+package landingshed
 
 import (
 	"go/parser"
@@ -24,25 +23,28 @@ import (
 	"testing"
 )
 
-// loomshedAllowedImports are the only non-stdlib import paths production code in this package may
-// use.
-var loomshedAllowedImports = map[string]bool{
+// landingshedAllowedImports are the only non-stdlib import paths production code in this package
+// may use.
+var landingshedAllowedImports = map[string]bool{
+	"github.com/Knatte18/loomyard/internal/fabricengine":  true,
+	"github.com/Knatte18/loomyard/internal/mergeresolve":  true,
+	"github.com/Knatte18/loomyard/internal/modelspec":     true,
+	"github.com/Knatte18/loomyard/internal/configengine":  true,
+	"github.com/Knatte18/loomyard/internal/logger":        true,
 	"github.com/Knatte18/loomyard/internal/shedengine":    true,
-	"github.com/Knatte18/loomyard/internal/shedadapters":  true,
+	"github.com/Knatte18/loomyard/internal/githubclient":  true,
+	"github.com/Knatte18/loomyard/internal/gitrepo":       true,
 	"github.com/Knatte18/loomyard/internal/websterengine": true,
-	"github.com/Knatte18/loomyard/internal/loomengine":    true,
-	"github.com/Knatte18/loomyard/internal/planparser":    true,
-	"github.com/Knatte18/loomyard/internal/batcher":       true,
-	"github.com/Knatte18/loomyard/internal/state":         true,
-	"github.com/Knatte18/loomyard/internal/landingshed":   true,
+	"github.com/google/go-github/v75/github":              true,
+	"gopkg.in/yaml.v3":                                    true,
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
-// imports only stdlib or an entry in loomshedAllowedImports.
+// imports only stdlib or an entry in landingshedAllowedImports.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("could not determine loomshed source directory location")
+		t.Fatal("could not determine landingshed source directory location")
 	}
 	pkgDir := filepath.Dir(file)
 
@@ -75,7 +77,7 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 			}
 			isStdlib := !strings.Contains(firstSegment, ".")
 
-			if isStdlib || loomshedAllowedImports[importPath] {
+			if isStdlib || landingshedAllowedImports[importPath] {
 				continue
 			}
 
@@ -86,7 +88,7 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("failed to walk loomshed directory: %v", err)
+		t.Fatalf("failed to walk landingshed directory: %v", err)
 	}
 
 	if len(failures) > 0 {

@@ -1,4 +1,4 @@
-// loomshed.go implements Deps and New: loom's own 13-row producer list assembled behind a
+// loomshed.go implements Deps and New: loom's own 12-row producer list assembled behind a
 // *shedengine.Shed.
 
 package loomshed
@@ -6,25 +6,25 @@ package loomshed
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// The thirteen producer names, verbatim per manifest/designs/loom.md's producer table. The name is
+// The twelve producer names, verbatim per manifest/designs/loom.md's producer table. The name is
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //
 // NamePublish and NameFinalize are not loom's own producers -- both are generic ShedProducers
-// shared by reference with Hardener's own list (see manifest/designs/landing.md) -- but the name
-// constants live here regardless, same as every other row, because loom's own producer table is
-// what New assembles from them.
+// shared by reference with Hardener's own list (see internal/landingshed's own package
+// documentation) -- but the name constants live here regardless, same as every other row, because
+// loom's own producer table is what New assembles from them.
 const (
 	NamePreflight          = "Preflight"
 	NameDiscussionWrite    = "Discussion-Write"
 	NameDiscussionValidate = "Discussion-Validate"
 	NameDiscussionReview   = "Discussion-Review"
-	NamePlanSweep          = "Plan-Sweep"
 	NamePlanWrite          = "Plan-Write"
 	NamePlanValidate       = "Plan-Validate"
 	NamePlanReview         = "Plan-Review"
@@ -71,28 +71,53 @@ type Deps struct {
 	// because the lazy wrapper around them (websterProducer) is owned here.
 	WebsterRun  shedadapters.WebsterRunner
 	WebsterDeps websterengine.RunDeps
+
+	// Landing is the told-value passthrough for landingshed.Deps, backing rows 12 (Publish) and 13
+	// (Finalize). It is a single passthrough rather than landing's fields flattened into this
+	// struct, deliberately: that keeps landing-specific fields out of Deps, and gives a future
+	// sibling product the same struct to fill from its own geometry with no duplication.
+	Landing landingshed.Deps
 }
 
-// New builds loom's 13-row producer list in table order and returns a *shedengine.Shed carrying it
+// New builds loom's 12-row producer list in table order and returns a *shedengine.Shed carrying it
 // plus the four told Shed fields.
 //
-// The thirteen rows, with their backing and OnStuck target: 1 Preflight (deps.Preflight, ""); 2
+// The twelve rows, with their backing and OnStuck target: 1 Preflight (deps.Preflight, ""); 2
 // Discussion-Write (stub, ""); 3 Discussion-Validate (real, bouncing to Discussion-Write); 4
-// Discussion-Review (stub, bouncing to Discussion-Write); 5 Plan-Sweep (stub, ""); 6 Plan-Write
-// (stub, ""); 7 Plan-Validate (real, bouncing to Plan-Write); 8 Plan-Review (stub, bouncing to
-// Plan-Write); 9 Batchifier (real, ""); 10 Webster (the lazy wrapper, ""); 11 Webster-Review (stub,
-// bouncing to Webster); 12 Publish (stub, ""); 13 Finalize (stub, ""). Every gate and validator
-// bounces back to the producer whose artifact it guards, and a gate whose guarded artifact is
-// produced by no row in the list escalates instead -- Preflight gates git and filesystem state and
-// Batchifier gates the batch config, neither of which any row writes, so there is nothing to bounce
-// to and a human is the only thing that can fix either.
+// Discussion-Review (stub, bouncing to Discussion-Write); 5 Plan-Write (stub, ""); 6 Plan-Validate
+// (real, bouncing to Plan-Write); 7 Plan-Review (stub, bouncing to Plan-Write); 8 Batchifier (real,
+// ""); 9 Webster (the lazy wrapper, ""); 10 Webster-Review (stub, bouncing to Webster); 11 Publish
+// (real, ""); 12 Finalize (real, ""). Every gate and validator bounces back to the producer whose
+// artifact it guards, and a gate whose guarded artifact is produced by no row in the list escalates
+// instead -- Preflight gates git and filesystem state and Batchifier gates the batch config, neither
+// of which any row writes, so there is nothing to bounce to and a human is the only thing that can
+// fix either. Publish and Finalize share that same escalate-only posture: neither bounces, because nothing in the list produces what these two gate
+// -- an unresolvable conflict against the parent's current state, an unreachable remote service, a
+// drifting parent, and a pull request awaiting human review are all things only a human fixes.
+//
+// Plan-Sweep is deliberately not a row here: its scout-inventory work is deferred (see
+// manifest/roadmap.md's Someday "loom: build Plan-Sweep for real" item) and it has no consumer --
+// Plan-Write reads only decision-record.md today -- so a stub row with nothing to feed and nothing
+// to bounce to would be dead weight, not a placeholder worth carrying. It returns as a row only
+// alongside the task that builds it for real.
 //
 // New returns an error when deps.Preflight is nil, since a nil row would otherwise panic at the
 // call step rather than failing loud; it does not otherwise pre-validate, because shedengine.Run
-// validates every field before it touches anything.
+// validates every field before it touches anything. Building the Publish and Finalize rows can
+// itself fail -- both constructors reject a nil closure in deps.Landing -- and New surfaces that
+// construction failure rather than discarding it.
 func New(deps Deps) (*shedengine.Shed, error) {
 	if deps.Preflight == nil {
 		return nil, fmt.Errorf("loomshed: deps.Preflight must not be nil")
+	}
+
+	publish, err := landingshed.NewPublish(deps.Landing)
+	if err != nil {
+		return nil, fmt.Errorf("loomshed: build Publish row: %w", err)
+	}
+	finalize, err := landingshed.NewFinalize(deps.Landing)
+	if err != nil {
+		return nil, fmt.Errorf("loomshed: build Finalize row: %w", err)
 	}
 
 	producers := []shedengine.ProducerDef{
@@ -100,15 +125,14 @@ func New(deps Deps) (*shedengine.Shed, error) {
 		{Name: NameDiscussionWrite, Producer: newStub(NameDiscussionWrite), OnStuck: ""},
 		{Name: NameDiscussionValidate, Producer: newDiscussionValidate(NameDiscussionValidate, deps.DecisionRecordPath, deps.SupportLogPath), OnStuck: NameDiscussionWrite},
 		{Name: NameDiscussionReview, Producer: newStub(NameDiscussionReview), OnStuck: NameDiscussionWrite},
-		{Name: NamePlanSweep, Producer: newStub(NamePlanSweep), OnStuck: ""},
 		{Name: NamePlanWrite, Producer: newStub(NamePlanWrite), OnStuck: ""},
 		{Name: NamePlanValidate, Producer: newPlanValidate(NamePlanValidate, deps.AnchorPath, deps.WorktreeRoot), OnStuck: NamePlanWrite},
 		{Name: NamePlanReview, Producer: newStub(NamePlanReview), OnStuck: NamePlanWrite},
 		{Name: NameBatchifier, Producer: newBatchifier(NameBatchifier, deps.AnchorPath), OnStuck: ""},
 		{Name: NameWebster, Producer: newWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, deps.WebsterDeps), OnStuck: ""},
 		{Name: NameWebsterReview, Producer: newStub(NameWebsterReview), OnStuck: NameWebster},
-		{Name: NamePublish, Producer: newStub(NamePublish), OnStuck: ""},
-		{Name: NameFinalize, Producer: newStub(NameFinalize), OnStuck: ""},
+		{Name: NamePublish, Producer: publish, OnStuck: ""},
+		{Name: NameFinalize, Producer: finalize, OnStuck: ""},
 	}
 
 	return &shedengine.Shed{

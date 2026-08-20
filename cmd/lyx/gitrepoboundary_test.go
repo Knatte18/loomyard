@@ -81,6 +81,7 @@ var gitrepoPinnedRunBoundMethods = map[string]bool{
 	"ConflictedFiles":     true,
 	"MergeHeadPresent":    true,
 	"MergeFFOnly":         true,
+	"StageResolved":       true,
 }
 
 // gitrepoBoundaryMinScannedFiles is the vacuous-scan floor for this guard's
