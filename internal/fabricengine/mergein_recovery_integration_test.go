@@ -1081,6 +1081,88 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	}
 }
 
+// TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted is the test the squash
+// refusal actually needs, and the reason it exists is a proof gap rather than a new behaviour.
+// TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted above looks like it pins the `squash`
+// clause but does not: its hand-landed squash conclude is an ORDINARY one-parent commit, so the
+// parent-arity clause refuses it first. Deleting `squash ||` from sideConcludeAlreadyLanded left
+// that test — and the entire integration suite — green.
+// The shape only the squash clause can refuse is a squash record whose side carries a genuine
+// TWO-parent merge of the recorded source on the recorded start. An operator reaches it by the
+// documented route: a squash writes no MERGE_HEAD, so `git merge --abort` is unavailable and the
+// way back is `git reset --hard <recorded start>`, after which finishing with a plain `git merge
+// <recorded source>` produces exactly the parentage a non-squash conclude carries.
+// Adopting it would record a MERGE commit as a SQUASH record's conclude and then record
+// correspondence for a pair whose two sides carry structurally different history — one squashed,
+// one not. Refusing keeps it honestly stuck, which is the pre-adoption-arm behaviour.
+func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
+	setupCleanNonFastForward(t, h.PrimeWeft(), "feature-weft", "weft-branch.txt", "weft-current.txt")
+
+	// Sabotage the warp conclude so Merge stops with the record retained, squash recorded, and the
+	// warp side staged with no conclude SHA.
+	installFailingPreCommitHook(t, h.PrimeWorktree())
+	_, err := f.Merge("feature", fabricengine.MergeOptions{Squash: true})
+	var incompleteErr *fabricengine.ErrMergeIncomplete
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("Merge(feature, squash) with the warp conclude sabotaged: error = %v (%T); want *fabricengine.ErrMergeIncomplete", err, err)
+	}
+	removePreCommitHook(t, h.PrimeWorktree())
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if !st.Squash {
+		t.Fatalf("merge state Squash = false; the squash shape this test names was not recorded")
+	}
+	if st.WarpCommitted != "" {
+		t.Fatalf("merge state WarpCommitted = %q; want empty — the warp conclude must not have landed yet", st.WarpCommitted)
+	}
+	if st.WarpSource == "" {
+		t.Fatalf("merge state WarpSource is empty; the source-SHA clause would refuse before the squash clause is ever reached")
+	}
+
+	// The operator returns the side to the recorded start — `git merge --abort` is unavailable, since
+	// a squash writes no MERGE_HEAD — and finishes with a plain, non-squash merge.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "reset", "--hard", st.WarpStart)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-edit", st.WarpSource)
+	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+
+	// Precondition, asserted rather than assumed: EVERY non-squash adoption clause is now satisfied —
+	// HEAD moved, no live MERGE_HEAD, a resolved source SHA on the record, and exactly two parents in
+	// exactly the right order. Only `squash` stands between this commit and adoption.
+	parents := commitParentsForTest(t, h.PrimeWorktree(), handSHA)
+	if len(parents) != 2 || parents[0] != st.WarpStart || parents[1] != st.WarpSource {
+		t.Fatalf("hand-landed commit parents = %v; want [%s %s] — the two-parent shape only the squash clause refuses", parents, st.WarpStart, st.WarpSource)
+	}
+	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) {
+		t.Fatalf("warp checkout still carries a live MERGE_HEAD; the MERGE_HEAD clause would refuse before the squash clause is reached")
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	contRes, err := fresh.MergeContinue("")
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("MergeContinue() over a squash record carrying a two-parent merge: (committed %v, error %v (%T)); want *fabricengine.ErrMergeIncomplete — a squash conclude is never adopted", contRes.Committed, err, err)
+	}
+	if contRes.Committed {
+		t.Errorf("MergeContinue().Committed = true; want false")
+	}
+	for _, entry := range contRes.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — a merge commit is not a squash record's conclude", entry)
+		}
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil)", exists, err)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != handSHA {
+		t.Errorf("warp HEAD after the refusal = %q; want the operator's own merge %q left untouched", got, handSHA)
+	}
+}
+
 // TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate pins that MergeContinue derives
 // BOTH result flags from the merge record, the same rule MergeIn and Merge follow.
 // Committed was already derived; AlreadyUpToDate was hardcoded to its zero value at MergeContinue's
