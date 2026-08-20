@@ -84,8 +84,16 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
   Point at the `internal/shedadapters` package documentation and at `manifest/designs/shed.md`, in the same shape neighbouring Done entries use.
   Change no literal list number anywhere — every item is written as `1.` and rendered sequentially, so moving an item needs no renumbering.
 
+  Repair the cross-references the move invalidates, in `manifest/roadmap.md` itself.
+  The "loom: Discussion-Review producer" item says "instantiating the `Bouncer` producer above with it" and "see the `Bouncer` item above"; both are false once the item sits in `## Done`, which follows the whole Planned section.
+  Reword each to name the Bouncer as shipped rather than as an item above.
+  Each of the three `loom` review-producer items also says "Depends on the two \"Perch → Shed flattening\" items above", which is false once only the "shedadapters: Burler-round producer" item remains in that group.
+  Reword each of those three to name the shipped Bouncer and the still-Planned Burler-round producer.
+  Check the "loom: real LLM producers" group's own intro sentence, which says the three review-producer tasks depend on the whole "Perch → Shed flattening" group above, and reword it the same way if the move makes it read as false.
+  These four-plus edits are surgical wording repairs, not scope changes: leave every one of those items' own scope, ordering, and placement exactly as it stands.
+
   Leave every other roadmap item where it is.
-  In particular, leave the Planned "shedadapters: Burler-round producer" item and the three `loom` review-producer items untouched — they are separate tasks.
+  In particular, leave the Planned "shedadapters: Burler-round producer" item and the three `loom` review-producer items in Planned — they are separate tasks, and only their cross-reference wording changes here.
   Do not delete any file under `manifest/designs/`: the documentation lifecycle's delete-on-landing rule applies to a module's own design doc, and this task ships inside `internal/shedadapters` rather than as a module with a doc of its own; `manifest/designs/shed.md` is `shed`'s doc and `shed` is not what landed here.
 - **Commit:** `docs(roadmap): move the Bouncer item to Done`
 

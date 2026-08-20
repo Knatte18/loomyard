@@ -52,7 +52,9 @@ That path still consults `cancelErr` before returning its own error, exactly as 
   Document `Model`, `Effort`, and `Version` as an already-resolved triple threaded verbatim into `shuttleengine.Spec`, resolved at the caller's own config-load time.
   Document `Now` as the injected clock resolving only the archive filename's same-second collision suffix.
 
-  Declare `type Bouncer struct { cfg BouncerConfig }` and `var _ shedengine.ShedProducer = (*Bouncer)(nil)`.
+  Declare `type Bouncer struct { cfg BouncerConfig }`.
+  Do not add the `var _ shedengine.ShedProducer = (*Bouncer)(nil)` compile-time assertion in this card — `*Bouncer` has no `Call` method until card 6, so the assertion would fail to build at this card's commit.
+  Card 6 adds it alongside `Call`, which is where every existing adapter in this package keeps its own.
 
   Declare `NewBouncer(cfg BouncerConfig) (*Bouncer, error)`, validating in a fixed order and returning a `shedadapters: NewBouncer: `-prefixed error naming the offending field: `Name` non-empty; `RunDir` non-empty and `filepath.IsAbs`; `ArtifactPaths` non-empty with every entry non-empty and `filepath.IsAbs`; `ReportName` non-nil; `StencilsDir` non-empty and `filepath.IsAbs`; `RubricStencil` non-empty; `Shuttle` non-nil.
   `Model`, `Effort`, and `Version` are accepted empty and defer to the provider default.
@@ -99,6 +101,8 @@ That path still consults `cancelErr` before returning its own error, exactly as 
 - **Moves:** none
 - **Requirements:**
   Add `func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)` to `internal/shedadapters/bouncer.go`, plus the unexported helpers below.
+  Add the compile-time assertion `var _ shedengine.ShedProducer = (*Bouncer)(nil)` in this card, beside `Call`, matching where `internal/shedadapters/singlellm.go` keeps its own.
+  It belongs here rather than in card 5 because `*Bouncer` satisfies the interface only once `Call` exists.
   Import `internal/logger`, `internal/stencil`, `internal/stencilstore`, `internal/shuttleengine`, and `internal/shedengine`.
   Import neither `internal/burlerengine`, nor `internal/loomengine`, nor `internal/treadleengine`.
   Call no `lyxcwd` function, no `os.Getwd`, and no `filepath.Abs`, and write neither the literal `_lyx` nor the literal `.lyx` anywhere in this file — every path is joined onto the told `RunDir`.
@@ -232,7 +236,7 @@ That path still consults `cancelErr` before returning its own error, exactly as 
 
 ## Batch Tests
 
-`verify: go test ./internal/shedadapters/...` runs the whole package, which after this batch adds `bouncer_config_test.go` and `bouncer_seed_test.go` to batch 1's files and the four pre-existing adapter test files.
+`verify: go test ./internal/shedadapters/...` runs the whole package, which after this batch adds `bouncer_config_test.go` and `bouncer_seed_test.go` to batch 1's two files and the five pre-existing ones (`archive_test.go`, `ctx_test.go`, `perch_test.go`, `singlellm_test.go`, `webster_test.go`).
 Package-wide scope is correct rather than over-broad: Go's test unit is the package, and this batch's cards edit one package whose suite is fast, fake-driven, and filesystem-only.
 Card 5's constructor table is the guard against a wiring typo surfacing mid-run; card 7's marker-completeness and stamp-leak cases are the guard against the prompt contract drifting between the shipped templates and the Go call site.
 The judge, replay, harvest, degradation, pointer-discipline, stale-output, and cancellation scenarios are deliberately left to batch 4, which adds only test files.

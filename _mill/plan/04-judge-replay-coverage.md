@@ -128,7 +128,7 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
 
 ## Batch Tests
 
-`verify: go test ./internal/shedadapters/...` runs the whole package, now including the three Bouncer test files this batch and batch 3 add.
+`verify: go test ./internal/shedadapters/...` runs the whole package, now including all four Bouncer `Call` test files — `bouncer_config_test.go` and `bouncer_seed_test.go` from batch 3, and `bouncer_judge_test.go` and `bouncer_replay_test.go` from this one.
 Package-wide scope is correct rather than over-broad for the same reason batches 1 and 3 give: Go's test unit is the package, and this package's suite is fast, fake-driven, and filesystem-only.
 The cases here are the ones that pin the design's two non-obvious mechanisms — harvest and replay — plus the property that must never regress: no degraded path ever returns `shedengine.Done`.
 Every `Call` case asserts on the recorded `shuttleengine.Spec` where a spawn happened and on whether the fake was called at all where one must not have, so a mode misclassification fails loudly rather than passing on a coincidentally-correct outcome.
