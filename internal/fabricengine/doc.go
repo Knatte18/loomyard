@@ -995,7 +995,9 @@
 // **Sibling refusals and the write lock's scope.** Exactly four sibling verbs carry an explicit
 // refusal, and they are the four whose write would corrupt or be corrupted by a live merge:
 // `Commit`, `Pull`, `Topology.Checkout` and `Topology.Remove` all return `*ErrMergeInProgress` while
-// a merge record exists (`Commit` additionally refuses foreign git-level merge state with no record),
+// a merge record exists (`Commit` additionally refuses foreign git-level merge state with no record,
+// as `*ErrForeignMergeState` — fabric has no merge of its own in progress there, and the foreign
+// error's plain-git advice is the one that actually clears the state),
 // so a pair mid-merge cannot be pulled, committed, or torn down out from under the resolution in
 // progress. `Remove` guards two distinct subjects: the pair being removed being mid-merge itself,
 // and — via `mergeSourceInFlight` — some *other* pair in the hub being mid-merge on this pair's
