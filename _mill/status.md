@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-smoke-tests-and-roadmap
+phase: holistic-reviewing
 slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-fabric-add-and-launcher  '2026-08-19T19:22:06Z'
 approved-loomcli-run-bootstrap  '2026-08-19T19:31:22Z'
 approved-registration-and-guards  '2026-08-19T19:37:44Z'
 approved-smoke-tests-and-roadmap  '2026-08-20T06:53:46Z'
+holistic-reviewing  '2026-08-20T06:54:20Z'
 ```
 
 ## Batches
