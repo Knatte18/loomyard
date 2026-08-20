@@ -2,7 +2,7 @@
 
 Off-limits to round agents: this file matches the `fabric-merge-review-*` pattern the round prompt declares unreadable.
 
-**Last refreshed:** 2026-08-20, after round 4's verification, before round 5 spawn.
+**Last refreshed:** 2026-08-20, after round 5's verification, before round 6 spawn.
 
 ## What this task is
 
@@ -19,8 +19,8 @@ Exactly four rounds, model + effort fixed in advance, UNLESS convergence is reac
 | Round | Model | Effort | Tag | Status |
 |---:|---|---|---|---|
 | r4 | Opus | medium | `opus-medium-r4` | **done, independently verified** — 7 findings (1 BLOCKING, 2 MEDIUM, 2 LOW, 2 NIT), all fixed, all sabotage-proven, BLOCKING fix live-redriven in all 3 directions |
-| r5 | Fable | high | `fable-high-r5` | seeded, about to spawn |
-| r6 | Opus | high | `opus-high-r6` | pending |
+| r5 | Fable | high | `fable-high-r5` | **done, independently verified** — 7 findings (3 MEDIUM, 1 LOW, 3 NIT), all fixed, all sabotage-proven, both MEDIUMs live-redriven |
+| r6 | Opus | high | `opus-high-r6` | seeded, about to spawn |
 | r7 | Opus | medium | `opus-medium-r7` | pending, only if not converged by r6 |
 
 Round 4 hit a genuine watchdog stall (600s no-progress) after an earlier tool-use rejection; recovered by resuming the same agent from its transcript rather than spawning fresh — its commits were already intact per-fix. Not a deliberate operator stop; logged here per the method's "genuine stall" recovery path (same class as the reed campaign's round 1).
@@ -89,11 +89,50 @@ Docs (`doc.go`'s "# The merge surface") read as accurate against the new code �
 - The N-way concurrent amplifier was not run — not required for this module (see the round prompt's "Merge bar" section).
 - Scratch hubs (`hub1`–`hub4`, plus the round's own `h1`–`h4`) live under the session scratchpad, outside the repo. `git status` in the worktree is clean throughout.
 
-## Round 5 (`fable-high-r5`) — seeded, not yet spawned
+## Round 5 (`fable-high-r5`) — COMPLETE, independently verified
+
+Seed commit `b9dd4174`. Round commits `1ca62d61` → `66a04e43` (11 commits): review report (built incrementally), sabotage-check log (exposed F7), then F1/F7/F3/F5/F6/F4/F2 fixes in that order, sandbox coverage extension, fixer report.
+Reports: `_mill/fabric-merge-review-fable-high-r5.md`, `_mill/fabric-merge-review-fable-high-r5-fixer-report.md`.
+Self-verdict: NOT merge-ready yet (not because of open defects — none — but because a round seeded "no known residual" still found 7 real things, so no clean safety pass has landed yet). **The orchestrator's independent verification agrees with both halves of that: all 7 fixes hold up, and this is correctly not being called convergence.**
+
+Findings: MEDIUM 3 (F1 non-ASCII conflict paths, F2 lifecycle-guard TOCTOU, F7 adoption-arm parentage proof gap) · LOW 1 (F3) · NIT 3 (F4, F5, F6). All fixed, nothing deferred as unfixed.
+
+**F7 is the campaign's signature finding repeating: round 4's OWN new parentage-evidence clauses (`parents[0]==start` and source-SHA membership) had zero test coverage** — the existing adversarial test's fixture is a one-parent commit, refused by the parent-count check alone, so neither clause could fail its own test if deleted. Round 5 found this by re-sabotaging round 4's already-shipped fix, not by reviewing new code — the same "sabotage a test, not a fix" shape as first-instalment residual A/V2.
+
+### What the orchestrator verified itself
+
+**Gates, from cold on the committed tree, run twice (mid-verification and final) — all green:**
+`go build ./...`; `go vet ./...`; `go test -count=5` across all four packages; `go test -tags integration -count=1 -timeout 30m` (fabricengine ~31s, fabriccli ~2.3-2.6s, gitrepo ~1.4-1.6s).
+
+**Sabotage proofs — every one run by the orchestrator, watched to fail at the intended assertion, then restored to an empty diff:**
+
+| # | Mechanism sabotaged | Test(s) | Result |
+|---|---|---|---|
+| S1 | `parents[0] != start` clause deleted from `sideConcludeAlreadyLanded` (F7) | `TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted` | failed at `want no KindMergeCommitted — a wrong-base merge is a merge of a different base`; the sibling wrong-source test correctly stayed green (doesn't exercise this clause) |
+| S2 | source-SHA membership loop deleted from `sideConcludeAlreadyLanded` (F7) | `TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted` | failed at `want no KindMergeCommitted — a merge of some other branch is not this merge's conclude`; the sibling wrong-base test correctly stayed green |
+| S3 | `MergeAbort`'s lock acquisition moved back before the record load + guard (pre-F2 order) | `TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting` | failed at `want *fabricengine.ErrNoMergeInProgress` — the destructive TOCTOU race reproduces exactly as F2's finding describes |
+| S4 | `ConflictedFiles` reverted to `git diff --name-only --diff-filter=U` (no `-z`, F1) | `TestMergeConflictedFiles_NonASCIIPathIsRawNeverQuoted`, `TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable` | both failed, reproducing the exact pre-fix bug: C-quoted path returned, then self-aborts as `*ErrUnmergeableState` for an in-tree conflict |
+
+**Both MEDIUM behavioral fixes re-driven live by the orchestrator**, freshly deployed binary, fresh isolated hub (the shared scratch warp/weft-bare pair from V1 verification had accumulated branch names across many ad-hoc hub clones and collided — switched to a dedicated fresh bare pair, `warp-bare2`/`weft-bare2`, for this round's live checks):
+
+- **F1** (hub8): add/add conflict on `_lyx/ä-note.md` on both sides → `merge-in` reports `"conflicts":["_lyx/ä-note.md"]` — raw, correctly mapped, no self-abort. Resolved by hand (edit through the warp `_lyx` junction, `git add` in the weft checkout — the junction means the edit alone doesn't stage it, matching how the operator would actually work), `merge --continue` → `committed:true`, record cleared, resolved content landed. Full end-to-end proof, not just the negative (no-longer-self-aborts) half.
+- **F2**: verified by sabotage only (S3 above) — a real cross-process race is exactly what the round's five deterministic external-lock-hold tests exist to make reproducible without timing luck; re-deriving the race by hand outside a test harness would be strictly less rigorous than what was already sabotage-confirmed.
+
+### RESIDUAL — what verification left standing
+
+**None found.** Both MEDIUM fixes and the LOW/NITs hold up under independent sabotage and (for F1) live re-drive.
+
+### Honest limits of this verification
+
+- Windows path behaviour remains unexecuted — two instalments running now, still Linux-only.
+- F2 was verified by sabotage of the deterministic tests, not by an independently-authored race reproduction — judged sufficient (see above) but noting the distinction from F1's full live re-drive.
+- Scratch hubs (`hub5`–`hub8`) live under the session scratchpad, outside the repo. `hub5`/`hub6`/`hub7` hit branch-name collisions against a shared bare pair reused across many verification passes across this session — not a fabric defect, an artifact of scratch reuse; noted so a future orchestrator doesn't waste time on it. `git status` in the worktree is clean throughout.
+
+## Round 6 (`opus-high-r6`) — seeded, not yet spawned
 
 Seed commit: (this file + the re-seeded review prompt, committed together before spawn).
-No residual to close — round 4 closed everything it found and the orchestrator's independent verification agrees. Prompt seeded as an ordinary independent adversarial pass (not a declared safety pass — one clean round does not establish convergence per the operator's 4-round plan), carrying forward the parents[0]==start ergonomics question for re-examination and the two honest coverage gaps.
+No residual to close — round 5 closed everything it found and the orchestrator's independent verification agrees. Two rounds in a row have now found and fixed real material (round 4: 7 findings incl. 1 BLOCKING; round 5: 7 findings incl. 3 MEDIUM, one of which was a proof gap in round 4's own supposedly-closed fix). This is round 6 of the operator's fixed 4-round plan (Opus medium → Fable high → **Opus high** → Opus medium) — the highest model+effort combination in the rotation, well-placed to either find what two lower/mid-effort rounds missed or serve as a genuine safety-pass candidate if it comes back clean.
 
 ## Next action
 
-Spawn round 5: `subagent_type: crucible-reviewer-high`, `model: fable`, prompt = "Read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.", tag `fable-high-r5`. Wait for completion, then independently verify per the protocol in `crucible/orchestrator-prompt.md` before deciding whether to re-seed round 6 (Opus/high) or, if round 5 is a genuine safety pass agreeing with round 4's clean result, consider convergence.
+Spawn round 6: `subagent_type: crucible-reviewer-high`, `model: opus`, prompt = "Read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.", tag `opus-high-r6`. Wait for completion, then independently verify per the protocol in `crucible/orchestrator-prompt.md`. If round 6 comes back with zero findings (a genuine safety pass) and the orchestrator's independent gates agree, that is the convergence signal per the operator's plan — consider stopping before round 7 rather than spawning it reflexively.
