@@ -35,7 +35,6 @@ import (
 //     exemption — see hermeticenv_test.go's own entry below.
 var allowedNonHermetic = map[string]string{
 	"internal/proc":                           "spawns generic non-git processes — process control is the package's subject",
-	"internal/scoutengine":                    "spawns gopls and go install for EnsureServer/toolchain-manager integration coverage, plus short-lived test-only subprocesses for PID-liveness fixtures (batches 4, 6); never git",
 	"cmd/lyx/hermeticenv_test.go":             "this guard file itself; carries the tokens as its own test data",
 	"tools/sandbox/pathresolve_guard_test.go": "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
 }
