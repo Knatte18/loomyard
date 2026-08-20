@@ -1,5 +1,5 @@
 // coherence.go implements the pure, in-memory validator that checks a decoded shedengine.Status
-// shell plus its unmarshaled loom Status product against the fresh-start invariants Preflight
+// shell plus its unmarshaled loom Status product against the fresh-start invariants CheckSeed
 // enforces before a task is fit to run.
 // It performs no I/O and spawns nothing, so it is exhaustively table-tested in Tier 1
 // (coherence_test.go).
@@ -8,6 +8,7 @@ package loomengine
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -15,8 +16,12 @@ import (
 
 // checkCoherence validates a decoded shedengine.Status shell alongside its unmarshaled loom
 // product against the fresh-start invariants check 4 enforces.
+// expectedProducer is the current_producer value a coherent seed must carry, and
+// toleratedProducers is the set of producer names a history entry may name without tripping the
+// fresh-start rule -- both told by the caller, since they are the caller's own durable row
+// identities, never derived here.
 // It collects all violated rules into the returned slice.
-func checkCoherence(shed shedengine.Status, product Status) []Failure {
+func checkCoherence(shed shedengine.Status, product Status, expectedProducer string, toleratedProducers []string) []Failure {
 	var failures []Failure
 
 	mandatory := []struct {
@@ -35,13 +40,14 @@ func checkCoherence(shed shedengine.Status, product Status) []Failure {
 		}
 	}
 
-	// check 4 is only ever reached while Preflight's own gate holds, and that gate is only
-	// satisfied by the very first producer in loom's list -- so a coherent seed's
-	// current_producer must always name it.
-	if shed.CurrentProducer != "Preflight" {
+	// shedengine.Run persists the *next* row's name into current_producer and appends the
+	// finished row's history entry before calling that next row, so at the instant this row's
+	// own seed check runs, the file already names this row. The expected name is therefore told
+	// by the caller, not derived here.
+	if shed.CurrentProducer != expectedProducer {
 		failures = append(failures, Failure{
 			Check:  CheckSeedIncoherent,
-			Reason: fmt.Sprintf("current_producer %q is not %q", shed.CurrentProducer, "Preflight"),
+			Reason: fmt.Sprintf("current_producer %q is not %q", shed.CurrentProducer, expectedProducer),
 		})
 	}
 
@@ -83,15 +89,16 @@ func checkCoherence(shed shedengine.Status, product Status) []Failure {
 
 	// The fresh-start check is narrower than "history is empty": shedengine.Run appends a history
 	// entry before persisting StateBlocked, including on the OnStuck: "" escalation path, so a
-	// Stuck outcome at row 1 (Preflight itself) leaves one Preflight entry behind. A history
-	// entry naming any producer other than "Preflight" is the real half-finished signal -- an
-	// entry naming "Preflight" itself is tolerated, so a blocked row-1 run stays resumable rather
-	// than failing CheckHalfFinished on every subsequent resume attempt, forever.
+	// Stuck outcome at either the generic row or loom's own row leaves that row's own entry
+	// behind -- which is why both names are in the tolerated set. A history entry naming any
+	// producer outside that set is the real half-finished signal, so a blocked run at a tolerated
+	// row stays resumable rather than failing CheckHalfFinished on every subsequent resume
+	// attempt, forever.
 	for _, h := range shed.History {
-		if h.Producer != "Preflight" {
+		if !slices.Contains(toleratedProducers, h.Producer) {
 			failures = append(failures, Failure{
 				Check:  CheckHalfFinished,
-				Reason: fmt.Sprintf("history names producer %q, not just %q: status.json is not a fresh seed", h.Producer, "Preflight"),
+				Reason: fmt.Sprintf("history names producer %q, not one of the tolerated set %v: status.json is not a fresh seed", h.Producer, toleratedProducers),
 			})
 			break
 		}
