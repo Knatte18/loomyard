@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: shedadapters-generic-bouncer-producer
 branch: shedadapters-generic-bouncer-producer
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-reviewing  '2026-08-20T16:49:42Z'
 holistic-fixing  '2026-08-20T16:55:37Z'
 nits-fixed-holistic  '2026-08-20T16:57:19Z'
 holistic-approved  '2026-08-20T16:57:26Z'
+done  '2026-08-20T16:58:45Z'
 ```
 
 ## Batches
