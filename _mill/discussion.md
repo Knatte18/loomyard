@@ -30,7 +30,7 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
 - A writer for the structured focus file, used by exactly two paths: the seed call's fallback, and a `BLOCKING` verdict whose next-round focus file is missing or unparseable.
 - Two new generic stencil templates, `contracts/stencils/bouncer/bouncer-template-seed.md` and `contracts/stencils/bouncer/bouncer-template-judge.md`, registered in `contracts/stencils/stencils.go`.
 - An exported round-resolution helper in `internal/shedadapters` so the later Burler-round producer resolves the same round number from the same on-disk convention.
-- Package-doc updates in `internal/shedadapters/doc.go` — see "The `doc.go` edit list" under Technical context for the exact headings and what each gains — and a note in `manifest/designs/shed.md`'s engine-adapter section.
+- Package-doc updates in `internal/shedadapters/doc.go` and an amendment to `manifest/designs/shed.md`'s engine-adapter section — see "The `doc.go` edit list" and "The `shed.md` amendment" under Technical context for exactly which sections and sentences change.
 - Tests: table tests over a fake `Shuttle` for every `Call` path and every fail-safe degradation, parser tests for every malformed-file rule, and a registry-completeness case for the two new stencils.
 
 **Out:**
@@ -172,7 +172,7 @@ Without it, every judge that forgot the focus file would pay for a whole extra s
 **Focus-file synthesis — the complete list of paths that write a focus file without a judge.**
 The writer named in Scope is used by exactly two paths:
 
-1. The **seed call's fallback**, when the seed spawn fails at any point: `round-1-focus.md` with `round: 1` and both lists empty.
+1. The **seed call's fallback**, when `round-1-focus.md` is absent or unparseable *after* the seed spawn returns: `round-1-focus.md` with `round: 1` and both lists empty.
 2. **After a `BLOCKING` verdict** — reached via harvest or via replay — when `round-<N+1>-focus.md` is absent or does not parse: synthesized with `round: N+1` and both lists empty, plus a `logger.Warn`.
 
 And by nothing else; in particular, an `APPROVED` verdict synthesizes nothing, because the segment exits and no next round will read it.
@@ -257,7 +257,14 @@ The absent case archives nothing, having nothing to archive.
 ### Seed call — spawns, with a mechanical fallback
 
 - Decision: the seed call spawns the judge model against `bouncer-template-seed.md` to write `round-1-focus.md`.
-  If that spawn fails at any point, the Bouncer writes `round-1-focus.md` itself with `round: 1`, empty `exclude_lenses`, and empty `focus`, logs a `Warn`, and still returns `Stuck`.
+  After the spawn returns — whatever outcome it reported — the Bouncer checks the file.
+  If `round-1-focus.md` is **absent or unparseable**, the Bouncer archives any debris, writes the file itself with `round: 1`, empty `exclude_lenses`, and empty `focus`, and logs a `Warn`.
+  If it is **present and parses**, that file is kept as-is even when the spawn reported a failure.
+  Either way the seed call returns `Stuck`.
+- **The trigger is the file's state, not the spawn's outcome — this is the seed-side twin of harvest.**
+  Stating it as "the fallback fires when the spawn fails" would be a different and worse rule: a spawn that wrote a perfectly good focus file and *then* hit a `Run` error or a non-`done` classification would have its real, paid-for targeting overwritten with two empty lists.
+  That is exactly the discard this design forbids on the judge side, and there is no reason the seed side should behave differently.
+  Keying on the file means both calls follow one principle: a completed artifact is honoured, and only a missing or malformed one is replaced.
 - Rationale: the roadmap requires the rubric to cover the seed call's focus-setting pass, not only post-round judgment — which only means anything if an LLM actually reads the rubric and the artifact at seed time.
   This is also what makes `Crucible`'s current behavior (an orchestrator picks focus before spawning a reviewer round) the working precedent for `Tenter`'s eventual reuse rather than a loose analogy.
   The mechanical fallback exists because a missing focus file would otherwise break the round producer's read path on round 1, and losing the focus guidance is a far cheaper failure than blocking the first round entirely.
@@ -402,6 +409,10 @@ A replay and a re-bounce build no `Spec` at all, since neither spawns.
   - **The round producer's "round to write" is the return value plus one.**
     The two consumers differ by exactly one on identical disk state, and that difference is expressed at the call sites rather than by two functions.
   - **An unreadable `runDir` is an error**, not a silent `0` — a mistyped or not-yet-created run dir must never look like a fresh segment about to be seeded.
+  - **Only `fs.ErrNotExist` means "absent".**
+    Any other `os.Stat` error on a report file — a permission failure, an I/O error, a broken mount — is returned as an error, never treated as an absent round.
+    Silently reading such a failure as absence would truncate the contiguous scan mid-sequence, or return `0` and re-seed a segment that has already judged rounds — the same "must never look like a fresh segment" failure the `runDir` clause exists to prevent, reached by a different route.
+    Concretely: classify with `errors.Is(err, fs.ErrNotExist)` and return every other error, rather than testing `err != nil` and assuming absence.
 - Rationale: the Burler-round producer must resolve *the same* round number from *the same* on-disk convention, or the two halves of a segment disagree about which round they are in — a bug that would surface as a silently skipped or double-judged round.
   Exporting it now, in the task that defines the convention, is what prevents the later task from duplicating and drifting.
   Pinning the return *shape* matters as much as exporting the function: "round to judge" and "round to write" are both plausible readings of a bare `ResolveRound`, and two consumers that each pick a different one would drift while sharing the same code.
@@ -442,6 +453,18 @@ The budget is per-producer and episode-scoped, counted from persisted `history[]
 - **`# Shared cancellation rule`** (`doc.go:52`) — gains the Bouncer, noting that its genuine-success exception covers a harvested verdict, not only a `shuttleengine` `done`.
 - **`# Limitations`** (`doc.go:65`) — gains the two soft spots this design accepts: prompt-only ledger carry-forward, and no mid-run cancellation bridge (the same limitation `SingleLLMProducer` and `WebsterProducer` already record).
 - **`# The perch run-id scheme`** (`doc.go:39`) — untouched; it is `PerchProducer`-specific.
+
+**The `shed.md` amendment.**
+`manifest/designs/shed.md`'s "Engine adapters — a thin, shared seam, not one per producer" section (lines 294-307) makes two claims the Bouncer falsifies, and both are amended with the same precision as the `doc.go` list rather than having a note appended beside them:
+
+- **"`Shed` needs not one adapter per producer, but one per distinct engine type"** (l.302), and its restatement "the adapter count scales with the number of distinct *engines* in play, never with the number of producers".
+  The Bouncer is a **second** `shuttleengine`-backed member alongside `SingleLLMProducer`, so the count no longer scales with engines alone.
+  The rule becomes: one adapter per distinct engine type, **plus** one entry per producer that is itself new logic over an already-adapted engine rather than a translation of a different one.
+  The Bouncer is the first of that second kind, and the section says so explicitly — it is the distinction that keeps the original rule true for the cases it was written about.
+- **The per-engine bullet list** (l.303-307), whose `SingleLLMProducer` bullet describes the shuttle case as "the parameterization lives entirely in the caller's own `shuttleengine.Spec` source, which the adapter evaluates once per call and never templates itself" — precisely what the Bouncer does not do, since it composes its own prompt from stencils.
+  A new bullet covers the Bouncer, and the `perch` bullet ("`perch` needs one adapter, reusable by every review-gate producer") gains the note that the Burler/Bouncer pair supersedes it for review gates, pointing at the Someday `Bouncer → Perch` item for perch's own fate.
+
+This is the same falsehood the `doc.go` list is careful about at `doc.go:4`, in a second document — so it is fixed in the same commit, per the Documentation Lifecycle.
 
 **The judge spawn pattern** is `internal/treadleengine/judge.go`.
 Read `runJudgeCall` in particular — it is the reference for the whole sequence: `stencilstore.Read` for the template, `stencil.Fill` with a `map[string]string` of marker values, a `shuttleengine.Spec` carrying `Prompt`, `OutputFiles`, `Model`, `Effort`, `Role`, and `Round`, then `sh.Run`, then read and parse the output file, with every step degrading to a `Warn` plus a fallback.
@@ -544,7 +567,7 @@ TDD candidates — write these before the implementation, in this order:
    Include the empty-exclusions seed shape explicitly, since that is the seed call's fallback output and the round producer's round-1 input.
 3. **The exported `ResolveRound` helper.**
    Filesystem-only, no spawn.
-   Cover: empty run dir → `0`, nil error; only round 1's report present → `1`; rounds 1–3 present → `3`; a gap in the sequence (1 and 3 present, 2 absent) → `1`, asserting explicitly that round 3 is *not* returned, since the contiguity rule is what both halves of a segment depend on agreeing about; a run dir that does not exist → an error, not a silent `0`.
+   Cover: empty run dir → `0`, nil error; only round 1's report present → `1`; rounds 1–3 present → `3`; a gap in the sequence (1 and 3 present, 2 absent) → `1`, asserting explicitly that round 3 is *not* returned, since the contiguity rule is what both halves of a segment depend on agreeing about; a run dir that does not exist → an error, not a silent `0`; and a report file whose stat fails for a reason other than not-exist (an unreadable directory mode, skipped on platforms where that cannot be arranged) → an error, not a silent `0` or a truncated scan.
    Also assert both derived readings against one disk state in the same test — "round to judge" is the return value and "round to write" is the return value plus one — so the two consumers' contract is exercised, not just the scan.
 4. **`Call`, against a fake `Shuttle`.**
    The fake records the `Spec` it received and returns a scripted `Result`, with a hook to write the output files the real agent would have written.
@@ -559,7 +582,9 @@ Scenarios `Call` must cover:
 - **Marker completeness** — for each template, assert the filled prompt contains every path in that template's marker map and that `stencil.Fill` returned no error; a template gaining a marker the Go side does not supply must fail this test rather than surfacing at run time as a degradation.
   Include the first-round case asserting `previous_ledger` renders as `(none)`.
 - **`Spec` identity** — `Role` is `"bouncer-seed"` / `"bouncer-judge"` and `Round` is the decimal round as a string.
-- **Seed call, spawn fails** — every failure mode in turn (stencil read, fill, `Run` error, non-`done` outcome, agent wrote nothing, agent wrote an unparseable focus file); each returns `Stuck` with nil error, and `round-1-focus.md` exists with `round: 1` and both lists empty.
+- **Seed call, spawn fails with no usable file** — every failure mode in turn (stencil read, fill, `Run` error, non-`done` outcome, agent wrote nothing, agent wrote an unparseable focus file); each returns `Stuck` with nil error, and `round-1-focus.md` afterwards holds `round: 1` with both lists empty.
+- **Seed-side harvest** — the fake `Shuttle` writes a valid, non-empty `round-1-focus.md` and *then* reports a `Run` error or a non-`done` outcome: assert the agent's file survives byte-identical and is **not** replaced by the empty-lists fallback.
+  This is the seed-side twin of the judge's harvest case, and the guard against overwriting real targeting the segment already paid for.
 - **Judge call, `APPROVED`** — returns `Done` with the ledger path as the pointer; all three files written, `round-<N+1>-focus.md` included and carrying empty `exclude_lenses`/`focus`.
 - **Judge call, `BLOCKING`** — returns `Stuck` with the ledger path as the pointer; verdict, ledger, and `round-<N+1>-focus.md` all written.
 - **Judge call, every degradation path** — returns `Stuck`, nil error, a `Warn` logged.

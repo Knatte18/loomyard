@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: shedadapters-generic-bouncer-producer
 branch: shedadapters-generic-bouncer-producer
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-20T11:37:34Z'
+discussion-fix-r6  '2026-08-20T15:25:53Z'
+discussed  '2026-08-20T15:25:53Z'
 ```
