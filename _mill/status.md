@@ -44,7 +44,9 @@ batches:
     commit_sha: a07d1f4e724fb04497ba22c947deb52483b3adcb
     verify_baseline_failures: []
   - name: wire-two-rows
-    state: pending
+    state: running
+    implementer_session: cc9ab4f4-f932-418f-beb6-09b297ef73f0
+    start_sha: 71e3e30013d4efc5f28cc5b54af6f8ebfcbc6a06
     verify_baseline_failures: []
   - name: delete-composite
     state: pending
