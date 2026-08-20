@@ -79,7 +79,8 @@ Landing this while the task already touches `ProducerDef`/`validate()` is cheape
 - Rationale: this deliberately inverts today's documented rationale (`run.go`'s `bouncesRemaining` comment and `shed.md`'s "per-`Run`-call and held in memory" paragraph), which grants a full fresh budget on every new invocation.
   The thing the budget guards is total wasted spend before a human is pulled in, and a crash-restart loop under the old rule is unbounded.
   The failure mode the change introduces is narrow: after a human fixes the underlying problem the producer returns `Done` and never consults the budget at all, so an immediate re-block only happens when the fix did not work — which is exactly when blocking again is correct.
-  Both stale rationale sites are rewritten in this commit.
+  Both stale rationale sites are rewritten in this commit, and the new prose must state the inversion *explicitly* — naming the old per-`Run`-call reset, saying it was deliberate, and saying why it was overturned — not merely describe the new behavior in isolation.
+  Describing only the new behavior leaves the reset looking like an accidental omission, which is exactly how a future reader reintroduces it as a bugfix.
 - Rejected: counting only entries appended during the current `Run` call (snapshot `len(history)` at entry) — that reduces the history derivation to a roundabout in-memory counter and keeps the unbounded crash-restart loop.
   Also rejected: counting since the producer's last `Done` entry ("episode" budget) — natural for a Bouncer, but a gate that never passes still accumulates all-time, so it does not solve the resume case while adding a second rule to explain.
   Also rejected: granting fresh budget when the status file read at step 1 is in `state: "blocked"` — it preserves both properties, but adds an unrequested rule and re-introduces the unbounded human-driven loop by a different door.
@@ -177,7 +178,7 @@ Do not redeclare these.
 **Callers and fixtures outside `shedengine`:**
 
 - `internal/loomshed/loomshed.go` is the only `[]shedengine.ProducerDef` literal in the repo outside the engine's own tests.
-- `internal/loomshed/resume_test.go:267-301` drives Discussion-Validate to `Stuck` repeatedly with `deps.MaxBounces = 2` and asserts exactly `MaxBounces + 1` Stuck entries then `shedengine.RunBlocked`.
+- `internal/loomshed/resume_test.go:269-303` (`TestBounceRouting_BudgetExhaustionBlocks`) drives Discussion-Validate to `Stuck` repeatedly with `deps.MaxBounces = 2` and asserts exactly `MaxBounces + 1` Stuck entries then `shedengine.RunBlocked`.
   Under a per-producer budget this scenario still involves exactly one bouncing producer, so the arithmetic is unchanged — but the test's comment explaining *why* the count is `MaxBounces+1` now describes a per-producer budget, and the assertion should be re-read against the new semantics rather than assumed to pass.
 - `internal/loomshed/loomshed_test.go:99` and `internal/loomshed/fixture_test.go:118` set/assert `MaxBounces`; `loomshed_test.go` also asserts the assembled row shape, which now includes `OnDone`.
 - `internal/loomcli/wiring.go:91` leaves `MaxBounces` zero with a comment about the internal default — still accurate, worth re-reading.
