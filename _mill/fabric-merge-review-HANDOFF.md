@@ -2,7 +2,7 @@
 
 Off-limits to round agents: this file matches the `fabric-merge-review-*` pattern the round prompt declares unreadable.
 
-**Last refreshed:** 2026-08-20, after round 5's verification, before round 6 spawn.
+**Last refreshed:** 2026-08-20, after round 6's verification.
 
 ## What this task is
 
@@ -20,8 +20,8 @@ Exactly four rounds, model + effort fixed in advance, UNLESS convergence is reac
 |---:|---|---|---|---|
 | r4 | Opus | medium | `opus-medium-r4` | **done, independently verified** — 7 findings (1 BLOCKING, 2 MEDIUM, 2 LOW, 2 NIT), all fixed, all sabotage-proven, BLOCKING fix live-redriven in all 3 directions |
 | r5 | Fable | high | `fable-high-r5` | **done, independently verified** — 7 findings (3 MEDIUM, 1 LOW, 3 NIT), all fixed, all sabotage-proven, both MEDIUMs live-redriven |
-| r6 | Opus | high | `opus-high-r6` | seeded, about to spawn |
-| r7 | Opus | medium | `opus-medium-r7` | pending, only if not converged by r6 |
+| r6 | Opus | high | `opus-high-r6` | **done, independently verified** — 9 findings (3 MEDIUM incl. 2 genuine NEW behavioral defects, 3 LOW, 3 NIT), all fixed, all sabotage-proven, both behavioral fixes verified (F1 live-redriven, F6 verified by inspection + sabotage since no Windows host exists) |
+| r7 | Opus | medium | `opus-medium-r7` | **awaiting operator decision — see "Next action"** |
 
 Round 4 hit a genuine watchdog stall (600s no-progress) after an earlier tool-use rejection; recovered by resuming the same agent from its transcript rather than spawning fresh — its commits were already intact per-fix. Not a deliberate operator stop; logged here per the method's "genuine stall" recovery path (same class as the reed campaign's round 1).
 
@@ -128,11 +128,56 @@ Findings: MEDIUM 3 (F1 non-ASCII conflict paths, F2 lifecycle-guard TOCTOU, F7 a
 - F2 was verified by sabotage of the deterministic tests, not by an independently-authored race reproduction — judged sufficient (see above) but noting the distinction from F1's full live re-drive.
 - Scratch hubs (`hub5`–`hub8`) live under the session scratchpad, outside the repo. `hub5`/`hub6`/`hub7` hit branch-name collisions against a shared bare pair reused across many verification passes across this session — not a fabric defect, an artifact of scratch reuse; noted so a future orchestrator doesn't waste time on it. `git status` in the worktree is clean throughout.
 
-## Round 6 (`opus-high-r6`) — seeded, not yet spawned
+## Round 6 (`opus-high-r6`) — COMPLETE, independently verified
 
-Seed commit: (this file + the re-seeded review prompt, committed together before spawn).
-No residual to close — round 5 closed everything it found and the orchestrator's independent verification agrees. Two rounds in a row have now found and fixed real material (round 4: 7 findings incl. 1 BLOCKING; round 5: 7 findings incl. 3 MEDIUM, one of which was a proof gap in round 4's own supposedly-closed fix). This is round 6 of the operator's fixed 4-round plan (Opus medium → Fable high → **Opus high** → Opus medium) — the highest model+effort combination in the rotation, well-placed to either find what two lower/mid-effort rounds missed or serve as a genuine safety-pass candidate if it comes back clean.
+Seed commit `3e7d4f56`. Round hit a transient Cloudflare/API error (522, retryable) mid Job-1 after its baseline-gates commit had already landed — resumed the same agent, per the reed campaign's "genuine stall" recovery path (not an operator stop). Round commits `f5ec8a17` → `c3e9746e` (12 commits): baseline gates, sabotage-sweep + live-driving log, complete review (9 findings), F1–F9 fixes one per commit, fixer report.
+Reports: `_mill/fabric-merge-review-opus-high-r6.md` (16-row sabotage sweep table + full live-driving log), `_mill/fabric-merge-review-opus-high-r6-fixer-report.md`.
+Self-verdict READY TO MERGE, with an explicit caveat the round wrote itself: **"this is the third consecutive round to find real material in the immediately preceding round's own shipped work; I would not read this round's clean gates as evidence of convergence."** The orchestrator's independent verification agrees with the findings and fixes; it also agrees with that caveat.
+
+Findings: MEDIUM 3 (F1, F2, F3) · LOW 3 (F4, F5, F6) · NIT 3 (F7, F8, F9). All fixed, nothing deferred as unfixed. **Two of these are genuinely NEW behavioral defects, not proof-quality gaps in existing tests** — the first time since round 4 that a round found something beyond "a mechanism has no test."
+
+- **F1 — the octopus-merge adoption bug (MEDIUM, CONFIRMED live).** Round 4's parentage-evidence fix (`sideConcludeAlreadyLanded`) checked `len(parents) < 2` — a *lower* bound — and scanned all remaining parents for the source SHA. An operator who discards a staged merge and runs `git merge <recorded-source> <unrelated-branch>` in one command builds a genuine 3-parent octopus whose first parent is the recorded start and whose second is the recorded source — satisfying the loose check. Fabric silently adopted it as its own conclude, recorded correspondence, deleted the record, and left the unrelated branch's content on the pair with nothing in any `merge_staged` entry accounting for it. Fixed to exact equality: `len(parents) != 2 || parents[0] != start || parents[1] != sourceSHA`. This survived round 4's own fix, round 5's independent re-review, AND two full orchestrator verification passes (this task's round-4 and round-5 verifications) before round 6 found it — three-for-three rounds and two-for-two orchestrator passes missed it at the loose arity.
+- **F6 — Windows path separator bug (MEDIUM, PLAUSIBLE — traced, not driven; no Windows host exists in this campaign).** `weftPathVisible` compared git's always-forward-slash conflict paths against `anchorRel`, an OS-separator path from `lyxcwd.ValidateAnchorRel`. On Windows, a multi-segment anchor (e.g. `apps/backend`) arrives as `apps\backend`, breaking every weft-side conflict-path prefix match under that anchor and self-aborting the whole merge. Fixed with `filepath.ToSlash` (provably identity on Linux, so cannot regress this host) rather than a naive `strings.ReplaceAll`, which would corrupt a Linux directory legitimately named with a backslash. This upgrades the campaign's long-standing "Windows untested" caveat from a blanket unknown to a traced, fixed, line-level defect — still never executed on real Windows, five rounds and two instalments running.
+
+### What the orchestrator verified itself
+
+**Gates, from cold on the committed tree, run twice (mid-verification and final) — all green:**
+`go build ./...`; `go vet ./...`; `go test -count=5` across all four packages; `go test -tags integration -count=1 -timeout 30m` (fabricengine ~33s, fabriccli ~2.3-2.7s, gitrepo ~1.4-1.7s).
+
+**Sabotage proofs — every one run by the orchestrator, watched to fail at the intended assertion, then restored to an empty diff:**
+
+| # | Mechanism sabotaged | Test | Result |
+|---|---|---|---|
+| S1 | `sideConcludeAlreadyLanded` reverted to the loose "≥2 parents, source anywhere" check (F1) | `TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted` | failed at `want no KindMergeCommitted — an octopus is not a conclude fabric can make` |
+| S2 | `weftPathVisible`'s `filepath.ToSlash` replaced with naive `strings.ReplaceAll(anchorRel, "\\", "/")` (F6) | `TestMergePaths_UnifyConflictPaths/single_anchor_segment_containing_a_backslash_is_not_split` | failed at `unified = []; want [weird\name/_lyx/foo.md]` — confirms `ToSlash` (not a blanket replace) is genuinely load-bearing for the Linux legitimate-backslash-in-name case |
+
+First sabotage attempt on S2 (deleting the `filepath` import along with the call) was a build break — redone by keeping the import alive with a no-op reference, per the method's "a build break is not a proof" rule.
+
+**F1 re-driven live by the orchestrator**, freshly deployed binary, fresh isolated hub (`hub10` — `hub9`'s first attempt produced a *different* octopus shape where git's redundant-ancestor elimination silently dropped the recorded start as a parent, because the "unrelated" branch was built as a descendant of the start commit instead of a properly divergent third line; rebuilt with the unrelated branch off the pair's own root commit to get the exact 3-parent, start-first shape the round's own reproduction shows):
+
+- Built the exact scenario: warp side stages cleanly (`warp_outcome: staged`), weft conflicts, record survives with `warp_committed: ""`. Discarded the staged warp merge (`git merge --abort`), then `git merge --no-edit <recorded-source> <unrelated-branch>` → genuine octopus, parents `[start, source, unrelated]` confirmed via `git log --format=%P`.
+- Resolved the weft-side conflict (masks nothing — `MergeContinue`'s conflict-precondition guard would otherwise refuse before ever reaching the warp-side adoption logic) and re-ran `merge --continue` on the fixed binary → `merge conclude did not finish; run MergeContinue again`, record retained, `warp_committed` still empty. The octopus commit is NOT adopted; fabric does not claim it as its own conclude.
+
+**F6 verified by inspection + sabotage only** — no Windows host exists in this campaign (stated plainly, same as every prior round). The fix is provably a no-op on Linux by construction (`filepath.ToSlash` is identity when the OS separator is already `/`), which the round's own reasoning states and which cannot itself be falsified on this host; the sabotage above confirms the *correct implementation choice* (ToSlash vs. a naive replace) is load-bearing, which is the strongest verification available without a Windows machine.
+
+### RESIDUAL — what verification left standing
+
+**None found.** Both behavioral fixes (F1 live, F6 by the strongest verification available) and all seven other findings hold up.
+
+### Honest limits of this verification
+
+- Windows path behaviour remains unexecuted on real Windows — three rounds now know the exact defect shape (F6), but none has run it. This is the sharpest named gap in the whole campaign at this point: a traced, fixed, but never-executed defect.
+- F6 was not live-redriven (cannot be, headlessly, on this host) — verified by inspection + the ToSlash-vs-ReplaceAll sabotage instead, which the orchestrator judges the strongest verification available, not equivalent to a live drive.
+- Scratch hubs (`hub9`, `hub10`) live under the session scratchpad, outside the repo. `git status` in the worktree is clean throughout.
+
+## Round 7 (`opus-medium-r7`) — NOT YET SEEDED, awaiting operator decision
+
+This is the last round in the operator's original fixed 4-round plan (Opus medium → Fable high → Opus high → **Opus medium**). Three consecutive rounds (r4, r5, r6) have each found and fixed real material — r6's own self-assessment explicitly declines to read its clean gates as convergence evidence, and the orchestrator agrees. The operator raised this trend directly mid-campaign ("Den finner jo masse").
+
+Two live options, not yet decided:
+1. **Run r7 as originally planned, then stop regardless of outcome** (the plan was "4 rounds unless convergence" — convergence has not been reached, but the plan was also bounded at 4, not open-ended).
+2. **Run r7, and if it also finds real material, extend beyond 4 rather than stopping on a hard count** — since the trend (BLOCKING → MEDIUM-heavy → MEDIUM-heavy-with-2-new-behavioral-defects) does not show the severity/novelty curve flattening the way the reed and first-instalment fabric campaigns did before they converged.
 
 ## Next action
 
-Spawn round 6: `subagent_type: crucible-reviewer-high`, `model: opus`, prompt = "Read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.", tag `opus-high-r6`. Wait for completion, then independently verify per the protocol in `crucible/orchestrator-prompt.md`. If round 6 comes back with zero findings (a genuine safety pass) and the orchestrator's independent gates agree, that is the convergence signal per the operator's plan — consider stopping before round 7 rather than spawning it reflexively.
+**Ask the operator which of the two options above before spawning round 7** — do not spawn reflexively. If they confirm the plan as originally stated (run r7, stop after regardless), seed and spawn `opus-medium-r7` per the standard loop. If they want the extend-on-signal option, say so explicitly in the seed prompt's round-context section so a genuinely fresh round 8 (if needed) has the right frame.
