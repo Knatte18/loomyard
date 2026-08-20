@@ -13,7 +13,7 @@ parent: main
 It answers "where is this symbol referenced / defined / declared" across five languages, and nothing about that job is specific to lyx.
 Keeping it inside Loomyard means every change to it moves through lyx's release, lyx's constraints, and lyx's module table, for a capability lyx itself barely uses.
 
-**Why now.** Two things changed.
+**Why now.** Three things changed.
 First, `scout-told-geometry` (Done) already removed scout's dependence on lyx-relative path derivation, so the extraction is no longer blocked on a refactor.
 Second, the agent-usage benchmark ([`docs/research/scout-agent-usage-findings.md`](../docs/research/scout-agent-usage-findings.md)) found that a Claude Code agent free to pick its own tools gets comparable results from `grep`, which removes the argument for scout being a *lyx-agent* feature and leaves only the argument for it being a *standalone deterministic tool*.
 Third, the intended next step — adopting Tree-sitter so the tool owns syntax trees rather than only querying language servers — is a large body of work that has no business landing inside lyx's repo.
@@ -29,7 +29,7 @@ The end state of this task is a working `quarry` binary in its own repo that doe
 - Copy verbatim the three dependency-free shared packages scout uses (`lock`, `proc`, `output`) and inline the one `lyxdirs` constant that survives.
 - Replace the five shared packages that would drag a transitive tail (`configengine`, `logger`, `clihelp`, `lyxcwd`, and the `gitkit`/`hubforge` test fixtures) with narrow local equivalents.
 - New config and state path resolution, since neither a lyx hub nor `_lyx/` exists in quarry.
-- Port the full test suite, including the `//go:build integration` tier separation.
+- Port the full test suite, collapsing today's two opt-in tags (`scout` on five files, `integration` on one) onto a single `//go:build lsp` tier — see the `test-tier-tags` decision.
 - Delete `internal/scoutengine`, `internal/scoutcli`, and the `lyx scout` subcommand from Loomyard, plus every reference to them in `cmd/lyx/`, `CONSTRAINTS.md`, `docs/overview.md`, and `manifest/roadmap.md`.
 - Move scout's four research/benchmark docs to quarry.
 
@@ -54,7 +54,8 @@ The end state of this task is a working `quarry` binary in its own repo that doe
 ### dependency-strategy-copy-vs-replace
 
 - Decision: split the nine shared Loomyard packages scout imports into **copy verbatim** and **replace with a local equivalent**, on the criterion of whether the package has its own internal dependencies.
-  - **Copy verbatim:** `internal/lock` (222 lines, no deps), `internal/proc` (329, no deps), `internal/output` (256, no deps).
+  - **Copy verbatim:** `internal/lock` (222 lines, one external dep — see below), `internal/proc` (329, no internal or external deps), `internal/output` (256, no deps).
+    `internal/lock/lock.go:12` imports `github.com/gofrs/flock`. That is accepted as a fourth budgeted external dependency rather than a reason to move `lock` to the replace side: cross-platform advisory file locking is exactly the non-trivial platform code this decision exists to avoid rewriting, and it is the lock guarding the daemon spawn race, where a subtle bug is a hang rather than a test failure.
   - **Inline:** `internal/lyxdirs` — only `DotLyxDirName` is used, and it disappears entirely once state paths move off `_lyx/` (see `config-and-state-paths`).
   - **Replace:** `internal/configengine` (1 552 lines, pulls `envsource`+`logger`+`lyxdirs`+`yamlengine`, but scout uses exactly one function, `ConfigFile`), `internal/logger` (1 939 lines, pulls `lyxcwd`+`lyxdirs`+`proc`, scout uses `Warn` and `Info`), `internal/clihelp` (923 lines, pulls `lyxcwd`+`output`, scout uses `SetExit`/`Execute`/`ExecuteIn`/`GroupRunE`), `internal/lyxcwd` (3 028 lines, CLI-only, uses `CwdFrom`/`Resolve`/`WithCwd`), and `internal/gitkit`+`internal/hubforge` (2 192 lines, test fixtures only, and `hubforge` pulls `fabricengine`).
 - Rationale: the *declared* dependency is nine packages and ~11 500 lines; the *used surface* is 18 symbols. Copying naively drags `logger` → `lyxcwd` → `gitexec` and `hubforge` → `fabricengine`, which would make quarry a Loomyard clone. Copying only the leaf packages keeps genuinely non-trivial cross-platform code (`proc.DetachBreakaway` is Windows-specific; `lock` is advisory-lock plumbing) instead of rewriting it, while everything with a tail gets a purpose-built replacement measured in tens of lines.
@@ -80,6 +81,23 @@ The end state of this task is a working `quarry` binary in its own repo that doe
 - Rejected: `--config` only with no implicit lookup (deterministic but poor ergonomics); `.quarry/` inside the target directory (pollutes repos quarry is pointed at, and needs a `.gitignore` entry in someone else's project); keeping a single conflated root (there is no defensible value for it outside a hub).
 - **Risk the plan must handle:** Unix domain sockets are capped at 108 bytes of path on Linux. `os.UserCacheDir()` plus a workspace key plus `<lang>/daemon.sock` can approach that. Today's code has the same exposure via `anchorRoot`, so this is not a regression, but the plan should keep the key short and add a test asserting the constructed socket path length stays under the limit for a realistic deep path.
 
+### state-path-ownership-moves-to-the-caller
+
+- Decision: the engine is **told a leaf state directory** and joins nothing but the filename. `DaemonStateFile`/`DaemonLock` change from `(anchorRoot, lang)` to `(stateDir, lang)`, returning `filepath.Join(stateDir, lang, "daemon.json")` and `…/daemon.lock`. The `.lyx` and `scout` path segments — and with them `lyxdirs.DotLyxDirName` and the private `scoutDirName` constant — are deleted from the engine, not relocated. `ensureServer`'s and `ensureSupervised`'s `anchorRoot` parameter is renamed `stateDir` throughout. All resolution of *which* directory that is happens in `internal/cli/`, per `config-and-state-paths`.
+- Rationale: this is the Told-Geometry Invariant applied literally — an engine is handed the absolute paths it operates on and derives none of its own. Today's `daemonstate.go:39,47` violate that in spirit: they take a root and derive `<root>/.lyx/scout/<lang>/` from it, and the derived segments are lyx vocabulary with no meaning in quarry. The earlier phrasing that `DotLyxDirName` "disappears entirely" while resolution "belongs in `internal/cli/`" was only satisfiable with this signature change, and the earlier claim that "redirecting those three is the entire state-path change" understated it.
+- Rejected: keeping `anchorRoot` plus the engine's own segments and having the CLI pass a synthetic root — preserves a hidden `.lyx/scout/` subtree inside `os.UserCacheDir()`, which is meaningless outside lyx and would confuse anyone reading the cache directory; also keeps the engine deriving path structure it was told nothing about.
+- **Consequences the plan must carry:**
+  - `daemonstate_test.go` and `scoutdaemon_test.go` move from "ported unchanged" to "rewritten". `scoutdaemon_test.go` drives the constructors over three fixtures — an unanchored worktree root, a subpath-anchored root, and a plain told directory — and two of those three fixture concepts cease to exist. What remains is plain join arithmetic over a told `stateDir`, which is a smaller test than the one being replaced. The rewrite must not silently drop the per-language separation assertion, which does survive.
+  - `DaemonStateFile`/`DaemonLock` stay exported: quarry's own supervised-daemon tests use them, and a future Go-API consumer needs to locate a daemon it did not spawn.
+  - Loomyard's `cmd/lyx/constructoranchoring_test.go:106-107` and `notransients_test.go:82-83` assert exactly the anchoring behaviour being deleted. They are removed with the module rather than migrated.
+
+### test-tier-tags
+
+- Decision: quarry uses a single opt-in build tag, `//go:build lsp`, for every test requiring a real language-server binary on `$PATH`. Verification is `go test ./...` (hermetic tier) and `go test -tags lsp ./...` (live tier).
+- Rationale: the tag scheme being ported is not what the earlier draft described. Five of the six tagged files carry `//go:build scout` (`ensureserver_integration_test.go`, `refs_integration_test.go`, `supervised_integration_test.go`, `toolchain_integration_test.go`, `supervised_scout_test.go`); only `internal/scoutcli/cli_integration_test.go` carries `//go:build integration`. A verify command spelled `-tags integration` would therefore have run one file and skipped the entire live-server suite while appearing to prove it green — the exact failure this task cannot afford. Collapsing to one tag is right because both tags mean the same substrate here (a real external binary must exist), the split into two existed only because Loomyard has other `integration`-tagged tests unrelated to scout, and `scout` is a name that stops meaning anything the moment the tool is called quarry. `lsp` names the actual precondition.
+- Rejected: keeping both tags (preserves a distinction with no remaining basis, and two verify commands where one suffices); keeping the name `scout` (dead vocabulary in the new repo); using `integration` alone (accurate but vaguer — it does not tell a contributor that the precondition is an installed language server).
+- Note for Loomyard's side: `cmd/lyx/tierpurity_test.go:50` pins `knownTierTags = []string{"integration", "smoke", "scout"}` and `:200,202` test the `scout` tag's parsing. Removing scout makes `scout` a dead tier tag in Loomyard; the deletion must drop it from `knownTierTags`, from those two table cases, from `CONSTRAINTS.md`'s Test Tier Purity section, and from `docs/benchmarks/running-tests.md:10,28,29,51`.
+
 ### repo-layout
 
 - Decision:
@@ -104,7 +122,7 @@ The end state of this task is a working `quarry` binary in its own repo that doe
 - Decision: the file move and import rewrite are performed by a **Go program** written for the purpose (e.g. `tools/port/main.go` in the quarry repo, deleted before the final commit, or run from a scratch directory), not by an agent reading and retyping ~8 900 lines, and not by shell `sed`.
   The program: copies the named files, rewrites `github.com/Knatte18/loomyard/internal/scoutengine` → `github.com/Knatte18/quarry/quarry`, `…/internal/scoutcli` → `…/quarry/internal/cli`, `…/internal/{lock,proc,output}` → `…/quarry/internal/{lock,proc,output}`, and the package clauses `package scoutengine` → `package quarry`, `package scoutcli` → `package cli`.
   Hand editing is confined to the five replaced packages and their call sites — the part that genuinely requires judgement.
-- Rationale: the user's explicit instruction, and the right one — transcribing 8 900 lines through an LLM context is both expensive and a correctness hazard, while `go/ast`-level or line-level rewriting of a known, closed set of import paths is deterministic and reviewable as a diff. Go rather than Python because quarry is a Go repo and the tool should not add a Python dependency. `sed` is banned by the `mill:conversation` rule.
+- Rationale: the user's explicit instruction, and the right one — transcribing 8 900 lines through an LLM context is both expensive and a correctness hazard, while `go/ast`-level or line-level rewriting of a known, closed set of import paths is deterministic and reviewable as a diff. Go rather than Python because quarry is a Go repo and the tool should not add a Python dependency. `sed` is banned twice over — by the operator's global `CLAUDE.md` ("Don't use `sed`") and by the `mill:conversation` skill's Shell Commands rule — because it triggers a permission prompt that stalls unattended runs.
 - Rejected: `git filter-repo --subdirectory-filter` per package (preserves history, but yields two unrelated roots to graft and paths that do not match the new layout, for history that stays readable in Loomyard anyway); manual transcription.
 
 ### history-not-preserved
@@ -168,7 +186,7 @@ Measured, not assumed:
 
 | Package | Symbols scout uses |
 |---|---|
-| `configengine` | `ConfigFile` (3 sites) |
+| `configengine` | `ConfigFile` (3 sites), `ConfigDir` (2 sites, both in `load_test.go:19-20`) |
 | `clihelp` | `SetExit` (22), `Execute` (2), `ExecuteIn` (2), `GroupRunE` (1) |
 | `output` | `Err` (17), `Ok` (9) |
 | `lyxdirs` | `DotLyxDirName` (3) |
@@ -176,9 +194,10 @@ Measured, not assumed:
 | `proc` | `KillPID` (6), `IsAlive` (2), `DetachBreakaway` (2) |
 | `logger` | `Warn` (7), `Info` (1) |
 | `lyxcwd` | `CwdFrom` (8), `Resolve` (2), `WithCwd` (1) — CLI only |
-| `gitkit`, `hubforge` | test files only |
+| `gitkit` | `HermeticGitEnv`, imported by exactly one file: `internal/scoutcli/testmain_test.go` |
+| `hubforge` | `NewHub`, `SeedConfig`, imported by exactly one file: `internal/scoutcli/cli_integration_test.go` |
 
-`lyxcwd`, `gitkit`, and `hubforge` appear in no `scoutengine` non-test file. `output` and `clihelp` appear in no `scoutengine` non-test file either — that is the engine seam holding.
+`lyxcwd`, `gitkit`, and `hubforge` appear in no `scoutengine` file at all — neither production nor test. Three `scoutengine` integration tests (`ensureserver_integration_test.go`, `refs_integration_test.go`, `toolchain_integration_test.go`) mention `gitkit.HermeticGitEnv` only inside a comment explaining why they do *not* need it; a grep for the package name finds them and a grep for the import does not. `output` and `clihelp` appear in no `scoutengine` non-test file either — that is the engine seam holding.
 
 ### `lookupContext` is the hinge
 
@@ -202,7 +221,19 @@ The out-of-hub branch already exists and already degrades to built-ins plus `fil
 
 ### Loomyard removal checklist
 
-Every site, enumerated:
+**The enumeration method, not the enumeration.** The list below was hand-built and was found incomplete on review — it missed `cmd/lyx/sandbox_coverage_test.go`, `cmd/lyx/tierpurity_test.go`, `README.md`, `internal/lyxcwd/enforcement_test.go`, six files under `manifest/designs/`, `manifest/parallel-work.md`, and two files under `docs/benchmarks/`. Treat it as a set of known high-risk sites, not a complete inventory.
+
+The plan's deletion batch must re-run the enumeration itself and work from the result:
+
+```
+grep -rli 'scout' --exclude-dir=.git --exclude-dir=_mill . | grep -v '^./internal/scout'
+```
+
+At the time of writing that returns 73 files; after `internal/scoutengine` and `internal/scoutcli` are deleted, every remaining hit is either a site to edit or a deliberate historical mention that must be justified in the commit message. The batch is not done while an unexamined hit remains.
+
+Machine guards that will fail loudly if the sweep is incomplete, and which the plan should lean on rather than duplicate by hand: `TestEnforcement_MarkdownLinks` (catches the live link in `manifest/designs/review-finding-classification.md:67` to a moved doc), the Sandbox Suite Coverage invariant (catches the stale `excludedModules["scout"]` entry in `cmd/lyx/sandbox_coverage_test.go:31`), and the help-tree test (catches the module list).
+
+Known high-risk sites:
 
 - `cmd/lyx/main.go:32` (import), `:110` (`scoutcli.Command()`), `:76` (module list in the root command's long help).
 - `cmd/lyx/helptree_test.go:28` (module list), `:107-108` (the scout help-tree case).
@@ -213,6 +244,13 @@ Every site, enumerated:
 - `CONSTRAINTS.md:195-208` — the whole **Scout Engine-Seam Invariant** section; `:77` — remove `internal/scoutengine` from the told-geometry review-obligation list; `:440` — the `scout-redesign.md` prose-mention example, which must be repointed at another live example rather than left dangling. Note this line is doubly stale: it cites `manifest/roadmap.md:98`, but that reference moved to `:138` in the `b01ffc3b` roadmap cleanup, and this task edits `manifest/roadmap.md` again so the number will shift once more. Pick a replacement example that is not scout-related, and prefer a citation form that does not pin a line number.
 - `docs/overview.md:293` (module table entry), `:431` (package-doc list entry), `:190` (prose listing scout among `.lyx`-writing modules).
 - `manifest/roadmap.md` — lines 51, 138, 148, 150, 160, 172-174, 206, 263 all reference scout. Most are Someday items about *consuming* scout (`Plan-Sweep`, `scout-backed plan symbol fields`); those stay but must be reworded to name quarry as an external dependency. Line 160 is a scout defect item that moves to quarry's issue tracker (it is the same defect as [quarry#1](https://github.com/Knatte18/quarry/issues/1) — close it out of the roadmap rather than reword).
+- `cmd/lyx/sandbox_coverage_test.go:31` — the `excludedModules["scout"]` entry, required today by the Sandbox Suite Coverage invariant and stale the moment the module leaves.
+- `cmd/lyx/tierpurity_test.go:50,200,202` plus `:30-31` — `knownTierTags` includes `"scout"`, two table cases test its parsing, and two `allowedSpawners` entries name `internal/scoutengine` test files. See the `test-tier-tags` decision.
+- `README.md:87` — the scout bullet in the module list.
+- `internal/lyxcwd/enforcement_test.go` — mentions scout; check whether it is a geometry-literal allowlist entry that must be dropped.
+- `docs/benchmarks/running-tests.md:10,28,29,51` — documents the `scout` tag as a substrate tier; `docs/benchmarks/test-suite-timing.md` — timing numbers naming scout.
+- `manifest/parallel-work.md` — carries the "Not yet a wiki task" note this task resolves; remove it.
+- `manifest/designs/{loom,fabric-unified-view,semantic-index,raddle,review-finding-classification,webster-parallel-execution}.md` — prose and, in `review-finding-classification.md:67`, a live markdown link to `docs/benchmarks/scout-vs-grep.md`, which is being moved to quarry. That link is machine-checked by `TestEnforcement_MarkdownLinks` and will fail the build if repointed wrongly rather than to the quarry URL.
 - `contracts/specs/loom-plan-spec.md`, `internal/loomshed/loomshed.go`, `internal/websterengine/doc.go`, `internal/gitrepo/doc.go`, `internal/fabriccli/clone.go`, `internal/fabricengine/junction.go` — all mention scout in prose or comments; audit each and reword.
 
 ### Repo state
@@ -230,20 +268,28 @@ From `CONSTRAINTS.md`, the ones this task touches:
 - **CLI/Cobra Invariant** — module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests. Loomyard's help-tree test must stop expecting `scout`; quarry inherits the shape for its own root command.
 - **Documentation Lifecycle** — a task changing observable CLI behaviour updates docs in the same commit. Deleting `lyx scout` is observable, so `docs/overview.md` and `CONSTRAINTS.md` land in the deletion commit.
 - **Cwd Resolution Invariant** — the reason `LoadRegistry` goes through `configengine.ConfigFile` instead of hand-joining. Quarry has no `lyxcwd` and therefore no such invariant; its replacement rule is that config and state paths are resolved in exactly one place each, in `internal/cli/`.
-- **Test Tier Purity** — `//go:build integration` / `//go:build smoke` separation. Ported to quarry.
+- **Test Tier Purity** — Loomyard's three opt-in tiers are `integration`, `smoke`, and `scout` (`cmd/lyx/tierpurity_test.go:50`). Scout's own tests use two of them: `scout` on five files, `integration` on one. Quarry collapses these onto a single `lsp` tier (see `test-tier-tags`), and Loomyard must retire `scout` as a tier tag when the module leaves.
 
 Discovered during discussion:
 
-- Quarry's dependency budget after the port is stdlib + `spf13/cobra` + `gopkg.in/yaml.v3`. Any batch that would add a fourth is a design change and must stop.
+- Quarry's dependency budget after the port is stdlib + `spf13/cobra` + `gopkg.in/yaml.v3` + `github.com/gofrs/flock` (the last arriving with `internal/lock`, see `dependency-strategy-copy-vs-replace`). Any batch that would add a fifth is a design change and must stop.
 - `lspclient.go` becomes stdlib-only once `logger` is replaced by `log/slog`. The ported guard test should assert stdlib-only, tightening the invariant rather than restating it.
 
 ## Testing
 
 The test suite is the extraction's proof. 5 299 lines of tests move with the code (4 274 from `scoutengine`, 1 025 from `scoutcli`), and the acceptance criterion for the whole task is that they pass in quarry unchanged in intent.
 
-**Ported unchanged (pure logic, no fixtures):** `definition_test.go`, `detect_test.go`, `position_test.go`, `symbol_test.go`, `registry_test.go`, `load_test.go`, `refs_test.go`, `lspclient_test.go`, `daemonstate_test.go`, `ensureserver_test.go`, `supervised_test.go`, `toolchain_test.go`, `cli_test.go`. Only import paths and package clauses change. Any test needing more than that is a signal the port drifted and must be investigated, not patched.
+The three lists below are derived from the actual import sets, not from filename shape. Every scout test file appears in exactly one of them.
 
-**Rewritten fixtures:** `cli_integration_test.go`, `ensureserver_integration_test.go`, `refs_integration_test.go`, `supervised_integration_test.go`, `toolchain_integration_test.go`, `supervised_scout_test.go`, `scoutdaemon_test.go` — the ones reaching for `gitkit`/`hubforge`. Replace hub construction with `t.TempDir()` plus whatever minimal files the language server needs (a `go.mod` and a `.go` file, for the Go arm).
+**Ported unchanged (import paths and package clauses only):** `definition_test.go`, `detect_test.go`, `position_test.go`, `symbol_test.go`, `registry_test.go`, `refs_test.go`, `lspclient_test.go`, `ensureserver_test.go`, `supervised_test.go`, `toolchain_test.go`, `cli_test.go`, and the four `//go:build lsp` engine tests whose only external need is a live server (`ensureserver_integration_test.go`, `refs_integration_test.go`, `supervised_integration_test.go`, `toolchain_integration_test.go`, plus `supervised_scout_test.go`) — these import neither `gitkit` nor `hubforge`; they only mention `gitkit.HermeticGitEnv` in a comment explaining why they don't need it, and that comment must be reworded rather than left citing a package quarry does not have. Any test in this list needing more than a path rewrite is a signal the port drifted and must be investigated, not patched.
+
+**Rewritten — state-path signature change** (see `state-path-ownership-moves-to-the-caller`): `scoutdaemon_test.go` and `daemonstate_test.go`. Both exercise the `(anchorRoot, lang)` path arithmetic that is being replaced by `(stateDir, lang)`. `scoutdaemon_test.go`'s three fixtures include an unanchored worktree root and a subpath-anchored root; both concepts vanish. The per-language separation assertion survives and must not be dropped in the rewrite.
+
+**Rewritten — lyx fixtures:** exactly two files import `gitkit`/`hubforge`.
+- `internal/scoutcli/testmain_test.go` uses `gitkit.HermeticGitEnv` to isolate the test process from the operator's git config. Quarry spawns no git at all, so the `TestMain` either disappears or is reduced to whatever env hygiene the language-server spawn genuinely needs. Decide which; do not port it blind.
+- `internal/scoutcli/cli_integration_test.go` uses `hubforge.NewHub`/`SeedConfig` to build a lyx hub, and what it covers is `lookupContext`'s in-hub branch — the branch being deleted. This is **not** a `t.TempDir()` swap: its subject ceases to exist. Replace it with coverage of the new config/state resolution (TDD candidates 1 and 2 below), which is what now occupies that seam.
+
+**Rewritten — configengine surface:** `load_test.go` calls `configengine.ConfigDir` (`:19-20`) as well as `ConfigFile`, so it cannot move on a path rewrite alone. It is table-driven over `t.TempDir` fixtures and should be retargeted onto the new config resolution.
 
 **Ported with retargeted expectations:** `seam_enforcement_test.go` and `lspclient_guard_test.go` — the banned-import lists name Loomyard paths today.
 
@@ -258,7 +304,7 @@ The test suite is the extraction's proof. 5 299 lines of tests move with the cod
 
 1. `go -C /home/knatte/Code/quarry/wts/quarry build ./...` — quarry compiles.
 2. `go -C /home/knatte/Code/quarry/wts/quarry test ./...` — unit tier green.
-3. `go -C /home/knatte/Code/quarry/wts/quarry test -tags integration ./...` — integration tier green (needs `gopls`; the other four language servers' arms skip when absent, as they do today).
+3. `go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./...` — live tier green (needs `gopls`; the other four language servers' arms skip when absent, as they do today). The tag is `lsp`, not `integration` — see `test-tier-tags`. A verify command spelled `-tags integration` would compile and pass while running one file out of six.
 4. **Behavioural equivalence.** Run `quarry refs`, `definition`, `symbol`, and `assert-no-callers` against the Loomyard checkout and compare the JSON envelopes to `lyx scout` output for the same queries, before the Loomyard deletion lands. Use the five benchmark symbols already recorded in `docs/research/scout-multilang.md` — they have established ground truth, which makes this a real check rather than a smoke test. Envelopes must match modulo any absolute path that legitimately changed.
 5. Only then: `go test ./...` in this worktree, after the Loomyard deletion, with `cmd/lyx` help-tree and seam-signature tests updated.
 
@@ -273,4 +319,5 @@ Step 4 is the one that must not be skipped. Everything else proves quarry compil
 - **Q:** Fix the two known defects during the move? **A:** No — moved unfixed, filed as quarry#1 and quarry#2 immediately. Byte-for-byte behavioural equivalence is what makes the move verifiable.
 - **Q:** Where does `servers.yaml` live with no lyx hub? **A:** Delegated to design. Resolved as `--config` → `$QUARRY_CONFIG` → `os.UserConfigDir()/quarry/servers.yaml` → built-ins, with daemon state split onto a separate axis under `os.UserCacheDir()` keyed by workspace, because today's `anchorRoot` serves both purposes and neither has a hub-free answer.
 - **Q:** Test tiers and CI? **A:** Inherit the `//go:build integration` / `smoke` separation. GitHub Actions is not enabled on the quarry repo, so no workflow file is written — the tags exist so CI is a config file away.
+- **Q:** [auto-pick, discussion review r1 BLOCKING] Who owns the daemon state path once `.lyx/scout/` is gone — does the engine keep `anchorRoot` and its own segments, or is it told a leaf directory? **A:** Told a leaf directory: `DaemonStateFile`/`DaemonLock` become `(stateDir, lang)` and join only `<lang>/daemon.{json,lock}`. **Why:** the Told-Geometry Invariant says an engine derives no paths of its own, and `.lyx`/`scout` are lyx vocabulary that would otherwise survive as meaningless segments inside `os.UserCacheDir()`. The alternative was rejected for hiding a `.lyx/scout/` subtree in a cache directory nobody would expect it in.
 - **Q:** May mill-go write in the quarry repo? **A:** Yes — the user created and had the repo cloned for this task. Authorization is recorded in the `two-repo-worktree-authorization` decision; all quarry commands use `git -C`, never `cd`.
