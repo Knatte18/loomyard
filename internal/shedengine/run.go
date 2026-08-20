@@ -16,16 +16,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// findProducer looks up name in producers, returning the matching definition, its index, and
-// whether it was found. It never guesses: a caller that gets found == false must hard-error
-// rather than fabricate a fallback, exactly as the loop's own lookup step does.
-func findProducer(producers []ProducerDef, name string) (ProducerDef, int, bool) {
-	for i, p := range producers {
+// findProducer looks up name in producers, returning the matching definition and whether it was
+// found. It never guesses: a caller that gets found == false must hard-error rather than
+// fabricate a fallback, exactly as the loop's own lookup step does.
+func findProducer(producers []ProducerDef, name string) (ProducerDef, bool) {
+	for _, p := range producers {
 		if p.Name == name {
-			return p, i, true
+			return p, true
 		}
 	}
-	return ProducerDef{}, 0, false
+	return ProducerDef{}, false
 }
 
 // Run walks the whole six-step loop in one call, from wherever the status file's current_producer
@@ -33,6 +33,8 @@ func findProducer(producers []ProducerDef, name string) (ProducerDef, int, bool)
 // error.
 // Result is meaningless unless the returned error is nil -- every hard-error path below returns an
 // unpopulated Result alongside its error, and a caller must check error before reading Outcome.
+// The producer list itself carries zero routing meaning once Done routes by OnDone: it is
+// storage, plus validate's iteration order, plus cosmetic display order, nothing else.
 func (s *Shed) Run(ctx context.Context) (Result, error) {
 	if err := s.validate(); err != nil {
 		return Result{}, err
@@ -105,7 +107,7 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		// Step 2, the lookup. Not found is a hard error that changes nothing on disk: Shed
 		// never guesses, neither restarting from the first producer nor advancing to the
 		// nearest match, because both fabricate a status nobody confirmed.
-		def, _, ok := findProducer(s.Producers, st.CurrentProducer)
+		def, ok := findProducer(s.Producers, st.CurrentProducer)
 		if !ok {
 			return Result{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written", st.CurrentProducer, s.StatusPath)
 		}
@@ -222,12 +224,13 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 
 		case outcome == Done:
 			nextHistory := appendHistory()
-			if def.Name == s.Producers[len(s.Producers)-1].Name {
+			if def.OnDone == "" {
 				// current_producer keeps this producer's own name -- never the empty string --
 				// because activity.now is defined as current_producer's name and
 				// HaltedProducer as the producer current_producer named when Run returned, so
 				// an empty value would leave both fields meaningless at the happy-path
-				// terminal a reader of a finished status file most wants to understand.
+				// terminal a reader of a finished status file most wants to understand. The
+				// terminal is now chosen by an empty OnDone, not by list position.
 				if err := s.persist(def.Name, StateDone, "", nextHistory, false); err != nil {
 					return Result{}, err
 				}
@@ -237,8 +240,10 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 					History:        nextHistory,
 				}, nil
 			}
-			nextName := s.Producers[indexAfter(s.Producers, def.Name)].Name
-			if err := s.persist(nextName, StateRunning, "", nextHistory, false); err != nil {
+			// A non-empty OnDone needs no lookup here: validate has already rejected an OnDone
+			// naming no producer in the list, so the name is persisted as-is and resolved by
+			// step 2's lookup on the next iteration.
+			if err := s.persist(def.OnDone, StateRunning, "", nextHistory, false); err != nil {
 				return Result{}, err
 			}
 			continue
@@ -264,19 +269,6 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 // the struct shape the design pins, for a value tests assert structurally instead of by literal.
 func nowRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339)
-}
-
-// indexAfter returns the index of the producer immediately following the one named name in
-// producers. It is only ever called when name is known to be present and not the last entry, both
-// already established by the caller.
-func indexAfter(producers []ProducerDef, name string) int {
-	for i, p := range producers {
-		if p.Name == name {
-			return i + 1
-		}
-	}
-	// Unreachable: callers only invoke this with a name already confirmed present.
-	return 0
 }
 
 // persist is the single write path for the whole loop: one state.UpdateJSON call whose mutate
