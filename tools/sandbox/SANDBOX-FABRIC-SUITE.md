@@ -468,6 +468,17 @@ Build a conflicted `merge-in`, resolve the conflict, `git add` it, then commit i
 `lyx fabric merge --abort` must refuse (`merge conclude already landed`), and `lyx fabric merge --continue` must **succeed by adoption**: `"committed": true`, a `merge_committed` mutation carrying the hand-landed SHA, HEAD unmoved (no second commit), record gone, sibling verbs unblocked.
 A `--continue` that loops forever on *merge conclude did not finish; run MergeContinue again* here is the failure mode: the pair is then permanently wedged, since no fabric verb can clear the record and plain git cannot reach it.
 
+Now the adversarial twin of that same shape, which looks identical to fabric from the outside and must NOT be adopted.
+Build the conflicted `merge-in` again, then instead of resolving it, discard it with plain `git merge --abort` in the warp checkout and make one ordinary commit of your own there — anything, an unrelated file.
+HEAD has now moved off the recorded pre-merge SHA with no `MERGE_HEAD`, exactly as a landed conclude leaves it, but nothing was merged.
+`lyx fabric merge --continue` must **refuse**: *merge conclude did not finish; run MergeContinue again*, with the record still on disk.
+`"ok": true` / `"committed": true` naming your unrelated commit is the failure mode, and it is a blocking one — the record is deleted, the source is still un-merged, and there is nothing left to inspect.
+`merge --abort` refusing too (`merge conclude already landed`) is correct here, not a second bug: the pair is honestly stuck, and plain git is the documented way out.
+
+Finally the squash version of the same question, which has no evidence either way and must therefore also refuse.
+Install the failing `pre-commit` hook in the **warp** checkout, run `lyx fabric merge <branch> --squash`, remove the hook, then land the squash conclude yourself with plain `git commit -m ...`.
+`lyx fabric merge --continue` must refuse with *merge conclude did not finish*, leave the record on disk, and leave your commit untouched — a squash conclude is a one-parent commit indistinguishable from any other, so adopting it would be a guess.
+
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
