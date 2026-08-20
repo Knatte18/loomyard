@@ -17,7 +17,7 @@
 // double-spawn window (the run lock being taken by the child long after the spawn call returns --
 // TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
 //
-// A note on driver-liveness timing: loom's own producer table (internal/loomshed) backs eight of its
+// A note on driver-liveness timing: loom's own producer table (internal/loomshed) backs five of its
 // thirteen rows with stub producers that report Done unconditionally, so a freshly-bootstrapped
 // driver against a pair with no discussion/plan artifacts yet typically bounces through
 // Discussion-Write/Discussion-Validate a bounded number of times (shedengine's own default bounce
@@ -51,6 +51,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -638,12 +639,12 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 		t.Errorf("weft HEAD changed files = %v; want exactly %v", changed, wantFiles)
 	}
 
-	report, err := loomengine.Preflight(worktree)
+	report, _, err := preflight.Check(worktree)
 	if err != nil {
-		t.Fatalf("loomengine.Preflight: %v", err)
+		t.Fatalf("preflight.Check: %v", err)
 	}
-	if report.Has(loomengine.CheckWorktreeClean) {
-		t.Errorf("Preflight report still carries CheckWorktreeClean after the seed commit; the bootstrap must reach past the first precondition row rather than block on it")
+	if report.Has(preflight.CheckWorktreeClean) {
+		t.Errorf("Check report still carries CheckWorktreeClean after the seed commit; the bootstrap must reach past the first precondition row rather than block on it")
 	}
 }
 
