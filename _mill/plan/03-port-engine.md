@@ -87,6 +87,7 @@ Batch-local decisions:
   - `internal/scoutengine/toolchain_test.go`
 - **Edits:**
   - `/home/knatte/Code/quarry/wts/quarry/.gitignore`
+  - `/home/knatte/Code/quarry/wts/quarry/go.sum`
 - **Creates:**
   - `/home/knatte/Code/quarry/wts/quarry/quarry/daemonstate.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/daemonstate_test.go`
