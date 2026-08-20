@@ -26,7 +26,8 @@ The end state of this task is a working `quarry` binary in its own repo that doe
 
 - New repo `github.com/Knatte18/quarry`, already created and cloned to `/home/knatte/Code/quarry/wts/quarry` (empty, branch `main`, no initial commit).
 - Move `internal/scoutengine` → `quarry/` (public core package, package name `quarry`) and `internal/scoutcli` → `internal/cli/`, plus `cmd/quarry/main.go`.
-- Copy verbatim the three dependency-free shared packages scout uses (`lock`, `proc`, `output`) and inline the one `lyxdirs` constant that survives.
+- Copy verbatim the three leaf shared packages scout uses (`lock`, `proc`, `output`). `lyxdirs` is not copied or inlined: its only production use is the `DotLyxDirName` segment at `daemonstate.go:40,48`, and `state-path-ownership-moves-to-the-caller` deletes those segments outright.
+- Write the repo scaffolding: `go.mod` (`github.com/Knatte18/quarry`, Go 1.26), `.gitignore`, `LICENSE`, and a `README.md` carrying the three statements other decisions mandate — the supported platform set, the windows native-strategy-only caveat, and the one-time toolchain-cache re-download caused by the `lyx` → `quarry` segment rename.
 - Replace the five shared packages that would drag a transitive tail (`configengine`, `logger`, `clihelp`, `lyxcwd`, and the `gitkit`/`hubforge` test fixtures) with narrow local equivalents.
 - New config and state path resolution, since neither a lyx hub nor `_lyx/` exists in quarry.
 - Port the full test suite, collapsing today's two opt-in tags (`scout` on five files, `integration` on one) onto a single `//go:build lsp` tier — see the `test-tier-tags` decision.
@@ -166,7 +167,7 @@ The end state of this task is a working `quarry` binary in its own repo that doe
 
 ### error-prefixes-stay-verbatim-through-the-port
 
-- Decision: the 59 `fmt.Errorf("scoutengine: …")` literals across nine production files (`errors.go` 12, `ensureserver.go` 18, `lspclient.go` 8, and six others) are **not** touched by the port. They keep saying `scoutengine:` in quarry's first commit. Renaming them to `quarry:` is a separate, later commit in the quarry repo, made only after the behavioural-equivalence check in Testing step 4 has passed.
+- Decision: the 59 `"scoutengine: "` string literals across nine production files (`errors.go` 12, `ensureserver.go` 18, `lspclient.go` 8, and six others) are **not** touched by the port. They are not all `fmt.Errorf`: `errors.go`'s twelve are seven `errors.New` sentinel values and five `fmt.Sprintf` calls inside `Error()` methods. A later rename batch scoped by a `fmt.Errorf` grep would miss every one of them — scope it by the literal `"scoutengine: "` instead. They keep saying `scoutengine:` in quarry's first commit. Renaming them to `quarry:` is a separate, later commit in the quarry repo, made only after the behavioural-equivalence check in Testing step 4 has passed.
 - Rationale: these strings reach the user through the JSON envelope's error field, so they are observable output. Step 4 compares envelopes between `lyx scout` and `quarry` for the same queries, and that comparison is only meaningful if the error text is identical — renaming during the port would force the criterion to be relaxed to "equal modulo error-message text", which is exactly the loophole a real behavioural difference would hide in. Sequencing the rename after the proof keeps the equality strict when it matters and costs one extra commit.
 - Rejected: rename during the port (weakens step 4 to the point of not proving much); keep `scoutengine:` forever (dead vocabulary — the package is not called that in quarry, and an error naming a nonexistent package is a support burden).
 - **A quarry-side vocabulary sweep is required, and the port program does not do it.** 87 case-insensitive occurrences of `lyx` sit across 16 `scoutengine` files — `doc.go` (18), `refs_integration_test.go` (18), `scoutdaemon_test.go` (12), `daemonstate.go` (10), `ensureserver.go` (6), `lspclient_guard_test.go` (6), `supervised_test.go` (4), `toolchain.go` (4, including a dangling citation to a `_mill/discussion.md` that will not exist in quarry), `registry.go` (2), and seven files with one each. The port program is deliberately restricted to import paths and package clauses, so all of this survives verbatim. The Loomyard side gets a mandated two-sweep enumeration; the quarry side needs its own:
@@ -182,6 +183,13 @@ The end state of this task is a working `quarry` binary in its own repo that doe
   `doc.go` needs the most work: it is the as-built design record and cites lyx-specific invariants (Cwd Resolution, `internal/modelspec`, `internal/webstercli`) that must be rewritten to quarry's own terms, not deleted — the reasoning they support is still the reasoning behind the code.
 
 - **Consequence:** the port program rewrites import paths and package clauses only, and must be verified not to touch string literals. File a quarry issue for the follow-up rename as soon as the repo has its first commit, so it is not forgotten once step 4 goes green.
+
+### license-apache-2-carried-over
+
+- Decision: quarry ships Apache-2.0, the same licence as Loomyard, and the initial-import commit carries the attribution forward — the `LICENSE` file is copied, and the commit message names the Loomyard source commit as the origin of the imported code.
+- Rationale: ~8 900 lines are copied from an Apache-2.0 work under the same owner. Keeping the licence identical means the import needs no relicensing analysis, no per-file headers, and no consideration of whether contributors to the original code granted rights compatible with a different licence. Apache-2.0's patent grant and NOTICE mechanics also suit a tool intended to be depended on as an external module, which is quarry's stated purpose.
+- Rejected: MIT/BSD (would be a relicensing of existing Apache-2.0 code — legally defensible for a sole owner, but a decision with no upside here); leaving it unlicensed (a repo meant to be importable must state its terms).
+- **This is an auto-picked default, not an owner instruction.** It was chosen under auto-mode review because a plan writer cannot invent a licence. If the owner wants something else, this is the one decision in this document to revisit before the initial import, since changing it afterwards means rewriting history or relicensing.
 
 ### history-not-preserved
 
@@ -323,7 +331,7 @@ Known high-risk sites:
 
 ### Repo state
 
-`/home/knatte/Code/quarry/wts/quarry` is cloned, empty, on `main`, with no commits and no `go.mod`. Issues [#1](https://github.com/Knatte18/quarry/issues/1) and [#2](https://github.com/Knatte18/quarry/issues/2) are filed. GitHub Actions is not enabled. No README, `.gitignore`, or LICENSE was auto-generated — all three are still to be written.
+`/home/knatte/Code/quarry/wts/quarry` is cloned, empty, on `main`, with no commits and no `go.mod`. Issues [#1](https://github.com/Knatte18/quarry/issues/1) and [#2](https://github.com/Knatte18/quarry/issues/2) are filed. GitHub Actions is not enabled. No README, `.gitignore`, or LICENSE was auto-generated — all three are still to be written, along with `go.mod`; they are a Scope In item, and the licence is settled by `license-apache-2-carried-over`.
 
 Loomyard's module path is `github.com/Knatte18/loomyard`, Go 1.26.
 
