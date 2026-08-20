@@ -15,6 +15,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -39,20 +40,71 @@ var pinnedMergeReasons = map[string]string{
 	"mergeReasonConcludeLanded":      "merge conclude already landed",
 }
 
-// mergeReasonConstsFromSource parses mergeerrors.go and returns every package-level constant whose
-// name carries the mergeReason prefix, name to string value — the closed set as the source actually
-// declares it, read with go/ast so no hand-maintained list can drift from it (the
-// cmd/lyx/registration_test.go precedent applied to a const block).
-func mergeReasonConstsFromSource(t *testing.T) map[string]string {
+// mergeReasonHomeFile is the one file the closed guard-reason set is declared in, per
+// mergeerrors.go's own const-block godoc. mergeReasonConstsFromSource scans the WHOLE package for
+// mergeReason* declarations and reports each one's file, so this name is what
+// TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile compares against rather than a scope the
+// scan itself silently imposes.
+const mergeReasonHomeFile = "mergeerrors.go"
+
+// mergeReasonConstDecl is one mergeReason* constant as the source declares it: its verbatim string
+// value and the package file it was found in.
+type mergeReasonConstDecl struct {
+	value string
+	file  string
+}
+
+// mergeReasonConstsFromSource parses every non-test .go file in this package's own directory and
+// returns every package-level constant whose name carries the mergeReason prefix, name to
+// declaration — the closed set as the source actually declares it, read with go/ast so no
+// hand-maintained list can drift from it (the cmd/lyx/registration_test.go precedent applied to a
+// const block).
+//
+// The scan is package-wide rather than a hardcoded filename on purpose. Scoping it to
+// mergeerrors.go made every assertion the pinned map drives — the closed-set equality, the
+// side-free check, the path-free check — blind to a mergeReason* constant declared anywhere else in
+// the package, and mergeguards.go is the natural place for one to appear, right beside the guard
+// that would consume it. A closure test that cannot see outside one file cannot detect the
+// violation it exists to detect.
+//
+// Test files are excluded because the closed set is a production declaration; a test's own fixture
+// constant is not a member of it.
+func mergeReasonConstsFromSource(t *testing.T) map[string]mergeReasonConstDecl {
+	t.Helper()
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read package directory: %v", err)
+	}
+
+	got := map[string]mergeReasonConstDecl{}
+	scanned := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		scanned++
+		collectMergeReasonConsts(t, name, got)
+	}
+	if scanned == 0 {
+		t.Fatal("scanned no production .go files; the package-wide closed-set scan found nothing to parse")
+	}
+	return got
+}
+
+// collectMergeReasonConsts parses one package file and adds every package-level mergeReason*
+// constant it declares into got, failing the test on a duplicate declaration or on a member whose
+// value is not a plain string literal (the closed set must pin every member verbatim).
+func collectMergeReasonConsts(t *testing.T, fileName string, got map[string]mergeReasonConstDecl) {
 	t.Helper()
 
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "mergeerrors.go", nil, parser.SkipObjectResolution)
+	file, err := parser.ParseFile(fset, fileName, nil, parser.SkipObjectResolution)
 	if err != nil {
-		t.Fatalf("parse mergeerrors.go: %v", err)
+		t.Fatalf("parse %s: %v", fileName, err)
 	}
 
-	got := map[string]string{}
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok || genDecl.Tok != token.CONST {
@@ -68,44 +120,60 @@ func mergeReasonConstsFromSource(t *testing.T) map[string]string {
 					continue
 				}
 				if i >= len(valueSpec.Values) {
-					t.Fatalf("const %s has no value literal; the closed set must pin every member verbatim", name.Name)
+					t.Fatalf("const %s in %s has no value literal; the closed set must pin every member verbatim", name.Name, fileName)
 				}
 				lit, ok := valueSpec.Values[i].(*ast.BasicLit)
 				if !ok || lit.Kind != token.STRING {
-					t.Fatalf("const %s is not a string literal; the closed set must pin every member verbatim", name.Name)
+					t.Fatalf("const %s in %s is not a string literal; the closed set must pin every member verbatim", name.Name, fileName)
 				}
 				value, unquoteErr := strconv.Unquote(lit.Value)
 				if unquoteErr != nil {
-					t.Fatalf("unquote const %s value %s: %v", name.Name, lit.Value, unquoteErr)
+					t.Fatalf("unquote const %s value %s in %s: %v", name.Name, lit.Value, fileName, unquoteErr)
 				}
-				got[name.Name] = value
+				if prior, duplicate := got[name.Name]; duplicate {
+					t.Fatalf("const %s is declared in both %s and %s; the closed set must declare each member once", name.Name, prior.file, fileName)
+				}
+				got[name.Name] = mergeReasonConstDecl{value: value, file: fileName}
 			}
 		}
 	}
-	return got
 }
 
 // TestMergeVocabulary_GuardReasonSetMatchesConstBlock proves pinnedMergeReasons equal — both
-// directions, names and verbatim values — to the mergeReason* const block mergeerrors.go really
-// declares. This is what makes the same-commit rule detectable: a member added to the source
-// without touching pinnedMergeReasons fails here, which the closure test's former
-// two-hand-maintained-lists comparison could never do.
+// directions, names and verbatim values — to the mergeReason* constants the package really
+// declares, scanned across every production file rather than one. This is what makes the
+// same-commit rule detectable: a member added to the source without touching pinnedMergeReasons
+// fails here, wherever in the package it was added.
 func TestMergeVocabulary_GuardReasonSetMatchesConstBlock(t *testing.T) {
 	got := mergeReasonConstsFromSource(t)
 
-	for name, value := range got {
+	for name, decl := range got {
 		pinnedValue, pinned := pinnedMergeReasons[name]
 		if !pinned {
-			t.Errorf("mergeerrors.go declares %s = %q, which pinnedMergeReasons does not pin -- update the pinned map in the same commit as any change to the closed set", name, value)
+			t.Errorf("%s declares %s = %q, which pinnedMergeReasons does not pin -- update the pinned map in the same commit as any change to the closed set", decl.file, name, decl.value)
 			continue
 		}
-		if value != pinnedValue {
-			t.Errorf("mergeerrors.go declares %s = %q; pinnedMergeReasons pins %q -- the two must match verbatim", name, value, pinnedValue)
+		if decl.value != pinnedValue {
+			t.Errorf("%s declares %s = %q; pinnedMergeReasons pins %q -- the two must match verbatim", decl.file, name, decl.value, pinnedValue)
 		}
 	}
 	for name := range pinnedMergeReasons {
 		if _, declared := got[name]; !declared {
-			t.Errorf("pinnedMergeReasons pins %s, which mergeerrors.go no longer declares -- update the pinned map in the same commit as any change to the closed set", name)
+			t.Errorf("pinnedMergeReasons pins %s, which no production file in this package declares -- update the pinned map in the same commit as any change to the closed set", name)
+		}
+	}
+}
+
+// TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile asserts every mergeReason* constant lives in
+// mergeerrors.go, which is what that file's own const-block godoc claims and what the closed set's
+// same-commit rule assumes when it names one const list to update.
+// It is a second, independent assertion rather than a scan restriction: the scan deliberately reads
+// the whole package (so a stray member cannot hide from the pinned-map equality above), and this
+// test is what turns "declared in mergeerrors.go" from an unenforced convention into a checked one.
+func TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile(t *testing.T) {
+	for name, decl := range mergeReasonConstsFromSource(t) {
+		if decl.file != mergeReasonHomeFile {
+			t.Errorf("const %s is declared in %s; every mergeReason* member must be declared in %s, beside the rest of the closed set", name, decl.file, mergeReasonHomeFile)
 		}
 	}
 }

@@ -18,8 +18,12 @@ import (
 // Pinned verbatim from the discussion's safety-guards-are-aggregated-and-side-free decision:
 // adding a member is a same-commit change to this list and to pinnedMergeReasons in
 // mergevocab_test.go — enforced mechanically by
-// TestMergeVocabulary_GuardReasonSetMatchesConstBlock, which parses this const block — and no
-// member may name a side, carry a path, or imply an order.
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock, which parses every production file in this
+// package for mergeReason* constants rather than this file alone — and no member may name a side,
+// carry a path, or imply an order.
+// That this file is the set's only home is itself enforced, by
+// TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile: a member declared beside its consuming
+// guard in mergeguards.go would otherwise escape the pinned map and every assertion it drives.
 // Membership is earned by being an *aggregatable precondition* — one of several reasons a single
 // *MergeGuardError may carry at once. A terminal, standalone disposition with nothing to aggregate
 // alongside it belongs in the typed error surface below instead: "no merge in progress" was once a
