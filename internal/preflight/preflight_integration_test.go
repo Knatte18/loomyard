@@ -144,8 +144,9 @@ func TestCheckResolved_PrimeNameFailure(t *testing.T) {
 	assertCheckSet(t, report, preflight.CheckGeometry)
 }
 
-// TestCheckResolved_Dirty covers both sides of worktree pair cleanliness: a dirty warp side and a
-// dirty paired side, each reporting CheckWorktreeClean.
+// TestCheckResolved_Dirty covers all three ways cleanliness can observe a dirty repo (a
+// tracked-and-modified file, a staged file, and an untracked-only file) across both sides of the
+// pair: the warp side and the paired side.
 func TestCheckResolved_Dirty(t *testing.T) {
 	t.Parallel()
 
@@ -167,6 +168,38 @@ func TestCheckResolved_Dirty(t *testing.T) {
 			dirty: func(t *testing.T, h *hubforge.Hub) {
 				untracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked paired-side file: %v", err)
+				}
+			},
+		},
+		{
+			name: "WarpSideTrackedModified",
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				readme := filepath.Join(h.PrimeWorktree(), "README")
+				if err := os.WriteFile(readme, []byte("modified"), 0o644); err != nil {
+					t.Fatalf("modify README: %v", err)
+				}
+			},
+		},
+		{
+			name: "WarpSideStaged",
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				readme := filepath.Join(h.PrimeWorktree(), "README")
+				if err := os.WriteFile(readme, []byte("staged"), 0o644); err != nil {
+					t.Fatalf("modify README: %v", err)
+				}
+				gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "README")
+			},
+		},
+		{
+			name: "BothSides",
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				warpUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
+				if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked warp file: %v", err)
+				}
+				pairedUntracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
+				if err := os.WriteFile(pairedUntracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked paired-side file: %v", err)
 				}
 			},
@@ -223,22 +256,88 @@ func TestCheckResolved_BranchMismatch(t *testing.T) {
 	assertCheckSet(t, report, preflight.CheckFabricSync)
 }
 
-// TestCheckResolved_BrokenJunction asserts that a broken junction classifies as CheckJunction.
-func TestCheckResolved_BrokenJunction(t *testing.T) {
+// TestPreflight_JunctionBroken asserts that all three of Healthy's junction-drift shapes — missing,
+// not-a-link, and points-elsewhere — classify as junction, via Healthy's typed Cause rather than a
+// substring match.
+// Each drift shape is exercised against BOTH junctions (_lyx and a second, non-_lyx junction) so the
+// classification is proven to hold for the second, non-_lyx junction too — not just the one Healthy's
+// underlying loop was originally written and tested against.
+func TestPreflight_JunctionBroken(t *testing.T) {
 	t.Parallel()
 
-	h, _ := setupFixture(t)
-
-	link := fabricengine.WarpLyxLinkHere(h.Location)
-	if err := fslink.Remove(link); err != nil {
-		t.Fatalf("remove junction %s: %v", link, err)
+	shapes := []struct {
+		name    string
+		corrupt func(t *testing.T, warpLink string)
+	}{
+		{
+			name: "Missing",
+			corrupt: func(t *testing.T, warpLink string) {
+				if err := fslink.Remove(warpLink); err != nil {
+					t.Fatalf("remove junction %s: %v", warpLink, err)
+				}
+			},
+		},
+		{
+			name: "NotALink",
+			corrupt: func(t *testing.T, warpLink string) {
+				if err := fslink.Remove(warpLink); err != nil {
+					t.Fatalf("remove junction %s: %v", warpLink, err)
+				}
+				if err := os.Mkdir(warpLink, 0o755); err != nil {
+					t.Fatalf("mkdir real dir in junction's place %s: %v", warpLink, err)
+				}
+			},
+		},
+		{
+			name: "PointsElsewhere",
+			corrupt: func(t *testing.T, warpLink string) {
+				if err := fslink.Remove(warpLink); err != nil {
+					t.Fatalf("remove junction %s: %v", warpLink, err)
+				}
+				wrongTarget := filepath.Join(filepath.Dir(warpLink), "not-the-fabric-junction-dir")
+				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
+					t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
+				}
+				if err := fslink.CreateDirLink(warpLink, wrongTarget); err != nil {
+					t.Fatalf("CreateDirLink(%s, %s): %v", warpLink, wrongTarget, err)
+				}
+			},
+		},
 	}
 
-	report, err := preflight.CheckResolved(h.Location)
-	if err != nil {
-		t.Fatalf("CheckResolved: %v", err)
+	junctions := []struct {
+		name    string
+		linkFor func(h *hubforge.Hub, slug string) string
+	}{
+		{
+			name:    "Lyx",
+			linkFor: func(h *hubforge.Hub, slug string) string { return fabricengine.WarpLyxLink(h.Location, slug) },
+		},
+		{
+			name: "Extra",
+			linkFor: func(h *hubforge.Hub, slug string) string {
+				return filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel, "_extra")
+			},
+		},
 	}
-	assertCheckSet(t, report, preflight.CheckJunction)
+
+	for _, j := range junctions {
+		for _, tt := range shapes {
+			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				h, slug := setupFixture(t)
+				warpLink := j.linkFor(h, slug)
+				tt.corrupt(t, warpLink)
+
+				report, err := preflight.CheckResolved(h.Location)
+				if err != nil {
+					t.Fatalf("CheckResolved: %v", err)
+				}
+				assertCheckSet(t, report, preflight.CheckJunction)
+			})
+		}
+	}
 }
 
 // TestCheck_SubpathAnchoredHubIsNotRejected asserts that a legitimately subpath-anchored repo is
