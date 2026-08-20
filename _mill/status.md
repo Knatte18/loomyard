@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-delete-composite
+phase: approved-docs
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-preflightshed-package  '2026-08-20T09:38:47Z'
 approved-loomengine-checkseed  '2026-08-20T09:45:26Z'
 approved-wire-two-rows  '2026-08-20T09:54:31Z'
 approved-delete-composite  '2026-08-20T10:05:49Z'
+approved-docs  '2026-08-20T10:12:04Z'
 ```
 
 ## Batches
@@ -58,8 +59,9 @@ batches:
     commit_sha: b640fb7264f9b7d3830027cac9c3e2f3534833d7
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: fdae3aa1-df26-43c4-868b-8ef52ebcdcf1
     start_sha: c6d52a72561d02787294c031f766c799b16df075
+    commit_sha: 944d0d4e7c4c1988fc4596dc50d764e9deef2b76
     verify_baseline_failures: []
 ```
