@@ -34,13 +34,20 @@ implementing  '2026-08-20T16:14:23Z'
 ```yaml
 batches:
   - name: file-contracts
-    state: pending
+    state: running
+    implementer_session: b362f527-f740-47a0-851d-7fdc2b302992
+    start_sha: 7389cd1b792a0f228c563f1aec1ca0356b8642ac
+    verify_baseline_failures: []
   - name: stencils
     state: pending
+    verify_baseline_failures: []
   - name: bouncer-producer
     state: pending
+    verify_baseline_failures: []
   - name: judge-replay-coverage
     state: pending
+    verify_baseline_failures: []
   - name: manifest-docs
     state: pending
+    verify_baseline_failures: []
 ```
