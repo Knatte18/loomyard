@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: claude-cli-forking-test
 branch: claude-cli-forking-test
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-20T10:28:33Z'
+done  '2026-08-20T11:18:12Z'
 ```
