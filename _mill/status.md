@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'auto: discussion review gaps unresolved after 5 rounds'
+phase: discussed
 slug: shedengine-segments-bounce-budget
 branch: shedengine-segments-bounce-budget
 plan: null
@@ -18,4 +17,5 @@ task_description: |
 discussing  '2026-08-20T08:17:05Z'
 discussion-fix-r2  '2026-08-20T08:41:31Z'
 blocked  '2026-08-20T09:04:32Z'
+discussed  '2026-08-20T09:07:13Z'
 ```
