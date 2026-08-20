@@ -230,10 +230,18 @@ func TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t 
 // TestMergeIn_StartsAreReReadUnderLock pins that the record's pre-merge SHAs are captured under
 // the lock, not before it: a commit landed by the lock's previous holder while MergeIn waited must
 // appear as the recorded start, or MergeAbort would reset straight through it.
+// BOTH sides are driven and BOTH recorded starts are asserted, independently. Asserting the warp
+// side alone left the weft re-read entirely unguarded — deleting it kept the whole integration
+// suite green — and the weft side is not the cheaper half of the pair: a stale WeftStart is what
+// makes MergeAbort hard-reset the weft checkout through a commit the previous lock holder (a
+// concurrent Fabric.Commit, the most plausible one) had already landed there.
 func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	h, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
 	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
+
+	warpBeforeWait := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftBeforeWait := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
 
 	held, done := launchBlockedOnLock(t, f, func() error {
 		res, mergeErr := f.MergeIn("feature")
@@ -243,10 +251,22 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 		return mergeErr
 	})
 
-	// The lock's holder lands a commit on the warp current branch — what a concurrent Commit does —
+	// The lock's holder lands a commit on each side's current branch — what a concurrent Commit does —
 	// before this MergeIn gets its turn.
 	commitOnCurrentBranch(t, h.PrimeWorktree(), "landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent commit")
-	landedSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	commitOnCurrentBranch(t, h.PrimeWeft(), "_lyx/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
+	landedWarpSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	landedWeftSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+
+	// Precondition, asserted rather than assumed: each side really did move while MergeIn waited, or
+	// the "re-read under the lock" and "read before the lock" answers would be indistinguishable and
+	// the assertions below would pass without proving anything.
+	if landedWarpSHA == warpBeforeWait {
+		t.Fatalf("warp HEAD did not move during the wait (still %q); the race this test needs is not present", warpBeforeWait)
+	}
+	if landedWeftSHA == weftBeforeWait {
+		t.Fatalf("weft HEAD did not move during the wait (still %q); the race this test needs is not present", weftBeforeWait)
+	}
 
 	if mergeErr := awaitVerb(t, held, done); mergeErr != nil {
 		t.Fatalf("MergeIn(feature) error = %v", mergeErr)
@@ -256,8 +276,11 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
-	if st.WarpStart != landedSHA {
-		t.Errorf("recorded WarpStart = %q; want %q — the start must be read under the lock, or MergeAbort resets through the concurrent commit", st.WarpStart, landedSHA)
+	if st.WarpStart != landedWarpSHA {
+		t.Errorf("recorded WarpStart = %q; want %q — the start must be read under the lock, or MergeAbort resets through the concurrent commit", st.WarpStart, landedWarpSHA)
+	}
+	if st.WeftStart != landedWeftSHA {
+		t.Errorf("recorded WeftStart = %q; want %q — the start must be read under the lock, or MergeAbort resets through the concurrent commit", st.WeftStart, landedWeftSHA)
 	}
 }
 
