@@ -61,7 +61,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 
 - **Three resolution tiers:** 1) `lyxcwd.Resolve` — cwd is a git worktree root.
   2) `preflight.Check` (`fabricengine.Ready`/`Healthy`/`Clean`/`PrimeName`) — fabric wired, junctions intact, warp/weft in sync, tree clean.
-  3) `loomengine.Preflight` — tiers 1+2 plus the orchestrator's own status seed.
+  3) `loomengine.CheckSeed` — the orchestrator's own status seed alone, a separate producer row from tier 2 rather than a function composing it, so tier 3 does not re-run tiers 1 and 2.
 - **Producer/orchestrator split:** a producer requires none of the three tiers.
   An orchestrator requires tier 3 and threads the extracted plain values down its producer list.
   A standalone CLI invocation requires none of the three, but its pre-run probes tier 1 via `preflight.ResolveMode`, which **degrades** to standalone (no hub lyx directory found, `ErrNotAGitRepo`, or `ErrCwdOutsideAnchor` with no hub geometry) or **refuses** (any other error, including `ErrCwdOutsideAnchor` inside a wired hub worktree's subdirectory).

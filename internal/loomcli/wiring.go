@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/preflightshed"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -97,10 +98,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		WorktreeRoot:       location.WorktreePath(),
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
-		// Preflight is the adapter constructor, never the bare loomengine.Preflight function: loomshed.New
-		// requires a shedengine.ShedProducer, and the adapter is what maps loomengine.Preflight's Report
-		// onto that contract.
-		Preflight: loomshed.NewPreflightProducer(cwd),
+		// Preflight is built from internal/preflightshed: loomshed.New requires a
+		// shedengine.ShedProducer, and preflightshed's general Preflight producer is what maps
+		// preflight.Check's Report onto that contract, with the row name told from loomshed's own
+		// constant.
+		Preflight: preflightshed.NewPreflight(loomshed.NamePreflight, cwd),
 		// WebsterRun is left nil so shedadapters.NewWebsterProducer defaults to the production entry
 		// point, websterengine.Run.
 		WebsterDeps: runDeps,

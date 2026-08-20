@@ -32,9 +32,12 @@ import (
 )
 
 // cwdMutationSubjectFiles is this guard's explicitly named per-file subject set (module-relative,
-// slash-separated path -> true). The eight integration test files slice 15's migration touched, plus
+// slash-separated path -> true). The seven integration test files slice 15's migration touched, plus
 // internal/fabricengine/coalesce_integration_test.go, the one file whose cwd mutation is itself the
 // assertion under test rather than a removable seam-migration leftover.
+// internal/loomengine/preflight_integration_test.go left this set when the preflight-loom-agnostic
+// task deleted the file outright, retiring the whole suite rather than leaving a migrated leftover
+// to track.
 var cwdMutationSubjectFiles = map[string]bool{
 	"internal/fabriccli/cli_test.go":                     true,
 	"internal/perchcli/run_integration_test.go":          true,
@@ -43,7 +46,6 @@ var cwdMutationSubjectFiles = map[string]bool{
 	"internal/webstercli/verbs_test.go":                  true,
 	"internal/idecli/cli_test.go":                        true,
 	"internal/reedcli/cli_integration_test.go":           true,
-	"internal/loomengine/preflight_integration_test.go":  true,
 	"internal/fabricengine/coalesce_integration_test.go": true,
 }
 

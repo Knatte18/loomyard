@@ -1,5 +1,5 @@
 // stub.go implements stubProducer, the placeholder ShedProducer backing every row of loom's
-// 12-row producer list this task does not build for real.
+// 13-row producer list this task does not build for real.
 
 package loomshed
 
@@ -9,7 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// stubProducer is a placeholder ShedProducer. It backs five rows of loom's 12-row producer list
+// stubProducer is a placeholder ShedProducer. It backs five rows of loom's 13-row producer list
 // this task does not build for real -- Discussion-Write, Discussion-Review, Plan-Write,
 // Plan-Review, and Webster-Review -- each replaced by a real producer in a later task, so the
 // list's sequencing, resume,

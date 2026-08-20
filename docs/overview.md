@@ -239,6 +239,7 @@ github.com/Knatte18/loomyard/
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
+├── internal/preflightshed/       the general `Preflight` `ShedProducer` over `internal/preflight`'s tier-1/tier-2 checks, shared by reference across producer lists
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
@@ -334,6 +335,7 @@ both folded back into reed — see the `internal/reedengine` package documentati
 
 The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
 Above the engines sits a separate precondition-and-geometry layer, not the shared-infrastructure layer above: `internal/preflight` is the tier-1/tier-2 precondition layer (worktree geometry, worktree-pair cleanliness, Fabric readiness/sync), and `internal/hubgeom` and `internal/standalonegeom` are its hub-mode and told-mode constructors of the `Geometry` struct each engine is handed — see the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
+`internal/preflightshed` sits alongside these as the producer-shaped wrapper around that same layer, letting a `Shed` producer list name it as a single row rather than each caller composing `internal/preflight.Check` for itself.
 
 ## Execution stack (orchestration layers)
 

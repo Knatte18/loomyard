@@ -7,7 +7,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // fakeAlwaysDoneProducer is a minimal shedengine.ShedProducer fake that always reports Done -- used
@@ -26,7 +25,8 @@ type wantProducerRow struct {
 }
 
 var wantProducerTable = []wantProducerRow{
-	{NamePreflight, "", NameDiscussionWrite},
+	{NamePreflight, "", NameLoomPreflight},
+	{NameLoomPreflight, "", NameDiscussionWrite},
 	{NameDiscussionWrite, "", NameDiscussionValidate},
 	{NameDiscussionValidate, NameDiscussionWrite, NameDiscussionReview},
 	{NameDiscussionReview, NameDiscussionWrite, NamePlanWrite},
@@ -205,13 +205,8 @@ func TestNew_PassesShedValidation(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	seed := shedengine.Status{
-		CurrentProducer: NamePreflight,
-		State:           shedengine.StateRunning,
-		History:         []shedengine.HistoryEntry{},
-	}
-	if err := state.WriteJSON(deps.StatusPath, deps.StatusLockPath, seed); err != nil {
-		t.Fatalf("seed status file: %v", err)
+	if err := Seed(deps.StatusPath, deps.StatusLockPath, "validation-slug", "validation-parent"); err != nil {
+		t.Fatalf("Seed(): %v", err)
 	}
 
 	// Drive Run to exercise (*Shed).validate() indirectly, since it is unexported: a validation

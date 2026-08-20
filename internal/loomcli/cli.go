@@ -29,7 +29,7 @@ type loomCLI struct {
 	// location is the resolved *lyxcwd.Location for this invocation. wire reads it to anchor every
 	// config load and to build the reed/webster geometries; no verb needs it directly.
 	location *lyxcwd.Location
-	// cwd is the resolved cwd string the pre-run read via lyxcwd.CwdFrom. loomshed.NewPreflightProducer
+	// cwd is the resolved cwd string the pre-run read via lyxcwd.CwdFrom. preflightshed.NewPreflight
 	// reads it -- Preflight is the one row that spawns git, over this exact cwd.
 	cwd string
 	// cfg is the loaded loom.yaml config. Batch 5's run/bootstrap verb reads its Discussion/Plan

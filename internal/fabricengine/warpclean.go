@@ -1,5 +1,5 @@
 // warpclean.go implements a standalone worktree-pair cleanliness check, a package-level Clean used
-// by loomengine.Preflight to determine whether both sides of a warp/weft pair have any dirty
+// by preflight.CheckResolved to determine whether both sides of a warp/weft pair have any dirty
 // (uncommitted or untracked) paths before a loom phase transition proceeds.
 
 package fabricengine
@@ -14,7 +14,7 @@ import (
 
 // Clean reports whether both the warp and weft worktrees have no dirty paths, including untracked
 // files.
-// It is package-level for use by loomengine.Preflight.
+// It is package-level for use by preflight.CheckResolved.
 // The weft-side check is skipped when the weft worktree does not exist.
 // Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
 func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
