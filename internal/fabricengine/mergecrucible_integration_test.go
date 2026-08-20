@@ -545,6 +545,64 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 	}
 }
 
+// TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone pins sideConcludeMayHaveLanded's FIRST
+// clause -- "the record already carries this side's conclude SHA" -- which no other test can fail on.
+// Deleting that clause left the whole integration suite green, because every existing fixture also
+// satisfies the second clause (outcome staged/conflicted AND HEAD moved off the recorded start), so
+// the HEAD read is always what actually refuses.
+// The shape that isolates the first clause puts HEAD back: after a half-concluded attempt whose warp
+// conclude landed and WAS recorded, the operator resets that side to the recorded pre-merge SHA.
+// HEAD no longer looks moved on either side, so only the record's own memory of the conclude stands
+// between MergeAbort and a two-sided force reset. It must still refuse: the recorded SHA is evidence
+// that a commit was made, and after the reset that commit is reachable from no branch, so an abort
+// that proceeded would discard it for good along with any resolutions it carries.
+func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
+	h, f := mergeCrucibleWarpConflictFixture(t)
+	resolveWarpConflict(t, h.PrimeWorktree(), "conflict.txt")
+
+	removeHook := installRefusingPreCommitHook(t, h.PrimeWeft())
+	if _, err := f.MergeContinue(""); !errors.As(err, new(*fabricengine.ErrMergeIncomplete)) {
+		t.Fatalf("MergeContinue(\"\") error = %v (%T); want *fabricengine.ErrMergeIncomplete — the fixture needs the weft conclude to fail after the warp conclude landed", err, err)
+	}
+	removeHook()
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if st.WarpCommitted == "" {
+		t.Fatalf("recorded WarpCommitted is empty; the fixture needs the warp conclude recorded")
+	}
+
+	// The operator puts the landed side back, so the HEAD-moved clause can no longer fire.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "reset", "--hard", st.WarpStart)
+
+	// Preconditions, asserted rather than assumed: NEITHER side's HEAD is off its recorded start any
+	// more, so the second clause is false on both and the recorded SHA is the only evidence left.
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != st.WarpStart {
+		t.Fatalf("warp HEAD = %q after the reset; want the recorded start %q, or the HEAD-moved clause refuses instead of the one under test", got, st.WarpStart)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != st.WeftStart {
+		t.Fatalf("weft HEAD = %q; want the recorded start %q, or the weft side's HEAD-moved clause refuses instead of the one under test", got, st.WeftStart)
+	}
+	if st.WeftCommitted != "" {
+		t.Fatalf("recorded WeftCommitted = %q; want empty, or the weft side's own recorded-SHA clause refuses instead of the warp one", st.WeftCommitted)
+	}
+
+	res, err := f.MergeAbort()
+	assertSoleGuardReason(t, "MergeAbort()", err, "merge conclude already landed")
+	if res.Mutated().Len() != 0 {
+		t.Errorf("MergeAbort() mutations = %v; want none — a refusal must not touch either checkout", res.Mutated().Entries())
+	}
+	inProgress, err := f.MergeInProgress()
+	if err != nil {
+		t.Fatalf("MergeInProgress: %v", err)
+	}
+	if !inProgress {
+		t.Error("MergeInProgress() = false after a refused abort; the record must survive so MergeContinue can still finish")
+	}
+}
+
 // readMergeRecordWarpStart reads the pre-merge SHA the live merge-state record holds for the warp
 // side, straight off disk -- the value MergeAbort would reset that side to.
 func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
