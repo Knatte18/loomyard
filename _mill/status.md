@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-quarry-live-and-equivalence
+phase: approved-lyx-removal
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-port-engine  '2026-08-20T15:25:42Z'
 approved-port-cli  '2026-08-20T15:41:15Z'
 self-resolved-verify-logic  '2026-08-20T16:03:38Z'
 approved-quarry-live-and-equivalence  '2026-08-20T16:07:38Z'
+approved-lyx-removal  '2026-08-20T16:30:20Z'
 ```
 
 ## Batches
@@ -68,8 +69,9 @@ batches:
     commit_sha: 7b5d4ce24a208858328d823b0c9ddd226f549637
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: lyx-removal
-    state: running
+    state: approved
     implementer_session: 1338f62a-0db5-4442-89b8-0e223ad92d73
     start_sha: 74abbc3a7ff0f19f570c032e6e186b72b5d73fc8
+    commit_sha: d6671a4f35a03449f3ce169bcf18b2032d148635
     verify_baseline_failures: []
 ```
