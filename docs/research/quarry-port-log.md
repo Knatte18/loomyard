@@ -110,3 +110,74 @@ ce5bcb7 refactor(cli): resolve config and state paths instead of a lyx hub
 ```
 
 `go -C /home/knatte/Code/quarry/wts/quarry test ./...` passes end to end: `internal/cli` (with its two rewritten/new suites), `internal/lock`, `internal/output`, `internal/proc`, and `quarry` all green. `go -C /home/knatte/Code/quarry/wts/quarry build ./cmd/quarry` produces a working binary. Quarry's *behaviour* is unproven until batch 5's byte-for-byte envelope comparison against `lyx scout` runs.
+
+## Batch 5 — quarry-live-and-equivalence
+
+Landed in `/home/knatte/Code/quarry/wts/quarry` (repo `github.com/Knatte18/quarry`, branch `main`). This is the batch the whole task's acceptance rests on: every earlier batch proved quarry compiles and its own tests pass; this batch proves it behaves the same.
+
+### Card 34 — the live tier, first real run
+
+The five `//go:build lsp` files (`ensureserver_integration_test.go`, `refs_integration_test.go`, `supervised_integration_test.go`, `supervised_lsp_test.go`, `toolchain_integration_test.go`) had been `go vet -tags lsp`-checked since batch 3 but never executed. Running `go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./... -count=1` for the first time surfaced three genuine, pre-existing bugs in the code under test — none a port defect, since all three reproduce identically, unexecuted, on `main`'s own `internal/scoutengine`:
+
+- `refs_integration_test.go`'s `repoRoot(t)` climbed `filepath.Dir()` three levels, correct for Loomyard's `internal/scoutengine` (two directories below that repo's root) but one too many for quarry's own `quarry/` (one directory below this repo's root, which is also the module root) — landed at `wts/` instead of the module root, breaking every fixture that used it.
+- `lspclient.go`'s `initialize` never advertised `textDocument.documentSymbol.hierarchicalDocumentSymbolSupport`, so `gopls` answered `textDocument/documentSymbol` with a flat, zero-ranged shape instead of the `range`/`selectionRange`-carrying shape `lspDocumentSymbol` parses, silently breaking every `InFile` query.
+- `refs.go`'s `collectInFileMatches` matched only a symbol's bare `Name`, but `gopls` names every method `"(Receiver).Method"` rather than nesting a bare `Method` under its receiver type's `Children` — added `bareInFileName` to strip that qualifier before comparing.
+
+All three were fixed in quarry (the port's own copies); none were touched in Loomyard, which is out of this batch's scope. `gopls` (pinned `v0.23.0`) was already warm in this machine's toolchain cache for every run in this batch — no fresh install was timed.
+
+Live tier wall-clock duration: **~7-8 seconds** (`go test -tags lsp ./... -count=1`, `real 0m8.0s` on the fix-verifying run). Language-server arms other than Go skip when their servers are absent, exactly as in Loomyard — not a failure.
+
+### Card 35 — behavioural equivalence
+
+`docs/port-equivalence.md` (quarry-side) records 26 query/verb comparisons between `quarry` and `lyx scout`, both built at this batch's commits and pointed at this task worktree as `--target-dir`. Verdict table, copied verbatim:
+
+| Query | Verb | `lyx scout` exit | `quarry` exit | Envelope | Exit code |
+|---|---|---|---|---|---|
+| `Err` | `symbol` | 0 | 0 | MATCH | MATCH |
+| `Err` | `refs` (215 refs) | 0 | 0 | MATCH | MATCH |
+| `Err` | `definition` | 0 | 0 | MATCH | MATCH |
+| `Err` | `assert-no-callers` | 1 (violation) | 1 (violation) | MATCH | MATCH |
+| `CurrentSHA` | `symbol` | 0 | 0 | MATCH | MATCH |
+| `CurrentSHA` | `refs` (30 refs) | 0 | 0 | MATCH | MATCH |
+| `CurrentSHA` | `definition` | 0 | 0 | MATCH | MATCH |
+| `CurrentSHA` | `assert-no-callers` | 1 (violation) | 1 (violation) | MATCH | MATCH |
+| `CurrentBranch` | `symbol` | 0 | 0 | MATCH | MATCH |
+| `CurrentBranch` | `refs` (4 refs) | 0 | 0 | MATCH | MATCH |
+| `ReadJSON` | `symbol` | 0 | 0 | MATCH | MATCH |
+| `ReadJSON` | `refs` (22 refs) | 0 | 0 | MATCH | MATCH |
+| `ReadJSON` | `definition` | 0 | 0 | MATCH | MATCH |
+| `WriteJSON` | `symbol` | 0 | 0 | MATCH | MATCH |
+| `WriteJSON` | `refs` (22 refs) | 0 | 0 | MATCH | MATCH |
+| `ShedProducer.Call` | `symbol` | 0 | 0 | MATCH | MATCH |
+| `ShedProducer.Call` | `refs` (100 refs) | 0 | 0 | MATCH | MATCH |
+| `ShedProducer.Call` | `definition` | 0 | 0 | MATCH | MATCH |
+| `sortedLanguages` | `symbol` (1 match) | 0 | 0 | MATCH | MATCH |
+| `sortedLanguages` | `refs` (2 refs) | 0 | 0 | MATCH | MATCH |
+| `sortedLanguages` | `definition` | 0 | 0 | MATCH | MATCH |
+| `sortedLanguages` | `assert-no-callers` | 1 (violation) | 1 (violation) | MATCH | MATCH |
+| `markerExists` | `assert-no-callers --except detect.go` | 0 (pass) | 0 (pass) | MATCH | MATCH |
+| `QuarryNoSuchSymbolXYZ123` | `symbol` | 1 (`ErrSymbolNotFound`) | 1 (`ErrSymbolNotFound`) | MATCH — deliberate exception | MATCH |
+| `QuarryNoSuchSymbolXYZ123` | `refs` | 1 (`ErrSymbolNotFound`) | 1 (`ErrSymbolNotFound`) | MATCH — deliberate exception | MATCH |
+| `QuarryNoSuchSymbolXYZ123` | `definition` | 1 (`ErrSymbolNotFound`) | 1 (`ErrSymbolNotFound`) | MATCH — deliberate exception | MATCH |
+| `ReadJSON`,`WriteJSON` (batch) | `symbol` | 0 | 0 | MATCH | MATCH |
+
+No permitted path differences occurred: both binaries were invoked with the identical `--target-dir`, so every file path in every envelope was byte-identical by construction. Every error string, including the still-verbatim `"scoutengine: "` prefix on quarry's own side, compared equal.
+
+### Card 36 — port program removed, follow-ups filed
+
+`tools/port/main.go` and the now-empty `tools/` directory were deleted from quarry now that the port is proven. `go -C /home/knatte/Code/quarry/wts/quarry build ./...` still succeeds; `go.mod`/`go.sum` are unchanged (the program was stdlib-only). Two follow-up issues filed on `Knatte18/quarry`, both deferred:
+
+- [#3](https://github.com/Knatte18/quarry/issues/3) — rename the 59 verbatim `"scoutengine: "` error prefixes to `"quarry: "`, now unblocked by the equivalence proof above.
+- [#4](https://github.com/Knatte18/quarry/issues/4) — darwin support for `internal/proc` (`KillPID`, `IsAlive`, `DetachBreakaway`).
+
+### Quarry commit SHAs (cards 34 through 36)
+
+```
+f0ed319 chore(quarry): remove the port program after the equivalence proof
+5eaf45c docs(quarry): record the lyx scout behavioural-equivalence comparison
+2c54254 test(quarry): make the lsp live tier green
+```
+
+### Go / no-go for batch 6
+
+**Go.** Every verb compared equal on every query in card 35's comparison, and the live tier (card 34) is green after the three pre-existing-bug fixes above. Batch 6's deletion of `internal/scoutengine` and `internal/scoutcli` from this worktree is authorized to proceed.
