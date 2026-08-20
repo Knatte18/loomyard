@@ -60,7 +60,7 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
   Focus file: the same format section the seed template carries, in byte-identical wording.
   Name `internal/shedadapters/bouncerfiles.go`'s parsers as the authority all three formats are enforced by.
 
-  Register both in `contracts/stencils/stencils.go`: add a `BouncerTemplateSeed []byte` var with a doc comment and a `//go:embed bouncer/bouncer-template-seed.md` directive, and a `BouncerTemplateJudge []byte` var the same way, placed after the burler vars and before the treadle vars so the file's family grouping stays alphabetical-by-family as it reads today.
+  Register both in `contracts/stencils/stencils.go`: add a `BouncerTemplateSeed []byte` var with a doc comment and a `//go:embed bouncer/bouncer-template-seed.md` directive, and a `BouncerTemplateJudge []byte` var the same way, placed after the burler vars and before the treadle vars, following the file's existing physical ordering of family groups.
   Add the two matching rows to `entries` in the same relative position: `{"bouncer-template-seed", &BouncerTemplateSeed}` and `{"bouncer-template-judge", &BouncerTemplateJudge}`.
   The `bouncer-` name prefix is load-bearing: `stencilstore.RelPath` derives the family subfolder from the name's first token, so a name whose first token is not `bouncer` would resolve to a path that does not exist.
 

@@ -18,6 +18,7 @@ The external interface batch 4 consumes: `NewBouncer`, `Bouncer.Call`, and the p
 
 Batch-local decision, differing from nothing in the overview but worth stating once here: an unreadable `RunDir` surfacing from `ResolveRound` is a **hard error**, not a degradation to `Stuck`.
 Every other failure this producer meets is fixable by another round, so bouncing to the round producer is the right recovery; a run dir neither producer can read is not, and `ResolveRound`'s own contract already says an unreadable run dir must never look like a fresh segment.
+That path still consults `cancelErr` before returning its own error, exactly as every other non-success exit in this producer does — hard-versus-degraded governs which error is returned, never whether cancellation is checked.
 
 ## Cards
 
@@ -104,7 +105,8 @@ Every other failure this producer meets is fixable by another round, so bouncing
 
   `Call`'s sequence.
   First `entryErr(ctx, b.cfg.Name, bouncerEngineLabel)`, returning immediately on a non-nil result.
-  Then `n, err := ResolveRound(b.cfg.RunDir, b.cfg.ReportName)`; a non-nil `err` is returned wrapped as a hard error, since nothing has started and no later round can repair an unreadable run dir.
+  Then `n, err := ResolveRound(b.cfg.RunDir, b.cfg.ReportName)`; on a non-nil `err`, consult `cancelErr(ctx, b.cfg.Name, bouncerEngineLabel)` first and return that when it is non-nil, otherwise return the resolve failure wrapped as a hard error.
+  It is a hard error rather than a degradation because no later round can repair an unreadable run dir, and it consults `cancelErr` first for the same reason every other non-success exit in this producer does — `internal/shedadapters/ctx.go`'s own doc states that every non-success return path consults `cancelErr` first, and the only carve-out anywhere in this design is a genuinely parsed verdict.
   Then branch on `n`.
 
   Declare `judged(round int) bool`: true only when `verdictPath` exists and `parseVerdict` accepts its bytes **and** `ledgerPath` exists and `parseLedger` accepts its bytes.
