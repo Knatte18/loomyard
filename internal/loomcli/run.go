@@ -214,6 +214,16 @@ Example:
 				// The log file handle is safe to close here: the child inherited its own
 				// duplicated descriptor at Start, so this process's copy is no longer needed.
 				_ = logFile.Close()
+				// Reap the child as soon as it exits, in the background: this process is still the
+				// driver's direct parent (Detach's Setsid only puts it in a new session; the child
+				// is re-parented away only once THIS process itself exits), so a driver that
+				// finishes before this bootstrap invocation does -- the common case, since a fresh
+				// task's Discussion-Validate has nothing to validate yet and bounces to its budget
+				// within milliseconds -- would otherwise sit as a zombie. A zombie's pid still
+				// answers kill(pid, 0) as "alive", which is exactly the probe proc.IsAlive uses, so
+				// leaving this unreaped would make the handshake below spin its entire deadline and
+				// falsely refuse a bootstrap whose driver actually completed cleanly.
+				go func() { _ = driveCmd.Wait() }()
 			}
 
 			// Step 6: still holding the bootstrap lock, wait for the driver to take the run lock.
