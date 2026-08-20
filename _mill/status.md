@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-loomcli-run-bootstrap  '2026-08-19T19:31:22Z'
 approved-registration-and-guards  '2026-08-19T19:37:44Z'
 approved-smoke-tests-and-roadmap  '2026-08-20T06:53:46Z'
 holistic-reviewing  '2026-08-20T06:54:20Z'
+holistic-fixing  '2026-08-20T07:02:04Z'
 ```
 
 ## Batches
