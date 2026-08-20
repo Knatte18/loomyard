@@ -480,6 +480,14 @@ Finally the squash version of the same question, which has no evidence either wa
 Install the failing `pre-commit` hook in the **warp** checkout, run `lyx fabric merge <branch> --squash`, remove the hook, then land the squash conclude yourself with plain `git commit -m ...`.
 `lyx fabric merge --continue` must refuse with *merge conclude did not finish*, leave the record on disk, and leave your commit untouched — a squash conclude is a one-parent commit indistinguishable from any other, so adopting it would be a guess.
 
+Last, the octopus — a commit that satisfies every *other* adoption clause and still must be refused.
+Build the merge so the warp side merges CLEANLY (a real non-fast-forward merge of a branch that touches different files) while the weft side conflicts, so `merge-in` returns conflicts and the record survives with the warp side staged and unconcluded.
+Then, in the warp checkout, `git merge --abort`, branch a decoy off the repo's ROOT commit (`git rev-list --max-parents=0 HEAD`) with one unrelated file on it, and merge BOTH at once: `git merge <the record's warp_source> <decoy>`.
+Read the record at `<weft checkout>/.git/fabric-merge.json` for that source SHA;
+rooting the decoy outside the merge's own history is what stops git dropping the pre-merge tip as a redundant parent, so confirm with `git rev-list --parents -n 1 HEAD` that you really got THREE parents, the first being the record's `warp_start` and the second its `warp_source`.
+`lyx fabric merge --continue` must refuse with *merge conclude did not finish; run MergeContinue again* and leave the record on disk.
+Reporting `"committed": true` here is the failure mode and it is a blocking one: fabric would be claiming a commit it can never build — it starts every non-squash merge with a single `git merge --ff --no-commit <sha>`, so its own conclude has exactly two parents — and the branch would silently carry the decoy's content, brought in by no side of the merge and named by no `merge_staged` entry, with the record deleted and nothing left to inspect.
+
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
@@ -506,6 +514,13 @@ F10: <OK|WARN|FAIL> -- <one-line note if not OK>
 F11: <OK|WARN|FAIL> -- <one-line note if not OK>
 F12: <OK|WARN|FAIL> -- <one-line note if not OK>
 F13: <OK|WARN|FAIL> -- <one-line note if not OK>
+F14: <OK|WARN|FAIL> -- <one-line note if not OK>
+F15: <OK|WARN|FAIL> -- <one-line note if not OK>
+F16: <OK|WARN|FAIL> -- <one-line note if not OK>
+F17: <OK|WARN|FAIL> -- <one-line note if not OK>
+F18: <OK|WARN|FAIL> -- <one-line note if not OK>
+F19: <OK|WARN|FAIL> -- <one-line note if not OK>
+F20: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
