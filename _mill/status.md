@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shedadapters-generic-bouncer-producer
 branch: shedadapters-generic-bouncer-producer
 plan: _mill/plan
@@ -26,4 +26,21 @@ plan-review-r3  '2026-08-20T16:07:38Z'
 plan-fix-r3  '2026-08-20T16:07:38Z'
 plan-review-r4  '2026-08-20T16:13:46Z'
 planned  '2026-08-20T16:13:56Z'
+implementing  '2026-08-20T16:14:23Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: file-contracts
+    state: pending
+  - name: stencils
+    state: pending
+  - name: bouncer-producer
+    state: pending
+  - name: judge-replay-coverage
+    state: pending
+  - name: manifest-docs
+    state: pending
 ```
