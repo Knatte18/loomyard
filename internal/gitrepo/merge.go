@@ -143,19 +143,24 @@ func (r *Repo) MergeConclude(msg string) error {
 }
 
 // ConflictedFiles enumerates unmerged paths, repo-root-relative, via
-// `git diff --name-only --diff-filter=U`.
+// `git diff --name-only --diff-filter=U -z`.
+// The `-z` spelling is mandatory rather than cosmetic: without it git C-quotes any path whose
+// bytes fall outside core.quotepath's default ASCII set (a conflicted `ä.txt` comes back as the
+// literal `"\303\244.txt"`, quotes included), which is not a real worktree path — fabricengine's
+// visible-tree mapping then misclassifies a perfectly mappable conflict as unmergeable, and no
+// caller-supplied real path can ever match the quoted form. `-z` emits raw path bytes,
+// NUL-separated, unconditionally.
 // It returns an empty, never nil, slice when there are none.
 func (r *Repo) ConflictedFiles() ([]string, error) {
-	stdout, err := r.runChecked("diff", "--name-only", "--diff-filter=U")
+	stdout, err := r.runChecked("diff", "--name-only", "--diff-filter=U", "-z")
 	if err != nil {
-		return nil, fmt.Errorf("gitrepo: diff --name-only --diff-filter=U in %s: %w", r.path, err)
+		return nil, fmt.Errorf("gitrepo: diff --name-only --diff-filter=U -z in %s: %w", r.path, err)
 	}
 
 	files := []string{}
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			files = append(files, line)
+	for _, entry := range strings.Split(stdout, "\x00") {
+		if entry != "" {
+			files = append(files, entry)
 		}
 	}
 	return files, nil

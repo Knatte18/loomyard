@@ -74,6 +74,41 @@ func TestMergeConflictedFiles_ManufacturedConflict(t *testing.T) {
 	}
 }
 
+// TestMergeConflictedFiles_NonASCIIPathIsRawNeverQuoted asserts ConflictedFiles returns the raw
+// path bytes for a conflicted filename outside core.quotepath's default ASCII set, never git's
+// C-quoted form (`"\303\244.txt"`, quotes included) that `--name-only` without `-z` emits — the
+// quoted form is not a real worktree path, and fabricengine's visible-tree mapping misclassified
+// a mappable conflict as unmergeable on it.
+func TestMergeConflictedFiles_NonASCIIPathIsRawNeverQuoted(t *testing.T) {
+	dir, repo := newRepo(t)
+	const conflictedName = "ä-nöte.txt"
+	writeFile(t, dir, conflictedName, "base\n")
+	commitAll(t, dir, "base")
+
+	checkoutNewBranch(t, dir, "feature")
+	writeFile(t, dir, conflictedName, "feature\n")
+	commitAll(t, dir, "feature edit")
+	checkoutBranch(t, dir, "main")
+	writeFile(t, dir, conflictedName, "main\n")
+	commitAll(t, dir, "main edit")
+
+	outcome, err := repo.MergeStart("feature", false)
+	if err != nil {
+		t.Fatalf("MergeStart(feature, false) error = %v; want nil (conflict is a result, not an error)", err)
+	}
+	if outcome != gitrepo.MergeConflicted {
+		t.Fatalf("MergeStart(feature, false) outcome = %v; want MergeConflicted", outcome)
+	}
+
+	got, err := repo.ConflictedFiles()
+	if err != nil {
+		t.Fatalf("ConflictedFiles() error = %v; want nil", err)
+	}
+	if len(got) != 1 || got[0] != conflictedName {
+		t.Errorf("ConflictedFiles() = %q; want [%q] — the raw bytes, not git's C-quoted rendering", got, conflictedName)
+	}
+}
+
 // TestMergeConflictedFiles_CleanTreeReturnsEmptyNeverNil asserts ConflictedFiles returns an empty,
 // non-nil slice on a clean tree.
 func TestMergeConflictedFiles_CleanTreeReturnsEmptyNeverNil(t *testing.T) {

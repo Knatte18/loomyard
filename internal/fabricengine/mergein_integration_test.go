@@ -337,6 +337,29 @@ func TestMergeIn_BothSidesConflict(t *testing.T) {
 	}
 }
 
+// TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable pins the core.quotepath
+// regression: a conflict on a path outside git's default ASCII quoting set — on either side — must
+// surface as the raw worktree-relative path. Before ConflictedFiles passed `-z`, git handed back
+// the C-quoted rendering (`"\303\244..."`, quotes included): the warp side's reported path was a
+// literal that exists nowhere in the worktree, and the weft side's quoted form failed
+// weftPathVisible's prefix test, so a mappable in-tree conflict self-aborted the whole merge as
+// *ErrUnmergeableState.
+func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "ä-warp.txt")
+	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/ä-weft.txt")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v; want nil — a non-ASCII in-tree conflict is mappable, never *ErrUnmergeableState", err)
+	}
+	want := []string{"_lyx/ä-weft.txt", "ä-warp.txt"}
+	if len(res.Conflicts) != len(want) || res.Conflicts[0] != want[0] || res.Conflicts[1] != want[1] {
+		t.Errorf("MergeIn(feature).Conflicts = %q; want %q — raw path bytes, not git's C-quoted rendering", res.Conflicts, want)
+	}
+}
+
 // TestMergeIn_OneSideFastForwardsOtherConflicts_AbortRestoresFastForwardedSide covers the B1 case:
 // one side fast-forwards while the other conflicts, conflicts are reported, and MergeAbort returns
 // the fast-forwarded side to its recorded pre-merge SHA.
