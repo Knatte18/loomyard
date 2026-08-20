@@ -1,7 +1,0 @@
-All 6 commits match all 6 declared cards' `Commit:` messages exactly. 6 of 6 cards committed — all complete.
-
-{"status":"success","commit_sha":"00e134b56f93a437dff30314e2a61fc3f4adf7cc","session_id":"82d66d57-4f06-45ae-8964-3c0763176041","cards_done":[1,2,3,4,5,6]}
-
-Summary: implemented all 6 cards of batch 1 (preflightshed-package) in `/home/knatte/Code/loomyard/wts/preflight-loom-agnostic`. Created `internal/preflightshed/doc.go`, `ctx.go`, `preflight.go` (the `NewPreflight` constructor), `preflight_test.go` (Tier-1), moved `internal/loomshed/preflight_integration_test.go` → `internal/preflightshed/preflight_integration_test.go` (in-package, retargeted, renamed tests, added `TestPreflight_CancelledDuringRunReturnsError`, kept the WireJunctions add-and-commit retitled "seed junctions"), and moved the hermetic-git `TestMain` from `internal/loomshed/testmain_integration_test.go` to `internal/preflightshed/testmain_integration_test.go`. All 6 cards committed (6 of 6, verified via git log against the batch-start commit `6a5a9fe6`). Verify chain (`go test ./... -count=1`, `go test -tags integration ./... -count=1`, `go vet -tags smoke ./internal/loomcli`) is fully green, including the guard suites (tier purity, hermetic git env, fabric vocabulary). Working tree is clean.
-
-{"status":"success","commit_sha":"00e134b56f93a437dff30314e2a61fc3f4adf7cc","session_id":"82d66d57-4f06-45ae-8964-3c0763176041","cards_done":[1,2,3,4,5,6]}

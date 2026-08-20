@@ -1,1 +1,0 @@
-- Migrated junction test keeps the source package's test name: **Location:** `internal/preflight/preflight_integration_test.go:266` (`func TestPreflight_JunctionBroken`)
