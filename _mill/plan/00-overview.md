@@ -3,7 +3,7 @@
 ```yaml
 task: 'shedadapters: Burler-round producer'
 slug: 'shedadapters-burler-producer'
-approved: false
+approved: true
 started: '20260820-152710'
 parent: 'main'
 root: ""
