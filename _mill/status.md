@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: shedadapters-burler-producer
 branch: shedadapters-burler-producer
-plan: null
+plan: _mill/plan
 parent: main
 task: 'shedadapters: Burler-round producer'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-20T11:37:24Z'
 discussion-fix-r5  '2026-08-20T15:16:50Z'
 discussed  '2026-08-20T15:16:50Z'
+planning  '2026-08-20T15:32:19Z'
 ```
