@@ -270,11 +270,11 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 
 	newWarpHEAD, err := f.warp.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD after merge: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}
 	newWeftHEAD, err := f.weft.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve weft HEAD after merge: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}
 	if err := f.RecordCorrespondence(newWarpHEAD, newWeftHEAD); err != nil {
 		return MergeResult{}, err

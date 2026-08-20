@@ -108,11 +108,11 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 func pairDirtyReason(f *Fabric) ([]string, error) {
 	warpDirty, _, err := worktreeDirty(scopeTracked, f.warpPath)
 	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check warp dirtiness: %w", err)
+		return nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
 	}
 	weftDirty, _, err := worktreeDirty(scopeTracked, f.weftPath)
 	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check weft dirtiness: %w", err)
+		return nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
 	}
 
 	if warpDirty || weftDirty {
@@ -148,11 +148,11 @@ func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
 func detachedHeadReason(f *Fabric) ([]string, error) {
 	warpDetached, err := f.warp.HeadDetached()
 	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check warp head attachment: %w", err)
+		return nil, fmt.Errorf("fabricengine: check checkout head attachment: %w", err)
 	}
 	weftDetached, err := f.weft.HeadDetached()
 	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check weft head attachment: %w", err)
+		return nil, fmt.Errorf("fabricengine: check checkout head attachment: %w", err)
 	}
 
 	if warpDetached || weftDetached {

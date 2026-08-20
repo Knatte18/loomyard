@@ -117,19 +117,19 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	// can stale them.
 	warpStart, err := f.warp.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	weftStart, err := f.weft.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve weft HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	warpUpToDate, err := f.warp.IsAncestor(sources.warpSHA, warpStart)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: classify warp merge source: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
 	weftUpToDate, err := f.weft.IsAncestor(sources.weftSHA, weftStart)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: classify weft merge source: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
 	if warpUpToDate && weftUpToDate {
 		return MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
@@ -164,11 +164,11 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	// writer's landed commits.
 	warpStart, err = f.warp.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	weftStart, err = f.weft.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve weft HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 
 	st := &mergeState{
@@ -379,10 +379,10 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	// Pre-merge sync step: a recorded mutation, not a guard, and the first thing that touches either
 	// checkout — every guard above has already passed.
 	if err := f.syncSideBeforeMerge(rec, f.warp, f.warpPath, "warp"); err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: sync warp before merge: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: sync checkout before merge: %w", err)
 	}
 	if err := f.syncSideBeforeMerge(rec, f.weft, f.weftPath, "weft"); err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: sync weft before merge: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: sync checkout before merge: %w", err)
 	}
 
 	// Post-sync already-up-to-date probe: no record written, empty mutation record beyond whatever
@@ -390,19 +390,19 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	// did not cause, so it stays in the record even on this early-return path.
 	warpStart, err := f.warp.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	weftStart, err := f.weft.CurrentSHA()
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve weft HEAD: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 	warpUpToDate, err := f.warp.IsAncestor(sources.warpSHA, warpStart)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: classify warp merge source: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
 	weftUpToDate, err := f.weft.IsAncestor(sources.weftSHA, weftStart)
 	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: classify weft merge source: %w", err)
+		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
 	if warpUpToDate && weftUpToDate {
 		return MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil

@@ -45,11 +45,11 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 
 	warpConflicts, err := f.warp.ConflictedFiles()
 	if err != nil {
-		return StageResult{}, fmt.Errorf("fabricengine: read warp conflicted files: %w", err)
+		return StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
 	}
 	weftConflicts, err := f.weft.ConflictedFiles()
 	if err != nil {
-		return StageResult{}, fmt.Errorf("fabricengine: read weft conflicted files: %w", err)
+		return StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
 	}
 
 	warpSet := make(map[string]bool, len(warpConflicts))
@@ -81,13 +81,13 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 	// Warp first, then weft, matching concludeMergeSides' fixed side ordering.
 	if len(warpBatch) > 0 {
 		if err := f.warp.StageResolved(warpBatch); err != nil {
-			return StageResult{}, fmt.Errorf("fabricengine: stage resolved warp paths: %w", err)
+			return StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
 		}
 		rec.Append(KindMergeResolvedStaged, f.warpPath, "")
 	}
 	if len(weftBatch) > 0 {
 		if err := f.weft.StageResolved(weftBatch); err != nil {
-			return StageResult{}, fmt.Errorf("fabricengine: stage resolved weft paths: %w", err)
+			return StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
 		}
 		rec.Append(KindMergeResolvedStaged, f.weftPath, "")
 	}

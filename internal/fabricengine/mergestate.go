@@ -240,19 +240,19 @@ func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
 func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	warpMergeHead, err := f.warp.MergeHeadPresent()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check warp merge head: %w", err)
+		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
 	}
 	warpConflicted, err := f.warp.ConflictedFiles()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check warp conflicted files: %w", err)
+		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
 	}
 	weftMergeHead, err := f.weft.MergeHeadPresent()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check weft merge head: %w", err)
+		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
 	}
 	weftConflicted, err := f.weft.ConflictedFiles()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check weft conflicted files: %w", err)
+		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
 	}
 
 	return warpMergeHead || len(warpConflicted) > 0 || weftMergeHead || len(weftConflicted) > 0, nil
