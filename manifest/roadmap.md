@@ -61,15 +61,6 @@ What "loom: write and wire in the real LLM producers" split into — one prompt/
    Depends on the three "Perch → Shed flattening" items above.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
-### Loom infrastructure cleanup
-
-1. **preflight: split into two Shed rows — a generic one, and loom's own** — `internal/loomengine.Preflight` today bundles the orchestrator-agnostic tier-1/tier-2 checks (`internal/preflight.Check`, already generic) with a hardcoded check 4 (`_lyx/loom/status.json` presence/readability/coherence, against loom's own `Status`/`Product` shape) into one function, `runCheck4`, inside one `Preflight` Shed row.
-   The row mechanism (`Deps.Preflight shedengine.ShedProducer`) is already generic — any `ShedProducer` can back it — but the concrete producer wired in today is not: `Hardener` cannot reuse `loomengine.Preflight` as-is the way it will reuse `Publish`/`Finalize` (see `designs/landing.md`).
-   Scope: two separate `ShedProducer` rows instead of one. Row 1, `Preflight`, becomes a genuinely content-free wrapper around `internal/preflight.Check` — no loom-specific parameters at all, reusable by `Hardener` verbatim. Row 2, loom's own (name TBD, e.g. `Loom-Preflight`), carries today's check-4 content (`LoomStatusFile`/`LoomStatusLock`, the `Status`/`Product` shape, `checkCoherence`'s rules) as its own independent producer.
-   This is not just code reuse: `shedengine`'s own sequencing already makes today's `check3BlocksSeed` short-circuit unnecessary — a `Stuck` row 1 bounces or blocks and `Shed` never advances to row 2 at all (`internal/shedengine/run.go`'s `Stuck` handling), so row 2 can assume tiers 1–3 already passed rather than re-deriving whether its own failure is a downstream consequence of an earlier one.
-   `loomshed`'s producer list grows from 13 rows to 14; all "13-row" references across `loomshed.go`/`stub.go`/`sequence_test.go`/`loomshed_test.go`/`loom.md`/`docs/overview.md` move to "14-row" in the same commit, per the Documentation Lifecycle.
-   No wiki depends_on beyond the already-Done `loom: phase-machine scaffolding`.
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -178,6 +169,13 @@ No build order is implied between these items.
    The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
 
 ## Done
+
+1. **preflight: split into two Shed rows — a generic one, and loom's own** — `loomengine.Preflight`'s single function bundling the orchestrator-agnostic tier-1/tier-2 checks with loom's own check-4 seed coherence split into two `ShedProducer` rows.
+   Row 1, `Preflight`, now lives in `internal/preflightshed` as a told-name `ShedProducer` over `internal/preflight.Check`, reusable verbatim by a second product's producer list.
+   Row 2, loom's own, is `internal/loomengine.CheckSeed` over told paths, driven as a second row named `Loom-Preflight`.
+   The `check3BlocksSeed` short-circuit is gone: `Shed`'s own sequencing already provides what it hand-rolled, since a `Stuck` row 1 bounces or blocks and `Shed` never advances to row 2 at all.
+   Seed-check coverage moved from Tier 2 to Tier 1.
+   See the `internal/preflightshed` and `internal/loomengine` package documentation.
 
 1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine actually reachable, shipped with all four verbs: `run` (the bootstrap), `drive` (the no-tmux foreground escape hatch), `status` (one-shot and `--watch`), and `pause`.
    `run` seeds the status file and commits it weft-side before the driver ever spawns — the ordering that makes loom's own first Preflight precondition row pass immediately rather than blocking on the seed's own dirt — then spawns the detached driver and waits on a handshake for it to take the run lock, so a re-entrant invocation ensures substrate and attaches rather than double-spawning.
