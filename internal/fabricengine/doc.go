@@ -139,8 +139,8 @@
 // `lyx fabric reconcile` reports `ReconcileActionJunctionRepointed` rather than
 // `ReconcileActionAlreadyHealthy` for it — and repairs it, so reconcile *is* the remedy, not merely
 // a report;
-// and `loom`'s preflight fails `CheckJunction`, sets its `check3BlocksSeed` flag, and blocks the
-// run.
+// and `internal/preflight`'s `CheckResolved` — wired into `internal/preflightshed` — fails
+// `CheckJunction` and blocks the run.
 // The remedy is one `lyx fabric reconcile` (idempotent: wires the missing junction and materialises
 // the weft-side directory) — never `lyx init`, which is gone;
 // reconcile clears every one of those three symptoms in a single call.

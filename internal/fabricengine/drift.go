@@ -1,6 +1,7 @@
 // drift.go implements Healthy, the stateless pair-in-sync check for fabric topology: branch
 // correspondence between a warp worktree and its weft sibling, plus every wired junction's health.
-// Healthy and Clean (warpclean.go) are wired into the loom preflight via internal/loomengine.
+// Healthy and Clean (warpclean.go) are wired into loom's preflight via internal/preflight,
+// consumed by internal/preflightshed.
 
 package fabricengine
 
