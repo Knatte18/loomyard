@@ -876,6 +876,113 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	}
 }
 
+// rootCommitForTest returns dir's oldest root commit — a commit that is an ancestor of nothing the
+// merge fixtures build on, so a branch created there stays outside the recorded start's history and
+// git therefore keeps the recorded start as a parent of an octopus merge rather than discarding it
+// as redundant.
+func rootCommitForTest(t *testing.T, dir string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-list", "--max-parents=0", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-list --max-parents=0 HEAD in %s: %v", dir, err)
+	}
+	lines := strings.Fields(string(out))
+	if len(lines) == 0 {
+		t.Fatalf("git rev-list --max-parents=0 HEAD in %s returned nothing", dir)
+	}
+	return lines[len(lines)-1]
+}
+
+// TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted pins the parent-ARITY half of the
+// adoption evidence, which no other test exercises: before this test, `len(parents) < 2` was a lower
+// bound and the source was searched across ALL remaining parents, so a three-parent octopus whose
+// first parent was the recorded start and whose second was the recorded source was adopted as this
+// merge's own conclude.
+// The shape only the exact-arity clause refuses: the operator discards the staged merge and then
+// merges the recorded source TOGETHER with an unrelated branch — `git merge <source> <other>` — an
+// ordinary thing to do and a commit git builds happily. Adopting it made fabric report
+// committed:true naming that commit, record correspondence, and delete the record, while the
+// checkout carried <other>'s content that no side of this merge brought in and that no merge_staged
+// entry accounts for. fabric can never produce an octopus: it starts every non-squash merge with a
+// single `git merge --ff --no-commit <sourceSHA>`, so its conclude has exactly two parents.
+func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	// Warp merges CLEANLY (outcome staged, HEAD unmoved) while weft conflicts, so the record survives
+	// with warp_committed empty and the warp side genuinely pending a conclude.
+	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
+	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v", err)
+	}
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want exactly the weft-side conflict — the warp side must merge cleanly for this fixture", res.Conflicts)
+	}
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if st.WarpOutcome != "staged" || st.WarpCommitted != "" {
+		t.Fatalf("recorded warp state = (outcome %q, committed %q); want a staged side with no conclude yet", st.WarpOutcome, st.WarpCommitted)
+	}
+
+	// The operator discards the staged merge and merges the recorded source alongside an unrelated
+	// branch. The decoy is rooted outside the recorded start's history, or git would drop the start as
+	// a redundant parent and build a two-parent commit instead of the octopus this test needs.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
+	decoyBase := rootCommitForTest(t, h.PrimeWorktree())
+	warpBranch := currentBranchName(t, h.PrimeWorktree())
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "decoy", decoyBase)
+	commitOnCurrentBranch(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
+	decoySHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-edit", st.WarpSource, decoySHA)
+	octopusSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+
+	// Weft: abort back to its recorded start so MergeContinue's unresolved-conflicts guard passes and
+	// the call genuinely reaches the warp adoption probe.
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
+
+	// Precondition, asserted rather than assumed: a THREE-parent commit whose first parent is the
+	// recorded start and whose second is the recorded source — every clause of the old loose test
+	// satisfied, and only the exact-arity clause standing between it and adoption.
+	parents := commitParentsForTest(t, h.PrimeWorktree(), octopusSHA)
+	if len(parents) != 3 {
+		t.Fatalf("hand-landed commit has %d parents (%v); want the 3-parent octopus this test is about", len(parents), parents)
+	}
+	if parents[0] != st.WarpStart || parents[1] != st.WarpSource || parents[2] != decoySHA {
+		t.Fatalf("octopus parents = %v; want [%s %s %s]", parents, st.WarpStart, st.WarpSource, decoySHA)
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	contRes, err := fresh.MergeContinue("")
+
+	var incompleteErr *fabricengine.ErrMergeIncomplete
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("MergeContinue() over an octopus carrying the source: (committed %v, error %v (%T)); want *fabricengine.ErrMergeIncomplete and no adoption", contRes.Committed, err, err)
+	}
+	if contRes.Committed {
+		t.Errorf("MergeContinue().Committed = true; want false — fabric never produced this commit")
+	}
+	for _, entry := range contRes.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — an octopus is not a conclude fabric can make", entry)
+		}
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil)", exists, err)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != octopusSHA {
+		t.Errorf("warp HEAD after the refusal = %q; want the operator's own octopus %q left untouched", got, octopusSHA)
+	}
+}
+
 // runGitExpectingConflict runs git with args in dir, tolerating the nonzero exit a conflicted merge
 // returns and failing the test on any spawn-level error.
 func runGitExpectingConflict(t *testing.T, dir string, args ...string) {

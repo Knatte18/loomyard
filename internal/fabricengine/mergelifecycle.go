@@ -116,8 +116,20 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 //   - no live MERGE_HEAD (the merge is finished, not still concludable),
 //   - the record is not a squash (see below),
 //   - the record carries a resolved source SHA for this side,
-//   - HEAD is a merge commit whose first parent is the recorded start and one of whose remaining
-//     parents is the recorded source SHA.
+//   - HEAD is a merge commit with EXACTLY two parents: the recorded start first, the recorded
+//     source SHA second.
+//
+// The parent test is exact equality on both position and arity, deliberately not "at least two
+// parents, with the source somewhere among them". That looser reading admitted a commit fabric can
+// never produce: an operator who discards the staged merge and then merges the recorded source
+// TOGETHER with an unrelated branch — `git merge <source> <other>` — lands a genuine octopus whose
+// first parent is the recorded start and whose second is the recorded source, and the loose test
+// adopted it. fabric then reported committed:true naming that commit, recorded correspondence, and
+// deleted the record, while the checkout carried <other>'s content that no side of this merge ever
+// brought in and that no merge_staged entry accounts for.
+// Requiring exactly two parents rejects nothing fabric or its documented recovery route creates:
+// `git commit --no-edit` over a live MERGE_HEAD, and `reset --hard <start>` followed by
+// `git merge <source>`, both yield exactly two parents in exactly that order.
 //
 // A squash conclude is deliberately never adopted. `git merge --squash` writes no MERGE_HEAD and
 // its conclude is an ORDINARY one-parent commit, so it carries no evidence distinguishing it from
@@ -155,15 +167,10 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squa
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: read commit parents to classify conclude state: %w", err)
 	}
-	if len(parents) < 2 || parents[0] != start {
+	if len(parents) != 2 || parents[0] != start || parents[1] != sourceSHA {
 		return "", false, nil
 	}
-	for _, parent := range parents[1:] {
-		if parent == sourceSHA {
-			return head, true, nil
-		}
-	}
-	return "", false, nil
+	return head, true, nil
 }
 
 // mergeStateOrForeignErr resolves the disposition shared by MergeContinue and MergeAbort when no

@@ -905,9 +905,16 @@
 // A silent false success, and the reason the two are deliberately NOT exact mirrors.
 // Adoption therefore rests on git's own parentage rather than on HEAD movement. fabric starts a
 // non-squash merge with `git merge --ff --no-commit <sourceSHA>` and records that resolved
-// per-side SHA in the merge record, so a genuine conclude-commit is a merge commit whose first
-// parent is the recorded pre-merge SHA and one of whose remaining parents is that recorded source
-// SHA, exactly. Nothing short of all of that is adopted.
+// per-side SHA in the merge record, so a genuine conclude-commit is a merge commit with EXACTLY two
+// parents: the recorded pre-merge SHA first, that recorded source SHA second. Nothing short of all
+// of that is adopted.
+// The arity is part of the evidence, not a detail of it. Accepting "at least two parents, with the
+// source somewhere among them" admitted a commit fabric can never build: an operator who discards
+// the staged merge and then merges the recorded source TOGETHER with an unrelated branch —
+// `git merge <source> <other>` — lands a genuine octopus whose first parent is the recorded start
+// and whose second is the recorded source. Adopting it reported `committed: true` naming that
+// commit, recorded correspondence, and deleted the record, while the checkout carried `<other>`'s
+// content that no side of this merge brought in and that no `merge_staged` entry accounts for.
 // **A squash conclude is never adopted at all.** `git merge --squash` writes no `MERGE_HEAD` and its
 // conclude is an ordinary one-parent commit, so it carries no evidence distinguishing it from any
 // other commit — there is nothing there to be sure about, and the non-squash predicate is not
