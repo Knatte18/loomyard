@@ -37,6 +37,8 @@ Feeding stale positions to both binaries returns a not-found error from each, an
   - `/home/knatte/Code/quarry/wts/quarry/quarry/supervised_integration_test.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/supervised_lsp_test.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/toolchain_integration_test.go`
+  - `/home/knatte/Code/quarry/wts/quarry/quarry/lspclient.go` (added mid-batch: the live run surfaced that `initialize` never advertised `hierarchicalDocumentSymbolSupport`, so gopls answered `textDocument/documentSymbol` with an empty-range flat shape — identical defect reproduces on `main`'s own never-before-executed `internal/scoutengine`, so it is a genuine pre-existing bug in the code under test, not a port defect)
+  - `/home/knatte/Code/quarry/wts/quarry/quarry/refs.go` (added mid-batch: once the capability above is advertised, gopls's real DocumentSymbol response names every method `(Receiver).Method` rather than nesting a bare `Method` under its receiver type's `Children` — `collectInFileMatches` needs to match that flat, receiver-qualified form too, again reproducing identically on `main`)
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
