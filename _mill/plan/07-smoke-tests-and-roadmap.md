@@ -26,7 +26,6 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
 ### Card 32: the smoke suite for the bootstrap
 
 - **Context:**
-  - `internal/loomcli/run.go`
   - `internal/loomcli/bootstrap.go`
   - `internal/loomcli/drive.go`
   - `internal/loomcli/cli.go`
@@ -41,12 +40,14 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   - `internal/hubforge/hub.go`
   - `internal/proc/proc_linux.go`
   - `CONSTRAINTS.md`
-- **Edits:** none
+- **Edits:**
+  - `internal/loomcli/run.go`
 - **Creates:**
   - `internal/loomcli/smoke_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** The file carries the `smoke` build constraint as its first non-empty line, and follows the shape and fixture conventions the reed smoke suite already uses — a real wired hub, a real tmux server, and the same skip-when-the-multiplexer-is-absent posture that suite takes.
+  While writing the smoke suite, this card's own live-hub runs surfaced a real defect in the spawn step `run.go` already carries: the spawned driver's `exec.Cmd` is never `Wait()`-ed, so a driver that finishes before the parent bootstrap process exits becomes a zombie, and `proc.IsAlive`'s `kill(pid, 0)` probe reports a zombie as alive indefinitely — `awaitRunLock`'s handshake then spins its full deadline and falsely refuses a bootstrap whose driver actually completed cleanly, on every fresh task (the common case: Discussion-Validate has nothing to validate yet and bounces to its budget, finishing in milliseconds). `run.go` moves from this card's `Context:` to its `Edits:` to fix this: reap the spawned process via a detached `go func() { _ = driveCmd.Wait() }()` immediately after a successful `Start()`, so a fast-finishing driver is reaped promptly and `proc.IsAlive` reports its death accurately.
   Cover, each as its own test function:
   (a) the bootstrap verb in a real wired hub brings the tmux session up, leaves exactly one status strand present under its fixed name, leaves a detached driver process alive, and leaves the status file seeded;
   (b) a second bootstrap invocation while the first driver holds the run lock leaves still exactly one strand and still exactly one driver process, spawns nothing new, and does not surface the seed-exists refusal as a failure;
