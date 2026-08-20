@@ -63,6 +63,7 @@ Batch-local decision differing from `## Shared Decisions`: this package's Go com
 - **Context:**
   - `internal/burlerengine/profile.go`
   - `internal/burlerengine/config.go`
+  - `internal/burlerengine/cluster.go`
 - **Edits:**
   - `internal/burlerengine/doc.go`
 - **Creates:** none
