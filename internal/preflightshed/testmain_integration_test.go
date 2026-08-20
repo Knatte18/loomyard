@@ -2,10 +2,10 @@
 
 // testmain_integration_test.go wires this package's integration test binary into the hermetic git
 // test environment: gitkit.HermeticGitEnv() runs once before any test, since this file's sibling
-// (preflight_integration_test.go) now spawns git via hubforge fixtures (Test Tier Purity Invariant
-// / Hermetic Git Test Environment Invariant), mirroring internal/loomengine/testmain_test.go.
+// (preflight_integration_test.go) spawns git via hubforge fixtures (Test Tier Purity Invariant /
+// Hermetic Git Test Environment Invariant).
 
-package loomshed_test
+package preflightshed
 
 import (
 	"os"
