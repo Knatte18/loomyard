@@ -56,6 +56,13 @@ Clean-room review by a fresh agent; no prior-round review/fixer material read be
 
 Planned: (S1) a `mergeReason*` constant declared in a third file (mergestate.go) must fail both vocab closure tests; (S2) dropping the `parents[0] == start` clause must fail `TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted`; (S3) skipping `weftPathVisible` must fail `TestMergeIn_UnmappablePathConflict_SelfAbortsBothSides`; (S4) moving `Merge`'s lock acquisition after the sync must fail `TestMerge_PreMergeSyncRunsInsideTheWriteLock`.
 
+Results:
+
+- S1: `mergeReasonSabotageProbe` declared in mergestate.go (a THIRD file, not the one round 4 sabotaged) → BOTH `TestMergeVocabulary_GuardReasonSetMatchesConstBlock` and `TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile` failed, each naming the file. DETECTS. Reverted.
+- S2: **FAILED TO DETECT — new finding F7.** With `parents[0] != start` deleted from `sideConcludeAlreadyLanded`, `TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted` still passes (its fixture is a ONE-parent unrelated commit, refused by `len(parents) < 2` alone), and the ENTIRE fabricengine integration suite stays green (43.8s, ok). The first-parent evidence clause — which doc.go describes at length as load-bearing ("a conclude landed on top of some other commit is a merge of a different base and is not adopted") — is guarded by no test. Reverted.
+- S3: `weftPathVisible` check bypassed → hermetic `TestMergePaths_UnifyConflictPaths` AND integration `TestMergeIn_UnmappablePathConflict_SelfAbortsBothSides` both failed. DETECTS at both tiers. Reverted.
+- S4: lock acquisition moved after the sync step in `Merge` → `TestMerge_PreMergeSyncRunsInsideTheWriteLock` failed. DETECTS. Reverted; working tree confirmed clean.
+
 ## Findings
 
 ### F1 — MEDIUM, CONFIRMED (live): `ConflictedFiles` returns C-quoted paths; a legitimate wired-tree conflict on a non-ASCII path spuriously aborts as unmergeable
@@ -90,6 +97,13 @@ Fix: return `&ErrForeignMergeState{}` for the foreign branch (the same typed, si
 
 `internal/fabricengine/mergeguards.go:89–93`: `isAncestor, err := repo.IsAncestor(localSHA, remoteSHA); if err == nil && isAncestor { … }` — an IsAncestor infra failure silently falls back to the local SHA, so a stale local source can be merged with no log line, and the godoc does not state the tolerance. Every other best-effort step in this surface (both Fetch sites) logs its tolerated failure.
 Fix: `logger.Warn` on the error + state the best-effort rule in the godoc.
+
+### F7 — MEDIUM, CONFIRMED (sabotage): the adoption arm's first-parent evidence clause is guarded by no test
+
+`internal/fabricengine/mergelifecycle.go:158` (`parents[0] != start` in `sideConcludeAlreadyLanded`) and the same line's source-SHA membership loop.
+Deleting `parents[0] != start` leaves the whole hermetic AND integration suite green: `TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted`'s fixture is a one-parent commit, refused by `len(parents) < 2` alone, so neither the first-parent clause nor (by the same argument) the source-SHA-membership clause has a test that fails when it is removed. This is the campaign's recurring highest-yield shape: an invariant asserted by a mechanism that cannot detect its violation. The doc (doc.go ~934) states the clause as load-bearing.
+Failure scenario the missing test encodes: operator plain-git-aborts a conflicted recorded merge, lands an unrelated commit X, then `git merge <recorded source SHA>` and commits — HEAD is now a TWO-parent merge of the recorded source whose first parent is X, not the recorded start. Without the clause, `MergeContinue` adopts it, reports `committed:true`, records correspondence against a base the paired side never saw, and deletes the record.
+Fix: integration tests driving both refusal directions through public `MergeContinue`: (a) parents `[X, source]` (wrong base, right source) → not adopted; (b) parents `[start, Y≠source]` (right base, wrong source) → not adopted. Both must fail when their clause is sabotaged (verified as part of the fix).
 
 ## Re-evaluation of the seeded judgement call: `parents[0] == start` adoption evidence
 
