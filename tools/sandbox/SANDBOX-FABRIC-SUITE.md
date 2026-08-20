@@ -413,6 +413,7 @@ While the merge is live, confirm the sibling verbs refuse with the single fixed 
 Resolve every listed path, `git add` each, then `lyx fabric merge --continue` and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
 Repeat the whole scenario and take `lyx fabric merge --abort` instead: both sides must return to their exact pre-merge SHAs, both worktrees must come back clean, and `git status` in each checkout must show no merge in progress.
 Also check `committed`: it is true only when a conclude-commit actually landed, so a merge that fast-forwarded both sides reports `committed: false` while still having advanced the pair.
+Then repeat one conflicted round with a filename outside ASCII (e.g. `ä-note.md`) conflicting on each side in turn: the `conflicts` array must carry the real path, byte for byte -- never git's C-quoted rendering (`"\303\244..."`, quotes included) -- and a non-ASCII conflict inside the fabric-managed tree must never abort as *conflicts outside the fabric-managed tree*. (Historical: `ConflictedFiles` read `--name-only` without `-z`, so `core.quotepath` quoting made exactly that happen.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -429,7 +430,7 @@ Also check `committed`: it is true only when a conclude-commit actually landed, 
 - A dirty worktree on either side -> `worktree dirty`.
 - A detached HEAD on either checkout (`git checkout --detach`) -> `checkout is not on a branch`. This one matters: without it the merge would land a warp commit reachable from no ref while the weft half landed for good.
 - A source that is a tag, a raw SHA, `HEAD`, or a branch with no `-weft` counterpart -> `source branch is not fabric-managed`; a source that exists nowhere -> that plus `source branch not found`.
-- Real plain-git merge state you leave behind yourself (`git merge <branch>` conflicted, or `git merge --squash <branch>` conflicted -- the latter leaves **no** `MERGE_HEAD`) -> `git merge state exists that fabric did not start`, with the foreign state left untouched for you to finish with plain git.
+- Real plain-git merge state you leave behind yourself (`git merge <branch>` conflicted, or `git merge --squash <branch>` conflicted -- the latter leaves **no** `MERGE_HEAD`) -> `git merge state exists that fabric did not start`, with the foreign state left untouched for you to finish with plain git. `lyx fabric commit` over that same foreign state must give the **same** foreign-state message -- not `a merge is in progress; run MergeContinue or MergeAbort first`, whose advice both those verbs would refuse.
 
 Then set hostile git config and confirm fabric is immune to it: `merge.ff = only` must not break a non-fast-forward merge (fabric pins `--ff`), and `core.editor` set to something that blocks forever must not hang `merge --continue` (fabric pins `--no-edit`). A hang here is a blocking defect.
 Finally, check the flag pre-flight: `merge --abort --squash` and `merge --abort -m <msg>` are both rejected as usage errors rather than silently ignoring the flag, while `merge --continue -m <msg>` really does name the conclude-commit.
