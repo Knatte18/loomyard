@@ -62,6 +62,8 @@ batches:
     commit_sha: 5b868eebe874dd1ad8bdcc80d263e4ab07620914
     verify_baseline_failures: []
   - name: manifest-docs
-    state: pending
+    state: running
+    implementer_session: 5bcb6322-d02f-42fd-8447-a4f80f3d264a
+    start_sha: b3a6b41c6a9450186cb90cfc2fe191f85aae0b52
     verify_baseline_failures: []
 ```
