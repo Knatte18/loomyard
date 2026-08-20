@@ -3,7 +3,7 @@
 ```yaml
 task: 'shedengine: per-producer bounce budget + explicit OnDone routing'
 slug: 'shedengine-segments-bounce-budget'
-approved: false
+approved: true
 started: '20260820-090958'
 parent: 'main'
 root: ""
