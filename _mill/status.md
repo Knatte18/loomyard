@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -22,4 +22,21 @@ discussed  '2026-08-20T08:59:33Z'
 planning  '2026-08-20T09:18:50Z'
 plan-fix-r1  '2026-08-20T09:25:18Z'
 planned  '2026-08-20T09:25:28Z'
+implementing  '2026-08-20T09:26:03Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: preflightshed-package
+    state: pending
+  - name: loomengine-checkseed
+    state: pending
+  - name: wire-two-rows
+    state: pending
+  - name: delete-composite
+    state: pending
+  - name: docs
+    state: pending
 ```
