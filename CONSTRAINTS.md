@@ -73,11 +73,11 @@ An engine is handed the absolute paths it operates on and derives none of its ow
   It is *machine-enforced* when a test in the package polices its production import set to exclude `internal/lyxcwd`;
   otherwise it is a *review obligation*.
   The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
-- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
+- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve`, `internal/shedrecipe` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
 - **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/websterengine`.
 - **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
   They are bound instead by the adapter-direction rule above, which is itself a review obligation.
-- **Enforced by** the seven tests named above, for the machine-enforced half;
+- **Enforced by** the ten tests named above, for the machine-enforced half;
   the review-obligation half and the adapter-direction rule have no machine check.
 
 ## Lyxdirs Single-Declarer Invariant
@@ -167,6 +167,16 @@ producers adapt onto the package's own `ShedProducer` seam in their own packages
   Policed on direct imports only, matching what the test checks; this particular allowlist happens to buy a stronger fact too, though — `internal/lyxcwd` is excluded transitively as well, because `internal/lock` imports no internal package at all and `internal/state` imports only `internal/fsx` and `internal/lock`.
   `internal/logger` is excluded rather than kept for future convenience: nothing in this package logs, the package starts no OS process so the Live-Substrate Spawn Observability invariant does not engage, and keeping `internal/logger` on the allowlist would forfeit the transitive property above for zero present benefit — `internal/logger` itself imports `internal/lyxcwd`.
 - **Enforced by** `internal/shedengine/seam_enforcement_test.go` (`TestProducerSeamInvariant_AllowlistOnly`).
+
+## Shed Recipe Registry Invariant
+
+Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedProducer` and nothing else — never an arbitrary Go module —
+and the registry is one central `map[string]Constructor` literal reached only through `Lookup` and `Names`, never by `init()` self-registration and never by a runtime `Register` call.
+
+`internal/shedrecipe` takes every absolute path from its caller and has no direct production import of `internal/lyxcwd`, in the precise form the Told-Geometry Invariant requires — **every root is told and none is derived; the package's only path construction is joining a told root with a recipe-relative value.**
+
+- **Enforced by** `internal/shedrecipe/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) for the told-geometry half, and `internal/shedrecipe/coverage_guard_test.go` (`TestCoverageGuard_EveryLoomRowHasAnEngine`) for the registry-coverage half.
+  The `ShedProducer`-only restriction itself is a review obligation, since the `Constructor` signature already makes it a compile-time fact.
 
 ## Tokenvocab Leaf Invariant
 

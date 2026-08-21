@@ -35,10 +35,12 @@ type websterProducer struct {
 
 var _ shedengine.ShedProducer = (*websterProducer)(nil)
 
-// newWebsterProducer returns a websterProducer identified as name, resolving the active batchifier
+// NewWebsterProducer returns a websterProducer identified as name, resolving the active batchifier
 // from anchorPath on every Call and driving run with a copy of deps carrying the resolved value.
-// deps.Batcher is left nil by the caller; it is overwritten on every Call regardless.
-func newWebsterProducer(name, anchorPath string, run shedadapters.WebsterRunner, deps websterengine.RunDeps) *websterProducer {
+// deps.Batcher is left nil by the caller; it is overwritten on every Call regardless. The return
+// type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can
+// call this constructor from outside this package while websterProducer itself stays unexported.
+func NewWebsterProducer(name, anchorPath string, run shedadapters.WebsterRunner, deps websterengine.RunDeps) shedengine.ShedProducer {
 	return &websterProducer{name: name, anchorPath: anchorPath, run: run, deps: deps}
 }
 
