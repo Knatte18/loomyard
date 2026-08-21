@@ -2,7 +2,9 @@
 
 Off-limits to round agents: this file matches the `fabric-merge-review-*` pattern the round prompt declares unreadable.
 
-**Last refreshed:** 2026-08-20, after round 6's verification.
+**Last refreshed:** 2026-08-21, after round 7's verification.
+
+**Operator directive (2026-08-21): stop asking for per-round confirmation.** The 4-round fixed plan (r4-r7) is complete; none converged. Crucible is designed to run long autonomously — the orchestrator now picks each subsequent round's model/effort itself (rotating for diversity, escalating effort toward a genuine safety-pass attempt) and proceeds without a check-in, reporting results after the fact rather than asking permission before spawning. Only stop for a genuine blocker (a real ambiguity, a destructive/irreversible action, or actual convergence).
 
 ## What this task is
 
@@ -21,7 +23,8 @@ Exactly four rounds, model + effort fixed in advance, UNLESS convergence is reac
 | r4 | Opus | medium | `opus-medium-r4` | **done, independently verified** — 7 findings (1 BLOCKING, 2 MEDIUM, 2 LOW, 2 NIT), all fixed, all sabotage-proven, BLOCKING fix live-redriven in all 3 directions |
 | r5 | Fable | high | `fable-high-r5` | **done, independently verified** — 7 findings (3 MEDIUM, 1 LOW, 3 NIT), all fixed, all sabotage-proven, both MEDIUMs live-redriven |
 | r6 | Opus | high | `opus-high-r6` | **done, independently verified** — 9 findings (3 MEDIUM incl. 2 genuine NEW behavioral defects, 3 LOW, 3 NIT), all fixed, all sabotage-proven, both behavioral fixes verified (F1 live-redriven, F6 verified by inspection + sabotage since no Windows host exists) |
-| r7 | Opus | medium | `opus-medium-r7` | **awaiting operator decision — see "Next action"** |
+| r7 | Opus | medium | `opus-medium-r7` | **done, independently verified** — 8 findings (5 MEDIUM incl. 1 new behavioral defect + 1 shipped operability gap, 2 LOW, 1 NIT), all fixed, all sabotage-proven, both the behavioral fix (F5) and the new CLI verb (F1) live-redriven |
+| r8 | Fable | max | `fable-max-r8` | seeded, about to spawn — orchestrator's own pick, continuing autonomously past the fixed 4-round plan |
 
 Round 4 hit a genuine watchdog stall (600s no-progress) after an earlier tool-use rejection; recovered by resuming the same agent from its transcript rather than spawning fresh — its commits were already intact per-fix. Not a deliberate operator stop; logged here per the method's "genuine stall" recovery path (same class as the reed campaign's round 1).
 
@@ -170,14 +173,43 @@ First sabotage attempt on S2 (deleting the `filepath` import along with the call
 - F6 was not live-redriven (cannot be, headlessly, on this host) — verified by inspection + the ToSlash-vs-ReplaceAll sabotage instead, which the orchestrator judges the strongest verification available, not equivalent to a live drive.
 - Scratch hubs (`hub9`, `hub10`) live under the session scratchpad, outside the repo. `git status` in the worktree is clean throughout.
 
-## Round 7 (`opus-medium-r7`) — NOT YET SEEDED, awaiting operator decision
+## Round 7 (`opus-medium-r7`) — COMPLETE, independently verified
 
-This is the last round in the operator's original fixed 4-round plan (Opus medium → Fable high → Opus high → **Opus medium**). Three consecutive rounds (r4, r5, r6) have each found and fixed real material — r6's own self-assessment explicitly declines to read its clean gates as convergence evidence, and the orchestrator agrees. The operator raised this trend directly mid-campaign ("Den finner jo masse").
+Seed commit `4616c931`. Round commits `c5b08f65` → `d5edca94` (12 commits): baseline gates + live pass, sabotage sweep + diverged-target live drive, complete review (8 findings), F5/F1/F2/F4/F7/F3/F6/F8 fixes one per commit, fixer report.
+Reports: `_mill/fabric-merge-review-opus-medium-r7.md` (25-row sabotage sweep across round 6's mechanisms and the wider surface), `_mill/fabric-merge-review-opus-medium-r7-fixer-report.md`.
+Self-verdict READY TO MERGE. Orchestrator agrees — zero residual found.
 
-Two live options, not yet decided:
-1. **Run r7 as originally planned, then stop regardless of outcome** (the plan was "4 rounds unless convergence" — convergence has not been reached, but the plan was also bounded at 4, not open-ended).
-2. **Run r7, and if it also finds real material, extend beyond 4 rather than stopping on a hard count** — since the trend (BLOCKING → MEDIUM-heavy → MEDIUM-heavy-with-2-new-behavioral-defects) does not show the severity/novelty curve flattening the way the reed and first-instalment fabric campaigns did before they converged.
+Findings: MEDIUM 5 (F5, F1, F2, F4, F7) · LOW 2 (F3, F6) · NIT 1 (F8). All fixed. Two are not proof-quality gaps:
+
+- **F5 — `Merge`'s not-synced guard defeated by evaluation order (MEDIUM, CONFIRMED live).** The guard reads `@{u}` before the call has fetched anything; `syncSideBeforeMerge` fetches later and re-resolves, but collapsed "ahead" and "genuinely diverged" into one `return nil`, discarding the fresher knowledge. An unfetched operator whose target diverged from a push they hadn't seen got `ok:true, committed:true` against a target `rev-list --left-right` then showed genuinely diverged. Fixed to classify exhaustively (equal/behind/ahead/diverged) and refuse on diverged.
+- **F1 — no CLI route to complete a weft-side conflict resolution (MEDIUM, CONFIRMED live).** `MergeContinue` gates on the git index; a `_lyx/…` conflict cannot be `git add`ed through the junction (`fatal: pathspec … is beyond a symbolic link`), and the engine verb that can stage it (`MergeStageResolved`, hardened with a foreign-state guard in round 6) was wired to no CLI command. An operator following `merge-in`'s own documented lifecycle hit a `merge --continue` that refused forever. Fixed: new `lyx fabric merge-stage <path>...`, docs (doc.go, docs/overview.md, sandbox suite) corrected to name the real three-step route.
+
+### What the orchestrator verified itself
+
+**Gates, from cold on the committed tree — all green:** `go build ./...`; `go vet ./...`; `go test -count=5` across all four packages; `go test -tags integration -count=1 -timeout 30m` across fabricengine/fabriccli/gitrepo/mergeresolve (fabricengine ~32-39s, fabriccli ~2.6-2.7s, gitrepo ~1.4-1.6s).
+
+**Sabotage proofs, orchestrator-run, each failed at the intended assertion then restored to empty diff:**
+
+| # | Mechanism sabotaged | Test(s) | Result |
+|---|---|---|---|
+| S1 | `syncSideBeforeMerge`'s diverged-refusal arm removed (F5) | `TestMerge_UnfetchedDivergedTargetRefuses`, `TestMerge_UnfetchedDivergedWeftRefuses` | both failed at `want *MergeGuardError`; the two fetched-first-direction tests correctly stayed green (don't exercise this clause) |
+| S2 | `weftPathVisibleWithSeparator`'s conversion made unconditional no-op (F2) | `TestMergePaths_WeftPathVisibleAcrossSeparators` (2 Windows-shape subtests) | both failed — the exact "delete the conversion" sabotage that used to leave the whole campaign green now fails, on THIS Linux host |
+
+**F5 re-driven live** on a fresh hub: simulated a third-party push to `origin/target` via a separate clone, made a local commit on `target` without fetching (genuinely diverged, stale remote-tracking ref), then `lyx fabric merge source` → `{"error":"...branch not synced to upstream","mutations":[],"ok":false}`, `rev-list --left-right --count` confirming `1 1` (real divergence, revealed by the call's own fetch). Exactly the round's claimed fix.
+
+**F1 re-driven live** end-to-end: weft-side conflict built, `git add _lyx/notes.md` confirmed failing (`beyond a symbolic link`), `lyx fabric merge-stage _lyx/notes.md` → `{"ok":true,"staged":["_lyx/notes.md"]}`, `merge --continue` → `committed:true`, record cleared.
+
+### RESIDUAL — none found.
+
+### Honest limits of this verification
+
+- Windows path behaviour: F2 makes the separator logic exercisable on Linux, but real Windows execution still never happened — seven rounds, two instalments, no Windows host in this campaign.
+- Scratch hubs (`hub11`, `hub12`) live under the session scratchpad, outside the repo. `git status` in the worktree clean throughout.
+
+## Round 8 (`fable-max-r8`) — seeded, about to spawn
+
+**Orchestrator's own pick, per the operator's 2026-08-21 directive above** — continuing past the fixed 4-round plan without a per-round check-in. Model/effort diversity: Fable has only run at `high` so far (round 5); `max` is an untested effort tier for this campaign. Picked to maximize both axes for a round that has a real chance of being the genuine safety pass (no residual seeded, four consecutive rounds have each found real material, so this is an ordinary adversarial pass, not yet a declared safety pass).
 
 ## Next action
 
-**Ask the operator which of the two options above before spawning round 7** — do not spawn reflexively. If they confirm the plan as originally stated (run r7, stop after regardless), seed and spawn `opus-medium-r7` per the standard loop. If they want the extend-on-signal option, say so explicitly in the seed prompt's round-context section so a genuinely fresh round 8 (if needed) has the right frame.
+Spawn round 8: `subagent_type: crucible-reviewer-max`, `model: fable`, prompt = "Read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.", tag `fable-max-r8`. Verify independently as always. If round 8 comes back with zero findings AND the orchestrator's independent gates agree, that is the convergence signal — stop and report rather than spawning a reflexive round 9. If it finds real material, keep going per the operator's standing directive: pick the next model/effort, seed, spawn, verify, without a check-in.
