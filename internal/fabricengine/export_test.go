@@ -453,6 +453,8 @@ type MergeStateForTest struct {
 	Message       string
 	WarpStart     string
 	WeftStart     string
+	WarpSource    string
+	WeftSource    string
 	WarpOutcome   string
 	WeftOutcome   string
 	WarpCommitted string
@@ -470,6 +472,8 @@ func (m MergeStateForTest) toMergeState() *mergeState {
 		Message:       m.Message,
 		WarpStart:     m.WarpStart,
 		WeftStart:     m.WeftStart,
+		WarpSource:    m.WarpSource,
+		WeftSource:    m.WeftSource,
 		WarpOutcome:   m.WarpOutcome,
 		WeftOutcome:   m.WeftOutcome,
 		WarpCommitted: m.WarpCommitted,
@@ -490,6 +494,8 @@ func fromMergeState(st *mergeState) (MergeStateForTest, bool) {
 		Message:       st.Message,
 		WarpStart:     st.WarpStart,
 		WeftStart:     st.WeftStart,
+		WarpSource:    st.WarpSource,
+		WeftSource:    st.WeftSource,
 		WarpOutcome:   st.WarpOutcome,
 		WeftOutcome:   st.WeftOutcome,
 		WarpCommitted: st.WarpCommitted,
