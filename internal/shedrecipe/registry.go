@@ -11,8 +11,8 @@ import (
 // registry is the single place every engine name is declared, mapping each recipe row's engine
 // name to the Constructor that builds it.
 //
-// This batch ships the nine value-only entries and "SingleLLM"; batch 5 adds "Bouncer" and
-// "BurlerRound" to this same literal.
+// The table is complete at twelve keys. Any thirteenth entry must arrive with a coverage-guard
+// update in the same commit.
 //
 // init() self-registration was rejected: the entries span four packages
 // (internal/shedrecipe, internal/preflightshed, internal/landingshed, internal/loomshed), and
@@ -29,6 +29,8 @@ var registry = map[string]Constructor{
 	"Stub":               stubEntry,
 	"Webster":            websterEntry,
 	"SingleLLM":          singleLLMEntry,
+	"Bouncer":            bouncerEntry,
+	"BurlerRound":        burlerRoundEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.
