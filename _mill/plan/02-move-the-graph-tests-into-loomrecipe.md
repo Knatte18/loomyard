@@ -86,14 +86,15 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/shedengine/producer.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/landingshed/publish.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/loomrecipe/fixture_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:**
   - `internal/loomshed/loomshed_test.go` -> `internal/loomrecipe/shape_test.go`
 - **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe` and repoint all eight tests off `New(deps)` onto `loomrecipe.New(env, paths)`.
 
-  Relocate the `fakeAlwaysDoneProducer` declaration out of this file into `internal/loomrecipe/fixture_test.go` — it is fixture scaffolding, not a shape assertion, and belongs beside the fixture that fills it.
+  Relocate the `fakeAlwaysDoneProducer` declaration out of the moved file and into `internal/loomrecipe/fixture_test.go`, which card 5 moved into place and which this card therefore edits — it is fixture scaffolding, not a shape assertion, and belongs beside the fixture the substituting tests draw from.
   This card owns that single declaration;
   card 5 only consumes it and must not declare a second copy.
   Replace `testDeps` with a `testEnv(t *testing.T) (shedrecipe.Env, ShedPaths)` helper of the same shape: one `t.TempDir()`, every path field joined off it, `Cwd` an absolute created subdirectory, `Landing: testLandingDeps(dir)`, `WebsterRun` and the four `WebsterDeps` seams filled the way card 5 fills them, and `MaxBounces: 3` on the `ShedPaths` half.

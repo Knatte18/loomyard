@@ -47,7 +47,8 @@ Batch-local decisions:
 - **Moves:** none
 - **Requirements:** Replace the `c.deps = loomshed.Deps{…}` literal in `wire` with two assignments: `c.env = shedrecipe.Env{…}` and `c.shedPaths = loomrecipe.ShedPaths{…}`.
 
-  `c.env` gets exactly the ten fields loom's thirteen rows read, sourced identically to today:
+  `c.env` gets nine of the ten fields loom's thirteen rows read, sourced identically to today;
+  `Landing` is the tenth and stays unfilled, per the paragraph below:
   `Cwd` from the `cwd` parameter (the same value `preflightshed.NewPreflight` is handed today);
   `AnchorPath` from `anchorPath`;
   `WorktreeRoot` from `location.WorktreePath()`;

@@ -106,10 +106,16 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   Treat those as a starting set, not a closed list: sweep both files for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `loomshed.go:137-151`, `Go literal`, `13-row`, and `producer list`, and correct every hit.
   Restate each in the past tense and point at this item rather than rewriting the entries — both are written as claims about the tree's current state, not as a record of what a past task did, so leaving them would make the roadmap assert something false about `main`.
 
+  Moving the conversion item to Done empties the `### Shed recipe: declarative producer lists` Planned section, which holds that one item and nothing else.
+  Delete that heading and its intro paragraph rather than leaving a heading with zero items or a pointer stub: all four pieces of the group have now shipped, and the four Done entries carry the record.
+  The `### loom: real LLM producers` section's own sentence "Sequenced after the \"Shed recipe\" group above so these five tasks write their rows directly as recipe entries" then names a section that no longer exists;
+  restate it to point at the Done entries instead, keeping the ordering rationale intact.
+
   Also in `manifest/roadmap.md`: add a new Planned item covering the parent-fabric resolution chain that fills `landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` for loom.
+  Give it its own `###` section under Planned, placed ahead of `### loom: real LLM producers` — it is not an LLM-producer task and does not belong inside that group.
   This is recording an already-documented gap, not proposing new scope: `internal/landingshed/deps.go` states that the resolution chain "belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it", and no such item exists in Planned, Someday, or Done today — so that comment is currently false and the `landing-parity` Shared Decision has nothing to point at.
   Describe the work the way `deps.go` already does — list the worktrees, match the entry whose branch equals the parent branch, resolve that path, open it — and state the consequence that makes it worth an item: until it lands, `Publish` and `Finalize` construction fails for want of `Env.Landing`, so loom cannot complete a run.
-  Sequence it after this conversion item.
+  State that loom cannot complete an end-to-end run until it lands, without claiming the five LLM-producer tasks are blocked on it — they add rows and are developable independently.
   Do not implement any of it here.
 
   In `manifest/parallel-work.md`: the line stating that several items below touch `internal/loomshed/loomshed.go` stops being true the moment the literal is deleted.
@@ -151,7 +157,7 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   Add `internal/loomrecipe` and `internal/shedrecipe` to that paragraph's list of package documentation to read if the surrounding sentence enumerates them.
 
   Use semantic line breaks, and keep every inline link resolvable — this file is inside the Markdown Link Integrity walk root.
-- **Commit:** `docs(overview): add loomrecipe and contracts/recipes to the module map`
+- **Commit:** `docs(overview): add loomrecipe to the module map, recipes in prose`
 
 ### Card 26: The production doc-comment sweep
 
