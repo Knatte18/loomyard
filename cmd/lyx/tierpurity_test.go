@@ -1,5 +1,5 @@
 // tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones
-// that run in every plain `go test`, without `-tags integration`/`smoke`/`scout`) perform no
+// that run in every plain `go test`, without `-tags integration`/`smoke`) perform no
 // expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit.Copy* fixture-tree
 // copy, and no hubforge.NewHub real-hub fixture build.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
@@ -26,28 +26,26 @@ import (
 // a banned spawn token in an untagged test file, each with a one-line reason —
 // mirroring sandbox_coverage_test.go's excludedModules style.
 var allowedSpawners = map[string]string{
-	"internal/proc": "process control is the package's subject — its tests must spawn",
-	"internal/scoutengine/daemonstate_test.go": "spawns a short-lived child process to obtain a confirmed-dead PID for the daemon-staleness fixture, mirroring internal/proc's own liveness-test technique",
-	"internal/scoutengine/supervised_test.go":  "spawns a short-lived test subprocess via spawnAndHoldSubprocess for its three remaining subtests' PID-liveness fixture (retry-exhaustion, uncontended-lock, and wedged-escalation-reuse)",
-	"cmd/lyx/tierpurity_test.go":               "contains the banned token strings as its own test data",
-	"cmd/lyx/hermeticenv_test.go":              "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
-	"tools/sandbox/pathresolve_guard_test.go":  "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
-	"cmd/lyx/ghguard_test.go":                  "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
-	"cmd/lyx/gitrepoboundary_test.go":          "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
-	"cmd/lyx/boardguard_test.go":               "contains `exec.Command` to resolve the module root via `go env GOMOD` (mirrors ghguard_test.go/gitrepoboundary_test.go's identical pattern, both already allowlisted here) — the Fabric Git Invariant board-guard",
-	"cmd/lyx/rawgitmutation_test.go":           "contains the banned `gitexec.Run`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)",
-	"cmd/lyx/destructiveguard_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned destructive tokens as scan data (Fabric Destruction Chokepoint Invariant guard)",
-	"cmd/lyx/uncontainedwrite_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned raw-write tokens as scan data (Fabric Write-Side Containment Invariant guard)",
-	"cmd/lyx/checkedcall_test.go":              "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data and resolves its scan root via `go env GOMOD` (gitexec Checked-Call Invariant guard)",
-	"cmd/lyx/cwdmutation_test.go":              "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned t.Chdir(/os.Chdir( tokens as scan data (Cwd Resolution Invariant chdir-mutation guard)",
-	"cmd/lyx/configstrictness_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) (Config Strictness Invariant guard)",
+	"internal/proc":                           "process control is the package's subject — its tests must spawn",
+	"cmd/lyx/tierpurity_test.go":              "contains the banned token strings as its own test data",
+	"cmd/lyx/hermeticenv_test.go":             "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
+	"tools/sandbox/pathresolve_guard_test.go": "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
+	"cmd/lyx/ghguard_test.go":                 "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
+	"cmd/lyx/gitrepoboundary_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
+	"cmd/lyx/boardguard_test.go":              "contains `exec.Command` to resolve the module root via `go env GOMOD` (mirrors ghguard_test.go/gitrepoboundary_test.go's identical pattern, both already allowlisted here) — the Fabric Git Invariant board-guard",
+	"cmd/lyx/rawgitmutation_test.go":          "contains the banned `gitexec.Run`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)",
+	"cmd/lyx/destructiveguard_test.go":        "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned destructive tokens as scan data (Fabric Destruction Chokepoint Invariant guard)",
+	"cmd/lyx/uncontainedwrite_test.go":        "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned raw-write tokens as scan data (Fabric Write-Side Containment Invariant guard)",
+	"cmd/lyx/checkedcall_test.go":             "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data and resolves its scan root via `go env GOMOD` (gitexec Checked-Call Invariant guard)",
+	"cmd/lyx/cwdmutation_test.go":             "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned t.Chdir(/os.Chdir( tokens as scan data (Cwd Resolution Invariant chdir-mutation guard)",
+	"cmd/lyx/configstrictness_test.go":        "resolves its scan root via `go env GOMOD` (contains `exec.Command`) (Config Strictness Invariant guard)",
 }
 
 // knownTierTags are the `//go:build` constraint substrings that mark a *_test.go file
 // as tagged (i.e. excluded from a plain `go test` run) for Test Tier Purity purposes.
 // isTierTagged matches on any entry, so adding a new tier tag here is the single place
 // that both the purity guard and its doc comments need to stay in sync with.
-var knownTierTags = []string{"integration", "smoke", "scout"}
+var knownTierTags = []string{"integration", "smoke"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also
@@ -137,7 +135,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		bannedTok, bad := firstBannedToken(data)
 		if bad && !pathAllowlisted(relPath, allowedSpawners) {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration, smoke, or scout), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
+				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration or smoke), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
 				relPath, bannedTok,
 			))
 		}
@@ -197,9 +195,7 @@ func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 	}{
 		{"integration", "//go:build integration", true},
 		{"smoke", "//go:build smoke", true},
-		{"scout", "//go:build scout", true},
 		{"platform_only_untagged", "//go:build windows", false},
-		{"compound_constraint_still_matches", "//go:build linux && scout", true},
 		{"empty", "", false},
 	}
 	for _, tt := range tests {

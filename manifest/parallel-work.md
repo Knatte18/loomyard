@@ -13,7 +13,7 @@ Several items below touch `internal/loomshed/loomshed.go` — expected, resolved
 - **preflight: split into two Shed rows** (`preflight-loom-agnostic`)
 - **scout: extract into its own standalone repo** (`scout-extract-standalone-repo`) — independent of everything else on this map; nothing outside `internal/scoutengine` imports it except `internal/scoutcli`.
 
-Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, the `fabric-merge-crucible-hardening` crucible campaign (wiki-tracked only, no `roadmap.md` entry), and now `shedengine: per-producer bounce budget + explicit OnDone routing` have all landed. Priority now shifts to the remainder of the "Perch → Shed flattening" group below.
+Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, the `fabric-merge-crucible-hardening` crucible campaign (wiki-tracked only, no `roadmap.md` entry), and now `shedengine: per-producer bounce budget + explicit OnDone routing` have all landed. Priority now shifts to the remainder of the "Shed flattening" group below.
 
 ## Can start now, no caveats
 
@@ -37,5 +37,4 @@ Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, 
 
 ## Blocked on the three review-producer tasks above
 
-- **Bouncer → Perch: rename, retire `internal/perchengine`/`internal/treadleengine`** (Someday) — needs the design proven on all three first.
-
+- **Retire `internal/treadleengine`** (Someday) — deliberately sequenced last; treadle's own round-loop consumer is already gone (see the roadmap's Done retirement entry), and treadle's own final call needs the `Shed`-segment design proven on `loom: Discussion-Review producer`/`Plan-Review producer`/`Webster-Review producer`, and on `Tenter`, first.

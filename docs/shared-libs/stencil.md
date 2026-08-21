@@ -75,7 +75,7 @@ The same template can therefore be filled once with a marker required (via `Fill
 ## Consumers
 
 - **`burler`** — the handler prompt and each cluster-reviewer prompt: the thin round orchestrator is passed *as a value*, while the three per-step instruction files it names are written to a fresh `.lyx`-anchored directory and read by the agent via tools (see the `internal/burlerengine` package documentation).
-- **`perch`** — the progress-judge prompt.
+- **`treadle`** — the progress-judge prompt.
 - **`loom`** — the discussion / plan producer prompts (producers are prompts + profiles, not modules).
 - **`hardener`** (DRAFT) — the round-agent prompt (`review-prompt-template.md`).
 

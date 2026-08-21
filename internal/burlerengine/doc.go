@@ -6,14 +6,16 @@
 // agent, one shuttle run.
 //
 // A burler runs ONE round and exits. It knows nothing about round loops,
-// caps, convergence, or progress across rounds — that is perch's job
-// (unbuilt), which composes burler. The dependency runs one way,
-// perch -> burler -> shuttle, a strict chain: each layer knows only the
-// one below it. This split is deliberate and is why burler is a separate
-// module from perch rather than folded into it: burler is LLM-heavy (one
+// caps, convergence, or progress across rounds — that is its caller's job,
+// which composes burler. Today the caller is
+// internal/shedadapters.BurlerProducer, the Shed row that wraps one round
+// and hands off to its segment's Bouncer. The dependency runs one way,
+// caller -> burler -> shuttle, a strict chain: each layer knows only the one
+// below it. This split is deliberate and is why burler is a separate module
+// from its caller rather than folded into it: burler is LLM-heavy (one
 // round is a shuttle run; its tests are a fake-shuttle unit suite plus a
-// handful of opt-in real-engine smoke tests), while perch is deterministic
-// Go (the loop, the milestone cap ladder, and the progress judge; its
+// handful of opt-in real-engine smoke tests), while the loop owner is
+// deterministic Go (the round advance and the Bouncer's judge call; its
 // tests use a fake burler returning scripted verdicts, no LLM at all).
 // Keeping them one module would blend those two test regimes.
 //
@@ -53,8 +55,9 @@
 // they accumulate under .lyx/burler across rounds in a long-lived worktree.
 // This is accepted machine-local litter, not a leak: .lyx is never
 // committed, so it carries no cross-machine cost, and whatever clears a
-// worktree's .lyx tree wholesale (a future perch cleanup step, or manual
-// deletion) removes it along with everything else machine-local there.
+// worktree's .lyx tree wholesale (a future caller-side cleanup step, or
+// manual deletion) removes it along with everything else machine-local
+// there.
 //
 // Every recorded finding is fixed in B, all severities including LOW and
 // NIT: severity affects how a finding is reported, never whether it gets
@@ -69,9 +72,9 @@
 // within a round, A is a legitimate, independent gate exactly like a
 // normal reviewer — but the fix FROM round N is judged by a FRESH
 // burler's A in round N+1, not by the same round that made it. That
-// cross-round independence is perch's discipline (it spawns a new burler
-// each round); a single Engine.Run call only guarantees A-before-B within
-// its own round.
+// cross-round independence is the caller's discipline (it spawns a new
+// burler each round); a single Engine.Run call only guarantees A-before-B
+// within its own round.
 //
 // # Profile vs RunOpts
 //
@@ -85,8 +88,8 @@
 //
 // RunOpts (Model, Effort, Timeout, Round) is kept deliberately OFF the
 // content Profile: run-tuning is a caller-resolved, config-driven
-// selection that varies per invocation — perch will vary model/effort per
-// round of the SAME artifact — while Profile describes what does not
+// selection that varies per invocation — a caller may vary model/effort
+// per round of the SAME artifact — while Profile describes what does not
 // change about the round's content. Run maps RunOpts 1:1 onto the
 // shuttle Spec and leaves Interactive/Parent/Display/KeepPane at their
 // zero values: rounds are autonomous by default.
@@ -118,8 +121,9 @@
 // burlerengine never imports the fabric module and never constructs a
 // _lyx/... path — Result returns the review/fixer-report paths the
 // caller supplied (resolved absolute), and committing them
-// is the loop owner's job (perch's CLI standalone, or loom once it
-// exists), via the fabric engine in-process. See the Fabric Git Invariant in
+// is the loop owner's job (loom's
+// Burler-round-producer-plus-Bouncer segments), via the
+// fabric engine in-process. See the Fabric Git Invariant in
 // CONSTRAINTS.md. The one exception an agent DOES commit is its own code
 // under FixScopeSource — that is an ordinary repo commit, not a fabric
 // operation.
@@ -135,6 +139,22 @@
 // profile explicitly names a fan — and a fan longer than maxClusterN (16)
 // entries fails validate. There is deliberately no fan named "default":
 // every seeded fan is dormant until a profile names it.
+//
+// ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
+// applied inside validate after ResolveFan, with the survivors stored in
+// clusterLenses — the single value both prompt composition and
+// auditClusterRound's exact-N fork check read, so a trimmed round demands
+// exactly the forks it named and ErrClusterForksMissing's fail-loud posture
+// is untouched. Three edge cases split on who authored the input:
+// ClusterExclude set with an empty ClusterFan is a validate error, because
+// that is a Go caller's mistake; a name not present in the resolved fan is a
+// no-op for that name with a warning, because an exclusion list is an
+// advisory, per-call directive over a config-owned fan an operator may edit
+// between rounds, so a stale name is stale rather than wrong; and an
+// exclusion that would empty the fan drops the whole exclusion and keeps the
+// fan intact, because dropping to zero lenses is never what "these found
+// nothing last round" meant and re-running the full fan costs tokens, never
+// correctness.
 //
 // A cluster round still runs as ONE shuttle session — the handler — inside
 // job A, in three phases: (1) the handler explores the target in full; (2)
@@ -214,9 +234,9 @@
 // Result is an invariant contract regardless of what was reviewed: a
 // Verdict (VerdictApproved or VerdictBlocking), the parsed Findings
 // (ParseReview enforces unique, non-empty ids fail-loud, so cross-round
-// hydration and audit can cite a finding unambiguously — perch judges
-// progress across rounds holistically via a verdict judge, not by tracking
-// finding-key identity), the resolved ReviewPath/FixerReportPath, and the
+// hydration and audit can cite a finding unambiguously — the caller judges
+// progress across rounds holistically via its own verdict judge, not by
+// tracking finding-key identity), the resolved ReviewPath/FixerReportPath, and the
 // shuttle run's SessionID/StrandGUID/LastAssistantMessage/RunDir. Run returns
 // a nil error for every shuttleengine outcome except a hard failure
 // (invalid profile, shuttle start/run failure, or — deliberately loud — a

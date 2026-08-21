@@ -7,7 +7,7 @@ Like `SANDBOX-SHUTTLE-SUITE.md`, the value here is partly **visual**: a burler r
 Not an automated suite -- an agent drives it, an operator watches.
 
 burler drives one review+fix round over an artifact: an A phase reviews the target against a fasit (a source of truth) and writes a structured review file (verdict + findings), then a B phase fixes what A found and writes a fixer report.
-Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lyx burler run`), never review quality -- they are deliberately trivial (a toy chair/table color mismatch) so the assertions are about the mechanics (verdict parse, file contract, fix actually applied), not about whether the review is insightful. `perch`, the gate loop built on top of burler (it spawns fresh burler rounds until an artifact is `APPROVED` or definitively `STUCK`), has its own scenarios in `SANDBOX-PERCH-SUITE.md` -- not tested here.
+Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lyx burler run`), never review quality -- they are deliberately trivial (a toy chair/table color mismatch) so the assertions are about the mechanics (verdict parse, file contract, fix actually applied), not about whether the review is insightful.
 
 ## Pre-conditions
 
@@ -182,5 +182,5 @@ and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 
-- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, perch gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
+- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`;
   this suite holds only burler's own review+fix round scenarios -- add `S` scenarios here, not in any other suite.

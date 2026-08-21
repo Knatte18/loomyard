@@ -1,6 +1,6 @@
 # Shed — a shared Go outer phase-FSM for `loom` and `Hardener`
 
-> **Status: the skeleton — the loop, the status file, the `ShedProducer` interface, and the producer-list validation — is shipped as `internal/shedengine`, and the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) ship as `internal/shedadapters`.** See the `internal/shedengine` and `internal/shedadapters` package documentation for the as-built contract; this doc stays the design's own narrative rather than a duplicate of it. This doc survives both modules landing — which `docs/overview.md`'s two-class Documentation Lifecycle would otherwise read as grounds for deletion, the fate of a per-module design draft whose module has now landed — because it is not that class: it is the shared narrative four still-unbuilt modules are written against ([loom.md](loom.md) explicitly assigns it authority over `Shed`'s own generic mechanism while keeping loom's own producer list for itself, and `manifest/designs/hardener.md` and `manifest/designs/raddle.md` each build on that same narrative, as did the now-deleted `manifest/designs/landing.md` before its two producers landed), as does the durable `contracts/specs/loom-status-spec.md`. Several of those references are anchor-bearing links that Markdown Link Integrity enforces, so deleting this file would break live links in docs whose own modules are not built. Retention should be re-evaluated once those modules land. Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic engine that opens a slot for whichever producer list a product configures it with. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc is the authoritative description of `Shed`'s own generic mechanism (the flat producer list, the loop, the status file, the producer contract, engine adapters); [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it, plus the `loom`-specific detail (session bootstrap, auto-mode, module decomposition) this doc doesn't restate.
+> **Status: the skeleton — the loop, the status file, the `ShedProducer` interface, and the producer-list validation — is shipped as `internal/shedengine`, and the engine adapters (`SingleLLMProducer`, the `Webster` adapter, the `Burler`-round adapter, and the `Bouncer`) ship as `internal/shedadapters`.** See the `internal/shedengine` and `internal/shedadapters` package documentation for the as-built contract; this doc stays the design's own narrative rather than a duplicate of it. This doc survives both modules landing — which `docs/overview.md`'s two-class Documentation Lifecycle would otherwise read as grounds for deletion, the fate of a per-module design draft whose module has now landed — because it is not that class: it is the shared narrative four still-unbuilt modules are written against ([loom.md](loom.md) explicitly assigns it authority over `Shed`'s own generic mechanism while keeping loom's own producer list for itself, and `manifest/designs/hardener.md` and `manifest/designs/raddle.md` each build on that same narrative, as did the now-deleted `manifest/designs/landing.md` before its two producers landed), as does the durable `contracts/specs/loom-status-spec.md`. Several of those references are anchor-bearing links that Markdown Link Integrity enforces, so deleting this file would break live links in docs whose own modules are not built. Retention should be re-evaluated once those modules land. Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic engine that opens a slot for whichever producer list a product configures it with. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc is the authoritative description of `Shed`'s own generic mechanism (the flat producer list, the loop, the status file, the producer contract, engine adapters); [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it, plus the `loom`-specific detail (session bootstrap, auto-mode, module decomposition) this doc doesn't restate.
 
 ## What it is
 
@@ -63,7 +63,7 @@ A producer's worst-case internal shape, not its happy path, decides its typology
 See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [internal/landingshed](../../internal/landingshed/doc.go) for `Finalize`'s own worked example of this — bespoke on the typology axis despite a zero-LLM happy path, and adapter-free on the engine axis at the same time, which is exactly the two-axis independence the next section states.
 
 A producer's **definition** — internal to how `Shed` actually runs it, invisible to the contract — additionally names an **engine** (which code drives it) and a **config** (how that engine is parameterized for this specific producer).
-Many producers share the same engine: every `*-Review` producer is `engine: perch`, differing only by which rubric/fasit `config` file is handed to it — the same generic, profile-driven mechanism `perch` already implements today ("reused for every phase... only the review profile differs").
+Many producers share the same engine: every `*-Review` producer is a `Bouncer`+`Burler`-round pair, differing only by which rubric/fasit `config` file is handed to it — one generic, profile-driven mechanism reused for every phase, only the review profile differing.
 
 ### The `Shed` loop — exact mechanics
 
@@ -181,7 +181,7 @@ A caller must branch on `Outcome` before reading `Reason`, which is populated on
 
 `History` is the **full persisted history** as it stands when `Run` returns — every entry in the status file, not only the entries this invocation appended. A this-run-only slice would make a resumed run's `Result` silently incomparable to a fresh one's; the full scope is what makes `Result` a faithful view of the file `Shed` just wrote.
 
-Mirrors `internal/treadleengine.Engine.Run(p Profile, runDir string) (result Result, err error)` exactly — same `(Result, error)` shape one level up, not a coincidence: `perch`'s own adapter into `treadle` is the concrete precedent this follows. `Run` walks the whole six-step loop in one call, from wherever the status file's `current_producer` currently sits, until it hits a stopping condition (`pause_requested`/cancellation, `blocked`, `done`, or an `error`) — never a `Step()`-per-call API the caller loops over, since the loop itself is `Shed`'s entire deliverable; pushing it out to every caller would mean `loom` and `Hardener` each reimplementing the same sequencing/pause-check/routing logic, exactly the duplication `Shed` exists to centralize. A non-nil `error` return covers both step 1's and step 2's hard-error cases above (missing or incoherent status file) and a producer's own `Call()` returning `error`; `Result.Outcome` covers the three clean exits, mirroring `state`'s three non-failure values below.
+Mirrors `internal/treadleengine.Engine.Run(p Profile, runDir string) (result Result, err error)` exactly — same `(Result, error)` shape one level up, not a coincidence: `treadleengine`'s own `RoundRunner` adapter seam is the concrete precedent this follows. `Run` walks the whole six-step loop in one call, from wherever the status file's `current_producer` currently sits, until it hits a stopping condition (`pause_requested`/cancellation, `blocked`, `done`, or an `error`) — never a `Step()`-per-call API the caller loops over, since the loop itself is `Shed`'s entire deliverable; pushing it out to every caller would mean `loom` and `Hardener` each reimplementing the same sequencing/pause-check/routing logic, exactly the duplication `Shed` exists to centralize. A non-nil `error` return covers both step 1's and step 2's hard-error cases above (missing or incoherent status file) and a producer's own `Call()` returning `error`; `Result.Outcome` covers the three clean exits, mirroring `state`'s three non-failure values below.
 
 **What `Run` does before step 1, all fail loud, none of it creating or modifying the status file:**
 
@@ -279,16 +279,16 @@ The seed itself is written by a spawn-time command, not by `Shed`, and `pause_re
 
 **Step 4 is an unconditional re-call — `Shed` never shortcuts it by checking whether `OutputPointer.Path` already exists on disk.**
 That shortcut looks tempting (loom.md's crash-recovery language: "resume on output files, not live processes") but it is unsafe as a generic `Shed`-level check: after an `OnStuck` bounce-back, the *previous* attempt's output file for that producer is still sitting on disk, and `Shed` cannot tell a stale file from a fresh one by existence alone.
-So the "is there already a live session, is there already a fresh complete output, should I respawn" three-case discipline is **not** `Shed`'s — it is delegated whole to each engine adapter's own `Call()` implementation (`SingleLLMProducer` archives any stale output and respawns rather than reattaching to a live session, since `shuttle` exposes no reattach entry point for it to call; `perch`/`Webster` already own their own resume, per [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) above).
+So the "is there already a live session, is there already a fresh complete output, should I respawn" three-case discipline is **not** `Shed`'s — it is delegated whole to each engine adapter's own `Call()` implementation (`SingleLLMProducer` archives any stale output and respawns rather than reattaching to a live session, since `shuttle` exposes no reattach entry point for it to call; `Webster` already owns its own resume, per [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) above).
 A mechanical Go-function producer needs no such discipline at all — re-running its check is cheap by construction.
 This is the natural conclusion of `Shed` having no opinion on Output's shape: it shouldn't stat a path to make a control-flow decision either.
 
 **What `Shed` does not provide** — each lives in the engine adapter or the product's own CLI wrapper instead:
 
-- Crash-recovery of live-session state — inside `SingleLLMProducer`/`perch`/`Webster`'s own `Call()`; `SingleLLMProducer` always archives and respawns rather than reattaching, while `perch`/`Webster` own their own resume.
+- Crash-recovery of live-session state — inside `SingleLLMProducer`/`Webster`'s own `Call()`; `SingleLLMProducer` always archives and respawns rather than reattaching, while `Webster` owns its own resume.
 - Session/tmux/reed bootstrap — the product's CLI entry point (`lyx loom run`) does this *before* invoking `Shed`'s loop.
 - Status-strand rendering (`lyx loom status --watch`) — `reed` hosts it, reading the file `Shed` writes; `Shed` never renders anything.
-- Round loops, N-caps, batch decomposition — `perch`/`burler`/`batcher`'s own internals, opaque behind one `Call()`.
+- Round loops, N-caps, batch decomposition — the `Bouncer`/`burler`/`batcher`'s own internals, opaque behind one `Call()`.
 - Anything about Input, or Output's shape — the producer-authoring convention above, not `Shed`.
 
 ### Engine adapters — a thin, shared seam, not one per producer
@@ -296,32 +296,43 @@ This is the natural conclusion of `Shed` having no opinion on Output's shape: it
 `ShedProducer` (defined above) is the minimal common interface `Shed` uses to drive any producer uniformly, without needing to know what happened inside.
 This is not a new pattern: it mirrors two seams that already exist in this codebase —
 
-- `internal/treadleengine`'s `RoundRunner` seam (`internal/perchengine`'s burler adapter is its reference consumer).
+- `internal/treadleengine`'s `RoundRunner` seam (no consumer today; reserved for a future `Tenter`).
 - `internal/batcher`'s `Batcher` interface (multiple batchifier implementations behind one interface, resolved by name via `Select`).
 
-Applied one level up: every producer satisfies a `ShedProducer` interface, and — critically — **`Shed` needs not one adapter per producer, but one per distinct engine type**:
+Applied one level up: every producer satisfies a `ShedProducer` interface, and — critically — **`Shed` needs not one adapter per producer, but one per distinct engine type, plus one entry per producer that is itself new logic over an already-adapted engine rather than a translation of a different one**:
 
 - **A mechanical Go-function producer** needs no translation adapter at all — a plain Go function already satisfies `ShedProducer` directly.
 - **A `SingleLLMProducer`** is one generic, reusable `ShedProducer` implementation for the "simple, single-agent-spawn, LLM" case: the parameterization lives entirely in the caller's own `shuttleengine.Spec` source, which the adapter evaluates once per call and never templates itself. Two concrete producers configuring this same generic type is not two adapters — it is one adapter, instantiated twice with different `Spec` sources, unified today via the shared `shuttleengine.Spec` → `shuttle.Run` pattern.
-- **`perch`** needs one adapter, reusable by every review-gate producer regardless of which artifact it reviews.
+- **The Bouncer** is `shuttleengine`-backed like `SingleLLMProducer`, but templating its own prompt from a rubric stencil and a generic template, with judge-specific work before and after the spawn — the first member of the second kind named above, new logic over an already-adapted engine rather than a translation of a different one.
 - **A black-box multi-spawn engine** (e.g. `Webster`'s own verb-driven form) needs its own adapter, one per such engine, not one per producer that happens to use it.
+- **The `Burler`-round adapter** wraps one `burlerengine` A-review/B-fix round as a single Shed row, and always hands back to its segment's `Bouncer` via `Stuck`, never advancing on its own.
 
-So the adapter count scales with the number of distinct *engines* in play, never with the number of producers — see [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for how many concrete adapters `loom`'s own list currently needs.
+So the adapter count scales with the number of distinct *engines* in play, plus one entry per producer that is new logic over an already-adapted engine rather than a translation of a different one — never with the number of producers outright.
+That distinction is what keeps the original rule true for the cases it was written about: `SingleLLMProducer` and `Webster` are each still exactly one adapter per engine, and the Bouncer is the qualification the rule needed once a second kind of member joined the package.
+See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for how many concrete adapters `loom`'s own list currently needs.
+
+**The round-artifact pair predicate is the durable, mechanical contract between the `Burler`-round adapter and its segment's `Bouncer`.**
+The presence of both `round-<N>-review.md` and `round-<N>-fixer-report.md` in the segment's run directory means, and only means, that round `N` completed and produced a usable review.
+Both the round producer and the `Bouncer` run that same test — the round producer to decide whether to advance, the `Bouncer` to tell its seed call from its judge call.
+This doc stays the design's narrative and points at the `internal/shedadapters` package documentation for the as-built detail, rather than restating the whole producer contract here.
+
+**The segment's round cap is the smaller of the two rows' `MaxBounces` budgets, not either row's alone.**
+Neither row's bounce episode ever resets, and the `Bouncer` — the segment's entry point — runs one `Stuck` ahead of the round producer, so raising the cap means raising both rows together.
 
 This split cuts on **engine type** — which code drives the producer, and therefore how many adapters must be built — whereas the simple/bespoke typology in [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) above cuts on **atomicity and crash-recovery ownership**.
 The two axes are independent and need not align: a producer can be mechanical-and-simple, mechanical-and-bespoke (pure Go on its happy path but owning an internal multi-step process on an exceptional one), or LLM-and-either.
-One `perch` adapter, for instance, can serve several separate bespoke producers at once — the axes describe different questions, so neither predicts the other.
+One `Bouncer` adapter, for instance, can serve several separate bespoke producers at once — the axes describe different questions, so neither predicts the other.
 
 ## Testable cheaply — a throwaway producer list proves the skeleton
 
 Building `Shed`'s skeleton doesn't need a real producer list to validate against.
 Plug in a short, disposable list — a couple of steps that just succeed immediately, including stub `Publish`/`Finalize` producers — and sequencing, resume, crash-recovery, and pause can all be exercised end-to-end without any of `loom`'s or `Hardener`'s real producers needing to exist yet.
-This mirrors `loom.md`'s own stated approach ("testable against fake phases before real producers are wired in... the same fake-tested approach `perch` used against a fake `burler`") — reused here to validate the *extraction*, the same way `perch`'s existing behavior validates `Treadle`'s extraction.
+This mirrors `loom.md`'s own stated approach ("testable against fake phases before real producers are wired in... the same fake-tested approach the round loop used against a fake `burler`") — reused here to validate the *extraction*.
 
 ## Process — decomposed into several small tasks
 
 `Shed`'s own skeleton (the loop, the status file, the `ShedProducer` interface) is one task on its own — no adapters, no `Publish`/`Finalize`, nothing `loom`-specific.
-The three engine adapters (`SingleLLMProducer`, `perch`, `Webster`) are a separate task: each is a small, self-contained wrapper around an already-shipped engine, sharing nothing with `Shed`'s own skeleton beyond the `ShedProducer` interface each implements.
+The engine adapters (`SingleLLMProducer`, `Webster`, the `Burler`-round adapter) are a separate task: each is a small, self-contained wrapper around an already-shipped engine, sharing nothing with `Shed`'s own skeleton beyond the `ShedProducer` interface each implements.
 `Publish` and `Finalize` are bundled with neither — they are genuinely new code (see [internal/landingshed](../../internal/landingshed/doc.go)), scoped as their own task, independent of `loom`'s own build order, on the same footing as the not-yet-detailed Plan and Webster phases.
 See `manifest/roadmap.md`'s Planned section for the concrete task sequence this decomposes into.
 

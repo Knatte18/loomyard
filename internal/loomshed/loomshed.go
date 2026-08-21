@@ -109,7 +109,7 @@ type Deps struct {
 // and the table below walk in, and each row's own OnDone is what actually routes a Done verdict to
 // its successor, forward or backward, regardless of list position.
 //
-// Plan-Sweep is deliberately not a row here: its scout-inventory work is deferred (see
+// Plan-Sweep is deliberately not a row here: its quarry-inventory work is deferred (see
 // manifest/roadmap.md's Someday "loom: build Plan-Sweep for real" item) and it has no consumer --
 // Plan-Write reads only decision-record.md today -- so a stub row with nothing to feed and nothing
 // to bounce to would be dead weight, not a placeholder worth carrying. It returns as a row only

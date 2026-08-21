@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -118,22 +117,22 @@ func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 		}
 	}
 
-	// The sibling perch module's own tree, in the same shared geometry: its
-	// durable state must still ride a webster commit, its pause flag must not.
-	perchDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "perch")
-	if err := os.MkdirAll(perchDir, 0o755); err != nil {
-		t.Fatalf("mkdir weft perch dir: %v", err)
+	// The sibling loom module's own tree, in the same shared geometry: its
+	// durable state must still ride a webster commit, its run lock must not.
+	loomDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "loom")
+	if err := os.MkdirAll(loomDir, 0o755); err != nil {
+		t.Fatalf("mkdir weft loom dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(perchDir, "state.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatalf("write weft perch state.json: %v", err)
+	if err := os.WriteFile(filepath.Join(loomDir, "status.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write weft loom status.json: %v", err)
 	}
 
-	perchScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "perch")
-	if err := os.MkdirAll(perchScratchDir, 0o755); err != nil {
-		t.Fatalf("mkdir weft perch scratch dir: %v", err)
+	loomScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "loom")
+	if err := os.MkdirAll(loomScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir weft loom scratch dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(perchScratchDir, perchengine.PauseFlagName), []byte("paused"), 0o644); err != nil {
-		t.Fatalf("write weft perch pause flag: %v", err)
+	if err := os.WriteFile(filepath.Join(loomScratchDir, "run.lock"), []byte("locked"), 0o644); err != nil {
+		t.Fatalf("write weft loom run lock: %v", err)
 	}
 
 	seedRepoWideFabricConfig(t, hub)
@@ -181,13 +180,13 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 }
 
 // TestFabricSync_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, the
-// sibling perch module's pause flag, webster's rendered fork prompts) stays uncommitted by REAL git
+// sibling loom module's run lock, webster's rendered fork prompts) stays uncommitted by REAL git
 // at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
 // Exclusion is now structural: every machine-local artifact lives under ".lyx" at the mirrored
 // subpath, entirely outside the committed "_lyx" pathspec fabricSync passes -- no exclude-pattern
 // machinery is involved.
-// It is also the cross-module regression guard: a webster commit must hold back the sibling perch
-// module's pause flag too, since every module sharing one geometry shares one ".lyx" scratch tree
+// It is also the cross-module regression guard: a webster commit must hold back the sibling loom
+// module's run lock too, since every module sharing one geometry shares one ".lyx" scratch tree
 // the same way it shares one "_lyx" durable tree.
 // Each excluded artifact is asserted both absent from the commit AND still untracked via `git
 // ls-files` -- proving it never reached the pathspec at all, not merely an already-tracked file
@@ -231,18 +230,18 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 
-			// Perch's durable state.json rides a webster commit (the two
+			// Loom's durable status.json rides a webster commit (the two
 			// modules share one _lyx); only the machine-local artifacts of
 			// EITHER module are held back.
 			wantPresent := []string{
 				base + "/webster/state.json",
-				base + "/perch/state.json",
+				base + "/loom/status.json",
 			}
 			wantAbsent := []string{
 				scratchBase + "/webster/mutate.lock",
 				scratchBase + "/webster/" + websterengine.PauseFlagName,
 				scratchBase + "/webster/prompts/1.md",
-				scratchBase + "/perch/" + perchengine.PauseFlagName,
+				scratchBase + "/loom/run.lock",
 			}
 			for _, present := range wantPresent {
 				if !containsString(committedFiles, present) {

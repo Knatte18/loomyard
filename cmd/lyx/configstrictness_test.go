@@ -13,12 +13,12 @@
 // package never qualifies a call to its own function with its own package name, but
 // the exclusion is applied explicitly rather than relied upon structurally.
 //
-// The three own-loader modules -- internal/burlerengine, internal/modelspec, and
-// internal/scoutengine -- call neither entry point at all: they resolve their config
-// path with configengine.ConfigFile and read the file themselves with their own
-// absent-file fallback. They are structurally invisible to this substring scan, so
-// this guard makes no assertion about them one way or the other -- they are outside
-// its subject by construction, not by exclusion.
+// The two own-loader modules -- internal/burlerengine and internal/modelspec -- call
+// neither entry point at all: they resolve their config path with
+// configengine.ConfigFile and read the file themselves with their own absent-file
+// fallback. They are structurally invisible to this substring scan, so this guard
+// makes no assertion about them one way or the other -- they are outside its subject
+// by construction, not by exclusion.
 //
 // This guard's own file is skipped as a _test.go file, so the literal
 // "configengine.Load(" and "configengine.LoadOrTemplate(" tokens it carries as scan
@@ -51,7 +51,6 @@ import (
 var configStrictnessDegradingSet = map[string]bool{
 	"internal/shuttleengine": true,
 	"internal/reedengine":    true,
-	"internal/perchengine":   true,
 	"internal/websterengine": true,
 	"internal/batcher":       true,
 }

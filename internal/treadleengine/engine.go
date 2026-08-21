@@ -20,8 +20,7 @@ import (
 // the loop branches on (a hung command is an artifact signal — most plausibly the round's own fix
 // deadlocked it — and its partial output feeds forward like any other failing gate).
 // err is reserved for could-not-start failures only (binary not found, permission denied), where
-// the gate never observed the artifact at all. (Doc text carried over verbatim from perchengine's
-// CommandRunner.)
+// the gate never observed the artifact at all.
 type CommandRunner func(argv []string, dir string, timeout time.Duration) (output []byte, exitZero bool, err error)
 
 // Options carries optional seams a caller may override.
@@ -34,14 +33,14 @@ type Options struct {
 	// not yet split its scratch tree from its durable one. The engine never
 	// derives this path itself; the caller is told, never the engine (Cwd
 	// Resolution Invariant) — treadleengine stays off internal/lyxcwd and
-	// internal/lyxdirs so a caller such as perchengine, which knows its own
+	// internal/lyxdirs so the caller, which knows its own
 	// .lyx-anchored geometry, is the one deriving it.
 	ScratchDir string
 	// StencilsDir is the absolute stencils directory judge.go's and
 	// targeting.go's read sites pass to stencilstore.Read at call time. The
 	// engine never derives this path itself — same told-never-derives
-	// posture as ScratchDir and GateDir — a caller such as perchengine
-	// resolves it from its own *lyxcwd.Location and hands it in.
+	// posture as ScratchDir and GateDir — the caller
+	// resolves it from its own geometry and hands it in.
 	StencilsDir string
 }
 

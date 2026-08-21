@@ -1,11 +1,9 @@
 // engine_test.go drives Engine.Run against a scripted fakeRunner (RoundRunner) and a scripted
-// queuedShuttle (judge/triage/targeting), mirroring internal/perchengine/run_test.go's
-// fakeBurler/queuedShuttle style but adapted to the attempt-level RoundRunner seam.
-// Deliberately scoped to what the perch differential suite CANNOT prove — that the generalized loop
-// works against a non-burler runner and that the seam contract itself holds: AttemptInput
-// population and hydration, retry/ triage semantics at the seam, name-parameterized diagnostics for
-// a non-perch caller, ladder + gate parity, profile validation, and the profile-gated pre-round
-// targeting capability.
+// queuedShuttle (judge/triage/targeting), adapted to the attempt-level RoundRunner seam.
+// Deliberately scoped to the seam contract itself: that the generalized loop works against a
+// non-burler runner, AttemptInput population and hydration, retry/triage semantics at the seam,
+// name-parameterized diagnostics for an arbitrary caller name, ladder + gate parity, profile
+// validation, and the profile-gated pre-round targeting capability.
 // Untagged file: no spawning — the fake CommandRunner is an in-process func (Test Tier Purity
 // Invariant).
 
@@ -38,8 +36,7 @@ type queuedAttemptResult struct {
 // AttemptInput it receives, in call order, and dequeues the next scripted
 // AttemptResult (or error). For a scripted done result it echoes
 // in.ReviewPath/in.FixerReportPath onto the result exactly as a real
-// adapter would (the runner never invents its own paths), mirroring
-// perchengine/run_test.go's fakeBurler.
+// adapter would (the runner never invents its own paths).
 type fakeRunner struct {
 	calls []AttemptInput
 	queue []queuedAttemptResult
@@ -151,9 +148,9 @@ func verdictFileContent(verdict, rationale string) string {
 }
 
 // stringSlicesEqual2 reports whether a and b contain the same strings in
-// the same order. Named distinctly from perchengine's own duplicate to
-// avoid any reader confusion about cross-package sharing — there is none;
-// each package's copy is a few lines, per the differential-test-bar's
+// the same order. Named with a numeric suffix to avoid colliding with a
+// same-named helper elsewhere in the tree — there is no cross-package
+// sharing; each copy is a few lines, per the differential-test-bar's
 // mechanical-package-split helper-fallout clause.
 func stringSlicesEqual2(a, b []string) bool {
 	if len(a) != len(b) {
@@ -198,7 +195,7 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 		Timeout:     5 * time.Minute,
 	}
 
-	e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
+	e := New("gate", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 	got, err := e.Run(p, runDir)
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -225,8 +222,8 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 
 	// Hydration: round 2 must see round 1's review path AND round 1's
 	// failed gate file (GatePassed false feeds the gate path forward as
-	// hydration); a passing gate is never fed forward (perchengine's own
-	// pin, unchanged by the extraction).
+	// hydration); a passing gate is never fed forward (an original pin,
+	// unchanged by the extraction).
 	if len(round2Attempt1.PriorReviews) != 2 {
 		t.Fatalf("round2 attempt1 PriorReviews = %v; want 2 entries (review + failed gate)", round2Attempt1.PriorReviews)
 	}
@@ -276,14 +273,14 @@ func TestEngine_RetrySemantics(t *testing.T) {
 			{result: AttemptResult{Outcome: shuttleengine.OutcomeTimeout, SessionID: "died-2", RunDir: "/kept/died-2"}},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
 
 		_, err := e.Run(p, runDir)
 		if err == nil {
 			t.Fatal("Run() error = nil; want an error for two consecutive non-done attempts")
 		}
-		if !strings.HasPrefix(err.Error(), "perch: ") {
-			t.Errorf("Run() error = %q; want a \"perch: \"-prefixed message", err.Error())
+		if !strings.HasPrefix(err.Error(), "gate: ") {
+			t.Errorf("Run() error = %q; want a \"gate: \"-prefixed message", err.Error())
 		}
 		if !strings.Contains(err.Error(), "failed twice") || !strings.Contains(err.Error(), "died-2") || !strings.Contains(err.Error(), "/kept/died-2") {
 			t.Errorf("Run() error = %q; want it to carry \"failed twice\" and the second attempt's session id and kept run dir", err.Error())
@@ -302,7 +299,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -330,7 +327,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 			{verdictContent: verdictFileContent(string(TriageGiveUp), "the fasit file referenced does not exist")},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		_, err := e.Run(p, runDir)
 		if err == nil {
@@ -345,7 +342,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 	})
 }
 
-// TestEngine_NameParameterization proves an Engine constructed with a non-perch name produces
+// TestEngine_NameParameterization proves an Engine constructed with an arbitrary caller name produces
 // diagnostics carrying that name's prefix — even for the ErrBlockBusy sentinel wrap — and that
 // errors.Is still matches the shared sentinel regardless of which name produced the wrap.
 func TestEngine_NameParameterization(t *testing.T) {
@@ -425,7 +422,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 		}
 		qs := &queuedShuttle{}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{1}}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -450,7 +447,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 			{verdictContent: verdictFileContent(string(JudgeStop), "the trajectory does not justify continuing")},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{1, 3}}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -482,7 +479,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 			GateDir:     gateDir,
 			RoundCaps:   []int{10},
 		}
-		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
+		e := New("gate", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -527,7 +524,7 @@ func TestEngine_ProfileValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := filepath.Join(t.TempDir(), "run")
 			fr := &fakeRunner{}
-			e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
+			e := New("gate", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
 
 			_, err := e.Run(tt.profile, runDir)
 			if err == nil {
@@ -536,8 +533,8 @@ func TestEngine_ProfileValidation(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.errSubstr) {
 				t.Errorf("Run() error = %q; want substring %q", err.Error(), tt.errSubstr)
 			}
-			if !strings.HasPrefix(err.Error(), "perch: ") {
-				t.Errorf("Run() error = %q; want a \"perch: \"-prefixed message", err.Error())
+			if !strings.HasPrefix(err.Error(), "gate: ") {
+				t.Errorf("Run() error = %q; want a \"gate: \"-prefixed message", err.Error())
 			}
 			if len(fr.calls) != 0 {
 				t.Errorf("fakeRunner called %d times; want 0 (an invalid profile must never reach the runner)", len(fr.calls))
@@ -549,9 +546,8 @@ func TestEngine_ProfileValidation(t *testing.T) {
 // readRunState reads runDir's persisted state.json, failing the test loudly
 // if it is missing or unreadable. Same-package access to the unexported
 // runState/roundRecord types means this is a direct read of the real
-// persisted shape — no test-local mirror struct needed (contrast
-// perchengine/run_test.go's readRunState, which mirrors the shape across a
-// package boundary).
+// persisted shape — no test-local mirror struct needed, unlike a reader
+// that would have to mirror the shape across a package boundary.
 func readRunState(t *testing.T, runDir string) runState {
 	t.Helper()
 	path := filepath.Join(runDir, stateFileName)
@@ -593,7 +589,7 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 				handoffContent: "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n",
 			},
 		}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(newProfile(), runDir)
 		if err != nil {
@@ -631,7 +627,7 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 			// like from the loop's perspective.
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 		}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(newProfile(), runDir)
 		if err != nil {
@@ -712,7 +708,7 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 		GateDir:     gateDir,
 		RoundCaps:   []int{10},
 	}
-	e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
+	e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -777,10 +773,10 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	// These fail-safe Warns reach an operator's stderr on an ordinary run
 	// (logger's default threshold IS Warn), so the engine is named "tenter"
-	// here rather than "perch": that proves the corrupt-handoff Warns carry
-	// the CALLING engine's name like every other Warn this package emits,
-	// instead of a hardcoded package label a perch operator would never
-	// recognize.
+	// here rather than this file's usual "gate": that proves the
+	// corrupt-handoff Warns carry the CALLING engine's name like every other
+	// Warn this package emits, instead of a hardcoded package label the
+	// operator would never recognize.
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
 	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
@@ -841,7 +837,7 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 // TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews proves (e) as its own minimal
 // case: with no handoff ever produced at all, a judge call's read-set is exactly today's
 // all-reviews list — the degrade path a block with handoff-maintenance disabled (or simply never
-// yet exercised) must still behave identically to pre-handoff perch.
+// yet exercised) must still behave identically to the pre-handoff loop.
 func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T) {
 	runDir := filepath.Join(t.TempDir(), "run")
 
@@ -856,7 +852,7 @@ func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T
 		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 	}
 	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-	e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+	e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -943,7 +939,7 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 		GateDir:     gateDir,
 		RoundCaps:   []int{10},
 	}
-	e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
+	e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -1078,7 +1074,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		fr.queue = append(fr.queue, queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}})
 
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1112,7 +1108,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		qs.queue = append(qs.queue, queuedShuttleEntry{verdictContent: "prioritize the auth findings; leave the docs alone"})
 
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1177,7 +1173,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		}
 		qs := &queuedShuttle{}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1201,7 +1197,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		qs.queue = append(qs.queue, queuedShuttleEntry{err: errors.New("targeting shuttle unavailable")})
 
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1257,7 +1253,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 			{verdictContent: "fresh targeting brief for round 3"},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
+		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1344,7 +1340,7 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 			seedPath := filepath.Join(runDir, "round-3-seed.md")
 			sh := tt.shSet(seedPath)
 
-			content, ok := runTargeting(newTestStencilsDir(t), sh, "perch", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
+			content, ok := runTargeting(newTestStencilsDir(t), sh, "gate", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
 			if ok {
 				t.Errorf("runTargeting() ok = true; want false")
 			}
@@ -1382,7 +1378,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			}
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), PauseRequested: pauseFn})
+		e := New("gate", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), PauseRequested: pauseFn})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1418,7 +1414,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			}
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir, PauseRequested: pauseFn})
+		e := New("gate", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir, PauseRequested: pauseFn})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1464,7 +1460,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 		release := make(chan struct{})
 		fr1 := &blockingRunner{entered: make(chan struct{}), release: release}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e1 := New("perch", fr1, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
+		e1 := New("gate", fr1, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
 
 		done := make(chan struct{})
 		go func() {
@@ -1479,7 +1475,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 		}
 
 		fr2 := &fakeRunner{}
-		e2 := New("perch", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
+		e2 := New("gate", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
 		_, err := e2.Run(p, runDir)
 		if err == nil {
 			t.Fatal("second Run() error = nil; want an already-running error while the first Run holds the run/scratch lock")
@@ -1512,7 +1508,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			}
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e1 := New("perch", fr1, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir, PauseRequested: pauseFn})
+		e1 := New("gate", fr1, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir, PauseRequested: pauseFn})
 
 		got, err := e1.Run(p, runDir)
 		if err != nil {
@@ -1533,7 +1529,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 		// then proceeds to completion untouched by it.
 		fr2 := &fakeRunner{}
 		fr2.queue = []queuedAttemptResult{{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s2"}}}
-		e2 := New("perch", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
+		e2 := New("gate", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
 
 		got2, err := e2.Run(p, runDir)
 		if err != nil {

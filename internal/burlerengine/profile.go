@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // FileSet names what a review phase reads: paths and/or free-form instructions.
@@ -31,12 +33,15 @@ const (
 
 // Profile is the content contract for one burler round.
 type Profile struct {
-	Target            FileSet
-	Fasit             FileSet
-	Rubric            string
-	FixScope          FixScope
-	ToolUse           bool
-	ClusterFan        string
+	Target     FileSet
+	Fasit      FileSet
+	Rubric     string
+	FixScope   FixScope
+	ToolUse    bool
+	ClusterFan string
+	// ClusterExclude names lenses to drop from the resolved ClusterFan — a
+	// per-call advisory filter, not config.
+	ClusterExclude    []string
 	clusterLenses     []Lens
 	ReviewPath        string
 	FixerReportPath   string
@@ -96,13 +101,16 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 		return fmt.Errorf("burler: profile.FixScope must be %q or %q, got %q", FixScopeOverlay, FixScopeSource, p.FixScope)
 	}
 
+	if p.ClusterFan == "" && len(p.ClusterExclude) > 0 {
+		return fmt.Errorf("burler: profile.ClusterExclude is set but profile.ClusterFan is empty — there is no fan to trim")
+	}
 	if p.ClusterFan != "" {
 		// Resolve fan now so bad names fail upfront.
 		lenses, err := ResolveFan(cfg, p.ClusterFan)
 		if err != nil {
 			return err
 		}
-		p.clusterLenses = lenses
+		p.clusterLenses = applyClusterExclude(p.ClusterFan, lenses, p.ClusterExclude)
 	}
 
 	if p.ReviewPath == "" {
@@ -117,6 +125,52 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	}
 
 	return nil
+}
+
+// applyClusterExclude drops every lens in lenses whose Name appears in
+// exclude, preserving fan order among the survivors.
+// A nil or empty exclude returns lenses unchanged.
+// A duplicate name in exclude is harmless — the set collapses it.
+// A name in exclude that matches no lens in lenses is a no-op for that name,
+// logged as a warning naming fan and the unmatched name — exclude is an
+// advisory, per-call directive over a config-owned fan, so a stale name is
+// stale rather than wrong.
+// If excluding would empty the survivors, the exclusion is dropped whole and
+// lenses is returned unchanged, logged as a warning naming fan — a round
+// demanding zero forks is never what an exclusion meant, and re-running the
+// full fan costs tokens, never correctness.
+func applyClusterExclude(fan string, lenses []Lens, exclude []string) []Lens {
+	if len(exclude) == 0 {
+		return lenses
+	}
+
+	excludeSet := make(map[string]struct{}, len(exclude))
+	for _, name := range exclude {
+		excludeSet[name] = struct{}{}
+	}
+
+	matched := make(map[string]struct{}, len(exclude))
+	survivors := make([]Lens, 0, len(lenses))
+	for _, lens := range lenses {
+		if _, excluded := excludeSet[lens.Name]; excluded {
+			matched[lens.Name] = struct{}{}
+			continue
+		}
+		survivors = append(survivors, lens)
+	}
+
+	for name := range excludeSet {
+		if _, ok := matched[name]; !ok {
+			logger.Warn("burler: cluster exclude named a lens absent from the resolved fan", "fan", fan, "lens", name)
+		}
+	}
+
+	if len(survivors) == 0 {
+		logger.Warn("burler: cluster exclude would empty the fan — dropping the exclusion whole to keep the fan intact", "fan", fan)
+		return lenses
+	}
+
+	return survivors
 }
 
 // resolvePath resolves a single path to a cleaned absolute path: an

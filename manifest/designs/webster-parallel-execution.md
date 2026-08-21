@@ -8,7 +8,7 @@
 Running cards as *parallel* forks would require reintroducing a DAG and worktree isolation, which reopens exactly the problem sequential execution avoids: git's index/staging area is a single shared file per working tree, so two forks concurrently committing — even to fully disjoint files — race on the same lock.
 Current (2026) ecosystem guidance treats worktree isolation as effectively required for concurrent subagents on the same repo.
 A declared-disjoint card pair that turns out (via deviation) to actually overlap is a **live corruption risk** in a concurrent-no-worktree model, not just a bookkeeping problem to fix after the fact as it is sequentially;
-scout would also see other forks' uncommitted, potentially syntactically-broken in-flight edits while serving a concurrent fork's query, since there's no filesystem isolation between them.
+quarry would also see other forks' uncommitted, potentially syntactically-broken in-flight edits while serving a concurrent fork's query, since there's no filesystem isolation between them.
 
 **A possible middle ground, if revisited:** let forks edit concurrently (the LLM-thinking-dominated part) but serialize the actual `git add`+commit+verify step through a mutex in webster's Go orchestration ("edit in parallel, land sequentially").
 Even this requires *strictly enforced* file-disjointness (not just DAG-edge-absence) to be safe.
@@ -48,13 +48,13 @@ sequential is the complete correct design, not just the MVP.
 A planner that emits true card dependencies (`depends-on`) instead of an over-constrained batch line recovers most of the *width* insight with **no worktrees and no concurrent execution** — this is exactly what [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) already does.
 Only the *executor that actually runs the width* (this entry) remains parked.
 
-## Relationship to scout (Part B of the retired draft)
+## Relationship to quarry (Part B of the retired draft)
 
 The retired `websterv2.md` draft also had a Part B — structured impact lookup via `go/packages`/`gopls` (find-all-references as a Go verb instead of LLM-driven grep).
-That idea is superseded, not lost: it's the direct ancestor of [`internal/scoutengine`](../../internal/scoutengine/doc.go), which generalizes it to a multi-language, daemon-based design.
+That idea is superseded, not lost: it's the direct ancestor of [quarry](https://github.com/Knatte18/quarry), which generalizes it to a multi-language, daemon-based design.
 
 ## Related
 
 - `internal/websterengine`'s package documentation — the sequential model this would extend.
 - [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) — already captures the cheap win (`depends-on`).
-- [`internal/scoutengine`](../../internal/scoutengine/doc.go) — Part B's successor.
+- [quarry](https://github.com/Knatte18/quarry) — Part B's successor.

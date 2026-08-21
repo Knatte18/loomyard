@@ -4,7 +4,7 @@
 // path resolves as a transient and every transient path resolves under .lyx at the mirrored
 // subpath of the _lyx-rooted content it relates to.
 // It lives in cmd/lyx because this is the only package that may import every owning module at
-// once (loomengine, websterengine, perchengine, treadleengine, scoutengine,
+// once (loomengine, websterengine, treadleengine,
 // logger, planparser), the same reason constructoranchoring_test.go lives here.
 // It stays untagged: every constructor exercised here is pure filepath.Join arithmetic over a
 // hand-built *lyxcwd.Location, so no process is spawned and no fixture tree is copied, per the
@@ -22,9 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/scoutengine"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -47,14 +45,13 @@ type namedPath struct {
 
 // durableSet returns every _lyx-rooted path a module exposes for l.
 //
-// The two planparser rows below, plus the two perchengine.RunsDir rows, share the weakening
-// annotated on cmd/lyx/constructoranchoring_test.go's plan rows: they still pin that no durable
-// path resolves as a transient at both AnchorRel fixtures, but because each row builds
-// l.AnchorPath() itself instead of calling a constructor that anchored internally, none of them can
-// catch a production call site that passes the wrong root. That proof lives in the subpath-anchored
-// PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored PersistentPreRunE case in
-// internal/webstercli/verbs_test.go, and TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd in the
-// perchcli integration suite.
+// The two planparser rows below share the weakening annotated on
+// cmd/lyx/constructoranchoring_test.go's plan rows: they still pin that no durable path resolves as
+// a transient at both AnchorRel fixtures, but because each row builds l.AnchorPath() itself instead
+// of calling a constructor that anchored internally, neither can catch a production call site that
+// passes the wrong root. That proof lives in the subpath-anchored PlanSpec case in
+// internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE case in
+// internal/webstercli/verbs_test.go.
 func durableSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
 		{"planparser.PlanDir", planparser.PlanDir(l.AnchorPath())},
@@ -63,8 +60,7 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
 		{"websterengine.Dir", websterengine.Dir(l.AnchorPath())},
 		{"websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath())},
-		{"perchengine.RunsDir", perchengine.RunsDir(l.AnchorPath())},
-		{"perchengine.RunsDir/blk", filepath.Join(perchengine.RunsDir(l.AnchorPath()), "blk")},
+		{"websterengine.ReportsDir/blk", filepath.Join(websterengine.ReportsDir(l.AnchorPath()), "blk")},
 	}
 }
 
@@ -73,16 +69,12 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
 		{"websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath())},
 		{"websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath())},
-		{"perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath())},
 		{"loomengine.LoomStatusLock", loomengine.LoomStatusLock(l)},
 		{"loomengine.LoomRunLock", loomengine.LoomRunLock(l)},
 		{"loomengine.LoomDriverLog", loomengine.LoomDriverLog(l)},
 		{"loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
-		{"scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l.AnchorPath(), "go")},
-		{"scoutengine.DaemonLock", scoutengine.DaemonLock(l.AnchorPath(), "go")},
-		{"perchengine.PauseFlagPath", perchengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
-		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
+		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(websterengine.ScratchDir(l.AnchorPath()), "blk"))},
 	}
 }
 
@@ -146,8 +138,8 @@ func TestNoTransientsUnderLyx(t *testing.T) {
 				}
 			}
 
-			// Direction 3: the mirrored-subpath equality check. For each of the
-			// three module pairs, the durable and scratch paths differ in
+			// Direction 3: the mirrored-subpath equality check. For each
+			// module pair, the durable and scratch paths differ in
 			// exactly the one directory-name segment -- rewriting the durable
 			// path's LyxDirName segment to DotLyxDirName must produce the
 			// scratch path byte-for-byte. This is what makes "same relative
@@ -158,7 +150,6 @@ func TestNoTransientsUnderLyx(t *testing.T) {
 				scratch string
 			}{
 				{"websterengine.Dir/ScratchDir", websterengine.Dir(l.AnchorPath()), websterengine.ScratchDir(l.AnchorPath())},
-				{"perchengine.RunsDir/ScratchDir", perchengine.RunsDir(l.AnchorPath()), perchengine.ScratchDir(l.AnchorPath())},
 			}
 			for _, mp := range mirroredPairs {
 				rewritten := strings.Replace(mp.durable, lyxdirs.LyxDirName, lyxdirs.DotLyxDirName, 1)

@@ -37,7 +37,7 @@ const (
 )
 
 // Finding is one recorded review-file finding: a stable ID (kept unique and fail-loud across rounds
-// so cross-round hydration and audit can cite it unambiguously — perch judges progress across
+// so cross-round hydration and audit can cite it unambiguously — the segment's Bouncer judges progress across
 // rounds holistically via a verdict judge, not by tracking finding-key identity), a Severity from
 // the fixed vocabulary, a Location pointing at the offending content, a prose Summary, and an
 // optional Origin.
@@ -71,8 +71,8 @@ type reviewHeader struct {
 //   - every finding must have a non-empty id, severity, location, summary;
 //   - severity must be one of the four Severity constants;
 //   - finding ids must be unique (kept fail-loud for cross-round hydration
-//     and audit, not for Go-side cycle detection — perch judges progress
-//     holistically via a verdict judge);
+//     and audit, not for Go-side cycle detection — the caller judges progress
+//     holistically via its own verdict judge);
 //   - a BLOCKING verdict must carry at least one BLOCKING-severity finding;
 //   - an APPROVED verdict must carry zero BLOCKING-severity findings.
 func ParseReview(content []byte) (Verdict, []Finding, error) {

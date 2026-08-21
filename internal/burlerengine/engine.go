@@ -1,7 +1,8 @@
 // engine.go implements the round driver: Engine.Run validates a Profile, composes its prompt,
 // drives one shuttle run over the Shuttle seam, and maps the shuttle's outcome (plus, on done, the
 // parsed review file) into a Result.
-// This is the library's one external entry point — perch (unbuilt) will call it once per round.
+// This is the library's one external entry point — a caller invokes it once per round. Today that
+// caller is internal/shedadapters.BurlerProducer, which wraps the call as a Shed row.
 
 package burlerengine
 
@@ -57,7 +58,7 @@ type Result struct {
 	LastAssistantMessage string
 	// RunDir is a 1:1 passthrough of shuttleengine.Result.RunDir: the kept
 	// shuttle run directory a caller surfaces when a round dies or times
-	// out, so it can point an operator (or perch's own error message) at
+	// out, so it can point an operator (or the caller's own error message) at
 	// the run's SessionID/StrandGUID and artifacts for inspection.
 	RunDir string
 	// ForkAudit is a 1:1 passthrough of shuttleengine.Result.ForkAudit, set

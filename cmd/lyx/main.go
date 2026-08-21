@@ -27,9 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
-	"github.com/Knatte18/loomyard/internal/perchcli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
-	"github.com/Knatte18/loomyard/internal/scoutcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
@@ -73,7 +71,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, perch, scout, webster, stencil, loom, run.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, run.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -106,8 +104,6 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		selfreportcli.Command(),
 		shuttlecli.Command(),
 		burlercli.Command(),
-		perchcli.Command(),
-		scoutcli.Command(),
 		stencilcli.Command(),
 		webstercli.Command(),
 		loomcli.Command(),
