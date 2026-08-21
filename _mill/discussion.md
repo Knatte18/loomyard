@@ -58,8 +58,10 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 ### Central table literal, not `init()` self-registration
 
-- Decision: one file in `internal/shedrecipe` declares an explicit `map[string]Constructor` literal naming all twelve entries.
-  Lookup is a pure function over that map.
+- Decision: one file in `internal/shedrecipe` declares an explicit unexported `map[string]Constructor` literal naming all twelve entries.
+  The exported surface over it is two functions:
+  `Lookup(name string) (Constructor, error)`, returning an error naming the unknown string (an empty name is an error too — there is no sensible default engine, unlike `batcher.Select`'s `identity`);
+  and `Names() []string`, returning the registered names **sorted**, so the coverage guard and piece 2 both have a stable enumeration and neither reaches into the map directly.
 - Rationale: the whole registry is greppable in one place, there is no mutable package global to corrupt across tests, and registration order is irrelevant.
   `internal/batcher`'s `init()` self-registration (`internal/batcher/registry.go`) is the in-repo precedent, but it works there because every batcher lives in the same package as the registry;
   here the entries would live in four packages, so `init()` registration would require blank imports at every consumer and would make "which engines exist" depend on which packages happened to be linked in.
@@ -68,7 +70,7 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 ### `loomshed`'s six constructors become exported
 
-- Decision: rename `newLoomPreflight`, `newBatchifier`, `newDiscussionValidate`, `newPlanValidate`, `newStub`, **and `newWebsterProducer`** to their exported forms in `internal/loomshed`, keeping their current signatures and behaviour unchanged.
+- Decision: rename `newLoomPreflight`, `newBatchifier`, `newDiscussionValidate`, `newPlanValidate`, `newStub`, **and `newWebsterProducer`** to their exported forms in `internal/loomshed`, keeping their **parameters and behaviour** unchanged and widening only the declared return type to the seam interface.
   `newWebsterProducer` (`internal/loomshed/webster.go:41`) is the sixth: the `Webster` registry entry wraps loom's lazy wrapper, not `shedadapters.NewWebsterProducer` directly.
   The wrapper resolves `batcher.Active(anchorPath)` inside **every** `Call` and fills the result into a copy of `RunDeps` (`webster.go:59-70`), and it also maps a `batcher.Active` failure to `Stuck` rather than to a returned error, so the same fault ends the run the same way at the `Webster` row as at the `Batchifier` gate (`webster.go:48-53`).
   Calling `shedadapters.NewWebsterProducer` from the registry would drop both behaviours and require a `Batcher` value the registry has no way to resolve, so exporting the wrapper is the only workable option.
@@ -99,7 +101,22 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 - Decision: `Config` is a named type over `map[string]any`.
   The caller (the future loader) decodes the recipe file into it;
-  each registry entry extracts and validates the keys it recognises, using small shared typed accessors (`configString`, `configStringSlice`, `configBool`, `configInt`) that report a clear error on a missing required key or a wrong type.
+  each registry entry extracts and validates the keys it recognises, using small shared typed accessors that report a clear error on a missing required key or a wrong type.
+
+  The accessors, and the **decoded Go representation each accepts** — this is the contract piece 2's decoder must satisfy, so it is pinned here rather than left to whichever format that task picks:
+
+  | Accessor | Accepts |
+  | --- | --- |
+  | `configString` | `string` |
+  | `configStringSlice` | `[]any` whose every element is a `string`, and `[]string` |
+  | `configBool` | `bool` |
+  | `configInt` | `int`, and `float64` **with an integral value** — a fractional `float64` is an error naming the key |
+  | `configStringMap` | `map[string]any` whose every value is a `string` — backs `tokens` |
+  | `configMap` | `map[string]any` — backs `profile` and its nested `target` / `fasit` |
+
+  Nested maps are always `map[string]any`, never `map[string]string` or a typed struct.
+- Rationale for the number rule: a YAML decoder into `any` yields `int`, while a JSON-shaped one yields `float64`, and the whole point of `map[string]any` is that piece 2 gets to choose.
+  Accepting both while rejecting a fractional value keeps the registry format-agnostic without silently truncating `timeout_s: 1.5` to `1`.
 - Rationale: it keeps `internal/shedrecipe` free of the recipe file format — this task must not decide YAML shape, that is piece 2's scope, and an untyped map is the seam that lets piece 2 pick any format it wants.
   It also avoids a union struct carrying every engine's fields, which would grow a field set per new engine and leave eleven-twelfths of it nil at every call.
 - Rejected: a union `Config` struct (rots on every added engine, no compile-time help anyway since the loader fills it dynamically);
@@ -123,7 +140,7 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   type Env struct {
       // Geometry -- absolute paths and roots, resolved by the caller.
       Cwd                string // Preflight
-      AnchorPath         string // Batchifier, PlanValidate, Webster
+      AnchorPath         string // Batchifier, PlanValidate, Webster, SingleLLM (anchor_path token)
       WorktreeRoot       string // PlanValidate, and the root every worktree-relative Config path resolves against
       StatusPath         string // LoomPreflight
       StatusLockPath     string // LoomPreflight
@@ -267,6 +284,10 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   Recording that here so piece 2 does not re-litigate it: the omission is a decision, not an oversight.
   `Round`, `Parent`, and `Display` in particular are per-*run* strand-display values, not per-row static config, so a recipe is the wrong place for them regardless.
   A `tokens` map naming any of the four reserved keys is **rejected** at construction rather than silently overriding or being overridden — a silent winner in either direction is a recipe that reads one way and behaves another.
+
+  All four reserved tokens are supplied **unconditionally**, whether or not the stencil names them, and `SingleLLM` therefore validates `Env.WorktreeRoot`, `Env.AnchorPath`, and `Env.StencilsDir` unconditionally under the `Env`-validation rule above.
+  This is safe because `stencil.Fill` errors only on a marker the template references but the value map lacks — it runs `missingkey=error` and collects unfilled markers (`internal/stencil/stencil.go:29,39-46`) — and never on an extra value the template ignores.
+  The alternative, supplying and validating a token only when the stencil declares its marker, would make the entry's `Env` requirements depend on parsing template text, so the same recipe row would validate differently after a stencil edit that never touched the recipe.
   The stencil here is the **template**, so `stencil.Fill` strips its stamp banner itself and no `stencil.StripLeadingComment` call is needed.
   That call is required only when stencil content is injected as a token *value* — `stencil.Fill` never strips a marker value, which is why `Bouncer` must strip its rubric before passing it in (`internal/shedadapters/bouncer.go:341-344`).
   Should a later `SingleLLM` row ever want a stencil as a token value, that row's entry pays the same strip.
@@ -442,15 +463,19 @@ Discovered during exploration:
 
 TDD candidates, in order:
 
-1. **Lookup and error shape** (`internal/shedrecipe`) — write first, it pins the public surface.
+1. **`Lookup` and `Names`** (`internal/shedrecipe`) — write first, they pin the public surface.
    Scenarios: a known name resolves to a non-nil constructor;
    an unknown name returns an error naming the offending string;
-   an empty name is an error rather than a silent default (unlike `batcher.Select`, which defaults — there is no sensible default engine).
+   an empty name is an error rather than a silent default (unlike `batcher.Select`, which defaults — there is no sensible default engine);
+   `Names()` returns all twelve, sorted, and a caller mutating the returned slice does not affect a later call.
 2. **Config accessors** (`internal/shedrecipe`) — write before any entry uses them.
    Scenarios per accessor: present and correctly typed;
    present but wrong type;
    absent-and-required;
    absent-and-optional falls back to the zero value.
+   Each accessor's accepted representations need their own cases: `configStringSlice` against both `[]any`-of-strings and `[]string`, and against an `[]any` with one non-string element;
+   `configInt` against `int`, against an integral `float64`, and against a fractional `float64` (an error naming the key);
+   `configStringMap` against a `map[string]any` with a non-string value.
    Plus the unknown-key rejector: a `Config` with one unrecognised key errors and names the key;
    a `Config` with only recognised keys passes.
 3. **Per-entry construction**, one test per registry entry — twelve tests, each supplying a minimal valid `Config` plus a filled `Env` and asserting a non-nil `shedengine.ShedProducer` with no error.
@@ -540,4 +565,10 @@ Explicitly not tested here: anything about recipe file parsing, `ProducerDef` as
 - **Q:** [review r3] What about `shuttleengine.Spec`'s `Timeout`, `ForkSubagents`, `KeepPane`, `Round`, `Parent`, `Display`? **A:** [auto-pick] Deliberately not recipe-authorable in this task;
   zero values defer to shuttle config. **Why:** recorded so piece 2 does not re-litigate it — and `Round`/`Parent`/`Display` are per-run strand values, wrong for a recipe at any point.
 - **Q:** [review r3] What are `profile.target` / `profile.fasit`'s own recognised keys? **A:** [auto-pick] Exactly `paths` and `instructions`, mirroring `fileSetYAML` (`run.go:23-26`), with the strict unknown-key rule applying at the nested level too. **Why:** the rejector's recognised set has to be enumerable at every level it runs on.
+- **Q:** [review r4] Does `SingleLLM` read `Env.AnchorPath` unconditionally, or only when its stencil names the marker? **A:** [auto-pick] Unconditionally — all four reserved tokens are always supplied, and `SingleLLM` validates all three roots it reads. **Why:** `stencil.Fill` errors only on a marker the template references but the map lacks (`stencil.go:29,39-46`), never on an unused extra value;
+  making validation depend on template text would let a stencil edit change a recipe row's requirements.
+- **Q:** [review r4] What decoded Go types do the `Config` accessors accept for nested maps and numbers? **A:** [auto-pick] Nested maps are always `map[string]any`;
+  numbers accept `int` and integral `float64`, rejecting a fractional one;
+  add `configStringMap` and `configMap` to the accessor set. **Why:** a YAML decoder into `any` yields `int` and a JSON-shaped one `float64`, and piece 2 picks the format — accepting both without truncating keeps the registry format-agnostic.
+- **Q:** [review r4] What is the registry's exported lookup surface? **A:** [auto-pick] `Lookup(name) (Constructor, error)` and `Names() []string` (sorted), over an unexported map. **Why:** the coverage guard and piece 2 both need a stable enumeration, and neither should reach into the map directly.
 - **Q:** How does `loomshed` expose its six unexported constructors? **A:** [auto-pick] Export them in place, returning `shedengine.ShedProducer` rather than the unexported concrete type. **Why:** duplicating them in `shedrecipe` guarantees divergence, and moving the loom-specific producers out contradicts the design doc's point that a bespoke single-consumer engine is a valid registry entry precisely because it stays where it lives.
