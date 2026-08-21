@@ -1072,9 +1072,15 @@
 // before its record, so it is the one verb that can still defer acquisition — though what it (and
 // `Merge`) checked before acquiring is re-verified under the lock: the record's absence is
 // re-checked (a record written by another process mid-wait refuses with the in-progress guard
-// reason instead of being silently overwritten), and the recorded pre-merge SHAs are read under the
-// lock, never before it, so a commit landed by the lock's previous holder becomes the recorded
-// start rather than something `MergeAbort` would reset through. `MergeContinue` and `MergeAbort` go
+// reason instead of being silently overwritten), foreign git-level merge state and pair dirtiness
+// are re-probed (a human's mid-wait plain-git merge would otherwise read as this merge's own
+// conflict — and be force-reset by `Merge`'s conflict path — while mid-wait tracked dirt would be
+// reset away by the genuine-`MergeStart`-error self-abort; the guard stage decided both before the
+// verb's fetches and the lock wait, a window of real seconds), and the recorded pre-merge SHAs are
+// read under the lock, never before it, so a commit landed by the lock's previous holder becomes
+// the recorded start rather than something `MergeAbort` would reset through. The residual window
+// between those re-checks and `MergeStart` itself stays open — no re-check closes a TOCTOU against
+// an external actor — but the seconds-wide parts are covered. `MergeContinue` and `MergeAbort` go
 // further and acquire the lock before reading the record or evaluating any guard at all — the
 // conclude-landed guard in particular must be able to see a conclude that lands while the abort
 // waits, or the abort would destroy it from a stale answer.

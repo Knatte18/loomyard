@@ -15,6 +15,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -281,6 +282,157 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	}
 	if st.WeftStart != landedWeftSHA {
 		t.Errorf("recorded WeftStart = %q; want %q — the start must be read under the lock, or MergeAbort resets through the concurrent commit", st.WeftStart, landedWeftSHA)
+	}
+}
+
+// newCleanMergeablePair builds a pair with clean, mergeable "feature"/"feature-weft" branches —
+// the fixture whose MergeIn/Merge would succeed if nothing raced it — and returns the hub and
+// handle.
+func newCleanMergeablePair(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
+	t.Helper()
+
+	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+	commitOnWarpBranch("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
+	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
+	return h, f
+}
+
+// assertForeignRefusalUnderLock releases held, awaits the verb, and asserts the foreign-state
+// refusal shape: *ErrForeignMergeState, no fabric record written, and the operator's own merge
+// state byte-identically untouched.
+func assertForeignRefusalUnderLock(t *testing.T, f *fabricengine.Fabric, warpDir, statusBefore string, held *lock.FileLock, done <-chan error) {
+	t.Helper()
+
+	mergeErr := awaitVerb(t, held, done)
+	var foreignErr *fabricengine.ErrForeignMergeState
+	if !errors.As(mergeErr, &foreignErr) {
+		t.Fatalf("verb over foreign state that appeared mid-wait: error = %v (%T); want *fabricengine.ErrForeignMergeState", mergeErr, mergeErr)
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (false, nil)", exists, err)
+	}
+	if got := gitkit.GitStatusPorcelain(t, warpDir); got != statusBefore {
+		t.Errorf("git status changed: before = %q, after = %q; want the operator's own merge state untouched", statusBefore, got)
+	}
+}
+
+// TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses pins the foreign-state half of
+// recheckMergePreconditionsUnderLock on MergeIn: a human's plain-git merge that conflicts in the
+// warp checkout while MergeIn waits for the lock must refuse as foreign, exactly as a strictly
+// sequential MergeIn over that state does. Pre-fix, only the record was re-checked, so the failing
+// MergeStart read the operator's conflicted entries as THIS merge's own conflicts — fabric wrote a
+// record over, and reported conflicts from, a merge it never started.
+func TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
+	h, f := newCleanMergeablePair(t)
+
+	held, done := launchBlockedOnLock(t, f, func() error {
+		_, mergeErr := f.MergeIn("feature")
+		return mergeErr
+	})
+
+	// While MergeIn waits: the operator's own plain-git merge conflicts in the warp checkout.
+	setupConflictingDivergence(t, h.PrimeWorktree(), "operator-branch", "operator-clash.txt")
+	gitMergeAllowConflict(t, h.PrimeWorktree(), "operator-branch")
+	statusBefore := gitkit.GitStatusPorcelain(t, h.PrimeWorktree())
+	if !strings.Contains(statusBefore, "operator-clash.txt") {
+		t.Fatalf("git status = %q; the mid-wait fixture must have produced a real conflict on operator-clash.txt", statusBefore)
+	}
+
+	assertForeignRefusalUnderLock(t, f, h.PrimeWorktree(), statusBefore, held, done)
+}
+
+// TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses is the Merge-verb twin: Merge's
+// pre-merge sync step and MergeStart calls run immediately after the acquisition, so a stale
+// foreign answer there ends in Merge's conflict path force-resetting the operator's merge away.
+func TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
+	h, f := newCleanMergeablePair(t)
+
+	held, done := launchBlockedOnLock(t, f, func() error {
+		_, mergeErr := f.Merge("feature", fabricengine.MergeOptions{})
+		return mergeErr
+	})
+
+	setupConflictingDivergence(t, h.PrimeWorktree(), "operator-branch", "operator-clash.txt")
+	gitMergeAllowConflict(t, h.PrimeWorktree(), "operator-branch")
+	statusBefore := gitkit.GitStatusPorcelain(t, h.PrimeWorktree())
+	if !strings.Contains(statusBefore, "operator-clash.txt") {
+		t.Fatalf("git status = %q; the mid-wait fixture must have produced a real conflict on operator-clash.txt", statusBefore)
+	}
+
+	assertForeignRefusalUnderLock(t, f, h.PrimeWorktree(), statusBefore, held, done)
+}
+
+// TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt pins the dirty half of
+// recheckMergePreconditionsUnderLock on MergeIn, on the destructive shape: the mid-wait tracked
+// edit lands on a file the merge source also touches, so pre-fix the MergeStart refusal ("local
+// changes would be overwritten") classified as a genuine error and selfAbortMergeAttempt reset the
+// operator's edit away under force: true. The re-check refuses with the same aggregated reason a
+// strictly sequential MergeIn over a dirty pair reports, and the edit survives.
+func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
+	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+	commitOnCurrentBranch(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
+	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
+	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
+
+	held, done := launchBlockedOnLock(t, f, func() error {
+		_, mergeErr := f.MergeIn("feature")
+		return mergeErr
+	})
+
+	// While MergeIn waits: the operator edits the very file the merge source modifies, uncommitted.
+	const dirtyContent = "operator's uncommitted edit\n"
+	writeFileForTest(t, h.PrimeWorktree(), "overlap.txt", dirtyContent)
+
+	mergeErr := awaitVerb(t, held, done)
+	var guardErr *fabricengine.MergeGuardError
+	if !errors.As(mergeErr, &guardErr) {
+		t.Fatalf("MergeIn() over a pair that turned dirty mid-wait: error = %v (%T); want *fabricengine.MergeGuardError", mergeErr, mergeErr)
+	}
+	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "worktree dirty" {
+		t.Errorf("guard reasons = %v; want exactly [\"worktree dirty\"]", guardErr.Reasons)
+	}
+	got, err := os.ReadFile(filepath.Join(h.PrimeWorktree(), "overlap.txt"))
+	if err != nil || string(got) != dirtyContent {
+		t.Errorf("overlap.txt after the refusal = (%q, %v); want the operator's edit preserved", got, err)
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (false, nil)", exists, err)
+	}
+}
+
+// TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt is the Merge-verb twin of the
+// dirty re-check test, additionally asserting the refusal fired before the pre-merge sync step
+// recorded anything — the re-check sits between the acquisition and the sync.
+func TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
+	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+	commitOnCurrentBranch(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
+	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
+	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
+
+	var mergeRes fabricengine.MergeResult
+	held, done := launchBlockedOnLock(t, f, func() error {
+		res, mergeErr := f.Merge("feature", fabricengine.MergeOptions{})
+		mergeRes = res
+		return mergeErr
+	})
+
+	const dirtyContent = "operator's uncommitted edit\n"
+	writeFileForTest(t, h.PrimeWorktree(), "overlap.txt", dirtyContent)
+
+	mergeErr := awaitVerb(t, held, done)
+	var guardErr *fabricengine.MergeGuardError
+	if !errors.As(mergeErr, &guardErr) {
+		t.Fatalf("Merge() over a pair that turned dirty mid-wait: error = %v (%T); want *fabricengine.MergeGuardError", mergeErr, mergeErr)
+	}
+	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "worktree dirty" {
+		t.Errorf("guard reasons = %v; want exactly [\"worktree dirty\"]", guardErr.Reasons)
+	}
+	if entries := mergeRes.Mutated().Entries(); len(entries) != 0 {
+		t.Errorf("Merge().Mutated() = %v; want empty — the re-check must refuse before the pre-merge sync step records anything", entries)
+	}
+	got, err := os.ReadFile(filepath.Join(h.PrimeWorktree(), "overlap.txt"))
+	if err != nil || string(got) != dirtyContent {
+		t.Errorf("overlap.txt after the refusal = (%q, %v); want the operator's edit preserved", got, err)
 	}
 }
 

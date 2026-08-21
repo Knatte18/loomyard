@@ -39,6 +39,49 @@ func finalizeMergeResult(res *MergeResult, rec *Mutations) {
 	}
 }
 
+// recheckMergePreconditionsUnderLock re-verifies, immediately after the write lock is acquired, the
+// three preconditions MergeIn/Merge could only observe racily before it: no fabric merge record, no
+// foreign git-level merge state, and a clean pair.
+// The record re-check is the only one of the three another FABRIC process can trip (every fabric
+// merge writes a record before mutating); the foreign and dirty re-checks exist for the
+// CONSTRAINTS-sanctioned human running plain git in the warp checkout, whose mid-wait `git merge`
+// or tracked edit the pre-lock guard stage cannot see — the guard stage runs before the verb's two
+// network fetches and before any lock wait, a window of real seconds.
+// Acting on those stale answers was destructive in both arms: foreign conflicted state appearing
+// mid-window made the failing MergeStart read as MergeConflicted, so fabric recorded — and, in
+// Merge's conflict path, force-reset — a merge it never started; tracked dirt appearing mid-window
+// made MergeStart fail genuinely and selfAbortMergeAttempt reset the dirt away under force: true.
+// Foreign state is checked before dirtiness because a foreign conflicted index is ALSO
+// tracked-dirty, and the foreign refusal is the one naming that state's actual remedy.
+// The residual window between these re-checks and MergeStart itself stays open — no re-check closes
+// a TOCTOU against an external actor — but the seconds-wide parts are covered.
+func (f *Fabric) recheckMergePreconditionsUnderLock() error {
+	recordNow, err := f.mergeRecordExists()
+	if err != nil {
+		return err
+	}
+	if recordNow {
+		return newMergeGuardError([]string{mergeReasonAlreadyInProgress})
+	}
+
+	foreign, err := f.foreignMergeStatePresent()
+	if err != nil {
+		return err
+	}
+	if foreign {
+		return &ErrForeignMergeState{}
+	}
+
+	dirtyReasons, err := pairDirtyReason(f)
+	if err != nil {
+		return err
+	}
+	if len(dirtyReasons) > 0 {
+		return newMergeGuardError(dirtyReasons)
+	}
+	return nil
+}
+
 // MergeOptions controls a merge verb's behavior: Squash selects a squash merge (batch 4's Merge
 // only — MergeIn never squashes), and Message overrides the conclude commit's message.
 type MergeOptions struct {
@@ -162,17 +205,13 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	}
 	defer func() { _ = fileLock.Release() }()
 
-	// Re-verify under the lock what the pre-lock guard could only observe racily: a merge record
-	// written by another process between the guard reads above and this acquisition. Without this,
-	// a second MergeIn racing a first one's resolution window overwrote the live record with its own
-	// source — saveMergeState below replaces, never refuses — leaving a record whose conclude would
-	// land the OTHER merge's content under this record's name.
-	recordNow, err := f.mergeRecordExists()
-	if err != nil {
+	// Re-verify under the lock what the pre-lock guard could only observe racily
+	// (recheckMergePreconditionsUnderLock): a record written by another process mid-wait would
+	// otherwise be silently overwritten by saveMergeState below — its conclude landing the OTHER
+	// merge's content under this record's name — and a human's mid-wait plain-git merge or tracked
+	// edit would otherwise be adopted or force-reset by the MergeStart calls below.
+	if err := f.recheckMergePreconditionsUnderLock(); err != nil {
 		return MergeResult{}, err
-	}
-	if recordNow {
-		return MergeResult{}, newMergeGuardError([]string{mergeReasonAlreadyInProgress})
 	}
 
 	// Re-read both starts under the lock, discarding the pre-lock reads: a concurrent writer that
@@ -385,16 +424,13 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	}
 	defer func() { _ = fileLock.Release() }()
 
-	// Re-verify under the lock what the pre-lock guard could only observe racily: a merge record
-	// written by another process between the guard reads above and this acquisition. The sync step
-	// below mutates both checkouts, so proceeding over a record that appeared mid-wait would write
-	// into a pair some other merge is mid-flight on.
-	recordNow, err := f.mergeRecordExists()
-	if err != nil {
+	// Re-verify under the lock what the pre-lock guard could only observe racily
+	// (recheckMergePreconditionsUnderLock). The sync step below mutates both checkouts, so
+	// proceeding over a record that appeared mid-wait would write into a pair some other merge is
+	// mid-flight on — and proceeding over mid-wait foreign state or dirt would run `merge --ff-only`
+	// and MergeStart into a checkout whose state the guard stage never saw.
+	if err := f.recheckMergePreconditionsUnderLock(); err != nil {
 		return MergeResult{}, err
-	}
-	if recordNow {
-		return MergeResult{}, newMergeGuardError([]string{mergeReasonAlreadyInProgress})
 	}
 
 	// Pre-merge sync step: a recorded mutation, not a guard, and the first thing that touches either
