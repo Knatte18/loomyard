@@ -77,6 +77,8 @@ batches:
     commit_sha: 011a33a9d6a78ed32230e4201917f2e1f9695373
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: docs-and-comment-sweep
-    state: pending
+    state: running
+    implementer_session: de6dcc2a-78a9-43ee-9951-69402c3cf0cc
+    start_sha: 527fffdb34f40b51b0dbc2c7efd0bc27233f46cb
     verify_baseline_failures: []
 ```
