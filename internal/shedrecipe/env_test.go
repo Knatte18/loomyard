@@ -5,18 +5,10 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedadapters"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeShuttle is a minimal shedadapters.Shuttle implementation used to build a non-nil seam value
-// and, as a nil *fakeShuttle, a typed-nil interface value.
-type fakeShuttle struct{}
-
-func (f *fakeShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
-	return shuttleengine.Result{}, nil
-}
-
-var _ shedadapters.Shuttle = (*fakeShuttle)(nil)
+// fakeShuttle is declared once, in fixture_test.go, and reused here as a non-nil seam value and,
+// as a nil *fakeShuttle, a typed-nil interface value.
 
 func TestRequireAbsRoot(t *testing.T) {
 	tests := []struct {
