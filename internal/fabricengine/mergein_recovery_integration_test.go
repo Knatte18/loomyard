@@ -1288,3 +1288,177 @@ func TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate(t *testin
 		t.Errorf("MergeRecordExistsForTest() after MergeContinue = (%v, %v); want (false, nil)", exists, err)
 	}
 }
+
+// gitMergeHeadRaw reads dir's MERGE_HEAD file, reporting absence as ("", false) rather than an error,
+// so a test can assert either presence or absence and compare the exact bytes afterwards.
+// A linked worktree keeps MERGE_HEAD in its own gitdir, so the path is resolved via
+// `git rev-parse --git-path MERGE_HEAD` rather than assumed to be <dir>/.git/MERGE_HEAD.
+func gitMergeHeadRaw(t *testing.T, dir string) (string, bool) {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-parse", "--git-path", "MERGE_HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse --git-path MERGE_HEAD in %s: %v", dir, err)
+	}
+	mergeHeadPath := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(mergeHeadPath) {
+		mergeHeadPath = filepath.Join(dir, mergeHeadPath)
+	}
+
+	content, err := os.ReadFile(mergeHeadPath)
+	if os.IsNotExist(err) {
+		return "", false
+	}
+	if err != nil {
+		t.Fatalf("read %s: %v", mergeHeadPath, err)
+	}
+	return string(content), true
+}
+
+// gitUnmergedPaths lists dir's unmerged index entries, the same set gitrepo.ConflictedFiles reads.
+func gitUnmergedPaths(t *testing.T, dir string) []string {
+	t.Helper()
+
+	cmd := exec.Command("git", "diff", "--name-only", "--diff-filter=U")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git diff --name-only --diff-filter=U in %s: %v", dir, err)
+	}
+	return strings.Fields(strings.TrimSpace(string(out)))
+}
+
+// foreignShape names one of the three distinguishable git-level merge states fabric did not start.
+// They are not three spellings of one condition: each is seen by a different subset of
+// foreignMergeStatePresent's probes, and only shapeConflictedIndexOnly and shapeMergeHeadOnly make
+// any individual probe load-bearing.
+type foreignShape int
+
+const (
+	// shapeConflictedAndMergeHead is an ordinary conflicted `git merge`: MERGE_HEAD live AND unmerged
+	// index entries. Either probe alone sees it, which is why it cannot pin either one.
+	shapeConflictedAndMergeHead foreignShape = iota
+	// shapeMergeHeadOnly is a foreign merge resolved but not concluded: MERGE_HEAD live, unmerged set
+	// EMPTY. Only the MERGE_HEAD probe sees it, and it is the most dangerous shape because nothing
+	// about the worktree looks wrong.
+	shapeMergeHeadOnly
+	// shapeConflictedIndexOnly is a conflicted `git merge --squash`: unmerged index entries with NO
+	// MERGE_HEAD, since --squash writes none. Only the conflicted-index probe sees it. Plain cherry-pick
+	// and `checkout -m` conflicts land in this same shape.
+	shapeConflictedIndexOnly
+)
+
+// TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses is the foreign-state matrix, and it exists
+// because the single warp-conflicted fixture that covered this before could not fail for three of the
+// four probes foreignMergeStatePresent runs.
+//
+// Sabotage-measured, not assumed: deleting BOTH weft probes left the whole suite green, and so did
+// deleting either warp probe on its own. The reason is that one conflicted plain-git merge in the warp
+// checkout sets `warpMergeHead` and `warpConflicted` simultaneously, so either alone carried the
+// assertion, and no fixture ever populated the weft side at all.
+//
+// The matrix is three shapes on each of the two sides. The shapes separate the two probe KINDS (see
+// foreignShape). The SIDES matter for a different reason: the weft checkout is the hidden half an
+// operator is told never to touch, so state appearing there is precisely the state nobody is watching
+// for, and every helper on this path is per-side.
+// Each row asserts its own shape with t.Fatal before asserting any refusal, so a fixture that silently
+// stopped producing the state under test fails on its precondition instead of passing vacuously.
+func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
+	tests := []struct {
+		name string
+		// onWeft selects which checkout carries the foreign state.
+		onWeft bool
+		shape  foreignShape
+	}{
+		{name: "WarpConflictedIndexAndMergeHead", onWeft: false, shape: shapeConflictedAndMergeHead},
+		{name: "WarpMergeHeadOnlyResolvedNotConcluded", onWeft: false, shape: shapeMergeHeadOnly},
+		{name: "WarpConflictedIndexOnlyFromSquash", onWeft: false, shape: shapeConflictedIndexOnly},
+		{name: "WeftConflictedIndexAndMergeHead", onWeft: true, shape: shapeConflictedAndMergeHead},
+		{name: "WeftMergeHeadOnlyResolvedNotConcluded", onWeft: true, shape: shapeMergeHeadOnly},
+		{name: "WeftConflictedIndexOnlyFromSquash", onWeft: true, shape: shapeConflictedIndexOnly},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+			dir := h.PrimeWorktree()
+			branch, conflictPath := "other", "plain-conflict.txt"
+			if tt.onWeft {
+				dir = h.PrimeWeft()
+				branch, conflictPath = "other-weft", "_lyx/plain-conflict.txt"
+			}
+
+			setupConflictingDivergence(t, dir, branch, conflictPath)
+			if tt.shape == shapeConflictedIndexOnly {
+				gitMergeSquashAllowConflict(t, dir, branch)
+			} else {
+				gitMergeAllowConflict(t, dir, branch)
+			}
+			if tt.shape == shapeMergeHeadOnly {
+				gitkit.MustRun(t, dir, "git", "add", "--", conflictPath)
+			}
+
+			// Precondition: exactly the shape this row is named for, so the row really does rest on the
+			// probe it is meant to pin.
+			mergeHeadBefore, mergeHeadPresent := gitMergeHeadRaw(t, dir)
+			unmergedBefore := gitUnmergedPaths(t, dir)
+			wantMergeHead := tt.shape != shapeConflictedIndexOnly
+			wantUnmerged := tt.shape != shapeMergeHeadOnly
+			if mergeHeadPresent != wantMergeHead {
+				t.Fatalf("MERGE_HEAD present in %s = %v; want %v for this shape", dir, mergeHeadPresent, wantMergeHead)
+			}
+			if (len(unmergedBefore) > 0) != wantUnmerged {
+				t.Fatalf("unmerged entries in %s = %v; want non-empty = %v for this shape", dir, unmergedBefore, wantUnmerged)
+			}
+			statusBefore := gitkit.GitStatusPorcelain(t, dir)
+
+			// A read-only probe reports fabric's own state, which foreign plain-git state does not make
+			// true, on either side and in every shape.
+			if inProgress, err := f.MergeInProgress(); err != nil || inProgress {
+				t.Errorf("MergeInProgress() with foreign state = (%v, %v); want (false, nil)", inProgress, err)
+			}
+
+			assertForeign := func(name string, err error) {
+				t.Helper()
+				var foreignErr *fabricengine.ErrForeignMergeState
+				if !errors.As(err, &foreignErr) {
+					t.Errorf("%s error = %v (%T); want *fabricengine.ErrForeignMergeState", name, err, err)
+				}
+			}
+
+			_, err := f.MergeIn("feature")
+			assertForeign("MergeIn", err)
+			_, err = f.Merge("feature", fabricengine.MergeOptions{})
+			assertForeign("Merge", err)
+			_, err = f.MergeContinue("")
+			assertForeign("MergeContinue", err)
+			_, err = f.MergeAbort()
+			assertForeign("MergeAbort", err)
+			_, err = f.MergeStageResolved([]string{conflictPath})
+			assertForeign("MergeStageResolved", err)
+
+			mergeHeadAfter, stillPresent := gitMergeHeadRaw(t, dir)
+			if stillPresent != mergeHeadPresent || mergeHeadAfter != mergeHeadBefore {
+				t.Errorf("MERGE_HEAD in %s: before = (%q, present %v), after = (%q, present %v); want untouched", dir, mergeHeadBefore, mergeHeadPresent, mergeHeadAfter, stillPresent)
+			}
+			if got := gitkit.GitStatusPorcelain(t, dir); got != statusBefore {
+				t.Errorf("git status in %s changed: before = %q, after = %q; want untouched", dir, statusBefore, got)
+			}
+		})
+	}
+}
+
+// gitMergeSquashAllowConflict runs a plain `git merge --squash ref` in dir, tolerating the nonzero
+// exit a conflicted squash returns. The result is the conflicted-index-with-no-MERGE_HEAD shape:
+// --squash deliberately writes no MERGE_HEAD, so this is the state only the conflicted-index probe
+// can see.
+func gitMergeSquashAllowConflict(t *testing.T, dir, ref string) {
+	t.Helper()
+
+	cmd := exec.Command("git", "merge", "--squash", ref)
+	cmd.Dir = dir
+	_ = cmd.Run()
+}

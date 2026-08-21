@@ -237,6 +237,19 @@ func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
 // All four probes are evaluated unconditionally before combining, rather than short-circuiting on
 // the first true result, so no evaluation-order timing difference ever leaks which side (if either)
 // carries the state.
+//
+// The two probe KINDS are not redundant spellings of one condition, and neither can be dropped as
+// implied by the other. An ordinary conflicted `git merge` sets both at once, which is what makes
+// that shape useless for proving either one; the two states that separate them are real and reachable:
+//   - MERGE_HEAD live with an EMPTY unmerged set — a foreign merge resolved but not concluded, seen
+//     only by the MERGE_HEAD probe, and the most dangerous shape because nothing about the worktree
+//     looks wrong.
+//   - Unmerged entries with NO MERGE_HEAD — a conflicted `git merge --squash`, which writes none, and
+//     equally a conflicted cherry-pick or `checkout -m`. Seen only by the conflicted-index probe.
+//
+// Each of the four probes is pinned by its own row of
+// TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses (three shapes x two sides). Before that
+// matrix existed, deleting either weft probe, or either warp probe, left the whole suite green.
 func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	warpMergeHead, err := f.warp.MergeHeadPresent()
 	if err != nil {
