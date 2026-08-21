@@ -9,9 +9,25 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
 
+### Shed recipe: declarative producer lists
+
+A 2026-08-21 discussion concluded `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal (`loomshed.go:137-151`) should become a declarative recipe instead — see [designs/shed-recipe.md](designs/shed-recipe.md) for the full design. Four separable pieces, in dependency order:
+
+1. **Shed recipe: engine registry** — a name → constructor mapping for every existing `ShedProducer` type, shared adapters (`SingleLLMProducer`, `Bouncer`, `shedadapters: Burler-round producer`, `Webster`, `Preflight`, `Publish`, `Finalize`) and loom-specific types alike (`Loom-Preflight`, `Batchifier`, `DiscussionValidate`, `PlanValidate`) — the foundational piece the recipe loader below resolves `Engine` names against. Restricted to names already implementing `shedengine.ShedProducer`, never arbitrary Go modules — every existing row already satisfies the interface, so this costs nothing.
+   See [designs/shed-recipe.md](designs/shed-recipe.md).
+
+1. **Shed recipe: loader/builder** — reads a declarative recipe file (`{Name, Engine, Config, OnDone, OnStuck, MaxBounces}` per row), resolves `Engine` names via the registry above, merges each row's static `Config` with caller-supplied geometry (never contained in the recipe itself — resolved once, centrally, by whichever CLI entry point invokes the builder), and assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` already consumes unchanged. Depends on the engine-registry item above.
+   See [designs/shed-recipe.md](designs/shed-recipe.md).
+
+1. **Shed-setup validity checker** — a standalone tool inspecting an assembled `OnDone`/`OnStuck` producer graph for blind gates: unreachable rows, unintended cross-wiring. Needed independent of the recipe work above — `shedengine.validate()` has never enforced this for `OnDone` (only `OnStuck` gets a same-`Segment` check, and the recipe work above drops `Segment` entirely, already a no-op when left unset today). Can land before or independent of the other three items here.
+   See [designs/shed-recipe.md](designs/shed-recipe.md).
+
+1. **loom: convert to a Shed recipe** — replace `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal with an actual recipe file, using the engine registry and loader built above — the mechanism's first real consumer and proof it works. Depends on all three items above. Converts the list as it stands (including the still-stubbed `*-Write`/`*-Review` rows) — does not itself require the `loom: real LLM producers` group below to land first, and precedes it here so those five tasks author their rows directly in recipe form rather than as a Go literal that then needs converting.
+   See [designs/shed-recipe.md](designs/shed-recipe.md).
+
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split.
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split. Sequenced after the "Shed recipe" group above so these five tasks write their rows directly as recipe entries.
 
 1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
@@ -39,6 +55,11 @@ What "loom: write and wire in the real LLM producers" split into — one prompt/
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
+
+1. **worktree spawn/teardown as Shed producers** — today, starting a task means three independent, manually-sequenced steps: (1) call `lyx fabric` to create the worktree (warp+weft paired), (2) inside it, run `lyx loom run` (or `lyx run`), (3) once loom finishes and branches are merged into the parent, independently call `lyx fabric` again to tear the worktree down safely. Worktree creation and teardown could instead be their own `ShedProducer` rows (e.g. bookending `loom`'s own producer list, or a small wrapper list around it), so the whole task lifecycle — create, run, merge, destroy — is one driven `Shed` run instead of a human manually bridging three separate CLI invocations.
+   A 2026-08-21 discussion also raised that `fabric`'s worktree creation currently stays deliberately outside `_launchers`/`_board` wiring (a decision made to protect the Fabric illusion); revisiting that wiring is a likely prerequisite here and needs its own look before this item is scoped further.
+
+1. **VS Code as opt-in per worktree, not spun up by default** — the long-term direction is for `loom`/Loomyard to be mostly CLI/tmux-based, since a VS Code instance per worktree costs real resources and is rarely needed — a 2026-08-21 discussion noted the common case is reviewing the final PR, not watching an agent edit live. The existing anchor-aware `lyx ide` launcher (`internal/ideengine`, see the Done `worktree + ide` item) already solves opening VS Code at the right anchor subdirectory — something the generic "Git Worktree Manager" VS Code extension cannot do, since it only ever opens a worktree's root. The idea is a fourth per-worktree launcher variant (alongside the existing `ide`/`fabric-checkout`/`run<ext>` set — see `internal/fabricengine/launchers.go`) that, instead of opening VS Code as a full editor window, opens VS Code just far enough to run a task that spawns a tmux terminal and `lyx reed attach`es into the `reed` server the worktree's own `run<ext>` launcher already started — VS Code as a terminal-launcher convenience, not a standing editor per worktree.
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
