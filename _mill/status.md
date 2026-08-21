@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-loomshed constructor exports
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-08-21T08:57:05Z'
 plan-fix-r2  '2026-08-21T09:06:58Z'
 planned  '2026-08-21T09:07:18Z'
 implementing  '2026-08-21T09:07:55Z'
+approved-loomshed constructor exports  '2026-08-21T09:11:37Z'
 ```
 
 ## Batches
@@ -31,9 +32,10 @@ implementing  '2026-08-21T09:07:55Z'
 ```yaml
 batches:
   - name: loomshed constructor exports
-    state: running
+    state: approved
     implementer_session: d233ec3d-06fb-4c62-b7da-d74f07f41920
     start_sha: f14c70d26b5c2fe118ef190e6fe455be11af2d83
+    commit_sha: 217a1c1bb263b31e40738bfe8c9327d87ed23b73
     verify_baseline_failures: []
   - name: shedrecipe foundations
     state: pending
