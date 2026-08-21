@@ -11,8 +11,8 @@ import (
 // registry is the single place every engine name is declared, mapping each recipe row's engine
 // name to the Constructor that builds it.
 //
-// This batch ships the nine value-only entries; batch 4 adds "SingleLLM" and batch 5 adds
-// "Bouncer" and "BurlerRound" to this same literal.
+// This batch ships the nine value-only entries and "SingleLLM"; batch 5 adds "Bouncer" and
+// "BurlerRound" to this same literal.
 //
 // init() self-registration was rejected: the entries span four packages
 // (internal/shedrecipe, internal/preflightshed, internal/landingshed, internal/loomshed), and
@@ -28,6 +28,7 @@ var registry = map[string]Constructor{
 	"PlanValidate":       planValidateEntry,
 	"Stub":               stubEntry,
 	"Webster":            websterEntry,
+	"SingleLLM":          singleLLMEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.
