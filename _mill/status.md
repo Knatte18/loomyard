@@ -56,7 +56,9 @@ batches:
     commit_sha: ad00b2d505a52848f25a0e43c17b4f41166f3a13
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: loomcli-rewiring
-    state: pending
+    state: running
+    implementer_session: fd5527c7-ab71-4e5e-830e-7728e634d953
+    start_sha: 464aaef368e497efc2bb674ee5e898609a72703e
     verify_baseline_failures: []
   - name: coverage-guard-move-and-fixture-retirement
     state: pending
