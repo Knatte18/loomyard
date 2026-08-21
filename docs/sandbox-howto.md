@@ -5,7 +5,7 @@ This is the **ordered procedure**;
 for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless stated otherwise.
-The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox/build.cmd`, `sandbox/core-suite.cmd`, `sandbox/reed-suite.cmd`, `sandbox/shuttle-suite.cmd`, `sandbox/burler-suite.cmd`, `sandbox/perch-suite.cmd`, `sandbox/fetch.cmd`) hardcode this machine's paths: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path.
+The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox/build.cmd`, `sandbox/core-suite.cmd`, `sandbox/reed-suite.cmd`, `sandbox/shuttle-suite.cmd`, `sandbox/burler-suite.cmd`, `sandbox/fetch.cmd`) hardcode this machine's paths: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path.
 Each sandbox launcher does exactly one thing (build / one suite / fetch).
 
 **Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected.
@@ -127,16 +127,7 @@ Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios res
 both need a live tmux, PowerShell 7, a logged-in `claude`,
 and an `lyx init`-ed warp repo.
 Same `-claude`/`-prompt` overrides.
-After the session ends, the launcher runs `lyx reed down` in the warp repo (for the reed, shuttle, burler, and perch suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/build.cmd -reset`.
-
-### 4d. Run the perch suite (optional, needs live tmux + logged-in claude)
-
-```cmd
-sandbox/perch-suite.cmd
-```
-
-Same operating model as 4c, for `lyx perch`'s gate-loop scenarios (convergence, pause/resume, the command gate) — perch wires the real burler substrate (which in turn wires shuttle) on every invocation, so the same prerequisites apply.
-Same `-claude`/`-prompt` overrides.
+After the session ends, the launcher runs `lyx reed down` in the warp repo (for the reed, shuttle, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/build.cmd -reset`.
 
 ### 5. Fetch the report
 

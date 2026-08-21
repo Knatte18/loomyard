@@ -25,7 +25,7 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
 - **`ly`** — the skill / orchestration plugin (the analog of `mill`);
   skills are `/ly-*`.
 
-**Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary (`lyx`) and every module (`loom`, `perch`, …), so no name is shared between a skill and a script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename).
+**Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary (`lyx`) and every module (`loom`, `burler`, …), so no name is shared between a skill and a script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename).
 Internal Go feature packages follow the `<module>cli` / `<module>engine` split (e.g. `internal/boardcli` + `internal/boardengine`, `internal/fabriccli` + `internal/fabricengine`) — see the Package naming rule in [CONSTRAINTS.md](../CONSTRAINTS.md#package-naming).
 
 Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
@@ -232,7 +232,7 @@ github.com/Knatte18/loomyard/
 ├── internal/selfreportengine/    the selfreport domain kernel
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
-├── internal/shedadapters/        the four Shed engine adapters (SingleLLMProducer, perch, Webster, the burler round producer) over shuttle/perch/websterengine/burlerengine, plus the Bouncer adapter
+├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, Webster, the burler round producer) over shuttle/websterengine/burlerengine, plus the Bouncer adapter
 ├── internal/loomcli/             loom's cobra module: the session bootstrap plus the driver, status, and pause verbs
 ├── internal/loomshed/            loom's own 13-row producer list over `shedengine`
 ├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
@@ -301,7 +301,7 @@ User-facing modules each get one `lyx <module>` namespace:
   no other package reads that tree directly, and it also declares where that tree *is* — the worktree-relative form (`PlanDirName`/`PlanDirRel`) and the absolute told-anchor form (`PlanDir`/`PlanOverview`), with the caller supplying the anchor path (`internal/planparser`). ✅ Implemented.
 - **batcher** — the name-keyed batchifier registry that groups a plan's flat card list into webster's execution batches, selected by `batcher.yaml`'s `active:` config key (default: identity, one card per batch); its own standalone configreg module, separate from webster's (`internal/batcher`). ✅ Implemented.
 - **stencil** — the operator surface over the hub's producer-prompt stencils (`internal/stencilcli` + `internal/stencilstore`; `lyx stencil list|validate|diff|sync|promote`): `list` reports every registered stencil's board-copy path and edit state, `validate` reports marker mismatches between a board copy and its shipped default, `diff` shows upstream changes not yet taken or (`--all`/`--exit-code`) board edits not yet ported back, `sync` force-refreshes every stencil against the shipped registry even from a `-dev` build, and `promote` copies a board-copy edit back into the worktree's `contracts/stencils/` source tree. ✅ Implemented.
-- **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a perch review (`internal/loomcli` + `internal/loomengine` + `internal/loomshed`; `lyx loom run|drive|status|pause`, plus the `run` verb registered a second time as the bare root alias `lyx run`).
+- **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed`; `lyx loom run|drive|status|pause`, plus the `run` verb registered a second time as the bare root alias `lyx run`).
   `run` is the session bootstrap, performing four steps in order: resolve the recorded parent branch and seed+commit the status file weft-side when it is absent; ensure the worktree's tmux session is up and its status strand exists; spawn the detached loom driver unless one is already alive; and hand the terminal to the tmux session.
   `drive` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
   `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it one line per poll.
@@ -312,11 +312,10 @@ User-facing modules each get one `lyx <module>` namespace:
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
   See [manifest/designs/loom.md](../manifest/designs/loom.md).
 - **shed** — the generic outer phase-FSM `loom` and the eventual `Hardener` are each built on: a Go engine that walks one flat, ordered producer list, honoring resume, crash-recovery, and pause uniformly at producer granularity, with no predefined slots (`internal/shedengine`).
-  The five shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `perch` adapter, the `Webster` adapter, the burler round producer, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
+  The four shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the burler round producer, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
   No `lyx shed` verb of its own by design — a product's own CLI constructs a `Shed` with its own producer list and calls `Run`, and a bare verb would be a command with no list to walk.
-  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the five engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter, the burler round producer, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
+  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the four engine adapters (`SingleLLMProducer`, the `Webster` adapter, the burler round producer, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
   See the `internal/shedengine` and `internal/shedadapters` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
-- **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an operational `PAUSED` exit; independent of `loom` but used by it between every phase, and standalone (`lyx perch run|pause`). The round loop itself (judge, gate, round-spawn, cap, pause, run-dir lock) now lives in the shared `internal/treadleengine` engine; `internal/perchengine` is the thin configuration layer that resolves `perch.yaml`/profile data and adapts `burlerengine` onto treadle's `RoundRunner` seam — perch's own behavior/CLI are unchanged from the outside. ✅ Implemented. See the `internal/perchengine` and `internal/treadleengine` package documentation.
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
   Cluster review fans job A out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
@@ -349,13 +348,11 @@ internal/reed     the window to the world — overlay + strand bookkeeping +    
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on reed]    ✅
                   the file contract; Stop-hook completion
 burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle] ✅
-perch             run burler rounds on one artifact → APPROVED|STUCK          [builds on burler,  ✅
-                  treadleengine]
 shed              generic outer phase-FSM: walk one flat producer list,        [stdlib +           ✅
                   honoring resume/crash-recovery/pause at producer granularity  internal/state,lock
                                                                                  only -- skeleton]
-loom              phase machine: drive each phase through a perch gate         [builds on shed,
-                                                                                 perch]
+loom              phase machine: drive each phase through a Bouncer gate       [builds on shed,
+                                                                                 burler]
 ```
 
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session requirement), agents run, output files are read, nobody need watch.
@@ -375,26 +372,24 @@ See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**;
   the verdict/output contract is provider-invariant, so a different model can be swapped in without touching the review machinery.
   Non-Claude is not a current priority.
-- **`tokenvocab` is a shared leaf, not a stack layer** — `internal/tokenvocab` (the `repo`/`hub` token registry + the `Render` compose over `internal/stencil`) sits beside `stencil` and `modelspec` as a general-purpose leaf the stack's modules consume, not a stage of the proc→reed→shuttle→burler→perch→loom chain itself. reed's header text pipeline consumes it today;
+- **`tokenvocab` is a shared leaf, not a stack layer** — `internal/tokenvocab` (the `repo`/`hub` token registry + the `Render` compose over `internal/stencil`) sits beside `stencil` and `modelspec` as a general-purpose leaf the stack's modules consume, not a stage of the proc→reed→shuttle→burler→shed→loom chain itself. reed's header text pipeline consumes it today;
   loom's prompt templates are expected to reuse the same `Render` compose later.
   See the `internal/tokenvocab` package documentation.
-- **perch is independent of loom** — it is a standalone gate loop (`lyx perch`) over `burler` rounds;
-  loom just uses it heavily (a perch review between every phase). perch builds on `burler` → `shuttle`, not on `loom`.
 - **the bootstrap** — `lyx loom run` (alias `lyx run`) brings up the worktree's tmux session, adds the `lyx loom status` strand (a 1-line top pane), spawns the loom driver **detached** (via `proc`, no TTY), and attaches the terminal to the session. loom runs in the background;
   the reed view takes the foreground.
   A `.lyx/lyxrun.cmd` launcher makes it one click.
-- `reed`, `shuttle`, `perch`, and `loom` each get a user-facing `lyx <module>` CLI (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent standalone, before loom/perch exist); `burler` is composed by `perch` (`lyx burler run` is a debug-only wrapper, not a product verb), and `proc` alone stays an internal library with no CLI of its own.
+- `reed`, `shuttle`, and `loom` each get a user-facing `lyx <module>` CLI (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent standalone, before loom exists); `burler` is composed by loom's own review segments (`lyx burler run` is a debug-only wrapper, not a product verb), and `proc` alone stays an internal library with no CLI of its own.
 
 ### Following one spawn down the stack
 
 loom wants a plan-reviewer for worktree `feature-x`:
 
-1. `loom` → `perch.Run(profile, "feature-x")` — "review this plan against the discussion until clean."
-2. `perch` → `burler.Run(profile, priorFiles)` — "run one review+fix round."
+1. `loom` → its Plan-Review segment's `Bouncer` — "review this plan against the discussion until clean."
+2. the segment's `Burler`-round producer → `burler.Run(profile, priorFiles)` — "run one review+fix round."
 3. `burler` → `shuttle.Run(prompt, engine)` — "run one handler agent."
 4. `shuttle` → `reed.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
 5. `reed` records the strand in `.lyx/reed.json`, runs the command via `proc` in a pane, re-renders the layout (`layout = rules(strands)`), and applies it.
-6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → burler writes review/fixer-report + verdict → perch reads it, decides loop or exit → on a clean round returns `APPROVED | stuck` → loom advances.
+6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → burler writes review/fixer-report + verdict → the segment's `Bouncer` reads it, decides another round or exit → on an APPROVED verdict returns `Done` → loom advances.
 
 ### The disambiguating test
 
@@ -402,7 +397,7 @@ loom wants a plan-reviewer for worktree `feature-x`:
 - About **a tmux mechanic, a strand, or how it's laid out**? → `reed`.
 - About **running an LLM and getting its answer**? → `shuttle`.
 - About **one review+fix round**? → `burler`.
-- About **whether an artifact passes (loop rounds until clean/stuck)**? → `perch`.
+- About **whether an artifact passes (loop rounds until clean/stuck)**? → a `Bouncer` review segment.
 - About **hardening a live-substrate module by running it** (post-loom, off-spine)? → `hardener` (DRAFT).
 - About **what to run next**? → `loom`.
 
@@ -427,7 +422,7 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 
 ## Other docs
 
-- [manifest/designs/loom.md](../manifest/designs/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`);
+- [manifest/designs/loom.md](../manifest/designs/loom.md) — the phased orchestrator (`lyx loom`);
   design.
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub` + `Render` over `internal/stencil`), consumed by reed's header pipeline and, later, loom's prompt templates;
   a leaf, not a phased module (as-built;
@@ -440,9 +435,7 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
   module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built;
   module doc deleted per the documentation lifecycle).
-- `internal/perchengine` package documentation — the gate loop: run `burler` rounds → `APPROVED`/`STUCK`/`PAUSED` (as-built;
-  module doc deleted per the documentation lifecycle).
-- `internal/treadleengine` package documentation — the generalized round-loop engine `perch` runs on (judge, gate, round-spawn, milestone cap ladder, judge-maintained handoff, pause, run-dir lock), with a pluggable `RoundRunner` seam a future consumer (Tenter) can also drive (as-built;
+- `internal/treadleengine` package documentation — the generalized round-loop engine (judge, gate, round-spawn, milestone cap ladder, judge-maintained handoff, pause, run-dir lock), with a pluggable `RoundRunner` seam a future consumer (Tenter) can drive (as-built;
   module doc deleted per the documentation lifecycle).
 - [manifest/designs/hardener.md](../manifest/designs/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
@@ -453,6 +446,6 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
 - [crucible/README.md](../crucible/README.md) — **`crucible`**, the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification).
-  The hand-executed prototype of the `perch` (see the `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the [`hardener`](../manifest/designs/hardener.md) concept, named separately to avoid colliding with it);
+  The hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the [`hardener`](../manifest/designs/hardener.md) concept, named separately to avoid colliding with it);
   ships two paste-ready prompts — an [orchestrator prompt](../crucible/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](../crucible/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
   Lives at the repo root, not under `docs/`, since it's a working method/prompt set, not documentation of shipped code.

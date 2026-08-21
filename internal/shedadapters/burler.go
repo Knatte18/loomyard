@@ -155,7 +155,7 @@ func parseRoundReviewName(name string) (int, bool) {
 // highestCompleteRound scans runDir's directory entries and returns the highest n for which
 // roundComplete holds, returning 0 (and a nil error) when runDir is absent -- which is not an
 // error -- and wrapping any other os.ReadDir failure.
-// Its name-matching discipline mirrors highestRunAttempt in perch.go and is exact-shape via
+// Its name-matching discipline is exact-shape via
 // parseRoundReviewName.
 // The completion predicate is the pair, never the review alone, and why: a producer process killed
 // in the phase-A-written/phase-B-pending window leaves a review with no fixer report beside it and

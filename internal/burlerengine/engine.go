@@ -2,9 +2,7 @@
 // drives one shuttle run over the Shuttle seam, and maps the shuttle's outcome (plus, on done, the
 // parsed review file) into a Result.
 // This is the library's one external entry point — a caller invokes it once per round. Today that
-// caller is internal/perchengine ("perch"); internal/shedadapters.BurlerProducer wraps the same
-// call as a Shed row and is the caller perch is slated to be superseded by (see the roadmap's
-// "Bouncer -> Perch" Someday item).
+// caller is internal/shedadapters.BurlerProducer, which wraps the call as a Shed row.
 
 package burlerengine
 
