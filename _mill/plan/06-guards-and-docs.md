@@ -130,7 +130,9 @@ Batch-local decisions beyond `## Shared Decisions`:
   Close the section with an **Enforced by** line naming `internal/shedrecipe/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) for the told-geometry half and `internal/shedrecipe/coverage_guard_test.go` (`TestCoverageGuard_EveryLoomRowHasAnEngine`) for the registry-coverage half, and stating that the `ShedProducer`-only restriction itself is a review obligation, since the `Constructor` signature already makes it a compile-time fact.
 
   In the existing `## Told-Geometry Invariant` section, add `internal/shedrecipe` to the **Machine-enforced** bullet's list, in the same `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly` group that already names `internal/loomshed`, `internal/landingshed`, and `internal/mergeresolve`.
-  That bullet's trailing **Enforced by** bullet in the same section says "the seven tests named above" — update that count to match the new membership.
+  That bullet's trailing **Enforced by** bullet in the same section says "the seven tests named above".
+  Do not simply increment that number: the count is already wrong before this task touches it, since the Machine-enforced bullet currently enumerates nine packages, each carrying its own test file.
+  Recount the enumeration and write the correct total, which is ten once `internal/shedrecipe` joins it.
   Change nothing else in that section.
 - **Commit:** `docs(constraints): record the Shed Recipe Registry Invariant`
 
@@ -199,7 +201,11 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Requirements:**
   Remove the **Shed recipe: engine registry** item from the `### Shed recipe: declarative producer lists` group under `## Planned`, leaving the group's remaining three items and their ordering untouched.
   The group's own intro paragraph says "Four separable pieces, in dependency order" — update it to reflect that the first piece has shipped and to point at the Done entry, rather than leaving a count that no longer matches the list beneath it.
-  The two remaining items that say "Depends on the engine-registry item above" must be reworded, since that item is no longer above them.
+  Two of the remaining items carry a dependency reference that goes stale once the first item leaves the group, and they do not share one phrase — fix each on its own terms.
+  The **Shed recipe: loader/builder** item ends "Depends on the engine-registry item above";
+  reword it to point at the shipped registry rather than at an item above it.
+  The **loom: convert to a Shed recipe** item says "Depends on all three items above";
+  its count is now wrong as well as its position, since only two items remain above it — reword it to name the shipped registry plus the two still-planned items.
 
   Add a corresponding entry at the top of the `## Done` list, in the shape the existing Done entries use — a bold title, then what actually shipped, then a pointer line.
   It must name: the new `internal/shedrecipe` package;

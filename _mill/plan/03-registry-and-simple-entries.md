@@ -57,8 +57,10 @@ Batch-local decisions beyond `## Shared Decisions`:
   The nine bodies:
   - `preflightEntry` validates `Env.Cwd` and returns `preflightshed.NewPreflight(name, env.Cwd)` with a nil error.
   - `publishEntry` returns `landingshed.NewPublish(env.Landing)`, validating no `Env` field: `NewPublish` already rejects the nil closures in `landingshed.Deps` itself, so the entry inherits the check.
+    It surfaces that constructor's error **wrapped**, never passed through raw, so the message carries this package's own `shedrecipe: Publish: ` prefix per the `## Shared Decisions` error-text-prefix rule rather than surfacing as a bare `landingshed: NewPublish: ...`;
+    this is the same wrapping the `Bouncer` and `BurlerRound` entries apply to their own fallible constructors.
     Its godoc states that `name` is deliberately discarded because `landingshed.Deps` carries no name field and `Publish`'s identity is the package constant `publishName`, and that the coverage-guard test in `coverage_guard_test.go` is what pins the row's name to match.
-  - `finalizeEntry` is `publishEntry`'s twin over `landingshed.NewFinalize`, with the same godoc note.
+  - `finalizeEntry` is `publishEntry`'s twin over `landingshed.NewFinalize`, with the same godoc note and the same wrapped-error requirement, prefixed `shedrecipe: Finalize: `.
   - `loomPreflightEntry` validates `Env.StatusPath` and `Env.StatusLockPath` and returns `loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath)`.
   - `batchifierEntry` validates `Env.AnchorPath` and returns `loomshed.NewBatchifier(name, env.AnchorPath)`.
   - `discussionValidateEntry` validates `Env.DecisionRecordPath` and `Env.SupportLogPath` and returns `loomshed.NewDiscussionValidate(name, env.DecisionRecordPath, env.SupportLogPath)`.
@@ -138,6 +140,9 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/shedrecipe/recipe.go`
   - `internal/shedengine/producer.go`
   - `internal/websterengine/runlevel.go`
+  - `internal/landingshed/publish.go`
+  - `internal/landingshed/finalize.go`
+  - `internal/landingshed/deps.go`
 - **Edits:** none
 - **Creates:**
   - `internal/shedrecipe/registry_test.go`
@@ -161,6 +166,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   `websterEntry` needs its own subtests beyond the table: a `WebsterDeps` with each of `Starter`, `Reed`, `Engine`, and `RefMatcher` nil in turn fails naming that field;
   a `WebsterDeps` with `Batcher`, `Clock`, and `OpenBisector` all nil constructs successfully.
   `publishEntry` and `finalizeEntry` need a failure-path subtest each: an `Env` whose `Landing` is the zero `landingshed.Deps` makes the underlying constructor reject, so the entry must surface that error rather than a nil producer with a nil error.
+  Assert in both subtests that the surfaced message carries this package's own `shedrecipe: ` prefix, which is what pins the wrapping rather than a raw pass-through of `landingshed: NewPublish: ...`.
   Add one subtest asserting a relative (non-absolute) value in a read `Env` path field fails, using `batchifierEntry` and `Env.AnchorPath` as the representative case.
 - **Commit:** `test(shedrecipe): cover Lookup, Names, and the nine value-only entries`
 
