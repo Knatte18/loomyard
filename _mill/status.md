@@ -36,7 +36,9 @@ batches:
     commit_sha: 46d2e3535f8ee6279532500a2f9e3f86abbdfec3
     verify_baseline_failures: ["FAIL\t./internal/shedcheck/... [setup failed]"]
   - name: loomshed-invariant-test
-    state: pending
+    state: running
+    implementer_session: db656ecf-fa40-40d4-a11d-f246b2ae071e
+    start_sha: b063459ce2eee9ecc67bf6219d934e655e080980
     verify_baseline_failures: []
   - name: docs
     state: pending
