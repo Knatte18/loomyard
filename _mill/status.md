@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-recipe-file-and-loomrecipe-package
+phase: approved-move-the-graph-tests-into-loomrecipe
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -36,6 +36,7 @@ plan-fix-r7  '2026-08-21T15:59:55Z'
 planned  '2026-08-21T16:00:20Z'
 implementing  '2026-08-21T16:00:45Z'
 approved-recipe-file-and-loomrecipe-package  '2026-08-21T16:05:52Z'
+approved-move-the-graph-tests-into-loomrecipe  '2026-08-21T16:16:35Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     commit_sha: 31e1e4d191bbbea3e737a64f3e46aa45bac682c6
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: move-the-graph-tests-into-loomrecipe
-    state: running
+    state: approved
     implementer_session: 61bf32f9-9d9e-4eae-86be-5d035cf25371
     start_sha: 234a679ccd8339259953aa35709844664ad7156a
+    commit_sha: ad00b2d505a52848f25a0e43c17b4f41166f3a13
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: loomcli-rewiring
     state: pending
