@@ -3,7 +3,7 @@
 ```yaml
 task: 'Shed recipe: engine registry'
 slug: 'shed-recipe-engine-registry'
-approved: false
+approved: true
 started: '20260821-083627'
 parent: 'main'
 root: ""

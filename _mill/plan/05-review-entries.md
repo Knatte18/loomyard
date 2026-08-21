@@ -133,6 +133,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/shedadapters/bouncer.go`
   - `internal/shedadapters/burler.go`
   - `internal/stencilstore/reconcile.go`
+  - `internal/stencilstore/stencilstore.go`
 - **Edits:** none
 - **Creates:**
   - `internal/shedrecipe/entries_bouncer_test.go`
@@ -140,6 +141,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Moves:** none
 - **Requirements:**
   Write tests in the `shedrecipe` package, all geometry from `newTestEnv(t)`, writing a real rubric stencil into `env.StencilsDir` for the happy paths because `shedadapters.NewBouncer` probes it eagerly.
+  The on-disk shape that stencil must take is the one `stencilstore.Path`/`stencilstore.RelPath` define in `internal/stencilstore/stencilstore.go` — read it rather than guessing.
 
   Happy path: a minimal valid `Config` plus a filled `Env` constructs a non-nil `shedengine.ShedProducer` with no error.
 

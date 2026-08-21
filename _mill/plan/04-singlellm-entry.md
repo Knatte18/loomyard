@@ -99,6 +99,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/shedadapters/singlellm.go`
   - `internal/shuttleengine/spec.go`
   - `internal/stencilstore/reconcile.go`
+  - `internal/stencilstore/stencilstore.go`
 - **Edits:** none
 - **Creates:**
   - `internal/shedrecipe/entries_singlellm_test.go`
@@ -106,7 +107,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Moves:** none
 - **Requirements:**
   Write tests in the `shedrecipe` package, all geometry from `newTestEnv(t)`.
-  Each test that needs a readable stencil writes one into `env.StencilsDir` first, in whatever on-disk shape `stencilstore.Read` resolves a name to — read `internal/stencilstore/reconcile.go` to determine that shape rather than guessing.
+  Each test that needs a readable stencil writes one into `env.StencilsDir` first, in whatever on-disk shape `stencilstore.Read` resolves a name to — `stencilstore.Read` in `internal/stencilstore/reconcile.go` delegates the layout to `stencilstore.Path`/`stencilstore.RelPath`, both declared in `internal/stencilstore/stencilstore.go`, so read that file for the actual convention rather than guessing.
 
   The composed-`Spec` assertions must invoke the closure, not merely construct the producer.
   The `SpecSource` is captured inside `shedadapters.SingleLLMProducer` and unreachable from outside, so drive it by calling the returned producer's `Call` with a `context.Background()` and the `fakeShuttle` from `fixture_test.go` configured to return `shuttleengine.OutcomeDone`, then assert against the `shuttleengine.Spec` that fake recorded.
