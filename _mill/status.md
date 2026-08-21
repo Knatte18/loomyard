@@ -66,6 +66,8 @@ batches:
     commit_sha: 9a92c424ca38be6eae0faae09a8bf4cb8979f152
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: guards and docs
-    state: pending
+    state: running
+    implementer_session: b06ffffb-7b27-496c-8d0e-b799fd70e729
+    start_sha: b7a9bb8b0d3c6cde7911f845122da59685564ece
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
 ```
