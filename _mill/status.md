@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shedcheck-package
+phase: approved-loomshed-invariant-test
 slug: shed-setup-validity-checker
 branch: shed-setup-validity-checker
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-08-21T08:28:46Z'
 planned  '2026-08-21T08:29:00Z'
 implementing  '2026-08-21T08:29:38Z'
 approved-shedcheck-package  '2026-08-21T08:40:08Z'
+approved-loomshed-invariant-test  '2026-08-21T08:42:20Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ batches:
     commit_sha: 46d2e3535f8ee6279532500a2f9e3f86abbdfec3
     verify_baseline_failures: ["FAIL\t./internal/shedcheck/... [setup failed]"]
   - name: loomshed-invariant-test
-    state: running
+    state: approved
     implementer_session: db656ecf-fa40-40d4-a11d-f246b2ae071e
     start_sha: b063459ce2eee9ecc67bf6219d934e655e080980
+    commit_sha: 11218cd284227692f2e7c4e5b3bd7dd23e3f0973
     verify_baseline_failures: []
   - name: docs
     state: pending
