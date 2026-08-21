@@ -24,6 +24,14 @@ Sources read first: SPEC (`git show 3b800bc8:_mill/discussion.md`, plan `00-over
 - Production: `internal/fabricengine/merge.go`, `mergelifecycle.go`, `mergeguards.go`, `mergestate.go`, `mergestage.go`, `mergepaths.go`, `mergeerrors.go`, `destroy.go` (resetHardTo/ResetHard/resetMergeSides region), `internal/gitrepo/merge.go`, `internal/fabriccli/merge_verbs.go`, `envelope.go`, `weft_verbs.go`.
 - Docs: `internal/fabricengine/doc.go` "# The merge surface" (846–1126).
 - Tests read in full: `mergestage_integration_test.go`, `merge_cli_integration_test.go`, `merge_target_integration_test.go` lines 720–892 (round 7's four Diverged/Behind tests + helpers); test-name inventory of all 10 other merge test files (6842 lines total across the merge test surface).
+- Support plumbing verified: `gitexec.GitError.Error()` (renders args+exit+stderr, no Dir), `weftname.Suffix` (`-weft` sibling dirs), `gitrepo.Fetch/IsAncestor/CurrentSHA/ResetHard`, `weftGitDir`, `RecordCorrespondence`, sibling-guard call sites (checkout.go:48, commit.go:112–137, pull.go:221, remove.go:65–81), merge mutation kinds in `mutation.go`.
+
+### Phase 2 — hermetic gates (baseline, pre-fix)
+
+- `go build ./...` → rc 0.
+- `go vet ./internal/fabricengine/... ./internal/fabriccli/... ./internal/gitrepo/...` → rc 0.
+- `go test -count=5 ./internal/fabricengine/... ./internal/fabriccli/... ./internal/gitrepo/... ./cmd/lyx/...` → all ok.
+- `go test -tags integration -count=1 -timeout 30m ./internal/fabricengine/... ./internal/fabriccli/... ./internal/gitrepo/...` → all ok (fabricengine 32.7s, fabriccli 3.1s, gitrepo 1.7s).
 
 ## Findings
 
