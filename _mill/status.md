@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shed-setup-validity-checker
 branch: shed-setup-validity-checker
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-08-21T08:13:36Z'
 planning  '2026-08-21T08:21:53Z'
 plan-fix-r1  '2026-08-21T08:28:46Z'
 planned  '2026-08-21T08:29:00Z'
+implementing  '2026-08-21T08:29:38Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shedcheck-package
+    state: pending
+  - name: loomshed-invariant-test
+    state: pending
+  - name: docs
+    state: pending
 ```
