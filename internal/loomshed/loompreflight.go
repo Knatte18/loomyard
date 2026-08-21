@@ -26,10 +26,10 @@ var _ shedengine.ShedProducer = (*loomPreflightProducer)(nil)
 // shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can call this
 // constructor from outside this package while loomPreflightProducer itself stays unexported.
 //
-// The constructor is exported for the internal/shedrecipe registry: row 2 is still built
-// internally by New (see loomshed.go), never injected -- unlike Deps.Preflight, it is not the row
-// a Tier-1 test needs to substitute a fake for, since it spawns nothing and reads one JSON file
-// under a caller-supplied path.
+// The constructor is exported for the internal/shedrecipe registry: row 2 spawns nothing and reads
+// one JSON file under a caller-supplied path, so it is not a row a tier-1 test substitutes a fake
+// for -- unlike row 1, which the moved tests substitute post-build (see the
+// row1-substitution-is-a-seam-not-a-fixed-fake Shared Decision).
 //
 // This wires the production import of internal/loomengine that the Told-Geometry guard test in
 // seam_enforcement_test.go already allowlists -- that import does not compromise this package's
