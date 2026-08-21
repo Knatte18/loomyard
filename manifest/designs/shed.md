@@ -323,6 +323,38 @@ This split cuts on **engine type** — which code drives the producer, and there
 The two axes are independent and need not align: a producer can be mechanical-and-simple, mechanical-and-bespoke (pure Go on its happy path but owning an internal multi-step process on an exceptional one), or LLM-and-either.
 One `Bouncer` adapter, for instance, can serve several separate bespoke producers at once — the axes describe different questions, so neither predicts the other.
 
+## Checking an assembled producer list
+
+An omitted `OnDone` is indistinguishable from an intended terminal one and ends the run quietly, so a caller assembling a producer list is responsible for asserting its own routing table exhaustively rather than relying on `Shed` to catch a missing entry — the sentence [`internal/shedengine/doc.go`](../../internal/shedengine/doc.go) itself states, word for word, under "Routing: `OnDone` and `OnStuck`, no positional fallback" above.
+Until now no caller did.
+`internal/shedcheck` closes that gap: a `Check` function that walks an assembled `OnDone`/`OnStuck` graph the same way `Run` would, without ever calling a producer, and reports every structural defect it finds instead of stopping at the first one.
+
+The checker lives in its own package, `internal/shedcheck`, rather than inside `shedengine`, because it is an authoring-time analysis, not part of the engine's runtime contract, and putting it in the engine would imply `Run` enforces it.
+The import direction is `shedcheck` → `shedengine`, the safe one; the reverse is already forbidden by the Shed Producer-Seam Invariant.
+
+`Check` takes `entry` and `terminals` as explicit arguments and never infers either from the producer list.
+`Shed` has no entry field and no terminal field, and defaulting to `Producers[0]` would re-introduce the positional routing meaning this same doc's routing model disclaims.
+
+`Check` reports exactly eight kinds, in a fixed order:
+
+- `bad-entry` — entry is empty, or names no producer in the list.
+- `no-terminals` — terminals is nil or has length zero.
+- `bad-terminal` — one per supplied terminal name that is empty or names no producer.
+- `dangling-target` — a live row's `OnDone` or `OnStuck` names no producer in the list.
+- `unreachable` — a row's own list index is never reached walking done and stuck edges from entry.
+- `unexpected-terminal` — a live, reachable row whose raw `OnDone` is empty and whose `Name` was not told as a terminal.
+- `done-cycle` — one finding per member of a cycle among live, reachable rows using done edges only.
+- `blind-gate` — a live, reachable row's stuck target has no route back to it, over both edge types.
+
+`blind-gate` is what replaces the departing `Segment` rule, expressed as a real graph property — a gate whose bounce target never routes back to the gate — rather than as a matching label.
+This task removes neither the `Segment` field nor `validate()`'s same-`Segment` rule; those belong to the recipe-loader items that actually drop `Segment`, per [shed-recipe.md](shed-recipe.md#pieces-to-build).
+
+`done-cycle` generalises the length-1 case [`internal/shedengine/validate.go`](../../internal/shedengine/validate.go) already rejects (`OnDone: <self>`), and the asymmetry that motivates it is real: a `Done` route consumes no bounce budget, so a done cycle is a statically certain infinite loop, whereas a stuck bounce is budgeted and therefore bounded.
+
+Nothing in production calls `Check` — its enforcement point is a `go test` invariant over loom's own producer list, not a runtime guard.
+
+One perch mis-wiring `Check` cannot catch, stated as a limit rather than buried, since an over-claimed guarantee is worse than a narrow one: a `Burler` round producer handing back to its `Bouncer` via `OnDone` instead of `OnStuck` is invisible to `Check`, because both wirings make the gate reachable from the round producer, so the routing graph is identical either way — the difference is which verdict the round producer returns, behaviour inside `Call`, not a property of the graph `Check` inspects.
+
 ## Testable cheaply — a throwaway producer list proves the skeleton
 
 Building `Shed`'s skeleton doesn't need a real producer list to validate against.
@@ -345,6 +377,7 @@ What this doc does *not* redo is `loom.md`'s remaining `loom`-specific detail �
 
 - [loom.md](loom.md) — `loom`'s concrete producer list built on `Shed`, plus the remaining `loom`-specific detail (session bootstrap, auto-mode, module decomposition) this doc doesn't restate.
 - [`internal/landingshed`](../../internal/landingshed/doc.go) — `Publish`'s and `Finalize`'s own contracts in detail; here each is one producer definition among others, not special-cased.
+- [`internal/shedcheck`](../../internal/shedcheck/doc.go) — the authoring-time structural checker over an assembled `OnDone`/`OnStuck` producer graph, detailed in the "Checking an assembled producer list" section above.
 - [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope `Finalize`'s own contract must honor, now that Raddle folds into it rather than keeping a separate slot.
 - `internal/treadleengine` package documentation — the sibling generic engine (inner round-loop, not outer phase-FSM), and the precedent for `Shed`'s own engine-adapter seam (`RoundRunner`).
 - `internal/batcher` package documentation — the other existing precedent for the engine-adapter pattern (`Batcher` interface).
