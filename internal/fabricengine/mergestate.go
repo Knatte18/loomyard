@@ -202,7 +202,11 @@ func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 // branches deletes the weft branch that merge is resolving against, with no warning to the operator
 // that they just removed the subject of a merge in progress.
 // Records live at <weft gitdir>/fabric-merge.json, which is the weft repo's own .git for the prime
-// pair and .git/worktrees/<name>/ for every linked pair, so both shapes are globbed. Each candidate
+// pair and .git/worktrees/<name>/ for every linked pair, so both shapes are globbed. The linked shape
+// is the common one — a merge normally runs in a task pair, and the prime worktree is the exception —
+// so both shapes carry their own test (TestMergeCrucible_RemoveRefuses…, prime and linked), each
+// asserting the record's on-disk location before asserting the refusal. Only the prime shape was
+// covered until round 7: disabling the linked glob left the whole suite green. Each candidate
 // is read through internal/state's locked reader, exactly as loadMergeState does — never a raw
 // os.ReadFile, which could observe a torn record another process is mid-write on.
 // A hub whose weft repo root cannot be resolved reports false rather than blocking, matching

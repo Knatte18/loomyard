@@ -740,3 +740,93 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 		t.Error("MergeInProgress() = true after the merge returned; want false")
 	}
 }
+
+// TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource is the linked-worktree twin of
+// TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming, and it covers the half of
+// mergeSourceInFlight that actually matters in practice.
+//
+// Merge records live at <weft gitdir>/fabric-merge.json, and the weft gitdir has two shapes: the weft
+// repo's own .git for the PRIME pair, and .git/worktrees/<name>/ for every other pair.
+// mergeSourceInFlight globs both. Only the prime shape was covered, and that is the rarer one — a
+// merge normally runs in a task pair, not in the prime worktree. Measured rather than assumed:
+// pointing the linked glob at a filename that cannot exist left the whole suite green, while doing the
+// same to the prime path was caught immediately.
+//
+// The fixture therefore runs the merge from a LINKED pair and drives Remove from the prime's own
+// location, so the refusal can only come from the hub-wide scan finding a record in a worktree gitdir.
+// Both record locations are asserted with t.Fatal before Remove is called: the linked one must exist
+// and the prime one must not, or the test would pass on the path it is not trying to cover.
+func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	const consumerSlug = "merge-crucible-consumer"
+	const sourceSlug = "merge-crucible-linked-source"
+	hubforge.AddPair(t, h, consumerSlug)
+	hubforge.AddPair(t, h, sourceSlug)
+
+	consumerWarpDir := h.PairWarpWorktree(consumerSlug)
+	consumerWeftDir := h.PairWeftSibling(consumerSlug)
+	sourceWarpDir := h.PairWarpWorktree(sourceSlug)
+	sourceWeftDir := h.PairWeftSibling(sourceSlug)
+
+	sourceBranch, err := readBranchForTest(t, sourceWarpDir)
+	if err != nil {
+		t.Fatalf("readBranchForTest(%s): %v", sourceWarpDir, err)
+	}
+
+	// Warp-side-only conflicting divergence, matching the prime-pair test's own reasoning: a weft-root
+	// conflict would be unmappable and self-abort the attempt instead of leaving a live record.
+	commitOnCurrentBranch(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
+	commitOnCurrentBranch(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
+	commitOnCurrentBranch(t, consumerWarpDir, "conflict.txt", "consumer side\n", "consumer: warp conflict")
+	commitOnCurrentBranch(t, consumerWeftDir, "consumer-only.txt", "consumer weft\n", "consumer: weft advance")
+
+	consumer := openFreshFabric(t, consumerWarpDir)
+	res, err := consumer.MergeIn(sourceBranch)
+	if err != nil {
+		t.Fatalf("MergeIn(%s) on the linked consumer pair error = %v; want a conflict result", sourceBranch, err)
+	}
+	if len(res.Conflicts) == 0 {
+		t.Fatalf("MergeIn(%s).Conflicts is empty; the fixture must leave a live merge record", sourceBranch)
+	}
+
+	// Precondition: the record really is in the LINKED shape, and the prime shape is empty — otherwise
+	// this test would be re-covering the path the sibling test already covers.
+	linkedRecord := filepath.Join(h.PrimeWeft(), ".git", "worktrees", filepath.Base(consumerWeftDir), "fabric-merge.json")
+	if _, err := os.Stat(linkedRecord); err != nil {
+		t.Fatalf("Stat(%s) = %v; want the merge record in the linked pair's own weft gitdir", linkedRecord, err)
+	}
+	primeRecord := filepath.Join(h.PrimeWeft(), ".git", "fabric-merge.json")
+	if _, err := os.Stat(primeRecord); !os.IsNotExist(err) {
+		t.Fatalf("Stat(%s) = %v; want not-exist — a record in the prime shape would let this test pass without the linked glob", primeRecord, err)
+	}
+
+	primeLocation, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
+	}
+
+	_, err = h.Topology.Remove(primeLocation, sourceSlug, false)
+	var refused *fabricengine.ErrMergeInProgress
+	if !errors.As(err, &refused) {
+		t.Fatalf("Remove(%s) while a LINKED pair is mid-merge on its branches: error = %v (%T); want *ErrMergeInProgress", sourceSlug, err, err)
+	}
+	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
+		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
+	}
+	if !branchExistsLocally(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
+		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
+	}
+
+	// force answers dirtiness only, never a live merge record — the same rule as the prime-pair case.
+	if _, err := h.Topology.Remove(primeLocation, sourceSlug, true); !errors.As(err, &refused) {
+		t.Fatalf("Remove(%s, force=true): error = %v (%T); want *ErrMergeInProgress even with force", sourceSlug, err, err)
+	}
+
+	// Aborting the linked pair's merge closes the window, so the same Remove must then succeed.
+	if _, err := consumer.MergeAbort(); err != nil {
+		t.Fatalf("MergeAbort on the linked consumer pair: %v", err)
+	}
+	if _, err := h.Topology.Remove(primeLocation, sourceSlug, true); err != nil {
+		t.Fatalf("Remove(%s) after MergeAbort: %v; want success — the guard must close a window, not block the pair forever", sourceSlug, err)
+	}
+}
