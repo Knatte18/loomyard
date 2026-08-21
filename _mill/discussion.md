@@ -262,6 +262,9 @@ Stating exactly which mis-wirings the checker detects is part of this task's con
 - Rationale: `Segment` removal is the Shed-recipe loader items' business — they are the ones dropping it from recipe rows.
   Doing it here would widen this task into `shedengine` for no gain, and the roadmap explicitly says this item "can land before or independent of the other three items".
   The `blind-gate` check is what makes the eventual removal safe, which is the whole point of landing this first.
+- Note for the plan writer, so a stale instruction is not mistaken for a live requirement: the three perch items in `manifest/roadmap.md` still instruct each row to set `Segment: "Discussion-Review"` and so on, but they are sequenced *after* `loom: convert to a Shed recipe`, and the recipe row shape those items will actually be authored in (`{Name, Engine, Config, OnDone, OnStuck, MaxBounces}`) carries no `Segment` at all.
+  Those `Segment` instructions are therefore already expected to be moot by the time anyone acts on them.
+  Nothing in `shedcheck` should accommodate them — `Check` never reads `Segment`, and the segment grouping those items describe is preserved by the routing graph itself, which is what `blind-gate` inspects.
 - Rejected: removing the `Segment` check in the same commit.
 
 ### Documentation placement
@@ -289,7 +292,8 @@ Stating exactly which mis-wirings the checker detects is part of this task's con
 - `internal/loomshed/loomshed.go:137-151` — the production 13-row list.
   Entry is `NamePreflight` (`internal/loomshed/seed.go` writes it as the seed's `CurrentProducer`).
   Terminal is `NameFinalize`, whose `OnDone` is `""`.
-  Three rows bounce backwards: `DiscussionValidate` and `DiscussionReview` both `OnStuck: DiscussionWrite`, `PlanValidate` and `PlanReview` both `OnStuck: PlanWrite`, `WebsterReview` `OnStuck: Webster`.
+  Five rows bounce backwards, to three distinct targets: `DiscussionValidate` and `DiscussionReview` both `OnStuck: DiscussionWrite`, `PlanValidate` and `PlanReview` both `OnStuck: PlanWrite`, and `WebsterReview` `OnStuck: Webster`.
+  The remaining eight rows carry `OnStuck: ""`.
   Every one of those bounce targets routes forward again through `OnDone` back to the bouncing row, and every row except `NameFinalize` carries a non-empty `OnDone`, so loom's list should come out clean under both `blind-gate` and `unexpected-terminal` — the invariant test is expected to pass on first run, and a failure means either a real latent defect or a bug in `Check`.
 - `internal/loomshed/loomshed_test.go` — `TestNew_PassesShedValidation` is the closest existing test in shape and is the right neighbour for the new invariant test;
   `TestNew_ProducerTable` shows how the package builds a `New()` result in a test.
