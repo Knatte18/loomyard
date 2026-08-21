@@ -944,6 +944,24 @@
 // never finish the job: the record lives in the weft gitdir where no git command touches it, and
 // while it exists every guarded sibling verb keeps refusing.
 //
+// **The not-synced precondition is decided twice, because once is too early.** `Merge` refuses a
+// target genuinely diverged from its own upstream with the guard reason `branch not synced to
+// upstream`. The guard stage's own half of that (`syncedToUpstreamReason`) resolves `@{u}` from
+// whatever remote-tracking state the checkout already carries — nothing in the guard stage fetches,
+// by design, since the guard stage mutates nothing — so a divergence created by someone else's push
+// that this checkout has not fetched yet is simply not visible to it: `@{u}` still names a commit
+// that IS an ancestor of HEAD, the side classifies as merely ahead, and the guard passes. `Merge`
+// then fetches twice on its way in (`resolveMergeSources`, then the pre-merge sync step), so the
+// divergence becomes knowable inside the same call that just decided it was absent. Acting on the
+// stale answer merged straight over a diverged target and returned `ok` with `committed: true`; the
+// operator found out at push time. So the pre-merge sync step re-decides the predicate on post-fetch
+// knowledge: per side it classifies equal / behind / ahead / diverged EXHAUSTIVELY, fast-forwards
+// `behind`, no-ops `equal` and `ahead`, and refuses `diverged` with the same reason string the guard
+// stage would have used. The guard stage stays as the cheap pre-lock fast path that refuses without
+// taking the write lock or touching either checkout — which is a real difference, not a duplication:
+// a refusal there mutates nothing, while a refusal from the sync step can already have
+// fast-forwarded the other side.
+//
 // **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
 // `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
 // asymmetry is what makes this a precondition rather than a curiosity: a conclude-commit landed on a

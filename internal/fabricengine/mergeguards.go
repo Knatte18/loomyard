@@ -181,6 +181,17 @@ func mergeInProgressReason(f *Fabric) ([]string, error) {
 // will advance it) passes, and only neither direction (a genuine divergence) fails.
 // Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
 // which side (if either) was out of sync.
+//
+// This is a pre-fetch FAST PATH, not the whole of the not-synced precondition, and reading it as the
+// whole of it is a mistake with a live failure behind it. Every helper in this file resolves @{u}
+// from whatever remote-tracking state the checkout already carries — nothing in Merge's guard stage
+// fetches before this runs — so a divergence created by someone else's push that this checkout has
+// not fetched yet is invisible here: @{u} still points at a commit that IS an ancestor of HEAD, the
+// side classifies as "ahead", and the guard passes. Merge merged straight over a genuinely diverged
+// target that way.
+// syncSideBeforeMerge re-decides the same predicate after its own fetch and refuses with this same
+// reason, so the promise holds even when this fast path could not see the divergence. Anything added
+// here that must hold post-fetch belongs there too.
 func syncedToUpstreamReason(f *Fabric) ([]string, error) {
 	warpNotSynced, err := sideNotSyncedToUpstream(f.warp, f.warpPath)
 	if err != nil {
