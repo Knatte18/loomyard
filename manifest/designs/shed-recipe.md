@@ -30,7 +30,8 @@ Four separable pieces, none blocking `loom`'s remaining work, each independently
 
 1. **Engine registry** — name → constructor mapping for every existing `ShedProducer` type, shared and loom-specific alike.
 2. **Recipe loader/builder** — reads the recipe file, resolves `Engine` names via (1), merges `Config` with caller-supplied geometry, assembles `[]shedengine.ProducerDef`.
-3. **Shed-setup validity checker** — a standalone tool inspecting an assembled `OnDone`/`OnStuck` graph for blind gates (unreachable rows, unintended cross-wiring) — needed regardless of the recipe work, since neither `Segment` (if used) nor `OnDone` enforce this today.
+3. **Shed-setup validity checker** — built and independent of the recipe work: `internal/shedcheck` ships this piece already, ahead of the other three.
+   See [shed.md's "Checking an assembled producer list" section](shed.md#checking-an-assembled-producer-list) for the design.
 4. **Convert `internal/loomshed`'s own list** to an actual recipe file using (1)-(3), as the proof the mechanism works — the first real consumer.
 
 ## Escalation and the future watchdog
