@@ -83,7 +83,7 @@ The 308 daemons linger (mean 8.9 s, max 61 s), competing for CPU/AV attention wi
 | warpengine alone (run 1 / run 2) | 102.0 s / 110.7 s | **61.9 s / 72.0 s** |
 | warpengine inside full Tier 2 | ~152 s (2026-07-12 doc) | **87.2 s** |
 
-Every git-heavy package benefits (boardcli 73 s, initengine 51 s, perchcli 43 s, configcli 32 s in the override run — all at or below their documented baselines while running under full contention).
+Every git-heavy package benefits (boardcli 73 s, initengine 51 s, configcli 32 s in the override run — all at or below their documented baselines while running under full contention).
 
 ### Pre-existing red discovered
 

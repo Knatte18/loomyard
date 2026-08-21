@@ -6,7 +6,7 @@
 // Identity derivation (ProfileHash, DeriveRunID, ValidRunID, sanitizeSlug) is NOT here — treadle
 // takes ProfileHash as caller-supplied data (see Profile.ProfileHash and the treadle-owns-no-config
 // shared decision);
-// those functions stay with perchengine, in internal/perchengine/identity.go.
+// a caller owns them, alongside whatever resolves its own profile data.
 //
 // The persisted artifacts split across two directories (the told-never-derived-scratch-dir shared
 // decision): state.json and every round artifact live in runDir, while state.json.lock, run.lock
@@ -33,8 +33,8 @@ const stateFileName = "state.json"
 const staleSuffix = ".stale"
 
 // PauseFlagName is the pause flag file's name inside a block's run dir.
-// It is exported so a caller's own pause verb (e.g.
-// perchcli's) can name the same file it writes without recomputing the join itself.
+// It is exported so a caller's own pause verb can name the same file it writes without
+// recomputing the join itself.
 const PauseFlagName = "pause"
 
 // roundRecord is the persisted history entry for one completed round: identity,
@@ -91,8 +91,8 @@ type resumeInfo struct {
 // <scratchDir>/state.json.lock) and classifies it against hash (the
 // incoming profile's ProfileHash) and caps (the incoming profile's resolved
 // RoundCaps). Every error message is prefixed with name (the calling
-// engine's own name), mirroring perch's own literal "perch: " prefix today
-// (the name-parameterized-diagnostics shared decision):
+// engine's own name), per the name-parameterized-diagnostics shared
+// decision:
 //   - no state.json: a fresh block. An initial runState (ProfileHash: hash,
 //     RoundCaps: caps) is written before returning, so a concurrent second
 //     invocation against the same runDir observes a non-fresh state.
@@ -137,8 +137,8 @@ func loadOrInitState(name string, runDir string, scratchDir string, hash string,
 // TerminalOutcome reports the terminal Outcome recorded in runDir's state.json: ok is true only
 // when a state file exists AND records a finished block (APPROVED or STUCK).
 // A missing state file or an in-flight block (empty Outcome) returns ok false with no error.
-// It exists for a caller's own pause verb (e.g.
-// perchcli's), which must refuse to write a pause flag against a block that already finished — no
+// It exists for a caller's own pause verb, which must refuse to write a pause flag against a
+// block that already finished — no
 // run loop will ever observe that flag, so reporting the pause as accepted would mislead the
 // operator.
 // Reads under the same state.json.lock discipline as loadOrInitState, locked against
@@ -223,8 +223,7 @@ func fileExists(path string) bool {
 
 // PauseFlagPath returns the path to the pause flag file inside scratchDir —
 // the block's never-tracked scratch dir, not its durable run dir.
-// A caller's own pause verb (e.g.
-// perchcli's) writes this file,
+// A caller's own pause verb writes this file,
 // and the run loop's PauseRequested seam checks for it between rounds;
 // both must resolve scratchDir from the same scratch base a caller's run
 // verb passes to the engine, which is why this is exported rather than
@@ -241,7 +240,7 @@ func PauseFlagPath(scratchDir string) string {
 // prefixed with name (the calling engine's own name) like every other
 // message in this file — Run returns it verbatim rather than re-wrapping,
 // so without the prefix a removal failure would reach the caller's CLI
-// envelope as the one perch error carrying no module label at all.
+// envelope as the one error carrying no module label at all.
 func clearPauseFlag(name string, scratchDir string) error {
 	path := PauseFlagPath(scratchDir)
 	if err := os.Remove(path); err != nil {

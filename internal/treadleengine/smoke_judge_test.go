@@ -18,7 +18,7 @@
 // set: an in-package test importing internal/hubforge (which imports
 // fabriccli) would close a compile cycle. runCircling and judgeInputs are
 // unexported — the same package-local Shuttle-seam surface a future
-// round-runner adapter (e.g. perchengine's) drives — so this file drives
+// round-runner adapter drives — so this file drives
 // them through treadleengine/export_test.go's RunCirclingForTest and
 // JudgeInputsForTest shims instead. Follows the
 // internal/burlerengine/smoke_round_test.go conventions otherwise: opt-in
@@ -276,7 +276,7 @@ The chair is red and the table is blue; they must match.
 	verdictPath := filepath.Join(h.PrimeWorktree(), "round-2-judge.md")
 	handoffPath := filepath.Join(h.PrimeWorktree(), "round-2-handoff.md")
 
-	// Wire the real stack directly: perchengine never imports claudeengine
+	// Wire the real stack directly: treadleengine never imports claudeengine
 	// itself, but this test is the caller and may.
 	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
 	if err != nil {
@@ -296,7 +296,7 @@ The chair is red and the table is blue; they must match.
 	// top-level stencil marker — leaving it empty fails the fill before any
 	// spawn, which is exactly the silent fail-safe degrade this test exists
 	// to catch.
-	verdict, rationale, ok := treadleengine.RunCirclingForTest(runner, "perch", treadleengine.JudgeInputsForTest{
+	verdict, rationale, ok := treadleengine.RunCirclingForTest(runner, "gate", treadleengine.JudgeInputsForTest{
 		Round:        2,
 		PriorReviews: []string{round1Path, round2Path},
 		VerdictPath:  verdictPath,

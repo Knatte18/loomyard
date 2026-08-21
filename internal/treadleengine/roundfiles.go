@@ -2,8 +2,7 @@
 // Every block artifact lives flat in the run dir (the "round artifact naming and attempt suffixes"
 // decision) — this file is the single place that turns a (round, attempt) pair into concrete paths.
 // Mapping those paths (plus a Profile's content) onto a specific RoundRunner's own input type is
-// that runner adapter's job — see internal/perchengine/adapter.go's buildRoundProfile for the
-// burlerengine mapping.
+// that runner adapter's job.
 
 package treadleengine
 

@@ -88,13 +88,12 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via go-github, authenticated through `internal/githubclient` (`gh` is a fallback token source, not the transport).
 - **webster** — the implementer module: one long-lived Master session reads the flat card-list plan (plan-format, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch.
-- **perch** — a generic profile-driven review-gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK`, standalone or as loom's gate between phases.
 - **burler** — one review+fix round (review → fix, no self-grading) over the shuttle file contract;
-  composed by `perch`.
+  composed by loom's own review segments, each a `Bouncer` review gate paired with a `Burler`-round producer in a `Shed` producer list.
 
 **In progress (design):**
 
-- **loom** — the phased orchestrator: drives its flat, ordered [producer list](manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `perch` review.
+- **loom** — the phased orchestrator: drives its flat, ordered [producer list](manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment.
   Preflight is built;
   Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.
 
@@ -111,11 +110,11 @@ internal/proc     spawn any OS process, cross-OS                    [OS primitiv
 internal/reed     tmux overlay + strand bookkeeping + render        [builds on proc]
 internal/shuttle  run ONE LLM agent via a swappable engine          [builds on reed]
 burler            one review+fix round: review → fix                [builds on shuttle]
-perch             run burler rounds on one artifact → APPROVED/STUCK [builds on burler]
-loom              phase machine: drive each phase through a gate     [builds on perch]
+shed              drive a flat producer list to a terminal outcome   [builds on burler]
+loom              phase machine: drive each phase through a gate     [builds on shed]
 ```
 
-`webster` branches off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a `perch`/`burler` gate loop).
+`webster` branches off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a `Bouncer`/`burler` gate loop).
 The whole stack runs headless (auto mode): strands exist, agents run, output files are read, nobody need watch.
 
 ## Building

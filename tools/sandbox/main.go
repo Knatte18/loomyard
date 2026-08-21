@@ -1,15 +1,14 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand dispatch.
-// It supports nine subcommands: "build" (default, clones the Hub), "suite" (runs the embedded
+// It supports eight subcommands: "build" (default, clones the Hub), "suite" (runs the embedded
 // SANDBOX-CORE-SUITE agent), "reed-suite" (runs the embedded SANDBOX-REED-SUITE agent),
 // "shuttle-suite" (runs the embedded SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the
-// embedded SANDBOX-BURLER-SUITE agent), "perch-suite" (runs the embedded SANDBOX-PERCH-SUITE
-// agent), "webster-suite" (runs
+// embedded SANDBOX-BURLER-SUITE agent), "webster-suite" (runs
 // the embedded SANDBOX-WEBSTER-SUITE agent), "fabric-suite" (clones the dedicated fabric hub if
 // absent, then runs the embedded SANDBOX-FABRIC-SUITE agent), and "fetch" (collects the
 // agent-written report into .scratch).
 // Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
-// suite/reed-suite/shuttle-suite/burler-suite/ perch-suite/webster-suite/fabric-suite
+// suite/reed-suite/shuttle-suite/burler-suite/webster-suite/fabric-suite
 // parse their -claude/-prompt flags.
 
 package main
@@ -303,22 +302,6 @@ func run(argv []string) int {
 		}
 
 		if err := runSuite(absParent, *claudeFlag, *promptFlag, burlerSuite); err != nil {
-			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
-			return 1
-		}
-
-	case "perch-suite":
-		psf := flag.NewFlagSet("sandbox perch-suite", flag.ContinueOnError)
-		psf.SetOutput(os.Stderr)
-		claudeFlag := psf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
-		promptFlag := psf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
-
-		remaining := fs.Args()[1:]
-		if err := psf.Parse(remaining); err != nil {
-			return 1
-		}
-
-		if err := runSuite(absParent, *claudeFlag, *promptFlag, perchSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

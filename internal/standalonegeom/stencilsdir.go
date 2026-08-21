@@ -17,7 +17,7 @@ import (
 // third top-level <state>/stencils.
 //
 // The returned value is carried by callers as a plain string, never as an engine geometry field:
-// neither burlerengine.Geometry nor perchengine.Geometry has a StencilsDir field, and both engines
+// burlerengine.Geometry has no StencilsDir field, and the engine
 // already accept the directory as a told parameter.
 //
 // Like every other builder in this package, StencilsDir takes only stateDir — it never calls

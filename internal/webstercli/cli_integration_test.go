@@ -4,7 +4,7 @@
 // proving the standalone pre-run reaches a verb's own RunE rather than failing with a
 // cwd-resolution error -- the one property no untagged test in this package can observe, since it
 // requires the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end
-// pre-run. It follows the shape internal/perchcli/cli_integration_test.go already establishes for a
+// pre-run. It follows the shape internal/reedcli/cli_integration_test.go already establishes for a
 // tagged CLI-level test; this package already carries a hermetic TestMain (testmain_test.go) and an
 // existing tagged file (verbs_test.go), so no new test-main wiring is needed here.
 

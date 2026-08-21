@@ -121,7 +121,7 @@ the N×-concurrent suite is a diagnostic amplifier, not a merge blocker.
 ## Live-substrate cost declaration (BLOCKING — fill in before instantiating for a new module)
 Before writing the "Live smoke" commands below, the person instantiating this template MUST check every `//go:build smoke` test in the target module and answer: **does any of them spawn a real LLM subprocess (a real `claude`/provider session), not just a real tmux/pty?**
 A module whose smoke tests only drive real tmux (e.g. reed) is cheap — a stray pane costs nothing.
-A module whose smoke tests drive a real LLM round (e.g. burler, perch, loom) is expensive — ONE test function can spawn several simultaneous real provider sessions (a cluster/fan round spawns one per lens), each costing real RAM, tokens, and wall-clock.
+A module whose smoke tests drive a real LLM round (e.g. burler, loom) is expensive — ONE test function can spawn several simultaneous real provider sessions (a cluster/fan round spawns one per lens), each costing real RAM, tokens, and wall-clock.
 Confusing the two classes is what caused a real incident: a generic `-run Smoke` pattern matched (and ran) every smoke test in a package, including expensive cluster-fan tests never intended for that round, spawning enough simultaneous real `claude` processes to exhaust the host's RAM.
 
 `<LLM-DRIVING: yes/no — fill in for this module>`.

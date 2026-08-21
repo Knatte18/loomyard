@@ -51,7 +51,6 @@ import (
 var configStrictnessDegradingSet = map[string]bool{
 	"internal/shuttleengine": true,
 	"internal/reedengine":    true,
-	"internal/perchengine":   true,
 	"internal/websterengine": true,
 	"internal/batcher":       true,
 }

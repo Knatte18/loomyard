@@ -2,7 +2,7 @@
 // swapped anchor/worktree pair compiles cleanly and passes every test built on a fixture where the
 // two happen to coincide. The fixture below deliberately keeps hub, worktree root, and anchor path
 // three distinct directories, with RepoName differing from every basename, so a field mix-up inside
-// ReedGeometry, BurlerGeometry, or PerchGeometry surfaces instead of passing silently.
+// ReedGeometry or BurlerGeometry surfaces instead of passing silently.
 
 package hubgeom
 
@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -106,40 +105,6 @@ func TestBurlerGeometry(t *testing.T) {
 			}
 			if got.AnchorPath != anchorPath {
 				t.Errorf("BurlerGeometry(l).AnchorPath = %q; want %q", got.AnchorPath, anchorPath)
-			}
-		})
-	}
-}
-
-func TestPerchGeometry(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		{"subpath-anchored fixture"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			hub := filepath.Join(root, "some-hub-HUB")
-			worktreeName := "some-worktree"
-			worktreeRoot := filepath.Join(hub, worktreeName)
-			anchorRel := filepath.Join("sub", "dir")
-			anchorPath := filepath.Join(worktreeRoot, anchorRel)
-
-			l := &lyxcwd.Location{
-				RepoName:     "distinct-repo-name",
-				HubPath:      hub,
-				WorktreeName: worktreeName,
-				AnchorRel:    anchorRel,
-			}
-
-			var got perchengine.Geometry = PerchGeometry(l)
-
-			if got.GateDir != worktreeRoot {
-				t.Errorf("PerchGeometry(l).GateDir = %q; want %q", got.GateDir, worktreeRoot)
-			}
-			if got.AnchorPath != anchorPath {
-				t.Errorf("PerchGeometry(l).AnchorPath = %q; want %q", got.AnchorPath, anchorPath)
 			}
 		})
 	}

@@ -1,6 +1,6 @@
 # LoomYard skills — plan & fate of the mill skill set
 
-> **Status: Design / plan — not built.** Authored once the `lyx` spine (`shuttle → burler → perch → loom`) can consume it.
+> **Status: Design / plan — not built.** Authored once the `lyx` spine (`shuttle → burler → shed → loom`) can consume it.
 
 In mill the skills *were* the orchestrator (LLM-driven).
 In lyx, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lyx` verbs, not skills. **~44 mill skills → ~10 real LY skills.**

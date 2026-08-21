@@ -98,7 +98,7 @@ Environment variables are sourced by `envsource.Build(baseDir)`, which reads `en
 
 Resolved YAML bytes (as returned by `yamlengine.Resolve`).
 Each caller unmarshals this into its own config struct — the strict callers are `fabricengine.LoadConfig`, `boardengine.LoadConfig`, `loomengine.LoadConfig`, and `batcher.Active`;
-the degrading callers are `websterengine.LoadConfig`, `shuttleengine.LoadConfig`, `reedengine.LoadConfig`, and `perchengine.LoadConfig`/`LoadConfigWithRegistry`.
+the degrading callers are `websterengine.LoadConfig`, `shuttleengine.LoadConfig`, and `reedengine.LoadConfig`.
 Callers never see raw YAML or unexpanded tokens.
 
 ## Migration from old format

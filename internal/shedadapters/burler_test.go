@@ -18,7 +18,7 @@ import (
 // burlerengine.Result/error values per invocation, so a test can script attempt 1 and attempt 2
 // differently. results[i]/errs[i] answer the (i+1)th invocation; once either slice is exhausted its
 // own last entry repeats. duringRun, when set, is invoked from inside Run before it returns --
-// letting a test cancel the context or write files as if mid-round, mirroring fakePerchRunner's and
+// letting a test cancel the context or write files as if mid-round, mirroring
 // fakeShuttle's own hook.
 type fakeBurlerRunner struct {
 	results []burlerengine.Result

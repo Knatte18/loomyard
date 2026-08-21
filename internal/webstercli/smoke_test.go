@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -317,7 +316,6 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(dir), WorktreeName: filepath.Base(dir)}
 	state := &websterengine.State{
 		MasterSessionID: mintSessionID(t),
 		CurrentBatch:    1,
@@ -325,16 +323,22 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 			1: {Slug: "alpha", StartSHA: startSHA, Kind: "fork", SessionID: crashedSession},
 		},
 	}
+	// Only WorktreeRoot and ReportsDir are read on this path (the head-SHA capture, the
+	// dirty-worktree check, the fork audit's workdir, and the batch-report join); the remaining
+	// Geometry fields stay zero rather than being invented, so a future read of one fails loudly
+	// here instead of silently resolving against a plausible-looking temp path.
+	// NeverMatches is the pinned supplier for a mode with no fabric repo -- this fixture is a bare
+	// git repo, never a wired hub -- and the field must be non-nil either way, since CheckParent
+	// and CheckFork call Matches unguarded.
 	deps := websterengine.RecordDeps{
-		Batches:      []batcher.Batch{{Cards: []planparser.Card{{Number: 1, Slug: "alpha"}}}},
-		State:        state,
-		Engine:       eng,
-		Layout:       layout,
-		WorktreeRoot: dir,
-		ReportsDir:   reportsDir,
-		OutcomePath:  filepath.Join(dir, "outcome.yaml"),
-		SummaryPath:  filepath.Join(dir, "summary.md"),
-		Sleeper:      realSleeper{},
+		Batches:     []batcher.Batch{{Cards: []planparser.Card{{Number: 1, Slug: "alpha"}}}},
+		State:       state,
+		Engine:      eng,
+		Geom:        websterengine.Geometry{WorktreeRoot: dir, ReportsDir: reportsDir},
+		RefMatcher:  websterengine.NeverMatches{},
+		OutcomePath: filepath.Join(dir, "outcome.yaml"),
+		SummaryPath: filepath.Join(dir, "summary.md"),
+		Sleeper:     realSleeper{},
 	}
 
 	result, err := websterengine.RecordBatch(deps, 1)

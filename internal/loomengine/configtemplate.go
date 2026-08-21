@@ -1,7 +1,7 @@
 // configtemplate.go — loom.yaml template accessor.
 //
 // ConfigTemplate provides the default YAML template for loom's config module, embedded directly
-// from template.yaml at build time, mirroring perchengine's embed-and-accessor
+// from template.yaml at build time, mirroring reedengine's embed-and-accessor
 // pattern.
 
 package loomengine

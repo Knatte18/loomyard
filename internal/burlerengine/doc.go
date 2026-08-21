@@ -7,20 +7,17 @@
 //
 // A burler runs ONE round and exits. It knows nothing about round loops,
 // caps, convergence, or progress across rounds — that is its caller's job,
-// which composes burler. Today the caller is internal/perchengine
-// ("perch"), but perch is slated for retirement once the Shed-based
-// replacement — a Burler-round producer paired with a Bouncer, both in
-// internal/shedadapters — is proven in practice; see the roadmap's
-// "Bouncer -> Perch" Someday item. The dependency runs one way, caller ->
-// burler -> shuttle, a strict chain: each layer knows only the one below
-// it. This split is deliberate and is why burler is a separate module
+// which composes burler. Today the caller is
+// internal/shedadapters.BurlerProducer, the Shed row that wraps one round
+// and hands off to its segment's Bouncer. The dependency runs one way,
+// caller -> burler -> shuttle, a strict chain: each layer knows only the one
+// below it. This split is deliberate and is why burler is a separate module
 // from its caller rather than folded into it: burler is LLM-heavy (one
 // round is a shuttle run; its tests are a fake-shuttle unit suite plus a
-// handful of opt-in real-engine smoke tests), while perch — the caller as
-// it exists today — is deterministic Go (the loop, the milestone cap
-// ladder, and the progress judge; its tests use a fake burler returning
-// scripted verdicts, no LLM at all). Keeping them one module would blend
-// those two test regimes.
+// handful of opt-in real-engine smoke tests), while the loop owner is
+// deterministic Go (the round advance and the Bouncer's judge call; its
+// tests use a fake burler returning scripted verdicts, no LLM at all).
+// Keeping them one module would blend those two test regimes.
 //
 // Told-geometry tier: burlerengine is a producer — it is told the absolute paths it operates on
 // through its Geometry struct (WorktreeRoot, AnchorPath), derives none of its own, and requires
@@ -124,8 +121,8 @@
 // burlerengine never imports the fabric module and never constructs a
 // _lyx/... path — Result returns the review/fixer-report paths the
 // caller supplied (resolved absolute), and committing them
-// is the loop owner's job (perch's CLI standalone today, or loom's
-// Burler-round-producer-plus-Bouncer segments going forward), via the
+// is the loop owner's job (loom's
+// Burler-round-producer-plus-Bouncer segments), via the
 // fabric engine in-process. See the Fabric Git Invariant in
 // CONSTRAINTS.md. The one exception an agent DOES commit is its own code
 // under FixScopeSource — that is an ordinary repo commit, not a fabric

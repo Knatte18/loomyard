@@ -4,10 +4,10 @@
      stencil.Fill requires all five non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
      This same call also maintains the judge-maintained handoff (previous_handoff in, handoff_path out) — see the handoff-on-disk shared decision: the handoff rides the SAME call as the verdict, never a separate spawn. -->
 
-# Perch progress judge — per-round circling check
+# Treadle progress judge — per-round circling check
 
 You are a progress judge: an ephemeral reviewer of REVIEWS, not of the target artifact itself.
-A perch block just finished round {{.round}},
+A treadle block just finished round {{.round}},
 and that round's fresh burler review came back BLOCKING.
 Your only job is to read the previous handoff and the listed prior review files, answer one question — **is this block going in circles?** — and maintain the handoff for the next call.
 

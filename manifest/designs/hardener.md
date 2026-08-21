@@ -4,25 +4,25 @@
 >
 > **Hand-executed origin:** [`crucible`](../../crucible/README.md) is the method this module would automate — the hand-run version of the same idea, named separately to avoid colliding with this module's own name. This was developed over the last week out of a concrete need: to **run** actual `reed` code hard enough to surface defects a green `go test` never proves. Six hand-orchestrated rounds fixed what many rounds of text-based review could not — it was genuinely *hardening*.
 >
-> **Status: Someday, deprioritized.** Not required to get `loom` running — `loom` only ever uses text-review (`perch`), never behavior-review. Kept separate from the Planned `Treadle`/`Shed`/ perch-rewrite work for exactly that reason: nothing here blocks `loom`.
+> **Status: Someday, deprioritized.** Not required to get `loom` running — `loom` only ever uses text-review (its `Bouncer`+`Burler` review segments), never behavior-review. Kept separate from the Planned `Treadle`/`Shed` work for exactly that reason: nothing here blocks `loom`.
 
 ## Naming: two things, not one
 
 Two distinct layers, split out once the shared-engine design (the `internal/treadleengine` package documentation, [shed.md](shed.md)) was pinned:
 
-- **`Tenter`** — the review-loop alone: `Treadle` (the generic round-loop engine — judge, gate, round-spawn, cap, pause, lock) configured with a live-substrate-driving round-runner and a behavior-review profile, instead of `perch`'s `burlerengine` + text-review profile.
-  Perch's direct structural sibling.
-  Not separately runnable in isolation the simple way `perch` is, because behavior-review needs a live sandbox/worktree lifecycle around it.
+- **`Tenter`** — the review-loop alone: `Treadle` (the generic round-loop engine — judge, gate, round-spawn, cap, pause, lock) configured with a live-substrate-driving round-runner and a behavior-review profile, instead of a `burlerengine` round + text-review profile.
+  The direct structural sibling of loom's own text-review segments.
+  Not separately runnable in isolation the simple way a text-review segment is, because behavior-review needs a live sandbox/worktree lifecycle around it.
 - **`Hardener`** — the full, on-demand, autonomous campaign: `Shed` (the generic outer phase-FSM — see [shed.md](shed.md)) wrapping `Tenter`, plus Hardener's own Preflight (sandbox provisioning, live-suite readiness).
   This is what gets a worktree spawned for it (via `fabric`) and safe-merges back into parent when done, the same lifecycle `loom` uses, just with `Hardener`'s own producer list carrying `Tenter` where `loom`'s list carries its Discussion, Plan and Webster producers.
 
-`Tenter` is a **behavior-based reviewer**: where `perch` (see the `internal/perchengine` package documentation) reads an artifact, `Tenter` **runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial scenarios to break it. `Hardener` is a separate, on-demand, **post-loom** campaign — not on the `shuttle → burler → perch → loom` spine — meant to harden a live-substrate module (the archetype: `reed` driving real tmux) before merge.
+`Tenter` is a **behavior-based reviewer**: where a text-review segment reads an artifact, `Tenter` **runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial scenarios to break it. `Hardener` is a separate, on-demand, **post-loom** campaign — not on the `shuttle → burler → shed → loom` spine — meant to harden a live-substrate module (the archetype: `reed` driving real tmux) before merge.
 
-## Why `Tenter` is not `perch`
+## Why `Tenter` is not a text-review segment
 
-`Tenter` and `perch` share the `burler` *round discipline* (see the `internal/burlerengine` package documentation) — A-review → B-fix, no self-grading, commit-per-fix, fix-everything — but they are different reviewers along two axes:
+`Tenter` and a text-review segment share the `burler` *round discipline* (see the `internal/burlerengine` package documentation) — A-review → B-fix, no self-grading, commit-per-fix, fix-everything — but they are different reviewers along two axes:
 
-| | `perch` | `Tenter` |
+| | text-review segment | `Tenter` |
 |---|---|---|
 | Mode | **text** — read the artifact | **behavior** — run the module, react, build scenarios |
 | Substrate | in-worktree, fast | a **live sandbox repo**; slow, heavy git/go operations |
@@ -30,13 +30,13 @@ Two distinct layers, split out once the shared-engine design (the `internal/trea
 | Cost | cheap, minutes | token- **and** wall-clock-heavy; a single iteration ran 1–2 hours; a campaign, a weekend |
 | When | between every phase (on the spine) | **on demand, after loom**, only when `Hardener` is invoked |
 
-perch's `command` gate lets a code profile *touch* behavior lightly;
+A text-review segment's `command` gate lets a code profile *touch* behavior lightly;
 `Tenter` is the heavy tier — driving real substrate and hand-rolling crash/rebirth/concurrency scenarios is its whole job.
 
 ## `Tenter`'s round-loop — resolved: `Treadle` drives per-round respawn, no persistent thread
 
-**The engine underneath `Tenter` is designed jointly with `perch`, not Tenter-specific — see the `internal/treadleengine` package documentation.**
-That doc covers the round-runner interface, the judge-maintained handoff (a `perch` improvement too, not just Tenter's),
+**The engine underneath `Tenter` is a general one, not Tenter-specific — see the `internal/treadleengine` package documentation.**
+That doc covers the round-runner interface, the judge-maintained handoff (a general improvement, not just Tenter's),
 and the process for getting there (`Treadle` is Planned;
 `Tenter` itself stays Someday, built on `Treadle` only once `Treadle` exists).
 What follows here is Tenter's own instance of that shared design.
@@ -55,17 +55,17 @@ each round is three fresh, one-shot spawns, not a living session accumulating st
    the *campaign* loop wrapping it is new, the round itself is not.
 3. **`progress-judge`, post-round.** `Treadle` spawns a fresh one-shot agent that reads the handoff plus the round's review/fixer-report artifacts, **independently validates the findings** (crucible's non-negotiable rule — three of the reed campaign's seven rounds self-reported "merge-ready" and were wrong each time), rewrites the handoff in place, and decides whether another round is needed or the campaign has converged.
 
-**Naming, fixed:** the pre/post role above is **`progress-judge`**, reusing the term perch's own module description already uses ("run `burler` rounds → `APPROVED`/`stuck` + `progress-judge` + cap") — not "handler."
+**Naming, fixed:** the pre/post role above is **`progress-judge`**, reusing the term the text-review gate's own description already uses ("run `burler` rounds → `APPROVED`/`stuck` + `progress-judge` + cap") — not "handler."
 "Handler" already names a different thing in loom's existing vocabulary (the A-review→B-fix round worker itself, i.e. the "Reviewer" above) — reusing it for the targeting/validating role would collide with that.
 
 The handoff file is the sole accumulation vehicle;
 there is no live memory anywhere in the loop.
-The one cost this pays versus perch today: a `progress-judge` spawn on **both** sides of the reviewer, not just post-round — perch's `progress-judge` doesn't do this pre-round targeting for Discussion/Plan/Webster today;
+The one cost this pays versus a text-review segment today: a `progress-judge` spawn on **both** sides of the reviewer, not just post-round — a text-review segment's judge doesn't do this pre-round targeting for Discussion/Plan/Webster today;
 those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
 
 ### Pre-round targeting
 
-Superseded by the `internal/treadleengine` package documentation — pre-round targeting is designed there as a general capability `Treadle`'s judge can support, exercised by Tenter's profile and simply unused by perch's. See that doc's "Pre-round targeting" section instead of resolving this here.
+Superseded by the `internal/treadleengine` package documentation — pre-round targeting is designed there as a general capability `Treadle`'s judge can support, exercised by Tenter's profile and simply unused by a text-review profile. See that doc's "Pre-round targeting" section instead of resolving this here.
 
 ### The handoff — two-tier memory, and the one crux
 
@@ -127,7 +127,7 @@ Whether the round agent literally imports the `burler` package or only follows t
 - [`shed.md`](shed.md) — the generic outer phase-FSM `Hardener` configures;
   Planned, same independence.
 - `shuttle` — spawns the round agents and judges `Treadle`/`Tenter` drive.
-- [`internal/stencil`](../../docs/shared-libs/stencil.md) — fills the round-agent / orchestrator prompt templates (shared with `burler`/`perch`).
+- [`internal/stencil`](../../docs/shared-libs/stencil.md) — fills the round-agent / orchestrator prompt templates (shared with `burler` and the review gate).
 - `internal/state` — handoff + round artifacts on disk (the memory that makes respawn work).
 - a **sandbox repo + live suite** — a provisioned environment and a maintained asset, not just code.
 - `reed` transitively, via shuttle;
@@ -148,4 +148,4 @@ Whether the round agent literally imports the `burler` package or only follows t
 - Sandbox provisioning: how much lyx automates vs. a pre-existing sandbox repo.
 
 **This module is post-loom and on-demand;
-nothing here blocks the `burler → perch → loom` spine, nor the Planned `Treadle`/`Shed`/perch-rewrite work, which proceeds independently of whether `Tenter`/`Hardener` are ever scheduled.**
+nothing here blocks the `burler → shed → loom` spine, nor the Planned `Treadle`/`Shed` work, which proceeds independently of whether `Tenter`/`Hardener` are ever scheduled.**

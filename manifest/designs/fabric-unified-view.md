@@ -140,7 +140,7 @@ What actually landed:
 > **Superseded:** `_pattern` no longer exists as a junction, and `_raddle` is anchor-level, never junction-reached — see `manifest/designs/raddle.md`.
 > The `_pattern`/`_raddle` mentions below are historical narrative describing the state as of when this slice landed.
 
-- **Relocated every misplaced never-tracked transient** `_lyx` → `.lyx`: perch's run/mutate locks, webster's pause flag + rendered fork prompts, builder's pause flag — the mirrored-subpath rule, mechanical and reviewable.
+- **Relocated every misplaced never-tracked transient** `_lyx` → `.lyx`: the round loop's run/mutate locks, webster's pause flag + rendered fork prompts, builder's pause flag — the mirrored-subpath rule, mechanical and reviewable.
 - **Fixed `.lyx`'s own geometry — but not as one more `pathspec` entry.**
   The slice's own prediction ("no bespoke fix needed — `.lyx` becomes one more entry in the existing pathspec, not a special case") turned out to be wrong, deliberately: `.lyx` shipped as a **structural, code-injected junction** (`structuralNeverCommittedDirs`, alongside `_lyx`'s `structuralCommittedDirs`), never read from `fabric.yaml`'s `pathspec`.
   Geometry is structural, never config/env-overridable — an operator-editable `pathspec` value is not where obligatory geometry may live, and folding `.lyx` into `pathspec` would have let a config edit silently strand machine-local scratch unwired.

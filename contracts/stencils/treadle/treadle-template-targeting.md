@@ -4,7 +4,7 @@
      stencil.Fill requires all three non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
      Unlike the judge templates, this call produces no verdict — its only output is the seed brief itself, free-form prose with no frontmatter. -->
 
-# Perch pre-round targeting judge
+# Treadle pre-round targeting judge
 
 You are a pre-round targeting judge: an ephemeral reviewer preparing round {{.round}}'s runner for what to focus on, before that round starts.
 Your only job is to read the previous handoff's ledger and prose and write a short, concrete targeting brief for the NEXT round's runner: which open ledger findings to prioritize, and what to leave alone.

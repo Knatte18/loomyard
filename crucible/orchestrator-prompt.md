@@ -105,7 +105,7 @@ The single discipline that makes this work: **you never trust a round's own "mer
 
 **LLM-driving modules first — read this before touching the commands below.**
 This protocol was built and safety-validated on `reed`, where a smoke test only ever costs a real tmux pane.
-A module whose smoke tests drive a real LLM round instead (burler, perch, loom) is not the same shape of risk: one test function can spawn several simultaneous real provider sessions (a fan/cluster round = one per lens),
+A module whose smoke tests drive a real LLM round instead (burler, loom) is not the same shape of risk: one test function can spawn several simultaneous real provider sessions (a fan/cluster round = one per lens),
 and the N-concurrent step below multiplies that again.
 Running this protocol against such a module exactly as written — bare `-run Smoke`, N concurrent copies — caused a real incident: it matched and ran every smoke test in the package at once, spawning enough real `claude` processes to exhaust the host's RAM in minutes.
 Before step 2 for an LLM-driving module: check the module's own smoke test source for how many real LLM subprocesses each test spawns, replace `-run Smoke` with the exact ONE test name this round actually needs, and do NOT run step 3 (N concurrent copies) against it without first computing the resulting real-process count and getting the operator to explicitly sign off on that number — it is not a default step for these modules, only for tmux-only ones like reed.
@@ -118,7 +118,7 @@ go vet ./internal/<module>engine/... ./internal/<module>cli/...
 go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lyx/...   # hermetic
 go test -tags smoke ./internal/<module>cli/... -run Smoke -v -count=1                      # live serial — LLM-driving module: -run <ExactTestName>, never bare Smoke
 # THE decisive amplifier — N× CONCURRENT full smoke suites (compile once, run N copies):
-# TMUX-ONLY MODULES LIKE REED ONLY — see the LLM-driving-modules note above before ever running this against burler/perch/loom.
+# TMUX-ONLY MODULES LIKE REED ONLY — see the LLM-driving-modules note above before ever running this against burler/loom.
 go test -c -tags smoke -o "$SCRATCH/smoke.test.exe" ./internal/<module>cli/...
 for i in 1 2 3; do ( "$SCRATCH/smoke.test.exe" -test.run Smoke -test.count=1 -test.v \
     > "$SCRATCH/s_$i.txt" 2>&1; echo rc=$? ) & done; wait

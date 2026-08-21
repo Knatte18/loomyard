@@ -74,7 +74,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
   otherwise it is a *review obligation*.
   The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
 - **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
-- **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`.
+- **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/websterengine`.
 - **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
   They are bound instead by the adapter-direction rule above, which is itself a review obligation.
 - **Enforced by** the seven tests named above, for the machine-enforced half;
@@ -315,7 +315,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   Read-only verbs (current SHA, `git status --porcelain`) are exempt — only *mutating* warp git must dispatch through fabric;
   see `fabric-unified-view.md`'s "Scope boundary" section for the current warp-mutation call sites.
 - **Orchestration, not agent.**
-  The weft commit is Go calling the engine in-process at a round/phase boundary the loop owner (loom, or perch's CLI standalone) controls — never an LLM agent, not raw git, not by shelling `lyx fabric`.
+  The weft commit is Go calling the engine in-process at a round/phase boundary the loop owner (loom) controls — never an LLM agent, not raw git, not by shelling `lyx fabric`.
   Agents ride the file contract: they **write** overlay files into `_lyx` via the junction — raddle content lives at `_lyx/raddle/` and therefore arrives through this same junction;
   Go **reads and commits** them.
   An agent does commit its own code to the **warp** repo (commit-per-fix) — the weft, never.
@@ -536,7 +536,7 @@ An instruction file — a producer's own prompt or skill — must never duplicat
 
 - **The membership rule**, stated as a predicate a future caller can apply rather than a bare list: a module belongs on the degrading side when it has, or is slated to have, a **standalone entry point** — a way to be invoked outside a lyx hub — because a config-less invocation is then a supported mode.
   A module that only ever runs inside a hub stays strict, because there an absent config means the hub is broken.
-- **The two pinned sets** as they stand today: degrading is `{shuttleengine, reedengine, perchengine, websterengine, batcher}`;
+- **The two pinned sets** as they stand today: degrading is `{shuttleengine, reedengine, websterengine, batcher}`;
   strict is `{fabricengine, boardengine, loomengine}`.
 - **A third class, explicitly outside this invariant's guard subject: own-loader modules.**
   These never call either entry point — they resolve the path with `configengine.ConfigFile` and read the file themselves with their own absent-file fallback.

@@ -3,9 +3,9 @@
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires all three non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
 
-# Perch asking-triage
+# Treadle asking-triage
 
-You are an asking-triage judge: a review agent working round {{.round}} of a perch block stopped mid-round instead of finishing, asking a question rather than writing its review.
+You are an asking-triage judge: a review agent working round {{.round}} of a treadle block stopped mid-round instead of finishing, asking a question rather than writing its review.
 Your only job is to classify whether retrying the round can plausibly proceed, or whether the round's own setup is what stopped the agent.
 
 ## The agent's question

@@ -190,8 +190,8 @@ and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 
-- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
+- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`;
   this suite holds only webster's fork-loop and model-assertion scenarios -- add `W` scenarios here, not in any other suite.
 - This suite is a FLOOR, not a ceiling: the run-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation, crash reclaim) are webster-local Go code exercised by the hermetic and `-tags integration` test tiers plus `internal/webstercli/smoke_test.go`'s live smoke tests -- duplicating those here would re-test covered Go paths through a slower medium.
   What is genuinely live-only is the fork loop itself (W1) and the tamper-armed `/model` pane-injection timing (W2).
-  Neither scenario proves implementer quality or plan-format content richness -- those are a normal code review's and `perch`'s job respectively.
+  Neither scenario proves implementer quality or plan-format content richness -- those are a normal code review's job.

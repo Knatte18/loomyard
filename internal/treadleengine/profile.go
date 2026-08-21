@@ -55,10 +55,9 @@ type Profile struct {
 
 // validate checks only the structural invariants treadle itself owns: a
 // non-empty ProfileHash, a non-empty strictly increasing RoundCaps ladder, a
-// legal Gate.Mode with the same command-emptiness cross-checks
-// perchengine.Profile.validate applies today, a non-empty GateDir when
+// legal Gate.Mode with its command-emptiness cross-checks, a non-empty GateDir when
 // Gate.Mode runs a command, and non-negative timeouts. Every message is
-// prefixed with name (the calling engine's own name, e.g. "perch") so a
+// prefixed with name (the calling engine's own name, e.g. "tenter") so a
 // caller's diagnostics read exactly like today's engine-specific errors —
 // the name-parameterized-diagnostics shared decision.
 func (p *Profile) validate(name string) error {

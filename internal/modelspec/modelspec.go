@@ -4,7 +4,7 @@
 
 // Package modelspec parses and resolves the model-spec notation every
 // agent-spawning config in the stack uses to say which LLM runs a role
-// (webster's roles, perch/burler reviewers and judges, loom's producers). The
+// (webster's roles, burler reviewers and judges, loom's producers). The
 // pinned contract is contracts/specs/llm-model-spec.md; this package is its as-built
 // implementation.
 //
@@ -32,7 +32,7 @@
 // Leaf import discipline: this package's production code imports ONLY the
 // standard library (including embed), internal/configengine, and gopkg.in/yaml.v3
 // — never configreg, envsource, yamlengine, lyxcwd, or any feature package.
-// This lets every future consumer (webster, perch/burler/loom configs) import
+// This lets every future consumer (webster, burler/loom configs) import
 // modelspec without creating an import cycle; configreg importing modelspec (for
 // ConfigTemplate) is the one allowed direction. Enforced by
 // leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly) and recorded as the

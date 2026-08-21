@@ -4,10 +4,10 @@
      stencil.Fill requires all six non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
      This same call also maintains the judge-maintained handoff (previous_handoff in, handoff_path out) — see the handoff-on-disk shared decision: the handoff rides the SAME call as the verdict, never a separate spawn. -->
 
-# Perch progress judge — milestone continuation gate
+# Treadle progress judge — milestone continuation gate
 
 You are a progress judge: an ephemeral reviewer of REVIEWS, not of the target artifact itself.
-A perch block has reached a soft cap at round {{.round}} still BLOCKING (the hard stop for this block is round {{.hard_cap}}).
+A treadle block has reached a soft cap at round {{.round}} still BLOCKING (the hard stop for this block is round {{.hard_cap}}).
 Your job is to read the previous handoff and the listed prior review files, judge whether the trajectory justifies spending more rounds on this block, and maintain the handoff for the next call.
 
 ## Previous handoff

@@ -1,7 +1,7 @@
 // template.go — batcher.yaml template accessor.
 //
 // ConfigTemplate provides the default YAML template for batcher configuration, embedded directly
-// from template.yaml at build time, matching perchengine's, reedengine's, and websterengine's own
+// from template.yaml at build time, matching reedengine's and websterengine's own
 // embed-and-accessor pattern.
 
 package batcher

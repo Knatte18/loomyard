@@ -270,7 +270,7 @@ func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
 func TestRunTriage_ReadsFromDiskAtCallTime(t *testing.T) {
 	dir := newTestStencilsDir(t)
 	sentinel := "SENTINEL-ON-DISK-EDIT-NOT-THE-SHIPPED-DEFAULT"
-	modified := strings.Replace(string(stencils.TreadleTemplateTriage), "# Perch asking-triage", "# Perch asking-triage — "+sentinel, 1)
+	modified := strings.Replace(string(stencils.TreadleTemplateTriage), "# Treadle asking-triage", "# Treadle asking-triage — "+sentinel, 1)
 	triagePath := filepath.Join(dir, "treadle", "treadle-template-triage.md")
 	if err := os.WriteFile(triagePath, []byte(modified), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", triagePath, err)
@@ -286,7 +286,7 @@ rationale: "fine"
 		result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
 
-	runTriage(dir, sh, "perch", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "haiku", "low")
+	runTriage(dir, sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "haiku", "low")
 
 	if !sh.called {
 		t.Fatal("runTriage() never called the shuttle")

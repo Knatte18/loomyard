@@ -1,23 +1,21 @@
-// Package treadleengine is the generalized round-loop engine perch's
-// existing, shipped orchestration loop was extracted out of: it spawns a
+// Package treadleengine is the generalized round-loop engine: it spawns a
 // round via a caller-supplied RoundRunner each iteration, gates convergence
 // (llm-verdict / command / both), runs an ephemeral progress judge against a
 // milestone-capped round ladder, and persists per-round state for
-// crash/pause resume — everything internal/perchengine's own round loop did,
-// generalized behind a seam so a second consumer (the future Tenter module,
-// see manifest/designs/hardener.md) can supply a different round-runner
-// without duplicating any of this machinery.
+// crash/pause resume — all of it behind a seam, so a consumer supplies a
+// round-runner without duplicating any of this machinery.
 //
-// internal/perchengine is treadle's first, reference consumer: a thin
-// configuration layer that resolves perch.yaml/profile data, adapts
-// burlerengine into the RoundRunner seam below, and delegates to this
-// package's Engine.Run — perch's own exported Go API and behavior are
-// unchanged from the outside. See internal/perchengine's package doc for the
-// full shipped contract every invariant below must continue to satisfy.
+// The package has no consumer today. It was extracted out of a shipped
+// review-gate loop that has since been retired, and is kept for the future
+// Tenter module (see manifest/designs/hardener.md), whose behavior-review
+// rounds need exactly this machinery with a different round-runner inside
+// it. Nothing in the tree calls Engine.Run outside this package's own tests
+// — treat every contract below as the shipped behavior a future consumer
+// inherits, not as something a live caller depends on today.
 //
 // # The RoundRunner seam — attempt-level, not round-level
 //
-// What used to be perch hardwiring "spawn a fresh burlerengine round" is now
+// What used to be a hardwired "spawn a fresh burlerengine round" is now
 // the RoundRunner interface (runner.go): RunAttempt(AttemptInput)
 // (AttemptResult, error) runs ONE attempt of one round and reports a
 // shuttle-style outcome, a generic Verdict, blocking-findings count, artifact
@@ -30,8 +28,7 @@
 // "3b" for a retry), artifact path derivation, and the prior-round hydration
 // list assembly (collectPriorHydration) fed into every attempt's input. A
 // RoundRunner implementation therefore only ever adapts "spawn one attempt,
-// report its result" onto its own domain — see internal/perchengine/adapter.go
-// for the burlerengine adapter.
+// report its result" onto its own domain.
 //
 // # Judge-maintained handoff — a bounded judge read-set
 //
@@ -95,10 +92,11 @@
 // prose seed brief to that round's AttemptInput.SeedPath, resolved once at
 // attempt 1's token and reused unchanged by a same-round retry. Unlike
 // runCircling/runMilestone it produces no verdict — only unconstrained
-// prose a RoundRunner MAY read or ignore entirely. Perch's own profile
-// never sets it (its rounds keep re-using a fixed rubric); the capability
-// exists for a future consumer (Tenter, see manifest/designs/hardener.md)
-// whose rounds benefit from dynamically retargeted focus. Like every other
+// prose a RoundRunner MAY read or ignore entirely. A text-review profile
+// has no use for it (its rounds keep re-using a fixed rubric); the
+// capability exists for a future consumer (Tenter, see
+// manifest/designs/hardener.md) whose rounds benefit from dynamically
+// retargeted focus. Like every other
 // ephemeral call in this package, it is fail-safe end to end: a stencil-fill
 // failure, a shuttle Run error, a non-done outcome, or an empty/unreadable
 // seed file all degrade to "no seed" with a name-prefixed logger.Warn,
@@ -107,12 +105,11 @@
 //
 // # Name-parameterized diagnostics
 //
-// Engine is constructed with a name (perch passes "perch") that every error
-// and Warn string reached through an Engine method is prefixed with, so a
-// caller's diagnostics read exactly like perch's own literal "perch: "
-// -prefixed messages today, and a future caller (e.g. "tenter") gets its own
-// consistently-prefixed diagnostics for free rather than a generic
-// "treadle: " label that would erase which caller's block failed. That
+// Engine is constructed with a name that every error and Warn string
+// reached through an Engine method is prefixed with, so each caller (e.g.
+// "tenter") gets its own consistently-prefixed diagnostics for free rather
+// than a generic "treadle: " label that would erase which caller's block
+// failed. That
 // covers every Warn this package emits without exception — including the
 // fail-safe handoff-fallback Warns in latestValidHandoff, which reach an
 // operator's stderr at logger's default threshold during an ordinary run and
@@ -121,8 +118,7 @@
 // Two carve-outs, both deliberate. First, the name parameterization pins the
 // PREFIX only: error BODIES are runner-agnostic by design ("round N attempt
 // run", "kept run dir"), since this package cannot name a specific runner's
-// domain (burler, shuttle) without violating the Runner-Seam Invariant — see
-// internal/perchengine's package doc for the perch-visible consequence.
+// domain (burler, shuttle) without violating the Runner-Seam Invariant.
 // Second, the package's EXPORTED fail-loud parsers — ParseJudgeVerdict,
 // ParseTriageVerdict, ParseHandoff, and the splitFrontmatter they share —
 // are package-level pure functions with no Engine in scope, so their errors
@@ -137,7 +133,7 @@
 // package (see CONSTRAINTS.md's Treadle Runner-Seam Invariant, enforced by
 // seam_enforcement_test.go). It defines its own vocabulary — Verdict,
 // AttemptInput/AttemptResult — rather than reusing burlerengine.Verdict/
-// Finding; a round-runner adapter (perchengine's) maps its own domain's
+// Finding; a round-runner adapter maps its own domain's
 // result type onto treadle's. If a type is ever genuinely needed by both
 // treadle and a runner, it gets extracted out of burler into shared ground —
 // never imported downward.
@@ -151,13 +147,12 @@
 // never constructs a _lyx path itself: Engine.Run operates on a
 // caller-supplied absolute runDir, and a block's Profile carries GateDir —
 // the absolute cwd the gate command runs in — supplied by the caller
-// (perchengine resolves it from its own *lyxcwd.Location) rather than
-// resolved by this package. Likewise treadleengine never touches fabric
-// git; committing a block's run-dir artifacts to fabric remains the loop
-// OWNER's job (perchcli today), exactly as CONSTRAINTS.md's Fabric Git
-// Invariant already requires one layer up.
+// (which resolves it from its own geometry) rather than resolved by this
+// package. Likewise treadleengine never touches fabric git; committing a
+// block's run-dir artifacts to fabric remains the loop OWNER's job, exactly
+// as CONSTRAINTS.md's Fabric Git Invariant already requires one layer up.
 //
-// # Everything else carried over unchanged from perch
+// # Everything else carried over unchanged from the original loop
 //
 // The milestone ladder (RoundCaps: every entry but the last is a
 // judge-gated milestone rung, the last is the unconditional hard cap), the
@@ -168,7 +163,6 @@
 // semantics, the pause seam (checked only at round boundaries, with the
 // same pause-flag clearing rules), and run-dir mutual exclusion (run.lock,
 // the ErrBlockBusy sentinel) are all generalized machinery moved here
-// verbatim from perch's shipped round loop — see internal/perchengine/doc.go
-// for the full narrative description of each; this package's job is to
+// verbatim from the original shipped round loop; this package's job is to
 // carry that behavior forward under the RoundRunner seam, not to change it.
 package treadleengine
