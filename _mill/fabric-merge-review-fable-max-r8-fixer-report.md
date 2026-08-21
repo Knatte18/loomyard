@@ -22,7 +22,7 @@ Every finding from the round 8 review is fixed, committed individually, and veri
 - `internal/fabricengine/mergestage.go`: partition error reworded to `%s is not a conflicted path in this merge; pass paths exactly as the conflicts list reported them` — side-free (no "two subjects were checked" disclosure) and naming the exact-spelling contract, which also fixes discoverability for `./`-prefixed/absolute spellings of genuinely conflicted paths. In-body comment explains both properties.
 - Verified: engine + CLI not-conflicted tests green (they assert the path is named, which still holds); new message observed live on `merge-stage ./app.txt` mid-conflict.
 
-### r8-F4 (NIT) — merge-stage staged echo deduplicates — commit `73911d55` (amended)
+### r8-F4 (NIT) — merge-stage staged echo deduplicates — commit `01750325` (an amend; the pre-amend hash `73911d55` no longer exists on the branch)
 - `internal/fabriccli/merge_verbs.go`: success envelope echoes `uniquePreservingOrder(args)` instead of `args` verbatim; helper added with godoc.
 - `internal/fabriccli/merge_cli_integration_test.go`: new `TestRunCLI_MergeStageEchoesEachPathOnce` — duplicate path stages fine, `staged` carries exactly one entry. Sabotage-proven: reverting the echo to `args` fails it.
 - Process disclosure for the orchestrator: the first commit of this fix accidentally contained only the test — the sabotage-proof's `git checkout --` restored the not-yet-staged production file to HEAD, and a piped `tail` masked the resulting red test. Caught immediately (the very next targeted run), production change re-applied, commit AMENDED in place (local, unpushed) so the finding maps to one complete commit. Lesson recorded: never gate a commit on a piped test invocation.
