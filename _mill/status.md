@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-equivalence
+phase: approved-docs
 slug: shed-recipe-loader-builder
 branch: shed-recipe-loader-builder
 plan: _mill/plan
@@ -27,6 +27,7 @@ implementing  '2026-08-21T12:29:24Z'
 approved-shedbuild-loader  '2026-08-21T12:34:23Z'
 approved-shedbuild-builder  '2026-08-21T12:39:10Z'
 approved-loom-equivalence  '2026-08-21T12:42:01Z'
+approved-docs  '2026-08-21T12:46:52Z'
 ```
 
 ## Batches
@@ -52,7 +53,8 @@ batches:
     commit_sha: d8f9a6d9a0ff58ca697fb42526b9f1564abf1a10
     verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: docs
-    state: running
+    state: approved
     implementer_session: 5d3dd1a1-aa2c-43a0-92c2-f1cd8b3e958e
     start_sha: 598926cba5336dade52aff7abf71aaff79785a84
+    commit_sha: 48ba5cdf4c758eb889d792c79591e25965f59856
 ```
