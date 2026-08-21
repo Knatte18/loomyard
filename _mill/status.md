@@ -49,7 +49,9 @@ batches:
     commit_sha: 31e1e4d191bbbea3e737a64f3e46aa45bac682c6
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: move-the-graph-tests-into-loomrecipe
-    state: pending
+    state: running
+    implementer_session: 61bf32f9-9d9e-4eae-86be-5d035cf25371
+    start_sha: 234a679ccd8339259953aa35709844664ad7156a
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: loomcli-rewiring
     state: pending
