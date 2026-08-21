@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'auto: discussion review gaps unresolved after 6 rounds'
+phase: discussed
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: null
@@ -17,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-21T07:29:20Z'
 blocked  '2026-08-21T08:30:28Z'
+discussed  '2026-08-21T08:33:11Z'
 ```
