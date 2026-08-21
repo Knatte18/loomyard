@@ -1,8 +1,8 @@
 // state_test.go table-drives loadOrInitState's fresh/resume/hash-mismatch/ terminal classification,
 // exercises moveStaleArtifacts' renaming (including the double-.stale collision case), and
 // round-trips a runState through saveState/loadOrInitState to check the persisted shape survives.
-// ProfileHash/DeriveRunID/ValidRunID's own tests live in internal/perchengine/identity_test.go —
-// those functions stay perch-side.
+// ProfileHash/DeriveRunID/ValidRunID are a caller's own functions, not this package's, so their
+// tests belong with that caller.
 
 package treadleengine
 
@@ -19,7 +19,7 @@ func TestLoadOrInitState(t *testing.T) {
 	t.Run("fresh dir writes an initial state and starts at round 1", func(t *testing.T) {
 		runDir := t.TempDir()
 
-		got, info, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("gate", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -57,7 +57,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		got, info, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("gate", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -79,7 +79,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState("perch", runDir, runDir, "new-hash", []int{5, 8, 10})
+		_, _, err := loadOrInitState("gate", runDir, runDir, "new-hash", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -96,7 +96,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
+		_, _, err := loadOrInitState("gate", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -113,7 +113,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState("perch", runDir, runDir, "new-hash", []int{5, 8, 10})
+		_, _, err := loadOrInitState("gate", runDir, runDir, "new-hash", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -156,7 +156,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("WriteFile() = %v; want nil", err)
 		}
 
-		got, info, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("gate", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -244,7 +244,7 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 }
 
 // TestTerminalOutcome covers the three states a caller's own pause verb (e.g.
-// perchcli's) must distinguish before writing a pause flag: no state file at all (a run dir that
+// a pause verb) must distinguish before writing a pause flag: no state file at all (a run dir that
 // never started a block), an in-flight block (empty Outcome), and a finished block, whose recorded
 // Outcome is reported with ok true.
 func TestTerminalOutcome(t *testing.T) {
@@ -297,7 +297,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 		// Judge/Gate/Triage are left absent, as a round without a judge/gate/
 		// triage step would leave them.
 
-		if err := moveStaleArtifacts("perch", runDir, 3, 1); err != nil {
+		if err := moveStaleArtifacts("gate", runDir, 3, 1); err != nil {
 			t.Fatalf("moveStaleArtifacts() = %v; want nil", err)
 		}
 
@@ -314,7 +314,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 
 	t.Run("no-op when no artifacts exist", func(t *testing.T) {
 		runDir := t.TempDir()
-		if err := moveStaleArtifacts("perch", runDir, 5, 1); err != nil {
+		if err := moveStaleArtifacts("gate", runDir, 5, 1); err != nil {
 			t.Fatalf("moveStaleArtifacts() = %v; want nil", err)
 		}
 	})
@@ -323,7 +323,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 		runDir := t.TempDir()
 		paths := artifactPaths(runDir, 3, 1)
 		writeFile(t, paths.Review, "first stale review")
-		if err := moveStaleIfExists("perch", paths.Review); err != nil {
+		if err := moveStaleIfExists("gate", paths.Review); err != nil {
 			t.Fatalf("moveStaleIfExists() (first) = %v; want nil", err)
 		}
 		if !fileExists(paths.Review + staleSuffix) {
@@ -333,7 +333,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 		// A fresh round re-run wrote the same round-3-review.md path again,
 		// and it is now stale too, colliding with the already-.stale file.
 		writeFile(t, paths.Review, "second stale review")
-		if err := moveStaleIfExists("perch", paths.Review); err != nil {
+		if err := moveStaleIfExists("gate", paths.Review); err != nil {
 			t.Fatalf("moveStaleIfExists() (second) = %v; want nil", err)
 		}
 
@@ -359,12 +359,12 @@ func TestPauseFlag(t *testing.T) {
 	}
 
 	// clearPauseFlag must be a no-op when the flag is absent.
-	if err := clearPauseFlag("perch", runDir); err != nil {
+	if err := clearPauseFlag("gate", runDir); err != nil {
 		t.Fatalf("clearPauseFlag() (absent) = %v; want nil", err)
 	}
 
 	writeFile(t, flagPath, "")
-	if err := clearPauseFlag("perch", runDir); err != nil {
+	if err := clearPauseFlag("gate", runDir); err != nil {
 		t.Fatalf("clearPauseFlag() (present) = %v; want nil", err)
 	}
 	if fileExists(flagPath) {
@@ -400,8 +400,8 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 // intSlicesEqual reports whether a and b contain the same ints in the same
-// order. Duplicated from perchengine's profile_test.go (which stays
-// perch-side) per the mechanical-package-split helper-fallout clause: a
+// order. A few-line local copy rather than a shared helper, per the
+// mechanical-package-split helper-fallout clause: a
 // handful of lines, duplicated verbatim rather than shared across packages.
 func intSlicesEqual(a, b []int) bool {
 	if len(a) != len(b) {

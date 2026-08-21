@@ -37,7 +37,7 @@ const (
 )
 
 // Finding is one recorded review-file finding: a stable ID (kept unique and fail-loud across rounds
-// so cross-round hydration and audit can cite it unambiguously — perch judges progress across
+// so cross-round hydration and audit can cite it unambiguously — the segment's Bouncer judges progress across
 // rounds holistically via a verdict judge, not by tracking finding-key identity), a Severity from
 // the fixed vocabulary, a Location pointing at the offending content, a prose Summary, and an
 // optional Origin.

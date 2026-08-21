@@ -3,7 +3,7 @@
 This directory holds **`crucible`** — the **manual, human-in-the-loop review method** we used to harden `reed` before merging it to `main`, plus the two prompts that drove it.
 Named separately from the future, automated [`hardener`](../../manifest/designs/hardener.md) module this method is the hand-run prototype of (see below) — `crucible` is what you actually run today;
 `hardener` is what it becomes once Go takes over the orchestrator role.
-The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `perch` (see the `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package documentation), [`hardener`](../../manifest/designs/hardener.md), [`loom`](../../manifest/designs/loom.md)) can reuse it instead of re-inventing it each time.
+The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `burler` (see the `internal/burlerengine` package documentation), [`hardener`](../../manifest/designs/hardener.md), [`loom`](../../manifest/designs/loom.md)) can reuse it instead of re-inventing it each time.
 
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
@@ -11,9 +11,9 @@ The method is **module-agnostic** — it is written down here so the modules bui
   The orchestrator fills it per module into `_mill/<module>-review-prompt.md` at run time and **commits it** (see "Commit deliverables continuously, not gitignored" below) — a module's state is stale the moment its review lands, so the file is rewritten and re-committed fresh each round, but every version that ever seeded a round stays in git history rather than being invisible.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
-> **This is the hand-executed prototype of the `perch` (see the `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by `perch` with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/perchengine` and `internal/burlerengine` package documentation.
+> **This is the hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by a review gate with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/shedadapters` and `internal/burlerengine` package documentation.
 >
-> **Text vs. behavior:** `perch`/`burler` automate the **text-based** form (read the artifact). [`hardener`](../../manifest/designs/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate module in a sandbox — which is the harder campaign this directory actually documents for `reed`.
+> **Text vs. behavior:** the review gate and `burler` automate the **text-based** form (read the artifact). [`hardener`](../../manifest/designs/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate module in a sandbox — which is the harder campaign this directory actually documents for `reed`.
 
 ## When to use it
 
@@ -103,8 +103,8 @@ it is not repeated here.
 
 ### Why independent verification is non-negotiable
 
-A round agent that just fixed something is motivated to declare it fixed — the same self-grading hazard the `perch` (see the `internal/perchengine` package documentation) module and `burler` (see the `internal/burlerengine` package documentation) design against (A-before-B in burler;
-fresh burler per round in perch).
+A round agent that just fixed something is motivated to declare it fixed — the same self-grading hazard the review gate and `burler` (see the `internal/burlerengine` package documentation) design against (A-before-B in burler;
+a fresh burler per round under the gate).
 The orchestrator re-runs the gates from a cold state, on the committed tree, and believes only what it observes.
 "No self-grading" is the load-bearing discipline of the whole method.
 
@@ -112,7 +112,7 @@ The orchestrator re-runs the gates from a cold state, on the committed tree, and
 
 **Before running any of this, know what class of module you're verifying.**
 This protocol was designed and validated on `reed`, where a smoke test only ever costs a real tmux pane — cheap to run broadly, cheap to run N times concurrently.
-A module whose smoke tests drive a real LLM round (burler, perch, loom) is a different animal entirely: a single test function can spawn several simultaneous real provider sessions (a cluster/fan round spawns one per lens), and step 3's "N concurrent copies of the WHOLE suite" multiplies that further.
+A module whose smoke tests drive a real LLM round (burler, loom) is a different animal entirely: a single test function can spawn several simultaneous real provider sessions (a cluster/fan round spawns one per lens), and step 3's "N concurrent copies of the WHOLE suite" multiplies that further.
 Applying this protocol to an LLM-driving module exactly as written below — bare `-run Smoke`, N concurrent copies — is what caused a real incident: it matched and ran every smoke test in the package (including cluster-fan tests nobody intended to run that round), spawning enough real `claude` processes simultaneously to exhaust the host's RAM in minutes.
 Before step 2, work out (from the module's own smoke test source, not from assumption) how many real LLM subprocesses a bare `-run Smoke` would spawn;
 if it's more than one process for an LLM-driving module, replace `-run Smoke` with the exact test name you actually mean to run, and skip or radically scale down step 3's concurrency for that module (see the per-module review prompt's own "Live-substrate cost declaration" section, which every instantiation must fill in).

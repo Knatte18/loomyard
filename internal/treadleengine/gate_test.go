@@ -82,7 +82,7 @@ func TestExecGateCommand_Fail(t *testing.T) {
 // TestExecGateCommand_NotFound proves a could-not-run command reports error.
 func TestExecGateCommand_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	_, exitZero, err := execGateCommand([]string{"perch-gate-command-does-not-exist-xyz"}, dir, 30*time.Second)
+	_, exitZero, err := execGateCommand([]string{"treadle-gate-command-does-not-exist-xyz"}, dir, 30*time.Second)
 	if err == nil {
 		t.Fatalf("execGateCommand() error = nil; want a could-not-run error")
 	}
@@ -125,7 +125,7 @@ func TestWriteGateOutput(t *testing.T) {
 			argv := []string{"make", "test"}
 			output := []byte("some command output\n")
 
-			if err := writeGateOutput("perch", path, argv, output, tt.exitZero); err != nil {
+			if err := writeGateOutput("gate", path, argv, output, tt.exitZero); err != nil {
 				t.Fatalf("writeGateOutput() error = %v; want nil", err)
 			}
 

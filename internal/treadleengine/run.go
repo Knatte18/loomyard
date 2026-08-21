@@ -22,12 +22,11 @@ import (
 // It is a sentinel (matched via errors.Is) because the caller must treat this refusal differently
 // from every other hard error: the losing invocation touched NOTHING on disk — the winner is
 // mid-round and owns the block's state — so a loop owner must not run its block-exit bookkeeping
-// (e.g.
-// perchcli's fabric sync) for it.
+// (e.g. its own fabric sync) for it.
 // The sentinel's own message is deliberately un-prefixed — the calling engine's name is applied at
 // wrap time below, by errf, so the composed text still reads "<name>: block is already running:
 // ..."
-// exactly like perch's own literal message did before the extraction (see the
+// exactly like the original loop's own literal message did before the extraction (see the
 // name-parameterized-diagnostics shared decision).
 var ErrBlockBusy = errors.New("block is already running")
 

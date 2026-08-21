@@ -100,7 +100,7 @@ Machine is the Intel 155U on native Windows unless noted — the only environmen
 
 | Date | Tier 1 | Tier 2 | What changed |
 |---|---|---|---|
-| 2026-08-13 (Linux) | 3.60 s | 17.18 s | Unblocked `t.Parallel()` on hub-fixture tests that used to `t.Chdir`/`os.Chdir` — reedcli, loomengine, and perchcli's pause suite gained it; eight files total moved onto `RunCLIIn`'s explicit-cwd seam. Payoff is architectural, not wall-clock: on this machine `go test` already runs packages concurrently, so intra-package parallelism recovered close to nothing (measured against the same suite pre-migration: 3.75 s / 18.22 s, both within run-to-run noise) |
+| 2026-08-13 (Linux) | 3.60 s | 17.18 s | Unblocked `t.Parallel()` on hub-fixture tests that used to `t.Chdir`/`os.Chdir` — reedcli, loomengine, and a since-retired module's pause suite gained it; eight files total moved onto `RunCLIIn`'s explicit-cwd seam. Payoff is architectural, not wall-clock: on this machine `go test` already runs packages concurrently, so intra-package parallelism recovered close to nothing (measured against the same suite pre-migration: 3.75 s / 18.22 s, both within run-to-run noise) |
 | 2026-08-01 (Linux) | 3.86 s | 6.48 s | `ghAuthTokenTimeout` var-seam and `--wait 1ns` removed two real-time waits |
 | 2026-08-01 (Linux) | 6.23 s | 33.40 s | New `githubclient`/`webstercli` real-time-wait tests became the floor by default |
 | 2026-07-13 | 9.95 s | 131.7 s | Mousetrap disabled; the lingering-child test re-tiered to Tier 2; boardtest writer-iterations cut 50 → 10 |
@@ -114,5 +114,5 @@ Machine is the Intel 155U on native Windows unless noted — the only environmen
 
 The 2026-08-13 row's near-zero payoff is a property of this machine, not of `t.Parallel()` itself: this same table's [All environments](#all-environments) section already records Tier 2 at 4.97 s on bare-metal Linux against 131.7 s on the Cortex-XDR Windows laptop, and it is the slower, I/O-bound environments — where `go test`'s cross-package concurrency is already saturated by AV/NTFS overhead — that stand to gain the most from a package's own tests running in parallel rather than serially within it.
 
-The 2026-07-13 mousetrap block corrected two earlier causal claims: `cmd/lyx`'s guard tests cost ~0.25 s combined in isolation (not the AST-walk cost earlier blocks attributed to them), and 44 of `internal/perchengine`'s 45 tests sum to under 1 s (its earlier 12–19 s was contention attribution plus the one lingering-child test).
+The 2026-07-13 mousetrap block corrected two earlier causal claims: `cmd/lyx`'s guard tests cost ~0.25 s combined in isolation (not the AST-walk cost earlier blocks attributed to them), and 44 of a since-retired module's 45 tests summed to under 1 s (its earlier 12–19 s was contention attribution plus the one lingering-child test).
 Both were parallel-contention artifacts, which is the standing hazard when reading per-package numbers.
