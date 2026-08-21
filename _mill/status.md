@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-coverage-guard-move-and-fixture-retirement
+phase: approved-delete-loomshed-new-and-deps
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-recipe-file-and-loomrecipe-package  '2026-08-21T16:05:52Z'
 approved-move-the-graph-tests-into-loomrecipe  '2026-08-21T16:16:35Z'
 approved-loomcli-rewiring  '2026-08-21T16:21:32Z'
 approved-coverage-guard-move-and-fixture-retirement  '2026-08-21T16:25:47Z'
+approved-delete-loomshed-new-and-deps  '2026-08-21T16:29:39Z'
 ```
 
 ## Batches
@@ -70,9 +71,10 @@ batches:
     commit_sha: ddaf4dec6886050be2bd0ec2011f9ac594c2cdc3
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: delete-loomshed-new-and-deps
-    state: running
+    state: approved
     implementer_session: f37fae75-69e0-47ef-8f06-3aec23a71355
     start_sha: ecc9306b9a6551060a642f7a8ed76e8836507b89
+    commit_sha: 011a33a9d6a78ed32230e4201917f2e1f9695373
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: docs-and-comment-sweep
     state: pending
