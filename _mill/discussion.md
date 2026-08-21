@@ -184,12 +184,15 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
   That failure is silent, and it is exactly the class of defect a declarative format introduces that a Go literal could not.
   The `version` gate costs one field and makes a future format change a loud error rather than a misparse.
   `Recipe` **does** surface the decoded value as `Version int`, rather than validating it and discarding it: a caller inspecting a parsed recipe should not have to re-read the file to learn which format it declared, and a test asserting the round-trip needs the field.
+  A plain `int` rather than a `*int` is deliberate, and it has one visible consequence: an absent `version` key and a literal `version: 0` both decode to `0` and are therefore indistinguishable, so they collapse into a single `unsupported recipe version 0` error.
+  Neither is ever a valid recipe, so distinguishing them would buy a nicer message for two equally-wrong inputs at the cost of a pointer field every reader has to nil-check.
 - **Rejected:** strict keys with no `version` (a later format change has no way to fail loud on an old file);
   lenient (ignore unknown keys) — the silent-typo failure above.
 
 ### Validation split: shape here, routing elsewhere
 
-- **Decision:** `Parse` validates document and row *shape* — `version` present and supported, `entry` non-empty, `terminals` non-empty, `producers` non-empty, and per row: `name` non-empty, `name` unique across the document, `engine` non-empty, `max_bounces` not negative, `config` a mapping if present.
+- **Decision:** `Parse` validates document and row *shape* — `version` supported, `entry` non-empty, `terminals` non-empty, `producers` non-empty, and per row: `name` non-empty, `name` unique across the document, `engine` non-empty, `max_bounces` not negative.
+  "`config` is a mapping" is deliberately **not** on that list: it is enforced by the decoder, not by `Parse`'s own code, since `Row.Config` is typed `map[string]any` and a scalar or list in that position fails inside `Decode` before any `shedbuild` check runs.
   `Build` additionally resolves each `engine` through `shedrecipe.Lookup` and surfaces each `Constructor`'s own error.
   Neither validates that `on_done`/`on_stuck` name existing rows, that segments agree, that the graph is acyclic, or that every row is reachable.
 - **Rationale:** `shedengine.validate()` already rejects dangling `OnDone`/`OnStuck`, self-referencing `OnDone`, duplicate names, negative `MaxBounces`, and cross-segment `OnStuck`, with its own distinct per-rule messages, before `Run` touches a lock or a producer.
@@ -262,7 +265,12 @@ No row sets `Segment` or `MaxBounces` today.
 
 **`internal/shedrecipe/coverage_guard_test.go`** — carries `loomRowEngines`, a hand-written map from each of loom's thirteen row *names* to the engine name backing it (`"Discussion-Write": "Stub"`, `"Loom-Preflight": "LoomPreflight"`, and so on).
 That map is the exact row-name-to-engine correspondence the equivalence-test fixture must reproduce, and reading it is the fastest way to author that fixture correctly.
-Its fake-building helpers (`coverageGuardFakePreflight`, `coverageGuardFakeMergeShuttle`, `coverageGuardNilFabricOpener`, `coverageGuardLandingDeps`) are the pattern for constructing a `shedrecipe.Env` and a `loomshed.Deps` good enough for both sides of the equivalence test to build — note they live in package `shedrecipe`, so `shedbuild` needs its own copies rather than an import.
+Its fake-building helpers (`coverageGuardFakePreflight`, `coverageGuardFakeMergeShuttle`, `coverageGuardNilFabricOpener`, `coverageGuardLandingDeps`) build **`loomshed.Deps`-shaped values only** — this file fills no `shedrecipe.Env` at all — so they are the pattern for the `loomshed` side of the equivalence test and for the `Env.Landing` passthrough, and nothing else.
+
+**`internal/shedrecipe/fixture_test.go`** is the other half, and the one to copy for the `Env` side: its `newTestEnv(t)` is the actual filled-`Env` builder, covering all nine told roots and the `Shuttle`/`Burler`/`WebsterRun` seams plus the four `WebsterDeps` seams.
+It leaves `Env.Landing` zero, which is where `coverageGuardLandingDeps` comes back in — see the twelve-engine case under Testing.
+
+Both files live in package `shedrecipe`, so `shedbuild` needs its own copies rather than an import.
 
 **`internal/loomcli/wiring.go`** — the future caller.
 `wire()` is where every told absolute path is already in hand (`location.AnchorPath()`, `location.WorktreePath()`, `loomengine.LoomStatusFile(location)`, etc.) and where a `shedrecipe.Env` would be filled in piece 4.
@@ -338,7 +346,9 @@ Scenarios that must be covered:
 - A row's `config:` sub-map survives untouched, including a nested mapping (the `BurlerRound` `profile` shape) and a list value (`output_files`), with key names and value types unaltered.
 - Row order in the file is preserved exactly in `Recipe.Producers`.
 - Malformed YAML (a tab-indented line, an unclosed quote) errors with a `shedbuild: ` prefix.
-- Missing `version`, and a `version` other than `1`, each error naming the offending value.
+- A missing `version` and a literal `version: 0` are **the same case** and share one message, `unsupported recipe version 0` — with `Version int` and `KnownFields(true)` both decode to `0`, and they are not worth a `*int` to tell apart, since neither is ever a valid recipe.
+- Any other unsupported `version` (`2`, `-1`) errors naming the offending value.
+- Empty input, and input that is only comments or whitespace, error with `shedbuild: recipe is empty` — `yaml.Decoder.Decode` returns `io.EOF` for these, which must be translated rather than surfaced raw or mistaken for success.
 - An unknown document-level key, and an unknown row-level key, each error with yaml's own `line N: field <key> not found in type ...` text under a `shedbuild: ` prefix.
   Assert on the key name and the `shedbuild: ` prefix, **not** on yaml's exact wording — that is upstream text, not this package's contract.
 - Empty `entry`, empty `terminals`, and empty `producers` each error distinctly.
@@ -366,10 +376,15 @@ Scenarios:
 - A `config:` block on one of the nine empty-config entries errors (proving the block is forwarded to the constructor rather than dropped).
 - Every one of the twelve names in `shedrecipe.Names()` is buildable from a recipe given a sufficiently filled `Env` — driven off `Names()` rather than a local list, so a thirteenth registered engine fails this test until the fixture covers it.
   This one case is **not** filesystem-free, unlike the rest of the `Build` table: `Bouncer` and `BurlerRound` `os.MkdirAll` their resolved run directory, and `Bouncer` and `SingleLLM` eagerly read their `rubric_stencil`/`stencil`.
-  **Copy `internal/shedrecipe/fixture_test.go`'s `newTestEnv(t)` — it is the filled-`Env` builder this case needs**, and it is a different fixture from `coverage_guard_test.go`'s, which only ever builds `loomshed.Deps`-shaped values and fills no `Env` at all.
-  `newTestEnv` already does the whole job: one `t.TempDir()`, `mustMkdir` for `Cwd`/`AnchorPath`/`WorktreeRoot`/`StencilsDir`/`RunRoot`, joined paths for `StatusPath`/`StatusLockPath`/`DecisionRecordPath`/`SupportLogPath`, and `Shuttle`, `Burler`, `WebsterRun`, plus the four `WebsterDeps` seams.
-  The full seam set this case needs is therefore **eleven** things, not five: `Env.Shuttle` (required by both `bouncerEntry` and `singleLLMEntry`), `Env.Burler` (required by `burlerRoundEntry`), `Env.WorktreeRoot` (`bouncerEntry` resolves `artifact_paths` against it, and `singleLLMEntry` resolves `output_files`), `Env.RunRoot`, `Env.StencilsDir`, and the five Webster seams.
-  On top of `newTestEnv`'s shape, write the two named stencils into `Env.StencilsDir` at `stencilstore.Path(dir, name)` (plain files, arbitrary content) — `newTestEnv` creates the directory but seeds no files.
+  **Start from `internal/shedrecipe/fixture_test.go`'s `newTestEnv(t)` — it is the filled-`Env` builder this case needs**, and it is a different fixture from `coverage_guard_test.go`'s, which only ever builds `loomshed.Deps`-shaped values and fills no `Env` at all.
+  `newTestEnv` covers most of the job: one `t.TempDir()`, `mustMkdir` for `Cwd`/`AnchorPath`/`WorktreeRoot`/`StencilsDir`/`RunRoot`, joined paths for `StatusPath`/`StatusLockPath`/`DecisionRecordPath`/`SupportLogPath`, and `Shuttle`, `Burler`, `WebsterRun`, plus the four `WebsterDeps` seams.
+  The `Env` fields this case depends on are therefore **eleven** rather than the five named earlier: `Env.Shuttle` (required by both `bouncerEntry` and `singleLLMEntry`), `Env.Burler` (required by `burlerRoundEntry`), `Env.WorktreeRoot` (`bouncerEntry` resolves `artifact_paths` against it, and `singleLLMEntry` resolves `output_files`), `Env.RunRoot`, `Env.StencilsDir`, and the five Webster seams.
+  **`newTestEnv` is not sufficient on its own — it leaves `Env.Landing` zero, and two of the twelve engines need it.**
+  `publishEntry` and `finalizeEntry` call `landingshed.NewPublish`/`NewFinalize`, which reject a nil `Deps.OpenFabric`, `Deps.PushBranch`, or `Deps.OpenParentFabric` outright and then build a `mergeresolve` resolver needing a non-nil `Fabric` and `Shuttle` plus non-empty `WorktreeRoot`, `ScratchDir`, and `StencilsDir`.
+  `internal/shedrecipe/coverage_guard_test.go`'s `coverageGuardLandingDeps(dir)` is the ready-made pattern — it fills exactly those, with `coverageGuardNilFabricOpener` for both openers (a typed-nil `*fabricengine.Fabric` with a nil error satisfies the constructors) and `coverageGuardFakeMergeShuttle{}` for the shuttle;
+  `internal/loomshed/fixture_test.go`'s `testLandingDeps` is the equivalent.
+  So the fixture is `newTestEnv(t)` **plus** an `Env.Landing` filled that way, making it twelve `Env` fields, not eleven.
+  Finally, write the two named stencils into `Env.StencilsDir` at `stencilstore.Path(dir, name)` (plain files, arbitrary content) — `newTestEnv` creates the directory but seeds no files.
   Keep it a separate test function from the in-memory `Build` table so the two do not share a fixture and the pure cases stay pure.
 - Build order matches recipe order.
 - `Build` on a recipe with an empty `Producers` slice errors (defence in depth even though `Parse` rejects it, since `Build` accepts hand-built `Recipe` values).
