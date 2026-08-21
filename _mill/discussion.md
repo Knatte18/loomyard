@@ -30,6 +30,7 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 - A `SpecSource` builder for the `SingleLLM` entry — stencil read plus token fill — since no production caller of `shedadapters.NewSingleLLMProducer` exists yet.
 - A coverage-guard test asserting every engine backing a row in `loomshed.New`'s current list has a registry entry.
 - A `seam_enforcement_test.go` import allowlist for the new package, and a new **Shed Recipe Registry Invariant** section in `CONSTRAINTS.md`.
+- `internal/shedrecipe/doc.go` — the package doc, same as every sibling in this family ships (`loomshed`, `landingshed`, `preflightshed`, `shedadapters`, `batcher`).
 - Doc updates in the same commit: `manifest/designs/shed-recipe.md` (narrow the DRAFT banner), `docs/overview.md` (module table), `manifest/roadmap.md` (move the item to Done).
 
 **Out:**
@@ -196,6 +197,20 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 - Decision: at construction, each entry checks exactly the `Env` fields it consumes — a path root must be non-empty and absolute, an injected seam must be non-nil — and returns an error naming the offending field otherwise.
   An entry never validates an `Env` field it does not use, so a caller filling only what its recipe needs is legal.
   `Env.Now` is the one exception: a nil clock is accepted and defaults to `time.Now`, matching what `NewSingleLLMProducer` and `NewBurlerProducer` already do with a nil `now`.
+
+  **`Env.WebsterDeps` needs a third rule**, being neither a path root nor a single seam but a value struct (`websterengine.RunDeps`, `internal/websterengine/runlevel.go:104-131`).
+  The `Webster` entry checks its four required inner seams — `Starter`, `Reed`, `Engine`, `RefMatcher` — for non-nil, and deliberately checks **none** of the other five nil-able fields, each for a stated reason:
+
+  | `RunDeps` field | Checked? | Why |
+  | --- | --- | --- |
+  | `Starter`, `Reed`, `Engine`, `RefMatcher` | yes | required seams with no default; a zero value fails at every `Call` |
+  | `Batcher` | **no** | the wrapper overwrites it on every `Call` (`internal/loomshed/webster.go:67-68`), and its own field doc says the caller leaves it nil |
+  | `Clock` | no | nil selects the production `realClock` by design (`runlevel.go:118-122`) |
+  | `OpenBisector` | no | nil is a legitimate mode meaning "no fabric in this mode", not a missing value (`runlevel.go:124-130`) |
+  | `ShuttleCfg`, `Roles`, `Config`, `Geom` | no | value/map types whose validation belongs to `websterengine.Run`, not to a wiring layer |
+
+  `Env.Landing` needs no equivalent rule: `landingshed.NewPublish` and `NewFinalize` already reject their own nil closures, so the entry inherits the check.
+  `WebsterDeps` is the only unguarded value-struct field in `Env`, which is why it gets an explicit rule rather than falling under the general one.
 - Rationale: `Config` strictness without `Env` strictness only moves the late failure.
   `NewSingleLLMProducer` validates nothing at all (`internal/shedadapters/singlellm.go:49-54`), so an empty or relative `Env.WorktreeRoot` produces a `SingleLLM` row that constructs cleanly and then fails on **every** `Call` — the exact failure mode the relative-path decision exists to prevent on the `Config` side.
   Some underlying constructors already check their own inputs (`NewBouncer` rejects a non-absolute `RunDir`, `NewBurlerProducer` rejects a nil runner and a non-absolute `runDir`), but the coverage is uneven, and an entry cannot rely on the one it happens to wrap.
@@ -285,7 +300,7 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 - Decision: `Env.Landing` is a `landingshed.Deps` value passed through unchanged to `landingshed.NewPublish` / `NewFinalize`.
   The `Publish` and `Finalize` registry entries therefore accept an empty `Config`.
-- Rationale: `landingshed.Deps` already carries eleven fields, four of which are closures or seams, and it is already told wholesale by `loomshed.Deps.Landing` today (`internal/loomshed/loomshed.go`).
+- Rationale: `landingshed.Deps` already carries fourteen fields (`internal/landingshed/deps.go:31-91`), several of them closures or seams, and it is already told wholesale by `loomshed.Deps.Landing` today (`internal/loomshed/loomshed.go`).
   Flattening it into `Env` would duplicate that field set and invite divergence — the exact reasoning `loomshed.Deps`'s own field doc gives for keeping it a single passthrough.
 - Rejected: flattening `landingshed.Deps`'s fields into `Env` (duplication, divergence);
   making the landing fields recipe `Config` (they include closures).
@@ -447,7 +462,9 @@ This task copies the *lookup and error* shape and deliberately departs from the 
 `stencil.Fill` errors on a missing token rather than substituting empty, which is why `bouncer.go:397` passes the literal `"(none)"` for an empty value.
 The `SingleLLM` entry follows the same three steps.
 
-**Import-allowlist tests.** Every producer-hosting package carries one: `internal/loomshed/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) is the closest model — it walks non-test `.go` files with `go/parser` in `parser.ImportsOnly` mode and fails any import outside an explicit allowlist map.
+**Import-allowlist tests.** The two producer-hosting packages already on the Told-Geometry Invariant's machine-enforced list carry one — `internal/loomshed` and `internal/landingshed`;
+`internal/shedadapters` and `internal/preflightshed` carry none, and are not on that list.
+`internal/loomshed/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) is the closest model — it walks non-test `.go` files with `go/parser` in `parser.ImportsOnly` mode and fails any import outside an explicit allowlist map.
 `internal/shedrecipe`'s allowlist will be the largest in the repo (it imports `shedengine`, `shedadapters`, `loomshed`, `landingshed`, `preflightshed`, `websterengine`, `burlerengine`, `shuttleengine`, `stencilstore`, `stencil`), which is expected — it is the wiring layer.
 Note that `loomshed`'s own allowlist needs **no** change: the dependency runs `shedrecipe` → `loomshed`, never the reverse.
 
@@ -546,6 +563,8 @@ TDD candidates, in order:
    an `Env` missing a field the entry does not read constructs fine;
    a nil `Env.Now` is accepted and defaults.
    The `SingleLLM` case is the load-bearing one, since its underlying constructor validates nothing at all.
+   `Webster` needs its own cases against the table above: a `WebsterDeps` missing any of `Starter`, `Reed`, `Engine`, `RefMatcher` fails at construction;
+   one with a nil `Batcher`, `Clock`, or `OpenBisector` constructs fine.
 11. **Coverage guard** — the table's key set equals the row names in `loomshed.New`'s assembled list, and every engine it maps to is registered.
     Both mismatch directions must be covered: a row in `New` absent from the table, and a table entry naming a row `New` does not have.
     The first is the regression this guard exists for;
@@ -616,4 +635,6 @@ Explicitly not tested here: anything about recipe file parsing, `ProducerDef` as
 - **Q:** [review r5] Does `SingleLLM` probe its stencil at construction, like `NewBouncer` probes its rubric? **A:** [auto-pick] Yes — probe at construction, and still re-read inside the closure. **Why:** otherwise a mistyped `stencil` constructs cleanly and fails at first `Call`;
   re-reading keeps a mid-run stencil edit effective, so the probe buys fail-fast without caching.
 - **Q:** [review r5] Is `stencil.Fill`'s error condition "absent" or "absent or empty"? **A:** [auto-pick] Absent **or** empty/whitespace-only, and an empty `Config.tokens` value is therefore rejected at construction. **Why:** `unfilledTopLevelMarkers` trims before testing (`stencil.go:169-181`), so an empty token value fails exactly like a missing one — a token with no natural value needs an explicit placeholder, as `Bouncer`'s `"(none)"` does.
+- **Q:** [review r6] `Env.WebsterDeps` is a value struct, so neither the path-root nor the nil-seam rule reaches it — what does the `Webster` entry check? **A:** [auto-pick] Its four required inner seams (`Starter`, `Reed`, `Engine`, `RefMatcher`) non-nil, and explicitly none of `Batcher`, `Clock`, `OpenBisector`, or the value/map fields. **Why:** a zero `RunDeps` would otherwise construct cleanly and fail at every `Call`;
+  the three unchecked nil-ables each have a documented nil meaning — `Batcher` is overwritten per `Call` by the wrapper, `Clock` nil selects the production clock, `OpenBisector` nil means "no fabric in this mode".
 - **Q:** How does `loomshed` expose its six unexported constructors? **A:** [auto-pick] Export them in place, returning `shedengine.ShedProducer` rather than the unexported concrete type. **Why:** duplicating them in `shedrecipe` guarantees divergence, and moving the loom-specific producers out contradicts the design doc's point that a bespoke single-consumer engine is a valid registry entry precisely because it stays where it lives.
