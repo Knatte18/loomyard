@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: shed-setup-validity-checker
 branch: shed-setup-validity-checker
 plan: _mill/plan
@@ -27,6 +27,8 @@ approved-loomshed-invariant-test  '2026-08-21T08:42:20Z'
 approved-docs  '2026-08-21T08:45:36Z'
 holistic-reviewing  '2026-08-21T08:45:59Z'
 holistic-fixing  '2026-08-21T08:51:29Z'
+nits-fixed-holistic  '2026-08-21T08:53:44Z'
+holistic-approved  '2026-08-21T08:53:50Z'
 ```
 
 ## Batches
