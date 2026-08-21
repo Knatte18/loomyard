@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-Bouncer and BurlerRound entries
+phase: approved-guards and docs
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-shedrecipe foundations  '2026-08-21T09:17:19Z'
 approved-registry and value-only entries  '2026-08-21T09:24:32Z'
 approved-SingleLLM entry  '2026-08-21T09:30:06Z'
 approved-Bouncer and BurlerRound entries  '2026-08-21T09:36:35Z'
+approved-guards and docs  '2026-08-21T09:43:52Z'
 ```
 
 ## Batches
@@ -66,8 +67,9 @@ batches:
     commit_sha: 9a92c424ca38be6eae0faae09a8bf4cb8979f152
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: guards and docs
-    state: running
+    state: approved
     implementer_session: b06ffffb-7b27-496c-8d0e-b799fd70e729
     start_sha: b7a9bb8b0d3c6cde7911f845122da59685564ece
+    commit_sha: 1867aa7f7d869d135f21e564fa56637c2a12348d
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
 ```
