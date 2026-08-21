@@ -237,6 +237,7 @@ github.com/Knatte18/loomyard/
 ├── internal/loomcli/             loom's cobra module: the session bootstrap plus the driver, status, and pause verbs
 ├── internal/loomshed/            loom's own 13-row producer list over `shedengine`
 ├── internal/shedrecipe/          the engine registry — the name to `ShedProducer`-constructor mapping a recipe loader resolves each row's `Engine` against
+├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
@@ -319,8 +320,8 @@ User-facing modules each get one `lyx <module>` namespace:
   The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the four engine adapters (`SingleLLMProducer`, the `Webster` adapter, the burler round producer, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
   `internal/shedcheck` is the shipped structural checker over an assembled producer list, enforced by a `go test` invariant over loom's own list rather than called from any production constructor — see [manifest/designs/shed.md](../manifest/designs/shed.md#checking-an-assembled-producer-list) for the eight finding kinds it reports.
   The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; it registers twelve engine names.
-  The recipe file format and the loader/builder — the remaining pieces — are not built yet.
-  See the `internal/shedengine`, `internal/shedadapters`, and `internal/shedcheck` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
+  The recipe file format and the loader/builder are shipped too, as the new package `internal/shedbuild`, leaving only the conversion of loom's own list.
+  See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, and `internal/shedbuild` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
   Cluster review fans job A out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.

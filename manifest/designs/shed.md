@@ -349,8 +349,8 @@ and defaulting to `Producers[0]` would re-introduce the positional routing meani
 - `done-cycle` — one finding per member of a cycle among live, reachable rows using done edges only.
 - `blind-gate` — a live, reachable row's stuck target has no route back to it, over both edge types.
 
-`blind-gate` is what replaces the departing `Segment` rule, expressed as a real graph property — a gate whose bounce target never routes back to the gate — rather than as a matching label.
-This task removes neither the `Segment` field nor `validate()`'s same-`Segment` rule; those belong to the recipe-loader items that actually drop `Segment`, per [shed-recipe.md](shed-recipe.md#pieces-to-build).
+`blind-gate` supersedes `Segment`'s old cross-segment-wiring-detection job, expressed as a real graph property — a gate whose bounce target never routes back to the gate — rather than as a matching label.
+This task removes neither the `Segment` field nor `validate()`'s same-`Segment` rule, and neither is going away: the field and the rule are staying, per the corrected reasoning in [shed-recipe.md](shed-recipe.md#whats-in-a-recipe-row).
 
 `done-cycle` generalises the length-1 case [`internal/shedengine/validate.go`](../../internal/shedengine/validate.go) already rejects (`OnDone: <self>`),
 and the asymmetry that motivates it is real: a `Done` route consumes no bounce budget,
