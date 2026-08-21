@@ -37,8 +37,8 @@ import (
 // assertion under test rather than a removable seam-migration leftover.
 // internal/loomengine/preflight_integration_test.go left this set when the preflight-loom-agnostic
 // task deleted the file outright, retiring the whole suite rather than leaving a migrated leftover
-// to track; internal/perchcli's two integration test files left it the same way when Retire-perch
-// deleted the module.
+// to track, and two more integration test files left it the same way when the module owning them
+// was retired.
 var cwdMutationSubjectFiles = map[string]bool{
 	"internal/fabriccli/cli_test.go":                     true,
 	"internal/configcli/configcli_integration_test.go":   true,
