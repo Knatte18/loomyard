@@ -97,7 +97,7 @@ Example:
 			// Step 2: seed the status file, tolerating exactly the already-seeded sentinel so a
 			// re-run works. A stat-then-seed probe here would reintroduce the exact race the
 			// seeder's single lock exists to close, so ErrSeedExists is the only accepted outcome.
-			if err := loomshed.Seed(c.deps.StatusPath, c.deps.StatusLockPath, slug, parent); err != nil && !errors.Is(err, loomshed.ErrSeedExists) {
+			if err := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent); err != nil && !errors.Is(err, loomshed.ErrSeedExists) {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
@@ -178,7 +178,7 @@ Example:
 			// Step 5: probe the run lock non-blockingly -- releasing it immediately when it was
 			// free, never holding it across this probe -- and spawn the detached driver only when
 			// mustSpawnDriver says no driver is already alive.
-			runLockPath := c.deps.LockPath
+			runLockPath := c.shedPaths.LockPath
 			probe, runLockFree, err := lock.TryAcquireWriteLock(runLockPath)
 			if err != nil {
 				_ = bootstrapLock.Release()
@@ -300,7 +300,8 @@ Example:
 // functions of its own, because it delegates entirely into the subtree's verb -- and attaches that
 // same receiver's resolvePersistentPreRun as the returned command's own PersistentPreRunE. That
 // attachment is necessary here, not optional: a root child gets no parent group's PersistentPreRunE
-// to inherit, so without it the alias would run with location, cwd, and deps all left unresolved.
+// to inherit, so without it the alias would run with location, cwd, env, and shedPaths all left
+// unresolved.
 // The group short-circuit inside resolvePersistentPreRun (its cmd.Name() == "loom" check) does not
 // fire for this command, since this command's own Name() is "run", never "loom" -- so the alias
 // always resolves the full engine stack exactly as "lyx loom run" does.

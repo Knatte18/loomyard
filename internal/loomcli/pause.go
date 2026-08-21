@@ -30,9 +30,9 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			err := state.UpdateJSON(c.deps.StatusPath, c.deps.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+			err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
 				if !found {
-					return shedengine.Status{}, fmt.Errorf("loom: no status file at %s; there is nothing running to pause -- run \"lyx loom run\" first to bootstrap this task", c.deps.StatusPath)
+					return shedengine.Status{}, fmt.Errorf("loom: no status file at %s; there is nothing running to pause -- run \"lyx loom run\" first to bootstrap this task", c.shedPaths.StatusPath)
 				}
 				cur.PauseRequested = true
 				return cur, nil
@@ -43,7 +43,7 @@ Example:
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
-				"status_file": c.deps.StatusPath,
+				"status_file": c.shedPaths.StatusPath,
 			}))
 			return nil
 		},
