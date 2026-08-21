@@ -25,6 +25,11 @@ Batch-local decisions:
   It is the assembled `websterengine.RunDeps`, kept beside the wrapper so a test can inspect it without unwrapping, and it is now also `env.WebsterDeps` rather than `deps.WebsterDeps`.
 - The `CLI / Cobra Invariant` is untouched: no command's `Use`, `Short`, `Long`, or position in the help tree changes, and no command is added or removed.
   Only the constructor `drive` calls and the field names four verbs read change.
+- **Cards 15 through 19 are one compile unit and are green only at the batch boundary.**
+  Card 15 assigns `c.env`/`c.shedPaths` before card 16 declares them;
+  card 16 removes the `deps` field while cards 17, 18, and 19 still read it.
+  Each card still gets its own commit, matching every other batch here, but do not expect a mid-batch commit to build — run `verify:` once the batch is complete, not after each card.
+  Batch 2 carries the same coupling for cards 5 and 6.
 
 ## Cards
 

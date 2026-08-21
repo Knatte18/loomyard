@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: convert to a Shed recipe'
 slug: 'loom-convert-to-shed-recipe'
-approved: false
+approved: true
 started: '20260821-143326'
 parent: 'main'
 root: ""

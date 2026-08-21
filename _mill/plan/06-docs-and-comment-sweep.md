@@ -214,7 +214,7 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   the bounce-budget behaviour it describes is unaffected by this task.
   Note that this file carries a `//go:build smoke` tag, so its compile check comes from this batch's own `&& go vet -tags smoke ./internal/loomcli/` verify tail — not from the done gate, whose `-tags integration` does not enable `smoke`.
 
-  Then sweep wider than these four, because the enumerated set is a starting point, not a complete one.
+  Then sweep wider than these six, because the enumerated set is a starting point, not a complete one.
   Grep every `.go` file, test files and build-tagged files included, for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `coverageGuardLandingDeps`, `internal/loomshed` in both its trailing-slash and slashless spellings, and the moved test-file basenames `resume_test`, `sequence_test`, `loomshed_test`.
   Add the bare filename spelling `loomshed.go`, which several doc comments use to point at the deleted producer table and which no path-shaped token matches.
   Add the unqualified in-package spellings `Deps` and `New(` when grepping `internal/loomshed` itself, where a doc comment names the deleted symbols without a package prefix;

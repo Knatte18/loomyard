@@ -92,13 +92,18 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
 - **Deletes:** none
 - **Moves:**
   - `internal/loomshed/loomshed_test.go` -> `internal/loomrecipe/shape_test.go`
-- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe` and repoint all eight tests off `New(deps)` onto `loomrecipe.New(env, paths)`.
+- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe` and repoint all eight tests off `New(deps)` onto `New(env, paths)`.
+  Spell every call to the constructor unqualified as `New(…)`, never `loomrecipe.New(…)`: these files are in `package loomrecipe` and a self-qualified reference does not compile.
+  `loomshed.Name*` stays qualified, since `internal/loomshed` genuinely is a different package.
 
   Relocate the `fakeAlwaysDoneProducer` declaration out of the moved file and into `internal/loomrecipe/fixture_test.go`, which card 5 moved into place and which this card therefore edits — it is fixture scaffolding, not a shape assertion, and belongs beside the fixture the substituting tests draw from.
   This card owns that single declaration;
   card 5 only consumes it and must not declare a second copy.
   Replace `testDeps` with a `testEnv(t *testing.T) (shedrecipe.Env, ShedPaths)` helper of the same shape: one `t.TempDir()`, every path field joined off it, `Cwd` an absolute created subdirectory, `Landing: testLandingDeps(dir)`, `WebsterRun` and the four `WebsterDeps` seams filled the way card 5 fills them, and `MaxBounces: 3` on the `ShedPaths` half.
-  Rewrite `wantProducerTable`'s entries to key off `loomshed.Name*` constants, exactly as they do today.
+  Rewrite `wantProducerTable`'s entries to key off `loomshed.Name*` constants, exactly as they do today, and extend `wantProducerRow` with a sixth field carrying each row's expected concrete producer type (a `reflect.Type`).
+  This table is **the** authoritative per-row expectation for the whole package: card 7's shape assertion consumes it rather than declaring a second thirteen-row table of its own, so a future row change is applied once.
+  `TestNew_ProducerTable` keeps asserting the five routing/identity fields and ignores the type column;
+  card 7's shape assertion is the only reader of that column.
 
   Per-test dispositions:
 
@@ -126,6 +131,7 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/loomrecipe/fixture_test.go`
   - `internal/loomrecipe/shape_test.go`
   - `internal/loomrecipe/loomrecipe.go`
+  - `internal/loomrecipe/shape_test.go`
   - `internal/shedbuild/equivalence_test.go`
   - `internal/shedbuild/build.go`
   - `internal/shedbuild/check.go`
@@ -148,7 +154,9 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
 
   *Shape assertion.* This is `internal/shedbuild/equivalence_test.go`'s assertion loop with its `loomshed.New` side replaced by an expected-value table.
   Build the embedded recipe through `loomrecipe.New` from `testEnv(t)`, assert exactly thirteen rows, and for each row assert `Name`, `OnDone`, `OnStuck`, an empty `Segment`, a zero `MaxBounces`, and the expected concrete `Producer` type via `reflect.TypeOf`.
-  The expected table's row names key off `loomshed.Name*` constants per the `row-name-authority-stays-with-the-go-constants` Shared Decision.
+  Consume card 6's `wantProducerTable` — the package's single authoritative row table, extended there with a `reflect.Type` column for exactly this test — rather than declaring a second thirteen-row table here;
+  two hand-maintained tables in one package would have to be edited together forever to express one fact.
+  Its row names already key off `loomshed.Name*` constants per the `row-name-authority-stays-with-the-go-constants` Shared Decision.
   The expected producer types are the ones `internal/shedbuild/equivalence_test.go` proves today — read them off that file rather than guessing;
   it is still present in the tree at this batch and batch 3 is what deletes it.
 
@@ -186,7 +194,7 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
 - **Deletes:** none
 - **Moves:**
   - `internal/loomshed/sequence_test.go` -> `internal/loomrecipe/sequence_test.go`
-- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe`, qualify every bare `Name*` reference in the file as `loomshed.Name*` — not only the twelve inside `wantSequenceOrder`, since `TestSequence_FullRunBlocksAtPublish` itself carries four more `NamePublish` references outside that var — and repoint the test off `New(deps)` onto `loomrecipe.New(env, paths)` from the moved `buildSequenceFixture`.
+- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe`, qualify every bare `Name*` reference in the file as `loomshed.Name*` — not only the twelve inside `wantSequenceOrder`, since `TestSequence_FullRunBlocksAtPublish` itself carries five more `NamePublish` references outside that var — and repoint the test off `New(deps)` onto `New(env, paths)` from the moved `buildSequenceFixture`.
 
   Restate `wantSequenceOrder`'s own doc comment, which says the list is asserted literally "so a reordering in loomshed.go's producer table is a test failure rather than a silently-agreeing derivation".
   There is no producer table in `loomshed.go` after batch 5;
@@ -211,7 +219,7 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
 - **Deletes:** none
 - **Moves:**
   - `internal/loomshed/resume_test.go` -> `internal/loomrecipe/resume_test.go`
-- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe`, qualify every bare `Name*` reference as `loomshed.Name*`, and repoint every `New(deps)` call onto `loomrecipe.New(env, paths)`.
+- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe`, qualify every bare `Name*` reference as `loomshed.Name*`, and repoint every `New(deps)` call onto `New(env, paths)`.
   Repoint every `deps.StatusPath`, `deps.StatusLockPath`, `deps.AnchorPath`, and `deps.DecisionRecordPath` read at the `Env`/`ShedPaths` pair the moved fixture returns, and `deps.MaxBounces = 2` in `TestBounceRouting_BudgetExhaustionBlocks` at `paths.MaxBounces = 2` (set before the `New` call, since `New` copies it onto the Shed).
 
   Move exactly six of the file's seven tests: `TestResume_DoesNotRestartAtRowOne`, `TestResume_CrashRecoveryRecallsUnconditionally`, `TestResume_PauseStopsAtBoundaryAndClearsFlag`, `TestBounceRouting_StuckContinuesAtDeclaredTarget`, `TestBounceRouting_EmptyTargetBlocksInstead`, and `TestBounceRouting_BudgetExhaustionBlocks`, together with the `countingProducer` type and the `resetCurrentProducer` helper.

@@ -51,7 +51,7 @@ It stays in `internal/shedrecipe` either way, which is what the exact-twelve-nam
 - **Deletes:** none
 - **Moves:**
   - `internal/shedrecipe/coverage_guard_test.go` -> `internal/loomrecipe/coverage_guard_test.go`
-- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe` and repoint both surviving tests off `loomshed.New` onto `loomrecipe.New`.
+- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe` and repoint both surviving tests off `loomshed.New` onto this package's own `New`, spelled unqualified — the file is now in `package loomrecipe`, so `loomrecipe.New(…)` would not compile.
 
   Delete `TestRegistry_ShipsTwelveEntries` from this file — card 13 re-homes it.
   Delete `coverageGuardShed`, `coverageGuardFakePreflight`, `coverageGuardFakeMergeShuttle`, `coverageGuardNilFabricOpener`, and `coverageGuardLandingDeps`: the moved file now builds through `testEnv(t)` from `internal/loomrecipe/shape_test.go`, which already supplies a filled `Env` including `Landing`, `WebsterRun`, and the four `WebsterDeps` seams.
