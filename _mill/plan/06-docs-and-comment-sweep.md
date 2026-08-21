@@ -5,7 +5,7 @@ task: 'loom: convert to a Shed recipe'
 batch: 'docs-and-comment-sweep'
 number: 6
 cards: 4
-verify: go test ./internal/lyxcwd/ ./internal/preflightshed/ ./internal/shedrecipe/ ./internal/shedcheck/ ./internal/shedbuild/
+verify: go test ./internal/lyxcwd/ ./internal/preflightshed/ ./internal/shedrecipe/ ./internal/shedcheck/ ./internal/shedbuild/ ./internal/loomcli/ && go vet -tags smoke ./internal/loomcli/
 depends-on: [5]
 ```
 
@@ -13,10 +13,10 @@ depends-on: [5]
 
 The task's documentation obligation, landed as the final batch of the same task branch so the whole change squash-merges as one commit — which is what the project's Documentation Lifecycle rule requires.
 Six markdown files carry statements this task falsifies or records its completion;
-five production Go doc comments name symbols this task deleted or moved.
+six Go doc comments — three in production files, three in test files — name symbols this task deleted or moved.
 
 No production behaviour changes here.
-The only Go edits are comment-text repairs in packages this task consumes rather than revises, which the `no-production-change-to-the-three-consumed-packages` Shared Decision explicitly carves out: a comment pointing at a deleted symbol is not "unchanged", it is wrong.
+The only Go edits are comment-text repairs in packages this task consumes rather than revises, which the `no-production-change-to-the-consumed-packages` Shared Decision explicitly carves out: a comment pointing at a deleted symbol is not "unchanged", it is wrong.
 
 Batch-local decision: `CONSTRAINTS.md` takes **three** edits, not two.
 Two are pointer corrections to existing invariants;
@@ -26,7 +26,7 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
 
 ## Cards
 
-### Card 23: The two `CONSTRAINTS.md` edits
+### Card 23: The three `CONSTRAINTS.md` edits
 
 - **Context:**
   - `internal/loomrecipe/coverage_guard_test.go`
@@ -34,6 +34,10 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   - `internal/shedrecipe/registry_test.go`
   - `internal/shedrecipe/seam_enforcement_test.go`
   - `internal/loomshed/seam_enforcement_test.go`
+  - `internal/shedrecipe/registry.go`
+  - `internal/shedbuild/doc.go`
+  - `internal/shedbuild/parse.go`
+  - `internal/shedbuild/recipe.go`
 - **Edits:**
   - `CONSTRAINTS.md`
 - **Creates:** none
@@ -159,11 +163,12 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   - `internal/shedrecipe/entries_simple.go`
   - `internal/preflightshed/preflight_test.go`
   - `internal/shedbuild/fixture_test.go`
+  - `internal/loomcli/smoke_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Five comment-only repairs, no behaviour change in any file.
-  The sweep covers test-file comments as well as production ones — a stale path in a `_test.go` doc comment is just as wrong, and two of the five sites are test files.
+- **Requirements:** Six comment-only repairs, no behaviour change in any file.
+  The sweep covers test-file comments as well as production ones — a stale path in a `_test.go` doc comment is just as wrong, and three of the six sites are test files.
 
   `internal/shedcheck/doc.go` says "Neither `shedengine.Run` nor `loomshed.New` calls `Check`".
   `loomshed.New` no longer exists;
@@ -187,8 +192,15 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   card 5 moved the second to `internal/loomrecipe/fixture_test.go`.
   Repoint the sentence at `internal/loomrecipe/fixture_test.go`'s single surviving copy, and drop the reference to the deleted helper rather than repointing it at a name that no longer exists.
 
+  `internal/loomcli/smoke_test.go`'s file header says "loom's own producer table (`internal/loomshed`) backs five of its thirteen rows with stub producers that report Done unconditionally".
+  The five stub rows and their unconditional Done are unchanged, and `loomshed.NewStub` still builds them via `stubEntry` — only the parenthetical is stale, because the table is now the recipe's.
+  Repoint that parenthetical at `contracts/recipes/loom-recipe.yaml` and leave the rest of the driver-liveness-timing paragraph alone;
+  the bounce-budget behaviour it describes is unaffected by this task.
+  Note that this file carries an `integration` build tag, so its compile check comes from the done gate's `go test -tags integration ./...` rather than from this batch's own `verify:`.
+
   Then sweep wider than these four, because the enumerated set is a starting point, not a complete one.
-  Grep every `.go` file, test files included, for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `coverageGuardLandingDeps`, bare `internal/loomshed/` path mentions, and the moved test-file basenames `resume_test`, `sequence_test`, `loomshed_test`.
+  Grep every `.go` file, test files and build-tagged files included, for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `coverageGuardLandingDeps`, `internal/loomshed` in both its trailing-slash and slashless spellings, and the moved test-file basenames `resume_test`, `sequence_test`, `loomshed_test`.
+  The slashless spelling matters: `internal/loomcli/smoke_test.go`'s stale hit is written `(internal/loomshed)`, which a trailing-slash token misses.
   Repair every hit that is now false.
   Ignore hits inside `_mill/` — that is this task's own working directory, not repo documentation.
   Two known hits are legitimately unchanged and must be left alone: `internal/preflightshed/preflight_integration_test.go`'s references to `internal/loomshed`'s *former* copy of a file (historical, already past-tense) and `contracts/specs/loom-status-spec.md`'s reference to `internal/loomshed/seed.go`, which still exists and still writes the seed.
@@ -197,13 +209,16 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
 
 ## Batch Tests
 
-`verify: go test ./internal/lyxcwd/ ./internal/preflightshed/ ./internal/shedrecipe/ ./internal/shedcheck/ ./internal/shedbuild/` runs the two machine-enforced markdown/geometry guards this batch's edits can break.
+`verify: go test ./internal/lyxcwd/ ./internal/preflightshed/ ./internal/shedrecipe/ ./internal/shedcheck/ ./internal/shedbuild/ ./internal/loomcli/` runs each package this batch edits a file in, plus `internal/lyxcwd`, which owns the two machine-enforced guards these edits can break.
+
 `TestEnforcement_MarkdownLinks` is the Markdown Link Integrity invariant's enforcer and walks every `.md` under `manifest/` and `docs/`, resolving each inline link's file part and, for a `.md` target, its `#anchor` — this batch edits five files inside that walk root plus `CONSTRAINTS.md`, which several of them link into by anchor.
-`TestEnforcement_GeometryLiterals` is included because card 24 and card 25 write new prose naming `_lyx`, and its scope is path-construction literals in production Go rather than markdown;
-running it here is cheap insurance that no comment edit strayed into a code change.
-
-The two `-run` names are combined in one regex rather than two invocations so a single command covers both.
+`TestEnforcement_GeometryLiterals` runs in the same package and guards path-construction literals in production Go;
+card 24 and card 25 write new prose naming `_lyx`, so running it is cheap insurance that no doc edit strayed into a code change.
 Both live in `internal/lyxcwd` as a file-layout convenience, not an ownership claim — `CONSTRAINTS.md` states that caveat for both invariants.
+The whole package is run rather than a `-run` filter, so a sibling enforcement test this batch's doc edits happen to break is caught too.
 
-No Go behaviour is asserted here because none changes: card 26's four edits are comment text only.
-The module-wide `go build ./...` at the batch boundary is what proves those comment edits did not accidentally break a file, and the `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`) is the whole-repo gate that runs before the task is marked done, covering the full suite plus the integration-tagged `internal/loomcli/smoke_test.go`.
+No Go behaviour is asserted here because none changes: card 26's six edits are comment text only.
+One of the six needs its own gate, and the `&& go vet -tags smoke ./internal/loomcli/` tail is it: `internal/loomcli/smoke_test.go` carries a `//go:build smoke` tag, so neither `go test ./internal/loomcli/` nor the module-wide `go vet ./...` compiles it — both skip tagged files by default.
+Nothing else in this task reaches it either: `pipeline.done_gate` is `go test ./... && go test -tags integration ./...`, and `-tags integration` does not enable `smoke`, so without that tail the edited file would never be compiled by any gate in this plan.
+`go vet -tags smoke` rather than `go test -tags smoke` is deliberate: the edit is a single stale parenthetical in a header comment, so typechecking the file is the whole requirement, and actually running the smoke suite at a batch boundary would spawn tmux sessions and git for no gain.
+The module-wide `go vet ./...` at the batch boundary is what proves the other five comment edits did not break a file — `go vet` rather than `go build`, since two of the five sites are `_test.go` files a build would never compile.

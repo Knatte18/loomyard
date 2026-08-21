@@ -46,7 +46,7 @@ batches:
     name: docs-and-comment-sweep
     file: 06-docs-and-comment-sweep.md
     depends-on: [5]
-    verify: go test ./internal/lyxcwd/ ./internal/preflightshed/ ./internal/shedrecipe/ ./internal/shedcheck/ ./internal/shedbuild/
+    verify: go test ./internal/lyxcwd/ ./internal/preflightshed/ ./internal/shedrecipe/ ./internal/shedcheck/ ./internal/shedbuild/ ./internal/loomcli/ && go vet -tags smoke ./internal/loomcli/
 ```
 
 ## Shared Decisions
@@ -62,7 +62,7 @@ _Cross-cutting decisions every batch inherits._
 - **Rationale:** copying the fixture first and deleting its prover first destroys the only remaining verification that the recipe expresses loom's real list.
 - **Applies to:** batch 1 (the run), batch 3 (the deletion).
 
-### Decision: no-production-change-to-the-three-consumed-packages
+### Decision: no-production-change-to-the-consumed-packages
 
 - **Decision:** `internal/shedengine`, `internal/shedcheck`, `internal/shedbuild`, and `internal/shedrecipe` receive no behavioural production change in this task.
   The only edits any of them take are doc-comment repairs (batch 6) naming symbols this task deletes or moves, and test-file changes in `internal/shedrecipe` and `internal/shedbuild` (batch 3).
@@ -75,7 +75,7 @@ _Cross-cutting decisions every batch inherits._
 - **Decision:** `internal/loomcli`'s `wire` sets `Env.WebsterRun = websterengine.Run` explicitly.
 - **Rationale:** `internal/shedrecipe/entries_simple.go`'s `websterEntry` calls `requireSeam("Webster", "WebsterRun", env.WebsterRun)` and errors on a nil value, whereas `internal/loomcli/wiring.go` deliberately leaves `Deps.WebsterRun` nil today and relies on `shedadapters.NewWebsterProducer`'s own nil-defaulting.
   A straight port leaving it nil fails at build time with `shedrecipe: Webster: Env.WebsterRun must not be nil`.
-  Relaxing `websterEntry` instead is out of scope per `no-production-change-to-the-three-consumed-packages`.
+  Relaxing `websterEntry` instead is out of scope per `no-production-change-to-the-consumed-packages`.
 - **Applies to:** batch 4.
 
 ### Decision: landing-parity
@@ -141,6 +141,7 @@ _Cross-cutting decisions every batch inherits._
 - `docs/overview.md`
 - `internal/loomcli/cli.go`
 - `internal/loomcli/cli_test.go`
+- `internal/loomcli/smoke_test.go`
 - `internal/loomcli/drive.go`
 - `internal/loomcli/pause.go`
 - `internal/loomcli/run.go`

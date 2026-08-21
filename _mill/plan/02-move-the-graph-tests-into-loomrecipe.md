@@ -65,7 +65,7 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   Copy the four embedded-interface placeholder types (`fakeMasterStarter`, `fakeReedOps`, `fakeShuttleEngine`, `fakeRefMatcher`) from `internal/shedbuild/fixture_test.go` rather than inventing new ones — each embeds the seam interface in an empty struct, yielding a non-nil value satisfying the interface without implementing a method.
   Fill the returned `ShedPaths` with `StatusPath`, `LockPath`, `StatusLockPath`, and `MaxBounces: 3`, matching the old `Deps`.
 
-  Duplicate into this file, verbatim, the five helpers it needs that live in files staying in `internal/loomshed`: `writeDiscussionFixture` and the `validDecisionRecord` constant, `seedPlanValidateFixture`, the `fakeWebsterRun` type with its `run` method, and `writeBatcherConfig` (needed by the moved resume tests in card 8).
+  Duplicate into this file, verbatim, the five helpers it needs that live in files staying in `internal/loomshed`: `writeDiscussionFixture` and the `validDecisionRecord` constant, `seedPlanValidateFixture`, the `fakeWebsterRun` type with its `run` method, and `writeBatcherConfig` (needed by the moved resume tests in card 9).
   Add `fakeAlwaysDoneProducer` here too — it arrives with card 6's move but belongs beside the fixture that fills it, so card 6 relocates it into this file rather than leaving it in `shape_test.go`.
   Note in the file header that these are deliberate duplications, not an oversight, and that `testLandingDeps` already existed in two independent copies before this task.
 
@@ -80,6 +80,9 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/loomrecipe/loomrecipe.go`
   - `internal/loomshed/loomshed.go`
   - `internal/shedbuild/check.go`
+  - `internal/shedcheck/check.go`
+  - `internal/shedengine/shed.go`
+  - `internal/shedengine/producer.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/landingshed/publish.go`
 - **Edits:** none
@@ -129,6 +132,7 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/loomshed/seed.go`
   - `internal/loomshed/loompreflight.go`
   - `internal/loomshed/loomshed.go`
+  - `internal/shedengine/producer.go`
   - `contracts/recipes/loom-recipe.yaml`
   - `contracts/recipes/recipes.go`
 - **Edits:** none
@@ -146,6 +150,11 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
 
   *Structural check.* Parse `recipes.LoomRecipe` through `shedbuild.Parse` directly, build it through `shedbuild.Build` against the same `Env`, and assert `shedbuild.Check(recipe, built)` returns no findings.
   This needs the parsed `Recipe` value, which `loomrecipe.New` does not return, so it goes through `Parse`/`Build` rather than through `New` — state that in the test's doc comment so a reader does not "simplify" it back onto `New`.
+
+  *Split status-path coherence.* Two cases, one per pair: an `Env`/`ShedPaths` combination whose `StatusPath` values disagree makes `loomrecipe.New` return a non-nil error and a nil `*shedengine.Shed`, and likewise for a disagreeing `StatusLockPath` pair.
+  Assert on a non-nil error, a nil Shed, and that the message contains both divergent values.
+  Build the disagreeing pair by taking `testEnv(t)`'s coherent output and overwriting one side, so the test cannot pass by accident on a fixture that never filled both.
+  The doc comment must state what this protects: `loomshed.Deps` carried a single field feeding both consumers, and the split makes a divergent fill possible for the first time, with a silent consequence — `Shed` persisting to one file while `Loom-Preflight` reads another.
 
   *Construction failure surfaces.* An `Env` with an empty `Cwd` makes `loomrecipe.New` return a non-nil error and a nil `*shedengine.Shed`, and the error names the offending row — `requireAbsRoot("Preflight", "Cwd", …)` inside `preflightEntry`, wrapped by `shedbuild` with the row's zero-based index and quoted name.
   Assert on a non-nil error, a nil Shed, and the presence of the row name in the error text;

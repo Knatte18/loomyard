@@ -43,6 +43,7 @@ It stays in `internal/shedrecipe` either way, which is what the exact-twelve-nam
   - `internal/shedrecipe/registry_test.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/loomshed/loomshed.go`
+  - `internal/shedengine/producer.go`
   - `internal/landingshed/publish.go`
   - `manifest/roadmap.md`
 - **Edits:** none

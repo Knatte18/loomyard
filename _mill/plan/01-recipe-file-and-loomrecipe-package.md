@@ -70,6 +70,7 @@ A `contracts/recipes` test asserting the bytes are non-empty and `Parse`-able wo
   - `internal/shedrecipe/env.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/shedengine/shed.go`
+  - `internal/shedengine/producer.go`
   - `internal/loomshed/loomshed.go`
   - `internal/shedcheck/doc.go`
 - **Edits:** none
@@ -89,7 +90,14 @@ A `contracts/recipes` test asserting the bytes are non-empty and `Parse`-able wo
   It must use `shedbuild.Parse` on the embedded bytes, never `shedbuild.Load` — there is no on-disk runtime location for this recipe.
   It must surface both the parse error and the build error rather than swallowing either, wrapping each with a `loomrecipe: ` prefix and nothing more: `shedbuild` already names the offending row's zero-based index and `name` in every error it raises after decode, and the decoder keeps yaml line numbers, so no further position work is needed.
   It must not call `shedbuild.Check` — `internal/shedcheck/doc.go` and `internal/shedbuild/check.go` both state that `Check` is authoring-time only, because a resumed run legitimately starts mid-graph and reachability-from-entry is the wrong production question.
-  `New` performs no nil-guard of its own on any `Env` field: each registry entry validates exactly the fields it reads, and `preflightEntry`'s `requireAbsRoot("Preflight", "Cwd", …)` is what now covers the guard `loomshed.New`'s nil-`Preflight` check used to.
+  `New` performs no nil-guard or absolute-path check of its own on any `Env` field: each registry entry validates exactly the fields it reads, and `preflightEntry`'s `requireAbsRoot("Preflight", "Cwd", …)` is what now covers the guard `loomshed.New`'s nil-`Preflight` check used to.
+
+  `New` does make **one** check of its own, and it is a coherence check across its two arguments rather than a validation of either: it returns an error when `env.StatusPath != paths.StatusPath`, and another when `env.StatusLockPath != paths.StatusLockPath`.
+  Each error names both sides' values so the divergence is readable without a debugger.
+  This is not a re-litigation of the deliberate duplication — the two copies stay — it is the guard the duplication needs.
+  `loomshed.Deps` carried one `StatusPath` field feeding both `NewLoomPreflight` and `shedengine.Shed`, so the two could not disagree;
+  splitting it into an `Env` copy (read by `loomPreflightEntry`) and a `ShedPaths` copy (read by `Shed`) makes a divergent fill possible for the first time, and its consequence is silent: `Shed` would persist its status to one file while `Loom-Preflight` reads another, which surfaces as a broken resume rather than as any error.
+  That is the same class of silent durable-identity hazard the `row-name-authority-stays-with-the-go-constants` Shared Decision exists to machine-check, and `New` is the only place in the tree where both copies are visible at once, so no other layer can make this check.
 
   Create `internal/loomrecipe/doc.go` with the package doc: `internal/loomrecipe` owns loom's recipe-backed producer-list construction and is the drop-in replacement for `loomshed.New`;
   `internal/loomcli` is its only production caller;

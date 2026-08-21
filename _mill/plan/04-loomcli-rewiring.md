@@ -63,7 +63,8 @@ Batch-local decisions:
   `c.shedPaths` gets `StatusPath` from `loomengine.LoomStatusFile(location)`, `LockPath` from `loomengine.LoomRunLock(location)`, `StatusLockPath` from `loomengine.LoomStatusLock(location)`, and `MaxBounces` left zero.
   Keep the existing `MaxBounces` comment verbatim — the per-producer, episode-scoped default it explains is unchanged by this conversion.
   `StatusPath` and `StatusLockPath` are deliberately told twice, once in each struct;
-  carry a comment saying the duplication is inherent to the `Env`-versus-`Shed` split and must not be collapsed.
+  carry a comment saying the duplication is inherent to the `Env`-versus-`Shed` split and must not be collapsed, and that `loomrecipe.New` errors if the two copies disagree.
+  Fill each pair from a single evaluation of its `loomengine` accessor rather than calling the accessor twice, so the two copies cannot drift here.
 
   Stop constructing the `Preflight` row: delete the `Preflight: preflightshed.NewPreflight(loomshed.NamePreflight, cwd)` field and the `internal/preflightshed` import.
   `preflightEntry` in `internal/shedrecipe/entries_simple.go` now builds it from `Env.Cwd` with exactly the same call.
