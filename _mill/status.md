@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shedbuild-loader
+phase: approved-shedbuild-builder
 slug: shed-recipe-loader-builder
 branch: shed-recipe-loader-builder
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-21T12:28:47Z'
 planned  '2026-08-21T12:28:57Z'
 implementing  '2026-08-21T12:29:24Z'
 approved-shedbuild-loader  '2026-08-21T12:34:23Z'
+approved-shedbuild-builder  '2026-08-21T12:39:10Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     commit_sha: 8cf8974c59f45cbd10fa1b8a3aead1f152376807
     verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: shedbuild-builder
-    state: running
+    state: approved
     implementer_session: 5959c856-95af-41b2-8ea9-d8d68de73284
     start_sha: d4b85bd9215b64853c461aff1bab21298b8f3750
+    commit_sha: 24d7b8f3c11b66288f3091102c9b3af41ab39ff2
     verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: loom-equivalence
     state: pending
