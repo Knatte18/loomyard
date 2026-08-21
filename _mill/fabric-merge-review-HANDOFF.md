@@ -4,7 +4,9 @@ Off-limits to round agents: this file matches the `fabric-merge-review-*` patter
 
 **Last refreshed:** 2026-08-21, after round 7's verification.
 
-**Operator directive (2026-08-21): stop asking for per-round confirmation.** The 4-round fixed plan (r4-r7) is complete; none converged. Crucible is designed to run long autonomously — the orchestrator now picks each subsequent round's model/effort itself (rotating for diversity, escalating effort toward a genuine safety-pass attempt) and proceeds without a check-in, reporting results after the fact rather than asking permission before spawning. Only stop for a genuine blocker (a real ambiguity, a destructive/irreversible action, or actual convergence).
+**Operator directive (2026-08-21): stop asking for per-round confirmation.** The 4-round fixed plan (r4-r7) is complete; none converged. Crucible is designed to run long autonomously — the orchestrator now picks each subsequent round's model/effort itself (rotating for diversity) and proceeds without a check-in, reporting results after the fact rather than asking permission before spawning. Only stop for a genuine blocker (a real ambiguity, a destructive/irreversible action, or actual convergence).
+
+**Correction (2026-08-21, same day): never pick `max` effort autonomously.** The orchestrator picked `fable-max-r8` on its own initiative; the operator did not approve it and would never have suggested that combination — `max` is a materially different cost tier from `high`, not a small step up. Round 8 was allowed to finish since it was already running, but every subsequent autonomous pick stays within `medium`/`high`. `max` (and `xhigh`) are reserved for a round the operator explicitly asks for.
 
 ## What this task is
 
