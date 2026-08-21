@@ -134,6 +134,32 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
 - **Rejected:** `Build` running `Check` and failing on findings (would make a legitimately resumable graph un-buildable, and contradicts a documented invariant of `shedcheck`);
   no helper at all (leaves `Entry`/`Terminals` on `Recipe` with no consumer in the package that defines them).
 
+### Decode strategy: `Decoder.KnownFields(true)`, with decode-level messages left as yaml writes them
+
+- **Decision:** `Parse` decodes with `yaml.NewDecoder(bytes.NewReader(data))` + `dec.KnownFields(true)` into a typed document struct whose row `Config` field is a `map[string]any`.
+  Every error yaml itself produces — an unknown key at either level, and a `config:` that is a scalar or a list — is wrapped with a `shedbuild: ` prefix and otherwise passed through **verbatim**, keeping yaml's own `line N:` position and its `field x not found in type shedbuild.recipeDoc` / `cannot unmarshal !!str into map[string]interface {}` wording.
+  Only the checks `shedbuild` performs *itself*, after a successful decode — empty `name`, empty `engine`, negative `max_bounces`, duplicate `name`, empty `entry`/`terminals`/`producers` — name the row's index and `name`.
+- **Rationale:** `KnownFields(true)` is the only strict mechanism `gopkg.in/yaml.v3` offers, it is unavailable on the package-level `yaml.Unmarshal`, and it is already the repo's established pattern at six production sites (`internal/planparser/parse.go`, `internal/modelspec/load.go`, `internal/burlerengine/config.go`, `internal/burlercli/run.go`, `internal/websterengine/report.go`, `internal/websterengine/outcome.go`).
+  Its message carries a **line number but no row identity**, so the earlier blanket promise that every unknown-key error names the row index and name was not reachable from it.
+  The relaxation is the right way round rather than a concession: for a defect in a *file*, `line 14: field on-done not found` points the author at the exact text to edit, which a row index does not.
+  The alternative that would preserve row identity — decoding into a `yaml.Node` tree and walking every mapping key by hand — buys a worse message at the cost of a hand-rolled decoder, and would be the only one in the repo.
+- **Rejected:** `yaml.Unmarshal` with a manual key walk over `map[string]any` (loses line numbers entirely, and re-implements what `KnownFields` already does);
+  a `yaml.Node` walk (hand-rolled decoder, no precedent, worse messages);
+  keeping the original promise and post-processing yaml's error text to inject a row index (parsing an upstream library's error strings is exactly the fragility this repo avoids elsewhere).
+
+### `Recipe` and `Row` — the package's public surface
+
+- **Decision:** two exported types.
+  `Recipe{Version int; Entry string; Terminals []string; Producers []Row}`, and `Row{Name string; Engine string; Config map[string]any; OnDone string; OnStuck string; Segment string; MaxBounces int}`.
+  Both carry explicit `yaml:"..."` tags — `version`, `entry`, `terminals`, `producers`, and `name`, `engine`, `config`, `on_done`, `on_stuck`, `segment`, `max_bounces` — never relying on yaml's default lowercasing, since `on_done` and `max_bounces` would not round-trip from `OnDone`/`MaxBounces` without them.
+- **Rationale:** `Recipe` is what `Parse`/`Load` return and what `Build`/`Check` take, so its element type is public surface and must be named here rather than left to the plan.
+  `Row.Config` stays `map[string]any` rather than `shedrecipe.Config` so that `shedbuild`'s decoded shape does not bind the decode step to `shedrecipe`'s type;
+  `Build` converts with `shedrecipe.Config(row.Config)`, a free conversion since the underlying types are identical.
+  `Row` is a bare noun rather than `ProducerRow` because `Recipe.Producers []Row` already supplies the "producer" half of the name at every read site.
+- **Rejected:** `ProducerRow` (redundant at the only field that holds it);
+  an unexported row type (would make `Recipe.Producers` unusable by a caller, including the equivalence test);
+  typing `Row.Config` as `shedrecipe.Config` directly (couples the file-format layer's struct definition to the registry's type for no gain, and the conversion at the one use site is free).
+
 ### `Build` inherits constructor-side filesystem effects
 
 - **Decision:** `Build` writes and reads the filesystem, via the constructors it calls, and the discussion records this as a property of the mechanism rather than a defect to design around.
@@ -276,6 +302,8 @@ From `CONSTRAINTS.md`:
   `Load(path)` reads the told path;
   nothing else in the package touches the filesystem or constructs a path.
   This is the invariant the new `seam_enforcement_test.go` machine-enforces, and `CONSTRAINTS.md`'s machine-enforced list gains `internal/shedbuild` in the same commit.
+  That edit is **two changes, not one**: the package list gains an entry, *and* the bullet's trailing sentence "**Enforced by** the ten tests named above" becomes "the eleven tests named above."
+  A list append that leaves the count reading "ten" is the silent-drift failure this whole invariant file exists to prevent.
 - **Shed Recipe Registry Invariant.** Every registry value constructs a `shedengine.ShedProducer` and nothing else, and the registry is reached only through `Lookup` and `Names`, never by `init()` self-registration and never by a runtime `Register` call.
   `shedbuild` must reach the registry only through `Lookup`/`Names`, and must not add any registration mechanism of its own — a recipe naming an unregistered engine is an error, never a reason to register one.
 - **Shed Producer-Seam Invariant.** `internal/shedengine`'s import allowlist is stdlib + `internal/state` + `internal/lock`.
@@ -311,10 +339,11 @@ Scenarios that must be covered:
 - Row order in the file is preserved exactly in `Recipe.Producers`.
 - Malformed YAML (a tab-indented line, an unclosed quote) errors with a `shedbuild: ` prefix.
 - Missing `version`, and a `version` other than `1`, each error naming the offending value.
-- An unknown document-level key errors naming that key.
-- An unknown row-level key errors naming that key *and* the row.
+- An unknown document-level key, and an unknown row-level key, each error with yaml's own `line N: field <key> not found in type ...` text under a `shedbuild: ` prefix.
+  Assert on the key name and the `shedbuild: ` prefix, **not** on yaml's exact wording — that is upstream text, not this package's contract.
 - Empty `entry`, empty `terminals`, and empty `producers` each error distinctly.
-- Per row: empty `name`, empty `engine`, negative `max_bounces`, and a `config:` that is a scalar or list rather than a mapping, each error naming the row's index and name.
+- Per row, from `shedbuild`'s own post-decode checks: empty `name`, empty `engine`, and negative `max_bounces`, each error naming the row's index and name.
+- A `config:` that is a scalar or a list rather than a mapping fails inside the decoder, so it errors with yaml's own `cannot unmarshal !!str into map[string]interface {}` text under the `shedbuild: ` prefix — a line number, no row identity, same as the unknown-key case above.
 - A duplicate `name` across two rows errors naming the name and both indices.
 - Determinism: the same input parsed twice yields equal results, and an unknown-key error names the same key both times (guard against map-iteration-order nondeterminism in the rejection message — `shedrecipe.configRejectUnknown` sorts for exactly this reason).
 
@@ -337,7 +366,10 @@ Scenarios:
 - A `config:` block on one of the nine empty-config entries errors (proving the block is forwarded to the constructor rather than dropped).
 - Every one of the twelve names in `shedrecipe.Names()` is buildable from a recipe given a sufficiently filled `Env` — driven off `Names()` rather than a local list, so a thirteenth registered engine fails this test until the fixture covers it.
   This one case is **not** filesystem-free, unlike the rest of the `Build` table: `Bouncer` and `BurlerRound` `os.MkdirAll` their resolved run directory, and `Bouncer` and `SingleLLM` eagerly read their `rubric_stencil`/`stencil`.
-  It therefore needs a `t.TempDir()` as `Env.RunRoot`, a second as `Env.StencilsDir` with the two named stencils written to it at `stencilstore.Path(dir, name)` (plain files, arbitrary content), and the five Webster seam fakes described under the equivalence test.
+  **Copy `internal/shedrecipe/fixture_test.go`'s `newTestEnv(t)` — it is the filled-`Env` builder this case needs**, and it is a different fixture from `coverage_guard_test.go`'s, which only ever builds `loomshed.Deps`-shaped values and fills no `Env` at all.
+  `newTestEnv` already does the whole job: one `t.TempDir()`, `mustMkdir` for `Cwd`/`AnchorPath`/`WorktreeRoot`/`StencilsDir`/`RunRoot`, joined paths for `StatusPath`/`StatusLockPath`/`DecisionRecordPath`/`SupportLogPath`, and `Shuttle`, `Burler`, `WebsterRun`, plus the four `WebsterDeps` seams.
+  The full seam set this case needs is therefore **eleven** things, not five: `Env.Shuttle` (required by both `bouncerEntry` and `singleLLMEntry`), `Env.Burler` (required by `burlerRoundEntry`), `Env.WorktreeRoot` (`bouncerEntry` resolves `artifact_paths` against it, and `singleLLMEntry` resolves `output_files`), `Env.RunRoot`, `Env.StencilsDir`, and the five Webster seams.
+  On top of `newTestEnv`'s shape, write the two named stencils into `Env.StencilsDir` at `stencilstore.Path(dir, name)` (plain files, arbitrary content) — `newTestEnv` creates the directory but seeds no files.
   Keep it a separate test function from the in-memory `Build` table so the two do not share a fixture and the pure cases stay pure.
 - Build order matches recipe order.
 - `Build` on a recipe with an empty `Producers` slice errors (defence in depth even though `Parse` rejects it, since `Build` accepts hand-built `Recipe` values).
@@ -400,5 +432,6 @@ If an existing test *does* need editing, that is a signal the change leaked outs
 - **Q:** Verification approach — unit tests only, or unit tests plus a loom-equivalence fixture? **A:** [auto-pick] Both, with the equivalence test as the key one. **Why:** it is the actual proof the format can express loom's real thirteen-row list, and it earns that proof without doing piece 4's conversion; `Producer` identity is not comparable, but concrete type is.
 - **Q:** Told-geometry enforcement for the new package — machine-enforced or review obligation? **A:** [auto-pick] Machine-enforced, with `internal/shedbuild` added to `CONSTRAINTS.md`'s list in the same commit. **Why:** every sibling in this stack is machine-enforced, and a new package that resolves a path is exactly where the invariant rots silently.
 - **Q:** Does `shedbuild` define where recipe files live on disk? **A:** [auto-pick] No — `Load` takes a told absolute path. **Why:** Told-Geometry Invariant, and choosing between `go:embed`, a `stencilstore`-style seed, and a plain `_lyx/` file is piece 4's decision to take with loom's real recipe in hand.
-- **Q:** Which docs land in the same commit? **A:** [auto-pick] `manifest/designs/shed-recipe.md`, `docs/overview.md`, `CONSTRAINTS.md`, and `manifest/roadmap.md`. **Why:** `CLAUDE.md`'s task-completion rule — a task adding a module updates the module doc, the overview, and `CONSTRAINTS.md` for a new invariant, in the same commit; the roadmap moves because this completes a planned item.
+- **Q:** Which docs land in the same commit? **A:** [auto-pick] `manifest/designs/shed-recipe.md`, `manifest/designs/shed.md`, `docs/overview.md`, `CONSTRAINTS.md`, and `manifest/roadmap.md`. **Why:** `CLAUDE.md`'s task-completion rule — a task adding a module updates the module doc, the overview, and `CONSTRAINTS.md` for a new invariant, in the same commit; the roadmap moves because this completes a planned item.
 - **Q:** [review r1, BLOCKING] `Build` was described as filesystem-free, but four registry constructors touch disk at construction time — how is that resolved, and what fixture does the twelve-engine test need? **A:** [auto-pick] Record it as an inherited, pass-through property with its own Decisions subsection, and specify the fixture: a temp `RunRoot`, a temp `StencilsDir` with plain files written at `stencilstore.Path(dir, name)`, in a test function kept separate from the in-memory `Build` table. **Why:** `bouncerEntry`/`burlerRoundEntry` each `os.MkdirAll` their resolved run dir, and `bouncerEntry`/`singleLLMEntry` eagerly probe their stencil via `stencilstore.Read` — a plain `os.ReadFile`, so no stamp or `Reconcile` pass is needed. Restricting the test to the nine effect-free entries would drop exactly the three engines with the most complex `Config` shapes, which is the coverage most worth having.
+- **Q:** [review r2, BLOCKING] The promised unknown-key and bad-`config:` error messages are not both reachable from any obvious `yaml.v3` decode strategy — which strategy does `Parse` use, and what gets relaxed? **A:** [auto-pick] `yaml.NewDecoder(...)` + `Decoder.KnownFields(true)` into a typed document struct; every decoder-produced error is wrapped with a `shedbuild: ` prefix and otherwise passed through verbatim, so decode-level errors carry yaml's `line N:` position but no row identity. Only `shedbuild`'s own post-decode checks name the row index and name. **Why:** `KnownFields` is yaml.v3's only strict mechanism, is unavailable on the package-level `yaml.Unmarshal`, and is already the pattern at six production sites in this repo. For a defect in a file, a line number is a better pointer than a row index; preserving row identity would mean hand-rolling a `yaml.Node` walk — the only such decoder in the repo — for a worse message.
