@@ -479,3 +479,35 @@ func TestRunCLI_MergeStageRequiresAtLeastOnePath(t *testing.T) {
 		t.Errorf("RunCLI(merge-stage) with no paths = 0; want a refusal\noutput: %s", out.String())
 	}
 }
+
+// TestRunCLI_MergeStageEchoesEachPathOnce pins the success envelope's staged echo: a path passed
+// twice in one call stages fine (the engine tolerates the duplicate) but must appear ONCE in
+// "staged" — an envelope claiming two stagings for one path reports something that did not happen
+// twice.
+func TestRunCLI_MergeStageEchoesEachPathOnce(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
+
+	var mergeInOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
+	}
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "conflict.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolution: %v", err)
+	}
+
+	var stageOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", "conflict.txt", "conflict.txt"}); exitCode != 0 {
+		t.Fatalf("RunCLI(merge-stage conflict.txt conflict.txt) = %d; want 0\noutput: %s", exitCode, stageOut.String())
+	}
+	envelope := decodeResult(t, &stageOut)
+	staged, _ := envelope["staged"].([]any)
+	if len(staged) != 1 {
+		t.Errorf("RunCLI(merge-stage) staged = %v; want exactly one entry for the duplicated path", envelope["staged"])
+	}
+	if got, _ := staged[0].(string); len(staged) == 1 && got != "conflict.txt" {
+		t.Errorf("RunCLI(merge-stage) staged[0] = %q; want %q", got, "conflict.txt")
+	}
+}

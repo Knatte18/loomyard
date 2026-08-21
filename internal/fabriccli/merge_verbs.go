@@ -220,8 +220,11 @@ Example:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
 				return nil
 			}
+			// The staged echo deduplicates (order-preserving) rather than repeating args verbatim:
+			// the engine tolerates a path passed twice, but an envelope claiming two stagings for one
+			// path would be reporting something that did not happen twice.
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
-				"staged": args,
+				"staged": uniquePreservingOrder(args),
 			}))
 			return nil
 		},
@@ -234,4 +237,19 @@ Example:
 	mergeCmd.MarkFlagsMutuallyExclusive("continue", "abort")
 
 	cmd.AddCommand(mergeInCmd, mergeCmd, mergeStageCmd)
+}
+
+// uniquePreservingOrder returns values with every duplicate after a value's first occurrence
+// dropped, keeping the first-occurrence order — the shape merge-stage's staged echo reports.
+func uniquePreservingOrder(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	unique := make([]string, 0, len(values))
+	for _, v := range values {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		unique = append(unique, v)
+	}
+	return unique
 }
