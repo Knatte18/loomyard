@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-SingleLLM entry  '2026-08-21T09:30:06Z'
 approved-Bouncer and BurlerRound entries  '2026-08-21T09:36:35Z'
 approved-guards and docs  '2026-08-21T09:43:52Z'
 holistic-reviewing  '2026-08-21T09:44:29Z'
+holistic-approved  '2026-08-21T09:47:50Z'
 ```
 
 ## Batches
