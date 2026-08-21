@@ -32,7 +32,7 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
 - A **builder**: `Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error)`, resolving each row's `engine` through `shedrecipe.Lookup` and calling the returned `Constructor` with the row's `name`, its `config` as a `shedrecipe.Config`, and the caller's `env`.
 - A thin authoring-time convenience `Check(r Recipe, producers []shedengine.ProducerDef) []shedcheck.Finding`, forwarding the recipe's told `Entry`/`Terminals` to `shedcheck.Check`.
 - Tests: table-driven parse/build coverage over `testdata/` fixtures, an equivalence test against `loomshed.New`'s live literal, and a told-geometry seam-enforcement test.
-- Docs, same commit: `manifest/designs/shed-recipe.md` (header banner + piece-2 section + the `Segment` correction), `docs/overview.md` module table and shed narrative, `CONSTRAINTS.md` enforcement list, `manifest/roadmap.md` item moved to Done.
+- Docs, same commit: `manifest/designs/shed-recipe.md` (header banner + piece-2 section + the `Segment` correction), **`manifest/designs/shed.md`** (its two `Segment`-departure sentences, see below), `docs/overview.md` module table and shed narrative, `CONSTRAINTS.md` enforcement list, `manifest/roadmap.md` item moved to Done.
 
 **Out:**
 
@@ -80,7 +80,9 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
 ### Byte-slice core with a told-path wrapper
 
 - **Decision:** `Parse(data []byte) (Recipe, error)` is the real loader.
-  `Load(path string) (Recipe, error)` reads the file and delegates, and is the only function in the package that touches the filesystem.
+  `Load(path string) (Recipe, error)` reads the file and delegates, and is the only function *whose own code* touches the filesystem.
+  `Load` rejects a non-absolute `path` before reading, with a `shedbuild: ` message naming the value — matching `shedrecipe.requireAbsRoot` and `internal/standalonestate`, both of which reject rather than resolve.
+  **`Build` is not filesystem-free**, and this is inherited, not chosen: four of the twelve registry constructors touch disk of their own accord (see "`Build` inherits constructor-side filesystem effects" below).
 - **Rationale:** keeps every parse and build test filesystem-free, and keeps the package's told-geometry story trivial — `Load` reads exactly the absolute path it is handed and derives nothing.
   It also leaves piece 4 free to feed an embedded `[]byte` straight to `Parse` with no temp file.
 - **Rejected:** path-only `Load` (forces a `t.TempDir()` into every table case);
@@ -115,6 +117,10 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
   Worse, `shedengine.validate()` enforces that a non-empty `OnStuck` names a target sharing the producer's `Segment`, so a mixed list (recipe rows at `""`, hand-wired rows at `"Discussion-Review"`) would fail validation at run time, not authoring time.
   The doc's other point — that `Segment`'s old cross-segment-wiring job is superseded by `shedcheck` — stays true and is not affected;
   what survives is `Segment` as a display/grouping label, which is exactly how the roadmap items use it.
+- **Second doc carrying the superseded statement:** `manifest/designs/shed.md`'s `blind-gate` section says "`blind-gate` is what replaces the departing `Segment` rule" and "those belong to the recipe-loader items that actually drop `Segment`."
+  This task *is* the recipe-loader item, and it does not drop `Segment` — so both sentences become false the moment this lands, and both are corrected in the same commit.
+  What survives unchanged is `blind-gate` itself: it remains the real graph property that supersedes `Segment`'s *cross-segment-wiring-detection* job, which is the substantive half of that section's claim.
+  What changes is only the prediction that `Segment` departs.
 - **Rejected:** keeping `segment` out and dropping it from the three roadmap items (throws away the segment grouping the whole `Bouncer`+`Burler` "perch" framing in `CLAUDE.md` and `manifest/designs/loom.md` is described in terms of);
   a document-level `segments:` grouping block that assigns rows to segments (a second way to say the same thing, and it separates a row's segment from the row, which is where `ProducerDef` keeps it).
 
@@ -128,6 +134,20 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
 - **Rejected:** `Build` running `Check` and failing on findings (would make a legitimately resumable graph un-buildable, and contradicts a documented invariant of `shedcheck`);
   no helper at all (leaves `Entry`/`Terminals` on `Recipe` with no consumer in the package that defines them).
 
+### `Build` inherits constructor-side filesystem effects
+
+- **Decision:** `Build` writes and reads the filesystem, via the constructors it calls, and the discussion records this as a property of the mechanism rather than a defect to design around.
+  Four of the twelve registry entries have filesystem effects at *construction* time:
+  `bouncerEntry` and `burlerRoundEntry` each `os.MkdirAll(runDir, 0o755)` on the directory they resolve from `Env.RunRoot` + `config.run_subdir` (`entries_bouncer.go`, `entries_burler.go`);
+  `bouncerEntry`'s `shedadapters.NewBouncer` eagerly probes its `rubric_stencil`, and `singleLLMEntry` eagerly probes its `stencil` via `stencilstore.Read`, both so a mistyped name fails at construction rather than at first `Call`.
+  `shedbuild` neither suppresses nor wraps these — it is a pass-through — but its own docs must say so, because "the loader is filesystem-free" is only true of `Parse`.
+- **Rationale:** stating it is what makes the test fixture correct.
+  The "every one of `shedrecipe.Names()` is buildable" case cannot be a pure in-memory table: `Bouncer`, `BurlerRound`, and `SingleLLM` need a writable `Env.RunRoot` (a `t.TempDir()`) and real stencil files under `Env.StencilsDir`.
+  `stencilstore.Read` is a plain `os.ReadFile(stencilstore.Path(baseDir, name))` (`internal/stencilstore/reconcile.go`), so a fixture stencil is an ordinary file written at `stencilstore.Path(dir, name)` with arbitrary content — no stamp banner, no `Reconcile` pass, and no registry entry needed.
+  Leaving this unsaid would have the plan write a table-driven test that fails at the third engine for a reason that looks like a `shedbuild` bug and is not.
+- **Rejected:** designing `Build` to avoid the effect (would mean not calling the constructors, i.e. not being a builder);
+  restricting the twelve-engine test to the nine effect-free entries (drops exactly the three engines whose `Config` shapes are the most complex, which is the coverage most worth having).
+
 ### Strict unknown-key rejection and a required `version`
 
 - **Decision:** unknown keys are errors, at both the document level and the row level.
@@ -137,6 +157,7 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
   A lenient loader silently swallows `on-done` for `on_done`, producing a row with an empty `OnDone` that `shedengine` reads as "end the whole run quietly."
   That failure is silent, and it is exactly the class of defect a declarative format introduces that a Go literal could not.
   The `version` gate costs one field and makes a future format change a loud error rather than a misparse.
+  `Recipe` **does** surface the decoded value as `Version int`, rather than validating it and discarding it: a caller inspecting a parsed recipe should not have to re-read the file to learn which format it declared, and a test asserting the round-trip needs the field.
 - **Rejected:** strict keys with no `version` (a later format change has no way to fail loud on an old file);
   lenient (ignore unknown keys) — the silent-typo failure above.
 
@@ -301,6 +322,7 @@ Scenarios that must be covered:
 
 Small: a `t.TempDir()` file parses identically to `Parse` on the same bytes;
 a missing path errors;
+a relative path errors before any read is attempted;
 a directory path errors.
 Everything else is `Parse`'s job.
 
@@ -314,6 +336,9 @@ Scenarios:
 - A row whose constructor fails — a `Preflight` row with an empty `Env.Cwd`, and a `SingleLLM` row missing its required `stencil` key — surfaces the constructor's own error, wrapped with the row index and name.
 - A `config:` block on one of the nine empty-config entries errors (proving the block is forwarded to the constructor rather than dropped).
 - Every one of the twelve names in `shedrecipe.Names()` is buildable from a recipe given a sufficiently filled `Env` — driven off `Names()` rather than a local list, so a thirteenth registered engine fails this test until the fixture covers it.
+  This one case is **not** filesystem-free, unlike the rest of the `Build` table: `Bouncer` and `BurlerRound` `os.MkdirAll` their resolved run directory, and `Bouncer` and `SingleLLM` eagerly read their `rubric_stencil`/`stencil`.
+  It therefore needs a `t.TempDir()` as `Env.RunRoot`, a second as `Env.StencilsDir` with the two named stencils written to it at `stencilstore.Path(dir, name)` (plain files, arbitrary content), and the five Webster seam fakes described under the equivalence test.
+  Keep it a separate test function from the in-memory `Build` table so the two do not share a fixture and the pure cases stay pure.
 - Build order matches recipe order.
 - `Build` on a recipe with an empty `Producers` slice errors (defence in depth even though `Parse` rejects it, since `Build` accepts hand-built `Recipe` values).
 
@@ -327,8 +352,19 @@ A `testdata/` recipe fixture hand-authoring loom's thirteen rows, built with a `
 - The fixture's `entry` and `terminals`, fed through the package's `Check` helper against the *built* list, produce zero findings.
 
 This test is what makes the claim "the format can express loom's real list" checkable, and it fails loudly if a future `loomshed` change outgrows the format — which is the regression worth catching, since piece 4 depends on it.
-Both sides need a `Preflight` fake, a `mergeresolve.Shuttle` fake, and a `landingshed.Deps` filled with told temp-dir paths and typed-nil fabric openers;
-`internal/shedrecipe/coverage_guard_test.go` and `internal/loomshed/fixture_test.go` are the two patterns to copy.
+**Row 1 must not use a `Preflight` fake.** `shedrecipe.preflightEntry` returns `preflightshed.NewPreflight(name, env.Cwd)`, so filling `loomshed.Deps.Preflight` with the `coverageGuardFakePreflight{}` pattern would make row 1's concrete types differ by construction and the type assertion would fail on the very first row for a reason that is purely fixture-shaped.
+The resolution is to hand the `loomshed` side a **real** `preflightshed.NewPreflight(loomshed.NamePreflight, cwd)` with a told temp-dir `cwd`: that constructor only stores its two arguments and spawns nothing — git is spawned inside `Call`, which this test never invokes — so it is safe to construct and makes both sides genuinely comparable.
+`internal/shedrecipe/coverage_guard_test.go`'s fake exists because *that* test only reads `Producers[i].Name`;
+this one compares types, so it needs the real thing.
+
+**`Webster` needs five seams `loomshed.New` never validates.** `websterEntry` calls `requireSeam` on `Env.WebsterRun` and on four inner fields of `Env.WebsterDeps` — `Starter`, `Reed`, `Engine`, `RefMatcher` — while `loomshed.New` validates none of them, so `coverage_guard_test.go` leaves them zero and is *not* the pattern to copy for the recipe side.
+The fixture inventory therefore needs five more fakes than the loomshed side does, each satisfying the interface `websterengine.RunDeps` declares for it: a `shedadapters.WebsterRunner`, and the `Starter`, `Reed`, `Engine`, and `RefMatcher` interfaces (read their exact declarations off `websterengine.RunDeps` when writing the plan).
+None is ever called — `Call` is never invoked — so each can be a minimal do-nothing struct with a compile-time `var _ <iface> = <fake>{}` assertion.
+`websterEntry` deliberately does *not* check `Batcher`, `Clock`, `OpenBisector`, `ShuttleCfg`, `Roles`, `Config`, or `Geom`, so the fixture leaves all seven zero.
+
+Beyond those two, both sides need a `mergeresolve.Shuttle` fake and a `landingshed.Deps` filled with told temp-dir paths and typed-nil fabric openers;
+`internal/shedrecipe/coverage_guard_test.go` and `internal/loomshed/fixture_test.go` are the patterns to copy for that half.
+The recipe side additionally needs the writable `RunRoot` and on-disk stencil files described under "`Build` inherits constructor-side filesystem effects" if the fixture carries any `Bouncer`, `BurlerRound`, or `SingleLLM` row — loom's current thirteen rows carry none (its five LLM rows are still `Stub`), so the equivalence fixture specifically needs neither.
 
 ### `internal/shedbuild` — `Check` helper
 
@@ -365,3 +401,4 @@ If an existing test *does* need editing, that is a signal the change leaked outs
 - **Q:** Told-geometry enforcement for the new package — machine-enforced or review obligation? **A:** [auto-pick] Machine-enforced, with `internal/shedbuild` added to `CONSTRAINTS.md`'s list in the same commit. **Why:** every sibling in this stack is machine-enforced, and a new package that resolves a path is exactly where the invariant rots silently.
 - **Q:** Does `shedbuild` define where recipe files live on disk? **A:** [auto-pick] No — `Load` takes a told absolute path. **Why:** Told-Geometry Invariant, and choosing between `go:embed`, a `stencilstore`-style seed, and a plain `_lyx/` file is piece 4's decision to take with loom's real recipe in hand.
 - **Q:** Which docs land in the same commit? **A:** [auto-pick] `manifest/designs/shed-recipe.md`, `docs/overview.md`, `CONSTRAINTS.md`, and `manifest/roadmap.md`. **Why:** `CLAUDE.md`'s task-completion rule — a task adding a module updates the module doc, the overview, and `CONSTRAINTS.md` for a new invariant, in the same commit; the roadmap moves because this completes a planned item.
+- **Q:** [review r1, BLOCKING] `Build` was described as filesystem-free, but four registry constructors touch disk at construction time — how is that resolved, and what fixture does the twelve-engine test need? **A:** [auto-pick] Record it as an inherited, pass-through property with its own Decisions subsection, and specify the fixture: a temp `RunRoot`, a temp `StencilsDir` with plain files written at `stencilstore.Path(dir, name)`, in a test function kept separate from the in-memory `Build` table. **Why:** `bouncerEntry`/`burlerRoundEntry` each `os.MkdirAll` their resolved run dir, and `bouncerEntry`/`singleLLMEntry` eagerly probe their stencil via `stencilstore.Read` — a plain `os.ReadFile`, so no stamp or `Reconcile` pass is needed. Restricting the test to the nine effect-free entries would drop exactly the three engines with the most complex `Config` shapes, which is the coverage most worth having.
