@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-recipe-file-and-loomrecipe-package
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -35,6 +35,7 @@ plan-fix-r6  '2026-08-21T15:48:37Z'
 plan-fix-r7  '2026-08-21T15:59:55Z'
 planned  '2026-08-21T16:00:20Z'
 implementing  '2026-08-21T16:00:45Z'
+approved-recipe-file-and-loomrecipe-package  '2026-08-21T16:05:52Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ implementing  '2026-08-21T16:00:45Z'
 ```yaml
 batches:
   - name: recipe-file-and-loomrecipe-package
-    state: running
+    state: approved
     implementer_session: f5702947-9d01-4983-8e07-ec1361c62193
     start_sha: 993fbd7804bb9ddb394925f2ac3b449bd22dd31b
+    commit_sha: 31e1e4d191bbbea3e737a64f3e46aa45bac682c6
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: move-the-graph-tests-into-loomrecipe
     state: pending
