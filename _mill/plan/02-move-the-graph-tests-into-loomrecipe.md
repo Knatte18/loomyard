@@ -66,7 +66,9 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   Fill the returned `ShedPaths` with `StatusPath`, `LockPath`, `StatusLockPath`, and `MaxBounces: 3`, matching the old `Deps`.
 
   Duplicate into this file, verbatim, the five helpers it needs that live in files staying in `internal/loomshed`: `writeDiscussionFixture` and the `validDecisionRecord` constant, `seedPlanValidateFixture`, the `fakeWebsterRun` type with its `run` method, and `writeBatcherConfig` (needed by the moved resume tests in card 9).
-  Add `fakeAlwaysDoneProducer` here too — it arrives with card 6's move but belongs beside the fixture that fills it, so card 6 relocates it into this file rather than leaving it in `shape_test.go`.
+  Do not declare `fakeAlwaysDoneProducer` in this card: its declaration arrives in this same file via card 6's move, which lifts it out of `shape_test.go` and drops it here.
+  This card only consumes it;
+  card 6 owns the single declaration.
   Note in the file header that these are deliberate duplications, not an oversight, and that `testLandingDeps` already existed in two independent copies before this task.
 
   Rewrite the file's own header comment: it currently names `_mill/plan/03-sequence-and-integration.md` and "card 11" from a long-past task, and describes `Deps` as the thing it returns.
@@ -92,7 +94,9 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/loomshed/loomshed_test.go` -> `internal/loomrecipe/shape_test.go`
 - **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe` and repoint all eight tests off `New(deps)` onto `loomrecipe.New(env, paths)`.
 
-  Relocate `fakeAlwaysDoneProducer` out of this file into `internal/loomrecipe/fixture_test.go` (card 5) — it is fixture scaffolding, not a shape assertion.
+  Relocate the `fakeAlwaysDoneProducer` declaration out of this file into `internal/loomrecipe/fixture_test.go` — it is fixture scaffolding, not a shape assertion, and belongs beside the fixture that fills it.
+  This card owns that single declaration;
+  card 5 only consumes it and must not declare a second copy.
   Replace `testDeps` with a `testEnv(t *testing.T) (shedrecipe.Env, ShedPaths)` helper of the same shape: one `t.TempDir()`, every path field joined off it, `Cwd` an absolute created subdirectory, `Landing: testLandingDeps(dir)`, `WebsterRun` and the four `WebsterDeps` seams filled the way card 5 fills them, and `MaxBounces: 3` on the `ShedPaths` half.
   Rewrite `wantProducerTable`'s entries to key off `loomshed.Name*` constants, exactly as they do today.
 

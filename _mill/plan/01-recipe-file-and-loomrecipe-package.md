@@ -128,7 +128,8 @@ A `contracts/recipes` test asserting the bytes are non-empty and `Parse`-able wo
 ## Batch Tests
 
 `verify: go test ./contracts/... ./internal/loomrecipe/...` compiles both new packages and runs `internal/loomrecipe/seam_enforcement_test.go`, the only test this batch adds.
-`./contracts/...` has no test files and reports `[no test files]` at exit 0 while still compiling the embed directive — a broken `//go:embed` path fails there rather than surfacing later.
+`./contracts/...` compiles the new embed directive — a broken `//go:embed` path fails there rather than surfacing later — and also runs `contracts/stencils/registry_test.go`, which this task does not touch and which must stay green;
+`contracts/recipes` itself contributes no test and reports `[no test files]`.
 The recipe's own parse-and-build correctness is not asserted in this batch;
 that is batch 2's `internal/loomrecipe/recipe_test.go`, which is where the assertion loop that `internal/shedbuild/equivalence_test.go` currently carries lands.
 The module-wide `go build ./...` at the batch boundary catches any cross-package compile fallout, of which there should be none — this batch only adds files.

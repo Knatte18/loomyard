@@ -83,7 +83,7 @@ _Cross-cutting decisions every batch inherits._
 - **Decision:** `Env.Landing` is left unfilled by `internal/loomcli`, exactly as `Deps.Landing` is unfilled today.
   Every test that builds the real thirteen-row list must still fill `Env.Landing` with a synthetic-but-valid `landingshed.Deps`, because `landingshed.NewPublish`/`NewFinalize` reject nil closures at construction.
 - **Rationale:** `Publish`/`Finalize` construction already fails in production today for want of `Landing`;
-  the parent-fabric resolution chain is a separate roadmap item.
+  the parent-fabric resolution chain belongs to a later item, which card 24 adds to `manifest/roadmap.md` because `internal/landingshed/deps.go` already asserts such an item exists and none does.
   Preserving the existing failure keeps this task a conversion, and must not read as a regression introduced here.
 - **Applies to:** batches 2, 3, 4.
 

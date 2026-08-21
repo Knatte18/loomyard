@@ -39,6 +39,7 @@ Batch-local decisions:
   - `internal/shedengine/shed.go`
   - `internal/loomengine/config.go`
   - `internal/shedadapters/webster.go`
+  - `internal/landingshed/deps.go`
 - **Edits:**
   - `internal/loomcli/wiring.go`
 - **Creates:** none
@@ -56,7 +57,7 @@ Batch-local decisions:
   `SupportLogPath` from `loomengine.DiscussionSupportLog(location)`;
   `WebsterDeps` from the assembled `runDeps`;
   and `WebsterRun` set explicitly to `websterengine.Run` per the `env-webster-run-is-filled-explicitly` Shared Decision.
-  `Landing` is left unfilled, per the `landing-parity` Shared Decision — carry a comment saying so and naming the roadmap item that builds the parent-fabric resolution chain, so the omission reads as preserved parity rather than an oversight.
+  `Landing` is left unfilled, per the `landing-parity` Shared Decision — carry a comment saying so, pointing at `internal/landingshed/deps.go`'s own account of the gap and at the roadmap item card 24 adds for the parent-fabric resolution chain, so the omission reads as preserved parity rather than an oversight.
   `StencilsDir`, `RunRoot`, `Shuttle`, `Burler`, and `Now` are left zero — only `SingleLLM`, `Bouncer`, and `BurlerRound` read them, and no row uses those engines yet.
   Carry a comment saying that too.
 
@@ -185,8 +186,9 @@ Batch-local decisions:
 ## Batch Tests
 
 `verify: go test ./internal/loomcli/...` runs the package's untagged suite: `wiring_test.go` (now nine path assertions split across the two carriers, the restated cwd test, and the new `WebsterRun` non-nil assertion), `cli_test.go` (the repointed verb-refusal fixture plus the help-tree and envelope tests, which this batch does not touch), `status_test.go`, `seedinput_test.go`, and `bootstrap_test.go`.
-`smoke_test.go` is integration-tagged and does not run here;
-it uses only `loomshed.Seed`, which this task leaves untouched, so it is unaffected either way — the `done_gate`'s `go test -tags integration ./...` covers it at task end.
+`smoke_test.go` carries a `//go:build smoke` tag and does not run here;
+it uses only `loomshed.Seed`, which this task leaves untouched, so it is unaffected by this batch either way.
+Note that `pipeline.done_gate`'s `go test -tags integration ./...` does **not** reach it — `-tags integration` does not enable `smoke` — so the only thing in this plan that compiles that file is batch 6's `&& go vet -tags smoke ./internal/loomcli/` tail, added there because batch 6 edits a comment in it.
 
 `wire` itself is still driven directly against a hand-built `*lyxcwd.Location` over a temp directory seeded with `loom.yaml` alone, so the package stays tier 1 and spawns no process.
 Note that `wire` never builds a `Shed` — `loomrecipe.New` is called only from `driveCmd` — so no `wire` test triggers `landingshed.NewPublish`'s nil-closure rejection despite `Env.Landing` being left unfilled.

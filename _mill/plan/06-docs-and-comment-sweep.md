@@ -76,6 +76,7 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   - `internal/loomshed/loomshed.go`
   - `internal/shedbuild/doc.go`
   - `internal/shedrecipe/registry_test.go`
+  - `internal/landingshed/deps.go`
 - **Edits:**
   - `manifest/designs/shed-recipe.md`
   - `manifest/designs/loom.md`
@@ -99,8 +100,17 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   Then correct the present-tense claims inside already-Done entries this task falsifies — at minimum the "Shed recipe: engine registry" entry's claim that a coverage guard at `internal/shedrecipe/coverage_guard_test.go` "pins the registry against `loomshed.New`'s current, real row list, both directions", its claim that "`loomshed.New` keeps its own Go literal producer list and `loomshed.Deps.Preflight`'s pre-injected field unchanged; nothing downstream of this piece consumes it yet", and the "Shed recipe: loader/builder" entry's description of the shedbuild loom-equivalence test as a shipped artefact.
   The "Shed recipe" section intro also carries the same falsified `loomshed.go:137-151` Go-literal reference `manifest/designs/shed-recipe.md` does;
   correct it there too.
-  Treat those as a starting set, not a closed list: sweep both files for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `loomshed.go:137-151`, and `Go literal`, and correct every hit.
+  A fourth Done entry is falsified and matches none of the tokens below: **loom: phase-machine scaffolding**, which asserts "`internal/loomshed` carries loom's full 13-row producer list".
+  After batch 5 that package carries the thirteen row-name constants and six producer constructors, while the list itself is `contracts/recipes/loom-recipe.yaml`'s;
+  restate it that way, keeping the rest of the entry (which rows are real, which are stubbed, and the `Plan-Sweep` note) untouched, since none of that changes.
+  Treat those as a starting set, not a closed list: sweep both files for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `loomshed.go:137-151`, `Go literal`, `13-row`, and `producer list`, and correct every hit.
   Restate each in the past tense and point at this item rather than rewriting the entries — both are written as claims about the tree's current state, not as a record of what a past task did, so leaving them would make the roadmap assert something false about `main`.
+
+  Also in `manifest/roadmap.md`: add a new Planned item covering the parent-fabric resolution chain that fills `landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` for loom.
+  This is recording an already-documented gap, not proposing new scope: `internal/landingshed/deps.go` states that the resolution chain "belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it", and no such item exists in Planned, Someday, or Done today — so that comment is currently false and the `landing-parity` Shared Decision has nothing to point at.
+  Describe the work the way `deps.go` already does — list the worktrees, match the entry whose branch equals the parent branch, resolve that path, open it — and state the consequence that makes it worth an item: until it lands, `Publish` and `Finalize` construction fails for want of `Env.Landing`, so loom cannot complete a run.
+  Sequence it after this conversion item.
+  Do not implement any of it here.
 
   In `manifest/parallel-work.md`: the line stating that several items below touch `internal/loomshed/loomshed.go` stops being true the moment the literal is deleted.
   The items it refers to — the five `loom: real LLM producers` tasks — touch `contracts/recipes/loom-recipe.yaml` instead.
@@ -196,7 +206,7 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   The five stub rows and their unconditional Done are unchanged, and `loomshed.NewStub` still builds them via `stubEntry` — only the parenthetical is stale, because the table is now the recipe's.
   Repoint that parenthetical at `contracts/recipes/loom-recipe.yaml` and leave the rest of the driver-liveness-timing paragraph alone;
   the bounce-budget behaviour it describes is unaffected by this task.
-  Note that this file carries an `integration` build tag, so its compile check comes from the done gate's `go test -tags integration ./...` rather than from this batch's own `verify:`.
+  Note that this file carries a `//go:build smoke` tag, so its compile check comes from this batch's own `&& go vet -tags smoke ./internal/loomcli/` verify tail — not from the done gate, whose `-tags integration` does not enable `smoke`.
 
   Then sweep wider than these four, because the enumerated set is a starting point, not a complete one.
   Grep every `.go` file, test files and build-tagged files included, for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `coverageGuardLandingDeps`, `internal/loomshed` in both its trailing-slash and slashless spellings, and the moved test-file basenames `resume_test`, `sequence_test`, `loomshed_test`.
