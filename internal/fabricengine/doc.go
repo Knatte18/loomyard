@@ -1007,6 +1007,23 @@
 // every path that carries no conflict, so a consumer's JSON never has to distinguish `[]` from
 // `null`.
 //
+// **Resolving a conflict takes three steps, and the middle one is not skippable.**
+// `MergeContinue`'s conflict guard is an INDEX probe (`ConflictedFiles()`), so editing a conflicted
+// file to remove its markers does not on its own let the merge conclude — the path has to be marked
+// resolved. `MergeStageResolved` is that step: it takes the same unified paths `Conflicts` reported
+// and stages each on whichever side's index actually lists it unmerged.
+// It is not merely a convenience for callers that would otherwise shell out to `git add`, because for
+// a weft-side path there is no `git add` that works. A conflict under a wired junction name — every
+// `_lyx/…` conflict — lives in the weft checkout, reachable from the single visible worktree only
+// through the junction, and git refuses to stage through it (`pathspec … is beyond a symbolic link`).
+// So a merge whose conflicts land on the weft side is completable ONLY through this verb.
+// That made it a shipped gap rather than an internal detail while the verb had no CLI surface at all
+// and existed solely for `internal/mergeresolve`: an operator following `lyx fabric merge-in`'s own
+// help reached a `merge --continue` that refused forever, with the only escape being raw git inside
+// the weft checkout — the one place the Fabric illusion says they never have to look. `lyx fabric
+// merge-stage <path>...` is the surface, and the CLI's help now names the full resolve → stage →
+// continue sequence rather than the two-step one that cannot finish.
+//
 // **The one path-separator reconciliation, and why its guard is shaped oddly.** The visible-tree
 // membership test compares two values that do NOT arrive in the same separator convention: the
 // conflicted path is git's own output and is always forward-slash, while `AnchorRel` comes back from

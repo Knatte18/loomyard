@@ -1,6 +1,11 @@
-// merge_verbs.go wires the fabric merge lifecycle verbs (merge, merge-in) onto the "fabric" parent
-// command built by fabric.go.
-// Both verbs join the weft-verb family: weft_verbs.go's weftVerbNames set and PersistentPreRunE
+// merge_verbs.go wires the fabric merge lifecycle verbs (merge, merge-in, merge-stage) onto the
+// "fabric" parent command built by fabric.go.
+// merge-stage is the CLI surface for the engine's MergeStageResolved, and it is load-bearing rather
+// than a convenience wrapper over `git add`: MergeContinue gates on the git index, and a conflict
+// under a wired junction name (every _lyx/… conflict) cannot be staged from the visible worktree at
+// all, since git refuses to stage through the junction. Without it a merge whose conflicts land on
+// the weft side is uncompletable through the CLI.
+// All three verbs join the weft-verb family: weft_verbs.go's weftVerbNames set and PersistentPreRunE
 // resolve the pair handle they need exactly as commit/pull do, so addMergeVerbs reaches that handle
 // indirectly through a getter closure rather than a value captured at registration time.
 // Flag combinations that would be silently ignored rather than obeyed (--squash or -m alongside
@@ -40,7 +45,7 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 	}))
 }
 
-// addMergeVerbs registers the "merge" and "merge-in" subcommands on cmd.
+// addMergeVerbs registers the "merge", "merge-in" and "merge-stage" subcommands on cmd.
 // fabric is a getter closure, not a bound value: weft_verbs.go's PersistentPreRunE assigns the
 // resolved *fabricengine.Fabric handle to a local at run time, after cobra has already built and
 // registered every command, so a value parameter here would capture that local's nil zero value and
@@ -55,10 +60,21 @@ worktree, before "lyx fabric merge": it merges <branch> into this pair's own
 warp and weft checkouts and surfaces any conflicts here for resolution.
 
 Conflicts are a result, not a failure to run again differently: a merge-in
-that conflicts leaves the pair mid-merge, concluded with
-"lyx fabric merge --continue" (the engine's MergeContinue) once every
-conflict is resolved, or abandoned with "lyx fabric merge --abort" (the
-engine's MergeAbort).
+that conflicts leaves the pair mid-merge, concluded once every conflict is
+resolved, or abandoned with "lyx fabric merge --abort" (the engine's
+MergeAbort).
+
+Resolving takes three steps, and the middle one is not optional:
+
+  1. edit each path the "conflicts" array listed, removing its markers
+  2. lyx fabric merge-stage <those same paths>
+  3. lyx fabric merge --continue   (the engine's MergeContinue)
+
+Step 2 exists because --continue gates on the git INDEX, not on file content,
+so editing a file is not by itself enough to let the merge conclude. For a path
+under a fabric-managed directory (anything reached through a wired junction,
+such as _lyx/) "git add" cannot do it at all — git refuses to stage through the
+junction — so merge-stage is the only route.
 
 A conflict result and a hard failure both exit 1 with "ok": false, so a
 script must not tell them apart by exit status. The discriminator is the
@@ -68,7 +84,9 @@ verbs continue and abort the same way — but the two verbs are not symmetric:
 merge-in resolves conflicts in this worktree, merge does not.
 
 Example:
-  lyx fabric merge-in my-task`,
+  lyx fabric merge-in my-task
+  lyx fabric merge-stage _lyx/raddle/notes.md src/app.txt
+  lyx fabric merge --continue`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -92,7 +110,9 @@ belongs in the source branch's own worktree, so run "lyx fabric merge-in"
 there first, then retry "lyx fabric merge" here.
 
 --continue (the engine's MergeContinue) concludes an in-progress merge once
-every conflict has been resolved in the worktree. --abort (the engine's
+every conflict has been resolved in the worktree AND marked resolved with
+"lyx fabric merge-stage" — it gates on the git index, not on file content, so
+editing the files alone leaves it refusing. --abort (the engine's
 MergeAbort) discards an in-progress merge, restoring both sides to their
 pre-merge state. --continue and --abort are mutually exclusive, and neither
 takes a positional branch argument; --squash applies only to the default
@@ -103,6 +123,7 @@ conclude-commit its message, so it applies to the default mode and to
 Example:
   lyx fabric merge-in my-task
   lyx fabric merge my-task --squash
+  lyx fabric merge-stage _lyx/raddle/notes.md
   lyx fabric merge --continue`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			continueFlag, _ := cmd.Flags().GetBool("continue")
@@ -160,11 +181,57 @@ Example:
 			}
 		},
 	}
+	mergeStageCmd := &cobra.Command{
+		Use:   "merge-stage <path>...",
+		Args:  cobra.MinimumNArgs(1),
+		Short: "mark conflicted paths resolved so a merge can continue",
+		Long: `merge-stage (the engine's MergeStageResolved) marks conflicted paths as
+resolved, taking the same worktree-relative paths the "conflicts" array of a
+merge-in or merge envelope reported.
+
+It is a required step, not a convenience. "lyx fabric merge --continue" gates on
+the git INDEX, not on file content, so editing a conflicted file to remove its
+markers does not by itself let the merge conclude — the path has to be marked
+resolved. For a path in the ordinary source tree "git add" does that. For a path
+under one of the fabric-managed directories (anything reached through a wired
+junction, such as _lyx/) it cannot: git refuses to stage through the junction
+with "pathspec is beyond a symbolic link", and this verb is the only way to
+resolve such a conflict.
+
+Pass the paths exactly as the conflicts array reported them. A path that is not
+conflicted is an error rather than a silent skip, and no path is staged unless
+every path passed is conflicted, so a typo fails the whole call instead of
+leaving the merge half-resolved. Deleting the file is a legitimate resolution of
+a delete/modify conflict and stages as a removal.
+
+Example:
+  lyx fabric merge-in my-task
+  # edit each path the "conflicts" array listed, resolving the markers
+  lyx fabric merge-stage _lyx/raddle/notes.md src/app.txt
+  lyx fabric merge --continue`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			out := cmd.OutOrStdout()
+
+			res, err := fabric().MergeStageResolved(args)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
+				return nil
+			}
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
+				"staged": args,
+			}))
+			return nil
+		},
+	}
+
 	mergeCmd.Flags().Bool("squash", false, "squash the merge into a single commit on each side")
 	mergeCmd.Flags().Bool("continue", false, "conclude an in-progress merge once conflicts are resolved")
 	mergeCmd.Flags().Bool("abort", false, "discard an in-progress merge, restoring both sides")
 	mergeCmd.Flags().StringP("message", "m", "", "commit message for the merge commit")
 	mergeCmd.MarkFlagsMutuallyExclusive("continue", "abort")
 
-	cmd.AddCommand(mergeInCmd, mergeCmd)
+	cmd.AddCommand(mergeInCmd, mergeCmd, mergeStageCmd)
 }

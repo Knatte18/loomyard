@@ -94,7 +94,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`F0`-`F13`).
+- `ref` is the scenario id (`F0`-`F21`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -108,7 +108,7 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 **Goal:** "You have `lyx` on PATH and nothing else inside this repo.
 Find out what `lyx fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all 18 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`)?
+**Watch:** Does `lyx fabric` list all 19 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`, `merge-stage`)?
 Does each `--help` explain itself?
 Is each description accurate and useful?
 
@@ -400,7 +400,7 @@ Finally confirm the hub's prime worktree is left alone throughout: it never had 
 
 ---
 
-### F18 -- Merge lifecycle end to end (`merge-in`, `merge --continue`, `merge --abort`)
+### F18 -- Merge lifecycle end to end (`merge-in`, `merge-stage`, `merge --continue`, `merge --abort`)
 
 **Covers:** fabric
 
@@ -410,7 +410,10 @@ Finally confirm the hub's prime worktree is left alone throughout: it never had 
 A conflict is a *result*, not a failure to re-run differently: the envelope is `ok: false`, exit 1, and carries a `conflicts` array of **worktree-relative** paths -- one flat list covering both repos, never two lists and never an absolute path.
 Note the exit code: a conflict result and a hard error both exit 1, so the only correct discriminator for a script is the presence of the `conflicts` key.
 While the merge is live, confirm the sibling verbs refuse with the single fixed message `a merge is in progress; run MergeContinue or MergeAbort first` -- try `commit`, `pull`, `push`, `sync`, `checkout`, and `remove` of the merge's own source pair.
-Resolve every listed path, `git add` each, then `lyx fabric merge --continue` and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
+Resolve every listed path, then `lyx fabric merge-stage <those same paths>`, then `lyx fabric merge --continue`, and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
+The `merge-stage` step is not optional and is worth checking on its own: `--continue` gates on the git INDEX, not on file content, so editing a conflicted file and going straight to `--continue` must still refuse with `unresolved conflicts remain`.
+Make at least one of the conflicts land under `_lyx/`, and confirm plain `git add _lyx/<file>` from the visible worktree is REFUSED by git (`pathspec ... is beyond a symbolic link`) while `merge-stage` accepts the same path -- for a weft-side conflict that verb is the only route, and without it the merge is uncompletable through the CLI. (Historical: `merge-stage` had no CLI surface at all, so this help text told the operator to run a step that could not be run.)
+Also confirm `merge-stage` with a path that is not conflicted fails the WHOLE call, leaving the genuinely conflicted paths in the same call still unstaged.
 Repeat the whole scenario and take `lyx fabric merge --abort` instead: both sides must return to their exact pre-merge SHAs, both worktrees must come back clean, and `git status` in each checkout must show no merge in progress.
 Also check `committed`: it is true only when a conclude-commit actually landed, so a merge that fast-forwarded both sides reports `committed: false` while still having advanced the pair.
 Then repeat one conflicted round with a filename outside ASCII (e.g. `ä-note.md`) conflicting on each side in turn: the `conflicts` array must carry the real path, byte for byte -- never git's C-quoted rendering (`"\303\244..."`, quotes included) -- and a non-ASCII conflict inside the fabric-managed tree must never abort as *conflicts outside the fabric-managed tree*. (Historical: `ConflictedFiles` read `--name-only` without `-z`, so `core.quotepath` quoting made exactly that happen.)
@@ -492,6 +495,29 @@ Reporting `"committed": true` here is the failure mode and it is a blocking one:
 
 ---
 
+### F21 -- A target diverged from an upstream it has not fetched yet (`merge`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm the not-synced guard refuses a genuinely diverged target even when the divergence has not been fetched at the moment the guard runs."
+
+**Watch:** This is the ordinary shape, not a contrived one: a teammate pushes while you are working, and you have not fetched since.
+Create a target pair and a source pair, then push a commit to the target branch's own remote **from a separate clone**, and only then make one local commit in the target worktree -- never running `git fetch` in it.
+At this point the target is genuinely diverged, but its own `origin/<branch>` still names a commit that is an ancestor of its HEAD, so anything reading remote-tracking refs sees "merely ahead".
+Confirm that first, so you know the scenario is really the unfetched shape: `git -C <target> rev-parse origin/<branch>` must differ from the bare remote's own tip, and `git -C <target> merge-base --is-ancestor origin/<branch> HEAD` must succeed.
+
+Now run `lyx fabric merge <source-slug>` from the target worktree.
+It must **refuse** with `merge preconditions failed: branch not synced to upstream`, `mutations: []`, and both HEADs unmoved.
+(Historical: it returned `ok: true` with `committed: true` and landed the merge, because the guard read `@{u}` before the call's own fetch and the sync step then discarded the divergence it had just made visible. `git rev-list --left-right --count 'HEAD...@{u}'` afterwards reported a real divergence in both directions.)
+Run the same check with the divergence on the **weft** side instead of the warp side -- both sides carry their own upstream, and each is decided separately.
+
+Then confirm the guard closes a window rather than blocking the verb: `git fetch` and reconcile the divergence, and the same `merge` must now succeed.
+Finally check the opposite state is NOT refused -- a target merely **behind** its upstream must be fast-forwarded by the pre-merge sync step (`repo_advanced` in the mutation record) and then merged, never refused, since that is the whole reason the sync step exists.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -521,6 +547,7 @@ F17: <OK|WARN|FAIL> -- <one-line note if not OK>
 F18: <OK|WARN|FAIL> -- <one-line note if not OK>
 F19: <OK|WARN|FAIL> -- <one-line note if not OK>
 F20: <OK|WARN|FAIL> -- <one-line note if not OK>
+F21: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
