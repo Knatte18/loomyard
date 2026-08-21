@@ -67,6 +67,12 @@ See the `mill:markdown` skill for the full rule and examples.
 In conversation, "Merriam" is a conversational nickname for webster's long-lived orchestrating session — today named "Master" throughout `internal/websterengine` (`contracts/stencils/webster/webster-template-master.md`, `RoleMaster`, etc.), paired with "Webster" after Merriam-Webster.
 It is shorthand for talking about the session, not an instruction to rename anything — don't rename identifiers, files, config keys, or docs to "Merriam" unless a separate, explicit instruction says so.
 
+## Terminology: "perch" means a Bouncer+Burler pair in a Shed producer list
+
+In conversation, "perch" (lowercase, folk usage — not the retired `internal/perchengine` module) names the pattern of wiring a `Bouncer` instance into a `Shed` producer list with a `Burler`-round producer as its offshoot: the `Bouncer` sits in the main line as the segment's entry/exit, its `OnStuck` points at the `Burler` row, and the `Burler` row's own `OnStuck` always points back at the `Bouncer` (`Stuck`, never `Done`) — see the shipped `Bouncer: the generic review-gate producer` and `shedadapters: Burler-round producer` items in `manifest/roadmap.md`.
+It is shorthand for talking about this two-row wiring pattern, not an instruction to build a named module or type for it: each segment (`Discussion-Review`, `Plan-Review`, `Webster-Review`, and eventually `Tenter`) hand-wires its own `Bouncer`+`Burler`-shaped pair directly in its own producer list.
+Don't rename identifiers, files, config keys, or docs to "Perch" unless a separate, explicit instruction says so.
+
 ## Filesystem links (fslink)
 
 All cross-OS links go through `internal/fslink`.

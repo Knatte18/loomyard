@@ -71,8 +71,8 @@ type reviewHeader struct {
 //   - every finding must have a non-empty id, severity, location, summary;
 //   - severity must be one of the four Severity constants;
 //   - finding ids must be unique (kept fail-loud for cross-round hydration
-//     and audit, not for Go-side cycle detection — perch judges progress
-//     holistically via a verdict judge);
+//     and audit, not for Go-side cycle detection — the caller judges progress
+//     holistically via its own verdict judge);
 //   - a BLOCKING verdict must carry at least one BLOCKING-severity finding;
 //   - an APPROVED verdict must carry zero BLOCKING-severity findings.
 func ParseReview(content []byte) (Verdict, []Finding, error) {
