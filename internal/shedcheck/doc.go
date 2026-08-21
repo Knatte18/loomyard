@@ -5,7 +5,7 @@
 //
 // # Nothing in production calls Check
 //
-// Neither shedengine.Run nor loomshed.New calls Check.
+// Neither shedengine.Run nor loomrecipe.New calls Check.
 // Its enforcement point is a go test invariant, not a runtime guard, because reachability-from-
 // entry is not a property Run is in a position to assert: a legitimately resumed run starts
 // mid-graph from a persisted current_producer, so "is every row reachable from the entry" would

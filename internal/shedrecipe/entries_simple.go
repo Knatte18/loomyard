@@ -30,8 +30,9 @@ func preflightEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 // error-text prefix rather than surfacing it raw.
 //
 // name is deliberately discarded: landingshed.Deps carries no name field, and Publish's own
-// identity is the package constant publishName. The coverage-guard test in coverage_guard_test.go
-// is what pins this row's registry key ("Publish") to match that constant.
+// identity is the package constant publishName. The coverage-guard test in
+// internal/loomrecipe/coverage_guard_test.go is what pins this row's registry key ("Publish") to
+// match that constant.
 //
 // It validates no Env field of its own: landingshed.NewPublish already rejects the nil closures in
 // landingshed.Deps, so this entry inherits that check rather than duplicating it.
@@ -51,8 +52,8 @@ func publishEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error
 //
 // name is deliberately discarded, for the same reason as publishEntry: landingshed.Deps carries no
 // name field, and Finalize's own identity is the package constant finalizeName. The coverage-guard
-// test in coverage_guard_test.go is what pins this row's registry key ("Finalize") to match that
-// constant.
+// test in internal/loomrecipe/coverage_guard_test.go is what pins this row's registry key
+// ("Finalize") to match that constant.
 //
 // It validates no Env field of its own, for the same reason as publishEntry: landingshed.NewFinalize
 // already rejects the nil closures in landingshed.Deps.
