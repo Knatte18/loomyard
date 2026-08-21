@@ -6,6 +6,7 @@ slug: shed-setup-validity-checker
 branch: shed-setup-validity-checker
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Shed-setup validity checker
 task_description: |
   Shed-setup validity checker
@@ -28,9 +29,14 @@ implementing  '2026-08-21T08:29:38Z'
 ```yaml
 batches:
   - name: shedcheck-package
-    state: pending
+    state: running
+    implementer_session: 444f5d42-9727-4d1b-a429-10d3f2505bd2
+    start_sha: 4f99fedad06da74facfc9c2139b4156cc4dfa9ee
+    verify_baseline_failures: ["FAIL\t./internal/shedcheck/... [setup failed]"]
   - name: loomshed-invariant-test
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
