@@ -39,8 +39,26 @@ type mergeSources struct {
 // counterpart existing neither locally (weftBranchExists(l, ...)) nor as origin/<source>-weft
 // post-fetch appends mergeReasonNotFabricManaged, per the Shared Decision on the post-fetch
 // remote-only weft counterpart.
-// Both reasons are collected, never returned early — every guard is evaluated regardless of an
-// earlier failure.
+// Those two reasons stay disjoint on purpose: an unmanaged source reports ONLY
+// mergeReasonNotFabricManaged, never that reason plus source-not-found, since "this branch is not a
+// fabric pair" is the precise thing the operator has to act on and adding a second, vaguer reason
+// beside it tells them nothing more.
+//
+// A managed weft counterpart that nevertheless fails to RESOLVE is a third case, and it appends
+// mergeReasonSourceNotFound because the alternative is worse. weftManaged and weft resolvability are
+// not the same test: weftBranchExists is a raw `git rev-parse --verify refs/heads/<branch>` at the
+// weft REPO root, while pickMergeSourceSHA's local arm is a go-git ResolveRevision in the weft
+// WORKTREE. Whenever the first succeeds and the second does not, weftManaged is true, and with the
+// pick's found-ness discarded no reason was appended at all — leaving weftSHA the empty string, handed
+// straight to MergeStart as `git merge --ff --no-commit ""`. The blast radius was contained (the git
+// error routes into selfAbortMergeAttempt, which resets both sides and deletes the record), but the
+// error a caller saw described a malformed git argument rather than the precondition that failed.
+// Gating the reason on weftManaged makes an empty ref unreachable by construction without disturbing
+// the unmanaged case's single-reason contract.
+//
+// Every reason is collected, never returned early — each guard is evaluated regardless of an earlier
+// failure — and newMergeGuardError deduplicates, so a source missing on both sides still reports one
+// mergeReasonSourceNotFound rather than disclosing that two subjects were checked.
 func resolveMergeSources(f *Fabric, l *lyxcwd.Location, source string) (mergeSources, []string) {
 	var reasons []string
 	weftBranch := WeftBranchName(source)
@@ -64,7 +82,10 @@ func resolveMergeSources(f *Fabric, l *lyxcwd.Location, source string) (mergeSou
 	if !weftManaged {
 		reasons = append(reasons, mergeReasonNotFabricManaged)
 	}
-	weftSHA, _ := pickMergeSourceSHA(f.weft, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
+	weftSHA, weftFound := pickMergeSourceSHA(f.weft, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
+	if weftManaged && !weftFound {
+		reasons = append(reasons, mergeReasonSourceNotFound)
+	}
 
 	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons
 }
