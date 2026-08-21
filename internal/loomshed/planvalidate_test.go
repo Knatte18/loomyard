@@ -44,7 +44,7 @@ func TestPlanValidate_Call(t *testing.T) {
 		worktreeRoot := t.TempDir()
 		seedPlanValidateFixture(t, anchorPath, true)
 
-		p := newPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
 		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -63,7 +63,7 @@ func TestPlanValidate_Call(t *testing.T) {
 		worktreeRoot := t.TempDir()
 		seedPlanValidateFixture(t, anchorPath, false) // unapproved -> plan-unapproved finding
 
-		p := newPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -77,7 +77,7 @@ func TestPlanValidate_Call(t *testing.T) {
 		anchorPath := t.TempDir() // no _lyx/plan/00-overview.md at all
 		worktreeRoot := t.TempDir()
 
-		p := newPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
 		outcome, _, err := p.Call(context.Background())
 		if err == nil {
 			t.Fatalf("Call() error = nil; want non-nil error for an unparseable plan directory")
@@ -98,7 +98,7 @@ func TestPlanValidate_Call(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		p := newPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
 		outcome, _, err := p.Call(ctx)
 		if err == nil {
 			t.Fatalf("Call(cancelled) error = nil; want non-nil error")

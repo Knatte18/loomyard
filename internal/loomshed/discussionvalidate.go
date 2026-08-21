@@ -41,9 +41,11 @@ type discussionValidate struct {
 
 var _ shedengine.ShedProducer = (*discussionValidate)(nil)
 
-// newDiscussionValidate returns a discussionValidate identified as name, checking decisionRecordPath
-// and supportLogPath.
-func newDiscussionValidate(name, decisionRecordPath, supportLogPath string) *discussionValidate {
+// NewDiscussionValidate returns a discussionValidate identified as name, checking
+// decisionRecordPath and supportLogPath. The return type is shedengine.ShedProducer, the seam
+// interface, so the internal/shedrecipe registry can call this constructor from outside this
+// package while discussionValidate itself stays unexported.
+func NewDiscussionValidate(name, decisionRecordPath, supportLogPath string) shedengine.ShedProducer {
 	return &discussionValidate{name: name, decisionRecordPath: decisionRecordPath, supportLogPath: supportLogPath}
 }
 

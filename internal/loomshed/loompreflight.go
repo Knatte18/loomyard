@@ -21,18 +21,21 @@ type loomPreflightProducer struct {
 
 var _ shedengine.ShedProducer = (*loomPreflightProducer)(nil)
 
-// newLoomPreflight returns a *loomPreflightProducer named name, checking the status file at
-// statusPath (guarded by the lock at statusLockPath) via loomengine.CheckSeed.
+// NewLoomPreflight returns a *loomPreflightProducer named name, checking the status file at
+// statusPath (guarded by the lock at statusLockPath) via loomengine.CheckSeed. The return type is
+// shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can call this
+// constructor from outside this package while loomPreflightProducer itself stays unexported.
 //
-// The constructor is unexported: row 2 is built internally by New (see loomshed.go), never
-// injected -- unlike Deps.Preflight, it is not the row a Tier-1 test needs to substitute a fake
-// for, since it spawns nothing and reads one JSON file under a caller-supplied path.
+// The constructor is exported for the internal/shedrecipe registry: row 2 is still built
+// internally by New (see loomshed.go), never injected -- unlike Deps.Preflight, it is not the row
+// a Tier-1 test needs to substitute a fake for, since it spawns nothing and reads one JSON file
+// under a caller-supplied path.
 //
 // This wires the production import of internal/loomengine that the Told-Geometry guard test in
 // seam_enforcement_test.go already allowlists -- that import does not compromise this package's
 // Told-Geometry position, since the invariant's membership predicate is about a direct production
 // import of internal/lyxcwd and transitive is explicitly fine.
-func newLoomPreflight(name, statusPath, statusLockPath string) *loomPreflightProducer {
+func NewLoomPreflight(name, statusPath, statusLockPath string) shedengine.ShedProducer {
 	return &loomPreflightProducer{name: name, statusPath: statusPath, statusLockPath: statusLockPath}
 }
 

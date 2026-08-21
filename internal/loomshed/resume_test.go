@@ -340,11 +340,11 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 			Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)
 		}
 	}{
-		{NameDiscussionValidate, newDiscussionValidate(NameDiscussionValidate, deps.DecisionRecordPath, deps.SupportLogPath)},
-		{NamePlanValidate, newPlanValidate(NamePlanValidate, deps.AnchorPath, deps.WorktreeRoot)},
-		{NameBatchifier, newBatchifier(NameBatchifier, deps.AnchorPath)},
-		{NameWebster, newWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, websterengine.RunDeps{})},
-		{NameLoomPreflight, newLoomPreflight(NameLoomPreflight, deps.StatusPath, deps.StatusLockPath)},
+		{NameDiscussionValidate, NewDiscussionValidate(NameDiscussionValidate, deps.DecisionRecordPath, deps.SupportLogPath)},
+		{NamePlanValidate, NewPlanValidate(NamePlanValidate, deps.AnchorPath, deps.WorktreeRoot)},
+		{NameBatchifier, NewBatchifier(NameBatchifier, deps.AnchorPath)},
+		{NameWebster, NewWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, websterengine.RunDeps{})},
+		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, deps.StatusPath, deps.StatusLockPath)},
 	}
 
 	for _, tt := range producers {

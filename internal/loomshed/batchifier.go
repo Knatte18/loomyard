@@ -20,8 +20,10 @@ type batchifier struct {
 
 var _ shedengine.ShedProducer = (*batchifier)(nil)
 
-// newBatchifier returns a batchifier identified as name, gating batcher.Active(anchorPath).
-func newBatchifier(name, anchorPath string) *batchifier {
+// NewBatchifier returns a batchifier identified as name, gating batcher.Active(anchorPath). The
+// return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry
+// can call this constructor from outside this package while batchifier itself stays unexported.
+func NewBatchifier(name, anchorPath string) shedengine.ShedProducer {
 	return &batchifier{name: name, anchorPath: anchorPath}
 }
 

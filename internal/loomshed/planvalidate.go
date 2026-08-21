@@ -21,10 +21,13 @@ type planValidate struct {
 
 var _ shedengine.ShedProducer = (*planValidate)(nil)
 
-// newPlanValidate returns a planValidate identified as name, validating the plan anchored at
+// NewPlanValidate returns a planValidate identified as name, validating the plan anchored at
 // anchorPath against worktreeRoot. The two fields are separate because planparser.PlanDir takes the
 // anchor path and planparser.Validate takes the worktree root, and they are not the same value.
-func newPlanValidate(name, anchorPath, worktreeRoot string) *planValidate {
+// The return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe
+// registry can call this constructor from outside this package while planValidate itself stays
+// unexported.
+func NewPlanValidate(name, anchorPath, worktreeRoot string) shedengine.ShedProducer {
 	return &planValidate{name: name, anchorPath: anchorPath, worktreeRoot: worktreeRoot}
 }
 

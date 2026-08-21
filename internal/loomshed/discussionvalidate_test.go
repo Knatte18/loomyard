@@ -68,7 +68,7 @@ func TestDiscussionValidate_Call(t *testing.T) {
 		dir := t.TempDir()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
 
-		p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -85,7 +85,7 @@ func TestDiscussionValidate_Call(t *testing.T) {
 		dir := t.TempDir()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, "", "support log")
 
-		p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -99,7 +99,7 @@ func TestDiscussionValidate_Call(t *testing.T) {
 		dir := t.TempDir()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "")
 
-		p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -122,7 +122,7 @@ func TestDiscussionValidate_Call(t *testing.T) {
 				}
 				decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, strings.Join(lines, "\n"), "support log")
 
-				p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+				p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 				outcome, _, err := p.Call(context.Background())
 				if err != nil {
 					t.Fatalf("Call() error = %v; want nil", err)
@@ -139,7 +139,7 @@ func TestDiscussionValidate_Call(t *testing.T) {
 		withoutNotes := strings.Split(validDecisionRecord, "## Notes for the plan writer")[0]
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutNotes, "support log")
 
-		p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -183,7 +183,7 @@ Risks text.
 `
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, reordered, "support log")
 
-		p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -198,7 +198,7 @@ Risks text.
 		withExtra := validDecisionRecord + "\n## Unexpected Extra Section\n\nExtra text.\n"
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withExtra, "support log")
 
-		p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -215,7 +215,7 @@ Risks text.
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		p := newDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
+		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, _, err := p.Call(ctx)
 		if err == nil {
 			t.Fatalf("Call(cancelled) error = nil; want non-nil error")

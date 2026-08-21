@@ -61,7 +61,7 @@ func TestLoomPreflight_Call_CoherentSeedReportsDone(t *testing.T) {
 	statusLockPath := filepath.Join(dir, "status.json.lock")
 	writeLoomPreflightFixture(t, statusPath, statusLockPath, NameLoomPreflight)
 
-	p := newLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
+	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
 	outcome, _, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -79,7 +79,7 @@ func TestLoomPreflight_Call_IncoherentSeedReportsStuck(t *testing.T) {
 	// name (NameLoomPreflight) -- an incoherent seed.
 	writeLoomPreflightFixture(t, statusPath, statusLockPath, NamePreflight)
 
-	p := newLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
+	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
 	outcome, _, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -105,7 +105,7 @@ func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
 	}
 	statusLockPath := filepath.Join(blocker, "status.json.lock")
 
-	p := newLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
+	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
 	outcome, _, err := p.Call(context.Background())
 	if err == nil {
 		t.Fatalf("Call() error = nil; want non-nil (lock parent dir cannot be created)")

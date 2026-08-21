@@ -9,7 +9,7 @@ import (
 
 func TestStubProducer_Call(t *testing.T) {
 	t.Run("HealthyContext", func(t *testing.T) {
-		p := newStub("Discussion-Write")
+		p := NewStub("Discussion-Write")
 		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call(healthy) error = %v; want nil", err)
@@ -26,7 +26,7 @@ func TestStubProducer_Call(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		p := newStub("Discussion-Write")
+		p := NewStub("Discussion-Write")
 		outcome, _, err := p.Call(ctx)
 		if err == nil {
 			t.Fatalf("Call(cancelled) error = nil; want non-nil error rather than Done")
