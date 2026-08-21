@@ -89,6 +89,8 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 - Rejected: **returning `[]shedengine.ProducerDef` and letting `loomcli` assemble the `Shed`.**
   Splits the assembly across two packages and pushes the `MaxBounces`-is-a-per-producer-default subtlety (documented in `wiring.go` today) into cobra code.
 - Naming is the implementer's call within the package (`New` plus a `ShedPaths`-style struct is the expected shape); the contract above is what matters.
+- The told struct is stored on the `loomCLI` value, not built inside `drive.go`: `status`, `pause`, and `run` all read `StatusPath`/`StatusLockPath`/`LockPath` off `c.deps` today (see Technical context), so the replacement carrier must be reachable from every verb, exactly as `Deps` is.
+  The `shedrecipe.Env` is stored beside it and read only by `drive`.
 
 ### delete-loomshed-new — one authoritative definition of the list
 
@@ -182,6 +184,11 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 The production recipe is that file with its four-line "test fixture only" header comment replaced by a production header.
 Carry over verbatim: `version: 1`, `entry: Preflight`, `terminals: [Finalize]`, the row order, every `on_done`/`on_stuck`, no `segment` on any row, no `max_bounces` on any row, no `config` block on any row, and the explicit `on_done: ""` on `Finalize` with its load-bearing comment.
 
+Do not copy the fixture blind, though.
+Its equivalence to `loomshed.New`'s literal was last proven when `equivalence_test.go` was written, and that test is being deleted in this same task — so re-verify, at implementation time, that the fixture's thirteen rows still match `loomshed.go`'s live literal row-for-row before the literal is deleted.
+The cheapest way to do that is ordering: run the existing `internal/shedbuild` equivalence test unchanged as the first step, confirm it is green against today's tree, and only then copy the fixture and start deleting.
+A green run of that test is the proof; copying first and deleting the test first destroys it.
+
 **`shedrecipe.Env` fields loom's thirteen rows actually read** — fill exactly these in `loomcli`, and leave the rest zero (each entry validates only what it reads, so a partially-filled `Env` is legal by design):
 
 | Env field | Source in `wiring.go` today | Read by |
@@ -205,8 +212,17 @@ Shed's own four told values move out of `Deps` into `loomrecipe.New`'s second ar
 Note `StatusPath` and `StatusLockPath` are told twice — once in `Env` (for `LoomPreflight`) and once here (for `Shed`).
 That duplication is inherent to the split and is what `equivalence_test.go`'s paired-fixture helper already does; do not try to collapse it.
 
-**`loomcli` call sites that change:** `internal/loomcli/wiring.go:88-110` (the `c.deps = loomshed.Deps{…}` literal becomes an `Env` plus the Shed-paths value, stored on `c`), `internal/loomcli/cli.go:41-43` (the `deps` field's type and doc comment), `internal/loomcli/drive.go:45` (`loomshed.New(c.deps)` → `loomrecipe.New(…)`), and `internal/loomcli/run.go:100` (reads `c.deps.StatusPath`/`c.deps.StatusLockPath` for `loomshed.Seed` — repoint at whatever field replaces them; `loomshed.Seed` itself is unchanged).
-`drive.go:44` also stats `c.deps.StatusPath` before building.
+**`loomcli` call sites that change.**
+Two are structural:
+`internal/loomcli/wiring.go:88-109` (the `c.deps = loomshed.Deps{…}` literal becomes a `shedrecipe.Env` plus the Shed-paths value, both stored on `c`) and `internal/loomcli/cli.go:41-43` (the `deps` field's type and its doc comment, which names `loomshed.Deps` and `loomshed.New` explicitly).
+One is the constructor swap: `internal/loomcli/drive.go:45` (`loomshed.New(c.deps)` → `loomrecipe.New(…)`).
+
+The rest are plain reads of `c.deps.StatusPath` / `c.deps.StatusLockPath` / `c.deps.LockPath` that must be repointed at whichever field replaces them — enumerate them with a `c\.deps\.` grep rather than working from this list alone, but as of exploration they are:
+`drive.go:40-41` (the no-status-file refusal),
+`status.go:65,67,71,81,95` (`status` and `status --watch`),
+`pause.go:33,35,46`,
+`run.go:100` (the `loomshed.Seed` call — `Seed` itself is unchanged) and `run.go:181` (`c.deps.LockPath`).
+This is the widest mechanical edit in the task: four of loom's five verbs read the status pair off `Deps` today, so the replacement carrier has to be reachable from every command, not just `drive`.
 
 **`Build` is not filesystem-free, and construction can fail.**
 Three registry constructors reach disk at construction time (see `internal/shedbuild/doc.go` for the enumeration), and `publishEntry`/`finalizeEntry` call `landingshed.NewPublish`/`NewFinalize`, which open a fabric pair.
@@ -276,7 +292,8 @@ Tighten `seam_enforcement_test.go`'s allowlist to what production still imports.
 **`internal/loomcli`.** Existing `wire` tests must be updated to assert the new `Env`/Shed-paths values instead of `loomshed.Deps` fields, with a specific assertion that `Env.WebsterRun` is non-nil — that is the regression this conversion is most likely to reintroduce.
 `drive.go`'s no-status-file refusal test must keep passing unchanged.
 
-**`internal/shedbuild`.** After deleting `equivalence_test.go` and `testdata/`, the remaining suite (`parse_test`, `build_test`, `build_engines_test`, `load_test`, `check_test`, `seam_enforcement_test`) must pass with no edits.
+**`internal/shedbuild`.** Run `equivalence_test.go` unchanged and green *before* copying its fixture or deleting anything — that green run is the only remaining proof the fixture matches `loomshed.New`'s literal, and both are deleted by the end of this task (see Technical context).
+After deleting `equivalence_test.go` and `testdata/`, the remaining suite (`parse_test`, `build_test`, `build_engines_test`, `load_test`, `check_test`, `seam_enforcement_test`) must pass with no edits.
 If any of them turns out to read the deleted testdata, keep the minimum that they need rather than resurrecting the loom fixture.
 
 **Whole-repo gate.** `go build ./...` and `go test ./...` green, and the `docs`/`CONSTRAINTS.md` link-integrity checks pass (Markdown Link Integrity is an enforced invariant and this task edits five docs).
@@ -292,4 +309,5 @@ If any of them turns out to read the deleted testdata, keep the minimum that the
 - **Q:** `websterEntry` rejects a nil `Env.WebsterRun`, but `wiring.go` deliberately leaves the field nil today. Which side gives? **A:** [auto-pick] `loomcli` fills `Env.WebsterRun = websterengine.Run` explicitly. **Why:** relaxing the entry would be a production change to a package this task only consumes, and would invert the registry's told-not-derived posture to preserve an implicit adapter default.
 - **Q:** `Env.Landing` is unfilled by `loomcli`, so `Publish`/`Finalize` construction already fails in production. Fix it here? **A:** [auto-pick] No — preserve parity, leave it unfilled. **Why:** the parent-fabric resolution chain is a substantial feature owned by a later item; building it here would dominate the task and obscure whether the conversion itself is correct.
 - **Q:** How does `loomrecipe.New` receive Shed's own four told fields, which no registry entry reads? **A:** [auto-pick] As a second told argument beside `shedrecipe.Env`, with `New` returning `*shedengine.Shed` — a drop-in for `loomshed.New`. **Why:** `Env` is defined as values registry entries read, and a drop-in return type keeps `drive.go`'s shape and one single answer to "how is loom's Shed built".
+- **Q:** The recipe's content already exists as `internal/shedbuild/testdata/loom-recipe.yaml` — is copying it a shortcut around verification? **A:** [orchestrator review] No, but the ordering is load-bearing: run the existing `equivalence_test.go` green against today's tree *first*, then copy the fixture and delete. **Why:** the fixture's equivalence to `loomshed.New`'s literal was proven when the test was written, and this task deletes both the test and the literal — copying first would leave the claim unverified at exactly the moment its only prover is removed.
 - **Q:** Which docs land in the same commit? **A:** [auto-pick] `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md`, `manifest/roadmap.md`. **Why:** the project's documentation rule, and four of the five carry statements this task falsifies — including shed-recipe.md's "do not implement piece 4 from this doc as written" banner.
