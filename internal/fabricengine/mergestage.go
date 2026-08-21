@@ -100,7 +100,11 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 			// A path listed by both sides cannot occur here: unifyConflictPaths already treats that
 			// collision as unmappable and self-aborts the merge before any caller could ever see the
 			// path, so the only remaining case reaching this branch is "neither side lists it".
-			return StageResult{}, fmt.Errorf("fabricengine: %s is not conflicted on either side", p)
+			// The message stays side-free — "on either side" would disclose that two subjects were
+			// checked, the exact tell the aggregated guards are worded to avoid — and it names the
+			// exact-spelling contract, since a `./`-prefixed or absolute spelling of a genuinely
+			// conflicted path lands here too.
+			return StageResult{}, fmt.Errorf("fabricengine: %s is not a conflicted path in this merge; pass paths exactly as the conflicts list reported them", p)
 		}
 	}
 
