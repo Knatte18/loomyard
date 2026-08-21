@@ -5,8 +5,8 @@
 package fabricengine
 
 import (
+	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -38,9 +38,9 @@ func resolveMergeGeometry(l *lyxcwd.Location) (anchorRel string, wiredNames []st
 // passes this check *is* the visible worktree-relative path, unchanged — no transformation, only a
 // membership test.
 //
-// The two arguments do not arrive in the same separator convention, and reconciling them is what
-// filepath.ToSlash is doing here rather than decoration. weftPath is git's own output, which is
-// always forward-slash. anchorRel comes from lyxcwd.ValidateAnchorRel, which returns
+// The two arguments do not arrive in the same separator convention, and reconciling them is what the
+// separator conversion below is doing here rather than decoration. weftPath is git's own output,
+// which is always forward-slash. anchorRel comes from lyxcwd.ValidateAnchorRel, which returns
 // filepath.Clean(filepath.FromSlash(raw)) — an OS-separator path. On Windows a multi-segment anchor
 // recorded in .lyx-anchor as "apps/backend" therefore arrives as `apps\backend`, and joining it with
 // the slash-only path package yields the prefix `apps\backend/_lyx/` while git reports
@@ -48,11 +48,29 @@ func resolveMergeGeometry(l *lyxcwd.Location) (anchorRel string, wiredNames []st
 // unifyConflictPaths marks it unmappable, and MergeIn self-aborts the entire merge on both sides
 // with *ErrUnmergeableState. Single-segment anchors and "." carry no separator and were never
 // affected, which is why every existing fixture passes either way.
-// filepath.ToSlash — not strings.ReplaceAll — is the correct conversion because it is identity when
-// the OS separator already is '/', so a Linux directory whose name legitimately contains a backslash
-// is never rewritten into a path component boundary that does not exist.
+// Replacing only the OS separator — not every backslash — is the correct conversion, because on a
+// platform whose separator already is '/' a directory name legitimately containing a backslash must
+// never be rewritten into a path component boundary that does not exist.
+//
+// The conversion is written against an explicit separator (weftPathVisibleWithSeparator) rather than
+// calling filepath.ToSlash directly, and that is a testability decision with a concrete reason.
+// filepath.ToSlash IS the identity function whenever os.PathSeparator == '/', so on every host this
+// project builds and tests on, no test can distinguish the call from its absence — deleting it left
+// the entire hermetic and integration suite green, which is exactly how a Windows-only fix rots. The
+// separator-parameterised form lets a Linux test drive the Windows separator directly, so both wrong
+// implementations (dropping the conversion, and blanket-replacing every backslash) fail here.
 func weftPathVisible(weftPath, anchorRel string, wiredNames []string) bool {
-	slashAnchorRel := filepath.ToSlash(anchorRel)
+	return weftPathVisibleWithSeparator(weftPath, anchorRel, wiredNames, os.PathSeparator)
+}
+
+// weftPathVisibleWithSeparator is weftPathVisible's separator-explicit form: separator is the OS path
+// separator anchorRel is spelled with, and is what weftPathVisible supplies as os.PathSeparator.
+// A separator of '/' makes the conversion a no-op, matching filepath.ToSlash's own contract.
+func weftPathVisibleWithSeparator(weftPath, anchorRel string, wiredNames []string, separator rune) bool {
+	slashAnchorRel := anchorRel
+	if separator != '/' {
+		slashAnchorRel = strings.ReplaceAll(anchorRel, string(separator), "/")
+	}
 	for _, name := range wiredNames {
 		prefix := name + "/"
 		if slashAnchorRel != "." {
@@ -75,7 +93,7 @@ func weftPathVisible(weftPath, anchorRel string, wiredNames []string) bool {
 // case.
 // Path comparison and the returned list both use forward-slash git-style paths throughout, since
 // that is git's own output form. anchorRel is the one argument that does NOT arrive that way — it is
-// an OS-separator path — so weftPathVisible converts it with filepath.ToSlash before joining;
+// an OS-separator path — so weftPathVisible converts its separator to '/' before joining;
 // see that function's own comment for what breaks on Windows without the conversion.
 // The result is empty-never-nil, and carries no duplicate: warp/weft entries never repeat within
 // their own side (git's own conflicted-file listing does not), and a same-path entry from both

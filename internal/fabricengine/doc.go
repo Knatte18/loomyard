@@ -1007,6 +1007,27 @@
 // every path that carries no conflict, so a consumer's JSON never has to distinguish `[]` from
 // `null`.
 //
+// **The one path-separator reconciliation, and why its guard is shaped oddly.** The visible-tree
+// membership test compares two values that do NOT arrive in the same separator convention: the
+// conflicted path is git's own output and is always forward-slash, while `AnchorRel` comes back from
+// `lyxcwd.ValidateAnchorRel` as an OS-separator path. On Windows a multi-segment anchor recorded as
+// `apps/backend` therefore arrives as `apps\backend`, and the joined prefix never matches what git
+// reports — every `_lyx` conflict under such an anchor is then classed unmappable and the whole
+// merge self-aborts with `*ErrUnmergeableState`. Converting the anchor's separator to `/` is what
+// closes that, and it must convert the OS separator specifically, not every backslash: on a POSIX
+// host a backslash is an ordinary filename character and a directory really can be named
+// `weird\name`.
+// The conversion is written against an explicit separator argument rather than calling
+// `filepath.ToSlash`, purely so it can be tested. `filepath.ToSlash` is the identity function
+// wherever the OS separator already is `/`, so on every host this project builds on, deleting it
+// changes no observable behaviour and no test can fail — which is exactly how a Windows-only fix
+// rots unnoticed. The separator-explicit form lets a POSIX test drive the Windows spelling directly.
+// One atom stays beyond runtime reach here — the `os.PathSeparator` argument at the entry point,
+// indistinguishable from a hardcoded `/` on this host — and is pinned by source inspection instead,
+// with that limitation stated rather than papered over. No Windows host has existed at any point in
+// this module's history, so this is the strongest available proof, not a substitute for one that was
+// skipped.
+//
 // **A conflict result is not a failure, and a script tells them apart by the envelope.** At the CLI
 // both a conflicted merge and a hard error exit 1 with `"ok": false` — the shared envelope has no
 // third outcome and no distinct exit code. The discriminator is the payload: a conflict result, and
