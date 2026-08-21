@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: shed-recipe-loader-builder
 branch: shed-recipe-loader-builder
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-docs  '2026-08-21T12:46:52Z'
 holistic-reviewing  '2026-08-21T12:47:13Z'
 holistic-fixing  '2026-08-21T12:50:37Z'
 holistic-reviewing  '2026-08-21T12:52:33Z'
+holistic-approved  '2026-08-21T12:55:54Z'
 ```
 
 ## Batches
