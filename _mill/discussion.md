@@ -27,7 +27,7 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 - Rewiring `internal/loomcli` (`wiring.go`, `drive.go`) to fill a `shedrecipe.Env` instead of a `loomshed.Deps`, and to call `loomrecipe.New` instead of `loomshed.New`.
 - Deleting `loomshed.New` and `loomshed.Deps`.
   The thirteen `NamePreflight`…`NameFinalize` constants are **kept** — see the `row-name-authority` Decision.
-- Moving the tests that drive `loomshed.New` (all of `loomshed_test.go` bar one deletion, plus `sequence_test.go` and `resume_test.go`) into `internal/loomrecipe`, repointed at the recipe-built list — see `test-ownership` for the per-test disposition.
+- Moving the tests that drive `loomshed.New` (all of `loomshed_test.go` bar one deletion, `sequence_test.go`, and `resume_test.go` bar one test that stays) into `internal/loomrecipe`, repointed at the recipe-built list — see `test-ownership` for the per-test disposition.
 - Splitting `internal/shedrecipe/coverage_guard_test.go`: two of its three tests move into `internal/loomrecipe` repointed at the recipe file, and `TestRegistry_ShipsTwelveEntries` stays put (see `test-ownership`).
 - Deleting `internal/shedbuild/equivalence_test.go` and `internal/shedbuild/testdata/loom-recipe.yaml`.
 - Doc updates in the same commit: `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md` (two edits), `manifest/roadmap.md`, `manifest/parallel-work.md`.
@@ -39,7 +39,10 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
   A genuine defect found in one of them is a finding to report, not a licence to widen scope.
   **Carve-out:** doc comments in those packages that name symbols this task deletes or moves *are* repaired here — a comment pointing at a deleted symbol is not "unchanged", it is wrong.
   The four known sites: `internal/shedcheck/doc.go:8` ("Neither `shedengine.Run` nor `loomshed.New` calls `Check`"), `internal/shedrecipe/recipe.go:69` ("told wholesale by `loomshed.Deps.Landing` today"), and `internal/shedrecipe/entries_simple.go:33-34` and `:53-55` (both naming `coverage_guard_test.go` as the pin for the `Publish`/`Finalize` row keys, a pin that now lives in `internal/loomrecipe`).
-  Sweep for others with a `loomshed.New`/`loomshed.Deps`/`coverage_guard_test` grep across comments rather than trusting this list to be complete.
+  Two further sites are already known and are **not** matched by those three tokens:
+  `internal/loomshed/doc.go:1-2` ("Package loomshed owns loom's own ordered producer list and returns a constructed `*shedengine.Shed`"), falsified by deleting `New`;
+  and `internal/preflightshed/preflight_test.go:33`, which names `internal/loomshed/resume_test.go`'s `TestCancellation_RealProducersReturnErrorNotStuck` by file path.
+  Sweep on a wider token set than the first three: add bare `internal/loomshed/` path mentions and the moved test-file names (`resume_test`, `sequence_test`, `loomshed_test`, `equivalence_test`), and treat the enumerated sites as a starting set rather than a complete one.
 - Any change to which producers loom runs, in what order, with what routing.
   The five stubbed rows (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stay stubs, verbatim.
   No row gains a `segment`, and no `Bouncer`/`BurlerRound` row appears — those belong to the five `loom: real LLM producers` items.
@@ -158,9 +161,13 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 - **The default fake is not the only fake.** The shared fixture substitutes an always-done producer (today's `fakeAlwaysDoneProducer`), but an individual test may substitute its own at the same seam — and one does: `TestResume_CrashRecoveryRecallsUnconditionally` (`internal/loomshed/resume_test.go:109-112`) replaces row 1 with `countingProducer{}` because its whole subject is the row-1 **call count** across two runs.
   A rule hard-coded to the always-done fake would erase exactly what that test measures.
   State the seam, not the value.
-- **This is eight tests and more than ten call sites, not two.**
-  `sequence_test.go` contributes one (`TestSequence_FullRunBlocksAtPublish`) and `resume_test.go` seven: `TestResume_DoesNotRestartAtRowOne`, `TestResume_CrashRecoveryRecallsUnconditionally`, `TestResume_PauseStopsAtBoundaryAndClearsFlag`, `TestBounceRouting_StuckContinuesAtDeclaredTarget`, `TestBounceRouting_EmptyTargetBlocksInstead`, `TestBounceRouting_BudgetExhaustionBlocks`, and `TestCancellation_RealProducersReturnErrorNotStuck`.
-  Several build the list **twice** (a first run, then a second resuming run), and each `New` needs its own substitution — a single substitution per test is a silent hole, since the second run would call the real producer.
+- **This is seven tests and exactly ten `New` call sites, not two.**
+  `sequence_test.go` contributes one (`TestSequence_FullRunBlocksAtPublish`, 1 site) and `resume_test.go` six: `TestResume_DoesNotRestartAtRowOne` (2), `TestResume_CrashRecoveryRecallsUnconditionally` (2), `TestResume_PauseStopsAtBoundaryAndClearsFlag` (2), `TestBounceRouting_StuckContinuesAtDeclaredTarget` (1), `TestBounceRouting_EmptyTargetBlocksInstead` (1), and `TestBounceRouting_BudgetExhaustionBlocks` (1).
+  The ones building the list **twice** (a first run, then a second resuming run) need a substitution at *each* `New` — one per test is a silent hole, since the second run would call the real producer.
+  `TestCancellation_RealProducersReturnErrorNotStuck` is **not** in this set: it calls neither `New` nor `Run` (see `test-ownership` for where it lands).
+- **Where a test's fake carries state, substitute the same instance at every `New`.**
+  `TestResume_CrashRecoveryRecallsUnconditionally` holds one `counting := &countingProducer{}` across both `New` calls (`resume_test.go:114`, `:131`) and asserts `counting.calls == 2` at `:142`.
+  Substituting a fresh `&countingProducer{}` at each site would leave the count at 1 and quietly invert the test's meaning.
 - Rationale: this is a real hole the conversion opens, not a detail.
   `internal/loomshed/fixture_test.go:77-79` records that `Preflight` and `WebsterRun` are the fixture's only two injectable rows, and both moved Run tests rely on it — `sequence_test.go` drives rows 1→12 and `resume_test.go` counts `Preflight` appearing exactly once across two runs, each with `Deps.Preflight: fakeAlwaysDoneProducer{}`.
   The `preflight-row` Decision removes that injection point: `preflightEntry` builds row 1 from `Env.Cwd`, and the real producer's `Call` invokes `preflight.Check(p.cwd)` (`internal/preflightshed/preflight.go:43`), which resolves geometry and spawns `git`.
@@ -191,7 +198,7 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 ### test-ownership — the assembled-graph tests move to `internal/loomrecipe`
 
 - Decision: `internal/loomrecipe` becomes the home for every test whose subject is loom's assembled graph:
-  the row-sequence test (`internal/loomshed/sequence_test.go`), the resume test (`internal/loomshed/resume_test.go`), all of `internal/loomshed/loomshed_test.go` bar one deletion, and two of the three tests in the registry coverage guard (`internal/shedrecipe/coverage_guard_test.go`).
+  the row-sequence test (`internal/loomshed/sequence_test.go`), six of `internal/loomshed/resume_test.go`'s seven tests, all of `internal/loomshed/loomshed_test.go` bar one deletion, and two of the three tests in the registry coverage guard (`internal/shedrecipe/coverage_guard_test.go`).
   Each is repointed at the recipe-built list.
 - `loomshed_test.go` has no non-`New` half — all eight of its tests drive `New` — so each needs its own disposition:
   - `TestNew_ProducerTable` (row names/routing table), `TestNew_PublishAndFinalizeAreRealProducers`, `TestNew_ProducerTableOrderUnchangedByWiring` (row order is now the recipe's list order), `TestNew_PassesShedValidation`, and `TestNew_RoutingGraphIsClean` (the `shedcheck` invariant) — **move**, repointed at the recipe-built list.
@@ -211,6 +218,12 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
     `internal/shedrecipe/registry_test.go`'s `TestNames` already covers `Names()`↔`registry` key agreement and sortedness, so what is unique to this test is the **exact twelve-name contents pin** — and that pin belongs with the registry it pins, not with one consumer of it.
     Nothing about the cycle argument forces it to move.
   The `coverageGuardShed` helper and the `landingshed`/`mergeresolve` test doubles beside it move with the two tests that use them.
+- `TestCancellation_RealProducersReturnErrorNotStuck` (`internal/loomshed/resume_test.go:331-361`) **stays** in `internal/loomshed`, despite living in a file that otherwise moves.
+  It calls neither `New` nor `Run`: it constructs five of loomshed's own producers directly (`NewDiscussionValidate`, `NewPlanValidate`, `NewBatchifier`, `NewWebsterProducer`, `NewLoomPreflight`) and calls `Call` on each against a cancelled context.
+  Its subject is therefore loomshed's own constructors — the same criterion that keeps `batchifier_test.go` and `planvalidate_test.go` in place — and nothing about it concerns the assembled graph.
+  Only `buildSequenceFixture` ties it to the moving file, and it uses that fixture purely as a path bag (`DecisionRecordPath`, `SupportLogPath`, `AnchorPath`, `WorktreeRoot`).
+  So `internal/loomshed` keeps a reduced local fixture supplying those paths as a plain struct — `Deps` is gone and cannot be that carrier — while `internal/loomrecipe` gets the full whole-list fixture.
+  `internal/preflightshed/preflight_test.go:33` names this test by its `internal/loomshed/resume_test.go` path; keeping it in `loomshed` but in a different file still makes that reference stale, so it is part of the comment sweep below.
 - **The moved fixture's helpers are duplicated into `internal/loomrecipe`, not moved.**
   `internal/loomshed/fixture_test.go`'s `buildSequenceFixture` calls helpers that live in files this task deliberately **keeps** in `internal/loomshed`: `writeDiscussionFixture` and `validDecisionRecord` (`discussionvalidate_test.go`), `seedPlanValidateFixture` (`planvalidate_test.go`), `fakeWebsterRun` (`webster_test.go`), plus `fakeAlwaysDoneProducer` and `testLandingDeps` from the files that do move.
   Moving the first four would break the per-producer tests that stay; leaving them means `internal/loomrecipe` does not compile.
@@ -310,9 +323,10 @@ The rest are plain reads of `c.deps.StatusPath` / `c.deps.StatusLockPath` / `c.d
 `run.go:100` (the `loomshed.Seed` call — `Seed` itself is unchanged) and `run.go:181` (`c.deps.LockPath`).
 This is the widest mechanical edit in the task: four of loom's five verbs read the status pair off `Deps` today, so the replacement carrier has to be reachable from every command, not just `drive`.
 
-**`Build` is not filesystem-free, and construction can fail.**
-Three registry constructors reach disk at construction time (see `internal/shedbuild/doc.go` for the enumeration), and `publishEntry`/`finalizeEntry` call `landingshed.NewPublish`/`NewFinalize`, which open a fabric pair.
-This matches today's behaviour — `loomshed.New` calls the same two constructors — so `loomrecipe.New` must surface the error rather than swallow it, exactly as `loomshed.New` does.
+**`Build` is not filesystem-free in general, but loom's own rows barely touch disk.**
+`internal/shedbuild/doc.go:8-12` names the three disk-touching constructors as exactly `Bouncer`, `BurlerRound`, and `SingleLLM` — which are precisely the three engines loom's thirteen rows do **not** use.
+So for this recipe the only construction-time filesystem contact is `publishEntry`/`finalizeEntry` calling `landingshed.NewPublish`/`NewFinalize`, which open a fabric pair — and `loomshed.New` calls those same two constructors today, so this is not a behaviour change and not a tier-1 obstacle for `internal/loomrecipe`'s tests.
+`loomrecipe.New` must surface a construction error rather than swallow it, exactly as `loomshed.New` does.
 
 **Errors carry position.** `shedbuild` names the offending row's zero-based index and `name` in every error it raises after decode, and the decoder keeps yaml line numbers.
 No error-wrapping work is needed in `loomrecipe` beyond a package prefix.
@@ -369,10 +383,11 @@ Discovered during exploration:
 - *Publish/Finalize row identity (moved).* The recipe's rows named `Publish` and `Finalize` match `landingshed`'s own producer-identity constants, which those constructors substitute for the discarded `name` argument.
 - *Seed/resume name pin.* `loomshed.Seed`'s `CurrentProducer` value and `loomPreflightProducer`'s tolerated history set both name rows that exist in the recipe — the machine-checked form of the `row-name-authority` Decision.
 - *Row sequence (moved from `loomshed/sequence_test.go`).* A clean `Run` over the built list visits the expected row-name sequence, asserted against a literal expected list.
-- *Resume and routing (moved from `loomshed/resume_test.go`).* Seven tests, not one — resume-does-not-restart-at-row-one (`Preflight` appearing exactly once across both runs), crash-recovery re-call counting, pause-at-boundary-and-clear-flag, the three bounce-routing cases (declared target, empty target blocks, budget exhaustion blocks), and cancellation returning an error rather than stuck.
-  Carry all seven over with their subjects intact.
-- Every one of these eight `Run`-driving tests substitutes row 1's producer after **each** `New` call, per the `row1-substitution` Decision — the always-done fake by default, `countingProducer` for the crash-recovery test whose subject is the call count.
-  `internal/loomshed/fixture_test.go`'s whole-list fixture moves with them, with its `Deps.Preflight` injection replaced by that substitution, its `Deps`/`Env` split rewritten, and its four helpers duplicated per `test-ownership`.
+- *Resume and routing (moved from `loomshed/resume_test.go`).* Six tests, not one — resume-does-not-restart-at-row-one (`Preflight` appearing exactly once across both runs), crash-recovery re-call counting, pause-at-boundary-and-clear-flag, and the three bounce-routing cases (declared target, empty target blocks, budget exhaustion blocks).
+  Carry all six over with their subjects intact.
+  The file's seventh test, `TestCancellation_RealProducersReturnErrorNotStuck`, stays in `internal/loomshed` — see `test-ownership`.
+- Every one of these seven `Run`-driving tests (one from `sequence_test.go`, six here — ten `New` sites in total) substitutes row 1's producer after **each** `New` call, per the `row1-substitution` Decision — the always-done fake by default, and one shared `countingProducer` instance across both sites in the crash-recovery test whose subject is the call count.
+  `internal/loomshed/fixture_test.go`'s whole-list fixture is copied over for them, with its `Deps.Preflight` injection replaced by that substitution, its `Deps`/`Env` split rewritten, and its four helpers duplicated per `test-ownership`; `internal/loomshed` keeps a reduced path-bag fixture for the cancellation test that stays.
   Every other seam it fills (`WebsterRun`, `WebsterDeps`, `Landing`) carries over into `Env` unchanged.
 - *Construction failure surfaces.* An `Env` missing a field a row reads (e.g. empty `Cwd`) returns an error naming the row, not a panic and not a silently-degraded list.
 - *Seam enforcement.* Membership allowlist over the package's production imports.
