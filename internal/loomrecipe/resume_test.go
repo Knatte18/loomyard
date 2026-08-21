@@ -1,13 +1,13 @@
-package loomshed
+package loomrecipe
 
 import (
 	"context"
 	"os"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // countingProducer is a shedengine.ShedProducer fake that always reports Done and counts every
@@ -46,13 +46,14 @@ func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProdu
 // wantSequenceOrder doc comment for why) -- resuming past Batchifier, not reaching Done, is this
 // test's own point.
 func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
-	writeBatcherConfig(t, deps.AnchorPath, "active: [not valid yaml\n")
+	_, env, paths := buildSequenceFixture(t)
+	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
 
-	shed1, err := New(deps)
+	shed1, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -60,16 +61,17 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if result1.Outcome != shedengine.RunBlocked {
 		t.Fatalf("first Run() outcome = %q; want %q (reason: %s)", result1.Outcome, shedengine.RunBlocked, result1.Reason)
 	}
-	if result1.HaltedProducer != NameBatchifier {
-		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, NameBatchifier)
+	if result1.HaltedProducer != loomshed.NameBatchifier {
+		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, loomshed.NameBatchifier)
 	}
 
-	writeBatcherConfig(t, deps.AnchorPath, `active: "identity"`+"\n")
+	writeBatcherConfig(t, env.AnchorPath, `active: "identity"`+"\n")
 
-	shed2, err := New(deps)
+	shed2, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed2.Producers[0].Producer = fakeAlwaysDoneProducer{}
 	result2, err := shed2.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
@@ -77,8 +79,8 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if result2.Outcome != shedengine.RunBlocked {
 		t.Fatalf("second Run() outcome = %q; want %q (reason: %s)", result2.Outcome, shedengine.RunBlocked, result2.Reason)
 	}
-	if result2.HaltedProducer != NamePublish {
-		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, NamePublish)
+	if result2.HaltedProducer != loomshed.NamePublish {
+		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NamePublish)
 	}
 
 	// result2.History is the full persisted history, including the first run's own appended
@@ -86,7 +88,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	// Preflight appearing exactly once across both runs, not by History[0] naming Batchifier.
 	preflightCount := 0
 	for _, e := range result2.History {
-		if e.Producer == NamePreflight {
+		if e.Producer == loomshed.NamePreflight {
 			preflightCount++
 		}
 	}
@@ -102,19 +104,23 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 //
 // The two runs do not end at the same halted row: the first run ends shedengine.RunBlocked at
 // Publish (see sequence_test.go's wantSequenceOrder doc comment for why). After
-// resetCurrentProducer(..., NamePreflight, false), the second run re-calls row 1, Shed advances to
-// row 2, and row 2 finds a history carrying the first run's later producers -- exactly the
-// half-finished shape the fresh-start rule rejects -- so the second run blocks at Loom-Preflight
-// instead. This test's own point is the re-call count, not the terminal state.
+// resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1, Shed
+// advances to row 2, and row 2 finds a history carrying the first run's later producers -- exactly
+// the half-finished shape the fresh-start rule rejects -- so the second run blocks at
+// Loom-Preflight instead. This test's own point is the re-call count, not the terminal state.
+//
+// It holds one counting := &countingProducer{} across both builds and asserts counting.calls == 2
+// at the end: substituting a fresh &countingProducer{} at the second site would leave the count at
+// 1 and quietly invert what the test measures.
 func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
+	_, env, paths := buildSequenceFixture(t)
 	counting := &countingProducer{}
-	deps.Preflight = counting
 
-	shed1, err := New(deps)
+	shed1, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed1.Producers[0].Producer = counting
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -126,12 +132,13 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 		t.Fatalf("counting.calls after first Run() = %d; want 1", counting.calls)
 	}
 
-	resetCurrentProducer(t, deps.StatusPath, deps.StatusLockPath, NamePreflight, false)
+	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NamePreflight, false)
 
-	shed2, err := New(deps)
+	shed2, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed2.Producers[0].Producer = counting
 	result2, err := shed2.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
@@ -149,13 +156,14 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 // halted producer, that the flag is cleared in the same persist, and that a subsequent run resumes
 // rather than re-pausing on the flag it is resuming from.
 func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
-	resetCurrentProducer(t, deps.StatusPath, deps.StatusLockPath, NameBatchifier, true)
+	_, env, paths := buildSequenceFixture(t)
+	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameBatchifier, true)
 
-	shed1, err := New(deps)
+	shed1, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -163,14 +171,14 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if result1.Outcome != shedengine.RunPaused {
 		t.Fatalf("first Run() outcome = %q; want %q", result1.Outcome, shedengine.RunPaused)
 	}
-	if result1.HaltedProducer != NameBatchifier {
-		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, NameBatchifier)
+	if result1.HaltedProducer != loomshed.NameBatchifier {
+		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, loomshed.NameBatchifier)
 	}
 	if len(result1.History) != 0 {
 		t.Errorf("first Run() History = %+v; want empty -- pause is checked before the halted producer is ever called", result1.History)
 	}
 
-	got, found, err := state.ReadJSONStrict[shedengine.Status](deps.StatusPath, deps.StatusLockPath)
+	got, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
 		t.Fatalf("ReadJSONStrict() error = %v; want nil", err)
 	}
@@ -183,14 +191,15 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if got.PauseRequested {
 		t.Errorf("persisted PauseRequested = true; want false -- the flag must clear in the same persist that records the paused state")
 	}
-	if got.CurrentProducer != NameBatchifier {
-		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, NameBatchifier)
+	if got.CurrentProducer != loomshed.NameBatchifier {
+		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, loomshed.NameBatchifier)
 	}
 
-	shed2, err := New(deps)
+	shed2, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed2.Producers[0].Producer = fakeAlwaysDoneProducer{}
 	result2, err := shed2.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
@@ -201,8 +210,8 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if result2.Outcome != shedengine.RunBlocked {
 		t.Fatalf("second Run() outcome = %q; want %q -- a subsequent run must resume rather than re-pause on the flag it is resuming from", result2.Outcome, shedengine.RunBlocked)
 	}
-	if result2.HaltedProducer != NamePublish {
-		t.Errorf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, NamePublish)
+	if result2.HaltedProducer != loomshed.NamePublish {
+		t.Errorf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NamePublish)
 	}
 }
 
@@ -210,15 +219,16 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 // genuinely Stuck by removing its decision record from disk, and asserts the run continues at its
 // declared OnStuck target, Discussion-Write, immediately afterward.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
-	if err := os.Remove(deps.DecisionRecordPath); err != nil {
+	_, env, paths := buildSequenceFixture(t)
+	if err := os.Remove(env.DecisionRecordPath); err != nil {
 		t.Fatalf("remove decision record: %v", err)
 	}
 
-	shed, err := New(deps)
+	shed, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -226,19 +236,19 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 
 	stuckIdx := -1
 	for i, e := range result.History {
-		if e.Producer == NameDiscussionValidate && e.Outcome == shedengine.Stuck {
+		if e.Producer == loomshed.NameDiscussionValidate && e.Outcome == shedengine.Stuck {
 			stuckIdx = i
 			break
 		}
 	}
 	if stuckIdx == -1 {
-		t.Fatalf("Run() History has no %s Stuck entry: %+v", NameDiscussionValidate, result.History)
+		t.Fatalf("Run() History has no %s Stuck entry: %+v", loomshed.NameDiscussionValidate, result.History)
 	}
 	if stuckIdx+1 >= len(result.History) {
-		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", NameDiscussionWrite)
+		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", loomshed.NameDiscussionWrite)
 	}
-	if got := result.History[stuckIdx+1].Producer; got != NameDiscussionWrite {
-		t.Errorf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, NameDiscussionWrite)
+	if got := result.History[stuckIdx+1].Producer; got != loomshed.NameDiscussionWrite {
+		t.Errorf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, loomshed.NameDiscussionWrite)
 	}
 }
 
@@ -246,13 +256,14 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 // genuinely Stuck via a malformed on-disk config, and asserts the run ends shedengine.RunBlocked
 // rather than bouncing anywhere.
 func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
-	writeBatcherConfig(t, deps.AnchorPath, "active: [not valid yaml\n")
+	_, env, paths := buildSequenceFixture(t)
+	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
 
-	shed, err := New(deps)
+	shed, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -260,8 +271,8 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	if result.Outcome != shedengine.RunBlocked {
 		t.Fatalf("Run() outcome = %q; want %q", result.Outcome, shedengine.RunBlocked)
 	}
-	if result.HaltedProducer != NameBatchifier {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, NameBatchifier)
+	if result.HaltedProducer != loomshed.NameBatchifier {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameBatchifier)
 	}
 	if result.Reason != "stuck with no OnStuck target" {
 		t.Errorf("Run() Reason = %q; want %q", result.Reason, "stuck with no OnStuck target")
@@ -270,8 +281,8 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 
 // TestBounceRouting_BudgetExhaustionBlocks drives Discussion-Validate genuinely and repeatedly
 // Stuck (its decision record stays absent for the whole run, so Discussion-Write's own Done never
-// fixes it), with a small Deps.MaxBounces, and asserts Discussion-Validate's own bounce budget is
-// consumed and exhausting it blocks -- MaxBounces+1 Stuck entries authored by Discussion-Validate,
+// fixes it), with a small ShedPaths.MaxBounces, and asserts Discussion-Validate's own bounce budget
+// is consumed and exhausting it blocks -- MaxBounces+1 Stuck entries authored by Discussion-Validate,
 // then shedengine.RunBlocked.
 //
 // The budget here is per-producer and episode-scoped, counted from the persisted history[] --
@@ -281,16 +292,17 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // it bounces to, consumes none of Discussion-Validate's budget -- each producer's episode count is
 // its own.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
-	deps.MaxBounces = 2
-	if err := os.Remove(deps.DecisionRecordPath); err != nil {
+	_, env, paths := buildSequenceFixture(t)
+	paths.MaxBounces = 2
+	if err := os.Remove(env.DecisionRecordPath); err != nil {
 		t.Fatalf("remove decision record: %v", err)
 	}
 
-	shed, err := New(deps)
+	shed, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -298,14 +310,14 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	if result.Outcome != shedengine.RunBlocked {
 		t.Fatalf("Run() outcome = %q; want %q", result.Outcome, shedengine.RunBlocked)
 	}
-	if result.HaltedProducer != NameDiscussionValidate {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, NameDiscussionValidate)
+	if result.HaltedProducer != loomshed.NameDiscussionValidate {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameDiscussionValidate)
 	}
 	if result.Reason != "bounce budget exhausted" {
 		t.Errorf("Run() Reason = %q; want %q", result.Reason, "bounce budget exhausted")
 	}
 
-	// Discussion-Validate's own per-producer, episode-scoped budget (deps.MaxBounces, since
+	// Discussion-Validate's own per-producer, episode-scoped budget (paths.MaxBounces, since
 	// neither Discussion-Validate nor Shed itself sets a MaxBounces of its own) performs
 	// MaxBounces bounce-backs to Discussion-Write and blocks on the next Stuck -- one more than
 	// the budget -- because the blocking Stuck entry is itself appended to history before the
@@ -313,49 +325,11 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	// it is the one that triggers the block rather than one the budget check let through.
 	stuckCount := 0
 	for _, e := range result.History {
-		if e.Producer == NameDiscussionValidate && e.Outcome == shedengine.Stuck {
+		if e.Producer == loomshed.NameDiscussionValidate && e.Outcome == shedengine.Stuck {
 			stuckCount++
 		}
 	}
-	if want := deps.MaxBounces + 1; stuckCount != want {
+	if want := paths.MaxBounces + 1; stuckCount != want {
 		t.Errorf("Discussion-Validate Stuck count = %d; want %d (MaxBounces+1)", stuckCount, want)
-	}
-}
-
-// TestCancellation_RealProducersReturnErrorNotStuck asserts the one obligation shedengine cannot
-// enforce for itself: every real producer this task builds -- the discussion validator, the plan
-// validator, the batch gate, the Webster wrapper, and loom's own seed row -- returns a non-nil
-// error rather than shedengine.Stuck when called under an already-cancelled context. A Stuck under
-// a cancelled context is indistinguishable to Shed from a genuine verdict and would silently
-// consume bounce budget for what was actually an operator stop.
-func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	producers := []struct {
-		name string
-		p    interface {
-			Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)
-		}
-	}{
-		{NameDiscussionValidate, NewDiscussionValidate(NameDiscussionValidate, deps.DecisionRecordPath, deps.SupportLogPath)},
-		{NamePlanValidate, NewPlanValidate(NamePlanValidate, deps.AnchorPath, deps.WorktreeRoot)},
-		{NameBatchifier, NewBatchifier(NameBatchifier, deps.AnchorPath)},
-		{NameWebster, NewWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, websterengine.RunDeps{})},
-		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, deps.StatusPath, deps.StatusLockPath)},
-	}
-
-	for _, tt := range producers {
-		t.Run(tt.name, func(t *testing.T) {
-			outcome, _, err := tt.p.Call(ctx)
-			if err == nil {
-				t.Fatalf("Call(cancelled) error = nil; want non-nil error")
-			}
-			if outcome == shedengine.Done || outcome == shedengine.Stuck {
-				t.Errorf("Call(cancelled) outcome = %q; want no verdict alongside a cancellation error", outcome)
-			}
-		})
 	}
 }
