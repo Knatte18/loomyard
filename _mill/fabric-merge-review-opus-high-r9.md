@@ -10,6 +10,8 @@ REVIEW COMPLETE — four findings (1 MEDIUM, 2 LOW, 1 NIT), all CONFIRMED agains
 
 No production or test file in this worktree was touched during Job 1: every sabotage probe ran in an isolated `tar`-clone of the tree under the scratch directory.
 
+**Job 2 outcome:** all four fixed, one commit each — see `_mill/fabric-merge-review-opus-high-r9-fixer-report.md`. Nothing deferred.
+
 ## What was tested
 
 ### Hermetic gates (baseline, before any edit)
