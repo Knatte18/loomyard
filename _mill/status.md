@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: _mill/plan
@@ -22,4 +22,23 @@ plan-review-r1  '2026-08-21T08:57:05Z'
 plan-fix-r1  '2026-08-21T08:57:05Z'
 plan-fix-r2  '2026-08-21T09:06:58Z'
 planned  '2026-08-21T09:07:18Z'
+implementing  '2026-08-21T09:07:55Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: loomshed constructor exports
+    state: pending
+  - name: shedrecipe foundations
+    state: pending
+  - name: registry and value-only entries
+    state: pending
+  - name: SingleLLM entry
+    state: pending
+  - name: Bouncer and BurlerRound entries
+    state: pending
+  - name: guards and docs
+    state: pending
 ```
