@@ -45,7 +45,9 @@ batches:
     commit_sha: 00321f120393cf412564c2184cbe2e3396909771
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: registry and value-only entries
-    state: pending
+    state: running
+    implementer_session: 6995d15f-60ba-4b09-aeee-45f20ef4ff45
+    start_sha: 23f21813398aa2f57ee4d7a98f6878a3d52e6d9d
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: SingleLLM entry
     state: pending
