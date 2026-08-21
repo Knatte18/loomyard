@@ -38,7 +38,9 @@ batches:
     commit_sha: 8cf8974c59f45cbd10fa1b8a3aead1f152376807
     verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: shedbuild-builder
-    state: pending
+    state: running
+    implementer_session: 5959c856-95af-41b2-8ea9-d8d68de73284
+    start_sha: d4b85bd9215b64853c461aff1bab21298b8f3750
     verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: loom-equivalence
     state: pending
