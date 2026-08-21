@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/shedcheck"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -224,5 +225,33 @@ func TestNew_PassesShedValidation(t *testing.T) {
 	}
 	if result.Outcome != shedengine.RunBlocked {
 		t.Errorf("Run() outcome = %q; want %q (Discussion-Validate's own bounce budget exhausted)", result.Outcome, shedengine.RunBlocked)
+	}
+}
+
+// TestNew_RoutingGraphIsClean is the guard that fires when one of the five upcoming "loom: real LLM
+// producers" tasks mis-wires a Bouncer/Burler pair.
+//
+// It catches a Burler left with OnDone: "" (reported as unexpected-terminal), a Bouncer whose
+// OnDone never exits its segment (reported as unreachable downstream), and a Bouncer whose OnStuck
+// never routes back to it (reported as blind-gate).
+//
+// It does NOT catch a Burler handing back via OnDone instead of OnStuck: both wirings produce the
+// identical routing graph, and the difference is a verdict returned inside Call, which
+// shedcheck.Check never inspects. A comment claiming unqualified perch coverage would be false.
+//
+// manifest/roadmap.md sequences "loom: convert to a Shed recipe" before the three perch-wiring
+// tasks this guard exists for, and that item replaces this file's Go literal in loomshed.go -- the
+// very thing this test reads -- with a recipe file. This guard must move onto the recipe-assembled
+// list at that point rather than being deleted alongside the literal it happens to be written
+// against.
+func TestNew_RoutingGraphIsClean(t *testing.T) {
+	shed, err := New(testDeps(t))
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+
+	findings := shedcheck.Check(shed.Producers, NamePreflight, []string{NameFinalize})
+	for _, f := range findings {
+		t.Errorf("%s", f.String())
 	}
 }

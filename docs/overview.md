@@ -233,6 +233,7 @@ github.com/Knatte18/loomyard/
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, Webster, the burler round producer) over shuttle/websterengine/burlerengine, plus the Bouncer adapter
+├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
 ├── internal/loomcli/             loom's cobra module: the session bootstrap plus the driver, status, and pause verbs
 ├── internal/loomshed/            loom's own 13-row producer list over `shedengine`
 ├── internal/shedrecipe/          the engine registry — the name to `ShedProducer`-constructor mapping a recipe loader resolves each row's `Engine` against
@@ -316,9 +317,10 @@ User-facing modules each get one `lyx <module>` namespace:
   The four shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the burler round producer, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
   No `lyx shed` verb of its own by design — a product's own CLI constructs a `Shed` with its own producer list and calls `Run`, and a bare verb would be a command with no list to walk.
   The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the four engine adapters (`SingleLLMProducer`, the `Webster` adapter, the burler round producer, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
+  `internal/shedcheck` is the shipped structural checker over an assembled producer list, enforced by a `go test` invariant over loom's own list rather than called from any production constructor — see [manifest/designs/shed.md](../manifest/designs/shed.md#checking-an-assembled-producer-list) for the eight finding kinds it reports.
   The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; it registers twelve engine names.
-  The recipe file format, the loader/builder, and the validity checker — pieces 2-4 — are not built yet.
-  See the `internal/shedengine` and `internal/shedadapters` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
+  The recipe file format and the loader/builder — the remaining pieces — are not built yet.
+  See the `internal/shedengine`, `internal/shedadapters`, and `internal/shedcheck` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
   Cluster review fans job A out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
