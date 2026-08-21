@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -33,4 +33,23 @@ plan-review-r6  '2026-08-21T15:48:37Z'
 plan-fix-r6  '2026-08-21T15:48:37Z'
 plan-fix-r7  '2026-08-21T15:59:55Z'
 planned  '2026-08-21T16:00:20Z'
+implementing  '2026-08-21T16:00:45Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: recipe-file-and-loomrecipe-package
+    state: pending
+  - name: move-the-graph-tests-into-loomrecipe
+    state: pending
+  - name: loomcli-rewiring
+    state: pending
+  - name: coverage-guard-move-and-fixture-retirement
+    state: pending
+  - name: delete-loomshed-new-and-deps
+    state: pending
+  - name: docs-and-comment-sweep
+    state: pending
 ```
