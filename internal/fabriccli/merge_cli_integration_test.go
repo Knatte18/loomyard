@@ -222,7 +222,7 @@ func TestRunCLI_MergeConflictSelfAbortsWithErrMergeInRequired(t *testing.T) {
 
 	envelope := decodeResult(t, &out)
 	errMsg, _ := envelope["error"].(string)
-	wantErr := "fabricengine: merge produced conflicts and was aborted; run MergeIn in the source branch's worktree first, then retry"
+	wantErr := `fabricengine: merge produced conflicts and was aborted; run "lyx fabric merge-in" in the source branch's own worktree first, then retry`
 	if errMsg != wantErr {
 		t.Errorf("RunCLI(merge) [would conflict] error = %q; want %q", errMsg, wantErr)
 	}

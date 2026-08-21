@@ -97,7 +97,8 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 // The reconstructed state is byte-for-byte what a kill between the two MergeStart calls leaves —
 // merge.go persists WarpOutcome only after the warp MergeStart returns, so WeftOutcome is still
 // empty at that instant. Without the guard, MergeContinue committed the warp side, then failed
-// concluding a weft side that was never started, returned "run MergeContinue again" (an instruction
+// concluding a weft side that was never started, returned "run \"lyx fabric merge --continue\" again"
+// (an instruction
 // that could never succeed), and left the pair out of correspondence.
 // MergeAbort must still recover the same record — that is the whole point of refusing.
 func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testing.T) {

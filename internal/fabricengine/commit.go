@@ -116,7 +116,8 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	// "cannot do a partial commit during a merge".
 	// The two refusals carry DIFFERENT typed errors on purpose: fabric has no merge of its own in
 	// progress in the foreign case (MergeInProgress reports false there), so *ErrMergeInProgress's
-	// "run MergeContinue or MergeAbort first" would misdirect the operator into two more refusals —
+	// "run \"lyx fabric merge --continue\" or \"lyx fabric merge --abort\" first" would misdirect the
+	// operator into two more refusals —
 	// *ErrForeignMergeState says what actually clears the state (plain git), the same answer every
 	// merge verb gives it.
 	recordExists, err := f.mergeRecordExists()

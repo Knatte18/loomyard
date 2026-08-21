@@ -256,7 +256,8 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 // plain-git conflicted merge in the warp checkout, driven with no MergeIn involved and so no fabric
 // merge record, still refuses — with *ErrForeignMergeState, the same typed error every merge verb
 // gives foreign state, rather than surfacing git's own raw "cannot do a partial commit during a
-// merge" or *ErrMergeInProgress's misdirecting "run MergeContinue or MergeAbort first" (fabric has
+// merge" or *ErrMergeInProgress's misdirecting "run \"lyx fabric merge --continue\" or
+// \"lyx fabric merge --abort\" first" (fabric has
 // no merge of its own in progress here, and both of those verbs would refuse).
 func TestMergeSiblings_CommitRefusesForeignMergeState(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
