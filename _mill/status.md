@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r2
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-21T13:32:35Z'
+discussion-fix-r2  '2026-08-21T14:06:30Z'
 ```

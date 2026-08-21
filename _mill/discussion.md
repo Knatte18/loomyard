@@ -27,16 +27,19 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 - Rewiring `internal/loomcli` (`wiring.go`, `drive.go`) to fill a `shedrecipe.Env` instead of a `loomshed.Deps`, and to call `loomrecipe.New` instead of `loomshed.New`.
 - Deleting `loomshed.New` and `loomshed.Deps`.
   The thirteen `NamePreflight`…`NameFinalize` constants are **kept** — see the `row-name-authority` Decision.
-- Moving the tests that drive `loomshed.New` (`loomshed_test.go`'s New-driving half, `sequence_test.go`, `resume_test.go`) into `internal/loomrecipe`, repointed at the recipe-built list.
+- Moving the tests that drive `loomshed.New` (all of `loomshed_test.go` bar one deletion, plus `sequence_test.go` and `resume_test.go`) into `internal/loomrecipe`, repointed at the recipe-built list — see `test-ownership` for the per-test disposition.
 - Splitting `internal/shedrecipe/coverage_guard_test.go`: two of its three tests move into `internal/loomrecipe` repointed at the recipe file, and `TestRegistry_ShipsTwelveEntries` stays put (see `test-ownership`).
 - Deleting `internal/shedbuild/equivalence_test.go` and `internal/shedbuild/testdata/loom-recipe.yaml`.
 - Doc updates in the same commit: `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md` (two edits), `manifest/roadmap.md`, `manifest/parallel-work.md`.
 
 **Out:**
 
-- Any change to `internal/shedengine`, `internal/shedcheck`, `internal/shedbuild`, or `internal/shedrecipe` production code.
+- Any **behavioural** change to `internal/shedengine`, `internal/shedcheck`, `internal/shedbuild`, or `internal/shedrecipe` production code.
   This task is those packages' first consumer, not their reviser.
   A genuine defect found in one of them is a finding to report, not a licence to widen scope.
+  **Carve-out:** doc comments in those packages that name symbols this task deletes or moves *are* repaired here — a comment pointing at a deleted symbol is not "unchanged", it is wrong.
+  The four known sites: `internal/shedcheck/doc.go:8` ("Neither `shedengine.Run` nor `loomshed.New` calls `Check`"), `internal/shedrecipe/recipe.go:69` ("told wholesale by `loomshed.Deps.Landing` today"), and `internal/shedrecipe/entries_simple.go:33-34` and `:53-55` (both naming `coverage_guard_test.go` as the pin for the `Publish`/`Finalize` row keys, a pin that now lives in `internal/loomrecipe`).
+  Sweep for others with a `loomshed.New`/`loomshed.Deps`/`coverage_guard_test` grep across comments rather than trusting this list to be complete.
 - Any change to which producers loom runs, in what order, with what routing.
   The five stubbed rows (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stay stubs, verbatim.
   No row gains a `segment`, and no `Bouncer`/`BurlerRound` row appears — those belong to the five `loom: real LLM producers` items.
@@ -101,8 +104,10 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
   Keeping a Go literal beside it — even deprecated — guarantees the two drift, and the drift is silent because nothing would compare them once `equivalence_test.go` is gone.
 - Rejected: **keep `New` as a deprecated fallback.**
   There is no caller to fall back for; `loomcli` is the only one.
-- Note: `internal/loomshed/seam_enforcement_test.go`'s import allowlist may shrink once `New` goes (`landingshed`, `websterengine`, and `shedadapters` were pulled in largely by `Deps`).
-  Tighten the allowlist to what production code still imports rather than leaving it wide — a membership allowlist that over-permits is the failure mode that test exists to prevent.
+- Note: `internal/loomshed/seam_enforcement_test.go`'s import allowlist shrinks by exactly one entry once `New` goes.
+  `landingshed` becomes droppable — `loomshed.go` was its only production importer, via `Deps.Landing` and the two `landingshed.New*` calls.
+  `shedadapters` and `websterengine` **stay**: `webster.go:9-13` imports both for `NewWebsterProducer`, independent of `New`.
+  Verify by grep rather than by assumption, and tighten to exactly what production still imports — a membership allowlist that over-permits is the failure mode that test exists to prevent.
 
 ### row-name-authority — the Go constants stay authoritative, the recipe is checked against them
 
@@ -162,8 +167,15 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 ### test-ownership — the assembled-graph tests move to `internal/loomrecipe`
 
 - Decision: `internal/loomrecipe` becomes the home for every test whose subject is loom's assembled graph:
-  the row-sequence test (`internal/loomshed/sequence_test.go`), the resume test (`internal/loomshed/resume_test.go`), the `shedcheck`-over-loom's-list invariant currently in `internal/loomshed/loomshed_test.go`, and the registry coverage guard (`internal/shedrecipe/coverage_guard_test.go`).
+  the row-sequence test (`internal/loomshed/sequence_test.go`), the resume test (`internal/loomshed/resume_test.go`), all of `internal/loomshed/loomshed_test.go` bar one deletion, and two of the three tests in the registry coverage guard (`internal/shedrecipe/coverage_guard_test.go`).
   Each is repointed at the recipe-built list.
+- `loomshed_test.go` has no non-`New` half — all eight of its tests drive `New` — so each needs its own disposition:
+  - `TestNew_ProducerTable` (row names/routing table), `TestNew_PublishAndFinalizeAreRealProducers`, `TestNew_ProducerTableOrderUnchangedByWiring` (row order is now the recipe's list order), `TestNew_PassesShedValidation`, and `TestNew_RoutingGraphIsClean` (the `shedcheck` invariant) — **move**, repointed at the recipe-built list.
+  - `TestNew_ToldShedFields` — **moves**, repointed from `Deps`'s four fields at the new Shed-paths carrier (`constructor-shape`), asserting `loomrecipe.New` threads them onto the returned `*shedengine.Shed` unchanged.
+  - `TestNew_MissingLandingClosureReturnsError` — **moves**, restated: an `Env` whose `Landing` lacks its closures fails the build, and the error names the offending row (`shedbuild` prefixes every post-decode error with the row's zero-based index and `name`, which is strictly more than `loomshed.New`'s "build Publish row" wrapper carried).
+  - `TestNew_NilPreflightReturnsError` — **deleted outright**.
+    The guard it covers (`New` rejecting a nil `deps.Preflight`) is removed by the `preflight-row` Decision, since the row is no longer injected.
+    Its replacement is the missing-`Env`-field test in Testing below (an empty `Env.Cwd` is rejected by `requireAbsRoot` inside `preflightEntry`), which covers the same class of failure at the layer that now owns it.
   Tests in `internal/loomshed` whose subject is one producer's own behaviour (`batchifier_test.go`, `discussionvalidate_test.go`, `planvalidate_test.go`, `loompreflight_test.go`, `stub_test.go`, `webster_test.go`, `ctx_test.go`, `seed_test.go`) stay where they are.
 - Rationale: those four test the graph, and the graph is now the recipe's output; leaving them in `loomshed` would require hand-building a literal list there, recreating the very duplication being deleted.
 - Coverage guard specifics: `internal/shedrecipe/coverage_guard_test.go` holds **three** test functions, and they do not share a disposition.
@@ -177,8 +189,9 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
 - The move is forced, not chosen, for the two that move: an in-package `shedrecipe` test cannot import `shedbuild` (`shedbuild` imports `shedrecipe` — an import cycle), and testing the recipe-built list requires `shedbuild`.
 - In `internal/loomrecipe` the moved guard keeps both directions of its assertion: every row in the recipe resolves through `shedrecipe.Lookup`, and `shedrecipe.Names()` carries no entry the recipe leaves unreachable beyond a named allowance.
   The registry ships twelve engines while the recipe's thirteen rows use **nine** distinct ones (`Preflight`, `LoomPreflight`, `Stub`, `DiscussionValidate`, `PlanValidate`, `Batchifier`, `Webster`, `Publish`, `Finalize`).
-  The three unused are `SingleLLM`, `Bouncer`, and `BurlerRound`, unconsumed until the `loom: real LLM producers` items land — the guard's "no orphan registry entries" half must allow exactly those three by name, with a comment pointing at the items that will consume them.
-  This is a genuine weakening versus today's guard and must be written down where a reader sees it, not silently dropped.
+  The three unused are `SingleLLM`, `Bouncer`, and `BurlerRound`, unconsumed until the `loom: real LLM producers` items land.
+  Today's `TestCoverageGuard_EveryLoomRowHasAnEngine` makes no claim at all about unused registry entries — it asserts table↔row agreement plus `Lookup` resolution — so this orphan check is a **newly added half carrying a named three-engine allowance**, not a weakening of an existing assertion.
+  The allowance must still be written down in the test with a comment pointing at the items that will consume the three, so a reader sees why the list is not empty.
 - `CONSTRAINTS.md`'s Shed Recipe Registry Invariant names `internal/shedrecipe/coverage_guard_test.go` as its enforcement point; that line is repointed in the same commit.
 
 ### retire-the-fixture — delete `equivalence_test.go` and its testdata
@@ -194,7 +207,7 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
   Two files that must be edited together, forever, to express one fact.
 - Check first: confirm no other test in `internal/shedbuild` reads `testdata/loom-recipe.yaml` before deleting the directory (`equivalence_test.go` claims to be its only consumer; verify with a grep rather than trusting the comment).
 
-### docs — five files, same commit
+### docs — six files, same commit
 
 - Decision: update, in the implementation commit:
   `manifest/designs/shed-recipe.md` (drop the "do not implement piece 4 from this doc as written" banner, mark piece 4 shipped, record the on-disk-location and consumer decisions the doc explicitly deferred);
@@ -208,7 +221,7 @@ Why now: five further roadmap items (`loom: real LLM producers`) each add or rep
   2. The **Told-Geometry Invariant**'s **Machine-enforced** bullet (`CONSTRAINTS.md:76`), which enumerates every package whose `seam_enforcement_test.go` runs `TestToldGeometryInvariant_AllowlistOnly`.
      Adding that test to `internal/loomrecipe` — which the Constraints section below requires — makes the enumeration stale in this same commit, so `internal/loomrecipe` joins the list.
      The bullet at `CONSTRAINTS.md:80` says "the eleven tests named above" and becomes twelve; update the count with it.
-- Rationale: project rule — a task adding a module or introducing cross-cutting infrastructure updates docs in the same commit; four of these five carry statements this task falsifies.
+- Rationale: project rule — a task adding a module or introducing cross-cutting infrastructure updates docs in the same commit; five of these six carry statements this task falsifies outright, and the sixth (`roadmap.md`) records the item's completion.
 - No new invariant is introduced by this task, so `CONSTRAINTS.md` gains no section — only the enforcement-pointer correction.
   If the implementer concludes a new invariant *is* warranted (e.g. "loom's producer list is defined only in the recipe"), it is added to `CONSTRAINTS.md` in the same commit with a named enforcing test, per the project rule.
 
@@ -336,7 +349,7 @@ Tighten `seam_enforcement_test.go`'s allowlist to what production still imports.
 `fixture_test.go` may carry helpers used only by the moved tests — move or delete those with them rather than leaving dead fixtures.
 
 **`internal/loomcli`.** Existing `wire` tests must be updated to assert the new `Env`/Shed-paths values instead of `loomshed.Deps` fields, with a specific assertion that `Env.WebsterRun` is non-nil — that is the regression this conversion is most likely to reintroduce.
-`drive.go`'s no-status-file refusal test must keep passing unchanged.
+`TestVerbRefusals` (`internal/loomcli/cli_test.go:106-148`) covers `drive`'s and `pause`'s no-status-file refusals and hand-builds a `loomshed.Deps{…}` fixture at line 128, so it cannot compile once `Deps` is deleted: its **assertions stay unchanged**, while its `loomCLI` fixture is repointed at the new Shed-paths carrier.
 
 **`internal/shedbuild`.** Run `equivalence_test.go` unchanged and green *before* copying its fixture or deleting anything — that green run is the only remaining proof the fixture matches `loomshed.New`'s literal, and both are deleted by the end of this task (see Technical context).
 After deleting `equivalence_test.go` and `testdata/`, the remaining suite (`parse_test`, `build_test`, `build_engines_test`, `load_test`, `check_test`, `seam_enforcement_test`) must pass with no edits.
@@ -357,4 +370,4 @@ If any of them turns out to read the deleted testdata, keep the minimum that the
 - **Q:** How does `loomrecipe.New` receive Shed's own four told fields, which no registry entry reads? **A:** [auto-pick] As a second told argument beside `shedrecipe.Env`, with `New` returning `*shedengine.Shed` — a drop-in for `loomshed.New`. **Why:** `Env` is defined as values registry entries read, and a drop-in return type keeps `drive.go`'s shape and one single answer to "how is loom's Shed built".
 - **Q:** Once the recipe is the row-name source, what stops a recipe rename from silently breaking seed and resume — `loomshed.Seed` writes `CurrentProducer: NamePreflight` and `loomPreflightProducer` passes `NameLoomPreflight` plus a tolerated history set to `loomengine.CheckSeed`? **A:** [auto-resolve, review round 1] The thirteen `loomshed.Name*` constants stay authoritative and all thirteen are kept; the recipe spells the same names and the moved coverage guard pins them by keying its table off the constants rather than string literals. **Why:** the constants cannot move into `internal/loomrecipe` without recreating the production import cycle (`loomshed` reads two of them), and a silent resume break for an in-flight task is both the highest-cost failure this conversion can produce and trivially machine-checkable.
 - **Q:** The recipe's content already exists as `internal/shedbuild/testdata/loom-recipe.yaml` — is copying it a shortcut around verification? **A:** [orchestrator review] No, but the ordering is load-bearing: run the existing `equivalence_test.go` green against today's tree *first*, then copy the fixture and delete. **Why:** the fixture's equivalence to `loomshed.New`'s literal was proven when the test was written, and this task deletes both the test and the literal — copying first would leave the claim unverified at exactly the moment its only prover is removed.
-- **Q:** Which docs land in the same commit? **A:** [auto-pick] `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md`, `manifest/roadmap.md`. **Why:** the project's documentation rule, and four of the five carry statements this task falsifies — including shed-recipe.md's "do not implement piece 4 from this doc as written" banner.
+- **Q:** Which docs land in the same commit? **A:** [auto-pick] Six files: `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md` (two separate edits), `manifest/roadmap.md`, and `manifest/parallel-work.md`. **Why:** the project's documentation rule, and five of the six carry statements this task falsifies — including shed-recipe.md's "do not implement piece 4 from this doc as written" banner and parallel-work.md:8's claim that several sequenced items touch `internal/loomshed/loomshed.go`.
