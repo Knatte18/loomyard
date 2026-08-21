@@ -1,9 +1,9 @@
-# Module: Shed recipe — declarative producer lists (piece 1 shipped; pieces 2-4 DRAFT — not yet settled)
+# Module: Shed recipe — declarative producer lists (pieces 1-3 shipped; piece 4 planned)
 
-> **Piece 1, the engine registry, is built and shipped as `internal/shedrecipe`.**
-> Pieces 2-4 — the recipe file format, the loader/builder, and the validity checker — remain an early concept sketch, not a settled design: expect fields and mechanisms to change before they are implemented, and do not implement pieces 2-4 from this doc as written.
+> **Pieces 1-3 — the engine registry, the recipe loader/builder, and the validity checker — are built and shipped as `internal/shedrecipe`, `internal/shedbuild`, and `internal/shedcheck`.**
+> Piece 4 — converting `loom`'s own producer list to an actual recipe file — remains an early concept sketch, not a settled design: expect fields and mechanisms to change before it is implemented, and do not implement piece 4 from this doc as written.
 >
-> **Status: Planned, sequenced right after `Retire perch` and before `loom: real LLM producers`.** Not required for `loom`'s existing hardcoded producer list to keep working, but the five remaining `loom` LLM-producer tasks are sequenced to build on this instead of on the Go literal — see `manifest/roadmap.md`'s "Shed recipe" Planned group.
+> **Status: the group's remaining work is the conversion item, sequenced right after `Retire perch` and before `loom: real LLM producers`.** Not required for `loom`'s existing hardcoded producer list to keep working, but the five remaining `loom` LLM-producer tasks are sequenced to build on this instead of on the Go literal — see `manifest/roadmap.md`'s "Shed recipe" Planned group.
 
 ## The idea
 
@@ -19,7 +19,7 @@ Motivation: several rows are already pure `Engine + Config` in spirit — `Singl
 - **`OnDone` / `OnStuck`** — same routing semantics as today's `ProducerDef` fields, unchanged.
 - **`MaxBounces`** — same as today's field: a static, per-row integer, set once at recipe-authoring time. **Not runtime-adjustable by any producer, including a Bouncer judging its own segment** — the whole point of the cap is a safety backstop against runaway review-fix cycles; letting a producer raise its own ceiling would undermine that.
 
-**Not in a recipe row: `Segment`.** Leaving every row's `Segment` unset is already a no-op in `shedengine.validate()` today (the check is `segmentByName[p.OnStuck] != p.Segment`, which is always false when every producer's Segment is `""`) — no `shedengine` change needed to drop it. Its old job (catching illegitimate cross-segment `OnStuck` wiring) is superseded by the validity-checker below, which is needed regardless since `OnDone` has never had segment-style enforcement even where `Segment` is used.
+**A recipe row does carry `Segment`.** This reverses the plan this section originally argued for, and it is worth recording why. The old argument was that leaving every row's `Segment` unset is already a no-op in `shedengine.validate()` (the check is `segmentByName[p.OnStuck] != p.Segment`, which is always false when every producer's Segment is `""`), so a recipe could just omit the field. That premise holds only while every row leaves `Segment` unset — and three already-planned roadmap items (the three review-producer tasks in `loom: real LLM producers`) each specify a producer pair sharing one segment name, so the premise breaks the moment any of them lands. Worse, `shedengine.validate()`'s own rule enforces that a non-empty `OnStuck` names a producer sharing the bouncing row's `Segment`, so a producer list mixing recipe rows left at the empty default with hand-wired rows at a real segment name would fail validation at run time rather than at authoring time. So the shipped `Row` carries an optional `Segment`, mapped straight onto `shedengine.ProducerDef.Segment`. What survives from the old argument is its other half: `Segment`'s old job — catching illegitimate cross-segment `OnStuck` wiring — is superseded by the validity checker below, which is needed regardless since `OnDone` has never had segment-style enforcement even where `Segment` is used. Only the prediction that the field itself departs was wrong.
 
 ## What's never in a recipe
 
@@ -35,10 +35,35 @@ The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots
 Four separable pieces, none blocking `loom`'s remaining work, each independently scoped — see the Someday roadmap items:
 
 1. **Engine registry — ✅ built, `internal/shedrecipe`.** Name → constructor mapping for every existing `ShedProducer` type, shared and loom-specific alike.
-2. **Recipe loader/builder** — reads the recipe file, resolves `Engine` names via (1), merges `Config` with caller-supplied geometry, assembles `[]shedengine.ProducerDef`.
+2. **Recipe loader/builder — ✅ built, `internal/shedbuild`.** Reads the recipe file, resolves `Engine` names via (1), merges `Config` with caller-supplied geometry, assembles `[]shedengine.ProducerDef`.
+   See "The recipe loader/builder, shipped" below for the shape it landed in.
 3. **Shed-setup validity checker** — built and independent of the recipe work: `internal/shedcheck` ships this piece already, ahead of the other three.
    See [shed.md's "Checking an assembled producer list" section](shed.md#checking-an-assembled-producer-list) for the design.
 4. **Convert `internal/loomshed`'s own list** to an actual recipe file using (1)-(3), as the proof the mechanism works — the first real consumer.
+
+## The recipe loader/builder, shipped
+
+`internal/shedbuild` is the recipe file format's loader and builder, shipped as a single package.
+Its production import set is one-way: it imports `internal/shedrecipe`, `internal/shedengine`, and `internal/shedcheck`, and none of those three, nor `internal/loomshed` or `internal/loomcli`, imports it back.
+
+**Document shape.** A recipe document decodes straight into the package's own `Recipe` type, with no intermediate struct.
+It requires a `version` (currently only `1` is accepted), a told `entry` producer name, a told `terminals` list, and a `producers` list.
+Each row carries `name`, `engine`, `config`, `on_done`, `on_stuck`, `segment`, and `max_bounces` — the same field set `shedengine.ProducerDef` itself carries, `segment` included per the reversal recorded above.
+
+**Four exported functions.** `Parse` decodes a byte slice into a `Recipe` and runs every shape check the value must pass before `Build` may consume it.
+`Load` reads the recipe file at a told absolute path and delegates to `Parse` — it is the only function in the package whose own code touches the filesystem.
+`Build` resolves each row's `Engine` name against the `internal/shedrecipe` registry, calls the returned constructor with a caller-supplied `shedrecipe.Env`, and assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` already consumes unchanged.
+`Check` is a thin, non-production forward of an assembled producer list plus a `Recipe`'s own `Entry` and `Terminals` into `shedcheck.Check`, for a caller's own authoring-time test suite.
+
+**Strictness.** Unknown keys and duplicate keys are errors at both document level and row level, and every message the decoder produces keeps its own yaml line number.
+Every error this package raises itself, after a successful decode, names the offending row's zero-based list index and its `name`.
+
+**Validation split.** This package owns file shape and engine-name resolution alone.
+It runs no reachability, cycle, blind-gate, dangling-target, or segment analysis of its own, because `shedengine`'s own validation and `internal/shedcheck` already own routing, cycles, and reachability, and a third copy is what drifts.
+
+**Building is not filesystem-free.** Four registry constructors reach disk of their own accord at construction time, and `Build` is a pass-through for those effects rather than a suppressor or a wrapper of them — see `internal/shedbuild/doc.go` for the single site enumerating which constructor produces which effect.
+
+**No on-disk location.** This package defines no on-disk location for recipe files — no directory constant, no filename convention, no embedded default. That remains piece 4's decision.
 
 ## Escalation and the future watchdog
 
