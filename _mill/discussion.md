@@ -25,7 +25,7 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 - A new package `internal/shedrecipe` holding the engine registry.
 - A fixed constructor signature every registry entry satisfies, plus the two told inputs it takes: a per-row static `Config` and a caller-filled `Env`.
-- Twelve registry entries covering every `ShedProducer` type reachable from loom's current list plus the two shipped review adapters: `SingleLLM`, `Bouncer`, `BurlerRound`, `Webster`, `Preflight`, `Publish`, `Finalize`, `LoomPreflight`, `Batchifier`, `DiscussionValidate`, `PlanValidate`, `Stub`.
+- Twelve registry entries: the nine `ShedProducer` types reachable from loom's current list (`Webster`, `Preflight`, `Publish`, `Finalize`, `LoomPreflight`, `Batchifier`, `DiscussionValidate`, `PlanValidate`, `Stub`), the two shipped review adapters (`Bouncer`, `BurlerRound`), and `SingleLLM` — which is neither, having no production caller today, but is named as a registry entry by `manifest/roadmap.md` and is needed before any `*-Write` row can stop being a stub.
 - Exporting `internal/loomshed`'s six currently-unexported producer constructors so the registry can reach them.
 - A `SpecSource` builder for the `SingleLLM` entry — stencil read plus token fill — since no production caller of `shedadapters.NewSingleLLMProducer` exists yet.
 - A coverage-guard test asserting every engine backing a row in `loomshed.New`'s current list has a registry entry.
@@ -131,6 +131,26 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   This matches the posture `CONSTRAINTS.md`'s **Config Strictness Invariant** takes for `configengine.Load`, and matches `stencil.Fill`, which already errors rather than substituting empty for a missing token.
 - Rejected: ignoring unknown keys (a typo becomes a silent behaviour change in a file whose whole point is that humans edit it by hand).
 
+### Required vs optional keys, pinned per entry
+
+- Decision: every recognised key is explicitly either required or optional, and **an empty-string value counts as absent** — so a required key present but blank is the same error as one omitted.
+  An absent optional key falls back to the zero value, which the underlying constructor then treats as its own documented default.
+
+  | Entry | Required | Optional |
+  | --- | --- | --- |
+  | `SingleLLM` | `stencil`, `output_files` | `model`, `effort`, `version`, `interactive`, `role`, `tokens` |
+  | `Bouncer` | `run_subdir`, `artifact_paths`, `rubric_stencil` | `model`, `effort`, `version` |
+  | `BurlerRound` | `run_subdir`, `profile` | `model`, `effort`, `timeout_s` |
+  | `Preflight`, `Publish`, `Finalize`, `LoomPreflight`, `Batchifier`, `DiscussionValidate`, `PlanValidate`, `Stub`, `Webster` | — (empty `Config`) | — |
+
+- Rationale: strictness about *unknown* keys does nothing about *missing* ones, and the gap is not cosmetic.
+  An absent `run_subdir` would resolve `RunDir` to a bare `Env.RunRoot`, which silently reinstates the exact cross-segment overwrite the `run_subdir` decision exists to prevent — no error, just two segments trampling each other's round files.
+  Treating empty-as-absent matters for the same reason: `run_subdir: ""` joins to `RunRoot` unchanged.
+  Within `profile`, the required-field checking is `burlerengine.Profile.validate`'s job, not the entry's — it already rejects an empty `Rubric` and a `Target`/`Fasit` with neither `Paths` nor `Instructions` (`internal/burlerengine/profile.go:73-97`) — so the entry requires only that `profile` itself is present.
+- Rejected: leaving required-ness implicit (a missing key silently degrades to a zero value, which for `run_subdir` is actively harmful);
+  treating empty-string as a legitimate value (indistinguishable from absent at the point where it does damage);
+  re-checking `profile`'s inner required fields in the entry (duplicates `Profile.validate` and would drift from it).
+
 ### Live seams travel in a told `Env`, never in `Config`
 
 - Decision: a single `Env` struct, filled once by whichever caller invokes the registry, carries both the resolved absolute paths and the injected non-serializable dependencies.
@@ -194,7 +214,15 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   So a single run-wide `RunDir` would have `Discussion-Review` and `Plan-Review` overwriting each other's round-1 verdict, ledger, focus, review, and fixer report.
   Sharing within a segment is not incidental but required: `BouncerConfig.RunDir`'s own field doc defines it as "the directory the round producer this Bouncer gates writes its reports into, **and** this Bouncer writes its own verdict/ledger/focus files into", and `roundComplete` (`burler.go:119-127`) stats the Burler's own two files in that same directory.
   This is also what makes the `Env`-holds-only-roots rule above consistent with the `ReportName` decision's "it is per-row, not per-run" reasoning, which the flat `RunDir` field contradicted.
+  **The `Bouncer` and `BurlerRound` entries create the joined directory themselves**, with `os.MkdirAll`, at construction.
+  Nobody else can: the joined `RunRoot/<run_subdir>` path exists only inside the entry, so the caller filling `Env` does not know it.
+  This is required, not defensive — `Bouncer.Call` reaches `ResolveRound` first (`internal/shedadapters/bouncer.go:154`), which `os.Stat`s `RunDir` and returns a **hard error** when it is absent (`internal/shedadapters/round.go:24-31`), and the `Bouncer` is the segment's entry point, so it runs before the `BurlerRound` that would otherwise have created the directory (`internal/shedadapters/burler.go:232`).
+  Without this, every fresh segment fails on its first call.
+  Constructor I/O is already the established shape here: `NewBouncer` deliberately probes its rubric stencil in the constructor for the same fail-early reason (`bouncer.go:124-133`).
+  It does not contradict `NewBurlerProducer`'s "never stats, creates, or otherwise touches runDir — creating it is Call's job" contract either: that constructor still does not, `Call`'s own `MkdirAll` is idempotent and stays, and the directory simply exists sooner.
 - Rejected: one run-wide `RunDir` in `Env` (silent cross-segment overwrite — the finding that forced this decision);
+  leaving directory creation to `BurlerProducer.Call` (the `Bouncer` runs first and hard-errors before the Burler ever gets a turn);
+  making creation a caller obligation (the caller cannot construct the path);
   an absolute `run_dir` in `Config` (barred outright — `manifest/designs/shed-recipe.md` says `Config` "never contains absolute paths", and it would break recipe portability);
   deriving the subdir from the row's `Name` (couples on-disk layout to a rename, and a `Bouncer`/`BurlerRound` pair has two different names but needs one directory).
 
@@ -286,8 +314,15 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   A `tokens` map naming any of the four reserved keys is **rejected** at construction rather than silently overriding or being overridden — a silent winner in either direction is a recipe that reads one way and behaves another.
 
   All four reserved tokens are supplied **unconditionally**, whether or not the stencil names them, and `SingleLLM` therefore validates `Env.WorktreeRoot`, `Env.AnchorPath`, and `Env.StencilsDir` unconditionally under the `Env`-validation rule above.
-  This is safe because `stencil.Fill` errors only on a marker the template references but the value map lacks — it runs `missingkey=error` and collects unfilled markers (`internal/stencil/stencil.go:29,39-46`) — and never on an extra value the template ignores.
+  This is safe because `stencil.Fill` errors only on a marker the template references whose value is **absent, empty, or whitespace-only** (`internal/stencil/stencil.go:29,39-46`, and `unfilledTopLevelMarkers` at `169-181`, which trims before testing) — never on an extra value the template ignores.
+  Because empty counts as unfilled, an **empty or whitespace-only `Config.tokens` value is rejected at construction** rather than allowed through to fail at first `Call`, consistent with the empty-is-absent rule for required keys.
+  A token that legitimately has no value must carry an explicit placeholder — `Bouncer` uses the literal `"(none)"` for precisely this (`bouncer.go:397`).
   The alternative, supplying and validating a token only when the stencil declares its marker, would make the entry's `Env` requirements depend on parsing template text, so the same recipe row would validate differently after a stencil edit that never touched the recipe.
+  The entry **probes the stencil at construction** with `stencilstore.Read(env.StencilsDir, cfg.stencil)`, discarding the bytes, in addition to the read inside the closure.
+  Without the probe a mistyped `stencil` name would construct cleanly and fail at first `Call`;
+  `NewBouncer` probes its own rubric for exactly this reason and says so (`internal/shedadapters/bouncer.go:124-133`), and there is no reason for `SingleLLM` to be the asymmetric one.
+  The closure still re-reads on each call rather than capturing the bytes, so a stencil edited mid-run takes effect without a restart — the probe buys fail-fast, not caching.
+
   The stencil here is the **template**, so `stencil.Fill` strips its stamp banner itself and no `stencil.StripLeadingComment` call is needed.
   That call is required only when stencil content is injected as a token *value* — `stencil.Fill` never strips a marker value, which is why `Bouncer` must strip its rubric before passing it in (`internal/shedadapters/bouncer.go:341-344`).
   Should a later `SingleLLM` row ever want a stencil as a token value, that row's entry pays the same strip.
@@ -484,7 +519,8 @@ TDD candidates, in order:
 4. **`SingleLLM` spec composition** — the only entry with real logic of its own.
    Scenarios: the composed `Spec` carries the filled prompt, the resolved `OutputFiles`, and the `model`/`effort`/`version`/`interactive`/`role` values from `Config`;
    a stencil naming a token absent from `tokens` and absent from the geometry-derived set errors rather than filling empty;
-   a missing stencil errors.
+   a mistyped `stencil` name errors **at construction**, via the probe, not at first `Call`;
+   an empty or whitespace-only `tokens` value is rejected at construction.
    Note the `SpecSource` is a closure — the test must call it, not merely construct the producer.
    Also cover the four reserved tokens: each resolves to its documented `Env` value, and a `Config.tokens` map naming any reserved key is rejected at construction rather than winning or losing silently.
 5. **`Bouncer` report-name pinning** — the built closure renders exactly `round-<n>-review.md`, byte-identical to what `BurlerRound` writes for the same round;
@@ -497,9 +533,12 @@ TDD candidates, in order:
    an empty `artifact_paths` list is rejected before `NewBouncer` sees it.
    The `SingleLLM` and `Bouncer` cases matter most — both underlying constructors refuse non-absolute input, so a regression here yields a producer that fails at every call rather than at construction.
    The exception needs its own case: `BurlerRound`'s `profile.target.paths` / `profile.fasit.paths` reach `burlerengine.Profile` **still relative**, and an absolute value there is *not* rejected by the entry.
+   Add the missing-required-key cases here too: for each entry, every required key omitted, and every required key present but empty-string, each failing at construction with an error naming the key.
 7. **Per-segment run directories** — two `Bouncer` entries built with different `run_subdir` values resolve to different `RunDir`s;
    a `Bouncer` and a `BurlerRound` built with the *same* `run_subdir` resolve to the same `RunDir`, which is what makes `roundComplete` find the Burler's report.
    This is the regression guard for the cross-segment overwrite the flat `Env.RunDir` would have caused.
+   Two more cases here: the directory **exists on disk after construction** and before any `Call` (a `Bouncer` constructed against a `RunRoot` with no subdir present must not leave `ResolveRound` to fail);
+   and an omitted or empty `run_subdir` is rejected rather than resolving to bare `Env.RunRoot`.
 8. **`BurlerRound` config** — the six recipe-authorable `profile` keys land in `burlerengine.Profile`;
    a `profile` map naming one of the five per-round-overwritten fields (`review-path`, `fixer-report-path`, `prior-reviews`, `prior-fixer-reports`, `cluster-exclude`) is rejected by the unknown-key rule rather than silently discarded.
 9. **`Publish`/`Finalize` row naming** — the coverage guard fails when either row is named anything other than the package constant it will actually log as.
@@ -571,4 +610,10 @@ Explicitly not tested here: anything about recipe file parsing, `ProducerDef` as
   numbers accept `int` and integral `float64`, rejecting a fractional one;
   add `configStringMap` and `configMap` to the accessor set. **Why:** a YAML decoder into `any` yields `int` and a JSON-shaped one `float64`, and piece 2 picks the format — accepting both without truncating keeps the registry format-agnostic.
 - **Q:** [review r4] What is the registry's exported lookup surface? **A:** [auto-pick] `Lookup(name) (Constructor, error)` and `Names() []string` (sorted), over an unexported map. **Why:** the coverage guard and piece 2 both need a stable enumeration, and neither should reach into the map directly.
+- **Q:** [review r5] Who creates the joined `RunRoot/<run_subdir>` directory? **A:** [auto-pick] The `Bouncer` and `BurlerRound` entries, with `os.MkdirAll` at construction. **Why:** `Bouncer.Call` reaches `ResolveRound` first (`bouncer.go:154`), which hard-errors on a missing dir (`round.go:24-31`), and only `BurlerProducer.Call` creates it (`burler.go:232`) — but the Bouncer is the segment's entry point, so every fresh segment would fail on its first call;
+  the caller cannot pre-create it because only the entry knows the joined path.
+- **Q:** [review r5] Which `Config` keys are required and which optional? **A:** [auto-pick] Pinned per entry in a table, with empty-string treated as absent. **Why:** an absent `run_subdir` would silently resolve `RunDir` to bare `Env.RunRoot`, reinstating the cross-segment overwrite that key exists to prevent — unknown-key strictness says nothing about missing keys.
+- **Q:** [review r5] Does `SingleLLM` probe its stencil at construction, like `NewBouncer` probes its rubric? **A:** [auto-pick] Yes — probe at construction, and still re-read inside the closure. **Why:** otherwise a mistyped `stencil` constructs cleanly and fails at first `Call`;
+  re-reading keeps a mid-run stencil edit effective, so the probe buys fail-fast without caching.
+- **Q:** [review r5] Is `stencil.Fill`'s error condition "absent" or "absent or empty"? **A:** [auto-pick] Absent **or** empty/whitespace-only, and an empty `Config.tokens` value is therefore rejected at construction. **Why:** `unfilledTopLevelMarkers` trims before testing (`stencil.go:169-181`), so an empty token value fails exactly like a missing one — a token with no natural value needs an explicit placeholder, as `Bouncer`'s `"(none)"` does.
 - **Q:** How does `loomshed` expose its six unexported constructors? **A:** [auto-pick] Export them in place, returning `shedengine.ShedProducer` rather than the unexported concrete type. **Why:** duplicating them in `shedrecipe` guarantees divergence, and moving the loom-specific producers out contradicts the design doc's point that a bespoke single-consumer engine is a valid registry entry precisely because it stays where it lives.
