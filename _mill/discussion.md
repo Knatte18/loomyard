@@ -193,7 +193,9 @@ Hand-wiring three of those with no machine check is exactly the blind gate this 
 - `internal/loomshed/loomshed_test.go` — `TestNew_PassesShedValidation` is the closest existing test in shape and is the right neighbour for the new invariant test;
   `TestNew_ProducerTable` shows how the package builds a `New()` result in a test.
 - `internal/loomshed/sequence_test.go` — `wantSequenceOrder` and its comment are the local precedent for asserting against a literal rather than a computed expectation.
-- No production code anywhere sets `Segment` — the only occurrences outside `shedengine`'s own field declaration and `validate()` are in `internal/shedengine/validate_test.go`.
+- No production code anywhere sets `Segment`.
+  The only place that assigns it is `internal/shedengine/validate_test.go`;
+  the only other reference outside `shedengine`'s own field declaration and `validate()` is `internal/loomshed/loomshed_test.go:81-82`, which reads it to assert every production row leaves it empty.
   This is what makes the existing same-`Segment` rule vacuous today.
 - The done-edge subgraph is *functional*: every row has at most one outgoing done edge.
   Cycle detection there is therefore a simple walk with visited marks, not a general SCC algorithm — no need to reach for anything heavier.
