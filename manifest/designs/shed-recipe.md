@@ -61,7 +61,7 @@ Every error this package raises itself, after a successful decode, names the off
 **Validation split.** This package owns file shape and engine-name resolution alone.
 It runs no reachability, cycle, blind-gate, dangling-target, or segment analysis of its own, because `shedengine`'s own validation and `internal/shedcheck` already own routing, cycles, and reachability, and a third copy is what drifts.
 
-**Building is not filesystem-free.** Four registry constructors reach disk of their own accord at construction time, and `Build` is a pass-through for those effects rather than a suppressor or a wrapper of them — see `internal/shedbuild/doc.go` for the single site enumerating which constructor produces which effect.
+**Building is not filesystem-free.** Three registry constructors reach disk of their own accord at construction time, producing four distinct effects, and `Build` is a pass-through for those effects rather than a suppressor or a wrapper of them — see `internal/shedbuild/doc.go` for the single site enumerating which constructor produces which effect.
 
 **No on-disk location.** This package defines no on-disk location for recipe files — no directory constant, no filename convention, no embedded default. That remains piece 4's decision.
 
