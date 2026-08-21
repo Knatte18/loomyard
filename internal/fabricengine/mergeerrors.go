@@ -39,6 +39,7 @@ const (
 	mergeReasonDetachedHead        = "checkout is not on a branch"
 	mergeReasonAttemptIncomplete   = "merge attempt did not reach both sides"
 	mergeReasonConcludeLanded      = "merge conclude already landed"
+	mergeReasonRecordedMergeGone   = "checkout no longer carries the recorded merge"
 )
 
 // MergeGuardError aggregates every failed merge precondition as a sorted, deduplicated list of

@@ -23,6 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -981,6 +982,243 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != octopusSHA {
 		t.Errorf("warp HEAD after the refusal = %q; want the operator's own octopus %q left untouched", got, octopusSHA)
 	}
+}
+
+// setupWarpStagedWeftConflictedResolved builds the one fixture the two conclude-evidence tests below
+// share: the warp side merges CLEANLY (a real non-fast-forward merge, outcome staged, MERGE_HEAD live)
+// while the weft side conflicts, and the weft conflict is then resolved and staged through
+// MergeStageResolved.
+// Resolving the weft side is what isolates these tests on the WARP side: with weft left conflicted,
+// MergeContinue's unresolved-conflicts guard refuses first and the call never reaches the precondition
+// under test, and with weft aborted instead, the weft side would trip that precondition too and the
+// aggregated reason would no longer say which side produced it.
+// It returns the hub and the loaded record, asserting the fixture really is the shape described rather
+// than assuming it.
+func setupWarpStagedWeftConflictedResolved(t *testing.T) (*hubforge.Hub, fabricengine.MergeStateForTest) {
+	t.Helper()
+
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
+	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v", err)
+	}
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want exactly the weft-side conflict — the warp side must merge cleanly for this fixture", res.Conflicts)
+	}
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if st.WarpOutcome != "staged" || st.WarpCommitted != "" {
+		t.Fatalf("recorded warp state = (outcome %q, committed %q); want a staged side with no conclude yet", st.WarpOutcome, st.WarpCommitted)
+	}
+
+	// Resolve the weft conflict properly, so this pair's only irregularity is the one each test plants.
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "_lyx", "weft-clash.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(_lyx/weft-clash.txt): %v", err)
+	}
+	if _, err := f.MergeStageResolved(res.Conflicts); err != nil {
+		t.Fatalf("MergeStageResolved(%v) error = %v", res.Conflicts, err)
+	}
+	return h, st
+}
+
+// assertConcludeRefusedWithoutCommitting asserts the disposition both conclude-evidence tests demand:
+// the aggregated guard refusal naming the recorded-merge-gone reason, no conclude commit recorded or
+// landed, the record still on disk, and the operator's own warp state left exactly as it was.
+func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpHEADBefore string, res fabricengine.MergeResult, err error) {
+	t.Helper()
+
+	var guardErr *fabricengine.MergeGuardError
+	if !errors.As(err, &guardErr) {
+		t.Fatalf("MergeContinue() over a checkout carrying a different merge: (committed %v, error %v (%T)); want *fabricengine.MergeGuardError", res.Committed, err, err)
+	}
+	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "checkout no longer carries the recorded merge" {
+		t.Errorf("guard reasons = %v; want exactly [\"checkout no longer carries the recorded merge\"]", guardErr.Reasons)
+	}
+	if res.Committed {
+		t.Error("MergeContinue().Committed = true; want false — nothing was concluded")
+	}
+	for _, entry := range res.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — fabric must not claim a merge it did not start", entry)
+		}
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpHEADBefore {
+		t.Errorf("warp HEAD after the refusal = %q; want %q — the operator's own merge must be left uncommitted and untouched", got, warpHEADBefore)
+	}
+}
+
+// TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted pins the commit-side twin of the
+// adoption arm's evidence rule, and closes a silent false success the adoption hardening did not reach.
+//
+// concludeMergeSides finishes a pending side by running `git commit`, which commits whatever MERGE_HEAD
+// names. The adoption arm demands exact parentage before CLAIMING a landed commit as this merge's
+// conclude; the commit arm three lines below it demanded nothing at all. So an operator who — as the
+// Fabric Git Invariant explicitly permits — discarded fabric's staged warp merge with plain
+// `git merge --abort` and started an unrelated one instead had that unrelated merge committed by
+// fabric, written into the record as this merge's conclude SHA, reported as a merge_committed mutation
+// and an ok/committed:true result, paired into the correspondence index, and then erased along with the
+// record. The merge source stayed un-merged on that side while the other side's half landed for good,
+// leaving a permanently non-corresponding pair and nothing left to inspect.
+//
+// The adoption arm never sees this shape precisely because the operator did not commit: HEAD is still
+// on the recorded start and a MERGE_HEAD is live, so sideConcludeAlreadyLanded correctly reports "not
+// landed" and hands straight to the commit that was the defect.
+func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *testing.T) {
+	h, st := setupWarpStagedWeftConflictedResolved(t)
+
+	// The operator discards fabric's staged merge and starts an unrelated one, leaving it uncommitted.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
+	warpBranch := currentBranchName(t, h.PrimeWorktree())
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "other", st.WarpStart)
+	commitOnCurrentBranch(t, h.PrimeWorktree(), "other.txt", "work that has nothing to do with feature\n", "other: unrelated work")
+	otherSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "--no-ff", otherSHA)
+
+	// Preconditions, asserted rather than assumed: HEAD is back on the recorded start (so the adoption
+	// arm cannot fire), and the live merge is genuinely a DIFFERENT one.
+	warpHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	if warpHEADBefore != st.WarpStart {
+		t.Fatalf("warp HEAD = %q; want the recorded start %q, or this test is exercising the adoption arm instead", warpHEADBefore, st.WarpStart)
+	}
+	if otherSHA == st.WarpSource {
+		t.Fatalf("the planted merge head equals the recorded source %q; the fixture must plant a DIFFERENT merge", st.WarpSource)
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	res, err := fresh.MergeContinue("")
+	assertConcludeRefusedWithoutCommitting(t, h, warpHEADBefore, res, err)
+
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil) — the record is the only evidence left", exists, err)
+	}
+
+	// The refusal must not wedge the pair: MergeAbort is still the documented way out of this state, and
+	// it restores both sides from the recorded pre-merge SHAs.
+	if _, err := fresh.MergeAbort(); err != nil {
+		t.Errorf("MergeAbort() after the refusal error = %v; want the abort route to stay open", err)
+	}
+}
+
+// TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted is the uncommitted twin of
+// TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted, and it is what forces the evidence to
+// be read from the WHOLE of MERGE_HEAD rather than from `git rev-parse --verify --quiet MERGE_HEAD`.
+// The operator discards the staged merge and starts a merge of the recorded source TOGETHER with an
+// unrelated decoy, leaving it uncommitted. MERGE_HEAD then carries two SHAs whose FIRST is the recorded
+// source, so an equality test written against rev-parse's single-value answer passes and fabric commits
+// an octopus it can never itself produce — the decoy's content landing under this merge's name, brought
+// in by no side of it and named by no merge_staged entry.
+// The test asserts that first-entry-equals-the-source precondition explicitly, so a regression to the
+// truncating read fails here instead of passing.
+func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *testing.T) {
+	h, st := setupWarpStagedWeftConflictedResolved(t)
+
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
+	decoyBase := rootCommitForTest(t, h.PrimeWorktree())
+	warpBranch := currentBranchName(t, h.PrimeWorktree())
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "decoy", decoyBase)
+	commitOnCurrentBranch(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
+	decoySHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", st.WarpSource, decoySHA)
+
+	// Precondition, asserted rather than assumed: the truncating read reports exactly the recorded
+	// source, so only reading every head can tell this state apart from a legitimate one.
+	warpHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	if got := firstMergeHeadForTest(t, h.PrimeWorktree()); got != st.WarpSource {
+		t.Fatalf("git rev-parse --verify --quiet MERGE_HEAD = %q; want the recorded source %q — the octopus this test needs is not present", got, st.WarpSource)
+	}
+	if decoySHA == st.WarpSource {
+		t.Fatalf("decoy SHA equals the recorded source %q; the fixture must plant a second, unrelated head", st.WarpSource)
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	res, err := fresh.MergeContinue("")
+	assertConcludeRefusedWithoutCommitting(t, h, warpHEADBefore, res, err)
+}
+
+// TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted pins the third arm of
+// recordedMergeGoneReason — the one the no-live-merge exemption must NOT swallow.
+// With fabric's merge discarded and the checkout clean, `git commit` fails by itself and the conclude
+// already refuses honestly, which is why that state is exempt (refusing there would decide every
+// adoption-evidence test before it reached the clause it pins). But the same discarded state with
+// tracked content staged is not honest at all: `git commit --no-edit` succeeds, landing an ORDINARY
+// one-parent commit of whatever the operator staged, which fabric then writes into the record as this
+// merge's conclude SHA, reports as committed:true with a merge_committed mutation, pairs into the
+// correspondence index, and erases the record behind.
+// It is the same silent false success as the live-different-merge shape, reached without any second
+// merge at all — one `git merge --abort` and one `git add`.
+func TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted(t *testing.T) {
+	h, st := setupWarpStagedWeftConflictedResolved(t)
+
+	// The operator discards fabric's staged merge and stages unrelated content of their own.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "operator-staged.txt"), []byte("staged by hand\n"), 0o644); err != nil {
+		t.Fatalf("write operator-staged.txt: %v", err)
+	}
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "operator-staged.txt")
+
+	// Preconditions, asserted rather than assumed: no merge is live, HEAD is back on the recorded
+	// start, and a plain `git commit` really WOULD succeed here — without that last fact the conclude
+	// would fail on its own and this test would prove nothing.
+	warpHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	if warpHEADBefore != st.WarpStart {
+		t.Fatalf("warp HEAD = %q; want the recorded start %q", warpHEADBefore, st.WarpStart)
+	}
+	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) {
+		t.Fatal("warp checkout still carries a live MERGE_HEAD; this test needs the no-live-merge arm")
+	}
+	if !stagedContentPresentForTest(t, h.PrimeWorktree()) {
+		t.Fatal("warp index carries nothing staged; `git commit` would fail on its own and this test would prove nothing")
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	res, err := fresh.MergeContinue("")
+	assertConcludeRefusedWithoutCommitting(t, h, warpHEADBefore, res, err)
+
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil)", exists, err)
+	}
+}
+
+// stagedContentPresentForTest reports whether dir's index differs from HEAD, via
+// `git diff --cached --quiet`'s exit status — the independent read the staged-content test asserts its
+// fixture's "a commit would actually succeed here" precondition with.
+func stagedContentPresentForTest(t *testing.T, dir string) bool {
+	t.Helper()
+
+	cmd := exec.Command("git", "diff", "--cached", "--quiet")
+	cmd.Dir = dir
+	err := cmd.Run()
+	if err == nil {
+		return false
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("git diff --cached --quiet in %s: %v", dir, err)
+	}
+	return true
+}
+
+// firstMergeHeadForTest returns what `git rev-parse --verify --quiet MERGE_HEAD` reports in dir — the
+// truncating, first-head-only answer the octopus test asserts its fixture against, read through plain
+// git rather than through the method under test.
+func firstMergeHeadForTest(t *testing.T, dir string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse --verify --quiet MERGE_HEAD in %s: %v", dir, err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // runGitExpectingConflict runs git with args in dir, tolerating the nonzero exit a conflicted merge

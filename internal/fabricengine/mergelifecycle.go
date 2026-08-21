@@ -207,9 +207,10 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // worktree: with no record and no foreign git merge state it returns *ErrNoMergeInProgress; with no
 // record but foreign state present it returns *ErrForeignMergeState, leaving that state untouched.
 // Unmerged entries remaining on either side refuse with a *MergeGuardError carrying
-// mergeReasonUnresolvedConflicts, and a record whose attempt never reached both sides refuses with
-// mergeReasonAttemptIncomplete; both are aggregated into one error, so which precondition failed
-// never discloses evaluation order.
+// mergeReasonUnresolvedConflicts, a record whose attempt never reached both sides refuses with
+// mergeReasonAttemptIncomplete, and a side about to be concluded whose live git merge is no longer the
+// one the record describes refuses with mergeReasonRecordedMergeGone (recordedMergeGoneReason); all
+// three are aggregated into one error, so which precondition failed never discloses evaluation order.
 // The combined write lock is acquired BEFORE the record is read and the guards run — never after —
 // so no concurrent lifecycle verb can retire or advance the record between what this call checked
 // and what it acts on (see the in-body comment for the raced-MergeContinue shape that ordering
@@ -267,6 +268,11 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		reasons = append(reasons, mergeReasonUnresolvedConflicts)
 	}
 	reasons = append(reasons, mergeAttemptIncompleteReason(st)...)
+	recordedMergeGone, err := recordedMergeGoneReason(f, st)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, recordedMergeGone...)
 	if len(reasons) > 0 {
 		return MergeResult{}, newMergeGuardError(reasons)
 	}

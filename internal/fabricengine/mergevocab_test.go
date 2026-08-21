@@ -38,6 +38,7 @@ var pinnedMergeReasons = map[string]string{
 	"mergeReasonDetachedHead":        "checkout is not on a branch",
 	"mergeReasonAttemptIncomplete":   "merge attempt did not reach both sides",
 	"mergeReasonConcludeLanded":      "merge conclude already landed",
+	"mergeReasonRecordedMergeGone":   "checkout no longer carries the recorded merge",
 }
 
 // mergeReasonHomeFile is the one file the closed guard-reason set is declared in, per

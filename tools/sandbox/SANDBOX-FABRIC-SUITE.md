@@ -491,6 +491,19 @@ rooting the decoy outside the merge's own history is what stops git dropping the
 `lyx fabric merge --continue` must refuse with *merge conclude did not finish; run MergeContinue again* and leave the record on disk.
 Reporting `"committed": true` here is the failure mode and it is a blocking one: fabric would be claiming a commit it can never build — it starts every non-squash merge with a single `git merge --ff --no-commit <sha>`, so its own conclude has exactly two parents — and the branch would silently carry the decoy's content, brought in by no side of the merge and named by no `merge_staged` entry, with the record deleted and nothing left to inspect.
 
+Last of all, the same three questions asked WITHOUT committing, which is the half the adoption evidence never sees.
+Everything above reaches the adoption arm because the operator committed;
+leaving the hand-made merge uncommitted routes into the conclude's plain `git commit` instead, and that arm demanded no evidence at all until this round.
+Build the warp-merges-cleanly / weft-conflicts fixture again, resolve and `lyx fabric merge-stage` the weft conflict so `--continue` really reaches the warp side, then in the warp checkout run `git merge --abort` and, in place of committing anything, do each of these in turn:
+
+- `git merge --no-commit --no-ff <an unrelated branch>` — a different merge left live.
+- `git merge --no-commit <the record's warp_source> <a decoy rooted at the repo's root commit>` — an uncommitted octopus. Confirm with `git rev-parse --verify --quiet MERGE_HEAD` that it prints exactly the record's `warp_source`: that truncated answer is what a first-head-only check would accept, and `cat "$(git rev-parse --git-path MERGE_HEAD)"` must show two SHAs.
+- nothing merged at all, just `git add` an unrelated new file — no `MERGE_HEAD`, but a commit that would succeed.
+
+In all three, `lyx fabric merge --continue` must refuse with *merge preconditions failed: checkout no longer carries the recorded merge*, leave the record on disk, land no commit, and leave the warp HEAD exactly where the operator left it.
+`"ok": true` / `"committed": true` here is the failure mode and it is a blocking one: fabric commits and claims a merge it never started, records correspondence for a pair whose warp side does not carry the source at all, and deletes the record — the same silent false success as the adoption cases, reached by not committing first.
+Then confirm the refusal did not wedge the pair: `lyx fabric merge --abort` must still succeed and restore both sides to their recorded pre-merge SHAs.
+
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---

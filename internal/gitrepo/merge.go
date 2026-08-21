@@ -8,6 +8,9 @@ package gitrepo
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -193,6 +196,54 @@ func (r *Repo) StageResolved(paths []string) error {
 		return fmt.Errorf("gitrepo: git add -A in %s: %w", r.path, err)
 	}
 	return nil
+}
+
+// MergeHeads enumerates EVERY commit the live merge is merging in — the full contents of MERGE_HEAD,
+// one SHA per entry, in git's own recorded order — returning an empty, never nil, slice when no merge
+// is live.
+// It answers WHICH merge is in progress, where MergeHeadPresent answers only THAT one is. A caller
+// concluding a recorded merge needs the former: `git commit` commits whatever MERGE_HEAD names, so
+// without comparing that against the merge the caller thinks it is finishing, an unrelated merge an
+// operator started with plain git is committed and claimed as the caller's own.
+//
+// It is deliberately not built on `git rev-parse --verify --quiet MERGE_HEAD`, and that is the whole
+// reason this method reads the file rather than shelling a second query. MERGE_HEAD is multi-valued
+// for an octopus merge, and every rev-parsing spelling collapses it to the FIRST entry: on git 2.53,
+// `rev-parse --verify --quiet MERGE_HEAD` and `rev-list --no-walk MERGE_HEAD` both print one SHA for a
+// two-head MERGE_HEAD, while `for-each-ref MERGE_HEAD` and `show-ref MERGE_HEAD` print nothing at all
+// (it is not under refs/). A first-entry-only answer would let `git merge --no-commit <expected> <decoy>`
+// pass an equality test against the expected SHA, which is exactly the octopus a caller must reject.
+// The file itself is the only complete source, and `git rev-parse --git-path MERGE_HEAD` is git's own
+// supported way to locate it — it resolves correctly for a linked worktree, where the file lives under
+// `.git/worktrees/<name>/` rather than beside the repo's own `.git`.
+// The path is printed relative to the git invocation's directory when the repo is the main worktree, so
+// a relative answer is joined onto this Repo's path.
+func (r *Repo) MergeHeads() ([]string, error) {
+	stdout, err := r.runChecked("rev-parse", "--git-path", "MERGE_HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: rev-parse --git-path MERGE_HEAD in %s: %w", r.path, err)
+	}
+
+	mergeHeadPath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(mergeHeadPath) {
+		mergeHeadPath = filepath.Join(r.path, mergeHeadPath)
+	}
+
+	content, err := os.ReadFile(mergeHeadPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: read %s: %w", mergeHeadPath, err)
+	}
+
+	heads := []string{}
+	for _, line := range strings.Split(string(content), "\n") {
+		if entry := strings.TrimSpace(line); entry != "" {
+			heads = append(heads, entry)
+		}
+	}
+	return heads, nil
 }
 
 // MergeHeadPresent reports whether MERGE_HEAD exists, via

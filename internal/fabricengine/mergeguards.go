@@ -296,6 +296,123 @@ func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
 	return nil, nil
 }
 
+// recordedMergeGoneReason reports mergeReasonRecordedMergeGone when either side that MergeContinue is
+// about to conclude no longer carries the git-level merge st recorded — MergeContinue's own
+// precondition, and the commit-side twin of sideConcludeAlreadyLanded's evidence rule.
+// concludeMergeSides finishes a side by running `git commit`, which commits whatever MERGE_HEAD names.
+// Between the attempt and the resumed MergeContinue an operator may — legitimately, per the Fabric Git
+// Invariant's own carve-out for plain git in the warp checkout — have discarded fabric's staged merge
+// and started a different one. Without this precondition that different merge is committed, written
+// into the record as this merge's conclude SHA, reported as a merge_committed mutation, paired into the
+// correspondence index and then erased along with the record: a silent false success leaving the merge
+// source un-merged with nothing left to inspect.
+// Both sides are evaluated unconditionally before combining, so the single aggregated reason never
+// reveals which side (if either) had lost its merge.
+func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
+	warpGone, err := sideRecordedMergeGone(f.warp, f.warpPath, st.WarpCommitted, st.WarpOutcome, st.WarpSource, st.Squash)
+	if err != nil {
+		return nil, err
+	}
+	weftGone, err := sideRecordedMergeGone(f.weft, f.weftPath, st.WeftCommitted, st.WeftOutcome, st.WeftSource, st.Squash)
+	if err != nil {
+		return nil, err
+	}
+
+	if warpGone || weftGone {
+		return []string{mergeReasonRecordedMergeGone}, nil
+	}
+	return nil, nil
+}
+
+// sideRecordedMergeGone implements recordedMergeGoneReason's per-side predicate: true when this side is
+// genuinely about to be concluded by `git commit` and the recorded source is neither the merge that
+// commit would conclude nor already in this side's history.
+//
+// It is scoped to exactly the states concludeMergeSides runs `git commit` in, so it can never refuse a
+// side that verb would skip: a side whose conclude SHA is already recorded is skipped, and so is one
+// whose outcome is fast_forwarded or up_to_date, since neither fabricates a commit.
+//
+// The first exit is the ordinary one — MERGE_HEAD names the recorded per-side source and nothing else,
+// so `git commit` concludes precisely the merge the record describes.
+// Demanding the whole head SET be that one SHA, rather than testing membership in it, is what rejects
+// the uncommitted octopus: `git merge --no-commit <recorded source> <decoy>` leaves a MERGE_HEAD whose
+// FIRST entry is the recorded source, and every rev-parsing spelling of the query reports only that
+// first entry (see gitrepo.MergeHeads). Committing it lands the decoy's content under this merge's
+// name, brought in by no side of the merge and named by no merge_staged entry — the same commit the
+// adoption arm refuses to adopt, reached by simply not committing it first.
+//
+// The second exit is what keeps this precondition from wedging states that are already fine, and it is
+// deliberately reachability rather than an exact-shape test. Once the recorded source is an ancestor of
+// this side's HEAD the merge has genuinely landed, whatever else the operator has since done in the
+// checkout, so there is no false claim left for this precondition to prevent: it covers the crash the
+// adoption arm exists to finish (HEAD IS the conclude, whose second parent is the source), a conclude
+// landed with a second unrelated merge started on top of it, and a hand-landed merge of the source onto
+// a wrong base. Refusing those would leave the pair with no route out at all, since MergeAbort refuses
+// every one of them too on concludeLandedReason.
+//
+// The third exit is the one that keeps this precondition from BLINDING the adoption arm, and it is a
+// coverage property rather than a behavioural nicety. With no merge live and a clean checkout, `git
+// commit` fails on its own and *ErrMergeIncomplete already comes back — so refusing here would only
+// swap one refusal for another, while making every adoption-evidence test (first parent, second parent,
+// exact arity, unrelated commit) refuse before it ever reached the clause it exists to pin. Those tests
+// abort both sides by design, so this precondition would have decided every one of them.
+// What is NOT exempt is the same no-live-merge state with tracked dirt in the checkout, because there
+// `git commit` succeeds: it lands an ordinary commit of whatever the operator left staged, which fabric
+// would then write into the record as this merge's conclude SHA.
+//
+// What survives all three exits is the shape with a real destructive consequence: the recorded source
+// is nowhere in this side's history, and concluding would commit some other merge — or some other staged
+// content — and record, report and pair it as this merge's own conclude before deleting the only
+// evidence that it was not.
+//
+// A squash record is exempt and an empty recorded source SHA is exempt, for the identical reason the
+// adoption arm gives: `git merge --squash` writes no MERGE_HEAD at all, so a squash conclude carries no
+// evidence to compare against, and a record written by a binary predating the recorded source SHAs
+// carries no source. No evidence is not failed evidence here any more than it is satisfied evidence
+// there — refusing every squash --continue would break the ordinary squash flow, so that residual stays
+// open and is stated rather than papered over.
+func sideRecordedMergeGone(repo *gitrepo.Repo, checkoutPath, committed, outcome, sourceSHA string, squash bool) (bool, error) {
+	if committed != "" {
+		return false, nil
+	}
+	if outcome != mergeOutcomeStaged && outcome != mergeOutcomeConflicted {
+		return false, nil
+	}
+	if squash || sourceSHA == "" {
+		return false, nil
+	}
+
+	heads, err := repo.MergeHeads()
+	if err != nil {
+		return false, err
+	}
+	if len(heads) == 1 && heads[0] == sourceSHA {
+		return false, nil
+	}
+
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: resolve HEAD to classify recorded merge state: %w", err)
+	}
+	sourceAlreadyLanded, err := repo.IsAncestor(sourceSHA, head)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: classify recorded merge state: %w", err)
+	}
+	if sourceAlreadyLanded {
+		return false, nil
+	}
+
+	if len(heads) > 0 {
+		return true, nil
+	}
+
+	dirty, _, err := worktreeDirty(scopeTracked, checkoutPath)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: check checkout dirtiness to classify recorded merge state: %w", err)
+	}
+	return dirty, nil
+}
+
 // sideConcludeMayHaveLanded implements concludeLandedReason's per-side predicate: true when the
 // record already carries this side's conclude SHA, or when the side's recorded outcome is
 // staged/conflicted and its HEAD has moved off its recorded pre-merge SHA.

@@ -921,6 +921,46 @@
 // silently inherited. A crashed squash conclude stays honestly stuck: `*ErrMergeIncomplete`, record
 // retained. So does a record written by a binary predating the recorded source SHAs; no evidence is
 // not satisfied evidence.
+// **The commit arm demands evidence too, and for a while it did not.** Adoption is only half of what
+// `concludeMergeSides` does. When the adoption arm reports "not landed", the other half runs
+// `git commit` — which concludes whatever `MERGE_HEAD` names, whether or not that is the merge the
+// record describes. Nothing checked. So an operator who discarded fabric's staged merge with plain
+// `git merge --abort` (permitted verbatim: plain git in the warp checkout is theirs) and started an
+// unrelated merge instead had fabric commit THAT merge, write its SHA into the record as this merge's
+// conclude, report it as a `merge_committed` mutation with `ok`/`committed: true`, pair it into the
+// correspondence index, and then delete the record. The merge source stayed un-merged on that side
+// while the other side's half landed for good: a permanently non-corresponding pair, a silent false
+// success, and no evidence left that it was one. The adoption arm never saw the shape precisely
+// because the operator had not committed — HEAD was still on the recorded start with a live
+// `MERGE_HEAD`, so "not landed" was the right answer, handed straight to the defect.
+// `MergeContinue` therefore carries the precondition `checkout no longer carries the recorded merge`
+// (`recordedMergeGoneReason`), aggregated with its other two. A side pending a conclude passes it in
+// three ways, and each is a different question:
+//   - `MERGE_HEAD` is exactly the recorded per-side source SHA and nothing else — the ordinary case.
+//     The whole head SET must be that one SHA, not merely contain it: `git merge --no-commit <source>
+//     <decoy>` leaves a MERGE_HEAD whose FIRST entry is the source, and every rev-parsing spelling of
+//     the query reports only that first entry, so `gitrepo.MergeHeads` reads the file itself. This is
+//     the uncommitted twin of the octopus the adoption arm refuses.
+//   - the recorded source is already an ancestor of that side's HEAD — the merge landed, whatever else
+//     has happened since, so there is no false claim left to prevent. This is what keeps the
+//     precondition from wedging the crash the adoption arm exists to finish, a conclude with a second
+//     merge started on top of it, and a source merged onto a wrong base, all three of which `MergeAbort`
+//     also refuses.
+//   - no merge is live AND the checkout is clean — `git commit` fails on its own there, so the honest
+//     `*ErrMergeIncomplete` already comes back and refusing early would only blind the adoption-evidence
+//     tests, every one of which builds exactly that state. The same state with tracked dirt is NOT
+//     exempt, because `git commit` succeeds there and lands an ordinary one-parent commit of whatever
+//     the operator staged.
+//
+// A squash record is exempt from the whole precondition, for the reason adoption gives: `git merge
+// --squash` writes no `MERGE_HEAD`, so there is no evidence to demand, and refusing every squash
+// `--continue` would break the ordinary squash flow. That residual is real and stated rather than
+// papered over — a squash record whose side was discarded and restaged by hand still concludes whatever
+// is staged. So is an empty recorded source SHA, from a record written by a binary predating them.
+// The refusal never wedges a pair on its own: in the state it fires on, the recorded source is nowhere
+// in that side's history, so `MergeAbort`'s own `concludeLandedReason` still passes for a side sitting
+// on its recorded start and the abort route stays open.
+//
 // Within those bounds the two refusals still cover every half-finished attempt between them, and
 // neither destroys anything.
 // The precondition is deliberately wider than the recorded conclude SHA. A side counts as possibly
