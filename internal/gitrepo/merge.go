@@ -170,8 +170,19 @@ func (r *Repo) ConflictedFiles() ([]string, error) {
 // including removals.
 // An empty or nil paths is a no-op, returning nil without invoking git at all.
 // It runs `git add -A -- <paths>`, the -A form rather than the plain form StageAndCommit uses,
-// because a delete/modify conflict is legitimately resolved by the file being gone: the plain
-// `add --` form errors on a missing pathspec, while -A stages the removal.
+// because a delete/modify conflict is legitimately resolved by the file being gone and the removal
+// must stage rather than error.
+// The `-A` is a version pin, not a behavioural difference on any git in use today, and the
+// distinction matters because the two readings suggest different things to a maintainer. Plain
+// `git add <pathspec>` acquired removal-staging in git 2.0 (2014); before that it ignored deletions
+// and the two forms genuinely diverged on exactly this case. On a modern git they are equivalent
+// here — verified directly: a modify/delete conflict resolved by deleting the file stages with plain
+// `git add -- <path>`, exit 0, unmerged set empty afterwards, on git 2.53. So no test can separate
+// the two forms, and the earlier claim that the plain form "errors on a missing pathspec" was simply
+// false against the git this repo runs on.
+// It stays `-A` for the same reason MergeStart pins `--ff` and MergeConclude pins `--no-edit`: the
+// behaviour fabric depends on is stated on the command line, never inherited from whatever git
+// version or config the caller happens to be running under.
 func (r *Repo) StageResolved(paths []string) error {
 	if len(paths) == 0 {
 		return nil

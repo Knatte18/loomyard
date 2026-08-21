@@ -120,6 +120,10 @@ func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 
 // TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion covers that a delete/modify conflict
 // resolved by removing the file stages successfully rather than erroring on the missing pathspec.
+// Read honestly, this test pins the OUTCOME, not gitrepo.StageResolved's `-A`: plain
+// `git add <pathspec>` has staged removals since git 2.0, so on any git in use the two forms behave
+// identically here and rewriting `add -A --` to `add --` keeps this test green. The `-A` is a version
+// pin whose correctness no test on a modern git can demonstrate — see StageResolved's own godoc.
 func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
