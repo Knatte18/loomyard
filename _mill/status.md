@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: shed-recipe-loader-builder
 branch: shed-recipe-loader-builder
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-21T11:12:31Z'
 discussion-fix-r3  '2026-08-21T11:53:36Z'
+discussion-fix-r4  '2026-08-21T11:59:31Z'
+discussed  '2026-08-21T11:59:31Z'
 ```

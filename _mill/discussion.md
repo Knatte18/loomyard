@@ -193,6 +193,12 @@ Nothing existing breaks in the meantime — loom's hardcoded list keeps working 
 
 - **Decision:** `Parse` validates document and row *shape* — `version` supported, `entry` non-empty, `terminals` non-empty, `producers` non-empty, and per row: `name` non-empty, `name` unique across the document, `engine` non-empty, `max_bounces` not negative.
   "`config` is a mapping" is deliberately **not** on that list: it is enforced by the decoder, not by `Parse`'s own code, since `Row.Config` is typed `map[string]any` and a scalar or list in that position fails inside `Decode` before any `shedbuild` check runs.
+  **Duplicate mapping keys are likewise the decoder's job, not a `shedbuild` check.** `KnownFields(true)` already rejects them — a repeated key at either level yields `line 3: mapping key "entry" already defined at line 2` — so the silent last-write-wins defect the strictness decision exists to prevent is already prevented, and a hand-rolled duplicate-key scan would be dead code.
+  This is a different mechanism from the duplicate-**row-`name`** check, which `shedbuild` does perform itself: two rows with the same `name` are two distinct, well-formed list elements the decoder has no opinion about.
+- **`Config` never containing an absolute path is enforced per-entry, by `shedrecipe`, and `shedbuild` deliberately adds nothing.**
+  `manifest/designs/shed-recipe.md` states the rule, and `shedrecipe.resolveUnderRoot` already implements it: every entry that reads a path-shaped `Config` key routes it through that helper, which rejects an empty value, rejects an absolute value outright ("would make a non-portable recipe silently work on its author's machine"), and rejects a `..` escape from its told root.
+  `shedbuild` cannot do better and should not try: it does not know which of a row's `Config` keys are paths — only the entry does — so a generic "reject any absolute-looking string" scan in `Parse` would both miss non-obvious cases and false-positive on a legitimate non-path value.
+  The one documented gap stays where `shedrecipe` put it: `BurlerRound`'s `profile.target.paths` and `profile.fasit.paths` bypass the helper by design, because `burlerengine.Profile.validate` resolves them against its own told worktree root.
   `Build` additionally resolves each `engine` through `shedrecipe.Lookup` and surfaces each `Constructor`'s own error.
   Neither validates that `on_done`/`on_stuck` name existing rows, that segments agree, that the graph is acyclic, or that every row is reachable.
 - **Rationale:** `shedengine.validate()` already rejects dangling `OnDone`/`OnStuck`, self-referencing `OnDone`, duplicate names, negative `MaxBounces`, and cross-segment `OnStuck`, with its own distinct per-rule messages, before `Run` touches a lock or a producer.
@@ -276,6 +282,15 @@ Both files live in package `shedrecipe`, so `shedbuild` needs its own copies rat
 `wire()` is where every told absolute path is already in hand (`location.AnchorPath()`, `location.WorktreePath()`, `loomengine.LoomStatusFile(location)`, etc.) and where a `shedrecipe.Env` would be filled in piece 4.
 This task does not touch it, but it is the shape the `Env`-filling story has to land in.
 
+### Carried-forward note for piece 4: the recipe consumer cannot be `loomshed` itself
+
+`internal/shedrecipe/entries_simple.go` imports `internal/loomshed` (for `NewLoomPreflight`, `NewBatchifier`, `NewDiscussionValidate`, `NewPlanValidate`, `NewStub`, `NewWebsterProducer`), so the production import chain is `shedbuild` → `shedrecipe` → `loomshed`.
+Piece 4 as the roadmap currently words it — "replace `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal with an actual recipe file … using the loader/builder" — would have `loomshed` import `shedbuild`, closing a production import cycle that does not compile.
+Nothing in *this* task is affected: `shedbuild` imports `loomshed` only from its own `_test.go` files, where a cycle through a test binary of a different package is fine.
+But the unblocking claim in the Problem section rests on this, so it is recorded here rather than left for piece 4 to discover at its first `go build`.
+The resolution is that the recipe's consumer must sit **above** `loomshed` — `internal/loomcli`, whose `wire()` already holds every told path and already imports both `loomshed` and (transitively) everything else needed — or `loomshed` must shed the constructors `shedrecipe` reaches for.
+Deciding between those two is piece 4's call, not this task's.
+
 ### Carried-forward note for the plan stage: `shedrecipe.Env`'s size
 
 `Env`'s nine-told-root-plus-six-seam shape is inherited from piece 1 unmodified, and widening or narrowing it is explicitly out of scope here.
@@ -312,6 +327,13 @@ From `CONSTRAINTS.md`:
   This is the invariant the new `seam_enforcement_test.go` machine-enforces, and `CONSTRAINTS.md`'s machine-enforced list gains `internal/shedbuild` in the same commit.
   That edit is **two changes, not one**: the package list gains an entry, *and* the bullet's trailing sentence "**Enforced by** the ten tests named above" becomes "the eleven tests named above."
   A list append that leaves the count reading "ten" is the silent-drift failure this whole invariant file exists to prevent.
+- **No sole-parser invariant is added, and that is a decision rather than an omission.**
+  `CONSTRAINTS.md` carries a directly analogous **Planparser Sole-Parser Invariant** ("`internal/planparser` is the SOLE parser of the on-disk plan format"), and `shedbuild` will eventually stand in the same relation to the recipe format.
+  It is premature here for one reason: after this task there is **no on-disk recipe format in production** — the only recipe documents in the repo are this package's own `testdata/` fixtures, and no second parser can plausibly appear against a format nothing yet reads.
+  An invariant whose violation is currently impossible teaches the next author nothing and would be enforced by nobody.
+  Piece 4 ships the first real recipe and the first real consumer, which is the point at which a second parser becomes a live risk;
+  **the sole-parser invariant belongs in that commit**, and this note is what carries the obligation there.
+  Note the analogue's own enforcement line — "Enforced by review obligation today (candidate future import/grep guard)" — so the eventual addition is a review obligation too, not a new test.
 - **Shed Recipe Registry Invariant.** Every registry value constructs a `shedengine.ShedProducer` and nothing else, and the registry is reached only through `Lookup` and `Names`, never by `init()` self-registration and never by a runtime `Register` call.
   `shedbuild` must reach the registry only through `Lookup`/`Names`, and must not add any registration mechanism of its own — a recipe naming an unregistered engine is an error, never a reason to register one.
 - **Shed Producer-Seam Invariant.** `internal/shedengine`'s import allowlist is stdlib + `internal/state` + `internal/lock`.
@@ -348,6 +370,8 @@ Scenarios that must be covered:
 - Malformed YAML (a tab-indented line, an unclosed quote) errors with a `shedbuild: ` prefix.
 - A missing `version` and a literal `version: 0` are **the same case** and share one message, `unsupported recipe version 0` — with `Version int` and `KnownFields(true)` both decode to `0`, and they are not worth a `*int` to tell apart, since neither is ever a valid recipe.
 - Any other unsupported `version` (`2`, `-1`) errors naming the offending value.
+- A duplicate mapping key, both at document level and inside one row (two `on_done:` keys), errors from the decoder with `mapping key "..." already defined at line N` under the `shedbuild: ` prefix — assert the key name and the prefix, not yaml's wording.
+  This is distinct from the duplicate-row-`name` case above, which is `shedbuild`'s own check and does name the row index.
 - Empty input, and input that is only comments or whitespace, error with `shedbuild: recipe is empty` — `yaml.Decoder.Decode` returns `io.EOF` for these, which must be translated rather than surfaced raw or mistaken for success.
 - An unknown document-level key, and an unknown row-level key, each error with yaml's own `line N: field <key> not found in type ...` text under a `shedbuild: ` prefix.
   Assert on the key name and the `shedbuild: ` prefix, **not** on yaml's exact wording — that is upstream text, not this package's contract.
@@ -385,6 +409,8 @@ Scenarios:
   `internal/loomshed/fixture_test.go`'s `testLandingDeps` is the equivalent.
   So the fixture is `newTestEnv(t)` **plus** an `Env.Landing` filled that way, making it twelve `Env` fields, not eleven.
   Finally, write the two named stencils into `Env.StencilsDir` at `stencilstore.Path(dir, name)` (plain files, arbitrary content) — `newTestEnv` creates the directory but seeds no files.
+  **Create the parent directory first.** `stencilstore.RelPath` returns `<family>/<name>.md` for any hyphenated stencil name (it splits on the first `-`), so writing straight to `stencilstore.Path(dir, name)` inside a fresh `t.TempDir()` fails with ENOENT.
+  `internal/shedrecipe/entries_singlellm_test.go`'s `writeStencilFile` is the ready-made pattern: `os.MkdirAll(filepath.Dir(path), 0o755)` then `os.WriteFile`.
   Keep it a separate test function from the in-memory `Build` table so the two do not share a fixture and the pure cases stay pure.
 - Build order matches recipe order.
 - `Build` on a recipe with an empty `Producers` slice errors (defence in depth even though `Parse` rejects it, since `Build` accepts hand-built `Recipe` values).
