@@ -52,5 +52,7 @@ batches:
     commit_sha: d8f9a6d9a0ff58ca697fb42526b9f1564abf1a10
     verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: docs
-    state: pending
+    state: running
+    implementer_session: 5d3dd1a1-aa2c-43a0-92c2-f1cd8b3e958e
+    start_sha: 598926cba5336dade52aff7abf71aaff79785a84
 ```
