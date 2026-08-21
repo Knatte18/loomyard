@@ -70,7 +70,9 @@ batches:
     commit_sha: ddaf4dec6886050be2bd0ec2011f9ac594c2cdc3
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: delete-loomshed-new-and-deps
-    state: pending
+    state: running
+    implementer_session: f37fae75-69e0-47ef-8f06-3aec23a71355
+    start_sha: ecc9306b9a6551060a642f7a8ed76e8836507b89
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: docs-and-comment-sweep
     state: pending
