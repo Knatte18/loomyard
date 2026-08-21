@@ -123,6 +123,8 @@ No batch-local decisions differ from the overview's `## Shared Decisions`, beyon
 - **Moves:** none
 - **Requirements:**
   Move the "Shed recipe: loader/builder" item in `manifest/roadmap.md` out of the Planned group and into Done, since this task completes a planned item.
+  Place it in the Done group immediately adjacent to the two already-shipped pieces of the same group — the engine-registry entry and the validity-checker entry, which sit at the top of Done — so all three pieces of one initiative read together;
+  the file's own Maintenance section makes the numbering itself cosmetic, so adjacency is the only placement property that matters here.
   Rewrite it in the Done group's own past-tense, what-shipped voice, matching the entries already there: name the package, its four exported functions, the document shape, the strict-decode posture, the validation split against the shed's own validation and the validity checker, the fact that building inherits construction-time filesystem effects from four registry constructors, and the loom-equivalence test as the proof the format expresses loom's real thirteen-row list.
   State that the task shipped no production recipe file — the only recipe documents it added are its own test fixtures — and that it added no exported surface to the engine registry and touched no existing production file.
   Update the group's own intro paragraph, which currently says two pieces remain planned: one remains.

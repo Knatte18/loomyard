@@ -3,7 +3,7 @@
 ```yaml
 task: 'Shed recipe: loader/builder'
 slug: shed-recipe-loader-builder
-approved: false
+approved: true
 started: '20260821-120310'
 parent: main
 root: ""

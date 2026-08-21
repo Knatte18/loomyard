@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: shed-recipe-loader-builder
 branch: shed-recipe-loader-builder
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussed  '2026-08-21T11:59:31Z'
 planning  '2026-08-21T12:09:05Z'
 plan-review-r1  '2026-08-21T12:20:05Z'
 plan-fix-r1  '2026-08-21T12:20:05Z'
+plan-fix-r2  '2026-08-21T12:28:47Z'
 ```

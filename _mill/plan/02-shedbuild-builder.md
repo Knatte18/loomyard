@@ -25,6 +25,7 @@ One batch-local decision beyond the overview's `## Shared Decisions`: the twelve
   - `internal/shedrecipe/registry.go`
   - `internal/shedengine/producer.go`
   - `internal/shedbuild/recipe.go`
+  - `internal/shedbuild/doc.go`
 - **Edits:** none
 - **Creates:**
   - `internal/shedbuild/build.go`
@@ -39,7 +40,8 @@ One batch-local decision beyond the overview's `## Shared Decisions`: the twelve
   The `shedrecipe.Config(row.Config)` conversion is a free type conversion, not a copy or a key walk, because both types have the identical underlying `map[string]any`.
   Assign the built row as `shedengine.ProducerDef{Name: row.Name, Producer: producer, OnDone: row.OnDone, OnStuck: row.OnStuck, Segment: row.Segment, MaxBounces: row.MaxBounces}`, copying all five data fields straight through with no defaulting of any kind.
   `Build` runs no reachability, cycle, blind-gate, dangling-target, or segment analysis, and never calls into `internal/shedcheck`: a legitimately resumable graph starts mid-graph, so reachability-from-entry is the wrong question at build time, and `shedengine`'s own validation already rejects dangling targets, duplicate names, and cross-segment `OnStuck` before a run touches anything.
-  `Build`'s doc comment states plainly that it is not filesystem-free: it is a pass-through for the construction-time effects three registry constructors have of their own accord, four distinct effects between them — the bouncer constructor does both, creating the run directory it resolves from the told run root plus the row's `run_subdir` and eagerly probing its rubric stencil, while the burler-round constructor only creates that run directory and the single-LLM constructor only probes its stencil, each eager probe existing so a mistyped stencil name fails at construction rather than at first call — and this package neither suppresses nor wraps them.
+  `Build`'s doc comment states plainly that it is not filesystem-free: it is a pass-through for the construction-time filesystem effects some registry constructors have of their own accord, and this package neither suppresses nor wraps them.
+  It must not restate which constructor produces which effect — point at the package doc in `internal/shedbuild/doc.go`, which card 1 already makes the single site enumerating that, so a future change to those constructors' construction-time behaviour has one doc site to update rather than two.
 - **Commit:** `feat(shedbuild): add Build`
 
 ### Card 7: the `Check` helper
