@@ -102,6 +102,10 @@ Final list. Severity per the campaign scale; CONFIRMED = reproduced/traced, PLAU
 - `internal/fabriccli/merge_verbs.go:222–225`: `"staged": args`. Driving `merge-stage _lyx/notes.md _lyx/notes.md` reports `staged:["_lyx/notes.md","_lyx/notes.md"]` (Phase 3 step 3). Harmless but the envelope claims two stagings for one path.
 - Fix: deduplicate (order-preserving) before echoing.
 
+### F5 (NIT, CONFIRMED — found AFTER the findings list was sealed, by Job 2's lint gate, and recorded here with that provenance)
+- `internal/fabriccli/merge_verbs.go:101` — pre-existing gosimple S1021: `var mergeCmd *cobra.Command` immediately followed by its assignment, with nothing in the command literal referencing `mergeCmd` (the split is vestigial). Surfaced by the golang-build skill's `golangci-lint run` step during fix verification, not by the Job 1 review.
+- Fix: merge declaration and assignment (`mergeCmd := &cobra.Command{…}`).
+
 ### Non-findings worth recording (checked, judged correct or already adjudicated)
 
 - `selfAbortMergeAttempt` wrapping the raw git cause (side-ish path included) into the returned error: explicitly adjudicated by the plan's "genuine MergeStart error self-aborts symmetrically" Shared Decision ("return the wrapped MergeStart error"); mutation-record targets already expose the same paths by invariant. Not re-litigated.

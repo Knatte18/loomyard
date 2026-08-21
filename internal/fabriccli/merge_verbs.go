@@ -98,8 +98,7 @@ Example:
 		},
 	}
 
-	var mergeCmd *cobra.Command
-	mergeCmd = &cobra.Command{
+	mergeCmd := &cobra.Command{
 		Use:   "merge (<branch> | --continue | --abort) [--squash] [-m <message>]",
 		Short: "merge a branch into this worktree, or continue/abort a merge",
 		Long: `merge (the engine's Merge) merges <branch> into the target pair this
