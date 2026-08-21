@@ -576,7 +576,7 @@ no other production package shells out to `gh`.
 
 `internal/gitrepo` splits local-vs-remote by client: go-git owns local object and ref access, `gitexec` owns anything that authenticates to a remote or mutates the working tree.
 
-- go-git handles reads that resolve state already on disk — commit/tree/blob lookups and ref reads. `gitexec` is the only path to the git CLI, used for `StageAndCommit`, `CommitEmpty`, `StageAllAndCommit`, `Push`, `PushCoalesced`, `PushRebaseFree`, `Pull`, `Fetch`, `ResetHard`, `CheckoutDetached`, `RestoreBranch`, `IsAncestor`, `HasUnpushed`, `MergeStart`, `MergeConclude`, `ConflictedFiles`, `MergeHeadPresent`, `MergeFFOnly`, `StageResolved`.
+- go-git handles reads that resolve state already on disk — commit/tree/blob lookups and ref reads. `gitexec` is the only path to the git CLI, used for `StageAndCommit`, `CommitEmpty`, `StageAllAndCommit`, `Push`, `PushCoalesced`, `PushRebaseFree`, `Pull`, `Fetch`, `ResetHard`, `CheckoutDetached`, `RestoreBranch`, `IsAncestor`, `HasUnpushed`, `MergeStart`, `MergeConclude`, `ConflictedFiles`, `MergeHeadPresent`, `MergeHeads`, `MergeFFOnly`, `StageResolved`.
   Any new `gitexec` call added inside `internal/gitrepo` must update this list in the same commit.
 - The guard's pinned method set is keyed on `r.run` and `r.runChecked` together — whichever chokepoint a method's body calls, it belongs on the same list;
   the raw/checked split within that set is invisible to this guard by design (see the gitexec Checked-Call Invariant below, which is keyed by call site instead).
