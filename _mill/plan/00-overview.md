@@ -159,7 +159,9 @@ _Cross-cutting decisions every batch inherits._
 - `internal/loomrecipe/shape_test.go`
 - `internal/loomshed/cancellation_test.go`
 - `internal/loomshed/doc.go`
+- `internal/loomshed/loompreflight.go`
 - `internal/loomshed/loomshed.go`
+- `internal/loomshed/seed.go`
 - `internal/loomshed/seam_enforcement_test.go`
 - `internal/preflightshed/preflight_test.go`
 - `internal/shedbuild/fixture_test.go`

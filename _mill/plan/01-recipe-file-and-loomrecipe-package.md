@@ -93,6 +93,8 @@ A `contracts/recipes` test asserting the bytes are non-empty and `Parse`-able wo
   `New` performs no nil-guard or absolute-path check of its own on any `Env` field: each registry entry validates exactly the fields it reads, and `preflightEntry`'s `requireAbsRoot("Preflight", "Cwd", …)` is what now covers the guard `loomshed.New`'s nil-`Preflight` check used to.
 
   `New` does make **one** check of its own, and it is a coherence check across its two arguments rather than a validation of either: it returns an error when `env.StatusPath != paths.StatusPath`, and another when `env.StatusLockPath != paths.StatusLockPath`.
+  Both run as `New`'s first act, ahead of `shedbuild.Parse` and therefore ahead of `Build`.
+  The ordering is load-bearing, not stylistic: `loomPreflightEntry` calls `requireAbsRoot("LoomPreflight", "StatusPath", …)` during `Build`, so a divergence involving an empty or relative value would otherwise surface as that entry's absoluteness error and hide which of the two copies was wrong.
   Each error names both sides' values so the divergence is readable without a debugger.
   This is not a re-litigation of the deliberate duplication — the two copies stay — it is the guard the duplication needs.
   `loomshed.Deps` carried one `StatusPath` field feeding both `NewLoomPreflight` and `shedengine.Shed`, so the two could not disagree;

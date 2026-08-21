@@ -66,9 +66,8 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   Fill the returned `ShedPaths` with `StatusPath`, `LockPath`, `StatusLockPath`, and `MaxBounces: 3`, matching the old `Deps`.
 
   Duplicate into this file, verbatim, the five helpers it needs that live in files staying in `internal/loomshed`: `writeDiscussionFixture` and the `validDecisionRecord` constant, `seedPlanValidateFixture`, the `fakeWebsterRun` type with its `run` method, and `writeBatcherConfig` (needed by the moved resume tests in card 9).
-  Do not declare `fakeAlwaysDoneProducer` in this card: its declaration arrives in this same file via card 6's move, which lifts it out of `shape_test.go` and drops it here.
-  This card only consumes it;
-  card 6 owns the single declaration.
+  Do not declare `fakeAlwaysDoneProducer` in this card, and do not reference it either: the converted `buildSequenceFixture` returns `(anchorPath string, env shedrecipe.Env, paths ShedPaths)`, and none of those three carries a producer field, so nothing in this file touches the fake at all.
+  Its single declaration arrives in this same file via card 6's move, which lifts it out of `shape_test.go` and drops it here for the substituting tests in cards 6, 8, and 9 to use.
   Note in the file header that these are deliberate duplications, not an oversight, and that `testLandingDeps` already existed in two independent copies before this task.
 
   Rewrite the file's own header comment: it currently names `_mill/plan/03-sequence-and-integration.md` and "card 11" from a long-past task, and describes `Deps` as the thing it returns.
@@ -158,6 +157,8 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   *Split status-path coherence.* Two cases, one per pair: an `Env`/`ShedPaths` combination whose `StatusPath` values disagree makes `loomrecipe.New` return a non-nil error and a nil `*shedengine.Shed`, and likewise for a disagreeing `StatusLockPath` pair.
   Assert on a non-nil error, a nil Shed, and that the message contains both divergent values.
   Build the disagreeing pair by taking `testEnv(t)`'s coherent output and overwriting one side, so the test cannot pass by accident on a fixture that never filled both.
+  The overwritten value must stay absolute and merely different — a second path under the same `t.TempDir()` — never empty and never relative:
+  the coherence check runs ahead of `Build` per card 3, so an empty or relative value would still fail, but for the wrong reason and with the wrong message, and the assertion on both divergent values would not hold.
   The doc comment must state what this protects: `loomshed.Deps` carried a single field feeding both consumers, and the split makes a divergent fill possible for the first time, with a silent consequence — `Shed` persisting to one file while `Loom-Preflight` reads another.
 
   *Construction failure surfaces.* An `Env` with an empty `Cwd` makes `loomrecipe.New` return a non-nil error and a nil `*shedengine.Shed`, and the error names the offending row — `requireAbsRoot("Preflight", "Cwd", …)` inside `preflightEntry`, wrapped by `shedbuild` with the row's zero-based index and quoted name.

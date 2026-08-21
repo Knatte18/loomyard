@@ -210,6 +210,8 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
 
   Then sweep wider than these four, because the enumerated set is a starting point, not a complete one.
   Grep every `.go` file, test files and build-tagged files included, for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `coverageGuardLandingDeps`, `internal/loomshed` in both its trailing-slash and slashless spellings, and the moved test-file basenames `resume_test`, `sequence_test`, `loomshed_test`.
+  Add the unqualified in-package spellings `Deps` and `New(` when grepping `internal/loomshed` itself, where a doc comment names the deleted symbols without a package prefix;
+  card 20 already repairs the three known sites there, so a hit surviving into this batch means one was missed rather than that a new edit is due.
   The slashless spelling matters: `internal/loomcli/smoke_test.go`'s stale hit is written `(internal/loomshed)`, which a trailing-slash token misses.
   Repair every hit that is now false.
   Ignore hits inside `_mill/` — that is this task's own working directory, not repo documentation.

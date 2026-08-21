@@ -39,6 +39,8 @@ The retention test is "any reference, production or moved test", stated so the i
   - `contracts/recipes/loom-recipe.yaml`
 - **Edits:**
   - `internal/loomshed/loomshed.go`
+  - `internal/loomshed/loompreflight.go`
+  - `internal/loomshed/seed.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -47,6 +49,9 @@ The retention test is "any reference, production or moved test", stated so the i
   check before removing.
 
   Keep the entire `const` block of thirteen `Name*` values and its doc comment, which explains that the name is the durable on-disk identity in `current_producer` and that a later rename breaks resume for any in-flight task.
+  That comment's own last clause is falsified by this card and must be restated rather than merely kept: it currently ends "but the name constants live here regardless, same as every other row, because loom's own producer table is what New assembles from them".
+  There is no `New` to assemble from them after this card;
+  say instead that the constants live here because loom's own producer table names them, and that the table is now the recipe's.
   Extend that doc comment with the fact this task creates: the recipe file `contracts/recipes/loom-recipe.yaml` spells the same thirteen names as yaml strings, these constants remain the authority, and `internal/loomrecipe`'s coverage guard is what pins the two declarations together by keying its row table off these symbols rather than off string literals.
   Also record why the constants stay here rather than moving to `internal/loomrecipe`: `seed.go` and `loompreflight.go` read two of them, so `loomshed` would have to import `loomrecipe`, and `loomrecipe` imports `shedbuild` → `shedrecipe` → `loomshed` — the production cycle the consumer-package split exists to avoid.
 
@@ -55,6 +60,16 @@ The retention test is "any reference, production or moved test", stated so the i
   Do not rename the file — a rename here would obscure the deletion in the diff for no gain.
 
   Do not delete `Seed`, `ErrSeedExists`, the ctx helpers in `ctx.go`, or any of the six producer constructors — `internal/shedrecipe`'s registry imports all six.
+
+  Two further doc comments in this package are falsified by the deletion and must be repaired in this same card, because both spell the deleted symbols in the unqualified in-package form (`New`, `Deps`) that no cross-package sweep token matches.
+  In `internal/loomshed/loompreflight.go`, `NewLoomPreflight`'s doc says the constructor is exported for the registry because "row 2 is still built internally by New (see loomshed.go), never injected -- unlike Deps.Preflight, it is not the row a Tier-1 test needs to substitute a fake for".
+  Both halves are now wrong: row 2 is built by `loomPreflightEntry` from the recipe, and there is no `Deps.Preflight` to contrast against.
+  Restate it keeping the surviving point — row 2 spawns nothing and reads one JSON file under a caller-supplied path, so it is not a row a tier-1 test substitutes — and contrast against row 1, which is substituted post-build by the moved tests.
+  In `internal/loomshed/seed.go`, `Seed`'s doc says it "takes bare told paths rather than a Deps because seeding happens before any Shed exists, so a Deps would couple this seam to a struct whose producer fields are irrelevant to it".
+  `Deps` no longer exists;
+  restate the surviving reason — seeding happens before any Shed exists, so `Seed` takes the two told paths directly and couples to nothing that builds producers.
+  Leave the rest of both comments alone;
+  neither producer's behaviour changes here.
 - **Commit:** `refactor(loomshed): delete New and Deps, the recipe now defines the list`
 
 ### Card 21: Repair `internal/loomshed`'s package doc
