@@ -133,7 +133,7 @@ A second fork-subagent run tested the intended burler shape at scale (sonnet): h
 Both criteria hold → **forking is worthwhile as the cluster-review mechanism — and built-in fork subagents are the preferred variant** (5–6× cheaper per reviewer than CLI forks, single-strand orchestration, validated at N=8 with a handler doing holistic review + consolidation).
 CLI `--resume`+`--fork-session` remains the fallback where separate panes per reviewer or model-per-fork matter.
 
-Recommendations for the eventual burler/perch cluster design:
+Recommendations for the eventual burler cluster design:
 
 1. **Fork one explorer into N reviewers** — mechanics proven (M1, M2), cost is less than half per reviewer even via CLI, and ~12× cheaper via fork subagents;
    coverage does not drop.
@@ -291,7 +291,7 @@ A web search turned up no GitHub issue reporting exactly this update's isolated 
 - **In-process fork subagents (`Agent`, `subagent_type: "fork"`) remain the right mechanism for cluster-review-style fan-out.** Context inheritance and near-full cache reuse both hold, and the mechanism is now simpler to invoke than at spike time (no env var).
 - **CLI `--resume --fork-session` still does not get parent-specific cache reuse**, in 2.1.228, with or without the new `--exclude-dynamic-system-prompt-sections` flag. Anyone relying on the original spike's CLI-fork cost numbers (B1/B2 arms) for budgeting should not expect those numbers to have improved — if anything, avoid the CLI-fork path for cost-sensitive fan-out and prefer in-process forks unless a separate pane, a different model per fork, or true OS-level process isolation is specifically required.
 - Plain `--resume` (no `--fork-session`) is unaffected and still gets a full hit — it remains the right tool when sequential continuation (not branching) is what's needed.
-- **Nesting is a dead end either way** — a fork is now instructed not to spawn further agents at all (system-prompt hard rule), so any burler/perch design that wanted fork-of-a-fork depth must flatten to a single explorer-spawns-N-forks shape (exactly what the original spike's E-arm already validated), not attempt recursive fan-out.
+- **Nesting is a dead end either way** — a fork is now instructed not to spawn further agents at all (system-prompt hard rule), so any burler design that wanted fork-of-a-fork depth must flatten to a single explorer-spawns-N-forks shape (exactly what the original spike's E-arm already validated), not attempt recursive fan-out.
 - **Agent Teams' tmux split panes don't rescue the CLI-fork cost problem** — a teammate is a cold-started separate session, not a fork, so trading CLI-forks for tmux-mode Agent Teams swaps one expensive mechanism for another, just with better visibility. If visible panes matter enough to justify the cost, Agent Teams is at least a supported, documented path (unlike hand-rolled tmux + `--fork-session`); if cost matters more, stay on `Agent(fork)` and accept the lack of a pane.
 
 ## Caveats (update)

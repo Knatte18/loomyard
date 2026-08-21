@@ -37,4 +37,4 @@ Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, 
 
 ## Blocked on the three review-producer tasks above
 
-- **Retire `internal/treadleengine`** (Someday) — deliberately sequenced last; `internal/perchengine`/`internal/perchcli` are already gone (see roadmap's Done `Retire perch` item), and treadle's own final call needs the `Shed`-segment design proven on `loom: Discussion-Review producer`/`Plan-Review producer`/`Webster-Review producer`, and on `Tenter`, first.
+- **Retire `internal/treadleengine`** (Someday) — deliberately sequenced last; treadle's own round-loop consumer is already gone (see the roadmap's Done retirement entry), and treadle's own final call needs the `Shed`-segment design proven on `loom: Discussion-Review producer`/`Plan-Review producer`/`Webster-Review producer`, and on `Tenter`, first.
