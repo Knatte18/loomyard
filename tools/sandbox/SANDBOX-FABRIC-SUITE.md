@@ -94,7 +94,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`F0`-`F13`).
+- `ref` is the scenario id (`F0`-`F21`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -108,7 +108,7 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 **Goal:** "You have `lyx` on PATH and nothing else inside this repo.
 Find out what `lyx fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all 18 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`)?
+**Watch:** Does `lyx fabric` list all 19 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`, `merge-stage`)?
 Does each `--help` explain itself?
 Is each description accurate and useful?
 
@@ -400,7 +400,7 @@ Finally confirm the hub's prime worktree is left alone throughout: it never had 
 
 ---
 
-### F18 -- Merge lifecycle end to end (`merge-in`, `merge --continue`, `merge --abort`)
+### F18 -- Merge lifecycle end to end (`merge-in`, `merge-stage`, `merge --continue`, `merge --abort`)
 
 **Covers:** fabric
 
@@ -409,10 +409,14 @@ Finally confirm the hub's prime worktree is left alone throughout: it never had 
 **Watch:** Create a pair, diverge it from the prime on **both** sides so the merge is a real merge and not a fast-forward, then run `lyx fabric merge-in <slug>` from the prime worktree.
 A conflict is a *result*, not a failure to re-run differently: the envelope is `ok: false`, exit 1, and carries a `conflicts` array of **worktree-relative** paths -- one flat list covering both repos, never two lists and never an absolute path.
 Note the exit code: a conflict result and a hard error both exit 1, so the only correct discriminator for a script is the presence of the `conflicts` key.
-While the merge is live, confirm the sibling verbs refuse with the single fixed message `a merge is in progress; run MergeContinue or MergeAbort first` -- try `commit`, `pull`, `push`, `sync`, `checkout`, and `remove` of the merge's own source pair.
-Resolve every listed path, `git add` each, then `lyx fabric merge --continue` and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
+While the merge is live, confirm the sibling verbs refuse with the single fixed message `a merge is in progress; run "lyx fabric merge --continue" or "lyx fabric merge --abort" first` -- try `commit`, `pull`, `push`, `sync`, `checkout`, and `remove` of the merge's own source pair.
+Resolve every listed path, then `lyx fabric merge-stage <those same paths>`, then `lyx fabric merge --continue`, and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
+The `merge-stage` step is not optional and is worth checking on its own: `--continue` gates on the git INDEX, not on file content, so editing a conflicted file and going straight to `--continue` must still refuse with `unresolved conflicts remain`.
+Make at least one of the conflicts land under `_lyx/`, and confirm plain `git add _lyx/<file>` from the visible worktree is REFUSED by git (`pathspec ... is beyond a symbolic link`) while `merge-stage` accepts the same path -- for a weft-side conflict that verb is the only route, and without it the merge is uncompletable through the CLI. (Historical: `merge-stage` had no CLI surface at all, so this help text told the operator to run a step that could not be run.)
+Also confirm `merge-stage` with a path that is not conflicted fails the WHOLE call, leaving the genuinely conflicted paths in the same call still unstaged.
 Repeat the whole scenario and take `lyx fabric merge --abort` instead: both sides must return to their exact pre-merge SHAs, both worktrees must come back clean, and `git status` in each checkout must show no merge in progress.
 Also check `committed`: it is true only when a conclude-commit actually landed, so a merge that fast-forwarded both sides reports `committed: false` while still having advanced the pair.
+Then repeat one conflicted round with a filename outside ASCII (e.g. `ä-note.md`) conflicting on each side in turn: the `conflicts` array must carry the real path, byte for byte -- never git's C-quoted rendering (`"\303\244..."`, quotes included) -- and a non-ASCII conflict inside the fabric-managed tree must never abort as *conflicts outside the fabric-managed tree*. (Historical: `ConflictedFiles` read `--name-only` without `-z`, so `core.quotepath` quoting made exactly that happen.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -429,7 +433,7 @@ Also check `committed`: it is true only when a conclude-commit actually landed, 
 - A dirty worktree on either side -> `worktree dirty`.
 - A detached HEAD on either checkout (`git checkout --detach`) -> `checkout is not on a branch`. This one matters: without it the merge would land a warp commit reachable from no ref while the weft half landed for good.
 - A source that is a tag, a raw SHA, `HEAD`, or a branch with no `-weft` counterpart -> `source branch is not fabric-managed`; a source that exists nowhere -> that plus `source branch not found`.
-- Real plain-git merge state you leave behind yourself (`git merge <branch>` conflicted, or `git merge --squash <branch>` conflicted -- the latter leaves **no** `MERGE_HEAD`) -> `git merge state exists that fabric did not start`, with the foreign state left untouched for you to finish with plain git.
+- Real plain-git merge state you leave behind yourself (`git merge <branch>` conflicted, or `git merge --squash <branch>` conflicted -- the latter leaves **no** `MERGE_HEAD`) -> `git merge state exists that fabric did not start`, with the foreign state left untouched for you to finish with plain git. `lyx fabric commit` over that same foreign state must give the **same** foreign-state message -- not `a merge is in progress; run "lyx fabric merge --continue" or "lyx fabric merge --abort" first`, whose advice both those verbs would refuse.
 
 Then set hostile git config and confirm fabric is immune to it: `merge.ff = only` must not break a non-fast-forward merge (fabric pins `--ff`), and `core.editor` set to something that blocks forever must not hang `merge --continue` (fabric pins `--no-edit`). A hang here is a blocking defect.
 Finally, check the flag pre-flight: `merge --abort --squash` and `merge --abort -m <msg>` are both rejected as usage errors rather than silently ignoring the flag, while `merge --continue -m <msg>` really does name the conclude-commit.
@@ -457,7 +461,7 @@ Then the squash companion: repeat the same fixture and run `lyx fabric merge dup
 Squash genuinely has nothing to commit here, so `"already_up_to_date": true` with `"committed": false` **is** the right answer, and no `MERGE_HEAD` may appear.
 
 Finally the half-concluded abort. Build a normal divergent merge on both sides, install a `pre-commit` hook in the weft checkout that just does `exit 1` (`.git/hooks/pre-commit`), and run `lyx fabric merge-in <branch>`.
-The warp conclude lands, the weft conclude fails, and you get *merge conclude did not finish; run MergeContinue again* with a `merge_committed` mutation for the warp side.
+The warp conclude lands, the weft conclude fails, and you get *merge conclude did not finish; run "lyx fabric merge --continue" again* with a `merge_committed` mutation for the warp side.
 Now run `lyx fabric merge --abort`.
 It must **refuse**, naming `merge conclude already landed`, and the warp conclude-commit must still be there (`git -C <warp> log -1`).
 An abort that reports `"ok": true` here and silently resets the warp past its landed conclude-commit is destroying committed work -- in the conflict flow that commit carries your own hand-written resolutions.
@@ -466,7 +470,62 @@ Remove the hook and confirm `lyx fabric merge --continue` finishes the job, skip
 Last, the invisible landed conclude -- the crash shape where a side's conclude-commit landed but the record never learned its SHA.
 Build a conflicted `merge-in`, resolve the conflict, `git add` it, then commit it yourself with plain `git commit --no-edit` in that checkout -- on-disk state now identical to a kill between fabric's conclude-commit and its record re-save (`*_committed` still empty, HEAD on the merge commit, no `MERGE_HEAD`).
 `lyx fabric merge --abort` must refuse (`merge conclude already landed`), and `lyx fabric merge --continue` must **succeed by adoption**: `"committed": true`, a `merge_committed` mutation carrying the hand-landed SHA, HEAD unmoved (no second commit), record gone, sibling verbs unblocked.
-A `--continue` that loops forever on *merge conclude did not finish; run MergeContinue again* here is the failure mode: the pair is then permanently wedged, since no fabric verb can clear the record and plain git cannot reach it.
+A `--continue` that loops forever on *merge conclude did not finish; run "lyx fabric merge --continue" again* here is the failure mode: the pair is then permanently wedged, since no fabric verb can clear the record and plain git cannot reach it.
+
+Now the adversarial twin of that same shape, which looks identical to fabric from the outside and must NOT be adopted.
+Build the conflicted `merge-in` again, then instead of resolving it, discard it with plain `git merge --abort` in the warp checkout and make one ordinary commit of your own there — anything, an unrelated file.
+HEAD has now moved off the recorded pre-merge SHA with no `MERGE_HEAD`, exactly as a landed conclude leaves it, but nothing was merged.
+`lyx fabric merge --continue` must **refuse**: *merge conclude did not finish; run "lyx fabric merge --continue" again*, with the record still on disk.
+`"ok": true` / `"committed": true` naming your unrelated commit is the failure mode, and it is a blocking one — the record is deleted, the source is still un-merged, and there is nothing left to inspect.
+`merge --abort` refusing too (`merge conclude already landed`) is correct here, not a second bug: the pair is honestly stuck, and plain git is the documented way out.
+
+Finally the squash version of the same question, which has no evidence either way and must therefore also refuse.
+Install the failing `pre-commit` hook in the **warp** checkout, run `lyx fabric merge <branch> --squash`, remove the hook, then land the squash conclude yourself with plain `git commit -m ...`.
+`lyx fabric merge --continue` must refuse with *merge conclude did not finish*, leave the record on disk, and leave your commit untouched — a squash conclude is a one-parent commit indistinguishable from any other, so adopting it would be a guess.
+
+Last, the octopus — a commit that satisfies every *other* adoption clause and still must be refused.
+Build the merge so the warp side merges CLEANLY (a real non-fast-forward merge of a branch that touches different files) while the weft side conflicts, so `merge-in` returns conflicts and the record survives with the warp side staged and unconcluded.
+Then, in the warp checkout, `git merge --abort`, branch a decoy off the repo's ROOT commit (`git rev-list --max-parents=0 HEAD`) with one unrelated file on it, and merge BOTH at once: `git merge <the record's warp_source> <decoy>`.
+Read the record at `<weft checkout>/.git/fabric-merge.json` for that source SHA;
+rooting the decoy outside the merge's own history is what stops git dropping the pre-merge tip as a redundant parent, so confirm with `git rev-list --parents -n 1 HEAD` that you really got THREE parents, the first being the record's `warp_start` and the second its `warp_source`.
+`lyx fabric merge --continue` must refuse with *merge conclude did not finish; run "lyx fabric merge --continue" again* and leave the record on disk.
+Reporting `"committed": true` here is the failure mode and it is a blocking one: fabric would be claiming a commit it can never build — it starts every non-squash merge with a single `git merge --ff --no-commit <sha>`, so its own conclude has exactly two parents — and the branch would silently carry the decoy's content, brought in by no side of the merge and named by no `merge_staged` entry, with the record deleted and nothing left to inspect.
+
+Last of all, the same three questions asked WITHOUT committing, which is the half the adoption evidence never sees.
+Everything above reaches the adoption arm because the operator committed;
+leaving the hand-made merge uncommitted routes into the conclude's plain `git commit` instead, and that arm demanded no evidence at all until this round.
+Build the warp-merges-cleanly / weft-conflicts fixture again, resolve and `lyx fabric merge-stage` the weft conflict so `--continue` really reaches the warp side, then in the warp checkout run `git merge --abort` and, in place of committing anything, do each of these in turn:
+
+- `git merge --no-commit --no-ff <an unrelated branch>` — a different merge left live.
+- `git merge --no-commit <the record's warp_source> <a decoy rooted at the repo's root commit>` — an uncommitted octopus. Confirm with `git rev-parse --verify --quiet MERGE_HEAD` that it prints exactly the record's `warp_source`: that truncated answer is what a first-head-only check would accept, and `cat "$(git rev-parse --git-path MERGE_HEAD)"` must show two SHAs.
+- nothing merged at all, just `git add` an unrelated new file — no `MERGE_HEAD`, but a commit that would succeed.
+
+In all three, `lyx fabric merge --continue` must refuse with *merge preconditions failed: checkout no longer carries the recorded merge*, leave the record on disk, land no commit, and leave the warp HEAD exactly where the operator left it.
+`"ok": true` / `"committed": true` here is the failure mode and it is a blocking one: fabric commits and claims a merge it never started, records correspondence for a pair whose warp side does not carry the source at all, and deletes the record — the same silent false success as the adoption cases, reached by not committing first.
+Then confirm the refusal did not wedge the pair: `lyx fabric merge --abort` must still succeed and restore both sides to their recorded pre-merge SHAs.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F21 -- A target diverged from an upstream it has not fetched yet (`merge`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm the not-synced guard refuses a genuinely diverged target even when the divergence has not been fetched at the moment the guard runs."
+
+**Watch:** This is the ordinary shape, not a contrived one: a teammate pushes while you are working, and you have not fetched since.
+Create a target pair and a source pair, then push a commit to the target branch's own remote **from a separate clone**, and only then make one local commit in the target worktree -- never running `git fetch` in it.
+At this point the target is genuinely diverged, but its own `origin/<branch>` still names a commit that is an ancestor of its HEAD, so anything reading remote-tracking refs sees "merely ahead".
+Confirm that first, so you know the scenario is really the unfetched shape: `git -C <target> rev-parse origin/<branch>` must differ from the bare remote's own tip, and `git -C <target> merge-base --is-ancestor origin/<branch> HEAD` must succeed.
+
+Now run `lyx fabric merge <source-slug>` from the target worktree.
+It must **refuse** with `merge preconditions failed: branch not synced to upstream`, `mutations: []`, and both HEADs unmoved.
+(Historical: it returned `ok: true` with `committed: true` and landed the merge, because the guard read `@{u}` before the call's own fetch and the sync step then discarded the divergence it had just made visible. `git rev-list --left-right --count 'HEAD...@{u}'` afterwards reported a real divergence in both directions.)
+Run the same check with the divergence on the **weft** side instead of the warp side -- both sides carry their own upstream, and each is decided separately.
+
+Then confirm the guard closes a window rather than blocking the verb: `git fetch` and reconcile the divergence, and the same `merge` must now succeed.
+Finally check the opposite state is NOT refused -- a target merely **behind** its upstream must be fast-forwarded by the pre-merge sync step (`repo_advanced` in the mutation record) and then merged, never refused, since that is the whole reason the sync step exists.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -494,6 +553,14 @@ F10: <OK|WARN|FAIL> -- <one-line note if not OK>
 F11: <OK|WARN|FAIL> -- <one-line note if not OK>
 F12: <OK|WARN|FAIL> -- <one-line note if not OK>
 F13: <OK|WARN|FAIL> -- <one-line note if not OK>
+F14: <OK|WARN|FAIL> -- <one-line note if not OK>
+F15: <OK|WARN|FAIL> -- <one-line note if not OK>
+F16: <OK|WARN|FAIL> -- <one-line note if not OK>
+F17: <OK|WARN|FAIL> -- <one-line note if not OK>
+F18: <OK|WARN|FAIL> -- <one-line note if not OK>
+F19: <OK|WARN|FAIL> -- <one-line note if not OK>
+F20: <OK|WARN|FAIL> -- <one-line note if not OK>
+F21: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

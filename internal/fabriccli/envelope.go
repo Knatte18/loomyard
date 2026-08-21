@@ -76,13 +76,16 @@ func errWithRecordFields(w io.Writer, rec fabricengine.Mutations, err error, fie
 // It never routes through errWithRecordFields, whose partial = rec.Len() > 0 computation would
 // wrongly report true here (the "conflict envelope never goes through errWithRecordFields" Shared
 // Decision).
-// The error text is the fixed, side-free message every conflict envelope carries, pointing the
-// operator at the next lifecycle step.
+// The error text is the fixed, side-free message every conflict envelope carries, and it names the
+// FULL resolve → merge-stage → continue sequence rather than only the final step: --continue gates
+// on the git index, so an operator (or agent) following an error text that skipped merge-stage
+// edited the files, ran --continue, and looped on "unresolved conflicts remain" forever — and for a
+// conflict under a wired junction name plain `git add` cannot substitute at all.
 func errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts []string) int {
 	fields := map[string]any{
 		"mutations": rec.Entries(),
 		"partial":   false,
 		"conflicts": conflicts,
 	}
-	return output.ErrFields(w, `merge produced conflicts; resolve them, then run "lyx fabric merge --continue"`, fields)
+	return output.ErrFields(w, `merge produced conflicts; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue"`, fields)
 }

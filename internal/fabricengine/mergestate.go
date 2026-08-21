@@ -28,6 +28,14 @@ const mergeStateFileName = "fabric-merge.json"
 // mergeState is the on-disk record a merge verb writes before it mutates anything and
 // MergeAbort/MergeContinue/MergeInProgress read back — the checkpoint recovering a crashed or
 // resolving-in-progress merge.
+//
+// WarpSource/WeftSource are the resolved per-side SHAs the attempt merges, recorded alongside the
+// caller's branch name in Source because only the SHAs are usable as evidence later: a branch name
+// can be re-pointed between the crash and the resume, while the SHA fabric handed `git merge` is
+// exactly what git wrote into MERGE_HEAD and therefore exactly what a genuine conclude-commit
+// carries as its second parent. sideConcludeAlreadyLanded is what consumes them.
+// A record written by an older binary carries them empty; every consumer treats empty as "no
+// evidence available" and refuses to make a positive claim, never as "evidence satisfied".
 type mergeState struct {
 	Verb          string    `json:"verb"`   // "merge-in" | "merge"
 	Source        string    `json:"source"` // caller-supplied branch
@@ -35,6 +43,8 @@ type mergeState struct {
 	Message       string    `json:"message"`
 	WarpStart     string    `json:"warp_start"` // pre-merge HEAD SHAs
 	WeftStart     string    `json:"weft_start"`
+	WarpSource    string    `json:"warp_source"` // the resolved SHA each side actually merges
+	WeftSource    string    `json:"weft_source"`
 	WarpOutcome   string    `json:"warp_outcome"` // staged|conflicted|fast_forwarded|up_to_date
 	WeftOutcome   string    `json:"weft_outcome"`
 	WarpCommitted string    `json:"warp_committed"` // conclude SHAs, set as each lands
@@ -192,7 +202,11 @@ func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 // branches deletes the weft branch that merge is resolving against, with no warning to the operator
 // that they just removed the subject of a merge in progress.
 // Records live at <weft gitdir>/fabric-merge.json, which is the weft repo's own .git for the prime
-// pair and .git/worktrees/<name>/ for every linked pair, so both shapes are globbed. Each candidate
+// pair and .git/worktrees/<name>/ for every linked pair, so both shapes are globbed. The linked shape
+// is the common one — a merge normally runs in a task pair, and the prime worktree is the exception —
+// so both shapes carry their own test (TestMergeCrucible_RemoveRefuses…, prime and linked), each
+// asserting the record's on-disk location before asserting the refusal. Only the prime shape was
+// covered until round 7: disabling the linked glob left the whole suite green. Each candidate
 // is read through internal/state's locked reader, exactly as loadMergeState does — never a raw
 // os.ReadFile, which could observe a torn record another process is mid-write on.
 // A hub whose weft repo root cannot be resolved reports false rather than blocking, matching
@@ -227,22 +241,35 @@ func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
 // All four probes are evaluated unconditionally before combining, rather than short-circuiting on
 // the first true result, so no evaluation-order timing difference ever leaks which side (if either)
 // carries the state.
+//
+// The two probe KINDS are not redundant spellings of one condition, and neither can be dropped as
+// implied by the other. An ordinary conflicted `git merge` sets both at once, which is what makes
+// that shape useless for proving either one; the two states that separate them are real and reachable:
+//   - MERGE_HEAD live with an EMPTY unmerged set — a foreign merge resolved but not concluded, seen
+//     only by the MERGE_HEAD probe, and the most dangerous shape because nothing about the worktree
+//     looks wrong.
+//   - Unmerged entries with NO MERGE_HEAD — a conflicted `git merge --squash`, which writes none, and
+//     equally a conflicted cherry-pick or `checkout -m`. Seen only by the conflicted-index probe.
+//
+// Each of the four probes is pinned by its own row of
+// TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses (three shapes x two sides). Before that
+// matrix existed, deleting either weft probe, or either warp probe, left the whole suite green.
 func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	warpMergeHead, err := f.warp.MergeHeadPresent()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check warp merge head: %w", err)
+		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
 	}
 	warpConflicted, err := f.warp.ConflictedFiles()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check warp conflicted files: %w", err)
+		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
 	}
 	weftMergeHead, err := f.weft.MergeHeadPresent()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check weft merge head: %w", err)
+		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
 	}
 	weftConflicted, err := f.weft.ConflictedFiles()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check weft conflicted files: %w", err)
+		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
 	}
 
 	return warpMergeHead || len(warpConflicted) > 0 || weftMergeHead || len(weftConflicted) > 0, nil

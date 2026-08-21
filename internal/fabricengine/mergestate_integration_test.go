@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,21 @@ func newMergeStateFixture(t *testing.T) (f *fabricengine.Fabric, h *hubforge.Hub
 	return f, h
 }
 
+// assertNoZeroFields fails the test if any exported field of v (a struct value, not a pointer) still
+// carries its type's zero value — the guard that keeps a whole-record roundtrip assertion honest as
+// the record grows fields.
+func assertNoZeroFields(t *testing.T, label string, v any) {
+	t.Helper()
+
+	value := reflect.ValueOf(v)
+	typ := value.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		if value.Field(i).IsZero() {
+			t.Errorf("%s.%s is the zero value; populate every field or the roundtrip assertion cannot detect that field failing to roundtrip", label, typ.Field(i).Name)
+		}
+	}
+}
+
 // TestMergeState_SaveLoadRoundtripPreservesEveryField covers the save->load roundtrip, asserting
 // the record lands at <weft gitdir>/fabric-merge.json and is invisible to git status on both
 // sides.
@@ -44,12 +60,19 @@ func TestMergeState_SaveLoadRoundtripPreservesEveryField(t *testing.T) {
 		Message:       "a merge message",
 		WarpStart:     "warpstartsha",
 		WeftStart:     "weftstartsha",
+		WarpSource:    "warpsourcesha",
+		WeftSource:    "weftsourcesha",
 		WarpOutcome:   "staged",
 		WeftOutcome:   "conflicted",
 		WarpCommitted: "warpcommittedsha",
 		WeftCommitted: "weftcommittedsha",
 		StartedAt:     time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 	}
+
+	// "EveryField" is only true if want actually populates every field with a non-zero value: a
+	// field added to the record and left out of want here would roundtrip zero-to-zero and pass,
+	// which is the test staying green while the property it names goes unchecked.
+	assertNoZeroFields(t, "want", want)
 
 	if err := fabricengine.SaveMergeStateForTest(f, want); err != nil {
 		t.Fatalf("SaveMergeStateForTest() error = %v", err)

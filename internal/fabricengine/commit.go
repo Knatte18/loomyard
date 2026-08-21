@@ -113,8 +113,13 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	// Refuse before any classification or locking: a recorded merge blocks the same as it does for
 	// every other sibling mutating verb, and foreign git-level merge state with no record — a plain
 	// git conflicted merge in the warp checkout — is refused here too, pre-empting git's own raw
-	// "cannot do a partial commit during a merge" with the single typed, side-free error every
-	// sibling refusal uses.
+	// "cannot do a partial commit during a merge".
+	// The two refusals carry DIFFERENT typed errors on purpose: fabric has no merge of its own in
+	// progress in the foreign case (MergeInProgress reports false there), so *ErrMergeInProgress's
+	// "run \"lyx fabric merge --continue\" or \"lyx fabric merge --abort\" first" would misdirect the
+	// operator into two more refusals —
+	// *ErrForeignMergeState says what actually clears the state (plain git), the same answer every
+	// merge verb gives it.
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
 		return CommitResult{}, err
@@ -127,7 +132,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		return CommitResult{}, err
 	}
 	if foreignState {
-		return CommitResult{}, &ErrMergeInProgress{}
+		return CommitResult{}, &ErrForeignMergeState{}
 	}
 
 	l, err := lyxcwd.ResolveWorktree(f.warpPath)

@@ -18,8 +18,12 @@ import (
 // Pinned verbatim from the discussion's safety-guards-are-aggregated-and-side-free decision:
 // adding a member is a same-commit change to this list and to pinnedMergeReasons in
 // mergevocab_test.go — enforced mechanically by
-// TestMergeVocabulary_GuardReasonSetMatchesConstBlock, which parses this const block — and no
-// member may name a side, carry a path, or imply an order.
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock, which parses every production file in this
+// package for mergeReason* constants rather than this file alone — and no member may name a side,
+// carry a path, or imply an order.
+// That this file is the set's only home is itself enforced, by
+// TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile: a member declared beside its consuming
+// guard in mergeguards.go would otherwise escape the pinned map and every assertion it drives.
 // Membership is earned by being an *aggregatable precondition* — one of several reasons a single
 // *MergeGuardError may carry at once. A terminal, standalone disposition with nothing to aggregate
 // alongside it belongs in the typed error surface below instead: "no merge in progress" was once a
@@ -35,6 +39,7 @@ const (
 	mergeReasonDetachedHead        = "checkout is not on a branch"
 	mergeReasonAttemptIncomplete   = "merge attempt did not reach both sides"
 	mergeReasonConcludeLanded      = "merge conclude already landed"
+	mergeReasonRecordedMergeGone   = "checkout no longer carries the recorded merge"
 )
 
 // MergeGuardError aggregates every failed merge precondition as a sorted, deduplicated list of
@@ -85,12 +90,20 @@ func newMergeGuardError(reasons []string) *MergeGuardError {
 // self-aborted both sides: conflict resolution belongs in the source pair's own worktree, so the
 // caller must run MergeIn there first, then retry.
 // Source names the offending branch — the one detail this error carries outside its fixed message.
+//
+// The message names the CLI spelling rather than this package's own method name, and that is the rule
+// the three remedy-carrying errors in this file follow rather than a lapse into cli vocabulary. These
+// strings are read by an operator or an agent, verbatim, out of the fabric envelope and out of
+// landingshed's stuck message — neither of whom can run a Go method called MergeIn. *ErrForeignMergeState
+// below already set the precedent by naming plain git, and fabriccli's own conflict envelope names
+// "lyx fabric merge-stage" for the same reason. Go callers are served by this godoc, which does name
+// the method; the Error() string serves the reader who has to act on it.
 type ErrMergeInRequired struct{ Source string }
 
 // Error implements the error interface with a fixed, side-free message; Source travels only in the
 // struct field, never interpolated into the string.
 func (e *ErrMergeInRequired) Error() string {
-	return "fabricengine: merge produced conflicts and was aborted; run MergeIn in the source branch's worktree first, then retry"
+	return `fabricengine: merge produced conflicts and was aborted; run "lyx fabric merge-in" in the source branch's own worktree first, then retry`
 }
 
 // ErrForeignMergeState is returned by every mutating merge verb when git-level merge state exists
@@ -118,7 +131,7 @@ type ErrMergeIncomplete struct{}
 
 // Error implements the error interface with a fixed message.
 func (e *ErrMergeIncomplete) Error() string {
-	return "fabricengine: merge conclude did not finish; run MergeContinue again"
+	return `fabricengine: merge conclude did not finish; run "lyx fabric merge --continue" again`
 }
 
 // ErrUnmergeableState is returned when a merge produced conflicts outside the fabric-managed
@@ -138,5 +151,5 @@ type ErrMergeInProgress struct{}
 
 // Error implements the error interface with a fixed message.
 func (e *ErrMergeInProgress) Error() string {
-	return "fabricengine: a merge is in progress; run MergeContinue or MergeAbort first"
+	return `fabricengine: a merge is in progress; run "lyx fabric merge --continue" or "lyx fabric merge --abort" first`
 }

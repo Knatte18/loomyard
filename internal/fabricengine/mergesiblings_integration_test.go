@@ -254,8 +254,11 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 
 // TestMergeSiblings_CommitRefusesForeignMergeState covers Commit's foreign-git-state disposition: a
 // plain-git conflicted merge in the warp checkout, driven with no MergeIn involved and so no fabric
-// merge record, still refuses with the same typed *ErrMergeInProgress rather than surfacing git's own
-// raw "cannot do a partial commit during a merge".
+// merge record, still refuses — with *ErrForeignMergeState, the same typed error every merge verb
+// gives foreign state, rather than surfacing git's own raw "cannot do a partial commit during a
+// merge" or *ErrMergeInProgress's misdirecting "run \"lyx fabric merge --continue\" or
+// \"lyx fabric merge --abort\" first" (fabric has
+// no merge of its own in progress here, and both of those verbs would refuse).
 func TestMergeSiblings_CommitRefusesForeignMergeState(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	warpDir := h.PrimeWorktree()
@@ -282,8 +285,8 @@ func TestMergeSiblings_CommitRefusesForeignMergeState(t *testing.T) {
 	}
 
 	_, err = f.Commit(nil, "should be refused", nil, fabricengine.SyncOptions{})
-	var refused *fabricengine.ErrMergeInProgress
+	var refused *fabricengine.ErrForeignMergeState
 	if !errors.As(err, &refused) {
-		t.Fatalf("Commit() error = %v (%T); want *ErrMergeInProgress even though no fabric record exists", err, err)
+		t.Fatalf("Commit() error = %v (%T); want *ErrForeignMergeState — the foreign case is not a fabric merge in progress", err, err)
 	}
 }

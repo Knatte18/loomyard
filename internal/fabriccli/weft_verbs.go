@@ -1,12 +1,13 @@
 // weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull, sync, diff) and
-// the merge lifecycle verbs (merge, merge-in) onto the "fabric" parent command built by fabric.go.
+// the merge lifecycle verbs (merge, merge-in, merge-stage) onto the "fabric" parent command built by
+// fabric.go.
 // addWeftVerbs installs two hidden persistent flags — --weft-path and --warp-path — and a
-// PersistentPreRunE scoped to these eight verb names only — the topology verbs built in fabric.go
+// PersistentPreRunE scoped to these nine verb names only — the topology verbs built in fabric.go
 // resolve their own layout per invocation and never touch this file's closure state.
 // The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
 // handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
 // gate), driving fabricengine.Fabric's Status/Commit/PushWeft/Pull/Diff/MergeIn/Merge/MergeContinue/
-// MergeAbort in normal mode and fabricengine.CoalescePushBothAt's loop-until-clean coalescing push
+// MergeAbort/MergeStageResolved in normal mode and fabricengine.CoalescePushBothAt's loop-until-clean coalescing push
 // directly in bypass mode. The merge verbs are registered in merge_verbs.go's addMergeVerbs, which
 // reaches the resolved Fabric handle through a getter closure over this file's fab local, since
 // PersistentPreRunE assigns it only at run time, after registration.
@@ -24,14 +25,15 @@ import (
 // weftVerbNames is the set of leaf commands needing PersistentPreRunE resolution.
 // Topology verbs resolve independently.
 var weftVerbNames = map[string]bool{
-	"status":   true,
-	"commit":   true,
-	"push":     true,
-	"pull":     true,
-	"sync":     true,
-	"diff":     true,
-	"merge":    true,
-	"merge-in": true,
+	"status":      true,
+	"commit":      true,
+	"push":        true,
+	"pull":        true,
+	"sync":        true,
+	"diff":        true,
+	"merge":       true,
+	"merge-in":    true,
+	"merge-stage": true,
 }
 
 // addWeftVerbs installs the hidden --weft-path/--warp-path persistent flags,

@@ -50,6 +50,15 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 		"merge-in":  {"a", "b"},
 	}
 
+	// variadicArity names the verbs that legitimately take an UNBOUNDED number of positional
+	// arguments, so "one more than it consumes" does not exist for them and the tooMany table cannot
+	// express their arity. Their arity is pinned from the other direction instead: they must refuse
+	// TOO FEW. Leaving such a verb out of every table entirely would let it inherit ArbitraryArgs with
+	// nothing noticing, which is the whole defect this test exists for.
+	variadicArity := map[string]string{
+		"merge-stage": "takes one or more conflicted paths; refusing zero is the only arity it can pin",
+	}
+
 	// handRolledArity names the verbs that refuse a wrong argument COUNT in their own handler rather
 	// than through a cobra Args validator, with the reason. clone's own check rejects both too-few and
 	// too-many and carries a fuller usage message than cobra's generic "accepts at most 2 arg(s)", so
@@ -70,9 +79,24 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 			t.Logf("verb %q is exempt from the Args-validator requirement: %s", name, reason)
 			continue
 		}
+		if reason, variadic := variadicArity[name]; variadic {
+			seen++
+			t.Run(name, func(t *testing.T) {
+				if sub.Args == nil {
+					t.Fatalf("verb %q declares no Args validator; it would accept zero positional arguments and act on nothing (%s)", name, reason)
+				}
+				if err := sub.Args(sub, nil); err == nil {
+					t.Errorf("verb %q accepted zero positional arguments; want a refusal (%s)", name, reason)
+				}
+				if err := sub.Args(sub, []string{"a", "b", "c"}); err != nil {
+					t.Errorf("verb %q refused three positional arguments (%v); want them accepted (%s)", name, err, reason)
+				}
+			})
+			continue
+		}
 		args, ok := tooMany[name]
 		if !ok {
-			t.Errorf("verb %q has no entry in tooMany or handRolledArity; add one so its argument arity is pinned", name)
+			t.Errorf("verb %q has no entry in tooMany, handRolledArity or variadicArity; add one so its argument arity is pinned", name)
 			continue
 		}
 		seen++
@@ -85,7 +109,7 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 			}
 		})
 	}
-	if want := len(tooMany) + len(handRolledArity); seen != want {
-		t.Errorf("walked %d verbs; the two tables name %d — they and the cobra tree have drifted", seen, want)
+	if want := len(tooMany) + len(handRolledArity) + len(variadicArity); seen != want {
+		t.Errorf("walked %d verbs; the three tables name %d — they and the cobra tree have drifted", seen, want)
 	}
 }

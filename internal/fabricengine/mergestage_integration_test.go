@@ -8,13 +8,53 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
+
+// TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging pins the foreign-state refusal on
+// the one mutating merge verb that lacked it.
+// doc.go states that foreign git merge state — a merge fabric did not start — is refused by EVERY
+// mutating merge verb, and MergeStageResolved's own godoc justified having no guard at all with
+// "with no merge in progress both sides' ConflictedFiles() are empty". Both claims were false in
+// exactly one state, and it is a state CONSTRAINTS.md explicitly permits an operator to create: a
+// plain-git conflicted merge in the warp checkout leaves MergeInProgress() false while
+// ConflictedFiles() lists the conflict, so the partition routed that path straight to `git add -A`
+// and staged into a merge fabric had no record of and no lock over.
+func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupConflictingDivergence(t, h.PrimeWorktree(), "other", "plain-conflict.txt")
+	gitMergeAllowConflict(t, h.PrimeWorktree(), "other")
+
+	// Preconditions, asserted rather than assumed: fabric has no merge of its own, yet the path IS
+	// conflicted — the exact pair of facts the old justification claimed could not co-occur.
+	if inProgress, err := f.MergeInProgress(); err != nil || inProgress {
+		t.Fatalf("MergeInProgress() = (%v, %v); want (false, nil) — foreign state is not fabric's merge", inProgress, err)
+	}
+	statusBefore := gitkit.GitStatusPorcelain(t, h.PrimeWorktree())
+	if !strings.Contains(statusBefore, "plain-conflict.txt") {
+		t.Fatalf("git status = %q; the test setup must have produced a real conflict on plain-conflict.txt", statusBefore)
+	}
+
+	res, err := f.MergeStageResolved([]string{"plain-conflict.txt"})
+	var foreignErr *fabricengine.ErrForeignMergeState
+	if !errors.As(err, &foreignErr) {
+		t.Fatalf("MergeStageResolved() over foreign merge state: error = %v (%T); want *fabricengine.ErrForeignMergeState", err, err)
+	}
+	if res.Mutated().Len() != 0 {
+		t.Errorf("MergeStageResolved() mutations = %v; want none — a refusal stages nothing", res.Mutated().Entries())
+	}
+	if got := gitkit.GitStatusPorcelain(t, h.PrimeWorktree()); got != statusBefore {
+		t.Errorf("git status changed: before = %q, after = %q; want the operator's own merge state untouched", statusBefore, got)
+	}
+}
 
 // TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds covers the primitive's whole
 // point: after a conflicted MergeIn, editing the conflicted file alone leaves it unmerged in the
@@ -80,6 +120,10 @@ func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 
 // TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion covers that a delete/modify conflict
 // resolved by removing the file stages successfully rather than erroring on the missing pathspec.
+// Read honestly, this test pins the OUTCOME, not gitrepo.StageResolved's `-A`: plain
+// `git add <pathspec>` has staged removals since git 2.0, so on any git in use the two forms behave
+// identically here and rewriting `add -A --` to `add --` keeps this test green. The `-A` is a version
+// pin whose correctness no test on a modern git can demonstrate — see StageResolved's own godoc.
 func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 

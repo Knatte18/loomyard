@@ -222,7 +222,7 @@ func TestRunCLI_MergeConflictSelfAbortsWithErrMergeInRequired(t *testing.T) {
 
 	envelope := decodeResult(t, &out)
 	errMsg, _ := envelope["error"].(string)
-	wantErr := "fabricengine: merge produced conflicts and was aborted; run MergeIn in the source branch's worktree first, then retry"
+	wantErr := `fabricengine: merge produced conflicts and was aborted; run "lyx fabric merge-in" in the source branch's own worktree first, then retry`
 	if errMsg != wantErr {
 		t.Errorf("RunCLI(merge) [would conflict] error = %q; want %q", errMsg, wantErr)
 	}
@@ -348,5 +348,236 @@ func TestRunCLI_MergeContinueAcceptsMessage(t *testing.T) {
 	}
 	if got := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "log", "-1", "--format=%s")); got != wantSubject {
 		t.Errorf("conclude-commit subject = %q; want %q — -m must still reach MergeContinue", got, wantSubject)
+	}
+}
+
+// TestRunCLI_MergeStageIsTheOnlyRouteForAWeftSideConflict is the CLI-boundary proof for the gap
+// merge-stage exists to close.
+//
+// A conflict under a wired junction name lives in the weft checkout and is reachable from the single
+// visible worktree only through the junction. `git add` refuses to stage through it
+// ("pathspec ... is beyond a symbolic link"), and MergeContinue gates on the git INDEX, not on file
+// content — so before this verb had a CLI surface, an operator following merge-in's own help reached
+// a `merge --continue` that refused forever. The engine verb existed the whole time and was reachable
+// only from internal/mergeresolve.
+//
+// The test walks that exact sequence: resolve the file's content, prove plain `git add` cannot stage
+// it, prove `merge --continue` still refuses, then stage with `merge-stage` and conclude.
+func TestRunCLI_MergeStageIsTheOnlyRouteForAWeftSideConflict(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	const weftConflictPath = "_lyx/merge-stage-clash.txt"
+	setupConflictingDivergenceCLI(t, h.PrimeWeft(), "feature-weft", weftConflictPath)
+	branchAtCurrentHEADCLI(t, h.PrimeWorktree(), "feature")
+
+	var mergeInOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
+	}
+	envelope := decodeResult(t, &mergeInOut)
+	conflictsRaw, ok := envelope["conflicts"].([]any)
+	if !ok || len(conflictsRaw) != 1 {
+		t.Fatalf("RunCLI(merge-in) conflicts = %v; want exactly the one weft-side conflict this fixture creates", envelope["conflicts"])
+	}
+	reportedPath, _ := conflictsRaw[0].(string)
+	if reportedPath != weftConflictPath {
+		t.Fatalf("RunCLI(merge-in) conflicts = [%q]; want [%q]", reportedPath, weftConflictPath)
+	}
+
+	// The operator resolves the file through the junction, which works — only STAGING is blocked.
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), reportedPath), []byte("resolved content\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) through the junction: %v", reportedPath, err)
+	}
+
+	// Precondition, asserted rather than assumed: plain git really cannot stage this path from the
+	// visible worktree. If some future git could, merge-stage would be a convenience rather than the
+	// only route, and this test would be claiming more than it proves.
+	addCmd := exec.Command("git", "add", "--", reportedPath)
+	addCmd.Dir = h.PrimeWorktree()
+	if err := addCmd.Run(); err == nil {
+		t.Fatalf("git add -- %s from the visible worktree succeeded; this test's whole premise is that git refuses to stage through the junction", reportedPath)
+	}
+
+	// And MergeContinue still refuses, because content edits do not clear an index entry.
+	var earlyContinueOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &earlyContinueOut, []string{"merge", "--continue"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge --continue) before staging = %d; want 1\noutput: %s", exitCode, earlyContinueOut.String())
+	}
+	if got := earlyContinueOut.String(); !strings.Contains(got, "unresolved conflicts remain") {
+		t.Errorf("RunCLI(merge --continue) before staging output = %q; want the unresolved-conflicts guard reason", got)
+	}
+
+	var stageOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", reportedPath}); exitCode != 0 {
+		t.Fatalf("RunCLI(merge-stage %s) = %d; want 0\noutput: %s", reportedPath, exitCode, stageOut.String())
+	}
+	stageEnvelope := decodeResult(t, &stageOut)
+	if ok, _ := stageEnvelope["ok"].(bool); !ok {
+		t.Errorf("RunCLI(merge-stage) ok = %v; want true", stageEnvelope["ok"])
+	}
+	if _, present := stageEnvelope["mutations"]; !present {
+		t.Errorf("RunCLI(merge-stage) output missing 'mutations' key; every mutating verb's envelope carries it")
+	}
+	if partial, present := stageEnvelope["partial"]; !present || partial != false {
+		t.Errorf("RunCLI(merge-stage) partial = %v (present=%v); want false", stageEnvelope["partial"], present)
+	}
+
+	var continueOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &continueOut, []string{"merge", "--continue"}); exitCode != 0 {
+		t.Fatalf("RunCLI(merge --continue) after merge-stage = %d; want 0\noutput: %s", exitCode, continueOut.String())
+	}
+	continueEnvelope := decodeResult(t, &continueOut)
+	if committed, _ := continueEnvelope["committed"].(bool); !committed {
+		t.Errorf("RunCLI(merge --continue) committed = %v; want true", continueEnvelope["committed"])
+	}
+}
+
+// TestRunCLI_MergeStageRejectsAPathThatIsNotConflicted covers merge-stage's refusal path at the CLI
+// boundary: a path conflicted on neither side is an error rather than a silent skip, and nothing is
+// staged, so a typo cannot leave the merge half-resolved.
+func TestRunCLI_MergeStageRejectsAPathThatIsNotConflicted(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
+
+	var mergeInOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
+	}
+
+	const bogusPath = "not-conflicted-at-all.txt"
+	var stageOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", "conflict.txt", bogusPath}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-stage conflict.txt %s) = %d; want 1\noutput: %s", bogusPath, exitCode, stageOut.String())
+	}
+	if got := stageOut.String(); !strings.Contains(got, bogusPath) {
+		t.Errorf("RunCLI(merge-stage) error output = %q; want it to name %q", got, bogusPath)
+	}
+
+	// The good path in the same call must NOT have been staged: the verb partitions every path before
+	// staging anything, so one bad path fails the whole call.
+	statusCmd := exec.Command("git", "diff", "--name-only", "--diff-filter=U")
+	statusCmd.Dir = h.PrimeWorktree()
+	out, err := statusCmd.Output()
+	if err != nil {
+		t.Fatalf("git diff --name-only --diff-filter=U: %v", err)
+	}
+	if !strings.Contains(string(out), "conflict.txt") {
+		t.Errorf("conflict.txt is no longer unmerged after a refused merge-stage; want the whole call to have staged nothing")
+	}
+}
+
+// TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths pins the one flow where the
+// unresolved-conflicts refusal has to say more than that some conflict exists: the operator staged
+// SOME of the reported paths and not all of them.
+// The path left outstanding here is a weft-side one, which is the case that made the bare refusal
+// un-actionable — merge-in cannot be re-run to reprint the list (a merge is already in progress), and
+// plain `git status` in the visible worktree does not see a conflict living across the junction, so the
+// only route back to it was raw git inside the weft checkout.
+// The test also pins the key SEPARATION, not merely the presence of the list: "conflicts" is the
+// documented discriminator between a conflict result and a hard failure, so a refusal must report the
+// remaining paths under "unresolved" and must NOT carry a "conflicts" key at all.
+func TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	setupConflictingDivergenceCLI(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	var mergeInOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
+	}
+	mergeInEnvelope := decodeResult(t, &mergeInOut)
+	if got := stringSliceField(t, mergeInEnvelope, "conflicts"); len(got) != 2 {
+		t.Fatalf("RunCLI(merge-in) conflicts = %v; want both sides conflicted, or this test cannot stage a strict subset", got)
+	}
+
+	// Resolve and stage the warp path only, leaving the weft path outstanding.
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "conflict.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolution: %v", err)
+	}
+	var stageOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", "conflict.txt"}); exitCode != 0 {
+		t.Fatalf("RunCLI(merge-stage conflict.txt) = %d; want 0\noutput: %s", exitCode, stageOut.String())
+	}
+
+	var continueOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &continueOut, []string{"merge", "--continue"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge --continue) with one path still unstaged = %d; want 1\noutput: %s", exitCode, continueOut.String())
+	}
+	continueEnvelope := decodeResult(t, &continueOut)
+	if errMsg, _ := continueEnvelope["error"].(string); !strings.Contains(errMsg, "unresolved conflicts remain") {
+		t.Fatalf("RunCLI(merge --continue) error = %q; want the unresolved-conflicts refusal", errMsg)
+	}
+	unresolved := stringSliceField(t, continueEnvelope, "unresolved")
+	if len(unresolved) != 1 || unresolved[0] != "_lyx/weft-clash.txt" {
+		t.Errorf("RunCLI(merge --continue) unresolved = %v; want exactly [_lyx/weft-clash.txt] — the path the operator has left to resolve", unresolved)
+	}
+	if _, present := continueEnvelope["conflicts"]; present {
+		t.Errorf("RunCLI(merge --continue) carries a %q key; want the remaining paths under \"unresolved\" only, so \"conflicts\" stays the conflict-result discriminator", "conflicts")
+	}
+}
+
+// stringSliceField reads envelope[key] as a JSON array of strings, failing the test when it is absent
+// or not an array of strings.
+func stringSliceField(t *testing.T, envelope map[string]any, key string) []string {
+	t.Helper()
+
+	raw, ok := envelope[key].([]any)
+	if !ok {
+		t.Fatalf("envelope[%q] = %v; want an array", key, envelope[key])
+	}
+	values := make([]string, len(raw))
+	for i, entry := range raw {
+		values[i], ok = entry.(string)
+		if !ok {
+			t.Fatalf("envelope[%q][%d] = %v; want a string", key, i, entry)
+		}
+	}
+	return values
+}
+
+// TestRunCLI_MergeStageRequiresAtLeastOnePath pins the verb's arity at the CLI boundary: with no
+// paths it must refuse rather than succeed vacuously, since a caller that passed nothing meant to
+// pass something.
+func TestRunCLI_MergeStageRequiresAtLeastOnePath(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	var out bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"merge-stage"}); exitCode == 0 {
+		t.Errorf("RunCLI(merge-stage) with no paths = 0; want a refusal\noutput: %s", out.String())
+	}
+}
+
+// TestRunCLI_MergeStageEchoesEachPathOnce pins the success envelope's staged echo: a path passed
+// twice in one call stages fine (the engine tolerates the duplicate) but must appear ONCE in
+// "staged" — an envelope claiming two stagings for one path reports something that did not happen
+// twice.
+func TestRunCLI_MergeStageEchoesEachPathOnce(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
+
+	var mergeInOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
+	}
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "conflict.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolution: %v", err)
+	}
+
+	var stageOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", "conflict.txt", "conflict.txt"}); exitCode != 0 {
+		t.Fatalf("RunCLI(merge-stage conflict.txt conflict.txt) = %d; want 0\noutput: %s", exitCode, stageOut.String())
+	}
+	envelope := decodeResult(t, &stageOut)
+	staged, _ := envelope["staged"].([]any)
+	if len(staged) != 1 {
+		t.Errorf("RunCLI(merge-stage) staged = %v; want exactly one entry for the duplicated path", envelope["staged"])
+	}
+	if got, _ := staged[0].(string); len(staged) == 1 && got != "conflict.txt" {
+		t.Errorf("RunCLI(merge-stage) staged[0] = %q; want %q", got, "conflict.txt")
 	}
 }

@@ -277,7 +277,7 @@ func TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues(t *testi
 	}
 
 	result := decodeEnvelope(t, &out)
-	wantErr := `merge produced conflicts; resolve them, then run "lyx fabric merge --continue"`
+	wantErr := `merge produced conflicts; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue"`
 	if errMsg, _ := result["error"].(string); errMsg != wantErr {
 		t.Errorf("error = %q; want %q", errMsg, wantErr)
 	}

@@ -8,9 +8,13 @@ package gitrepo
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -142,19 +146,24 @@ func (r *Repo) MergeConclude(msg string) error {
 }
 
 // ConflictedFiles enumerates unmerged paths, repo-root-relative, via
-// `git diff --name-only --diff-filter=U`.
+// `git diff --name-only --diff-filter=U -z`.
+// The `-z` spelling is mandatory rather than cosmetic: without it git C-quotes any path whose
+// bytes fall outside core.quotepath's default ASCII set (a conflicted `ä.txt` comes back as the
+// literal `"\303\244.txt"`, quotes included), which is not a real worktree path — fabricengine's
+// visible-tree mapping then misclassifies a perfectly mappable conflict as unmergeable, and no
+// caller-supplied real path can ever match the quoted form. `-z` emits raw path bytes,
+// NUL-separated, unconditionally.
 // It returns an empty, never nil, slice when there are none.
 func (r *Repo) ConflictedFiles() ([]string, error) {
-	stdout, err := r.runChecked("diff", "--name-only", "--diff-filter=U")
+	stdout, err := r.runChecked("diff", "--name-only", "--diff-filter=U", "-z")
 	if err != nil {
-		return nil, fmt.Errorf("gitrepo: diff --name-only --diff-filter=U in %s: %w", r.path, err)
+		return nil, fmt.Errorf("gitrepo: diff --name-only --diff-filter=U -z in %s: %w", r.path, err)
 	}
 
 	files := []string{}
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			files = append(files, line)
+	for _, entry := range strings.Split(stdout, "\x00") {
+		if entry != "" {
+			files = append(files, entry)
 		}
 	}
 	return files, nil
@@ -164,8 +173,19 @@ func (r *Repo) ConflictedFiles() ([]string, error) {
 // including removals.
 // An empty or nil paths is a no-op, returning nil without invoking git at all.
 // It runs `git add -A -- <paths>`, the -A form rather than the plain form StageAndCommit uses,
-// because a delete/modify conflict is legitimately resolved by the file being gone: the plain
-// `add --` form errors on a missing pathspec, while -A stages the removal.
+// because a delete/modify conflict is legitimately resolved by the file being gone and the removal
+// must stage rather than error.
+// The `-A` is a version pin, not a behavioural difference on any git in use today, and the
+// distinction matters because the two readings suggest different things to a maintainer. Plain
+// `git add <pathspec>` acquired removal-staging in git 2.0 (2014); before that it ignored deletions
+// and the two forms genuinely diverged on exactly this case. On a modern git they are equivalent
+// here — verified directly: a modify/delete conflict resolved by deleting the file stages with plain
+// `git add -- <path>`, exit 0, unmerged set empty afterwards, on git 2.53. So no test can separate
+// the two forms, and the earlier claim that the plain form "errors on a missing pathspec" was simply
+// false against the git this repo runs on.
+// It stays `-A` for the same reason MergeStart pins `--ff` and MergeConclude pins `--no-edit`: the
+// behaviour fabric depends on is stated on the command line, never inherited from whatever git
+// version or config the caller happens to be running under.
 func (r *Repo) StageResolved(paths []string) error {
 	if len(paths) == 0 {
 		return nil
@@ -176,6 +196,54 @@ func (r *Repo) StageResolved(paths []string) error {
 		return fmt.Errorf("gitrepo: git add -A in %s: %w", r.path, err)
 	}
 	return nil
+}
+
+// MergeHeads enumerates EVERY commit the live merge is merging in — the full contents of MERGE_HEAD,
+// one SHA per entry, in git's own recorded order — returning an empty, never nil, slice when no merge
+// is live.
+// It answers WHICH merge is in progress, where MergeHeadPresent answers only THAT one is. A caller
+// concluding a recorded merge needs the former: `git commit` commits whatever MERGE_HEAD names, so
+// without comparing that against the merge the caller thinks it is finishing, an unrelated merge an
+// operator started with plain git is committed and claimed as the caller's own.
+//
+// It is deliberately not built on `git rev-parse --verify --quiet MERGE_HEAD`, and that is the whole
+// reason this method reads the file rather than shelling a second query. MERGE_HEAD is multi-valued
+// for an octopus merge, and every rev-parsing spelling collapses it to the FIRST entry: on git 2.53,
+// `rev-parse --verify --quiet MERGE_HEAD` and `rev-list --no-walk MERGE_HEAD` both print one SHA for a
+// two-head MERGE_HEAD, while `for-each-ref MERGE_HEAD` and `show-ref MERGE_HEAD` print nothing at all
+// (it is not under refs/). A first-entry-only answer would let `git merge --no-commit <expected> <decoy>`
+// pass an equality test against the expected SHA, which is exactly the octopus a caller must reject.
+// The file itself is the only complete source, and `git rev-parse --git-path MERGE_HEAD` is git's own
+// supported way to locate it — it resolves correctly for a linked worktree, where the file lives under
+// `.git/worktrees/<name>/` rather than beside the repo's own `.git`.
+// The path is printed relative to the git invocation's directory when the repo is the main worktree, so
+// a relative answer is joined onto this Repo's path.
+func (r *Repo) MergeHeads() ([]string, error) {
+	stdout, err := r.runChecked("rev-parse", "--git-path", "MERGE_HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: rev-parse --git-path MERGE_HEAD in %s: %w", r.path, err)
+	}
+
+	mergeHeadPath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(mergeHeadPath) {
+		mergeHeadPath = filepath.Join(r.path, mergeHeadPath)
+	}
+
+	content, err := os.ReadFile(mergeHeadPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: read %s: %w", mergeHeadPath, err)
+	}
+
+	heads := []string{}
+	for _, line := range strings.Split(string(content), "\n") {
+		if entry := strings.TrimSpace(line); entry != "" {
+			heads = append(heads, entry)
+		}
+	}
+	return heads, nil
 }
 
 // MergeHeadPresent reports whether MERGE_HEAD exists, via
@@ -230,6 +298,45 @@ func (r *Repo) MergeFFOnly(ref string) error {
 		return fmt.Errorf("gitrepo: merge --ff-only %s in %s: %w", ref, r.path, err)
 	}
 	return nil
+}
+
+// CommitParents returns sha's parent SHAs in git's own recorded order — first parent first, so
+// parents[0] is the branch the merge was made ON and parents[1:] are the merged-in tips.
+// A root commit returns an empty, never nil, slice.
+// It exists so a caller can tell a merge commit apart from an ordinary one, and tell WHICH merge a
+// given merge commit is, by exact parentage rather than by inference from HEAD movement:
+// fabricengine's conclude-adoption arm needs positive evidence that the commit sitting on a
+// checkout is this merge's own conclude and not some unrelated commit an operator landed while the
+// merge record was live.
+// Returns ErrInvalidSHA when sha is not a valid hex object name, mirroring FileAtRevision's own
+// argument pre-check.
+// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's
+// pinned CLI list.
+func (r *Repo) CommitParents(sha string) ([]string, error) {
+	if !validSHA(sha) {
+		return nil, ErrInvalidSHA
+	}
+
+	repo, err := r.goGit()
+	if err != nil {
+		return nil, err
+	}
+
+	commit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return repo.CommitObject(plumbing.NewHash(sha))
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: read commit %s in %s: %w", sha, r.path, err)
+	}
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	parents := make([]string, 0, len(commit.ParentHashes))
+	for _, parent := range commit.ParentHashes {
+		parents = append(parents, parent.String())
+	}
+	return parents, nil
 }
 
 // ResolveSHA resolves an arbitrary ref — a branch, a remote-tracking ref such as

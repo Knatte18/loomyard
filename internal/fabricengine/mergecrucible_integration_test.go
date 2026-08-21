@@ -97,7 +97,8 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 // The reconstructed state is byte-for-byte what a kill between the two MergeStart calls leaves —
 // merge.go persists WarpOutcome only after the warp MergeStart returns, so WeftOutcome is still
 // empty at that instant. Without the guard, MergeContinue committed the warp side, then failed
-// concluding a weft side that was never started, returned "run MergeContinue again" (an instruction
+// concluding a weft side that was never started, returned "run \"lyx fabric merge --continue\" again"
+// (an instruction
 // that could never succeed), and left the pair out of correspondence.
 // MergeAbort must still recover the same record — that is the whole point of refusing.
 func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testing.T) {
@@ -340,6 +341,47 @@ func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
 		}
 		assertConflictsMarshalsAsArray(t, "MergeAbort", res)
 	})
+
+	// The error returns, which the two success subtests above do not reach. Every verb has roughly a
+	// dozen of them, they all returned a zero MergeResult, and a zero MergeResult marshals with
+	// "conflicts": null — so the property the type's godoc promises held on the paths a test happened
+	// to name and nowhere else. Each arm below picks a refusal that needs no mid-merge fixture, so
+	// what is under test is the return shape rather than the refusal.
+	t.Run("MergeInGuardRefusal", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.MergeIn("no-such-branch")
+		if err == nil {
+			t.Fatal("MergeIn(no-such-branch) error = nil; want a guard refusal — this subtest is about the error return's shape")
+		}
+		assertConflictsMarshalsAsArray(t, "MergeIn error return", res)
+	})
+
+	t.Run("MergeGuardRefusal", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.Merge("no-such-branch", fabricengine.MergeOptions{})
+		if err == nil {
+			t.Fatal("Merge(no-such-branch) error = nil; want a guard refusal")
+		}
+		assertConflictsMarshalsAsArray(t, "Merge error return", res)
+	})
+
+	t.Run("MergeContinueNoMergeInProgress", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.MergeContinue("")
+		if !errors.As(err, new(*fabricengine.ErrNoMergeInProgress)) {
+			t.Fatalf("MergeContinue() error = %v (%T); want *fabricengine.ErrNoMergeInProgress", err, err)
+		}
+		assertConflictsMarshalsAsArray(t, "MergeContinue error return", res)
+	})
+
+	t.Run("MergeAbortNoMergeInProgress", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.MergeAbort()
+		if !errors.As(err, new(*fabricengine.ErrNoMergeInProgress)) {
+			t.Fatalf("MergeAbort() error = %v (%T); want *fabricengine.ErrNoMergeInProgress", err, err)
+		}
+		assertConflictsMarshalsAsArray(t, "MergeAbort error return", res)
+	})
 }
 
 // mergeCrucibleWarpConflictFixture builds a pair left mid-merge by a real MergeIn that conflicted on
@@ -545,6 +587,64 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 	}
 }
 
+// TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone pins sideConcludeMayHaveLanded's FIRST
+// clause -- "the record already carries this side's conclude SHA" -- which no other test can fail on.
+// Deleting that clause left the whole integration suite green, because every existing fixture also
+// satisfies the second clause (outcome staged/conflicted AND HEAD moved off the recorded start), so
+// the HEAD read is always what actually refuses.
+// The shape that isolates the first clause puts HEAD back: after a half-concluded attempt whose warp
+// conclude landed and WAS recorded, the operator resets that side to the recorded pre-merge SHA.
+// HEAD no longer looks moved on either side, so only the record's own memory of the conclude stands
+// between MergeAbort and a two-sided force reset. It must still refuse: the recorded SHA is evidence
+// that a commit was made, and after the reset that commit is reachable from no branch, so an abort
+// that proceeded would discard it for good along with any resolutions it carries.
+func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
+	h, f := mergeCrucibleWarpConflictFixture(t)
+	resolveWarpConflict(t, h.PrimeWorktree(), "conflict.txt")
+
+	removeHook := installRefusingPreCommitHook(t, h.PrimeWeft())
+	if _, err := f.MergeContinue(""); !errors.As(err, new(*fabricengine.ErrMergeIncomplete)) {
+		t.Fatalf("MergeContinue(\"\") error = %v (%T); want *fabricengine.ErrMergeIncomplete — the fixture needs the weft conclude to fail after the warp conclude landed", err, err)
+	}
+	removeHook()
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if st.WarpCommitted == "" {
+		t.Fatalf("recorded WarpCommitted is empty; the fixture needs the warp conclude recorded")
+	}
+
+	// The operator puts the landed side back, so the HEAD-moved clause can no longer fire.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "reset", "--hard", st.WarpStart)
+
+	// Preconditions, asserted rather than assumed: NEITHER side's HEAD is off its recorded start any
+	// more, so the second clause is false on both and the recorded SHA is the only evidence left.
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != st.WarpStart {
+		t.Fatalf("warp HEAD = %q after the reset; want the recorded start %q, or the HEAD-moved clause refuses instead of the one under test", got, st.WarpStart)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != st.WeftStart {
+		t.Fatalf("weft HEAD = %q; want the recorded start %q, or the weft side's HEAD-moved clause refuses instead of the one under test", got, st.WeftStart)
+	}
+	if st.WeftCommitted != "" {
+		t.Fatalf("recorded WeftCommitted = %q; want empty, or the weft side's own recorded-SHA clause refuses instead of the warp one", st.WeftCommitted)
+	}
+
+	res, err := f.MergeAbort()
+	assertSoleGuardReason(t, "MergeAbort()", err, "merge conclude already landed")
+	if res.Mutated().Len() != 0 {
+		t.Errorf("MergeAbort() mutations = %v; want none — a refusal must not touch either checkout", res.Mutated().Entries())
+	}
+	inProgress, err := f.MergeInProgress()
+	if err != nil {
+		t.Fatalf("MergeInProgress: %v", err)
+	}
+	if !inProgress {
+		t.Error("MergeInProgress() = false after a refused abort; the record must survive so MergeContinue can still finish")
+	}
+}
+
 // readMergeRecordWarpStart reads the pre-merge SHA the live merge-state record holds for the warp
 // side, straight off disk -- the value MergeAbort would reset that side to.
 func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
@@ -639,5 +739,95 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 	}
 	if inProgress {
 		t.Error("MergeInProgress() = true after the merge returned; want false")
+	}
+}
+
+// TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource is the linked-worktree twin of
+// TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming, and it covers the half of
+// mergeSourceInFlight that actually matters in practice.
+//
+// Merge records live at <weft gitdir>/fabric-merge.json, and the weft gitdir has two shapes: the weft
+// repo's own .git for the PRIME pair, and .git/worktrees/<name>/ for every other pair.
+// mergeSourceInFlight globs both. Only the prime shape was covered, and that is the rarer one — a
+// merge normally runs in a task pair, not in the prime worktree. Measured rather than assumed:
+// pointing the linked glob at a filename that cannot exist left the whole suite green, while doing the
+// same to the prime path was caught immediately.
+//
+// The fixture therefore runs the merge from a LINKED pair and drives Remove from the prime's own
+// location, so the refusal can only come from the hub-wide scan finding a record in a worktree gitdir.
+// Both record locations are asserted with t.Fatal before Remove is called: the linked one must exist
+// and the prime one must not, or the test would pass on the path it is not trying to cover.
+func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	const consumerSlug = "merge-crucible-consumer"
+	const sourceSlug = "merge-crucible-linked-source"
+	hubforge.AddPair(t, h, consumerSlug)
+	hubforge.AddPair(t, h, sourceSlug)
+
+	consumerWarpDir := h.PairWarpWorktree(consumerSlug)
+	consumerWeftDir := h.PairWeftSibling(consumerSlug)
+	sourceWarpDir := h.PairWarpWorktree(sourceSlug)
+	sourceWeftDir := h.PairWeftSibling(sourceSlug)
+
+	sourceBranch, err := readBranchForTest(t, sourceWarpDir)
+	if err != nil {
+		t.Fatalf("readBranchForTest(%s): %v", sourceWarpDir, err)
+	}
+
+	// Warp-side-only conflicting divergence, matching the prime-pair test's own reasoning: a weft-root
+	// conflict would be unmappable and self-abort the attempt instead of leaving a live record.
+	commitOnCurrentBranch(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
+	commitOnCurrentBranch(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
+	commitOnCurrentBranch(t, consumerWarpDir, "conflict.txt", "consumer side\n", "consumer: warp conflict")
+	commitOnCurrentBranch(t, consumerWeftDir, "consumer-only.txt", "consumer weft\n", "consumer: weft advance")
+
+	consumer := openFreshFabric(t, consumerWarpDir)
+	res, err := consumer.MergeIn(sourceBranch)
+	if err != nil {
+		t.Fatalf("MergeIn(%s) on the linked consumer pair error = %v; want a conflict result", sourceBranch, err)
+	}
+	if len(res.Conflicts) == 0 {
+		t.Fatalf("MergeIn(%s).Conflicts is empty; the fixture must leave a live merge record", sourceBranch)
+	}
+
+	// Precondition: the record really is in the LINKED shape, and the prime shape is empty — otherwise
+	// this test would be re-covering the path the sibling test already covers.
+	linkedRecord := filepath.Join(h.PrimeWeft(), ".git", "worktrees", filepath.Base(consumerWeftDir), "fabric-merge.json")
+	if _, err := os.Stat(linkedRecord); err != nil {
+		t.Fatalf("Stat(%s) = %v; want the merge record in the linked pair's own weft gitdir", linkedRecord, err)
+	}
+	primeRecord := filepath.Join(h.PrimeWeft(), ".git", "fabric-merge.json")
+	if _, err := os.Stat(primeRecord); !os.IsNotExist(err) {
+		t.Fatalf("Stat(%s) = %v; want not-exist — a record in the prime shape would let this test pass without the linked glob", primeRecord, err)
+	}
+
+	primeLocation, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
+	}
+
+	_, err = h.Topology.Remove(primeLocation, sourceSlug, false)
+	var refused *fabricengine.ErrMergeInProgress
+	if !errors.As(err, &refused) {
+		t.Fatalf("Remove(%s) while a LINKED pair is mid-merge on its branches: error = %v (%T); want *ErrMergeInProgress", sourceSlug, err, err)
+	}
+	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
+		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
+	}
+	if !branchExistsLocally(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
+		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
+	}
+
+	// force answers dirtiness only, never a live merge record — the same rule as the prime-pair case.
+	if _, err := h.Topology.Remove(primeLocation, sourceSlug, true); !errors.As(err, &refused) {
+		t.Fatalf("Remove(%s, force=true): error = %v (%T); want *ErrMergeInProgress even with force", sourceSlug, err, err)
+	}
+
+	// Aborting the linked pair's merge closes the window, so the same Remove must then succeed.
+	if _, err := consumer.MergeAbort(); err != nil {
+		t.Fatalf("MergeAbort on the linked consumer pair: %v", err)
+	}
+	if _, err := h.Topology.Remove(primeLocation, sourceSlug, true); err != nil {
+		t.Fatalf("Remove(%s) after MergeAbort: %v; want success — the guard must close a window, not block the pair forever", sourceSlug, err)
 	}
 }
