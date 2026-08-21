@@ -19,6 +19,13 @@ A 2026-08-21 discussion concluded `internal/loomshed`'s hardcoded `[]shedengine.
    The consumer must sit above it — loom's CLI wiring already holds every told path — or `internal/loomshed` must shed the constructors the registry reaches for, and choosing between those two stays this item's call.
    See [designs/shed-recipe.md](designs/shed-recipe.md).
 
+### landing: parent-fabric resolution
+
+`internal/landingshed.Deps.OpenFabric`/`OpenParentFabric` are two lazy opener closures `Publish`/`Finalize` hold; `internal/loomcli` never fills either today, so both producers fail construction with a nil-closure error the moment loom's list actually reaches them — a real run hits this regardless of whether the five stubbed `*-Write`/`*-Review` rows above have landed. `internal/landingshed/deps.go`'s own doc comment names the gap and says "the resolution chain (list the worktrees, match the entry whose branch equals the parent branch, resolve that path, open it) belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it" — no such item exists yet; this is that item, discovered missing during the `loom: convert to a Shed recipe` discussion.
+
+1. **landing: parent-fabric resolution** — build the resolution chain `loomcli` needs to fill `Deps.OpenFabric`/`OpenParentFabric`: list the worktrees under the task's fabric layout, match the entry whose branch equals the task's recorded parent branch (`internal/fabricengine`'s `origin.json`/`ReadOrigin` already carries `ParentBranch`; no worktree-listing helper exists yet in `internal/gitrepo`/`internal/fabricengine` and must be added), resolve that worktree's path, and wrap `fabricengine.Open` over it as the two lazy closures. Sequenced ahead of the `loom: real LLM producers` group below because it blocks any real end-to-end run today, independent of which rows are still stubs.
+   See the `internal/landingshed` and `internal/fabricengine` package documentation.
+
 ### loom: real LLM producers
 
 What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split. Sequenced after the "Shed recipe" group above so these five tasks write their rows directly as recipe entries.
