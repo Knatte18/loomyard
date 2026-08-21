@@ -63,7 +63,9 @@ batches:
     commit_sha: e4669de287719785ea2911216e3abcd1347c7e6f
     verify_baseline_failures: []
   - name: coverage-guard-move-and-fixture-retirement
-    state: pending
+    state: running
+    implementer_session: c37de519-b86a-40ba-8228-165826b7dcdb
+    start_sha: 4e1508ed65c25218d318482d35295fd14ebc0b86
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: delete-loomshed-new-and-deps
     state: pending
