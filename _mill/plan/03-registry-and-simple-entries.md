@@ -111,7 +111,11 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/shuttleengine/engine.go`
   - `internal/landingshed/deps.go`
   - `internal/loomshed/fixture_test.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/shedrecipe/env_test.go` -- batch 2 already declared a minimal `fakeShuttle` in this
+    file; this card's own `fakeShuttle` in `fixture_test.go` is a superset (caller-settable result
+    and error, recording every `Spec`), so `env_test.go`'s duplicate declaration is removed in favor
+    of the one this card adds, to avoid a same-package `fakeShuttle` redeclaration.
 - **Creates:**
   - `internal/shedrecipe/fixture_test.go`
 - **Deletes:** none
