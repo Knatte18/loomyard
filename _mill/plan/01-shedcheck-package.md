@@ -65,7 +65,10 @@ The package imports `internal/shedengine` and the standard library, and nothing 
   - `internal/shedengine/run.go`
   - `internal/shedengine/doc.go`
   - `internal/shedcheck/finding.go`
+  - `internal/shedengine/seam_enforcement_test.go`
+  - `internal/loomshed/seam_enforcement_test.go`
   - `internal/loomshed/sequence_test.go`
+  - `CONSTRAINTS.md`
   - `_mill/discussion.md`
 - **Edits:** none
 - **Creates:**
@@ -179,6 +182,11 @@ The package imports `internal/shedengine` and the standard library, and nothing 
   - One graph carrying several kinds at once → findings come back in the fixed check order.
 
   Do not write a test that calls `shedengine.ShedProducer.Call`, and do not add a fake producer type to this package.
+
+  **Commit body.** This is the commit that lands the module's own surface, so it is where the task's "no new invariant" conclusion is recorded — the overview's `Segment` Shared Decision requires it stated explicitly rather than left ambiguous.
+  Write a commit body on this card stating three things: `CONSTRAINTS.md` gains no new section, because this task introduces no new cross-cutting invariant;
+  `internal/shedengine/seam_enforcement_test.go`'s allowlist is untouched, because it already forbids the dangerous import direction (`shedengine` → `shedcheck`);
+  and `internal/loomshed/seam_enforcement_test.go`'s `loomshedAllowedImports` is untouched, because it governs production imports only.
 - **Commit:** `feat(shedcheck): add Check over an assembled OnDone/OnStuck graph`
 
 ### Card 3: package documentation

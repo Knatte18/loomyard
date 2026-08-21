@@ -3,7 +3,7 @@
 ```yaml
 task: "Shed-setup validity checker"
 slug: "shed-setup-validity-checker"
-approved: false
+approved: true
 started: "20260821-081752"
 parent: "main"
 root: ""
