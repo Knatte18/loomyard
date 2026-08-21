@@ -52,7 +52,9 @@ batches:
     commit_sha: 907dc8fbd1cd48f55a6bb71f073d1141c1c9bef4
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: SingleLLM entry
-    state: pending
+    state: running
+    implementer_session: 0820377d-5022-4b96-8f2e-53b40a15f96c
+    start_sha: f0abc2cffdd460a37f860e82294df43a5d805488
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: Bouncer and BurlerRound entries
     state: pending
