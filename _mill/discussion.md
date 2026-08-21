@@ -180,6 +180,12 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   | `output_files` | `SingleLLM` | `Env.WorktreeRoot` |
   | `run_subdir` | `Bouncer`, `BurlerRound` | `Env.RunRoot` |
   | `stencil`, `rubric_stencil` | `SingleLLM`, `Bouncer` | not a path — a `stencilstore` name, resolved by `stencilstore.Read(env.StencilsDir, name)` |
+  | `profile.target.paths`, `profile.fasit.paths` | `BurlerRound` | **nothing — left relative deliberately.** See the exception below |
+
+  **One exception, and it is the only one:** `BurlerRound`'s `profile.target.paths` and `profile.fasit.paths` are passed through **relative and unjoined**.
+  `burlerengine.Profile.validate` already resolves them against its own told `worktreeRoot` and then stats every resolved entry for existence (`internal/burlerengine/profile.go:66-87`), so joining them in the registry entry would either double-resolve or hand `validate` an absolute path it did not resolve itself.
+  The entry therefore does **not** apply the absolute-rejection check to these two keys either — an author who writes an absolute path there gets `validate`'s own behaviour, not the registry's.
+  This exception is narrow and worth a comment at the entry, because it is the one place the general rule above does not hold.
 
 - Rationale: without this rule the decided config shapes produce producers that cannot run.
   `NewBouncer` rejects an empty `ArtifactPaths` and any non-absolute entry (`internal/shedadapters/bouncer.go:91-103`), so a worktree-relative `artifact_paths` must be joined before it reaches the constructor.
@@ -228,13 +234,51 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 - Decision: the `SingleLLM` entry constructs the `shedadapters.SpecSource` closure itself.
   Its `Config` keys are `stencil` (a `stencilstore` name), `output_files` (a list of worktree-relative paths), `model`, `effort`, `version`, `interactive`, `role`, and `tokens` (a `map[string]string` of static token values).
-  The closure reads the stencil via `stencilstore.Read(env.StencilsDir, cfg.stencil)`, fills it via `stencil.Fill` with the static `tokens` merged over a fixed set of geometry-derived tokens supplied from `Env`, and returns a `shuttleengine.Spec` whose `OutputFiles` are **already absolute**, each joined against `Env.WorktreeRoot` per the relative-path rule above.
+  The closure reads the stencil via `stencilstore.Read(env.StencilsDir, cfg.stencil)`, fills it via `stencil.Fill`, and returns a `shuttleengine.Spec` whose `OutputFiles` are **already absolute**, each joined against `Env.WorktreeRoot` per the relative-path rule above.
+
+  The `stencil.Fill` token map is the union of two closed sets.
+  Four **reserved** geometry-derived tokens, supplied from `Env` and never authorable:
+
+  | Token | Value |
+  | --- | --- |
+  | `worktree_root` | `Env.WorktreeRoot` |
+  | `anchor_path` | `Env.AnchorPath` |
+  | `stencils_dir` | `Env.StencilsDir` |
+  | `output_files` | the resolved absolute `OutputFiles`, newline-joined |
+
+  Everything else comes from `Config.tokens`.
+  A `tokens` map naming any of the four reserved keys is **rejected** at construction rather than silently overriding or being overridden — a silent winner in either direction is a recipe that reads one way and behaves another.
+  The stencil here is the **template**, so `stencil.Fill` strips its stamp banner itself and no `stencil.StripLeadingComment` call is needed.
+  That call is required only when stencil content is injected as a token *value* — `stencil.Fill` never strips a marker value, which is why `Bouncer` must strip its rubric before passing it in (`internal/shedadapters/bouncer.go:341-344`).
+  Should a later `SingleLLM` row ever want a stencil as a token value, that row's entry pays the same strip.
   Absolute is not optional here: `SingleLLMProducer.Call` rejects a non-absolute `OutputFiles` entry outright (`internal/shedadapters/singlellm.go:71-75`) rather than resolving it, because resolution would require reading a worktree root that adapter is barred from touching.
 - Rationale: `shedadapters.NewSingleLLMProducer` has **no production caller today** — only `internal/shedadapters/singlellm_test.go` — so someone has to build the spec-composition step, and the registry is where the roadmap places `SingleLLMProducer`.
   `shuttleengine.Spec`'s own doc states shuttle is dumb transport and "the caller composes" the prompt, so composition belongs on this side of the seam.
   `shedadapters.Bouncer` already does exactly this pair of calls (`internal/shedadapters/bouncer.go:330-346`, `413-433`), so the pattern is established rather than invented.
 - Rejected: leaving `SingleLLM` out of the registry until `loom: Discussion-Write producer` needs it (the roadmap names it explicitly as a registry entry, and piece 4 cannot convert a `Discussion-Write` row without it);
   taking a pre-built `SpecSource` from `Env` (there is one `Env` per run but many `SingleLLM` rows, each needing a different spec — the difference is precisely what `Config` is for).
+
+### `Bouncer`'s full `Config` key set
+
+- Decision: `Bouncer` recognises exactly seven keys — `run_subdir`, `artifact_paths`, `report_name`, `rubric_stencil`, `model`, `effort`, `version` — and takes everything else from `Env`.
+  The full mapping onto `shedadapters.BouncerConfig`:
+
+  | `BouncerConfig` field | Source |
+  | --- | --- |
+  | `Name` | the row's `name` argument |
+  | `RunDir` | `Env.RunRoot` joined with `Config.run_subdir` |
+  | `ArtifactPaths` | `Config.artifact_paths`, each joined against `Env.WorktreeRoot` |
+  | `ReportName` | built from `Config.report_name` (see below) |
+  | `StencilsDir` | `Env.StencilsDir` |
+  | `RubricStencil` | `Config.rubric_stencil` |
+  | `Model`, `Effort`, `Version` | `Config.model`, `Config.effort`, `Config.version` |
+  | `Shuttle` | `Env.Shuttle` |
+  | `Now` | `Env.Now` |
+
+- Rationale: the strict unknown-key rule makes an entry's recognised key set its contract, so leaving `Bouncer`'s set implicit would leave the plan guessing.
+  `Model`/`Effort`/`Version` in particular belong in `Config`, not `Env`: their own field doc calls them "an already-resolved triple threaded verbatim into `shuttleengine.Spec`, resolved at the caller's own config-load time" (`internal/shedadapters/bouncer.go:47-51`), and two review segments legitimately run at different model tiers, which a run-wide `Env` value could not express.
+- Rejected: `Model`/`Effort`/`Version` in `Env` (forces every segment to the same tier);
+  leaving the set implicit (unenumerable contract under a strict-unknown-key rule).
 
 ### `Bouncer`'s `ReportName` closure is derived from a `Config` pattern string
 
@@ -254,11 +298,16 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 ### A coverage-guard test pins the registry against loom's current list
 
-- Decision: a test in `internal/shedrecipe` asserts that every engine backing a row in `loomshed.New`'s list has a registry entry, keyed by an explicit engine-name-per-row table in the test.
+- Decision: a test in `internal/shedrecipe` holds an explicit row-name → engine-name table and compares its **key set against the row names in `loomshed.New`'s assembled list**, failing on a mismatch in **either** direction — a row present in `New` but missing from the table, and a table entry naming a row `New` no longer has.
+  It then asserts every engine name the table maps to is present in the registry.
 - Rationale: the registry's whole reason to exist is that piece 4 can resolve every one of loom's rows.
   Without a guard, a row added to `loomshed` between now and piece 4 silently has no engine, and the gap surfaces only when piece 4 fails.
+  Comparing against `New`'s actual output is what makes the guard catch that;
+  a test that merely iterated its own table would pass forever no matter what `loomshed` grew, which is the failure mode the guard exists to prevent.
+  `New`'s output does carry the row **names** even though it carries no engine name, so one side of the comparison is derivable and only the mapping has to be maintained by hand.
 - Rejected: no guard (defers a known failure);
-  reflecting over `loomshed.New`'s output at test time (the `ProducerDef` carries no engine name, so there is nothing to reflect on — the mapping genuinely has to be written down).
+  a table-only test that never reads `New`'s output (passes forever regardless of what `loomshed` grows);
+  deriving the **engine** side from `New` too (`ProducerDef` carries no engine name, so the row-name → engine-name mapping genuinely has to be written down — only the row-name set is derivable).
 
 ### `Preflight` is registered, but `loomshed.Deps.Preflight` stays
 
@@ -338,8 +387,12 @@ From `CONSTRAINTS.md`:
 - **Told-Geometry Invariant** — an engine is handed the absolute paths it operates on and derives none of its own.
   `internal/shedrecipe` joins the machine-enforced list;
   the invariant's own enumeration of enforced packages must be updated in the same commit.
-  The `Env` struct is the told bundle;
-  no path is computed inside `shedrecipe`.
+  The `Env` struct is the told bundle.
+  The precise property `shedrecipe` holds — and the wording the new invariant's text must use verbatim, since a looser phrasing would ship false:
+  **every root is told and none is derived;
+  the package's only path construction is joining a told root with a recipe-relative value.**
+  It resolves no cwd, consults no environment, and reads no config file to obtain a root.
+  A flat "no path is computed inside `shedrecipe`" would be untrue the moment `run_subdir`, `artifact_paths`, or `output_files` is joined.
 - **Config Strictness Invariant** — sets the repo's posture that config absence and config error are loud, not silently defaulted.
   Motivates the unknown-key rejection above.
   Note `shedrecipe` is *not* a member of this invariant's guard subject: it calls neither `configengine.Load` nor `LoadOrTemplate`, and reads no config file of its own.
@@ -384,6 +437,7 @@ TDD candidates, in order:
    a stencil naming a token absent from `tokens` and absent from the geometry-derived set errors rather than filling empty;
    a missing stencil errors.
    Note the `SpecSource` is a closure — the test must call it, not merely construct the producer.
+   Also cover the four reserved tokens: each resolves to its documented `Env` value, and a `Config.tokens` map naming any reserved key is rejected at construction rather than winning or losing silently.
 5. **`Bouncer` report-name pattern** — the pattern renders the expected filename for a given round;
    a pattern with no round placeholder is rejected at construction.
 6. **Relative-path resolution**, shared across every entry taking a `Config` path.
@@ -392,13 +446,17 @@ TDD candidates, in order:
    a value escaping its root via `..` is rejected;
    an empty `artifact_paths` list is rejected before `NewBouncer` sees it.
    The `SingleLLM` and `Bouncer` cases matter most — both underlying constructors refuse non-absolute input, so a regression here yields a producer that fails at every call rather than at construction.
+   The exception needs its own case: `BurlerRound`'s `profile.target.paths` / `profile.fasit.paths` reach `burlerengine.Profile` **still relative**, and an absolute value there is *not* rejected by the entry.
 7. **Per-segment run directories** — two `Bouncer` entries built with different `run_subdir` values resolve to different `RunDir`s;
    a `Bouncer` and a `BurlerRound` built with the *same* `run_subdir` resolve to the same `RunDir`, which is what makes `roundComplete` find the Burler's report.
    This is the regression guard for the cross-segment overwrite the flat `Env.RunDir` would have caused.
 8. **`BurlerRound` config** — the six recipe-authorable `profile` keys land in `burlerengine.Profile`;
    a `profile` map naming one of the five per-round-overwritten fields (`review-path`, `fixer-report-path`, `prior-reviews`, `prior-fixer-reports`, `cluster-exclude`) is rejected by the unknown-key rule rather than silently discarded.
 9. **`Publish`/`Finalize` row naming** — the coverage guard fails when either row is named anything other than the package constant it will actually log as.
-10. **Coverage guard** — every engine backing a row in `loomshed.New`'s current list has a registry entry.
+10. **Coverage guard** — the table's key set equals the row names in `loomshed.New`'s assembled list, and every engine it maps to is registered.
+    Both mismatch directions must be covered: a row in `New` absent from the table, and a table entry naming a row `New` does not have.
+    The first is the regression this guard exists for;
+    the second keeps the table from accumulating dead entries.
 11. **Import allowlist** (`internal/shedrecipe/seam_enforcement_test.go`) — mirrors `internal/loomshed/seam_enforcement_test.go`, asserting no production import outside the allowlist and specifically no `internal/lyxcwd`.
 
 Scenarios that must not be missed:
@@ -440,4 +498,11 @@ Explicitly not tested here: anything about recipe file parsing, `ProducerDef` as
   calling `shedadapters.NewWebsterProducer` directly would drop both and need a `Batcher` the registry cannot resolve.
 - **Q:** [review r1] `landingshed.Deps` has no `Name` field — what happens to a recipe row's `Name` for `Publish`/`Finalize`? **A:** [auto-pick] It is discarded;
   the row must be named to match the package constant, and the coverage guard asserts it. **Why:** both producers' identity is a package const (`publish.go:31`) carried by log lines and the stuck-reason filename, and both rows are shared by reference with `Hardener`'s list, so their names are not loom's to reassign.
+- **Q:** [review r2] What is `Bouncer`'s complete recognised `Config` key set? **A:** [auto-pick] Seven keys — `run_subdir`, `artifact_paths`, `report_name`, `rubric_stencil`, `model`, `effort`, `version` — with a full field-by-field mapping onto `BouncerConfig`. **Why:** the strict unknown-key rule makes the key set the entry's contract, and `Model`/`Effort`/`Version` must be per-row rather than in `Env` because two review segments legitimately run at different model tiers.
+- **Q:** [review r2] Which geometry-derived tokens does `SingleLLM` supply to `stencil.Fill`? **A:** [auto-pick] A closed reserved set of four — `worktree_root`, `anchor_path`, `stencils_dir`, `output_files` — with a `Config.tokens` collision rejected at construction. **Why:** `stencil.Fill` hard-errors on a missing token, so an unnamed set left the testing item asserting against nothing;
+  rejecting collisions avoids a recipe that reads one way and behaves another.
+- **Q:** [review r2] Do `BurlerRound`'s `profile.target.paths` / `profile.fasit.paths` follow the join-and-reject-absolute rule? **A:** [auto-pick] No — they are the single documented exception, passed through relative and unjoined. **Why:** `burlerengine.Profile.validate` already resolves them against its own told `worktreeRoot` and stats them for existence (`profile.go:66-87`), so joining first would double-resolve.
+- **Q:** [review r2] The Told-Geometry bullet said "no path is computed inside `shedrecipe`", but entries join roots — which is it? **A:** [auto-pick] Reword to the property actually held: every root is told and none derived, joins onto told roots permitted;
+  that wording is pinned as the invariant text. **Why:** the flat claim would ship false in `CONSTRAINTS.md`, since `run_subdir`, `artifact_paths`, and `output_files` are all joined.
+- **Q:** [review r2] What exactly does the coverage guard compare? **A:** [auto-pick] Its table's key set against the row names in `loomshed.New`'s assembled list, failing on either direction of mismatch. **Why:** a table-only test would pass forever no matter what `loomshed` grew — precisely the failure the guard is supposed to catch.
 - **Q:** How does `loomshed` expose its six unexported constructors? **A:** [auto-pick] Export them in place, returning `shedengine.ShedProducer` rather than the unexported concrete type. **Why:** duplicating them in `shedrecipe` guarantees divergence, and moving the loom-specific producers out contradicts the design doc's point that a bespoke single-consumer engine is a valid registry entry precisely because it stays where it lives.
