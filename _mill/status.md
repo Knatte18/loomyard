@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-guards and docs  '2026-08-21T09:43:52Z'
 holistic-reviewing  '2026-08-21T09:44:29Z'
 holistic-approved  '2026-08-21T09:47:50Z'
 done  '2026-08-21T09:49:21Z'
+pr-pending  '2026-08-21T09:50:53Z'
 ```
 
 ## Batches
