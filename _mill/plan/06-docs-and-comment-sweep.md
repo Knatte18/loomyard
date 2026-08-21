@@ -96,10 +96,8 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   The natural sites are the sentence defining `loom` as "`Shed` + `loom`'s own ordered producer list" and the producer-table section that follows it.
   Keep the table itself unchanged — no row's name, engine, or routing changes in this task.
 
-  In `manifest/roadmap.md`: move the **loom: convert to a Shed recipe** item from Planned to Done with a description of what shipped, and close out the "Shed recipe" group's remaining-work framing in the section intro, which currently says three pieces have shipped "leaving one here".
+  In `manifest/roadmap.md`: move the **loom: convert to a Shed recipe** item from Planned to Done with a description of what shipped.
   Then correct the present-tense claims inside already-Done entries this task falsifies — at minimum the "Shed recipe: engine registry" entry's claim that a coverage guard at `internal/shedrecipe/coverage_guard_test.go` "pins the registry against `loomshed.New`'s current, real row list, both directions", its claim that "`loomshed.New` keeps its own Go literal producer list and `loomshed.Deps.Preflight`'s pre-injected field unchanged; nothing downstream of this piece consumes it yet", and the "Shed recipe: loader/builder" entry's description of the shedbuild loom-equivalence test as a shipped artefact.
-  The "Shed recipe" section intro also carries the same falsified `loomshed.go:137-151` Go-literal reference `manifest/designs/shed-recipe.md` does;
-  correct it there too.
   A fourth Done entry is falsified and matches none of the tokens below: **loom: phase-machine scaffolding**, which asserts "`internal/loomshed` carries loom's full 13-row producer list".
   After batch 5 that package carries the thirteen row-name constants and six producer constructors, while the list itself is `contracts/recipes/loom-recipe.yaml`'s;
   restate it that way, keeping the rest of the entry (which rows are real, which are stubbed, and the `Plan-Sweep` note) untouched, since none of that changes.
@@ -107,7 +105,9 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
   Restate each in the past tense and point at this item rather than rewriting the entries — both are written as claims about the tree's current state, not as a record of what a past task did, so leaving them would make the roadmap assert something false about `main`.
 
   Moving the conversion item to Done empties the `### Shed recipe: declarative producer lists` Planned section, which holds that one item and nothing else.
-  Delete that heading and its intro paragraph rather than leaving a heading with zero items or a pointer stub: all four pieces of the group have now shipped, and the four Done entries carry the record.
+  Delete that heading and its intro paragraph outright — that is the whole disposition of those lines, so do not separately "close out" its remaining-work framing or correct the falsified `loomshed.go:137-151` Go-literal reference it carries;
+  both clauses apply to text this deletion removes.
+  Delete rather than leaving a heading with zero items or a pointer stub: all four pieces of the group have now shipped, and the four Done entries carry the record.
   The `### loom: real LLM producers` section's own sentence "Sequenced after the \"Shed recipe\" group above so these five tasks write their rows directly as recipe entries" then names a section that no longer exists;
   restate it to point at the Done entries instead, keeping the ordering rationale intact.
 
@@ -216,6 +216,7 @@ No *further* invariant is added beyond that one: `internal/loomrecipe`'s coverag
 
   Then sweep wider than these four, because the enumerated set is a starting point, not a complete one.
   Grep every `.go` file, test files and build-tagged files included, for `loomshed.New`, `loomshed.Deps`, `coverage_guard_test`, `equivalence_test`, `coverageGuardLandingDeps`, `internal/loomshed` in both its trailing-slash and slashless spellings, and the moved test-file basenames `resume_test`, `sequence_test`, `loomshed_test`.
+  Add the bare filename spelling `loomshed.go`, which several doc comments use to point at the deleted producer table and which no path-shaped token matches.
   Add the unqualified in-package spellings `Deps` and `New(` when grepping `internal/loomshed` itself, where a doc comment names the deleted symbols without a package prefix;
   card 20 already repairs the three known sites there, so a hit surviving into this batch means one was missed rather than that a new edit is due.
   The slashless spelling matters: `internal/loomcli/smoke_test.go`'s stale hit is written `(internal/loomshed)`, which a trailing-slash token misses.

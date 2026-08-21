@@ -89,8 +89,9 @@ It stays in `internal/shedrecipe` either way, which is what the exact-twelve-nam
   It has no `loomshed` dependency and needs none — it reads `Names()` alone.
   Add a one-line doc comment noting that what is unique to this test relative to the file's existing `TestNames` is the exact-contents pin, and that the pin belongs with the registry rather than with any one consumer of it.
 
-  Then confirm `internal/shedrecipe`'s remaining test files no longer reference `internal/loomshed` at all — grep the package's `_test.go` files for `loomshed` and expect zero hits once card 12's move lands.
-  If `internal/shedrecipe/seam_enforcement_test.go`'s allowlist covered a test-only import that is now gone, leave it alone: that allowlist polices **production** files only (it skips every `_test.go`), and `internal/shedrecipe`'s production code still imports `loomshed` for six registry constructors.
+  Then confirm `internal/shedrecipe`'s remaining test files no longer *drive* `internal/loomshed` — grep the package's `_test.go` files for `loomshed` and expect hits only inside `seam_enforcement_test.go`, which legitimately names the package three times: twice in its header prose explaining the allowlist's shape, and once as the `shedrecipeAllowedImports` entry covering `internal/shedrecipe`'s own production import of it.
+  Any hit outside that file means a test still reaches for `loomshed` and card 12 missed it.
+  Leave `internal/shedrecipe/seam_enforcement_test.go` untouched: its allowlist polices **production** files only (it skips every `_test.go`), and `internal/shedrecipe`'s production code still imports `loomshed` for six registry constructors, so neither the entry nor the header prose is stale.
 - **Commit:** `test(shedrecipe): re-home the registry-size pin beside TestNames`
 
 ### Card 14: Retire the shedbuild equivalence fixture

@@ -180,12 +180,17 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/loomrecipe/loomrecipe.go`
   - `internal/loomshed/loomshed.go`
   - `internal/shedengine/shed.go`
+  - `contracts/recipes/loom-recipe.yaml`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
 - **Moves:**
   - `internal/loomshed/sequence_test.go` -> `internal/loomrecipe/sequence_test.go`
-- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe`, qualify every bare `Name*` reference in `wantSequenceOrder` as `loomshed.Name*`, and repoint `TestSequence_FullRunBlocksAtPublish` off `New(deps)` onto `loomrecipe.New(env, paths)` from the moved `buildSequenceFixture`.
+- **Requirements:** After `git mv`, rewrite the package declaration to `package loomrecipe`, qualify every bare `Name*` reference in the file as `loomshed.Name*` — not only the twelve inside `wantSequenceOrder`, since `TestSequence_FullRunBlocksAtPublish` itself carries four more `NamePublish` references outside that var — and repoint the test off `New(deps)` onto `loomrecipe.New(env, paths)` from the moved `buildSequenceFixture`.
+
+  Restate `wantSequenceOrder`'s own doc comment, which says the list is asserted literally "so a reordering in loomshed.go's producer table is a test failure rather than a silently-agreeing derivation".
+  There is no producer table in `loomshed.go` after batch 5;
+  the property survives unchanged with the recipe as its subject, so name `contracts/recipes/loom-recipe.yaml`'s row order instead and keep the rest of the comment — including its account of why the sequence stops at `Publish` and why the real row 2 passes against this fixture.
   Substitute row 1's producer per the `row1-substitution-is-a-seam-not-a-fixed-fake` Shared Decision — `shed.Producers[0].Producer = fakeAlwaysDoneProducer{}` — after the single `New` call and before `Run`.
   The final `state.ReadJSONStrict` assertion reads `deps.StatusPath`/`deps.StatusLockPath` today;
   repoint both at the `ShedPaths` value the fixture returns.
