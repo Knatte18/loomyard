@@ -11,15 +11,12 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### Shed recipe: declarative producer lists
 
-A 2026-08-21 discussion concluded `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal (`loomshed.go:137-151`) should become a declarative recipe instead — see [designs/shed-recipe.md](designs/shed-recipe.md) for the full design. Four separable pieces in total; the Shed-setup validity checker piece has already shipped (see Done below), leaving three here, in dependency order:
+A 2026-08-21 discussion concluded `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal (`loomshed.go:137-151`) should become a declarative recipe instead — see [designs/shed-recipe.md](designs/shed-recipe.md) for the full design. Four separable pieces in total; the engine registry and the Shed-setup validity checker have already shipped (see Done below), leaving two here, in dependency order:
 
-1. **Shed recipe: engine registry** — a name → constructor mapping for every existing `ShedProducer` type, shared adapters (`SingleLLMProducer`, `Bouncer`, `shedadapters: Burler-round producer`, `Webster`, `Preflight`, `Publish`, `Finalize`) and loom-specific types alike (`Loom-Preflight`, `Batchifier`, `DiscussionValidate`, `PlanValidate`) — the foundational piece the recipe loader below resolves `Engine` names against. Restricted to names already implementing `shedengine.ShedProducer`, never arbitrary Go modules — every existing row already satisfies the interface, so this costs nothing.
+1. **Shed recipe: loader/builder** — reads a declarative recipe file (`{Name, Engine, Config, OnDone, OnStuck, MaxBounces}` per row), resolves `Engine` names via the shipped registry (`internal/shedrecipe`, see Done below), merges each row's static `Config` with caller-supplied geometry (never contained in the recipe itself — resolved once, centrally, by whichever CLI entry point invokes the builder), and assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` already consumes unchanged.
    See [designs/shed-recipe.md](designs/shed-recipe.md).
 
-1. **Shed recipe: loader/builder** — reads a declarative recipe file (`{Name, Engine, Config, OnDone, OnStuck, MaxBounces}` per row), resolves `Engine` names via the registry above, merges each row's static `Config` with caller-supplied geometry (never contained in the recipe itself — resolved once, centrally, by whichever CLI entry point invokes the builder), and assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` already consumes unchanged. Depends on the engine-registry item above.
-   See [designs/shed-recipe.md](designs/shed-recipe.md).
-
-1. **loom: convert to a Shed recipe** — replace `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal with an actual recipe file, using the engine registry and loader built above — the mechanism's first real consumer and proof it works. Depends on all three items above. Converts the list as it stands (including the still-stubbed `*-Write`/`*-Review` rows) — does not itself require the `loom: real LLM producers` group below to land first, and precedes it here so those five tasks author their rows directly in recipe form rather than as a Go literal that then needs converting.
+1. **loom: convert to a Shed recipe** — replace `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal with an actual recipe file, using the shipped registry (`internal/shedrecipe`, see Done below) and the loader/builder item above. Depends on the loader/builder item above; the engine registry and the Shed-setup validity checker have already shipped. Converts the list as it stands (including the still-stubbed `*-Write`/`*-Review` rows) — does not itself require the `loom: real LLM producers` group below to land first, and precedes it here so those five tasks author their rows directly in recipe form rather than as a Go literal that then needs converting.
    See [designs/shed-recipe.md](designs/shed-recipe.md).
 
 ### loom: real LLM producers
@@ -155,6 +152,13 @@ No build order is implied between these items.
    The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
 
 ## Done
+
+1. **Shed recipe: engine registry** — shipped `internal/shedrecipe`, the name → constructor mapping the future recipe loader resolves each row's `Engine` field against, registering all twelve engine names: `Batchifier`, `Bouncer`, `BurlerRound`, `DiscussionValidate`, `Finalize`, `LoomPreflight`, `PlanValidate`, `Preflight`, `Publish`, `SingleLLM`, `Stub`, `Webster`.
+   Every registry value has the fixed `Constructor` signature `func(name string, cfg Config, env Env) (shedengine.ShedProducer, error)`, with the `Config`/`Env` split this task settled: `Config` is the recipe row's portable, already-decoded configuration, and `Env` is the caller-filled bundle of absolute roots and injected seams, never a value that differs between two rows.
+   `internal/loomshed` exported six of its own producer constructors (`NewLoomPreflight`, `NewBatchifier`, `NewDiscussionValidate`, `NewPlanValidate`, `NewStub`, `NewWebsterProducer`) so the registry could reach them, widening only their declared return type to `shedengine.ShedProducer` and keeping every concrete type unexported.
+   A coverage guard (`internal/shedrecipe/coverage_guard_test.go`) pins the registry against `loomshed.New`'s current, real row list, both directions, so a row added to `loomshed` before piece 4 lands is caught rather than silently unregistered.
+   This piece deliberately did not build the recipe file format, the loader, or the loom conversion — those pieces remain planned above; the Shed-setup validity checker piece has since shipped too, see its own entry below — and `loomshed.New` keeps its own Go literal producer list and `loomshed.Deps.Preflight`'s pre-injected field unchanged; nothing downstream of this piece consumes it yet.
+   See [designs/shed-recipe.md](designs/shed-recipe.md) and the `internal/shedrecipe` package documentation.
 
 1. **Shed-setup validity checker** — shipped `internal/shedcheck`, an authoring-time analysis that walks an assembled `OnDone`/`OnStuck` producer graph and reports every structural defect it finds, in eight fixed finding kinds.
    Its enforcement point is a `go test` invariant over loom's own producer list, not a call from any production constructor.

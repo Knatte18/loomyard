@@ -1,6 +1,7 @@
-# Module: Shed recipe — declarative producer lists (DRAFT — concept not yet settled)
+# Module: Shed recipe — declarative producer lists (piece 1 shipped; pieces 2-4 DRAFT — not yet settled)
 
-> **⚠️ DRAFT. This is an early concept sketch, not a settled design.** Captures a 2026-08-21 discussion's conclusions; expect fields and mechanisms to change before this is implemented. Do not implement from this doc yet.
+> **Piece 1, the engine registry, is built and shipped as `internal/shedrecipe`.**
+> Pieces 2-4 — the recipe file format, the loader/builder, and the validity checker — remain an early concept sketch, not a settled design: expect fields and mechanisms to change before they are implemented, and do not implement pieces 2-4 from this doc as written.
 >
 > **Status: Planned, sequenced right after `Retire perch` and before `loom: real LLM producers`.** Not required for `loom`'s existing hardcoded producer list to keep working, but the five remaining `loom` LLM-producer tasks are sequenced to build on this instead of on the Go literal — see `manifest/roadmap.md`'s "Shed recipe" Planned group.
 
@@ -24,11 +25,16 @@ Motivation: several rows are already pure `Engine + Config` in spirit — `Singl
 
 **Geometry** (absolute paths — `AnchorPath`, `WorktreeRoot`, `StencilsDir`, `PlanDir`, etc.) is resolved once, centrally, by whichever caller invokes the recipe-builder — `lyx loom run` for hub mode, a standalone CLI entry point for told mode (mirroring the existing `hubgeom`/`standalonegeom` dual-constructor split) — and merged with each row's `Config` when its `ProducerDef` is constructed. The recipe itself never names a geometry mode and never contains a path; it stays portable across every worktree of the product it describes. This follows directly from the existing Told-Geometry Invariant — nothing new, just extending the same discipline to the recipe layer.
 
+**Live seams**, alongside geometry, are the other thing never in a recipe: `shedadapters.Shuttle`, `shedadapters.BurlerRunner`, `shedadapters.WebsterRunner`, `websterengine.RunDeps`, `landingshed.Deps`'s closures and its `modelspec.Registry`, and the injected clock.
+None of these can be written in a file at all — a recipe row names an `Engine` and carries `Config`, and a seam is neither.
+They travel in the same told bundle as geometry, `shedrecipe.Env`, filled once by whichever caller invokes the registry — this extends the existing discipline rather than inventing a second one.
+The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots and run-wide values only, never a value that differs between two rows, and anything per-row is a relative path or scalar in `Config`, resolved against one of those roots by the entry that reads it.
+
 ## Pieces to build
 
 Four separable pieces, none blocking `loom`'s remaining work, each independently scoped — see the Someday roadmap items:
 
-1. **Engine registry** — name → constructor mapping for every existing `ShedProducer` type, shared and loom-specific alike.
+1. **Engine registry — ✅ built, `internal/shedrecipe`.** Name → constructor mapping for every existing `ShedProducer` type, shared and loom-specific alike.
 2. **Recipe loader/builder** — reads the recipe file, resolves `Engine` names via (1), merges `Config` with caller-supplied geometry, assembles `[]shedengine.ProducerDef`.
 3. **Shed-setup validity checker** — built and independent of the recipe work: `internal/shedcheck` ships this piece already, ahead of the other three.
    See [shed.md's "Checking an assembled producer list" section](shed.md#checking-an-assembled-producer-list) for the design.
