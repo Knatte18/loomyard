@@ -19,7 +19,8 @@ Today no caller does.
 Why now: two things converge.
 The `Segment` field is the only graph-ish check that exists (`validate()` requires a non-empty `OnStuck` to name a row in the same `Segment`), and it is already a no-op in production — nothing outside `internal/shedengine/validate_test.go` sets `Segment`, so `loomshed`'s 13-row list passes that check vacuously.
 The planned Shed-recipe work drops `Segment` from recipe rows entirely, so the one existing cross-wiring guard is on its way out.
-Meanwhile the five `loom: real LLM producers` tasks are each about to hand-wire a two-row `Bouncer`+`Burler` segment whose whole correctness *is* its routing: the `Burler` row must always hand back to its `Bouncer` (`Stuck`, never `Done`), and the `Bouncer`'s `OnDone` must exit the segment.
+Meanwhile three of the five `loom: real LLM producers` tasks — `Discussion-Review`, `Plan-Review`, and `Webster-Review`;
+the other two, `Discussion-Write` and `Plan-Write`, are plain `SingleLLMProducer` rows with no segment — are each about to hand-wire a two-row `Bouncer`+`Burler` segment whose whole correctness *is* its routing: the `Burler` row must always hand back to its `Bouncer` (`Stuck`, never `Done`), and the `Bouncer`'s `OnDone` must exit the segment.
 Hand-wiring three of those with no machine check is what this task exists to make safe — for the graph-shaped half of that wiring, which is most but not all of it;
 see "What this catches in a mis-wired perch" under Decisions for the exact line.
 
@@ -28,7 +29,7 @@ see "What this catches in a mis-wired perch" under Decisions for the exact line.
 **In:**
 
 - A new package `internal/shedcheck` holding one exported entry point, `Check(producers []shedengine.ProducerDef, entry string, terminals []string) []Finding`, that inspects an assembled `OnDone`/`OnStuck` graph and returns structural findings.
-- Six finding kinds: `bad-endpoints`, `dangling-target`, `unreachable`, `unexpected-terminal`, `done-cycle`, `blind-gate` (defined under Decisions below).
+- Eight finding kinds: `bad-entry`, `no-terminals`, `bad-terminal`, `dangling-target`, `unreachable`, `unexpected-terminal`, `done-cycle`, `blind-gate` (defined under Decisions below, together with the exact `Producer`/`Target` mapping for each).
 - A `Finding` value type with a stable machine-readable `Kind`, the offending producer and target names, and a human-readable `Message`, plus a `String()` method.
   `Kind`/`Producer`/`Target` are the pinned contract;
   `Message` wording is deliberately not pinned by any test.
@@ -62,8 +63,11 @@ see "What this catches in a mis-wired perch" under Decisions for the exact line.
 ### Both endpoints are told, never inferred — the entry row and the terminal set
 
 - Decision: `Check` takes the entry producer's name and the set of intended terminal rows as explicit arguments.
-  An empty entry, an entry naming no row, an empty terminal set, or a terminal naming no row each produce a `bad-endpoints` finding;
-  when any fires, `Check` returns those findings alone and runs no other check — reachability and terminality are meaningless without told endpoints, so the checker reports that one fact rather than an avalanche of derived noise.
+  An empty entry or one naming no row produces `bad-entry`;
+  an empty terminal set produces `no-terminals`;
+  a terminal naming no row produces `bad-terminal`.
+  When any of the three fires, `Check` returns those findings alone and runs no other check — reachability and terminality are meaningless without told endpoints, so the checker reports that one fact rather than an avalanche of derived noise.
+  These are three kinds rather than one `bad-endpoints` kind for a specific reason: every finding must be fully distinguishable by its pinned fields alone (`Kind`, `Producer`, `Target`), and a single kind would collapse "the entry is empty" and "the terminal set is empty" into an identical `Producer: ""`, `Target: ""` finding whose only difference lived in the deliberately-unpinned `Message`.
 - Rationale: `Shed` has no entry field and no terminal field.
   A run starts from whatever `current_producer` the status file carries, and the only production seeder is `loomshed.Seed`, which writes `NamePreflight`.
   Defaulting to `Producers[0]` would re-introduce exactly the positional routing meaning `shedengine/doc.go` spends a paragraph disclaiming ("list order is cosmetic, carrying zero routing meaning of its own").
@@ -109,9 +113,14 @@ see "What this catches in a mis-wired perch" under Decisions for the exact line.
   Concretely, `unexpected-terminal` keys on the raw `OnDone == ""`, so a row with a dangling (therefore non-empty) `OnDone` is *not* an unexpected terminal — it is a `dangling-target`, already reported, and reporting it twice under two names would be a worse diagnosis, not a better one.
   Every other check — `unreachable`, `done-cycle`, `blind-gate` — reads the post-drop graph, so a row whose only outbound edge is dangling is a structural sink, and a row whose stuck edge is dangling has no stuck edge and therefore cannot be a `blind-gate`.
 
-  - **`bad-endpoints`** — `entry` is empty or names no row, `terminals` is empty, or a terminal names no row.
-    One finding per offending endpoint.
-    Terminal: these findings are returned alone, with no other check run.
+  - **`bad-entry`** — `entry` is empty or names no row.
+    At most one finding.
+  - **`no-terminals`** — `terminals` is empty or nil.
+    At most one finding.
+  - **`bad-terminal`** — a supplied terminal name is empty or names no row.
+    One finding per offending name.
+
+  These three are terminal: when any fires, they are returned alone and no other check runs.
   - **`dangling-target`** — a row's `OnDone` or `OnStuck` names no row in the list.
     One finding per offending edge.
     The edge is then treated as absent for every structural check per the rule above, so `Check` produces useful output on a list that has never been through `shedengine.validate()` and never walks off the end of the graph.
@@ -122,7 +131,9 @@ see "What this catches in a mis-wired perch" under Decisions for the exact line.
     Per `shedengine`'s own routing contract, such a row ends the entire run quietly at `state: done` the first time it returns `Done` — the defect `shedengine/doc.go` names as indistinguishable-to-Shed and hands to the caller to assert.
     One finding per row.
     Note the converse is not a finding: a told terminal with a *non-empty* `OnDone` is legal (it routes on rather than ending the run), and flagging it would mean asserting the caller's terminal set against the graph rather than the graph against the terminal set.
-  - **`done-cycle`** — a cycle among reachable rows using done edges only.
+  - **`done-cycle`** — a cycle among reachable rows using done edges only, reported as **one finding per member row**, each naming that member and the done edge carrying it round.
+    A cycle is a set of mis-wired edges, and one finding per edge is what makes the whole defect expressible in `Producer`/`Target` with their existing meanings — no members list, no special-case field used by exactly one kind.
+    Each member row is genuinely mis-wired, so per-row reporting is also the more actionable diagnosis.
     Unlike a stuck bounce, a `Done` route consumes no bounce budget, so such a cycle is a statically certain infinite loop.
     `validate()` already rejects the length-1 case (`OnDone` naming itself), so this catches length ≥ 2.
     One finding per distinct cycle, naming its members.
@@ -175,7 +186,24 @@ Stating exactly which mis-wirings the checker detects is part of this task's con
 
 ### `Finding`'s shape, and which of its fields the tests pin
 
-- Decision: `Finding` carries four fields — `Kind` (the stable discriminator), `Producer` (the offending row's name, empty on a graph-level finding), `Target` (the offending `OnDone`/`OnStuck` target, empty where not applicable), and `Message` (human-readable prose) — plus a `String()` method for test failure output and future reporting.
+- Decision: `Finding` carries four fields — `Kind` (the stable discriminator), `Producer` (the offending row's name), `Target` (the offending `OnDone`/`OnStuck` target), and `Message` (human-readable prose) — plus a `String()` method for test failure output and future reporting.
+  `Kind` is a defined string type, `type Kind string`, with one exported constant per kind whose value is the hyphenated name used throughout this document: `KindBadEntry` = `"bad-entry"`, `KindNoTerminals` = `"no-terminals"`, `KindBadTerminal` = `"bad-terminal"`, `KindDanglingTarget` = `"dangling-target"`, `KindUnreachable` = `"unreachable"`, `KindUnexpectedTerminal` = `"unexpected-terminal"`, `KindDoneCycle` = `"done-cycle"`, `KindBlindGate` = `"blind-gate"`.
+
+  **`Producer` and `Target` per kind** — this mapping is the pinned contract, so no case is left for the plan writer to invent:
+
+  | Kind | `Producer` | `Target` |
+  |---|---|---|
+  | `bad-entry` | the `entry` argument as supplied (`""` when it was empty) | `""` |
+  | `no-terminals` | `""` | `""` |
+  | `bad-terminal` | the offending terminal name as supplied (`""` when that entry was empty) | `""` |
+  | `dangling-target` | the row holding the edge | the dangling target name |
+  | `unreachable` | the unreachable row | `""` |
+  | `unexpected-terminal` | the row | `""` |
+  | `done-cycle` | one member row of the cycle | that member's `OnDone` — the next member round the cycle |
+  | `blind-gate` | the gate row that bounced | the gate's `OnStuck` target |
+
+  Note the one case where `Kind` alone is load-bearing: `bad-entry` and `bad-terminal` with an empty supplied name are both `Producer: ""`, `Target: ""`, and only `Kind` separates them — which is exactly why the endpoint kinds were split rather than merged.
+
   Tests assert the full returned slice as a literal on `Kind`, `Producer`, and `Target` only.
   `Message`'s wording is **not** pinned by any test;
   a test asserts at most that it is non-empty.
@@ -188,10 +216,12 @@ Stating exactly which mis-wirings the checker detects is part of this task's con
 
 ### Deterministic output order
 
-- Decision: `Check` returns findings in a fixed check order — `bad-endpoints`, `dangling-target`, `unreachable`, `unexpected-terminal`, `done-cycle`, `blind-gate` — and within each check, in producer list order.
-  `bad-endpoints` findings are ordered entry first, then terminals in the order the caller supplied them.
+- Decision: `Check` returns findings in a fixed check order — `bad-entry`, `no-terminals`, `bad-terminal`, `dangling-target`, `unreachable`, `unexpected-terminal`, `done-cycle`, `blind-gate` — and within each check, in producer list order.
+  `bad-terminal` findings follow the order the caller supplied the terminals in, not list order.
   For `dangling-target` on a single row, the `OnDone` edge is reported before the `OnStuck` edge.
-  A `done-cycle`'s members are listed starting from the member with the lowest list index, following done edges from there.
+  A `done-cycle`'s member findings are emitted starting from the member with the lowest list index and following done edges from there;
+  when a graph holds more than one done cycle, the cycles themselves are ordered by their own lowest member index.
+  Because each member is its own finding carrying `Producer` and `Target`, this ordering is pinned by the same literal-slice assertion as everything else, rather than living in unpinned prose.
   A clean graph returns `nil`, not an empty non-nil slice.
 - Rationale: a checker whose output order depends on Go map iteration produces flaky tests and diff noise in any future report, and this repo's tests assert against literal expected lists (see `internal/loomshed/sequence_test.go`'s `wantSequenceOrder` and its comment on why it is a literal rather than a derivation).
   Any intermediate map in the implementation must therefore be iterated via the producer list, never directly.
@@ -201,7 +231,7 @@ Stating exactly which mis-wirings the checker detects is part of this task's con
 ### Tolerating malformed input
 
 - Decision: `Check` never panics and never returns an error.
-  A nil or empty producer list returns `bad-endpoints` findings (no row can match the entry, and none can match any terminal).
+  A nil or empty producer list returns endpoint findings only — `bad-entry`, plus `no-terminals` or a `bad-terminal` per supplied name, since no row can match either endpoint.
   A nil `Producer` field is ignored.
   A row with an empty `Name` is kept in the list for indexing purposes but can only ever be reached by an edge naming `""` — which by definition does not exist, since an empty `OnDone`/`OnStuck` is the terminal/escalate sentinel — so it will surface as `unreachable`.
   A duplicate `Name` resolves to the first occurrence in list order, with these exact consequences, stated so the test literal is read off this paragraph rather than invented: the first occurrence is the only row any edge can reach, so the **shadowed later duplicate is reported as `unreachable`**, and any other check that would key on the shadowed row's own fields is skipped for it, since `Check`'s model of the graph is the model `Run` would walk.
@@ -294,10 +324,11 @@ TDD candidates — write the tests first for both:
      This case is load-bearing, not decorative: it is the perch's own shape (the `Burler` returns to its `Bouncer` via `OnStuck`), and without it a done-edge-only reachability implementation would pass every other clean-graph scenario in this list while flagging every future perch as a `blind-gate`.
    - Self-`OnStuck` → `nil` (not a blind gate).
    - `OnStuck: ""`, and `OnDone: ""` on a told terminal → neither is a finding.
-   - Empty entry;
-     entry naming no row;
-     empty terminal set;
-     a terminal naming no row → `bad-endpoints` findings only, in entry-then-terminals order, returned alone even when the graph also carries other defects.
+   - Empty entry, and entry naming no row → `bad-entry` alone.
+   - Empty/nil terminal set → `no-terminals` alone.
+   - A terminal naming no row, and an empty terminal name → `bad-terminal` per offending name, in caller-supplied order.
+   - Each of the above asserted on a graph that *also* carries other defects, proving the endpoint kinds are returned alone and suppress every other check.
+   - Empty entry together with an empty terminal name → two findings distinguishable only by `Kind`, both with `Producer: ""` and `Target: ""`.
    - `OnDone` and `OnStuck` each naming no row → `dangling-target` per edge, `OnDone` before `OnStuck` on the same row, and the dropped edge does not then produce a phantom reachability result.
    - **A reachable row with a dangling `OnDone`** → `dangling-target` only, **not** also `unexpected-terminal` — the field-value vs. graph-structure rule, pinned.
    - **A reachable row with a dangling `OnStuck`** → `dangling-target` only, and no `blind-gate` for that row.
@@ -307,7 +338,8 @@ TDD candidates — write the tests first for both:
    - A reachable non-terminal row with `OnDone: ""` → `unexpected-terminal` (the `Burler` mis-wiring in miniature);
      an *unreachable* row with `OnDone: ""` → `unreachable` only, no `unexpected-terminal`.
    - A told terminal with a non-empty `OnDone` → not a finding.
-   - Two-row and three-row done cycles → one `done-cycle` finding each, members starting at the lowest list index.
+   - Two-row and three-row done cycles → one `done-cycle` finding per member, starting at the lowest list index and following done edges, each finding's `Target` naming the next member.
+   - Two disjoint done cycles in one graph → cycles ordered by their own lowest member index.
    - A blind gate: `G` bounces to `T`, `T` routes forward past `G` and never back → `blind-gate` on `G`.
    - Nil producer list, empty producer list, empty `Name` → the tolerated behaviours named under the malformed-input decision, no panic.
    - Duplicate `Name` → the shadowed later row comes back as `unreachable`, and no `duplicate`-flavoured kind is emitted, exactly as that decision states.
@@ -317,6 +349,12 @@ TDD candidates — write the tests first for both:
    This is the test that fires when one of the five upcoming `loom: real LLM producers` tasks mis-wires a `Bouncer`/`Burler` pair — name that purpose in the test's own comment, and name its limit in the same breath: it catches a `Burler` left with `OnDone: ""`, a `Bouncer` whose `OnDone` never exits its segment, and a `Bouncer` whose `OnStuck` never routes back;
    it does **not** catch a `Burler` handing back via `OnDone` instead of `OnStuck`, for the reason given under "What this catches in a mis-wired perch".
    A comment claiming unqualified perch coverage would be false.
+
+   **This test must migrate when the recipe conversion lands.**
+   `manifest/roadmap.md` sequences "loom: convert to a Shed recipe" *before* the three perch-wiring tasks this guard exists for, and that item replaces `loomshed.go`'s Go literal — the very thing this test reads — with a recipe file.
+   The guard must move onto the recipe-assembled list at that point rather than being deleted alongside the literal it happens to be written against.
+   Say so in the test's own comment, so the conversion task's author finds the instruction at the site they are about to change instead of having to infer it.
+   Note this is a note *to* the later task, not work in this one: nothing here builds a recipe or anticipates its shape.
 
 Not tested: producer behaviour of any kind.
 `Check` never calls `ShedProducer.Call`, and a test asserting that would be asserting the absence of code.
@@ -346,3 +384,7 @@ Standard repo verify applies — `gofmt`, `go vet`, `go build ./...`, `go test .
   The remaining uncovered case (`Burler` handing back via `OnDone` rather than `OnStuck`) is a verdict choice inside `Call`, not a graph property, so it is documented as out of reach rather than guessed at.
 - **Q:** Review round 1 found `dangling-target`'s "edge treated as absent" contradicts `no-terminal`'s phrasing on `OnDone == ""` — is a row with a dangling `OnDone` a terminal or not? **A:** [auto-pick] Resolve it once with a global rule rather than per check: a check keying on a **field value** reads the raw field, a check keying on **graph structure** reads the post-drop graph;
   so a dangling `OnDone` is a `dangling-target` and never also an `unexpected-terminal`, and a dangling `OnStuck` means no `blind-gate` for that row. **Why:** a per-check answer would leave the next check added to the package ambiguous again, and double-reporting one edge under two kinds is a worse diagnosis than one precise finding.
+- **Q:** Review round 2 found two kinds have no expressible mapping into the pinned `Kind`/`Producer`/`Target` fields — `done-cycle` "names its members" with no members field, and `bad-endpoints` never said which field carries the offending name. Add fields, or restate? **A:** [auto-pick] Neither: express both in the existing fields.
+  Split `bad-endpoints` into `bad-entry`/`no-terminals`/`bad-terminal` so no two findings collapse into an identical `Producer: ""`, `Target: ""` pair, and emit `done-cycle` as one finding per member row with `Target` naming the next member. **Why:** a members field would be a special case used by exactly one kind, and leaving cycle membership in the unpinned `Message` would have made the "members starting at the lowest list index" ordering rule unenforceable by the very test that is supposed to machine-enforce determinism.
+  A cycle is a set of mis-wired edges, and `Producer`+`Target` already express exactly one edge — so per-member findings need no new field and give a more actionable diagnosis.
+  A per-kind field-mapping table is now stated outright rather than left to the plan writer.
