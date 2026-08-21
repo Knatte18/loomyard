@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shed-recipe-loader-builder
 branch: shed-recipe-loader-builder
 plan: _mill/plan
@@ -23,4 +23,19 @@ plan-review-r1  '2026-08-21T12:20:05Z'
 plan-fix-r1  '2026-08-21T12:20:05Z'
 plan-fix-r2  '2026-08-21T12:28:47Z'
 planned  '2026-08-21T12:28:57Z'
+implementing  '2026-08-21T12:29:24Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shedbuild-loader
+    state: pending
+  - name: shedbuild-builder
+    state: pending
+  - name: loom-equivalence
+    state: pending
+  - name: docs
+    state: pending
 ```
