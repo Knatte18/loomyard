@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shedrecipe foundations
+phase: approved-registry and value-only entries
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: _mill/plan
@@ -26,6 +26,7 @@ planned  '2026-08-21T09:07:18Z'
 implementing  '2026-08-21T09:07:55Z'
 approved-loomshed constructor exports  '2026-08-21T09:11:37Z'
 approved-shedrecipe foundations  '2026-08-21T09:17:19Z'
+approved-registry and value-only entries  '2026-08-21T09:24:32Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     commit_sha: 00321f120393cf412564c2184cbe2e3396909771
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: registry and value-only entries
-    state: running
+    state: approved
     implementer_session: 6995d15f-60ba-4b09-aeee-45f20ef4ff45
     start_sha: 23f21813398aa2f57ee4d7a98f6878a3d52e6d9d
+    commit_sha: 907dc8fbd1cd48f55a6bb71f073d1141c1c9bef4
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: SingleLLM entry
     state: pending
