@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-registry and value-only entries
+phase: approved-SingleLLM entry
 slug: shed-recipe-engine-registry
 branch: shed-recipe-engine-registry
 plan: _mill/plan
@@ -27,6 +27,7 @@ implementing  '2026-08-21T09:07:55Z'
 approved-loomshed constructor exports  '2026-08-21T09:11:37Z'
 approved-shedrecipe foundations  '2026-08-21T09:17:19Z'
 approved-registry and value-only entries  '2026-08-21T09:24:32Z'
+approved-SingleLLM entry  '2026-08-21T09:30:06Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     commit_sha: 907dc8fbd1cd48f55a6bb71f073d1141c1c9bef4
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: SingleLLM entry
-    state: running
+    state: approved
     implementer_session: 0820377d-5022-4b96-8f2e-53b40a15f96c
     start_sha: f0abc2cffdd460a37f860e82294df43a5d805488
+    commit_sha: 7f3081fc008b41b7a3e19d205d32fc707c738966
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: Bouncer and BurlerRound entries
     state: pending
