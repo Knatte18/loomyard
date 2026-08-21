@@ -32,6 +32,21 @@ import (
 // behavior change.
 func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResult, err error) {
 	if err != nil {
+		// A failing verb that nevertheless knows which paths are still conflicted reports them under
+		// "unresolved", never under "conflicts". The two are different claims and only one of them is
+		// the documented discriminator: merge-in's own help promises that a conflict RESULT, and only a
+		// conflict result, carries a "conflicts" array, so a script tells a conflict apart from a hard
+		// failure by that key alone. Reusing it here would break exactly that test while adding no
+		// information the separate key does not carry.
+		// The only producer today is MergeContinue's unresolved-conflicts refusal, which an operator
+		// reaches by staging some of the reported paths and not all of them — and which named nothing
+		// at all before, leaving a weft-side path invisible from the visible worktree.
+		if len(res.Conflicts) > 0 {
+			clihelp.SetExit(cmd.Context(), errWithRecordFields(out, res.Mutated(), err, map[string]any{
+				"unresolved": res.Conflicts,
+			}))
+			return
+		}
 		clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
 		return
 	}
@@ -79,7 +94,10 @@ junction — so merge-stage is the only route.
 A conflict result and a hard failure both exit 1 with "ok": false, so a
 script must not tell them apart by exit status. The discriminator is the
 envelope: a conflict result, and only a conflict result, carries a
-"conflicts" array of worktree-relative paths. This lifecycle is shared with "lyx fabric merge" — both
+"conflicts" array of worktree-relative paths. If you stage some of those paths
+and not all of them, "merge --continue" refuses with "unresolved conflicts
+remain" and lists the ones still outstanding in an "unresolved" array — a
+separate key, so the discriminator above keeps working. This lifecycle is shared with "lyx fabric merge" — both
 verbs continue and abort the same way — but the two verbs are not symmetric:
 merge-in resolves conflicts in this worktree, merge does not.
 
@@ -111,7 +129,9 @@ there first, then retry "lyx fabric merge" here.
 --continue (the engine's MergeContinue) concludes an in-progress merge once
 every conflict has been resolved in the worktree AND marked resolved with
 "lyx fabric merge-stage" — it gates on the git index, not on file content, so
-editing the files alone leaves it refusing. --abort (the engine's
+editing the files alone leaves it refusing. A refusal for that reason lists the
+paths still outstanding in an "unresolved" array, so you never have to go
+looking for them. --abort (the engine's
 MergeAbort) discards an in-progress merge, restoring both sides to their
 pre-merge state. --continue and --abort are mutually exclusive, and neither
 takes a positional branch argument; --squash applies only to the default

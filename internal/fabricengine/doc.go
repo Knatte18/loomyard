@@ -1057,6 +1057,22 @@
 // `_lyx/…` conflict — lives in the weft checkout, reachable from the single visible worktree only
 // through the junction, and git refuses to stage through it (`pathspec … is beyond a symbolic link`).
 // So a merge whose conflicts land on the weft side is completable ONLY through this verb.
+// A refusal for that reason names the paths, and it did not always. `MergeContinue` reads both sides'
+// `ConflictedFiles()` to decide the guard and then threw the answer away, returning
+// `unresolved conflicts remain` and nothing else. That is un-actionable in the one flow that reaches
+// it: an operator who staged some of the reported paths and not all of them cannot re-run `merge-in`
+// to reprint the list (a merge is already in progress), `lyx fabric status` reports a remaining
+// weft-side conflict as an ordinary weft change indistinguishable from any other, and plain
+// `git status` in the visible worktree does not see it at all, because it lives across the junction.
+// The only route back to the list was raw git inside the weft checkout — the one place the Fabric
+// illusion says an operator never has to look, which is the same argument that made `merge-stage` a
+// shipped gap. The refusal now carries the still-unresolved paths, mapped through the same
+// `unifyConflictPaths` the conflict result uses, and the CLI reports them under `unresolved` rather
+// than `conflicts`: `conflicts` is the documented discriminator between a conflict result and a hard
+// failure, so it stays exclusive to the former.
+// That listing is best-effort and never replaces the refusal: a geometry read that fails, or a
+// remaining path that maps nowhere in the visible tree, yields no list rather than a partial one that
+// would mislead the operator about what is left.
 // That made it a shipped gap rather than an internal detail while the verb had no CLI surface at all
 // and existed solely for `internal/mergeresolve`: an operator following `lyx fabric merge-in`'s own
 // help reached a `merge --continue` that refused forever, with the only escape being raw git inside

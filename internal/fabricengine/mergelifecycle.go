@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // concludeMergeSides lands the conclude-commit on both sides of an in-progress merge, under the
@@ -173,6 +174,42 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squa
 	return head, true, nil
 }
 
+// unifiedRemainingConflicts maps the paths still unmerged on each side onto the same unified,
+// worktree-relative list MergeIn's own conflict result reports, so MergeContinue's unresolved-conflicts
+// refusal can name them instead of only asserting that some exist.
+// Without it the refusal was un-actionable in the one flow that most needs it: an operator who resolved
+// and staged some of the reported paths and not all of them gets "unresolved conflicts remain" naming
+// nothing, cannot re-run merge-in to reprint the list (a merge is already in progress), and — for a
+// weft-side conflict — cannot see the remaining path from the visible worktree at all, since plain
+// `git status` there does not reach through the junction. The only route back to the list was raw git
+// inside the weft checkout, the one place the Fabric illusion says an operator never has to look.
+//
+// It is best-effort by design and never turns a precondition failure into a different error: a geometry
+// read that fails is logged and yields no paths, because the caller is already returning the refusal
+// that matters and replacing it with an unrelated I/O error would hide the actual precondition.
+// An unmappable path yields NO list at all rather than a partial one. A list that silently omitted a
+// path the operator must still resolve would mislead them about what is left — the same judgment
+// unifyConflictPaths' own unmappable arm makes when it refuses to report a misleading path.
+func (f *Fabric) unifiedRemainingConflicts(warpConflicts, weftConflicts []string) []string {
+	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	if err != nil {
+		logger.Warn("fabricengine: resolve layout to list remaining conflicts failed", "path", f.warpPath, "error", err)
+		return nil
+	}
+	anchorRel, wiredNames, err := resolveMergeGeometry(l)
+	if err != nil {
+		logger.Warn("fabricengine: resolve merge geometry to list remaining conflicts failed", "path", f.warpPath, "error", err)
+		return nil
+	}
+	unified, unmappable := unifyConflictPaths(warpConflicts, weftConflicts, anchorRel, wiredNames)
+	if unmappable {
+		logger.Warn("fabricengine: remaining conflicts include an unmappable path; reporting none",
+			"warp_conflicts", warpConflicts, "weft_conflicts", weftConflicts)
+		return nil
+	}
+	return unified
+}
+
 // mergeStateOrForeignErr resolves the disposition shared by MergeContinue and MergeAbort when no
 // fabric merge record exists: *ErrForeignMergeState when git-level merge state exists that fabric
 // did not start, *ErrNoMergeInProgress otherwise.
@@ -264,8 +301,10 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 	var reasons []string
+	var stillConflicted []string
 	if len(warpConflicts) > 0 || len(weftConflicts) > 0 {
 		reasons = append(reasons, mergeReasonUnresolvedConflicts)
+		stillConflicted = f.unifiedRemainingConflicts(warpConflicts, weftConflicts)
 	}
 	reasons = append(reasons, mergeAttemptIncompleteReason(st)...)
 	recordedMergeGone, err := recordedMergeGoneReason(f, st)
@@ -274,7 +313,7 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	}
 	reasons = append(reasons, recordedMergeGone...)
 	if len(reasons) > 0 {
-		return MergeResult{}, newMergeGuardError(reasons)
+		return MergeResult{Conflicts: stillConflicted}, newMergeGuardError(reasons)
 	}
 
 	if err := concludeMergeSides(f, rec, st, msg); err != nil {

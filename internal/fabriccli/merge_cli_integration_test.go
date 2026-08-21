@@ -468,6 +468,76 @@ func TestRunCLI_MergeStageRejectsAPathThatIsNotConflicted(t *testing.T) {
 	}
 }
 
+// TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths pins the one flow where the
+// unresolved-conflicts refusal has to say more than that some conflict exists: the operator staged
+// SOME of the reported paths and not all of them.
+// The path left outstanding here is a weft-side one, which is the case that made the bare refusal
+// un-actionable — merge-in cannot be re-run to reprint the list (a merge is already in progress), and
+// plain `git status` in the visible worktree does not see a conflict living across the junction, so the
+// only route back to it was raw git inside the weft checkout.
+// The test also pins the key SEPARATION, not merely the presence of the list: "conflicts" is the
+// documented discriminator between a conflict result and a hard failure, so a refusal must report the
+// remaining paths under "unresolved" and must NOT carry a "conflicts" key at all.
+func TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	setupConflictingDivergenceCLI(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	var mergeInOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
+	}
+	mergeInEnvelope := decodeResult(t, &mergeInOut)
+	if got := stringSliceField(t, mergeInEnvelope, "conflicts"); len(got) != 2 {
+		t.Fatalf("RunCLI(merge-in) conflicts = %v; want both sides conflicted, or this test cannot stage a strict subset", got)
+	}
+
+	// Resolve and stage the warp path only, leaving the weft path outstanding.
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "conflict.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolution: %v", err)
+	}
+	var stageOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", "conflict.txt"}); exitCode != 0 {
+		t.Fatalf("RunCLI(merge-stage conflict.txt) = %d; want 0\noutput: %s", exitCode, stageOut.String())
+	}
+
+	var continueOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &continueOut, []string{"merge", "--continue"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge --continue) with one path still unstaged = %d; want 1\noutput: %s", exitCode, continueOut.String())
+	}
+	continueEnvelope := decodeResult(t, &continueOut)
+	if errMsg, _ := continueEnvelope["error"].(string); !strings.Contains(errMsg, "unresolved conflicts remain") {
+		t.Fatalf("RunCLI(merge --continue) error = %q; want the unresolved-conflicts refusal", errMsg)
+	}
+	unresolved := stringSliceField(t, continueEnvelope, "unresolved")
+	if len(unresolved) != 1 || unresolved[0] != "_lyx/weft-clash.txt" {
+		t.Errorf("RunCLI(merge --continue) unresolved = %v; want exactly [_lyx/weft-clash.txt] — the path the operator has left to resolve", unresolved)
+	}
+	if _, present := continueEnvelope["conflicts"]; present {
+		t.Errorf("RunCLI(merge --continue) carries a %q key; want the remaining paths under \"unresolved\" only, so \"conflicts\" stays the conflict-result discriminator", "conflicts")
+	}
+}
+
+// stringSliceField reads envelope[key] as a JSON array of strings, failing the test when it is absent
+// or not an array of strings.
+func stringSliceField(t *testing.T, envelope map[string]any, key string) []string {
+	t.Helper()
+
+	raw, ok := envelope[key].([]any)
+	if !ok {
+		t.Fatalf("envelope[%q] = %v; want an array", key, envelope[key])
+	}
+	values := make([]string, len(raw))
+	for i, entry := range raw {
+		values[i], ok = entry.(string)
+		if !ok {
+			t.Fatalf("envelope[%q][%d] = %v; want a string", key, i, entry)
+		}
+	}
+	return values
+}
+
 // TestRunCLI_MergeStageRequiresAtLeastOnePath pins the verb's arity at the CLI boundary: with no
 // paths it must refuse rather than succeed vacuously, since a caller that passed nothing meant to
 // pass something.
