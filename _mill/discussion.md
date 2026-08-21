@@ -154,6 +154,19 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   package-level injection via a setter (mutable global, untestable in parallel);
   a variadic option list per entry (defeats the fixed signature).
 
+### Every entry validates the `Env` fields it reads
+
+- Decision: at construction, each entry checks exactly the `Env` fields it consumes — a path root must be non-empty and absolute, an injected seam must be non-nil — and returns an error naming the offending field otherwise.
+  An entry never validates an `Env` field it does not use, so a caller filling only what its recipe needs is legal.
+  `Env.Now` is the one exception: a nil clock is accepted and defaults to `time.Now`, matching what `NewSingleLLMProducer` and `NewBurlerProducer` already do with a nil `now`.
+- Rationale: `Config` strictness without `Env` strictness only moves the late failure.
+  `NewSingleLLMProducer` validates nothing at all (`internal/shedadapters/singlellm.go:49-54`), so an empty or relative `Env.WorktreeRoot` produces a `SingleLLM` row that constructs cleanly and then fails on **every** `Call` — the exact failure mode the relative-path decision exists to prevent on the `Config` side.
+  Some underlying constructors already check their own inputs (`NewBouncer` rejects a non-absolute `RunDir`, `NewBurlerProducer` rejects a nil runner and a non-absolute `runDir`), but the coverage is uneven, and an entry cannot rely on the one it happens to wrap.
+  Validating in the entry makes the guarantee uniform across all twelve.
+- Rejected: relying on each underlying constructor's own checks (uneven — `SingleLLM` and the four `loomshed` value-only constructors check nothing);
+  validating all of `Env` once up front (would force every caller to fill fields its recipe never uses);
+  validating nothing (turns a caller's wiring bug into a per-call runtime failure with no construction-time signal).
+
 ### Per-segment run directories: `Env.RunRoot` plus a `Config` `run_subdir`
 
 - Decision: `Env` carries `RunRoot`, a single absolute base directory.
@@ -201,6 +214,8 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 - Decision: `BurlerRound`'s config keys are `profile` (a nested map), `model`, `effort`, `timeout_s`, and `run_subdir`.
   The `profile` map's keys are exactly `internal/burlercli`'s existing kebab-case profile shape (`profileYAML`, `internal/burlercli/run.go:29-40`) — `target`, `fasit`, `rubric`, `fix-scope`, `tool-use`, `cluster-fan` — and **only those six**.
+  `target` and `fasit` are themselves nested maps recognising exactly two keys each, `paths` and `instructions`, mirroring `fileSetYAML` (`internal/burlercli/run.go:23-26`).
+  The strict unknown-key rule applies at that nested level too, so the rejector runs on the inner maps as well as the outer one.
   `model`, `effort`, and `timeout_s` fill `burlerengine.RunOpts`.
 - Rationale: `NewBurlerProducer`'s own doc (`internal/shedadapters/burler.go:62-64`) states that the `profile` argument is a *template* whose `ReviewPath`, `FixerReportPath`, `PriorReviews`, `PriorFixerReports`, and `ClusterExclude` are overwritten per round, and that `opts` is a template whose `Round` is overwritten per attempt.
   Those five profile fields and `RunOpts.Round` are therefore not recipe-authorable — putting them in `Config` would invite an author to set a value the producer silently discards.
@@ -247,6 +262,10 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   | `output_files` | the resolved absolute `OutputFiles`, newline-joined |
 
   Everything else comes from `Config.tokens`.
+
+  The remaining `shuttleengine.Spec` fields — `Timeout`, `ForkSubagents`, `KeepPane`, `Round`, `Parent`, and `Display` (`internal/shuttleengine/spec.go:41,53,55,58,71,74`) — are **deliberately not recipe-authorable in this task**, and their zero values defer to the shuttle engine's own config and defaults.
+  Recording that here so piece 2 does not re-litigate it: the omission is a decision, not an oversight.
+  `Round`, `Parent`, and `Display` in particular are per-*run* strand-display values, not per-row static config, so a recipe is the wrong place for them regardless.
   A `tokens` map naming any of the four reserved keys is **rejected** at construction rather than silently overriding or being overridden — a silent winner in either direction is a recipe that reads one way and behaves another.
   The stencil here is the **template**, so `stencil.Fill` strips its stamp banner itself and no `stencil.StripLeadingComment` call is needed.
   That call is required only when stencil content is injected as a token *value* — `stencil.Fill` never strips a marker value, which is why `Bouncer` must strip its rubric before passing it in (`internal/shedadapters/bouncer.go:341-344`).
@@ -260,7 +279,7 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 
 ### `Bouncer`'s full `Config` key set
 
-- Decision: `Bouncer` recognises exactly seven keys — `run_subdir`, `artifact_paths`, `report_name`, `rubric_stencil`, `model`, `effort`, `version` — and takes everything else from `Env`.
+- Decision: `Bouncer` recognises exactly six keys — `run_subdir`, `artifact_paths`, `rubric_stencil`, `model`, `effort`, `version` — and takes everything else from `Env` or pins it.
   The full mapping onto `shedadapters.BouncerConfig`:
 
   | `BouncerConfig` field | Source |
@@ -268,7 +287,7 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
   | `Name` | the row's `name` argument |
   | `RunDir` | `Env.RunRoot` joined with `Config.run_subdir` |
   | `ArtifactPaths` | `Config.artifact_paths`, each joined against `Env.WorktreeRoot` |
-  | `ReportName` | built from `Config.report_name` (see below) |
+  | `ReportName` | pinned to `round-%d-review.md` — not configurable, see below |
   | `StencilsDir` | `Env.StencilsDir` |
   | `RubricStencil` | `Config.rubric_stencil` |
   | `Model`, `Effort`, `Version` | `Config.model`, `Config.effort`, `Config.version` |
@@ -280,13 +299,18 @@ Nothing here changes `shedengine`, and loom's existing hardcoded list keeps work
 - Rejected: `Model`/`Effort`/`Version` in `Env` (forces every segment to the same tier);
   leaving the set implicit (unenumerable contract under a strict-unknown-key rule).
 
-### `Bouncer`'s `ReportName` closure is derived from a `Config` pattern string
+### `Bouncer`'s `ReportName` is pinned, not configurable
 
-- Decision: the `Bouncer` entry takes a `report_name` config key holding a format pattern with a single round placeholder, and builds the `func(round int) string` closure from it.
-- Rationale: `shedadapters.BouncerConfig.ReportName` is a closure, which no recipe file can express;
-  a pattern string is the serializable form of the same information.
-- Rejected: a hardcoded report-name convention (different segments legitimately name their reports differently);
+- Decision: the `Bouncer` entry builds `ReportName` as a fixed `round-%d-review.md` closure.
+  There is **no** `report_name` config key.
+- Rationale: the value is not a free choice — it is determined by the round producer the `Bouncer` gates, and today that is always a `BurlerRound`, which writes its report to a **hardcoded** `round-<n>-review.md` under `RunDir` (`internal/shedadapters/burler.go:106-108`).
+  `ResolveRound` finds the current round by statting `reportName(n)` under `RunDir` and returning `n-1` at the first absence (`internal/shedadapters/round.go:24-46`), so a `report_name` that does not match what the Burler writes resolves the round to 0 forever: the `Bouncer` re-seeds every call until its bounce budget is spent, with no error anywhere.
+  A configurable key with exactly one correct value is a silent-failure generator, not flexibility.
+  This also retracts the round-1 rationale that "different segments legitimately name their reports differently" — segments are separated by `RunDir`, not by filename, and the filename is identical across all of them.
+- Rejected: a free-form `report_name` pattern (one correct value, silent failure for every other — the finding that forced this change);
+  a pattern key defaulting to the Burler name (same failure mode, merely less likely);
   putting the closure in `Env` (it is per-row, not per-run).
+  If a non-`BurlerRound` round producer ever gates behind a `Bouncer`, the key returns then — with the pairing validated, not free-form.
 
 ### `Stub` is a registry entry, despite not being in the roadmap's list
 
@@ -438,8 +462,9 @@ TDD candidates, in order:
    a missing stencil errors.
    Note the `SpecSource` is a closure — the test must call it, not merely construct the producer.
    Also cover the four reserved tokens: each resolves to its documented `Env` value, and a `Config.tokens` map naming any reserved key is rejected at construction rather than winning or losing silently.
-5. **`Bouncer` report-name pattern** — the pattern renders the expected filename for a given round;
-   a pattern with no round placeholder is rejected at construction.
+5. **`Bouncer` report-name pinning** — the built closure renders exactly `round-<n>-review.md`, byte-identical to what `BurlerRound` writes for the same round;
+   a `report_name` key in `Config` is rejected as unknown.
+   The byte-identity assertion is the one that matters: a drift here makes `ResolveRound` return 0 forever, which no other test would catch.
 6. **Relative-path resolution**, shared across every entry taking a `Config` path.
    Scenarios: a relative value is joined against the documented `Env` root and arrives absolute at the underlying constructor;
    an **absolute** `Config` value is rejected with an error naming the key;
@@ -453,11 +478,15 @@ TDD candidates, in order:
 8. **`BurlerRound` config** — the six recipe-authorable `profile` keys land in `burlerengine.Profile`;
    a `profile` map naming one of the five per-round-overwritten fields (`review-path`, `fixer-report-path`, `prior-reviews`, `prior-fixer-reports`, `cluster-exclude`) is rejected by the unknown-key rule rather than silently discarded.
 9. **`Publish`/`Finalize` row naming** — the coverage guard fails when either row is named anything other than the package constant it will actually log as.
-10. **Coverage guard** — the table's key set equals the row names in `loomshed.New`'s assembled list, and every engine it maps to is registered.
+10. **Under-filled `Env`** — for each entry, an `Env` missing or mis-shaping a field that entry reads (empty root, relative root, nil seam) fails at **construction** with an error naming the field;
+   an `Env` missing a field the entry does not read constructs fine;
+   a nil `Env.Now` is accepted and defaults.
+   The `SingleLLM` case is the load-bearing one, since its underlying constructor validates nothing at all.
+11. **Coverage guard** — the table's key set equals the row names in `loomshed.New`'s assembled list, and every engine it maps to is registered.
     Both mismatch directions must be covered: a row in `New` absent from the table, and a table entry naming a row `New` does not have.
     The first is the regression this guard exists for;
     the second keeps the table from accumulating dead entries.
-11. **Import allowlist** (`internal/shedrecipe/seam_enforcement_test.go`) — mirrors `internal/loomshed/seam_enforcement_test.go`, asserting no production import outside the allowlist and specifically no `internal/lyxcwd`.
+12. **Import allowlist** (`internal/shedrecipe/seam_enforcement_test.go`) — mirrors `internal/loomshed/seam_enforcement_test.go`, asserting no production import outside the allowlist and specifically no `internal/lyxcwd`.
 
 Scenarios that must not be missed:
 
@@ -498,11 +527,17 @@ Explicitly not tested here: anything about recipe file parsing, `ProducerDef` as
   calling `shedadapters.NewWebsterProducer` directly would drop both and need a `Batcher` the registry cannot resolve.
 - **Q:** [review r1] `landingshed.Deps` has no `Name` field — what happens to a recipe row's `Name` for `Publish`/`Finalize`? **A:** [auto-pick] It is discarded;
   the row must be named to match the package constant, and the coverage guard asserts it. **Why:** both producers' identity is a package const (`publish.go:31`) carried by log lines and the stuck-reason filename, and both rows are shared by reference with `Hardener`'s list, so their names are not loom's to reassign.
-- **Q:** [review r2] What is `Bouncer`'s complete recognised `Config` key set? **A:** [auto-pick] Seven keys — `run_subdir`, `artifact_paths`, `report_name`, `rubric_stencil`, `model`, `effort`, `version` — with a full field-by-field mapping onto `BouncerConfig`. **Why:** the strict unknown-key rule makes the key set the entry's contract, and `Model`/`Effort`/`Version` must be per-row rather than in `Env` because two review segments legitimately run at different model tiers.
+- **Q:** [review r2] What is `Bouncer`'s complete recognised `Config` key set? **A:** [auto-pick] Seven keys — `run_subdir`, `artifact_paths`, `report_name`, `rubric_stencil`, `model`, `effort`, `version` — with a full field-by-field mapping onto `BouncerConfig`. **Superseded by review r3:** `report_name` was dropped, leaving six. **Why:** the strict unknown-key rule makes the key set the entry's contract, and `Model`/`Effort`/`Version` must be per-row rather than in `Env` because two review segments legitimately run at different model tiers.
 - **Q:** [review r2] Which geometry-derived tokens does `SingleLLM` supply to `stencil.Fill`? **A:** [auto-pick] A closed reserved set of four — `worktree_root`, `anchor_path`, `stencils_dir`, `output_files` — with a `Config.tokens` collision rejected at construction. **Why:** `stencil.Fill` hard-errors on a missing token, so an unnamed set left the testing item asserting against nothing;
   rejecting collisions avoids a recipe that reads one way and behaves another.
 - **Q:** [review r2] Do `BurlerRound`'s `profile.target.paths` / `profile.fasit.paths` follow the join-and-reject-absolute rule? **A:** [auto-pick] No — they are the single documented exception, passed through relative and unjoined. **Why:** `burlerengine.Profile.validate` already resolves them against its own told `worktreeRoot` and stats them for existence (`profile.go:66-87`), so joining first would double-resolve.
 - **Q:** [review r2] The Told-Geometry bullet said "no path is computed inside `shedrecipe`", but entries join roots — which is it? **A:** [auto-pick] Reword to the property actually held: every root is told and none derived, joins onto told roots permitted;
   that wording is pinned as the invariant text. **Why:** the flat claim would ship false in `CONSTRAINTS.md`, since `run_subdir`, `artifact_paths`, and `output_files` are all joined.
 - **Q:** [review r2] What exactly does the coverage guard compare? **A:** [auto-pick] Its table's key set against the row names in `loomshed.New`'s assembled list, failing on either direction of mismatch. **Why:** a table-only test would pass forever no matter what `loomshed` grew — precisely the failure the guard is supposed to catch.
+- **Q:** [review r3] `report_name` is free-form, but does more than one value actually work? **A:** [auto-pick] No — pin `ReportName` to `round-%d-review.md` and drop the config key entirely. **Why:** `BurlerRound` writes that filename hardcoded (`burler.go:106-108`) and `ResolveRound` stats it (`round.go:24-46`), so any other value resolves the round to 0 forever and the Bouncer re-seeds until its budget is spent, silently.
+- **Q:** [review r3] Does an entry validate the `Env` fields it reads? **A:** [auto-pick] Yes — non-empty and absolute for roots, non-nil for seams, checked at construction, only for fields that entry actually consumes;
+  a nil `Env.Now` defaults. **Why:** `NewSingleLLMProducer` validates nothing (`singlellm.go:49-54`), so without this an under-filled `Env` yields a producer failing at every call — the same late failure the `Config` rules exist to prevent.
+- **Q:** [review r3] What about `shuttleengine.Spec`'s `Timeout`, `ForkSubagents`, `KeepPane`, `Round`, `Parent`, `Display`? **A:** [auto-pick] Deliberately not recipe-authorable in this task;
+  zero values defer to shuttle config. **Why:** recorded so piece 2 does not re-litigate it — and `Round`/`Parent`/`Display` are per-run strand values, wrong for a recipe at any point.
+- **Q:** [review r3] What are `profile.target` / `profile.fasit`'s own recognised keys? **A:** [auto-pick] Exactly `paths` and `instructions`, mirroring `fileSetYAML` (`run.go:23-26`), with the strict unknown-key rule applying at the nested level too. **Why:** the rejector's recognised set has to be enumerable at every level it runs on.
 - **Q:** How does `loomshed` expose its six unexported constructors? **A:** [auto-pick] Export them in place, returning `shedengine.ShedProducer` rather than the unexported concrete type. **Why:** duplicating them in `shedrecipe` guarantees divergence, and moving the loom-specific producers out contradicts the design doc's point that a bespoke single-consumer engine is a valid registry entry precisely because it stays where it lives.
