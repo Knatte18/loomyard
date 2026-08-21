@@ -100,7 +100,7 @@ see "What this catches in a mis-wired perch" under Decisions for the exact line.
 - Consequence for the implementation: `Check` reads only `Name`, `OnDone`, and `OnStuck`.
   It must never dereference `Producer`, so a `ProducerDef` with a nil `Producer` is a valid input — which is what lets the unit tests build graphs out of bare literals with no fakes at all.
 
-### Finding kinds — six, each an exact graph property
+### Finding kinds — eight, each an exact graph property
 
 - Decision: `Check` reports exactly these kinds, and nothing heuristic.
 
@@ -131,12 +131,22 @@ see "What this catches in a mis-wired perch" under Decisions for the exact line.
     Per `shedengine`'s own routing contract, such a row ends the entire run quietly at `state: done` the first time it returns `Done` — the defect `shedengine/doc.go` names as indistinguishable-to-Shed and hands to the caller to assert.
     One finding per row.
     Note the converse is not a finding: a told terminal with a *non-empty* `OnDone` is legal (it routes on rather than ending the run), and flagging it would mean asserting the caller's terminal set against the graph rather than the graph against the terminal set.
+
+    **What a row that never returns `Done` is expected to set.**
+    This check demands a non-empty `OnDone` from every reachable non-terminal row, including rows contractually specified never to return `Done` — a `Burler` being the concrete case (`manifest/roadmap.md` specifies it "always hands back … `Stuck`, never `Done`").
+    Such a row sets **`OnDone` to the same target as its `OnStuck`**: for a `Burler`, its own `Bouncer`.
+    This is not a workaround for the check, it is the wiring that is correct on its own terms.
+    A row whose verdict is supposed to be invariant should route invariantly, so that if it ever *does* return `Done` — contradicting its own contract, via a bug, a refactor, or an engine adapter change — the run continues to the right place instead of ending silently at `state: done` mid-task.
+    Leaving `OnDone` empty is the opposite: it converts a contract violation into a silent, total run termination, which is precisely the failure `unexpected-terminal` exists to prevent.
+    Note this does not weaken the check into a formality: `OnDone: <its Bouncer>` and `OnDone: ""` are different graphs, and only the second is the dangerous one.
+    Nor does it collide with the uncatchable `Burler`-returns-`Done` case below: that case is about which verdict the producer *returns*, which is invisible here either way, and mirroring the two fields makes the graph tolerate both verdicts rather than making a wrong verdict harder to see.
+    This paragraph is guidance recorded here for the three perch-wiring tasks to follow;
+    it is not work performed by this task, which wires nothing.
   - **`done-cycle`** — a cycle among reachable rows using done edges only, reported as **one finding per member row**, each naming that member and the done edge carrying it round.
     A cycle is a set of mis-wired edges, and one finding per edge is what makes the whole defect expressible in `Producer`/`Target` with their existing meanings — no members list, no special-case field used by exactly one kind.
     Each member row is genuinely mis-wired, so per-row reporting is also the more actionable diagnosis.
     Unlike a stuck bounce, a `Done` route consumes no bounce budget, so such a cycle is a statically certain infinite loop.
     `validate()` already rejects the length-1 case (`OnDone` naming itself), so this catches length ≥ 2.
-    One finding per distinct cycle, naming its members.
   - **`blind-gate`** — a reachable row `G` with a non-empty `OnStuck` target `T`, where `G` is not reachable from `T`.
     The bounce is one-way: whatever `T` does, the gate that rejected never re-runs to re-test it.
     This is the "blind gate" the roadmap item names, and it is the check that replaces the departing `Segment` rule — expressed as a real graph property rather than as a matching label.
@@ -170,7 +180,9 @@ Stating exactly which mis-wirings the checker detects is part of this task's con
   the difference lives entirely in which verdict the producer returns, which is behaviour inside `Call`, not a property of the graph.
   A graph checker that claimed to catch it would be guessing.
   The real consequence is a budget one — a `Done` route consumes no bounce budget, so the round is counted against the `Bouncer`'s budget rather than the `Burler`'s — and catching it belongs to whatever mechanism eventually asserts producer *behaviour*, not here.
-  Note the roadmap's own wording for each of the three review-producer tasks already states the requirement in verdict terms ("always hands back … `Stuck`, never `Done`"), so the gap is documented where those tasks will read it.
+  The roadmap does document the requirement in verdict terms, but in one place only: the `loom: Discussion-Review producer` item states it outright ("always hands back … `Stuck`, never `Done`").
+  The `Plan-Review` and `Webster-Review` items incorporate it by reference — each says "same shape as `Discussion-Review producer` above" and never restates the verdict rule — so a reader who starts at either of those two does not see it stated.
+  That is a documentation weakness in those items rather than something this task changes, but the plan writer should know the requirement is not restated at every site an author might start from.
 
 - Rationale for stating this at all: Testing §2's invariant test is described below as the thing that fires when a future task mis-wires a perch.
   That claim is true for three of the four shapes above and false for the fourth, and a plan writer needs to know which, so the test's own comment can say what it does and does not guarantee rather than implying total coverage.
@@ -180,7 +192,7 @@ Stating exactly which mis-wirings the checker detects is part of this task's con
 - Decision: `Finding` carries no severity field.
   Every finding is a defect;
   `Kind` is the stable machine-readable discriminator a caller filters or allowlists on.
-- Rationale: all six checks are exact graph properties, so a warning tier would carry no information — there is no finding here that is "probably fine".
+- Rationale: all eight checks are exact graph properties, so a warning tier would carry no information — there is no finding here that is "probably fine".
   A caller that genuinely wants to tolerate one case can filter on `Kind` and the named producer, which is strictly more precise than a two-level severity.
 - Rejected: an `Error`/`Warning` split.
 
@@ -308,6 +320,8 @@ Discovered during discussion:
 - No new cross-cutting invariant is introduced, so `CONSTRAINTS.md` needs no new section.
   Say so explicitly in the commit rather than leaving it ambiguous.
 - `internal/shedcheck` does not need its own `leaf_enforcement_test.go`: it is not a leaf (it imports `shedengine`), and no invariant claims it is.
+- `internal/loomshed/seam_enforcement_test.go`'s `loomshedAllowedImports` is **not** touched.
+  The new invariant test is a `_test.go` file, and that walk skips `_test.go` files outright (`seam_enforcement_test.go:58`), so the allowlist governs production imports only and adding `shedcheck` to it would be both unnecessary and misleading — it would assert `shedcheck` is a permitted *production* dependency of `loomshed`, which this task deliberately does not make it.
 - Repo comment convention (see `golang:golang-comments` and the existing `shedengine` files): file-level comments state what the file implements, and non-obvious decisions are explained in the code where they live, not only in the design doc.
   The `dangling-target`-drops-the-edge behaviour and the functional-graph cycle walk both need such a comment.
 
@@ -367,9 +381,9 @@ Standard repo verify applies — `gofmt`, `go vet`, `go build ./...`, `go test .
   the dangerous import direction is already blocked by the Shed Producer-Seam Invariant test.
 - **Q:** How does the checker learn the graph's entry row? **A:** [auto-pick] The caller supplies it explicitly;
   an empty or unknown entry is itself a finding. **Why:** `Shed` has no entry field — a run starts from the status file's `current_producer` — and defaulting to `Producers[0]` would re-introduce the positional routing meaning `shedengine/doc.go` explicitly disclaims.
-- **Q:** Which defects does it report? **A:** [auto-pick] Six kinds — after review round 1, `bad-endpoints`, `dangling-target`, `unreachable`, `unexpected-terminal`, `done-cycle`, `blind-gate`. **Why:** each is an exact graph property rather than a heuristic;
+- **Q:** Which defects does it report? **A:** [auto-pick] Six kinds at the time — superseded twice since, by the two review-round entries below: round 1 replaced `no-terminal` with `unexpected-terminal`, and round 2 split `bad-endpoints` into `bad-entry`/`no-terminals`/`bad-terminal`, bringing the total to eight. **Why:** each is an exact graph property rather than a heuristic;
   `dangling-target` is duplicated from `validate()` deliberately so `Check` is robust on input that has never been validated.
-- **Q:** Severity model — one level or an error/warning split? **A:** [auto-pick] Single severity, discriminated by a stable machine-readable `Kind`. **Why:** none of the six checks can fire on a graph that is actually fine, so a warning tier would carry no information;
+- **Q:** Severity model — one level or an error/warning split? **A:** [auto-pick] Single severity, discriminated by a stable machine-readable `Kind`. **Why:** none of the eight checks can fire on a graph that is actually fine, so a warning tier would carry no information;
   `Kind` plus producer name is a more precise filter than a severity anyway.
 - **Q:** Does this task remove `Segment` and its `validate()` check? **A:** [auto-pick] No — additive only. **Why:** `Segment` removal belongs to the recipe-loader items that actually drop it, and the roadmap says this item can land independently;
   `blind-gate` is what makes that later removal safe.
@@ -388,3 +402,5 @@ Standard repo verify applies — `gofmt`, `go vet`, `go build ./...`, `go test .
   Split `bad-endpoints` into `bad-entry`/`no-terminals`/`bad-terminal` so no two findings collapse into an identical `Producer: ""`, `Target: ""` pair, and emit `done-cycle` as one finding per member row with `Target` naming the next member. **Why:** a members field would be a special case used by exactly one kind, and leaving cycle membership in the unpinned `Message` would have made the "members starting at the lowest list index" ordering rule unenforceable by the very test that is supposed to machine-enforce determinism.
   A cycle is a set of mis-wired edges, and `Producer`+`Target` already express exactly one edge — so per-member findings need no new field and give a more actionable diagnosis.
   A per-kind field-mapping table is now stated outright rather than left to the plan writer.
+- **Q:** Review round 3 found `unexpected-terminal` demands a non-empty `OnDone` from every reachable non-terminal row, but a `Burler` is contractually specified never to return `Done` — what is such a row supposed to set? **A:** [auto-pick] It sets `OnDone` to the same target as its `OnStuck` (for a `Burler`, its own `Bouncer`), never empty. **Why:** a row whose verdict is meant to be invariant should route invariantly, so a contract violation — a `Burler` that somehow does return `Done` — continues to the right place instead of silently ending the whole run at `state: done`.
+  That is the correct wiring on its own terms rather than an accommodation of the check, and it does not soften the check: `OnDone: <its Bouncer>` and `OnDone: ""` are different graphs, and only the second is dangerous.
