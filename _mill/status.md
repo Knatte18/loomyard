@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: shed-setup-validity-checker
 branch: shed-setup-validity-checker
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-08-21T08:29:38Z'
 approved-shedcheck-package  '2026-08-21T08:40:08Z'
 approved-loomshed-invariant-test  '2026-08-21T08:42:20Z'
 approved-docs  '2026-08-21T08:45:36Z'
+holistic-reviewing  '2026-08-21T08:45:59Z'
 ```
 
 ## Batches
