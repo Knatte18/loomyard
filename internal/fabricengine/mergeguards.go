@@ -39,10 +39,18 @@ type mergeSources struct {
 // counterpart existing neither locally (weftBranchExists(l, ...)) nor as origin/<source>-weft
 // post-fetch appends mergeReasonNotFabricManaged, per the Shared Decision on the post-fetch
 // remote-only weft counterpart.
-// Those two reasons stay disjoint on purpose: an unmanaged source reports ONLY
-// mergeReasonNotFabricManaged, never that reason plus source-not-found, since "this branch is not a
-// fabric pair" is the precise thing the operator has to act on and adding a second, vaguer reason
-// beside it tells them nothing more.
+// The two reasons are gated asymmetrically, and which of them can accompany the other is worth stating
+// exactly, because the obvious summary — "they stay disjoint" — is false against the shipped behaviour
+// and against the two places that pin it.
+// A source that DOES resolve on warp but has no weft counterpart reports mergeReasonNotFabricManaged
+// alone: the weft arm's own source-not-found is gated on weftManaged, so "this branch is not a fabric
+// pair" arrives without a second, vaguer reason beside it that tells the operator nothing more.
+// A source that resolves NOWHERE reports both, and that is deliberate rather than leakage — the warp
+// arm's mergeReasonSourceNotFound is ungated, because a mistyped branch name is unmanaged AND missing,
+// and an operator told only "not fabric-managed" would go looking for a weft counterpart to create
+// instead of at the name they got wrong. TestRunCLI_MergeNonexistentBranchReportsAggregatedGuardError
+// and SANDBOX-FABRIC-SUITE's F19 both pin that dual answer, so gating the warp arm to make the pair
+// literally disjoint would break the behaviour, not tidy it.
 //
 // A managed weft counterpart that nevertheless fails to RESOLVE is a third case, and it appends
 // mergeReasonSourceNotFound because the alternative is worse. weftManaged and weft resolvability are
