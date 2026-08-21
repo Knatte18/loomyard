@@ -59,7 +59,9 @@ batches:
     commit_sha: 7f3081fc008b41b7a3e19d205d32fc707c738966
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: Bouncer and BurlerRound entries
-    state: pending
+    state: running
+    implementer_session: c348fd49-8f3c-491a-96bf-7b730defc6fc
+    start_sha: fe52d03e08e04ddbaf9f5d682e40de4a5dd677a4
     verify_baseline_failures: ["FAIL\t./internal/shedrecipe/... [setup failed]"]
   - name: guards and docs
     state: pending
