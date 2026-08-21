@@ -31,11 +31,16 @@ implementing  '2026-08-21T12:29:24Z'
 ```yaml
 batches:
   - name: shedbuild-loader
-    state: pending
+    state: running
+    implementer_session: 750264cd-b503-43b8-ba0b-278777b45fa9
+    start_sha: 5f76c0cb4f30e5158c4be145c3eb25d08d25ea58
+    verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: shedbuild-builder
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: loom-equivalence
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedbuild/... [setup failed]"]
   - name: docs
     state: pending
 ```
