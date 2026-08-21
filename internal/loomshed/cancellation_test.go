@@ -29,11 +29,12 @@ type cancellationFixture struct {
 	StatusLockPath     string
 }
 
-// buildCancellationFixture reproduces buildSequenceFixture's on-disk seeding exactly --
-// writeDiscussionFixture into a discussion subdirectory of one t.TempDir(), seedPlanValidateFixture,
-// and the Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent") call -- so this test's
-// behaviour is unchanged by the reduction. It drops only the Deps construction, the testLandingDeps
-// landing passthrough, and the Preflight/WebsterRun injection, none of which this test reads.
+// buildCancellationFixture reproduces the moved whole-list fixture's on-disk seeding exactly --
+// writeDiscussionFixture into a discussion subdirectory of one t.TempDir(), the plan-validate
+// fixture seed, and the Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent") call --
+// so this test's behaviour is unchanged by the reduction. It drops only the construction this test
+// does not read: the whole-list Env/ShedPaths pair, the landing passthrough, and the row-1/Webster
+// injection.
 func buildCancellationFixture(t *testing.T) cancellationFixture {
 	t.Helper()
 
