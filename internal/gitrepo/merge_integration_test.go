@@ -74,6 +74,41 @@ func TestMergeConflictedFiles_ManufacturedConflict(t *testing.T) {
 	}
 }
 
+// TestMergeConflictedFiles_NonASCIIPathIsRawNeverQuoted asserts ConflictedFiles returns the raw
+// path bytes for a conflicted filename outside core.quotepath's default ASCII set, never git's
+// C-quoted form (`"\303\244.txt"`, quotes included) that `--name-only` without `-z` emits — the
+// quoted form is not a real worktree path, and fabricengine's visible-tree mapping misclassified
+// a mappable conflict as unmergeable on it.
+func TestMergeConflictedFiles_NonASCIIPathIsRawNeverQuoted(t *testing.T) {
+	dir, repo := newRepo(t)
+	const conflictedName = "ä-nöte.txt"
+	writeFile(t, dir, conflictedName, "base\n")
+	commitAll(t, dir, "base")
+
+	checkoutNewBranch(t, dir, "feature")
+	writeFile(t, dir, conflictedName, "feature\n")
+	commitAll(t, dir, "feature edit")
+	checkoutBranch(t, dir, "main")
+	writeFile(t, dir, conflictedName, "main\n")
+	commitAll(t, dir, "main edit")
+
+	outcome, err := repo.MergeStart("feature", false)
+	if err != nil {
+		t.Fatalf("MergeStart(feature, false) error = %v; want nil (conflict is a result, not an error)", err)
+	}
+	if outcome != gitrepo.MergeConflicted {
+		t.Fatalf("MergeStart(feature, false) outcome = %v; want MergeConflicted", outcome)
+	}
+
+	got, err := repo.ConflictedFiles()
+	if err != nil {
+		t.Fatalf("ConflictedFiles() error = %v; want nil", err)
+	}
+	if len(got) != 1 || got[0] != conflictedName {
+		t.Errorf("ConflictedFiles() = %q; want [%q] — the raw bytes, not git's C-quoted rendering", got, conflictedName)
+	}
+}
+
 // TestMergeConflictedFiles_CleanTreeReturnsEmptyNeverNil asserts ConflictedFiles returns an empty,
 // non-nil slice on a clean tree.
 func TestMergeConflictedFiles_CleanTreeReturnsEmptyNeverNil(t *testing.T) {
@@ -505,6 +540,103 @@ func TestMergeHeadPresent_TrueAfterConflict_FalseAfterResetAndConclude(t *testin
 	if present {
 		t.Error("MergeHeadPresent() after MergeConclude() = true; want false")
 	}
+}
+
+// TestMergeHeads_EnumeratesEveryHeadOfAnOctopus is the reason MergeHeads reads MERGE_HEAD rather
+// than shelling `git rev-parse --verify --quiet MERGE_HEAD` a second time: for a two-head merge,
+// rev-parse reports only the FIRST head, so a caller comparing that single answer against an
+// expected SHA accepts `git merge --no-commit <expected> <decoy>` as if it were `git merge <expected>`.
+// The test asserts BOTH halves — the full list MergeHeads returns, and the truncated answer the
+// rev-parse spelling gives for the same state — so rewriting MergeHeads onto rev-parse fails here
+// rather than silently reintroducing the first-entry-only read.
+func TestMergeHeads_EnumeratesEveryHeadOfAnOctopus(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "base.txt", "base\n")
+	commitAll(t, dir, "base")
+
+	checkoutNewBranch(t, dir, "first")
+	writeFile(t, dir, "first.txt", "first\n")
+	commitAll(t, dir, "first")
+	checkoutBranch(t, dir, "main")
+
+	checkoutNewBranch(t, dir, "second")
+	writeFile(t, dir, "second.txt", "second\n")
+	commitAll(t, dir, "second")
+	checkoutBranch(t, dir, "main")
+
+	writeFile(t, dir, "main.txt", "main\n")
+	commitAll(t, dir, "main advances")
+
+	firstSHA := resolveForTest(t, repo, "first")
+	secondSHA := resolveForTest(t, repo, "second")
+	gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "--no-ff", "first", "second")
+
+	// Precondition, asserted rather than assumed: the rev-parse spelling really does truncate here,
+	// or this test would pass against the very implementation it exists to forbid.
+	stdout, _, code, err := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD")
+	if err != nil || code != 0 {
+		t.Fatalf("git rev-parse --verify --quiet MERGE_HEAD = (code %d, %v); want it to succeed on the octopus", code, err)
+	}
+	if got := strings.TrimSpace(stdout); got != firstSHA {
+		t.Fatalf("git rev-parse --verify --quiet MERGE_HEAD = %q; want the FIRST head %q — the truncation this test is built on is not present", got, firstSHA)
+	}
+
+	heads, err := repo.MergeHeads()
+	if err != nil {
+		t.Fatalf("MergeHeads() error = %v; want nil", err)
+	}
+	if len(heads) != 2 || heads[0] != firstSHA || heads[1] != secondSHA {
+		t.Errorf("MergeHeads() = %v; want [%s %s] — every head, in git's own order", heads, firstSHA, secondSHA)
+	}
+}
+
+// TestMergeHeads_NoMergeLiveReturnsEmptyNeverNil asserts the no-merge answer is an empty slice and
+// not an error, matching ConflictedFiles' own empty-never-nil contract, and that a single-head merge
+// reports exactly the one SHA it is merging.
+func TestMergeHeads_NoMergeLiveReturnsEmptyNeverNil(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "base.txt", "base\n")
+	commitAll(t, dir, "base")
+
+	heads, err := repo.MergeHeads()
+	if err != nil {
+		t.Fatalf("MergeHeads() on a clean checkout error = %v; want nil", err)
+	}
+	if heads == nil || len(heads) != 0 {
+		t.Errorf("MergeHeads() on a clean checkout = %v (nil: %t); want an empty, non-nil slice", heads, heads == nil)
+	}
+
+	checkoutNewBranch(t, dir, "feature")
+	writeFile(t, dir, "feature.txt", "feature\n")
+	commitAll(t, dir, "feature")
+	checkoutBranch(t, dir, "main")
+	writeFile(t, dir, "main.txt", "main\n")
+	commitAll(t, dir, "main advances")
+
+	featureSHA := resolveForTest(t, repo, "feature")
+	if _, err := repo.MergeStart(featureSHA, false); err != nil {
+		t.Fatalf("MergeStart(%s, false) error = %v", featureSHA, err)
+	}
+
+	heads, err = repo.MergeHeads()
+	if err != nil {
+		t.Fatalf("MergeHeads() mid-merge error = %v; want nil", err)
+	}
+	if len(heads) != 1 || heads[0] != featureSHA {
+		t.Errorf("MergeHeads() mid-merge = %v; want exactly [%s]", heads, featureSHA)
+	}
+}
+
+// resolveForTest resolves ref through the Repo under test, failing the test on error — the fixture
+// helper the MergeHeads tests name their expected SHAs with.
+func resolveForTest(t *testing.T, repo *gitrepo.Repo, ref string) string {
+	t.Helper()
+
+	sha, err := repo.ResolveSHA(ref)
+	if err != nil {
+		t.Fatalf("ResolveSHA(%s) error = %v", ref, err)
+	}
+	return sha
 }
 
 // TestMergeFFOnly_AdvancesBehindCheckout asserts MergeFFOnly advances a behind checkout to its
