@@ -1,0 +1,70 @@
+# loom-recipe.yaml is a test fixture only: it hand-authors loom's current thirteen-row producer
+# list (see internal/loomshed/loomshed.go's New) in this package's recipe format. The task ships no
+# production recipe file; converting loom's own list is the separate roadmap item sequenced
+# immediately after this one. internal/shedbuild/equivalence_test.go is this fixture's only
+# consumer.
+
+version: 1
+entry: Preflight
+terminals:
+  - Finalize
+
+producers:
+  - name: Preflight
+    engine: Preflight
+    on_done: Loom-Preflight
+
+  - name: Loom-Preflight
+    engine: LoomPreflight
+    on_done: Discussion-Write
+
+  - name: Discussion-Write
+    engine: Stub
+    on_done: Discussion-Validate
+
+  - name: Discussion-Validate
+    engine: DiscussionValidate
+    on_stuck: Discussion-Write
+    on_done: Discussion-Review
+
+  - name: Discussion-Review
+    engine: Stub
+    on_stuck: Discussion-Write
+    on_done: Plan-Write
+
+  - name: Plan-Write
+    engine: Stub
+    on_done: Plan-Validate
+
+  - name: Plan-Validate
+    engine: PlanValidate
+    on_stuck: Plan-Write
+    on_done: Plan-Review
+
+  - name: Plan-Review
+    engine: Stub
+    on_stuck: Plan-Write
+    on_done: Batchifier
+
+  - name: Batchifier
+    engine: Batchifier
+    on_done: Webster
+
+  - name: Webster
+    engine: Webster
+    on_done: Webster-Review
+
+  - name: Webster-Review
+    engine: Stub
+    on_stuck: Webster
+    on_done: Publish
+
+  - name: Publish
+    engine: Publish
+    on_done: Finalize
+
+  - name: Finalize
+    engine: Finalize
+    # on_done is explicitly empty: the empty value is load-bearing and is what ends the whole run
+    # quietly, per shedengine.ProducerDef.OnDone's own field doc.
+    on_done: ""

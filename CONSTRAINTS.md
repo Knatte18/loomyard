@@ -73,11 +73,11 @@ An engine is handed the absolute paths it operates on and derives none of its ow
   It is *machine-enforced* when a test in the package polices its production import set to exclude `internal/lyxcwd`;
   otherwise it is a *review obligation*.
   The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
-- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve`, `internal/shedrecipe` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
+- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve`, `internal/shedrecipe`, `internal/shedbuild` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
 - **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/websterengine`.
 - **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
   They are bound instead by the adapter-direction rule above, which is itself a review obligation.
-- **Enforced by** the ten tests named above, for the machine-enforced half;
+- **Enforced by** the eleven tests named above, for the machine-enforced half;
   the review-obligation half and the adapter-direction rule have no machine check.
 
 ## Lyxdirs Single-Declarer Invariant
@@ -174,6 +174,8 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 and the registry is one central `map[string]Constructor` literal reached only through `Lookup` and `Names`, never by `init()` self-registration and never by a runtime `Register` call.
 
 `internal/shedrecipe` takes every absolute path from its caller and has no direct production import of `internal/lyxcwd`, in the precise form the Told-Geometry Invariant requires — **every root is told and none is derived; the package's only path construction is joining a told root with a recipe-relative value.**
+
+`internal/shedbuild` is the registry's first outside caller: it reaches `internal/shedrecipe` only through its two exported accessors, `Lookup` and `Names`, and adds no registration mechanism of its own — a recipe naming an unregistered engine is an error for `internal/shedbuild` to report, never a reason to register one.
 
 - **Enforced by** `internal/shedrecipe/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) for the told-geometry half, and `internal/shedrecipe/coverage_guard_test.go` (`TestCoverageGuard_EveryLoomRowHasAnEngine`) for the registry-coverage half.
   The `ShedProducer`-only restriction itself is a review obligation, since the `Constructor` signature already makes it a compile-time fact.
