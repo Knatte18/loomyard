@@ -6,6 +6,7 @@ slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'loom: convert to a Shed recipe'
 task_description: |
   loom: convert to a Shed recipe
@@ -41,15 +42,23 @@ implementing  '2026-08-21T16:00:45Z'
 ```yaml
 batches:
   - name: recipe-file-and-loomrecipe-package
-    state: pending
+    state: running
+    implementer_session: f5702947-9d01-4983-8e07-ec1361c62193
+    start_sha: 993fbd7804bb9ddb394925f2ac3b449bd22dd31b
+    verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: move-the-graph-tests-into-loomrecipe
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: loomcli-rewiring
     state: pending
+    verify_baseline_failures: []
   - name: coverage-guard-move-and-fixture-retirement
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: delete-loomshed-new-and-deps
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: docs-and-comment-sweep
     state: pending
+    verify_baseline_failures: []
 ```
