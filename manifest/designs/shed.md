@@ -329,11 +329,14 @@ An omitted `OnDone` is indistinguishable from an intended terminal one and ends 
 Until now no caller did.
 `internal/shedcheck` closes that gap: a `Check` function that walks an assembled `OnDone`/`OnStuck` graph the same way `Run` would, without ever calling a producer, and reports every structural defect it finds instead of stopping at the first one.
 
-The checker lives in its own package, `internal/shedcheck`, rather than inside `shedengine`, because it is an authoring-time analysis, not part of the engine's runtime contract, and putting it in the engine would imply `Run` enforces it.
-The import direction is `shedcheck` → `shedengine`, the safe one; the reverse is already forbidden by the Shed Producer-Seam Invariant.
+The checker lives in its own package, `internal/shedcheck`, rather than inside `shedengine`, because it is an authoring-time analysis, not part of the engine's runtime contract,
+and putting it in the engine would imply `Run` enforces it.
+The import direction is `shedcheck` → `shedengine`, the safe one;
+the reverse is already forbidden by the Shed Producer-Seam Invariant.
 
 `Check` takes `entry` and `terminals` as explicit arguments and never infers either from the producer list.
-`Shed` has no entry field and no terminal field, and defaulting to `Producers[0]` would re-introduce the positional routing meaning this same doc's routing model disclaims.
+`Shed` has no entry field and no terminal field,
+and defaulting to `Producers[0]` would re-introduce the positional routing meaning this same doc's routing model disclaims.
 
 `Check` reports exactly eight kinds, in a fixed order:
 
@@ -349,7 +352,9 @@ The import direction is `shedcheck` → `shedengine`, the safe one; the reverse 
 `blind-gate` is what replaces the departing `Segment` rule, expressed as a real graph property — a gate whose bounce target never routes back to the gate — rather than as a matching label.
 This task removes neither the `Segment` field nor `validate()`'s same-`Segment` rule; those belong to the recipe-loader items that actually drop `Segment`, per [shed-recipe.md](shed-recipe.md#pieces-to-build).
 
-`done-cycle` generalises the length-1 case [`internal/shedengine/validate.go`](../../internal/shedengine/validate.go) already rejects (`OnDone: <self>`), and the asymmetry that motivates it is real: a `Done` route consumes no bounce budget, so a done cycle is a statically certain infinite loop, whereas a stuck bounce is budgeted and therefore bounded.
+`done-cycle` generalises the length-1 case [`internal/shedengine/validate.go`](../../internal/shedengine/validate.go) already rejects (`OnDone: <self>`),
+and the asymmetry that motivates it is real: a `Done` route consumes no bounce budget,
+so a done cycle is a statically certain infinite loop, whereas a stuck bounce is budgeted and therefore bounded.
 
 Nothing in production calls `Check` — its enforcement point is a `go test` invariant over loom's own producer list, not a runtime guard.
 
