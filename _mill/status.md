@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-move-the-graph-tests-into-loomrecipe
+phase: approved-loomcli-rewiring
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -37,6 +37,7 @@ planned  '2026-08-21T16:00:20Z'
 implementing  '2026-08-21T16:00:45Z'
 approved-recipe-file-and-loomrecipe-package  '2026-08-21T16:05:52Z'
 approved-move-the-graph-tests-into-loomrecipe  '2026-08-21T16:16:35Z'
+approved-loomcli-rewiring  '2026-08-21T16:21:32Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     commit_sha: ad00b2d505a52848f25a0e43c17b4f41166f3a13
     verify_baseline_failures: ["FAIL\t./internal/loomrecipe/... [setup failed]"]
   - name: loomcli-rewiring
-    state: running
+    state: approved
     implementer_session: fd5527c7-ab71-4e5e-830e-7728e634d953
     start_sha: 464aaef368e497efc2bb674ee5e898609a72703e
+    commit_sha: e4669de287719785ea2911216e3abcd1347c7e6f
     verify_baseline_failures: []
   - name: coverage-guard-move-and-fixture-retirement
     state: pending
