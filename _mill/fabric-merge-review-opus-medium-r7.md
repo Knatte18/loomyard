@@ -51,6 +51,72 @@ Hub built by hand under the scratch directory (never inside the worktree), `GIT_
    showed exactly two parents in exactly the recorded (start, source) order — the shape
    `sideConcludeAlreadyLanded` demands. Record deleted, resolved content correct on both sides.
 
-## Findings
+### Sabotage sweep
 
-(appended live, in order)
+Harness: apply exactly one source mutation, `go build ./...` (a build break is discarded, not counted
+as proof), then `go test -tags integration -count=1 ./internal/fabricengine/... ./internal/fabriccli/...
+./internal/gitrepo/...`, then restore. A PASS after sabotage means the mechanism is unguarded.
+
+Round 6's own new mechanisms (the named re-examination target):
+
+| # | sabotage | result |
+|---|---|---|
+| S-a | `len(parents) != 2` → `len(parents) < 2` | caught — `TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted` |
+| S-b | drop `parents[0] != start` | caught — `TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted` |
+| S-c | drop `parents[1] != sourceSHA` | caught — `TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted` |
+| S-f | drop the squash refusal in adoption | caught — `TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted` |
+| S-g | drop the live-`MERGE_HEAD` refusal in adoption | caught — `TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead` |
+| S-h | drop `MergeStageResolved`'s foreign-state guard (F7) | caught — `TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging` |
+| S-i | drop `finalizeMergeResult`'s `Conflicts` nil-safety (F8) | caught — `TestMergeCrucible_ConflictsIsEmptyNeverNil` (4 subtests) |
+| S-e | `filepath.ToSlash` → blanket `strings.ReplaceAll(…, "\\", "/")` (F6) | caught — `…/single_anchor_segment_containing_a_backslash_is_not_split` |
+| **S-d** | **DELETE `filepath.ToSlash` entirely (identity)** | **PASS — UNGUARDED → F2** |
+
+Each of S-a/S-b/S-c was caught by a *different* test, so round 6's three parentage clauses are
+independently pinned and each test fails for its own reason. Round 6's work is sound except S-d.
+
+Wider surface:
+
+| # | sabotage | result |
+|---|---|---|
+| S-1 | `MergeStart` drop the `--ff` pin | caught — `TestMergeStart_HostileMergeFFConfig` |
+| S-2b | `MergeStart` drop the `mergeHeadPresent` classification arm | caught — 2 tests, both packages |
+| S-3 | `ConflictedFiles` drop `-z` | caught — 7 tests |
+| **S-4** | **`StageResolved` `add -A --` → `add --`** | **PASS — UNGUARDED → F3** |
+| S-5 | `MergeFFOnly` → `reset --hard` | caught — `TestMergeFFOnly_FailsLoudlyOnDivergedPair` |
+| S-6 | `detachedHeadReason` drop the weft half | caught — `…/WeftDetached` |
+| S-7 | `pairDirtyReason` drop the weft half | caught — 2 tests |
+| **S-8** | **`foreignMergeStatePresent` drop BOTH weft probes** | **PASS — UNGUARDED → F4** |
+| **S-10** | **`foreignMergeStatePresent` drop the warp conflicted-index probe** | **PASS — UNGUARDED → F4** |
+| **S-11** | **`foreignMergeStatePresent` drop the warp `MERGE_HEAD` probe** | **PASS — UNGUARDED → F4** |
+| **S-12** | **`syncedToUpstreamReason` drop the weft half** | **PASS — UNGUARDED → F5** |
+| **S-13** | **`sideNotSyncedToUpstream` drop the behind-passes clause** | **PASS — UNGUARDED → F5** |
+| S-14 | `syncSideBeforeMerge` drop the whole FF advance | caught — 2 tests |
+| S-9 | `sideConcludeMayHaveLanded` drop the HEAD-moved clause | caught — 2 tests |
+
+### Live: is `Merge`'s not-synced guard reachable at all? (→ F5)
+
+`git add`-probe first (`git version 2.53.0`): a delete/modify conflict resolved by deletion stages
+with **plain** `git add -- f.txt`, exit 0, index clean afterwards — so `StageResolved`'s godoc
+rationale for `-A` is false on any modern git (→ F3).
+
+Then, on the live hub: created pairs `target` and `task-b`; both sides of `target` carry a real
+`@{u}` (`origin/target`, `origin/target-weft`). A separate clone pushed a commit to `origin/target`;
+`target` then made a local commit **without fetching**. State at call time:
+
+```
+target HEAD:          47828cdf…      (local commit)
+target origin/target: 81b823c7…      (stale, pre-fetch)
+real remote tip:      c815ec1a…
+```
+
+`lyx fabric merge task-b` returned:
+
+```
+{"already_up_to_date":false,"committed":true,"mutations":[…],"ok":true,"partial":false}   exit=0
+```
+
+and afterwards `git rev-list --left-right --count 'HEAD...@{u}'` = **`3	1`** — genuinely diverged,
+with `origin/target` now advanced to `c815ec1a…` because this very call fetched it. The guard that
+exists to refuse exactly this never fired.
+
+## Findings
