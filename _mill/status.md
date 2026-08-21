@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: shed-setup-validity-checker
 branch: shed-setup-validity-checker
 plan: _mill/plan
@@ -30,6 +30,7 @@ holistic-fixing  '2026-08-21T08:51:29Z'
 nits-fixed-holistic  '2026-08-21T08:53:44Z'
 holistic-approved  '2026-08-21T08:53:50Z'
 done  '2026-08-21T08:55:34Z'
+pr-pending  '2026-08-21T08:57:21Z'
 ```
 
 ## Batches
