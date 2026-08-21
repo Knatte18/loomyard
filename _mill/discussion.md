@@ -221,6 +221,14 @@ Its fake-building helpers (`coverageGuardFakePreflight`, `coverageGuardFakeMerge
 `wire()` is where every told absolute path is already in hand (`location.AnchorPath()`, `location.WorktreePath()`, `loomengine.LoomStatusFile(location)`, etc.) and where a `shedrecipe.Env` would be filled in piece 4.
 This task does not touch it, but it is the shape the `Env`-filling story has to land in.
 
+### Carried-forward note for the plan stage: `shedrecipe.Env`'s size
+
+`Env`'s nine-told-root-plus-six-seam shape is inherited from piece 1 unmodified, and widening or narrowing it is explicitly out of scope here.
+The `shed-recipe-engine-registry` task's own review already flagged `Env`'s size as worth revisiting once a *second* caller exists to stress it.
+This task does not supply that second caller: the equivalence test builds an `Env` by hand, exactly as `internal/shedrecipe/coverage_guard_test.go` already does, so it exercises the same single synthetic shape rather than a genuinely independent one.
+The first real second caller is piece 4's `internal/loomcli` wiring.
+The deferral is therefore correct here but compounds by one more task — the plan should not treat "`Env` is fine" as settled, only as untested by this task.
+
 ### Gotchas found while exploring
 
 - **`yaml.v3` decoding into `any`.** A YAML mapping decodes to `map[string]any` (unlike `yaml.v2`, which produced `map[interface{}]interface{}`), and an integer scalar decodes to `int`.
