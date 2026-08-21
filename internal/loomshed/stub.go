@@ -20,8 +20,10 @@ type stubProducer struct {
 
 var _ shedengine.ShedProducer = (*stubProducer)(nil)
 
-// newStub returns a stubProducer identified as name.
-func newStub(name string) *stubProducer {
+// NewStub returns a stubProducer identified as name. The return type is shedengine.ShedProducer,
+// the seam interface, so the internal/shedrecipe registry can call this constructor from outside
+// this package while stubProducer itself stays unexported.
+func NewStub(name string) shedengine.ShedProducer {
 	return &stubProducer{name: name}
 }
 

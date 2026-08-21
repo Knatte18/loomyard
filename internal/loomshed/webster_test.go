@@ -26,7 +26,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, "active: [not valid yaml\n")
 
 		fake := &fakeWebsterRun{}
-		p := newWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
+		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -44,7 +44,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		fake := &fakeWebsterRun{}
-		p := newWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
+		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
 		outcome, _, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -68,7 +68,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		fake := &fakeWebsterRun{}
-		p := newWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
+		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
 
 		outcome1, _, err := p.Call(context.Background())
 		if err != nil {
@@ -97,7 +97,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		cancel()
 
 		fake := &fakeWebsterRun{}
-		p := newWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
+		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{})
 		outcome, _, err := p.Call(ctx)
 		if err == nil {
 			t.Fatalf("Call(cancelled) error = nil; want non-nil error")

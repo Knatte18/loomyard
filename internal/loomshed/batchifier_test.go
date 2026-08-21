@@ -27,7 +27,7 @@ func TestBatchifier_Call(t *testing.T) {
 		anchorPath := t.TempDir()
 		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
-		b := newBatchifier("Batchifier", anchorPath)
+		b := NewBatchifier("Batchifier", anchorPath)
 		outcome, pointer, err := b.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -44,7 +44,7 @@ func TestBatchifier_Call(t *testing.T) {
 		anchorPath := t.TempDir()
 		writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
-		b := newBatchifier("Batchifier", anchorPath)
+		b := NewBatchifier("Batchifier", anchorPath)
 		outcome, _, err := b.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -58,7 +58,7 @@ func TestBatchifier_Call(t *testing.T) {
 		anchorPath := t.TempDir()
 		writeBatcherConfig(t, anchorPath, "active: [not valid yaml\n")
 
-		b := newBatchifier("Batchifier", anchorPath)
+		b := NewBatchifier("Batchifier", anchorPath)
 		outcome, _, err := b.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -74,7 +74,7 @@ func TestBatchifier_Call(t *testing.T) {
 			t.Fatalf("mkdir _lyx: %v", err)
 		}
 
-		b := newBatchifier("Batchifier", anchorPath)
+		b := NewBatchifier("Batchifier", anchorPath)
 		outcome, _, err := b.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -87,7 +87,7 @@ func TestBatchifier_Call(t *testing.T) {
 	t.Run("AbsentLyxDirMapsToDoneViaTemplateFallback", func(t *testing.T) {
 		anchorPath := t.TempDir() // no _lyx/ at all
 
-		b := newBatchifier("Batchifier", anchorPath)
+		b := NewBatchifier("Batchifier", anchorPath)
 		outcome, _, err := b.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -104,7 +104,7 @@ func TestBatchifier_Call(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		b := newBatchifier("Batchifier", anchorPath)
+		b := NewBatchifier("Batchifier", anchorPath)
 		outcome, _, err := b.Call(ctx)
 		if err == nil {
 			t.Fatalf("Call(cancelled) error = nil; want non-nil error")
