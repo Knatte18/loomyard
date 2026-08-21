@@ -247,7 +247,7 @@ This task copies the *lookup and error* shape and deliberately departs from the 
 `CONSTRAINTS.md`'s **Batcher Registry+Config Invariant** documents that registry.
 
 **Prompt-composition precedent.** `internal/shedadapters/bouncer.go:330-346` — `stencilstore.Read(stencilsDir, name)` for the template and the rubric, `stencil.StripLeadingComment` on the rubric, then `stencil.Fill(template, map[string]string{...})`.
-`stencil.Fill` errors on a missing token rather than substituting empty, which is why `bouncer.go:394` passes the literal `"(none)"` for an empty value.
+`stencil.Fill` errors on a missing token rather than substituting empty, which is why `bouncer.go:397` passes the literal `"(none)"` for an empty value.
 The `SingleLLM` entry follows the same three steps.
 
 **Import-allowlist tests.** Every producer-hosting package carries one: `internal/loomshed/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) is the closest model — it walks non-test `.go` files with `go/parser` in `parser.ImportsOnly` mode and fails any import outside an explicit allowlist map.
