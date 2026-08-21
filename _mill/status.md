@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-coverage-guard-move-and-fixture-retirement  '2026-08-21T16:25:47Z'
 approved-delete-loomshed-new-and-deps  '2026-08-21T16:29:39Z'
 approved-docs-and-comment-sweep  '2026-08-21T16:38:30Z'
 holistic-reviewing  '2026-08-21T16:38:51Z'
+holistic-approved  '2026-08-21T16:42:43Z'
 ```
 
 ## Batches
