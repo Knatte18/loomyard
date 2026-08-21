@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -19,4 +19,6 @@ discussion-fix-r2  '2026-08-21T14:06:30Z'
 discussion-fix-r5  '2026-08-21T14:28:56Z'
 discussed  '2026-08-21T14:28:56Z'
 planning  '2026-08-21T14:41:27Z'
+plan-review-r1  '2026-08-21T14:53:42Z'
+plan-fix-r1  '2026-08-21T14:53:42Z'
 ```

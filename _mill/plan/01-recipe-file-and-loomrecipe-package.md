@@ -66,6 +66,7 @@ A `contracts/recipes` test asserting the bytes are non-empty and `Parse`-able wo
   - `internal/shedbuild/check.go`
   - `internal/shedbuild/recipe.go`
   - `internal/shedbuild/doc.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/env.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/shedengine/shed.go`

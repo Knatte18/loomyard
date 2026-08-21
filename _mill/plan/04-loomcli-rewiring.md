@@ -32,6 +32,7 @@ Batch-local decisions:
 
 - **Context:**
   - `internal/loomrecipe/loomrecipe.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/env.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/loomshed/loomshed.go`
@@ -77,6 +78,7 @@ Batch-local decisions:
 - **Context:**
   - `internal/loomcli/wiring.go`
   - `internal/loomrecipe/loomrecipe.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/env.go`
 - **Edits:**
   - `internal/loomcli/cli.go`
@@ -117,7 +119,9 @@ Batch-local decisions:
   In `internal/loomcli/run.go`, repoint the `loomshed.Seed(c.deps.StatusPath, c.deps.StatusLockPath, …)` call's two arguments and the `runLockPath := c.deps.LockPath` assignment at `c.shedPaths`.
   Keep the `internal/loomshed` import here — `Seed` and `ErrSeedExists` both stay in that package and are unchanged by this task.
 
-  Before committing, run a `c\.deps\.` grep across `internal/loomcli` and confirm the only remaining hits are in `cli_test.go` and `wiring_test.go`, which cards 18 and 19 handle.
+  Also repair `RunAliasCommand`'s doc comment in the same file, which says the alias "would run with location, cwd, and deps all left unresolved" — the `deps` field disappears in card 16, so name the two replacement carriers instead.
+
+  Before committing, run a `c\.deps\.` grep across `internal/loomcli` and confirm the only remaining hits are in `cli_test.go` and `wiring_test.go`, which cards 18 and 19 handle, and a bare `deps` grep across the four files this card edits to confirm no doc comment still names the removed field.
 - **Commit:** `refactor(loomcli): build loom's Shed through loomrecipe.New`
 
 ### Card 18: Update the `wire` tests
@@ -125,6 +129,7 @@ Batch-local decisions:
 - **Context:**
   - `internal/loomcli/wiring.go`
   - `internal/loomcli/cli.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/env.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/loomrecipe/loomrecipe.go`
@@ -186,4 +191,4 @@ it uses only `loomshed.Seed`, which this task leaves untouched, so it is unaffec
 Note that `wire` never builds a `Shed` — `loomrecipe.New` is called only from `driveCmd` — so no `wire` test triggers `landingshed.NewPublish`'s nil-closure rejection despite `Env.Landing` being left unfilled.
 That existing production failure is preserved unchanged, per the `landing-parity` Shared Decision, and this batch adds no test asserting it either way.
 
-The module-wide `go build ./...` at the batch boundary is what proves the four verb files and both test files compile against the new receiver shape together.
+The module-wide `go vet ./...` at the batch boundary is what proves the four verb files and both test files typecheck against the new receiver shape together — `go build` would not, since it never compiles `_test.go` files.

@@ -44,6 +44,7 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/loomshed/batchifier_test.go`
   - `internal/loomshed/seed.go`
   - `internal/shedbuild/fixture_test.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/env.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/loomrecipe/loomrecipe.go`
@@ -107,9 +108,9 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
     The guard it covers (`New` rejecting a nil `deps.Preflight`) no longer exists: the row is built by `preflightEntry` from `Env.Cwd`, not injected.
     Its replacement is card 7's construction-failure test.
 
-  None of these eight tests calls `Run` against a real fixture except `TestNew_PassesShedValidation`, whose `Env` points at paths that do not exist on disk so `Discussion-Validate` bounces until its budget is exhausted — that is an ordinary blocked outcome, not a validation failure, and needs no row-1 substitution because row 1 is `fakeAlwaysDoneProducer`... which it no longer is.
-  `TestNew_PassesShedValidation` **does** now build the real `Preflight` producer, so it must substitute row 1 per the `row1-substitution-is-a-seam-not-a-fixed-fake` Shared Decision before calling `Run`.
-  The other seven only build and inspect the list and must add no substitution at all, so the real row 1's construction stays covered.
+  `TestNew_PassesShedValidation` is the only one of these tests that calls `Run`, so it is the only one that substitutes row 1 — `shed.Producers[0].Producer = fakeAlwaysDoneProducer{}` after `New` and before `Run`, per the `row1-substitution-is-a-seam-not-a-fixed-fake` Shared Decision.
+  Its own outcome is unchanged: its `Env` points at discussion paths that do not exist on disk, so `Discussion-Validate` bounces until its budget is exhausted, which is an ordinary blocked outcome rather than a validation failure.
+  The other six build and inspect the list without running it and must add no substitution at all, so the real row 1's construction stays covered.
 - **Commit:** `test(loomrecipe): move the graph shape assertions onto the recipe`
 
 ### Card 7: The recipe's own shape, structural check, and construction-failure tests
@@ -119,8 +120,10 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   - `internal/loomrecipe/shape_test.go`
   - `internal/loomrecipe/loomrecipe.go`
   - `internal/shedbuild/equivalence_test.go`
+  - `internal/shedbuild/build.go`
   - `internal/shedbuild/check.go`
   - `internal/shedbuild/parse.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/env.go`
   - `internal/shedrecipe/entries_simple.go`
   - `internal/loomshed/seed.go`
@@ -197,7 +200,7 @@ Its eight tests are all shape-and-identity assertions over the built list, and `
   **Row-1 substitution is per `New` call, not per test.**
   Three of the six build the list twice: `TestResume_DoesNotRestartAtRowOne`, `TestResume_CrashRecoveryRecallsUnconditionally`, and `TestResume_PauseStopsAtBoundaryAndClearsFlag`.
   Each of those needs a substitution after *each* `New` call — substituting once per test leaves the second run calling the real row-1 producer, whose `Call` invokes `preflight.Check(p.cwd)` and spawns `git` against a `t.TempDir()`, both failing the run and breaching the Test Tier Purity Invariant.
-  That is nine `New` call sites in this file, plus card 8's one, for ten in total across the batch.
+  That is nine `New` call sites in this file, plus card 8's one and card 6's one (`TestNew_PassesShedValidation`), for eleven `Run`-driving sites in total across the batch.
 
   **`TestResume_CrashRecoveryRecallsUnconditionally` substitutes its own fake, and the same instance twice.**
   It holds one `counting := &countingProducer{}` across both builds and asserts `counting.calls == 2` at the end.
@@ -270,7 +273,9 @@ On the `internal/loomrecipe` side it runs the four moved/new test files — `sha
 On the `internal/loomshed` side it runs the eight per-producer files that stay plus the newly extracted `cancellation_test.go`, proving the reduced fixture is sufficient and that nothing left behind references a moved helper.
 
 Both halves are tier 1: hand-built `Env` over `t.TempDir()`, test doubles for every seam, no process spawn.
-The one place that could breach it is the real `Preflight` producer's `Call`, which the row-1 substitution prevents at all ten `New` sites.
+The one place that could breach it is the real `Preflight` producer's `Call`, which the row-1 substitution prevents at all eleven `Run`-driving `New` sites in this batch: card 6's one (`TestNew_PassesShedValidation`), card 8's one, and card 9's nine.
 A missed substitution surfaces as a `git`-spawning test rather than a silent pass, because `preflight.Check` against a bare `t.TempDir()` fails.
 
-The module-wide `go build ./...` at the batch boundary is what catches the cross-package risk here: `internal/shedbuild/equivalence_test.go` and `internal/shedrecipe/coverage_guard_test.go` still drive `loomshed.New`, which this batch leaves intact, so they must still compile.
+The module-wide `go vet ./...` at the batch boundary is what catches the cross-package risk here: `internal/shedbuild/equivalence_test.go` and `internal/shedrecipe/coverage_guard_test.go` still drive `loomshed.New`, which this batch leaves intact, so they must still typecheck.
+`go vet` rather than `go build` is load-bearing at every boundary in this plan: `go build` never compiles `_test.go` files at all, so a stale test-side reference to a moved or deleted symbol would pass it silently.
+`go vet` typechecks the test files too, and it runs clean on the current tree in under two seconds.

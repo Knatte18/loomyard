@@ -120,7 +120,9 @@ It stays in `internal/shedrecipe` either way, which is what the exact-twelve-nam
   This deletion also removes `internal/shedbuild`'s test-only imports of `internal/loomshed` and `internal/preflightshed`.
   Leave `internal/shedbuild/seam_enforcement_test.go`'s allowlist alone — it polices production files only.
 
-  Run `go test ./internal/shedbuild/... -count=1` afterwards and confirm the remaining six test files pass with no edits: `parse_test.go`, `build_test.go`, `build_engines_test.go`, `load_test.go`, `check_test.go`, and `seam_enforcement_test.go`.
+  Run `go test ./internal/shedbuild/... -count=1` afterwards and confirm the remaining seven test files pass with no edits: `fixture_test.go`, `parse_test.go`, `build_test.go`, `build_engines_test.go`, `load_test.go`, `check_test.go`, and `seam_enforcement_test.go`.
+  `fixture_test.go` survives and is consumed by `build_test.go` and `build_engines_test.go`;
+  its own stale doc comment is repaired by card 26, not here.
   Do not delete `Load` from `internal/shedbuild/parse.go` even though it now has no production caller anywhere in the tree — it is exported, documented, covered by `load_test.go`, and is the entry a future non-embedded consumer needs.
   Equally, do not add a contrived production call to justify it.
 - **Commit:** `test(shedbuild): retire the loom equivalence fixture`
@@ -131,7 +133,7 @@ It stays in `internal/shedrecipe` either way, which is what the exact-twelve-nam
 
 On `internal/loomrecipe` it runs the moved guard against the recipe-built list — both directions of the row-table assertion plus the newly added three-engine orphan allowance — alongside batch 2's suite, which must stay green.
 On `internal/shedrecipe` it runs `registry_test.go` with the re-homed exact-twelve pin, proving the pin survived the move unchanged, plus the package's own entry tests, which never touched `loomshed.New`.
-On `internal/shedbuild` it proves the remaining six test files stand on their own after the equivalence test and its testdata are gone.
+On `internal/shedbuild` it proves the remaining seven test files — `fixture_test.go` included — stand on their own after the equivalence test and its testdata are gone.
 
 The scope is three packages rather than one because the deletions and the move are two halves of one fact: the loom-driving assertions leave `shedrecipe`/`shedbuild` and land in `loomrecipe` in the same batch, and a partial pass on one side would be a false green.
 

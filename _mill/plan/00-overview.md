@@ -7,7 +7,7 @@ approved: false
 started: '20260821-143326'
 parent: 'main'
 root: ""
-verify: go build ./...
+verify: go vet ./...
 ```
 
 ## Batch Index
@@ -41,12 +41,12 @@ batches:
     name: delete-loomshed-new-and-deps
     file: 05-delete-loomshed-new-and-deps.md
     depends-on: [2, 3, 4]
-    verify: go test ./internal/loomshed/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/...
+    verify: go test ./internal/loomshed/... ./internal/loomrecipe/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/...
   - number: 6
     name: docs-and-comment-sweep
     file: 06-docs-and-comment-sweep.md
     depends-on: [5]
-    verify: go test ./internal/lyxcwd/ -run 'TestEnforcement_MarkdownLinks|TestEnforcement_GeometryLiterals'
+    verify: go test ./internal/lyxcwd/ ./internal/preflightshed/ ./internal/shedrecipe/ ./internal/shedcheck/ ./internal/shedbuild/
 ```
 
 ## Shared Decisions
@@ -161,6 +161,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/loomshed/loomshed.go`
 - `internal/loomshed/seam_enforcement_test.go`
 - `internal/preflightshed/preflight_test.go`
+- `internal/shedbuild/fixture_test.go`
 - `internal/shedcheck/doc.go`
 - `internal/shedrecipe/entries_simple.go`
 - `internal/shedrecipe/recipe.go`

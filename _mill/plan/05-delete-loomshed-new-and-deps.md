@@ -5,7 +5,7 @@ task: 'loom: convert to a Shed recipe'
 batch: 'delete-loomshed-new-and-deps'
 number: 5
 cards: 3
-verify: go test ./internal/loomshed/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/...
+verify: go test ./internal/loomshed/... ./internal/loomrecipe/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/...
 depends-on: [2, 3, 4]
 ```
 
@@ -110,13 +110,14 @@ The retention test is "any reference, production or moved test", stated so the i
 
 ## Batch Tests
 
-`verify: go test ./internal/loomshed/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/...` runs the four packages a stale reference to `New` or `Deps` could hide in.
+`verify: go test ./internal/loomshed/... ./internal/loomrecipe/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/...` runs the four packages a stale reference to `New` or `Deps` could hide in.
 
 `internal/loomshed` proves the nine remaining test files compile and pass with the literal gone, and that the tightened allowlist matches the shrunken production import set — the assertion this batch's own change most directly risks.
 `internal/loomcli` proves batch 4's rewiring holds with the old symbols actually removed rather than merely unused.
 `internal/shedrecipe` and `internal/shedbuild` prove batch 3's moves and deletions left no test behind that still reaches for `New`.
 
-`internal/loomrecipe` is deliberately not in this batch's `verify:` scope: nothing in this batch touches it or anything it imports, and batches 2 and 3 already gate it.
-The module-wide `go build ./...` at the batch boundary is what proves nothing anywhere else in the tree referenced the deleted symbols — that is the whole-tree check this batch actually needs, and it is cheaper than widening `verify:` to `./...`.
+`internal/loomrecipe` **is** in this batch's `verify:` scope, and that is load-bearing rather than incidental: batch 2 moved nine `New` call sites into that package, so it is exactly where a residual `loomshed.New`/`loomshed.Deps` reference would survive this batch's deletion.
+A test-side reference there cannot be caught by a build — `go build` never compiles `_test.go` files — so the package has to be run, not merely built.
+The module-wide `go vet ./...` at the batch boundary is what proves nothing anywhere *else* in the tree referenced the deleted symbols, production or test alike, and it is cheaper than widening `verify:` to `./...`.
 
 The `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`) is the final backstop before the task is marked done, covering `internal/loomcli/smoke_test.go` and every package outside these four.
