@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-convert-to-shed-recipe
 branch: loom-convert-to-shed-recipe
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-docs-and-comment-sweep  '2026-08-21T16:38:30Z'
 holistic-reviewing  '2026-08-21T16:38:51Z'
 holistic-approved  '2026-08-21T16:42:43Z'
 done  '2026-08-21T16:44:05Z'
+pr-pending  '2026-08-21T16:46:10Z'
 ```
 
 ## Batches
