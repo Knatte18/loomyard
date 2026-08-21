@@ -1,6 +1,8 @@
-// Package loomshed owns loom's own ordered producer list and returns a constructed
-// *shedengine.Shed. It takes told absolute paths and has no direct production import of
-// internal/lyxcwd -- see the Told-Geometry Invariant in CONSTRAINTS.md.
+// Package loomshed owns loom's own six producer constructors, its thirteen durable row names, its
+// status seeder, and its own cancellation helpers. Loom's ordered producer list itself moved to
+// contracts/recipes/loom-recipe.yaml; internal/loomrecipe is what assembles a *shedengine.Shed from
+// it. It takes told absolute paths and has no direct production import of internal/lyxcwd -- see
+// the Told-Geometry Invariant in CONSTRAINTS.md.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are

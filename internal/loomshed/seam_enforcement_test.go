@@ -2,7 +2,7 @@
 // code in internal/loomshed takes every absolute path it operates on from its caller and has no
 // direct production import of internal/lyxcwd. Named seam_enforcement_test.go rather than
 // leaf_enforcement_test.go on purpose -- that second filename pairs with a TestLeafInvariant_
-// AllowlistOnly name on genuine zero-or-one-dependency leaves, and loomshed imports six internal
+// AllowlistOnly name on genuine zero-or-one-dependency leaves, and loomshed imports seven internal
 // packages, so it is structurally a seam, not a leaf, exactly like internal/shedengine's own
 // seam_enforcement_test.go this file is modelled on.
 //
@@ -34,7 +34,6 @@ var loomshedAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/planparser":    true,
 	"github.com/Knatte18/loomyard/internal/batcher":       true,
 	"github.com/Knatte18/loomyard/internal/state":         true,
-	"github.com/Knatte18/loomyard/internal/landingshed":   true,
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package

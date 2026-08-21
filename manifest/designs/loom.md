@@ -13,6 +13,7 @@ the LLM owns the thinking.
 The orchestrator is the **`loom`** module (`lyx loom run`); the gate is a **review segment** in loom's own producer list — a generic `Bouncer` review-gate producer paired with a `Burler`-round producer, both in `internal/shedadapters` — the iterative review loop, hand-wired once per phase. The `Burler`-round producer composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary, `loom`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 `loom` = `Shed` (see [shed.md](shed.md), the generic outer phase-FSM: sequencing, resume, crash recovery, pause, the status-file contract) + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the thirteen rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
 
 ## The phase machine — a flat producer list, no predefined slots
 
@@ -20,6 +21,8 @@ The orchestrator is the **`loom`** module (`lyx loom run`); the gate is a **revi
 It is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across the whole list;
 atomicity — one mechanical action or LLM session — binds **simple** producers only, per the carve-out in [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
 `loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list.
+The table below is the durable record of that list's rows and routing;
+the shipped list itself lives at `contracts/recipes/loom-recipe.yaml`, built into `[]shedengine.ProducerDef` by `internal/loomrecipe`.
 The list's order is display and enumeration order only, never routing — see [`shed.md`'s bounce-budget and routing sections](shed.md#the-shed-loop--exact-mechanics) for the full argument; this doc does not restate it.
 The table's `Kind` column records each producer's simple/bespoke typology;
 see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the carve-out that defines it.

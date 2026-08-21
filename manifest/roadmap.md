@@ -9,15 +9,15 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
 
-### Shed recipe: declarative producer lists
+### landing: parent-fabric resolution chain
 
-A 2026-08-21 discussion concluded `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal (`loomshed.go:137-151`) should become a declarative recipe instead — see [designs/shed-recipe.md](designs/shed-recipe.md) for the full design. Four separable pieces in total; the engine registry, the recipe loader/builder, and the Shed-setup validity checker have already shipped (see Done below), leaving one here:
+`internal/landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` closures are what a caller must fill to construct `landingshed.NewPublish`/`NewFinalize`;
+today no production caller fills them, and `deps.go`'s own comment says the resolution chain "belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it" — this is that item.
 
-1. **loom: convert to a Shed recipe** — replace `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal with an actual recipe file, using the shipped registry (`internal/shedrecipe`, see Done below) and the shipped loader/builder (`internal/shedbuild`, see Done below). The engine registry, the recipe loader/builder, and the Shed-setup validity checker have all shipped. Converts the list as it stands (including the still-stubbed `*-Write`/`*-Review` rows) — does not itself require the `loom: real LLM producers` group below to land first, and precedes it here so those five tasks author their rows directly in recipe form rather than as a Go literal that then needs converting.
-   This item is where a sole-parser invariant for the recipe format belongs, added to `CONSTRAINTS.md` in that same commit as a review obligation, by direct analogy with the plan-format sole-parser invariant already recorded there — it is premature until this item ships the first production recipe and the first real consumer.
-   This item's consumer cannot be loom's own producer-list package, `internal/loomshed`: the engine registry already imports that package for six of its constructors, so having it import the loader in turn would close a production import cycle that does not compile.
-   The consumer must sit above it — loom's CLI wiring already holds every told path — or `internal/loomshed` must shed the constructors the registry reaches for, and choosing between those two stays this item's call.
-   See [designs/shed-recipe.md](designs/shed-recipe.md).
+1. **landing: parent-fabric resolution chain** — fill `landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` closures for loom, building the resolution chain `deps.go` already documents: list the current hub's worktrees, match the entry whose branch equals the task's recorded parent branch, resolve that worktree's path, and open its fabric.
+   Consequence that makes this worth its own item: until it lands, `Publish`/`Finalize` construction fails for want of `Env.Landing` wherever a caller tries to fill it — `loom: convert to a Shed recipe` (see Done below) hits exactly this and deliberately leaves `Env.Landing` unfilled, preserving the pre-existing gap rather than working around it — so `loom` cannot complete an end-to-end run until this item lands.
+   The five `loom: real LLM producers` tasks below are not blocked on this: they add rows to the recipe and are developable independently of whether a full run can complete.
+   See `internal/landingshed/deps.go` and [designs/loom.md](designs/loom.md).
 
 ### landing: parent-fabric resolution
 
@@ -28,7 +28,7 @@ A 2026-08-21 discussion concluded `internal/loomshed`'s hardcoded `[]shedengine.
 
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split. Sequenced after the "Shed recipe" group above so these five tasks write their rows directly as recipe entries.
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split. Sequenced after the four now-Done "Shed recipe" entries below so these five tasks write their rows directly as recipe entries in `contracts/recipes/loom-recipe.yaml`.
 
 1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
@@ -163,8 +163,9 @@ No build order is implied between these items.
 1. **Shed recipe: engine registry** — shipped `internal/shedrecipe`, the name → constructor mapping the future recipe loader resolves each row's `Engine` field against, registering all twelve engine names: `Batchifier`, `Bouncer`, `BurlerRound`, `DiscussionValidate`, `Finalize`, `LoomPreflight`, `PlanValidate`, `Preflight`, `Publish`, `SingleLLM`, `Stub`, `Webster`.
    Every registry value has the fixed `Constructor` signature `func(name string, cfg Config, env Env) (shedengine.ShedProducer, error)`, with the `Config`/`Env` split this task settled: `Config` is the recipe row's portable, already-decoded configuration, and `Env` is the caller-filled bundle of absolute roots and injected seams, never a value that differs between two rows.
    `internal/loomshed` exported six of its own producer constructors (`NewLoomPreflight`, `NewBatchifier`, `NewDiscussionValidate`, `NewPlanValidate`, `NewStub`, `NewWebsterProducer`) so the registry could reach them, widening only their declared return type to `shedengine.ShedProducer` and keeping every concrete type unexported.
-   A coverage guard (`internal/shedrecipe/coverage_guard_test.go`) pins the registry against `loomshed.New`'s current, real row list, both directions, so a row added to `loomshed` before piece 4 lands is caught rather than silently unregistered.
-   This piece deliberately did not build the recipe file format, the loader, or the loom conversion — those pieces remain planned above; the Shed-setup validity checker piece has since shipped too, see its own entry below — and `loomshed.New` keeps its own Go literal producer list and `loomshed.Deps.Preflight`'s pre-injected field unchanged; nothing downstream of this piece consumes it yet.
+   A coverage guard pinned the registry against loom's real row list, both directions, at the time this piece shipped;
+   that guard has since moved to `internal/loomrecipe/coverage_guard_test.go` (the loom-driving half) and `internal/shedrecipe/registry_test.go` (the exact-twelve-names pin) when `loom: convert to a Shed recipe` landed — see that entry below.
+   This piece deliberately did not build the recipe file format, the loader, or the loom conversion — the `loom: convert to a Shed recipe` entry below shipped that; the Shed-setup validity checker piece has since shipped too, see its own entry below.
    See [designs/shed-recipe.md](designs/shed-recipe.md) and the `internal/shedrecipe` package documentation.
 
 1. **Shed recipe: loader/builder** — shipped `internal/shedbuild`, the package that decodes a recipe document and assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` already consumes unchanged, exporting four functions: `Parse` decodes a byte slice into a `Recipe` and runs every shape check; `Load` reads a told absolute path and delegates to `Parse`; `Build` resolves each row's `Engine` name against the `internal/shedrecipe` registry and calls the returned constructor with a caller-supplied `shedrecipe.Env`; `Check` forwards an assembled producer list plus a `Recipe`'s own `Entry` and `Terminals` into `shedcheck.Check`, for a caller's own authoring-time test suite.
@@ -172,13 +173,21 @@ No build order is implied between these items.
    Decoding is strict — unknown keys and duplicate keys are errors at both document level and row level, and every message keeps the decoder's own yaml line number.
    The package owns file shape and engine-name resolution alone: it runs no reachability, cycle, blind-gate, dangling-target, or segment analysis of its own, since `shedengine`'s own validation and `internal/shedcheck` already own routing, cycles, and reachability.
    Building inherits construction-time filesystem effects from three registry constructors reaching disk of their own accord, producing four distinct effects; `Build` is a pass-through for those effects, neither suppressing nor wrapping them.
-   A loom-equivalence test (`internal/shedbuild/equivalence_test.go`) proves the format's correctness by hand-authoring loom's current thirteen-row producer list as a recipe fixture and asserting the two thirteen-row `[]shedengine.ProducerDef` lists agree field by field and type by type.
-   This task shipped no production recipe file — the only recipe documents it added are its own test fixtures — and it added no exported surface to the engine registry and touched no existing production file.
+   A loom-equivalence test proved the format's correctness at the time this piece shipped, by hand-authoring loom's then-current thirteen-row producer list as a recipe fixture and asserting the two thirteen-row `[]shedengine.ProducerDef` lists agreed field by field and type by type;
+   that test and its fixture were retired once the fixture became `contracts/recipes/loom-recipe.yaml` itself, when `loom: convert to a Shed recipe` landed (see that entry below).
+   This task shipped no production recipe file of its own — the only recipe documents it added were its own test fixtures — and it added no exported surface to the engine registry and touched no existing production file.
    See [designs/shed-recipe.md](designs/shed-recipe.md) and the `internal/shedbuild` package documentation.
 
 1. **Shed-setup validity checker** — shipped `internal/shedcheck`, an authoring-time analysis that walks an assembled `OnDone`/`OnStuck` producer graph and reports every structural defect it finds, in eight fixed finding kinds.
    Its enforcement point is a `go test` invariant over loom's own producer list, not a call from any production constructor.
    See the `internal/shedcheck` package documentation and [designs/shed.md](designs/shed.md#checking-an-assembled-producer-list).
+
+1. **loom: convert to a Shed recipe** — replaced `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal with `contracts/recipes/loom-recipe.yaml`, an embedded-default recipe file, and a new package, `internal/loomrecipe`, that parses and builds it via `internal/shedbuild` against a caller-supplied `shedrecipe.Env`.
+   `internal/loomrecipe` sits above `internal/loomshed` (avoiding the production import cycle `internal/shedrecipe`'s registry would otherwise close) and is the recipe's sole production consumer; `internal/loomcli` wires to it in place of `loomshed.New`.
+   `internal/loomshed` shed its own `New`/`Deps`/`ShedPaths` entirely, keeping only the thirteen row-name constants, its six exported producer constructors the registry reaches for, and its status-seed/preflight helpers; its assembled-graph tests (coverage guard, sequencing, cancellation, resume) moved to `internal/loomrecipe` along with duplicated fixture helpers, per the row-name-authority-stays-with-the-go-constants and duplicate-test-helpers-rather-than-share-them decisions.
+   Landed the Recipe-Format Sole-Parser Invariant in `CONSTRAINTS.md`, alongside repointed Shed Recipe Registry Invariant and Told-Geometry Invariant enforcement lines.
+   `Env.Landing` is deliberately left unfilled by `internal/loomcli`, preserving the pre-existing gap the new `landing: parent-fabric resolution chain` Planned item above closes.
+   See [designs/shed-recipe.md](designs/shed-recipe.md), [designs/loom.md](designs/loom.md), and the `internal/loomrecipe` package documentation.
 
 1. **Retire perch** — deleted `internal/perchengine`, `internal/perchcli`, and the `lyx perch run|pause` CLI verb outright, together with every perch-only surface they anchored: `hubgeom.PerchGeometry`, `standalonegeom.PerchGeometry`, `configreg`'s `perch` config module, `shedadapters.PerchProducer`, and the `perch-suite` sandbox scheme.
    `loom` never called the module (only stubs), so nothing active depended on it; the replacement is the hand-wired `Bouncer`+`Burler` pair each review-producer task builds directly (see the `CLAUDE.md` terminology note on "perch," the folk name for that pair).
@@ -315,7 +324,8 @@ No build order is implied between these items.
 1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings now live as real, directly-editable stencil files instead of Go source, read at call time through `stencilstore.Read`, same as every other producer prompt.
    See the `internal/pattern` package documentation.
 
-1. **loom: phase-machine scaffolding** — `internal/loomshed` carries loom's full 13-row producer list: `Preflight`, `Loom-Preflight`, `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Webster` wired in as-is, `Publish` and `Finalize` since built for real by the `landing: Publish + Finalize producers` item above, and the remaining five rows (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stubbed. (`Plan-Sweep` is not a row — see the Someday `loom: build Plan-Sweep for real` item.)
+1. **loom: phase-machine scaffolding** — shipped loom's full 13-row producer list: `Preflight`, `Loom-Preflight`, `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Webster` wired in as-is, `Publish` and `Finalize` since built for real by the `landing: Publish + Finalize producers` item above, and the remaining five rows (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stubbed. (`Plan-Sweep` is not a row — see the Someday `loom: build Plan-Sweep for real` item.)
+   After `loom: convert to a Shed recipe` (see Done below), `internal/loomshed` carries the thirteen row-name constants and six producer constructors this scaffolding built, while the list itself is `contracts/recipes/loom-recipe.yaml`'s.
    loom's status file migrated onto `shedengine.Status`, with `loomshed.Seed` as its production seeder.
    See the `internal/loomshed` package documentation and the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 

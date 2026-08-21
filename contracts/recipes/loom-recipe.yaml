@@ -1,8 +1,13 @@
-# loom-recipe.yaml is a test fixture only: it hand-authors loom's current thirteen-row producer
-# list (see internal/loomshed/loomshed.go's New) in this package's recipe format. The task ships no
-# production recipe file; converting loom's own list is the separate roadmap item sequenced
-# immediately after this one. internal/shedbuild/equivalence_test.go is this fixture's only
-# consumer.
+# loom-recipe.yaml is loom's producer graph. It is embedded into the binary by the sibling
+# recipes.go rather than read from disk. The thirteen row names below are the durable on-disk
+# identities pinned against internal/loomshed's Name* constants by the coverage guard -- a rename
+# here without a matching constant rename breaks resume for any in-flight task.
+#
+# Every gate and validator bounces back to the producer whose artifact it guards, and a gate whose
+# guarded artifact is produced by no row in the list escalates instead -- Preflight, Loom-Preflight,
+# Batchifier, Publish, and Finalize carry no on_stuck for exactly that reason: nothing in the list
+# produces what each of them gates, so there is nothing to bounce to and a human is the only thing
+# that can fix any of the five.
 
 version: 1
 entry: Preflight

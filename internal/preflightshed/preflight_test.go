@@ -30,7 +30,7 @@ func TestNewPreflight_CarriesToldName(t *testing.T) {
 
 // TestCall_CancelledAtEntryReturnsErrorNotStuck calls Call on an already-cancelled context and
 // asserts a non-nil error with an outcome that is neither Done nor Stuck -- the same assertion
-// shape internal/loomshed/resume_test.go's TestCancellation_RealProducersReturnErrorNotStuck uses.
+// shape internal/loomshed/cancellation_test.go's TestCancellation_RealProducersReturnErrorNotStuck uses.
 // This case is Tier-1-legal precisely because entryErr returns before preflight.Check is ever
 // reached, so nothing spawns; cwd is t.TempDir() so the test would not accidentally resolve a real
 // repository even if that guarantee ever broke.

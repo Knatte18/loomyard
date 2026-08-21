@@ -1,13 +1,13 @@
-# Module: Shed recipe — declarative producer lists (pieces 1-3 shipped; piece 4 planned)
+# Module: Shed recipe — declarative producer lists (all four pieces shipped)
 
-> **Pieces 1-3 — the engine registry, the recipe loader/builder, and the validity checker — are built and shipped as `internal/shedrecipe`, `internal/shedbuild`, and `internal/shedcheck`.**
-> Piece 4 — converting `loom`'s own producer list to an actual recipe file — remains an early concept sketch, not a settled design: expect fields and mechanisms to change before it is implemented, and do not implement piece 4 from this doc as written.
+> **All four pieces — the engine registry, the recipe loader/builder, the validity checker, and loom's own conversion to a recipe file — are built and shipped, as `internal/shedrecipe`, `internal/shedbuild`, `internal/shedcheck`, and `internal/loomrecipe` respectively.**
 >
-> **Status: the group's remaining work is the conversion item, sequenced right after `Retire perch` and before `loom: real LLM producers`.** Not required for `loom`'s existing hardcoded producer list to keep working, but the five remaining `loom` LLM-producer tasks are sequenced to build on this instead of on the Go literal — see `manifest/roadmap.md`'s "Shed recipe" Planned group.
+> **Status: all four pieces of this group are Done.** See `manifest/roadmap.md`'s Done entries for each.
 
 ## The idea
 
-`internal/loomshed.New()` builds its 13-row `[]shedengine.ProducerDef` as a Go literal (`loomshed.go:137-151`) — hand-written, hard-coded row order and wiring. This doc explores replacing that literal with a **declarative recipe**: a data file (YAML, format TBD) naming, per row, `{Name, Engine, Config, OnDone, OnStuck, MaxBounces}`, loaded and assembled into the same `[]shedengine.ProducerDef` `shedengine.Shed` already consumes — no change to `shedengine` itself.
+`internal/loomrecipe.New()` builds loom's thirteen-row `[]shedengine.ProducerDef` by parsing and building the **declarative recipe** at `contracts/recipes/loom-recipe.yaml` — a data file naming, per row, `{Name, Engine, Config, OnDone, OnStuck, Segment, MaxBounces}`, loaded and assembled into the same `[]shedengine.ProducerDef` `shedengine.Shed` already consumes, with no change to `shedengine` itself.
+This replaces the earlier Go literal `internal/loomshed.New()` used to build directly.
 
 Motivation: several rows are already pure `Engine + Config` in spirit — `SingleLLMProducer` differs across `Discussion-Write`/`Plan-Write` only in which prompt stencil and interactivity setting it's given, exactly the shape a declarative recipe expresses cleanly. The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `DiscussionValidate`, `PlanValidate`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
@@ -32,14 +32,16 @@ The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots
 
 ## Pieces to build
 
-Four separable pieces, none blocking `loom`'s remaining work, each independently scoped — see the Someday roadmap items:
+Four separable pieces, each independently scoped, all now shipped:
 
 1. **Engine registry — ✅ built, `internal/shedrecipe`.** Name → constructor mapping for every existing `ShedProducer` type, shared and loom-specific alike.
 2. **Recipe loader/builder — ✅ built, `internal/shedbuild`.** Reads the recipe file, resolves `Engine` names via (1), merges `Config` with caller-supplied geometry, assembles `[]shedengine.ProducerDef`.
    See "The recipe loader/builder, shipped" below for the shape it landed in.
-3. **Shed-setup validity checker** — built and independent of the recipe work: `internal/shedcheck` ships this piece already, ahead of the other three.
+3. **Shed-setup validity checker — ✅ built, `internal/shedcheck`.**
    See [shed.md's "Checking an assembled producer list" section](shed.md#checking-an-assembled-producer-list) for the design.
-4. **Convert `internal/loomshed`'s own list** to an actual recipe file using (1)-(3), as the proof the mechanism works — the first real consumer.
+4. **Convert loom's own list to an actual recipe file — ✅ built, `contracts/recipes/loom-recipe.yaml` + `internal/loomrecipe`.**
+   The proof the mechanism works, and the first real consumer of (1)-(3).
+   See "Decisions this piece settled" below.
 
 ## The recipe loader/builder, shipped
 
@@ -63,7 +65,21 @@ It runs no reachability, cycle, blind-gate, dangling-target, or segment analysis
 
 **Building is not filesystem-free.** Three registry constructors reach disk of their own accord at construction time, producing four distinct effects, and `Build` is a pass-through for those effects rather than a suppressor or a wrapper of them — see `internal/shedbuild/doc.go` for the single site enumerating which constructor produces which effect.
 
-**No on-disk location.** This package defines no on-disk location for recipe files — no directory constant, no filename convention, no embedded default. That remains piece 4's decision.
+**No on-disk location.** This package defines no on-disk location for recipe files — no directory constant, no filename convention, no embedded default.
+Piece 4 settled that decision for loom's own recipe;
+see "Decisions this piece settled" below.
+
+## Decisions this piece settled
+
+Three decisions this doc originally deferred, settled by piece 4:
+
+- **On-disk location.** loom's recipe ships as an embedded default at `contracts/recipes/loom-recipe.yaml`, read through `shedbuild.Parse` on the embedded bytes (`contracts/recipes/recipes.go`'s `LoomRecipe`) — never `shedbuild.Load`.
+  There is no seeding, no operator override, and no runtime on-disk path.
+- **The consumer.** `internal/loomrecipe` is the recipe's sole consumer, sitting above `internal/loomshed` rather than inside it: `internal/shedrecipe`'s registry already imports `loomshed` for six of its constructors, so a `loomshed` → `shedbuild` → `shedrecipe` → `loomshed` production import cycle would not compile if the consumer lived inside `loomshed` instead.
+- **Test ownership.** The assembled-graph tests — the coverage guard driving loom's real row list against the registry, the sequencing/cancellation/resume tests that build the real thirteen-row list — live in `internal/loomrecipe`, not `internal/loomshed`.
+
+**Accepted consequence.** `shedbuild.Load` now has no production caller — loom's only caller reaches its recipe through the embedded bytes, never a told path.
+This is deliberate: `Load` stays exported and covered because it is the entry a future non-embedded consumer needs, exactly the shape a second recipe-backed product would use.
 
 ## Escalation and the future watchdog
 
@@ -72,5 +88,5 @@ No design impact here worth a dedicated mechanism: `OnStuck: ""` already halts t
 ## Related
 
 - [shed.md](shed.md) — `Shed`'s own generic mechanism (the loop, the producer contract, engine adapters) this recipe layer sits on top of, unchanged.
-- [loom.md](loom.md) — `loom`'s concrete producer list, which this would eventually replace the hardcoded form of.
+- [loom.md](loom.md) — `loom`'s concrete producer list, now recipe-backed by this module.
 - `CONSTRAINTS.md`'s Told-Geometry Invariant and Shed Producer-Seam Invariant — both directly shape this design's constraints.

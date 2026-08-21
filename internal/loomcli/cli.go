@@ -15,10 +15,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -29,8 +30,9 @@ type loomCLI struct {
 	// location is the resolved *lyxcwd.Location for this invocation. wire reads it to anchor every
 	// config load and to build the reed/webster geometries; no verb needs it directly.
 	location *lyxcwd.Location
-	// cwd is the resolved cwd string the pre-run read via lyxcwd.CwdFrom. preflightshed.NewPreflight
-	// reads it -- Preflight is the one row that spawns git, over this exact cwd.
+	// cwd is the resolved cwd string the pre-run read via lyxcwd.CwdFrom. It travels to
+	// preflightEntry as Env.Cwd, and that entry makes the same preflightshed.NewPreflight(name,
+	// env.Cwd) call over this exact cwd -- Preflight is the one row that spawns git.
 	cwd string
 	// cfg is the loaded loom.yaml config. Batch 5's run/bootstrap verb reads its Discussion/Plan
 	// role model-specs and timeout knobs.
@@ -38,11 +40,13 @@ type loomCLI struct {
 	// reed is the constructed reed engine. Batch 5's bootstrap spawn machinery reads it to add and
 	// resolve the driver's own strand.
 	reed *reedengine.Engine
-	// deps is the assembled loomshed.Deps. driveCmd (drive.go) passes it to loomshed.New to build
-	// the phase machine, and statusCmd/pauseCmd read its StatusPath/StatusLockPath pair.
-	deps loomshed.Deps
-	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as deps.WebsterDeps. It is
-	// also kept here directly so a test can inspect it without unwrapping deps.
+	// env is the assembled shedrecipe.Env that driveCmd (drive.go) passes to loomrecipe.New.
+	env shedrecipe.Env
+	// shedPaths carries the four told values shedengine.Shed itself reads, which driveCmd passes
+	// alongside env, and which statusCmd, pauseCmd, and runCmd read directly.
+	shedPaths loomrecipe.ShedPaths
+	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps. It is
+	// also kept here directly so a test can inspect it without unwrapping env.
 	runDeps websterengine.RunDeps
 }
 

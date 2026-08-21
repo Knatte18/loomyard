@@ -62,13 +62,13 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			st, found, err := state.ReadJSONStrict[shedengine.Status](c.deps.StatusPath, c.deps.StatusLockPath)
+			st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: decode status file "+c.deps.StatusPath+": "+err.Error()))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: decode status file "+c.shedPaths.StatusPath+": "+err.Error()))
 				return nil
 			}
 			if !found {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.deps.StatusPath+"; run \"lyx loom run\" first to bootstrap this task"))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.shedPaths.StatusPath+"; run \"lyx loom run\" first to bootstrap this task"))
 				return nil
 			}
 
@@ -78,7 +78,7 @@ Example:
 				// loop below must not terminate it and must not write an envelope: the pane is
 				// expected to survive the driver rewriting the file underneath it.
 				for {
-					polled, polledFound, pollErr := state.ReadJSONStrict[shedengine.Status](c.deps.StatusPath, c.deps.StatusLockPath)
+					polled, polledFound, pollErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 					switch {
 					case pollErr != nil || !polledFound:
 						fmt.Fprintln(out, "loom status unavailable (status file transiently unreadable)")
@@ -92,7 +92,7 @@ Example:
 			var product loomengine.Status
 			if len(st.Product) > 0 {
 				if err := json.Unmarshal(st.Product, &product); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: decode status file "+c.deps.StatusPath+"'s product payload: "+err.Error()))
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: decode status file "+c.shedPaths.StatusPath+"'s product payload: "+err.Error()))
 					return nil
 				}
 			}

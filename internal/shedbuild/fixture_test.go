@@ -101,9 +101,8 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 // testLandingDeps returns a landingshed.Deps with every field the Publish/Finalize constructors
 // require filled with a synthetic-but-valid told value derived from dir: told absolute paths, a
 // non-nil push-branch closure, a typed-nil fabric-opener closure used for both openers, and a
-// minimal merge-resolve shuttle fake -- the same shape coverageGuardLandingDeps in
-// internal/shedrecipe/coverage_guard_test.go and testLandingDeps in
-// internal/loomshed/fixture_test.go both use.
+// minimal merge-resolve shuttle fake -- the same shape testLandingDeps in
+// internal/loomrecipe/fixture_test.go, its single surviving sibling copy, uses.
 func testLandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
 		WorktreeRoot:     dir,
