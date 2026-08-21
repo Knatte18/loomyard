@@ -5,7 +5,7 @@ Point-in-time — recompute when tasks land or the roadmap changes.
 No status banner; delete or regenerate freely.
 
 Constraint is semantic, not file overlap: does task B need something task A creates.
-Several items below touch `internal/loomshed/loomshed.go` — expected, resolved at merge time, not a blocker.
+Several items below touch `contracts/recipes/loom-recipe.yaml` — expected, resolved at merge time, not a blocker.
 
 ## Spawned
 

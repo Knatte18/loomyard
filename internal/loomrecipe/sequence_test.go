@@ -1,16 +1,18 @@
-package loomshed
+package loomrecipe
 
 import (
 	"context"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // wantSequenceOrder is the row 1-12 name sequence a clean Run over buildSequenceFixture must
 // produce. Asserted against this literal expected list rather than a computed one, so a reordering
-// in loomshed.go's producer table is a test failure rather than a silently-agreeing derivation.
+// in contracts/recipes/loom-recipe.yaml's row order is a test failure rather than a silently-agreeing
+// derivation.
 //
 // The sequence stops at Publish (row 12) deliberately: Publish's OnStuck is "" (escalate), so a
 // Stuck verdict blocks the run and row 13 (Finalize) is never invoked. Driving both producers'
@@ -23,30 +25,31 @@ import (
 // current_producer: "Loom-Preflight" alongside a single Preflight Done history entry -- exactly the
 // shape row 2's told expected name and tolerated set accept.
 var wantSequenceOrder = []string{
-	NamePreflight,
-	NameLoomPreflight,
-	NameDiscussionWrite,
-	NameDiscussionValidate,
-	NameDiscussionReview,
-	NamePlanWrite,
-	NamePlanValidate,
-	NamePlanReview,
-	NameBatchifier,
-	NameWebster,
-	NameWebsterReview,
-	NamePublish,
+	loomshed.NamePreflight,
+	loomshed.NameLoomPreflight,
+	loomshed.NameDiscussionWrite,
+	loomshed.NameDiscussionValidate,
+	loomshed.NameDiscussionReview,
+	loomshed.NamePlanWrite,
+	loomshed.NamePlanValidate,
+	loomshed.NamePlanReview,
+	loomshed.NameBatchifier,
+	loomshed.NameWebster,
+	loomshed.NameWebsterReview,
+	loomshed.NamePublish,
 }
 
 // TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the 13-row list runs
 // rows 1 through 12 (Preflight through Publish) and blocks on Publish's Stuck verdict, never
 // reaching Finalize (row 13) -- see wantSequenceOrder's own doc comment for why.
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
-	_, deps := buildSequenceFixture(t)
+	_, env, paths := buildSequenceFixture(t)
 
-	shed, err := New(deps)
+	shed, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
+	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
 
 	result, err := shed.Run(context.Background())
 	if err != nil {
@@ -55,8 +58,8 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	if result.Outcome != shedengine.RunBlocked {
 		t.Fatalf("Run() outcome = %q; want %q (reason: %s)", result.Outcome, shedengine.RunBlocked, result.Reason)
 	}
-	if result.HaltedProducer != NamePublish {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, NamePublish)
+	if result.HaltedProducer != loomshed.NamePublish {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NamePublish)
 	}
 
 	if len(result.History) != len(wantSequenceOrder) {
@@ -68,7 +71,7 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 			t.Errorf("History[%d].Producer = %q; want %q", i, entry.Producer, wantName)
 		}
 		wantOutcome := shedengine.Done
-		if wantName == NamePublish {
+		if wantName == loomshed.NamePublish {
 			wantOutcome = shedengine.Stuck
 		}
 		if entry.Outcome != wantOutcome {
@@ -76,7 +79,7 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 		}
 	}
 
-	got, found, err := state.ReadJSONStrict[shedengine.Status](deps.StatusPath, deps.StatusLockPath)
+	got, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
 		t.Fatalf("ReadJSONStrict() error = %v; want nil", err)
 	}
@@ -86,7 +89,7 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	if got.State != shedengine.StateBlocked {
 		t.Errorf("persisted State = %q; want %q", got.State, shedengine.StateBlocked)
 	}
-	if got.CurrentProducer != NamePublish {
-		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, NamePublish)
+	if got.CurrentProducer != loomshed.NamePublish {
+		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NamePublish)
 	}
 }

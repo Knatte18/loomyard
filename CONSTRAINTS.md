@@ -73,11 +73,11 @@ An engine is handed the absolute paths it operates on and derives none of its ow
   It is *machine-enforced* when a test in the package polices its production import set to exclude `internal/lyxcwd`;
   otherwise it is a *review obligation*.
   The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
-- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve`, `internal/shedrecipe`, `internal/shedbuild` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
+- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve`, `internal/shedrecipe`, `internal/shedbuild`, `internal/loomrecipe` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
 - **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/websterengine`.
 - **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
   They are bound instead by the adapter-direction rule above, which is itself a review obligation.
-- **Enforced by** the eleven tests named above, for the machine-enforced half;
+- **Enforced by** the twelve tests named above, for the machine-enforced half;
   the review-obligation half and the adapter-direction rule have no machine check.
 
 ## Lyxdirs Single-Declarer Invariant
@@ -177,7 +177,8 @@ and the registry is one central `map[string]Constructor` literal reached only th
 
 `internal/shedbuild` is the registry's first outside caller: it reaches `internal/shedrecipe` only through its two exported accessors, `Lookup` and `Names`, and adds no registration mechanism of its own — a recipe naming an unregistered engine is an error for `internal/shedbuild` to report, never a reason to register one.
 
-- **Enforced by** `internal/shedrecipe/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) for the told-geometry half, and `internal/shedrecipe/coverage_guard_test.go` (`TestCoverageGuard_EveryLoomRowHasAnEngine`) for the registry-coverage half.
+- **Enforced by** `internal/shedrecipe/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) for the told-geometry half, and, for the registry-coverage half, two tests in two homes: `internal/loomrecipe/coverage_guard_test.go` (`TestCoverageGuard_EveryLoomRowHasAnEngine`), which drives loom's real row list against the registry,
+  and `internal/shedrecipe/registry_test.go` (`TestRegistry_ShipsTwelveEntries`), which pins the registry's exact twelve names.
   The `ShedProducer`-only restriction itself is a review obligation, since the `Constructor` signature already makes it a compile-time fact.
 
 ## Tokenvocab Leaf Invariant
@@ -525,6 +526,17 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
   `PlanDirName`/`PlanDirRel()` declare the worktree-relative token, and `PlanDir`/`PlanOverview` declare the absolute form.
   The package never resolves cwd and never imports `internal/lyxcwd`;
   the caller supplies the anchor path — `AnchorPath()`, never `WorktreePath()`.
+- **Enforced by** review obligation today (candidate future import/grep guard).
+
+## Recipe-Format Sole-Parser Invariant
+
+`internal/shedbuild` is the SOLE parser of the recipe file format.
+
+- No other package decodes a recipe document;
+  every consumer reaches a recipe only through the `shedbuild.Recipe` model `Parse`/`Load` returns.
+- `internal/shedbuild` declares no on-disk location for recipe files — no directory constant, no filename convention, no embedded default — which its own package doc already asserts,
+  so a shipped recipe's location is its owning product's to declare, as `contracts/recipes` does for loom.
+- `internal/shedbuild` reaches the engine registry only through `shedrecipe.Lookup`/`Names` and adds no registration mechanism of its own — see the Shed Recipe Registry Invariant above, which this bullet cross-references rather than restates.
 - **Enforced by** review obligation today (candidate future import/grep guard).
 
 ## Batcher Registry+Config Invariant

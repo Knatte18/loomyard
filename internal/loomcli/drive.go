@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -37,12 +37,12 @@ Example:
 			// seed-missing precondition failure buried in the detached driver's log -- only
 			// "lyx loom run" may seed, because only it owns the commit-before-precondition
 			// ordering.
-			if _, err := os.Stat(c.deps.StatusPath); err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.deps.StatusPath+"; run \"lyx loom run\" first to bootstrap this task"))
+			if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.shedPaths.StatusPath+"; run \"lyx loom run\" first to bootstrap this task"))
 				return nil
 			}
 
-			shed, err := loomshed.New(c.deps)
+			shed, err := loomrecipe.New(c.env, c.shedPaths)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

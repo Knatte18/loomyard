@@ -66,7 +66,8 @@ type Env struct {
 	WebsterDeps websterengine.RunDeps
 	// Landing is a whole-struct passthrough handed to landingshed.NewPublish/NewFinalize
 	// unchanged, rather than flattened, because landingshed.Deps already carries fourteen fields
-	// told wholesale by loomshed.Deps.Landing today.
+	// told wholesale through shedrecipe.Env.Landing now, filled by whichever caller invokes the
+	// registry.
 	Landing landingshed.Deps
 	// Now is the injected clock. Nil is legal and defaults to time.Now inside the underlying
 	// constructors.

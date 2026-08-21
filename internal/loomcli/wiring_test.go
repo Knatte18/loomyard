@@ -8,7 +8,6 @@
 package loomcli
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,7 +42,12 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 }
 
 // TestWire_PathFieldsMatchLoomengineAccessors asserts every path field of the assembled
-// loomshed.Deps equals the corresponding loomengine accessor's own output for the same location.
+// shedrecipe.Env and loomrecipe.ShedPaths equals the corresponding loomengine accessor's own output
+// for the same location.
+//
+// StatusPath and StatusLockPath are told twice -- once on c.env (read by loomPreflightEntry) and
+// once on c.shedPaths (read by shedengine.Shed) -- so both copies are asserted against the same
+// loomengine accessor, per the deliberate duplication ShedPaths' own doc comment describes.
 func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 	t.Parallel()
 
@@ -55,26 +59,32 @@ func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if want := loomengine.LoomStatusFile(loc); c.deps.StatusPath != want {
-		t.Errorf("c.deps.StatusPath = %q; want %q", c.deps.StatusPath, want)
+	if want := loomengine.LoomStatusFile(loc); c.shedPaths.StatusPath != want {
+		t.Errorf("c.shedPaths.StatusPath = %q; want %q", c.shedPaths.StatusPath, want)
 	}
-	if want := loomengine.LoomRunLock(loc); c.deps.LockPath != want {
-		t.Errorf("c.deps.LockPath = %q; want %q", c.deps.LockPath, want)
+	if want := loomengine.LoomRunLock(loc); c.shedPaths.LockPath != want {
+		t.Errorf("c.shedPaths.LockPath = %q; want %q", c.shedPaths.LockPath, want)
 	}
-	if want := loomengine.LoomStatusLock(loc); c.deps.StatusLockPath != want {
-		t.Errorf("c.deps.StatusLockPath = %q; want %q", c.deps.StatusLockPath, want)
+	if want := loomengine.LoomStatusLock(loc); c.shedPaths.StatusLockPath != want {
+		t.Errorf("c.shedPaths.StatusLockPath = %q; want %q", c.shedPaths.StatusLockPath, want)
 	}
-	if want := loc.AnchorPath(); c.deps.AnchorPath != want {
-		t.Errorf("c.deps.AnchorPath = %q; want %q", c.deps.AnchorPath, want)
+	if want := loc.AnchorPath(); c.env.AnchorPath != want {
+		t.Errorf("c.env.AnchorPath = %q; want %q", c.env.AnchorPath, want)
 	}
-	if want := loc.WorktreePath(); c.deps.WorktreeRoot != want {
-		t.Errorf("c.deps.WorktreeRoot = %q; want %q", c.deps.WorktreeRoot, want)
+	if want := loc.WorktreePath(); c.env.WorktreeRoot != want {
+		t.Errorf("c.env.WorktreeRoot = %q; want %q", c.env.WorktreeRoot, want)
 	}
-	if want := loomengine.DiscussionDecisionRecord(loc); c.deps.DecisionRecordPath != want {
-		t.Errorf("c.deps.DecisionRecordPath = %q; want %q", c.deps.DecisionRecordPath, want)
+	if want := loomengine.DiscussionDecisionRecord(loc); c.env.DecisionRecordPath != want {
+		t.Errorf("c.env.DecisionRecordPath = %q; want %q", c.env.DecisionRecordPath, want)
 	}
-	if want := loomengine.DiscussionSupportLog(loc); c.deps.SupportLogPath != want {
-		t.Errorf("c.deps.SupportLogPath = %q; want %q", c.deps.SupportLogPath, want)
+	if want := loomengine.DiscussionSupportLog(loc); c.env.SupportLogPath != want {
+		t.Errorf("c.env.SupportLogPath = %q; want %q", c.env.SupportLogPath, want)
+	}
+	if want := loomengine.LoomStatusFile(loc); c.env.StatusPath != want {
+		t.Errorf("c.env.StatusPath = %q; want %q", c.env.StatusPath, want)
+	}
+	if want := loomengine.LoomStatusLock(loc); c.env.StatusLockPath != want {
+		t.Errorf("c.env.StatusLockPath = %q; want %q", c.env.StatusLockPath, want)
 	}
 }
 
@@ -90,14 +100,42 @@ func TestWire_RunLockDiffersFromStatusLock(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if c.deps.LockPath == c.deps.StatusLockPath {
-		t.Errorf("c.deps.LockPath == c.deps.StatusLockPath == %q; want them distinct", c.deps.LockPath)
+	if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
+		t.Errorf("c.shedPaths.LockPath == c.shedPaths.StatusLockPath == %q; want them distinct", c.shedPaths.LockPath)
 	}
 }
 
-// TestWire_PreflightIsTheAdapter asserts the Preflight field is non-nil and is the adapter type
-// (preflightshed.NewPreflight's own concrete type), never a bare function value.
-func TestWire_PreflightIsTheAdapter(t *testing.T) {
+// TestWire_CwdIsToldToTheEnv asserts c.env.Cwd equals the cwd argument wire was called with -- the
+// only preflight-related property wire still owns.
+//
+// wire no longer builds the Preflight row itself: preflightEntry now builds it from Env.Cwd,
+// exactly the way loomshed.Deps.Preflight used to be built here. The old
+// TestWire_PreflightIsTheAdapter assertion ("row 1 is the preflightshed adapter, not a bare func")
+// moved with that construction -- it is now internal/shedrecipe's own entry test, and the row's
+// engine name is pinned by the recipe-side coverage guard in internal/loomrecipe.
+func TestWire_CwdIsToldToTheEnv(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+	cwd := loc.AnchorPath()
+
+	c := &loomCLI{}
+	if err := c.wire(loc, cwd); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.env.Cwd != cwd {
+		t.Errorf("c.env.Cwd = %q; want %q", c.env.Cwd, cwd)
+	}
+}
+
+// TestWire_WebsterRunIsFilled asserts c.env.WebsterRun is non-nil.
+//
+// This is the single most likely regression the conversion reintroduces: websterEntry calls
+// requireSeam("Webster", "WebsterRun", env.WebsterRun) and errors on nil, while the pre-conversion
+// wire deliberately left the corresponding field (loomshed.Deps.WebsterRun) nil and relied on
+// shedadapters.NewWebsterProducer's own nil-defaulting.
+func TestWire_WebsterRunIsFilled(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "warp", ".")
@@ -107,16 +145,8 @@ func TestWire_PreflightIsTheAdapter(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if c.deps.Preflight == nil {
-		t.Fatal("c.deps.Preflight = nil; want the preflightshed adapter")
-	}
-	// preflightProducer is unexported in package preflightshed, so its concrete type is confirmed by
-	// its rendered %T rather than a type assertion -- proving it is a struct value from that package
-	// (the adapter), never a bare func value (which %T would render as
-	// "func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)").
-	gotType := fmt.Sprintf("%T", c.deps.Preflight)
-	if gotType != "*preflightshed.preflightProducer" {
-		t.Errorf("%%T(c.deps.Preflight) = %q; want %q (the adapter, not a bare function)", gotType, "*preflightshed.preflightProducer")
+	if c.env.WebsterRun == nil {
+		t.Error("c.env.WebsterRun = nil; want websterengine.Run")
 	}
 }
 
@@ -158,9 +188,9 @@ func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
 		t.Error("runDeps.OpenBisector = nil; want the lazy fabric opener")
 	}
 
-	// The same value must also be embedded verbatim in c.deps.WebsterDeps.
-	if c.deps.WebsterDeps.Geom != deps.Geom {
-		t.Error("c.deps.WebsterDeps is not the same value stored in c.runDeps")
+	// The same value must also be embedded verbatim in c.env.WebsterDeps.
+	if c.env.WebsterDeps.Geom != deps.Geom {
+		t.Error("c.env.WebsterDeps is not the same value stored in c.runDeps")
 	}
 }
 

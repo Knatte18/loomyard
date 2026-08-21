@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/spf13/cobra"
 )
 
@@ -100,8 +100,8 @@ func TestRunCLI_UnknownSubcommand_NoGitRepoNeeded(t *testing.T) {
 // TestVerbRefusals covers the drive verb's seed-missing pre-flight and the pause verb's absent-file
 // refusal. Both are driven directly against the leaf command built by driveCmd/pauseCmd on a
 // hand-populated *loomCLI -- never through the full PersistentPreRunE/wire path, which needs a real
-// git repository this untagged suite must not spawn. c.deps.StatusPath/StatusLockPath point at a
-// plain temporary directory that never receives a status.json, so each verb's own refusal fires on
+// git repository this untagged suite must not spawn. c.shedPaths.StatusPath/StatusLockPath point at
+// a plain temporary directory that never receives a status.json, so each verb's own refusal fires on
 // exactly the precondition it owns.
 func TestVerbRefusals(t *testing.T) {
 	tests := []struct {
@@ -125,7 +125,7 @@ func TestVerbRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			c := &loomCLI{
-				deps: loomshed.Deps{
+				shedPaths: loomrecipe.ShedPaths{
 					StatusPath:     filepath.Join(dir, "status.json"),
 					StatusLockPath: filepath.Join(dir, "status.json.lock"),
 				},

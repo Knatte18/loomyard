@@ -26,8 +26,8 @@ var ErrSeedExists = errors.New("loomshed: status file already exists")
 // false, and a Product carrying a marshalled loomengine.Status with the given slug and parent and a
 // nil StartSha.
 //
-// Seed takes bare told paths rather than a Deps because seeding happens before any Shed exists, so
-// a Deps would couple this seam to a struct whose producer fields are irrelevant to it.
+// Seeding happens before any Shed exists, so Seed takes the two told paths directly and couples to
+// nothing that builds producers.
 //
 // Seed refuses when the file already exists, returning an error rather than overwriting, because
 // overwriting silently destroys an in-flight run's history and the whole resume contract rests on

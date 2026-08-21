@@ -11,11 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/preflightshed"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -23,7 +23,7 @@ import (
 
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
-// the assembled loomshed.Deps wrapping it.
+// the assembled shedrecipe.Env/loomrecipe.ShedPaths pair wrapping it.
 func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
@@ -85,27 +85,48 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 	}
 
-	c.deps = loomshed.Deps{
-		StatusPath:     loomengine.LoomStatusFile(location),
+	statusPath := loomengine.LoomStatusFile(location)
+	statusLockPath := loomengine.LoomStatusLock(location)
+
+	c.env = shedrecipe.Env{
+		Cwd:                cwd,
+		AnchorPath:         anchorPath,
+		WorktreeRoot:       location.WorktreePath(),
+		StatusPath:         statusPath,
+		StatusLockPath:     statusLockPath,
+		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+		SupportLogPath:     loomengine.DiscussionSupportLog(location),
+		WebsterDeps:        runDeps,
+		// WebsterRun is set explicitly to websterengine.Run, per the
+		// env-webster-run-is-filled-explicitly Shared Decision: websterEntry errors on a nil
+		// WebsterRun, unlike loomshed.Deps.WebsterRun, which shedadapters.NewWebsterProducer
+		// defaulted when left nil.
+		WebsterRun: websterengine.Run,
+		// StencilsDir, RunRoot, Shuttle, Burler, and Now are left zero -- only SingleLLM, Bouncer,
+		// and BurlerRound read them, and no row in loom's recipe uses those engines yet.
+		//
+		// Landing is left unfilled, per the landing-parity Shared Decision: internal/landingshed's
+		// own account of the gap (see internal/landingshed/deps.go's OpenFabric/OpenParentFabric
+		// field doc) is what this omission preserves, and the parent-fabric resolution chain that
+		// closes it is a roadmap item this task adds (see manifest/roadmap.md), not something this
+		// conversion may build.
+	}
+
+	// c.shedPaths carries the four told values shedengine.Shed itself reads and no shedrecipe.Env
+	// registry entry reads. StatusPath and StatusLockPath are deliberately told twice, once here and
+	// once above in c.env -- that duplication is inherent to the split between loomrecipe.New's two
+	// argument types and must not be collapsed; loomrecipe.New errors if the two copies disagree.
+	// Each pair is filled from the single statusPath/statusLockPath evaluation above rather than a
+	// second loomengine accessor call, so the two copies cannot drift here.
+	c.shedPaths = loomrecipe.ShedPaths{
+		StatusPath:     statusPath,
 		LockPath:       loomengine.LoomRunLock(location),
-		StatusLockPath: loomengine.LoomStatusLock(location),
+		StatusLockPath: statusLockPath,
 		// MaxBounces is left zero so shedengine.Shed's own default applies. "Default" here means
 		// the inherited per-producer default every ProducerDef.MaxBounces of 0 falls back to
 		// (which itself falls back to shedengine's internal default of ten), not a run-wide
 		// total -- the budget itself is per-producer and episode-scoped, counted from the
 		// persisted history rather than held in memory.
-		AnchorPath:         anchorPath,
-		WorktreeRoot:       location.WorktreePath(),
-		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
-		SupportLogPath:     loomengine.DiscussionSupportLog(location),
-		// Preflight is built from internal/preflightshed: loomshed.New requires a
-		// shedengine.ShedProducer, and preflightshed's general Preflight producer is what maps
-		// preflight.Check's Report onto that contract, with the row name told from loomshed's own
-		// constant.
-		Preflight: preflightshed.NewPreflight(loomshed.NamePreflight, cwd),
-		// WebsterRun is left nil so shedadapters.NewWebsterProducer defaults to the production entry
-		// point, websterengine.Run.
-		WebsterDeps: runDeps,
 	}
 
 	c.location = location
