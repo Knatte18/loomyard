@@ -105,6 +105,67 @@ func TestResolveParentBranch(t *testing.T) {
 	}
 }
 
+func TestResolveLandingParent(t *testing.T) {
+	tests := []struct {
+		name        string
+		recorded    fabricengine.Origin
+		found       bool
+		taskBranch  string
+		wantParent  string
+		wantErr     bool
+		wantErrText []string
+	}{
+		{
+			name:        "Unrecorded",
+			recorded:    fabricengine.Origin{},
+			found:       false,
+			taskBranch:  "task/foo",
+			wantErr:     true,
+			wantErrText: []string{"--parent"},
+		},
+		{
+			name:        "RecordedParentEqualsTaskBranch",
+			recorded:    fabricengine.Origin{ParentBranch: "task/foo"},
+			found:       true,
+			taskBranch:  "task/foo",
+			wantErr:     true,
+			wantErrText: []string{"task/foo", "own branch"},
+		},
+		{
+			name:       "OrdinaryRecordedParent",
+			recorded:   fabricengine.Origin{ParentBranch: "main"},
+			found:      true,
+			taskBranch: "task/foo",
+			wantParent: "main",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotParent, err := resolveLandingParent(tt.recorded, tt.found, tt.taskBranch)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("resolveLandingParent(%+v, %v, %q) = nil error; want error", tt.recorded, tt.found, tt.taskBranch)
+				}
+				for _, want := range tt.wantErrText {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("resolveLandingParent(%+v, %v, %q) error = %q; want it to contain %q", tt.recorded, tt.found, tt.taskBranch, err.Error(), want)
+					}
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("resolveLandingParent(%+v, %v, %q) unexpected error: %v", tt.recorded, tt.found, tt.taskBranch, err)
+			}
+			if gotParent != tt.wantParent {
+				t.Errorf("resolveLandingParent(%+v, %v, %q) parent = %q; want %q", tt.recorded, tt.found, tt.taskBranch, gotParent, tt.wantParent)
+			}
+		})
+	}
+}
+
 func TestSeedSlug(t *testing.T) {
 	tests := []struct {
 		name         string
