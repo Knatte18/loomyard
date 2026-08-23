@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomengine-scratch-dir
+phase: approved-loomcli-landing-wiring
 slug: landing-parent-fabric-resolution-chain
 branch: landing-parent-fabric-resolution-chain
 plan: _mill/plan
@@ -28,6 +28,7 @@ planned  '2026-08-23T11:12:55Z'
 implementing  '2026-08-23T11:13:30Z'
 approved-fabricengine-parent-resolution  '2026-08-23T11:20:39Z'
 approved-loomengine-scratch-dir  '2026-08-23T11:24:25Z'
+approved-loomcli-landing-wiring  '2026-08-23T11:29:39Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     commit_sha: 6685b6a68c2707bf5ab1292295c86c99ff84fd0b
     verify_baseline_failures: []
   - name: loomcli-landing-wiring
-    state: running
+    state: approved
     implementer_session: 92eb9be0-873d-4b62-a26f-7d9ddc098bea
     start_sha: 56bd78310ae52add471098c618f5c631a9b40d84
+    commit_sha: a471ff48b8ed9716d1276560a5071befd0a2f7f6
     verify_baseline_failures: []
   - name: landingshed-comment-fixes
     state: pending
