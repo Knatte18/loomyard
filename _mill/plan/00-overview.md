@@ -3,7 +3,7 @@
 ```yaml
 task: 'landing: parent-fabric resolution chain'
 slug: landing-parent-fabric-resolution-chain
-approved: false
+approved: true
 started: 20260823-103045
 parent: main
 root: ""
