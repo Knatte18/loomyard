@@ -144,11 +144,15 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
 
 ### two-opens-in-drive-rather-than-a-shared-handle
 
-- Decision: `drive.go` opens one `*Fabric` of its own for the two scalar reads (`CurrentBranch()`, `OriginURL()`), and `Deps.OpenFabric` stays a genuine closure over `fabricengine.Open(c.location)` rather than returning the already-open handle.
-- Rationale: `OpenFabric`'s laziness is a documented contract, not a style choice.
-  Handing back a pre-opened handle would subvert it and make the field's own doc false.
-  A second `Open` is cheap — two stat checks plus two `gitrepo.New` calls, no git subprocess.
-- Rejected: caching the handle into the closure — saves negligible work at the cost of a contract the field doc pins.
+- Decision: `drive.go` opens one `*Fabric` of its own for the two scalar reads (`CurrentBranch()`, `OriginURL()`), and both `OpenFabric` and `OpenParentFabric` stay genuine closures rather than returning an already-open handle.
+- Rationale: laziness is *not* what distinguishes the two options for `OpenFabric` in loom's own path — `NewPublish` and `NewFinalize` both call `deps.OpenFabric()` eagerly at construction, and `drive.go` opens its handle at the same site it would have cached, so in this call path both options open eagerly and the laziness argument discriminates nothing.
+  Two things do still bind.
+  First, `OpenParentFabric` is genuinely lazy: `Finalize` calls it per-`Call` through its `parentOpener`, never at construction, so caching a parent handle would change real behaviour by pinning a pair opened before the run's own merge-in.
+  Second, a cached `OpenFabric` would make the field a misnomer — it would no longer open anything — and `landingshed` is shared by reference with the Someday `Hardener`, whose preflight ordering may differ from loom's.
+  A second `Open` is cheap regardless: two stat checks plus two `gitrepo.New` calls, no git subprocess.
+- Note for the implementer: `deps.go`'s own laziness comment ("opening eagerly would fail before the run's own preflight has confirmed anything is wired") reads as absolute, while `publish.go`'s constructor doc already carves out why construction-time opening is nonetheless correct there.
+  If that tension is worth resolving, it is a third comment correction in the same commit — but the correction is to `deps.go`'s wording, never to the closure's shape.
+- Rejected: caching the handle into the closure — saves negligible work, breaks `OpenParentFabric`'s real per-`Call` semantics, and makes `OpenFabric`'s name false.
 
 ## Technical context
 
@@ -186,8 +190,8 @@ Detached entries carry `Branch == "(detached)"` and cannot collide with a real b
 | `WorktreeRoot` | `c.location.WorktreePath()` |
 | `TaskBranch` | `handle.CurrentBranch()` |
 | `ParentBranch` | `fabricengine.ReadOrigin(c.location)` → `Origin.ParentBranch` |
-| `WebsterDir` | `hubgeom.WebsterGeometry(c.location).WebsterDir` (already built in `wire()` as `websterGeom`) |
-| `StencilsDir` | `fabricengine.StencilsDir(c.location.HubPath)` |
+| `WebsterDir` | `c.runDeps.Geom.WebsterDir` |
+| `StencilsDir` | `c.runDeps.Geom.StencilsDir` |
 | `ScratchDir` | new `loomengine.LoomScratchDir(c.location)` |
 | `OriginURL` | new `handle.OriginURL()` |
 | `PushSkipped` | `fabricengine.EnvSyncOptions().SkipPush` |
@@ -198,11 +202,15 @@ Detached entries carry `Branch == "(detached)"` and cannot collide with a real b
 | `Registry` | the `modelspec.Registry` already loaded in `wire()` |
 | `Config` | `landingshed.LoadConfig(anchorPath, "landing")` — `"landing"` is already a registered config module in `internal/configreg/configreg.go:47` |
 
-`Shuttle` and `Registry` are currently local variables inside `wire()` and are not stored on `c`.
-`registry` is used only to build `roles`;
-`runner` is used only to build `runDeps`.
-Both must be carried onto the `loomCLI` struct (as `c.registry` and `c.runner`, or equivalent) so `drive.go` can reach them.
-This is the one structural change to `wire()` the decision to fill in `drive.go` implies.
+Three of these values are `wire()` locals today, and they are reachable from `drive.go` by two different routes — do not conflate them.
+
+`websterGeom` is a `wire()` local too, but it needs no new field: `wire()` already stores it as `runDeps.Geom`, and `c.runDeps` is on the struct.
+So both `WebsterDir` and `StencilsDir` come off `c.runDeps.Geom` with no change to `wire()` at all.
+`hubgeom.WebsterGeometry` builds `StencilsDir` as `fabricengine.StencilsDir(l.HubPath)`, so reading it from `c.runDeps.Geom.StencilsDir` yields exactly that value while keeping one source rather than two spellings of it.
+
+`registry` and `runner` are the genuine gap: `registry` is consumed only to build `roles`, and `runner` only to build `runDeps`, so neither survives on `c` in any form.
+Both must be carried onto the `loomCLI` struct (as `c.registry` and `c.runner`, or equivalent).
+Those two fields are the only structural change to `wire()`/`cli.go` that filling in `drive.go` implies.
 
 ### Eager construction is confined to `drive`
 
@@ -219,9 +227,19 @@ Nothing in `status`, `pause`, or `run` reaches it, which is what makes the eager
 - `internal/loomengine/config.go` — add `LoomScratchDir`, correct `LoomStatusLock`'s doc comment.
 - `internal/loomcli/wiring.go` — carry `registry` and `runner` onto the struct;
   replace the "Landing is left unfilled" comment block.
-- `internal/loomcli/cli.go` — the new struct fields.
+- `internal/loomcli/cli.go` — the two new struct fields.
 - `internal/loomcli/drive.go` — assemble `Env.Landing` before `loomrecipe.New`.
-- `internal/landingshed/deps.go` — correct the two comments deferring to "the next roadmap item".
+- `internal/landingshed/deps.go` — correct the two comments deferring to "the next roadmap item", and reconcile the `OpenFabric` laziness wording per the `two-opens-in-drive-rather-than-a-shared-handle` decision's implementer note.
+
+Docs, required by the Documentation Lifecycle in the same commit:
+
+- `manifest/roadmap.md` — move the item to Done, and correct its stale "no worktree-listing helper exists yet" claim rather than carrying it into the Done entry.
+- `manifest/designs/loom.md` — the landing rows are now constructible in a real run, which is the observable behaviour change.
+- Package docs for each module whose surface grows: `internal/fabricengine` (`OpenParent`, `Fabric.OriginURL`), `internal/loomengine` (`LoomScratchDir`), and `internal/loomcli` (`Env.Landing` now filled).
+- `docs/overview.md` — only if the module table or execution stack changes;
+  this task adds no module, so most likely untouched.
+- `CONSTRAINTS.md` — no new cross-cutting invariant is introduced, so no change expected.
+  Recorded here so the plan states it deliberately rather than by omission.
 
 ## Constraints
 
@@ -295,7 +313,13 @@ A table test asserting it equals the directory `LoomRunLock`/`LoomDriverLog`/`Lo
 Carrying `registry` and `runner` onto the struct must not break that: the test's tier-1 status depends on `wire` resolving no cwd and spawning no process, and both values are already built there today.
 The `Env.Landing` assembly itself moves to `drive.go`, so it should be extracted into its own testable function (mirroring how `wire` was extracted from the pre-run for exactly this reason) rather than written inline in the `RunE` closure.
 That function takes the location, the opened handle, the registry, the runner, and the config, and returns a `landingshed.Deps` — testable without spawning a driver.
-Assert every one of the fourteen fields is non-zero, so a future field added to `Deps` fails loudly here instead of nil-panicking at run time.
+
+The drift guard on that function is the point of the test: a field added to `Deps` later must fail loudly here rather than nil-panicking mid-run.
+State it as "every field except `PushSkipped` is non-zero", not "all fourteen".
+`PushSkipped` is a `bool` sourced from `EnvSyncOptions().SkipPush`, which reads `WEFT_SKIP_PUSH` and is therefore `false` in every ordinary invocation — an all-fields-non-zero assertion could never pass.
+Cover `PushSkipped` separately with a two-case assertion driving the env var set and unset, which tests the wiring rather than the value.
+A reflection-based field walk is the shape that actually catches a newly added field;
+an enumerated list of fourteen assertions silently keeps passing when a fifteenth is added.
 
 ### `internal/landingshed`
 
