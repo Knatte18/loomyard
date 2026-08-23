@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: loom: self-checkable mechanical gates — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-23
+```
+
+## Findings
+
+### [NIT:consistency] Redundant triple-check in TestCommand_RegisteredVerbs_ExactSet
+**Location:** `internal/loomcli/cli_test.go:56-80`
+**Issue:** The exact-set assertion runs three overlapping checks in sequence (a missing-verb loop, an unexpected-verb loop, then a final `strings.Join` equality) — the first two already fully cover the exact-set property the third re-derives.
+**Fix:** Drop the trailing `strings.Join` comparison; the two loops already report both drift directions distinctly, which was the stated goal.
+
+## Verdict
+
+APPROVE
+All five batches align with the plan, Shared Decisions, and CONSTRAINTS.md; no BLOCKING issues found.
+MILL_REVIEW_END

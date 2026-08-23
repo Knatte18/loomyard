@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: _mill/plan
@@ -33,6 +33,8 @@ approved-gate parity tests  '2026-08-23T10:57:30Z'
 approved-docs and roadmap  '2026-08-23T11:06:10Z'
 holistic-reviewing  '2026-08-23T11:06:50Z'
 holistic-fixing  '2026-08-23T11:10:41Z'
+nits-fixed-holistic  '2026-08-23T11:12:51Z'
+holistic-approved  '2026-08-23T11:13:06Z'
 ```
 
 ## Batches
