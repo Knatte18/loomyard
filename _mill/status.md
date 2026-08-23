@@ -47,7 +47,9 @@ batches:
     commit_sha: 6685b6a68c2707bf5ab1292295c86c99ff84fd0b
     verify_baseline_failures: []
   - name: loomcli-landing-wiring
-    state: pending
+    state: running
+    implementer_session: 92eb9be0-873d-4b62-a26f-7d9ddc098bea
+    start_sha: 56bd78310ae52add471098c618f5c631a9b40d84
     verify_baseline_failures: []
   - name: landingshed-comment-fixes
     state: pending
