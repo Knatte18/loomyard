@@ -33,13 +33,20 @@ implementing  '2026-08-23T10:36:49Z'
 ```yaml
 batches:
   - name: discussionparser leaf package
-    state: pending
+    state: running
+    implementer_session: 461cc6ac-5bea-4333-8309-536c7d711ae4
+    start_sha: 1f6a50a9de218b66a07ae164708f6af0c2df3819
+    verify_baseline_failures: ["FAIL\t./internal/discussionparser/... [setup failed]"]
   - name: loomshed thin wrap
     state: pending
+    verify_baseline_failures: []
   - name: loom CLI validate verbs
     state: pending
+    verify_baseline_failures: []
   - name: gate parity tests
     state: pending
+    verify_baseline_failures: []
   - name: docs and roadmap
     state: pending
+    verify_baseline_failures: []
 ```
