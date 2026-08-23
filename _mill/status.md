@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: landing-parent-fabric-resolution-chain
 branch: landing-parent-fabric-resolution-chain
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-landingshed-comment-fixes  '2026-08-23T11:31:17Z'
 approved-docs-roadmap-and-design  '2026-08-23T11:33:48Z'
 holistic-reviewing  '2026-08-23T11:34:15Z'
 holistic-approved  '2026-08-23T11:37:10Z'
+done  '2026-08-23T11:37:56Z'
 ```
 
 ## Batches
