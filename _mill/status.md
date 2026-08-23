@@ -54,7 +54,9 @@ batches:
     commit_sha: 338c8dccc095e70caf076368d4beaeb2fe38e0fe
     verify_baseline_failures: []
   - name: gate parity tests
-    state: pending
+    state: running
+    implementer_session: c78f09e6-ad04-40bf-a3e1-b9ffd8509266
+    start_sha: 4be6b306cbb6720dbe564de73bf074e1acf28c48
     verify_baseline_failures: []
   - name: docs and roadmap
     state: pending
