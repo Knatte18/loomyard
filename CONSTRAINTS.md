@@ -536,6 +536,16 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
 - It imports the standard library and nothing else.
 - **Enforced by** `internal/discussionparser/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
+## Gate Self-Check Parity Invariant
+
+A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function, and neither re-implements the other's check.
+
+- Today's two instances: Discussion-Validate's `ShedProducer` row and the `validate-discussion` verb both call `discussionparser.Validate`;
+  Plan-Validate's `ShedProducer` row and the `validate-plan` verb both call `planparser.Validate`.
+- The verb's envelope distinguishes a findings failure from an I/O fault **structurally**, by the presence of the `findings` key, never by message wording, because that is what the three-way comparison keys off.
+- Adding a mechanical gate means adding its verb and its parity test in the same task.
+- **Enforced by** `internal/loomcli/parity_test.go` (`TestGateParity_DiscussionValidate`, `TestGateParity_PlanValidate`).
+
 ## Recipe-Format Sole-Parser Invariant
 
 `internal/shedbuild` is the SOLE parser of the recipe file format.
