@@ -20,22 +20,12 @@ today no production caller fills them, and `deps.go`'s own comment says the reso
    The five `loom: real LLM producers` tasks below are not blocked on this: they add rows to the recipe and are developable independently of whether a full run can complete.
    See `internal/landingshed/deps.go` and [designs/loom.md](designs/loom.md).
 
-### loom: self-checkable mechanical gates
-
-A 2026-08-23 discussion noted that `Discussion-Validate`/`Plan-Validate` bounce a `SingleLLMProducer` back to a brand-new agent session with no memory of its own prior turn — `shuttleengine.Spec` carries no session-resume field, so every bounce is a fresh process, not a continued conversation. The mitigation is prompt-level: instruct the writer producer to call the same mechanical check itself before handing off, so a well-behaved run passes the Shed-level gate on the first try and the gate itself stays purely a backstop. That only works if the check is actually callable standalone.
-
-`Plan-Validate` already qualifies: `loomshed.planValidate.Call` is a thin wrap over `planparser.ParsePlan`/`planparser.Validate`, both already living in `internal/planparser`, a plain package with no `shedengine`/CLI dependency of its own — a CLI verb here is a direct call into existing code. `Discussion-Validate` does not: its two checks (both paths exist, the decision record carries all seven required `## `-headings) are written directly inside `internal/loomshed/discussionvalidate.go`, with no package split between "the check" and "the producer wrapping it" the way `planparser`/`loomshed.planValidate` already have.
-
-1. **loom: self-checkable mechanical gates** — extract `Discussion-Validate`'s two checks out of `internal/loomshed` into their own package (mirroring `internal/planparser`'s existing split from `loomshed.planValidate`), then add a CLI verb for each of `Discussion-Validate` and `Plan-Validate` that calls the exact same package function the `ShedProducer` row calls — one shared implementation, so the agent's self-check and the mechanical gate can never disagree.
-   Sequenced ahead of `loom: Discussion-Write producer`/`Plan-Write producer` below: those two tasks' prompts are what instruct the agent to call the new CLI verb before handoff, so the verb must exist first.
-   See `internal/planparser/validate.go` (the pattern to mirror) and `internal/loomshed/discussionvalidate.go` (the logic to extract).
-
 ### loom: real LLM producers
 
 What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split. Sequenced after the four now-Done "Shed recipe" entries below so these five tasks write their rows directly as recipe entries in `contracts/recipes/loom-recipe.yaml`.
 
 1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
-   The prompt must instruct the agent to call the `loom: self-checkable mechanical gates` CLI verb for `Discussion-Validate` itself before handing off, so a well-behaved run clears the mechanical gate on the first pass; the gate stays wired as the backstop regardless.
+   The prompt must instruct the agent to call the `lyx loom validate-discussion` CLI verb itself before handing off, so a well-behaved run clears the mechanical gate on the first pass; the gate stays wired as the backstop regardless.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **loom: Discussion-Review producer** — write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists) as the rubric for a new `Discussion-Bouncer` instance, instantiating the shipped `Bouncer` producer with it. The rubric must also cover the Bouncer's seed-call focus-setting pass (see the shipped `Bouncer` item's own rubric-coverage note), not only post-round judgment.
@@ -44,7 +34,7 @@ What "loom: write and wire in the real LLM producers" split into — one prompt/
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
 1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
-   The prompt must instruct the agent to call the `loom: self-checkable mechanical gates` CLI verb for `Plan-Validate` itself before handing off, so a well-behaved run clears the mechanical gate on the first pass; the gate stays wired as the backstop regardless.
+   The prompt must instruct the agent to call the `lyx loom validate-plan` CLI verb itself before handing off, so a well-behaved run clears the mechanical gate on the first pass; the gate stays wired as the backstop regardless.
    `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no quarry inventory available yet," not as an error.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
@@ -339,6 +329,14 @@ No build order is implied between these items.
    It always returns `Stuck` to its segment's `Bouncer`, never `Done`, and resolves its round from disk over the review/fixer-report pair predicate rather than holding an attempt number in memory.
    `burlerengine.Profile.ClusterExclude` shipped alongside it as the per-call cluster-fan trimming knob.
    See the `internal/shedadapters` package documentation.
+
+1. **loom: self-checkable mechanical gates** — `Discussion-Validate`'s two checks (both `_lyx/discussion/` files exist, the decision record carries all seven required headings) moved out of `internal/loomshed` into a new stdlib-only leaf, `internal/discussionparser`, returning `[]Finding` rather than a bare bool — mirroring `internal/planparser`'s existing split from `loomshed.planValidate`.
+   `loomshed.discussionValidate.Call` became a thin wrap over `discussionparser.Validate`, its outward `Done`/`Stuck`/returned-error contract deliberately unchanged; the short-circuit order pinned in the new package (stat the support log first, then read the decision record, then check headings, an error always winning over a finding a later check would have produced) is what makes that unchanged-contract claim checkable rather than an aspiration.
+   `lyx loom validate-discussion` and `lyx loom validate-plan` shipped as zero-argument verbs on the existing `loom` subtree, each calling the exact function its `ShedProducer` row calls (`discussionparser.Validate`, `planparser.Validate` respectively), exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope under a `findings` key.
+   A three-way parity test per gate now asserts the verb and the row agree across `Done`, `Stuck`, and returned-error.
+   Two invariants were recorded in `CONSTRAINTS.md`: the Discussionparser Sole-Parser Invariant and the Gate Self-Check Parity Invariant.
+   No stencil under `contracts/stencils/loom/` was touched — instructing the writer agent to call these verbs belongs to the Planned `loom: Discussion-Write producer` and `loom: Plan-Write producer` items, which this item was sequenced ahead of precisely so the verbs would exist first.
+   See the `internal/discussionparser` package documentation and [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
 ## Maintenance
 
