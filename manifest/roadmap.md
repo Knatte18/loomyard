@@ -15,16 +15,10 @@ Committed to, in this order, next — grouped into sub-categories below for read
 today no production caller fills them, and `deps.go`'s own comment says the resolution chain "belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it" — this is that item.
 
 1. **landing: parent-fabric resolution chain** — fill `landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` closures for loom, building the resolution chain `deps.go` already documents: list the current hub's worktrees, match the entry whose branch equals the task's recorded parent branch, resolve that worktree's path, and open its fabric.
+   `internal/fabricengine`'s `origin.json`/`ReadOrigin` already carries `ParentBranch`, told at pair-creation time; no worktree-listing helper exists yet in `internal/gitrepo`/`internal/fabricengine`, and one must be added to do the matching.
    Consequence that makes this worth its own item: until it lands, `Publish`/`Finalize` construction fails for want of `Env.Landing` wherever a caller tries to fill it — `loom: convert to a Shed recipe` (see Done below) hits exactly this and deliberately leaves `Env.Landing` unfilled, preserving the pre-existing gap rather than working around it — so `loom` cannot complete an end-to-end run until this item lands.
    The five `loom: real LLM producers` tasks below are not blocked on this: they add rows to the recipe and are developable independently of whether a full run can complete.
    See `internal/landingshed/deps.go` and [designs/loom.md](designs/loom.md).
-
-### landing: parent-fabric resolution
-
-`internal/landingshed.Deps.OpenFabric`/`OpenParentFabric` are two lazy opener closures `Publish`/`Finalize` hold; `internal/loomcli` never fills either today, so both producers fail construction with a nil-closure error the moment loom's list actually reaches them — a real run hits this regardless of whether the five stubbed `*-Write`/`*-Review` rows above have landed. `internal/landingshed/deps.go`'s own doc comment names the gap and says "the resolution chain (list the worktrees, match the entry whose branch equals the parent branch, resolve that path, open it) belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it" — no such item exists yet; this is that item, discovered missing during the `loom: convert to a Shed recipe` discussion.
-
-1. **landing: parent-fabric resolution** — build the resolution chain `loomcli` needs to fill `Deps.OpenFabric`/`OpenParentFabric`: list the worktrees under the task's fabric layout, match the entry whose branch equals the task's recorded parent branch (`internal/fabricengine`'s `origin.json`/`ReadOrigin` already carries `ParentBranch`; no worktree-listing helper exists yet in `internal/gitrepo`/`internal/fabricengine` and must be added), resolve that worktree's path, and wrap `fabricengine.Open` over it as the two lazy closures. Sequenced ahead of the `loom: real LLM producers` group below because it blocks any real end-to-end run today, independent of which rows are still stubs.
-   See the `internal/landingshed` and `internal/fabricengine` package documentation.
 
 ### loom: real LLM producers
 
