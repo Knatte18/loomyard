@@ -1,12 +1,14 @@
-// cli_test.go covers the loomcli cobra seam: the built tree's Short completeness, the bare-group
-// invocation's git-free guard, and the drive/pause verbs' own refusal paths driven directly against a
-// hand-populated receiver -- bypassing wire entirely, since neither refusal needs a wired hub.
+// cli_test.go covers the loomcli cobra seam: the built tree's Short completeness, the exact set of
+// registered verbs, the bare-group invocation's git-free guard, and the drive/pause verbs' own
+// refusal paths driven directly against a hand-populated receiver -- bypassing wire entirely, since
+// neither refusal needs a wired hub.
 
 package loomcli
 
 import (
 	"bytes"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -30,20 +32,51 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 	walk(Command())
 }
 
-// TestCommand_AllFourVerbsRegistered asserts every one of loom's four verbs is registered under the
-// parent command.
-func TestCommand_AllFourVerbsRegistered(t *testing.T) {
+// TestCommand_RegisteredVerbs_ExactSet asserts that the parent command's registered subcommands are
+// exactly loom's six verbs, no more and no fewer -- a genuine exact-set guard rather than a subset
+// check, so a stray extra verb fails this test as surely as a missing one.
+//
+// cobra auto-adds a "help" command lazily, on Execute/help generation, not at AddCommand time, so
+// Command().Commands() on a freshly built tree returns only the six explicitly registered verbs; a
+// "completion" or "help" entry is filtered out below rather than pinned, so this guard stays
+// resilient to a cobra upgrade that changes when those auto-commands appear.
+func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	parent := Command()
-	want := map[string]bool{"run": false, "drive": false, "status": false, "pause": false}
+
+	var got []string
 	for _, sub := range parent.Commands() {
-		if _, ok := want[sub.Name()]; ok {
-			want[sub.Name()] = true
+		name := sub.Name()
+		if name == "help" || name == "completion" {
+			continue
 		}
+		got = append(got, name)
 	}
-	for name, found := range want {
-		if !found {
+	sort.Strings(got)
+
+	want := []string{"drive", "pause", "run", "status", "validate-discussion", "validate-plan"}
+
+	gotSet := make(map[string]bool, len(got))
+	for _, name := range got {
+		gotSet[name] = true
+	}
+	wantSet := make(map[string]bool, len(want))
+	for _, name := range want {
+		wantSet[name] = true
+	}
+
+	for _, name := range want {
+		if !gotSet[name] {
 			t.Errorf("verb %q is not registered under the loom parent command", name)
 		}
+	}
+	for _, name := range got {
+		if !wantSet[name] {
+			t.Errorf("unexpected verb %q is registered under the loom parent command", name)
+		}
+	}
+
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("registered verbs = %v; want exactly %v", got, want)
 	}
 }
 

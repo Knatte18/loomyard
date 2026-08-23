@@ -3,7 +3,7 @@
 // key presence. Both verbs are driven directly against the leaf command built by
 // validateDiscussionCmd/validatePlanCmd on a hand-populated *loomCLI, per the
 // cli-tests-never-go-through-runcliin Shared Decision -- never through RunCLIIn or wire. Every case
-// is tier 1: no exec.Command, no gitexec, no hubforge.NewHub, no time.Sleep.
+// is tier 1: it spawns no subprocess, opens no real hub fixture, and sleeps on no real clock.
 
 package loomcli
 
