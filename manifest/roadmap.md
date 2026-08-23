@@ -9,23 +9,38 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
 
+### loom: rewrite for the new Plan Card format
+
+A 2026-08-23 discussion redesigned loom's own Discussion/Plan pipeline around symbol-level Cards and Quarry as the mechanical backing (degraded/LLM-manual mode first, Quarry as a pure speed upgrade later, never a hard dependency) — see [designs/plan-card-format.md](designs/plan-card-format.md), already written. Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and both `contracts/stencils/loom/loom-template-discussion.md` and `loom-template-plan.md` outright; `manifest/designs/scout-plan-symbol-fields.md` and `webster-parallel-execution.md` predate this and are stale, to be reconciled or deleted once this group ships. Two waves, in order — Wave 2 depends on Wave 1.
+
+**Wave 1:**
+
+1. **loom: redesign the Discussion format** — a companion design doc to `plan-card-format.md`: strip `discussion.md`'s scope down to design rationale (what/why, decisions, rejected alternatives) and drop what the new Card format now computes mechanically instead (impact/blast-radius analysis moves to the Plan/Card layer, backed by Quarry once it exists). Much of today's millhouse-derived discussion/plan content doesn't need carrying into loom's own version.
+   See [designs/plan-card-format.md](designs/plan-card-format.md) for the sibling design this extends.
+
+1. **loom: code-writing skills — comments, build, testing** — deploy `code-comment-conventions.md`'s rule as an actual installable skill (Go only for now), plus the two other legs millhouse's own code-writing skill set has: build and testing. Mirrors millhouse's shape — general `code-comments`/`code-quality` skills plus per-language `golang-comments`/`golang-build`/`golang-testing` — but under different names to avoid colliding with millhouse's own installed plugins. `golang-build`/`golang-testing` are close to a verbatim copy (language mechanics, not proprietary content); `golang-comments`/`code-comments` are new, from `code-comment-conventions.md`. Deployed via loomyard's own marketplace (`.claude-plugin/marketplace.json`, the same mechanism `prowler` already uses) and kept in sync via `update-plugins.sh`.
+   See [designs/code-comment-conventions.md](designs/code-comment-conventions.md).
+
+**Wave 2** (depends on Wave 1 landing):
+
+1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the new Discussion format (Wave 1's first item), instructing the agent to load the new code-writing skills (Wave 1's second item) where it writes code. Expected to be small — the mechanical/Quarry layer now carries what used to be prompt content.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [designs/plan-card-format.md](designs/plan-card-format.md).
+
+1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the Card format in `designs/plan-card-format.md`.
+   `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no quarry inventory available yet," not as an error.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [designs/plan-card-format.md](designs/plan-card-format.md).
+
+1. **webster: rewrite for the new Plan Card format** — teach `internal/websterengine` the new Card shape: derive the dependency DAG from each card's target list vs. `Uses`, spawn independently-executable cards/batches in their own `git worktree`, and gate a batch's completion on `go build ./... && go test ./...` against the merged result (see `plan-card-format.md`'s Concurrency section). Flagged as potentially the largest item in this group — Webster's current card-list execution has no DAG/worktree-concurrency machinery today.
+   See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (stale, reconcile in this task).
+
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split. Sequenced after the four now-Done "Shed recipe" entries below so these five tasks write their rows directly as recipe entries in `contracts/recipes/loom-recipe.yaml`.
-
-1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
-   The prompt must instruct the agent to call the `lyx loom validate-discussion` CLI verb itself before handing off, so a well-behaved run clears the mechanical gate on the first pass; the gate stays wired as the backstop regardless.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. Sequenced after the "loom: rewrite for the new Plan Card format" group above, since `Discussion-Write`/`Plan-Write` moved there — the three review-producer tasks below depend on the shipped `Bouncer`/`shedadapters: Burler-round producer` items and, for the format their rubric judges, on the format the group above lands.
 
 1. **loom: Discussion-Review producer** — write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists) as the rubric for a new `Discussion-Bouncer` instance, instantiating the shipped `Bouncer` producer with it. The rubric must also cover the Bouncer's seed-call focus-setting pass (see the shipped `Bouncer` item's own rubric-coverage note), not only post-round judgment.
    Replace the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment: `Discussion-Bouncer` (an instance of the shipped `Bouncer: the generic review-gate producer`) is the segment's entry point — its seed call sets initial focus, then every later call judges a round. `Discussion-Burler` (an instance of the shipped `shedadapters: Burler-round producer`) runs one A-review→B-fix round and always hands back to `Discussion-Bouncer` (`Stuck`, `OnStuck: Discussion-Bouncer`), never advancing on its own. `Discussion-Bouncer`'s `OnStuck: Discussion-Burler` covers both the seed call and a rejection; its `OnDone` (approved) exits the segment. Both rows share `Segment: "Discussion-Review"` — the segment's shared name is what the rest of loom's docs/status-display keep referring to as "Discussion-Review," unchanged from today's outward framing even though it is now two rows, not one opaque stub row — and physical list position no longer implies anything about this flow (see `shedengine: per-producer bounce budget + explicit OnDone routing` above). This `Bouncer`+`Burler` wiring is hand-rolled directly in this task, same as `Plan-Review`/`Webster-Review` below each hand-roll their own — no shared module or abstraction wraps the pair (see the `CLAUDE.md` terminology note on "perch," the folk name for this wiring shape).
    Depends on the shipped `shedadapters: Burler-round producer` and `Bouncer` producers — both landed, this item is unblocked.
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
-
-1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
-   The prompt must instruct the agent to call the `lyx loom validate-plan` CLI verb itself before handing off, so a well-behaved run clears the mechanical gate on the first pass; the gate stays wired as the backstop regardless.
-   `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no quarry inventory available yet," not as an error.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch (does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria) as the rubric for a new `Plan-Bouncer` instance (same hand-wiring pattern as `Discussion-Review producer` above), covering the seed-call focus pass too.
    Replace the `Plan-Review` stub with a `Plan-Bouncer`/`Plan-Burler` segment, same shape as `Discussion-Review producer` above: `Plan-Bouncer` is the entry point, `Segment: "Plan-Review"`, `OnStuck: Plan-Burler` from both the seed call and on rejection, `OnDone` exits the segment.
