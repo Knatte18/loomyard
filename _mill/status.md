@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-discussionparser leaf package
+phase: approved-loomshed thin wrap
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r3  '2026-08-23T10:35:37Z'
 planned  '2026-08-23T10:35:56Z'
 implementing  '2026-08-23T10:36:49Z'
 approved-discussionparser leaf package  '2026-08-23T10:43:07Z'
+approved-loomshed thin wrap  '2026-08-23T10:47:26Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: 1d297f84edb19cc3d877f2b6de37d0fbb2c7f875
     verify_baseline_failures: ["FAIL\t./internal/discussionparser/... [setup failed]"]
   - name: loomshed thin wrap
-    state: running
+    state: approved
     implementer_session: 8f1b5c04-fe0b-47df-9035-ea112f7b010e
     start_sha: 22db4e691f7bbdb770d0cd0790928fda560ae848
+    commit_sha: 3e3459aa371bbcf01c3e786ad5050f212f202d0a
     verify_baseline_failures: []
   - name: loom CLI validate verbs
     state: pending
