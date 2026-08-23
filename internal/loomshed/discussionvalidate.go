@@ -1,34 +1,19 @@
-// discussionvalidate.go implements the Discussion-Validate producer: a mechanical gate over
-// `_lyx/discussion/`'s two files, exhaustively defined by the two checks below and nothing beyond
-// them.
+// discussionvalidate.go implements the Discussion-Validate producer: a thin wrap over
+// internal/discussionparser's own check and validate steps, and nothing more -- the two checks and
+// the seven required headings are internal/discussionparser's; this file owns only the outcome
+// mapping.
 
 package loomshed
 
 import (
-	"bufio"
 	"context"
-	"errors"
-	"os"
-	"strings"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// requiredDiscussionSections are the seven H2 headings discussionValidate requires
-// decisionRecordPath to carry, per contracts/stencils/loom/loom-template-discussion.md's Step 5.
-var requiredDiscussionSections = []string{
-	"## Goal",
-	"## Scope",
-	"## Decisions",
-	"## Constraints",
-	"## Auto-mode assumptions",
-	"## Open risks",
-	"## Acceptance criteria",
-}
-
-// discussionValidate is the Discussion-Validate producer: it checks that decisionRecordPath and
-// supportLogPath both exist, and that decisionRecordPath carries every section in
-// requiredDiscussionSections.
+// discussionValidate is the Discussion-Validate producer: it runs discussionparser.Validate against
+// decisionRecordPath and supportLogPath and maps the result onto shedengine's outcome contract.
 //
 // Both paths are told rather than derived, because loomengine's own accessors for them
 // (DiscussionDecisionRecord/DiscussionSupportLog) take a *lyxcwd.Location, which this package may
@@ -49,38 +34,25 @@ func NewDiscussionValidate(name, decisionRecordPath, supportLogPath string) shed
 	return &discussionValidate{name: name, decisionRecordPath: decisionRecordPath, supportLogPath: supportLogPath}
 }
 
-// Call implements shedengine.ShedProducer. It runs exactly two checks, and nothing beyond them is
-// this producer's to look for: first, both files exist; second, the decision record contains all
-// seven required H2 sections. Any failure maps to shedengine.Stuck with an empty pointer; both
-// checks passing maps to shedengine.Done, reporting the decision record's path as the pointer.
+// Call implements shedengine.ShedProducer. It is a thin wrap and nothing more:
+// discussionparser.Validate(p.decisionRecordPath, p.supportLogPath), once. A non-nil error maps to a
+// returned error, never to Stuck; a non-empty findings slice maps to shedengine.Stuck with an empty
+// pointer, the findings themselves discarded here; the clean case maps to shedengine.Done, reporting
+// the decision record's path as the pointer.
 //
 // A read failure that is not a not-exist is a returned error, not Stuck -- a Stuck would bounce
-// back to Discussion-Write, which cannot fix an I/O fault.
-//
-// Deliberately NOT checks, each for a stated reason: "## Notes for the plan writer" is optional by
-// contract and its absence is never a violation; section *order* is pinned in the stencil but is
-// not validated here; an extra unexpected H2 is not a violation either.
+// back to Discussion-Write, which cannot fix an I/O fault. See discussionparser.Validate for the
+// two checks it runs, the seven required headings, and the three documented non-checks.
 func (p *discussionValidate) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	if _, err := os.Stat(p.supportLogPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return p.nonDoneExit(ctx, "", err)
-		}
-		return p.nonDoneExit(ctx, shedengine.Stuck, nil)
-	}
-
-	data, err := os.ReadFile(p.decisionRecordPath)
+	findings, err := discussionparser.Validate(p.decisionRecordPath, p.supportLogPath)
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return p.nonDoneExit(ctx, "", err)
-		}
-		return p.nonDoneExit(ctx, shedengine.Stuck, nil)
+		return p.nonDoneExit(ctx, "", err)
 	}
-
-	if !hasAllSections(string(data), requiredDiscussionSections) {
+	if len(findings) > 0 {
 		return p.nonDoneExit(ctx, shedengine.Stuck, nil)
 	}
 
@@ -98,30 +70,4 @@ func (p *discussionValidate) nonDoneExit(ctx context.Context, outcome shedengine
 		return "", shedengine.OutputPointer{}, err
 	}
 	return outcome, shedengine.OutputPointer{}, nil
-}
-
-// hasAllSections reports whether every heading in required appears as its own line in content,
-// after trimming trailing whitespace -- so a heading nested inside a fenced block or appearing
-// mid-sentence never counts.
-func hasAllSections(content string, required []string) bool {
-	want := make(map[string]bool, len(required))
-	for _, h := range required {
-		want[h] = true
-	}
-	found := make(map[string]bool, len(required))
-
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimRight(scanner.Text(), " \t\r")
-		if want[line] {
-			found[line] = true
-		}
-	}
-
-	for _, h := range required {
-		if !found[h] {
-			return false
-		}
-	}
-	return true
 }

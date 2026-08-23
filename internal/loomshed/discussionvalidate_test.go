@@ -1,3 +1,10 @@
+// discussionvalidate_test.go exercises discussionValidate.Call's own mapping from
+// internal/discussionparser.Validate's two return values to shedengine's outcome/pointer/error
+// contract, plus this producer's cancellation discipline. The checks themselves --
+// which sections are required, which files must exist, how a heading is matched -- are
+// internal/discussionparser/validate_test.go's to cover; this suite would not notice if that
+// package's check logic changed shape, only if this producer stopped mapping its results correctly.
+
 package loomshed
 
 import (
@@ -10,7 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// validDecisionRecord carries all seven required sections, in order, plus the optional eighth.
+// validDecisionRecord carries all seven required sections, in order, plus the optional eighth. It
+// stays a hardcoded literal here rather than an export of internal/discussionparser: no caller
+// outside that package needs the list itself now that the section-iteration case has moved there.
 const validDecisionRecord = `# Decision record
 
 ## Goal
@@ -86,12 +95,15 @@ func TestDiscussionValidate_Call(t *testing.T) {
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, "", "support log")
 
 		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
-		outcome, _, err := p.Call(context.Background())
+		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+		}
+		if pointer != (shedengine.OutputPointer{}) {
+			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
 	})
 
@@ -100,114 +112,65 @@ func TestDiscussionValidate_Call(t *testing.T) {
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "")
 
 		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
-		outcome, _, err := p.Call(context.Background())
+		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
-	})
-
-	t.Run("EachRequiredSectionMissing", func(t *testing.T) {
-		for _, missing := range requiredDiscussionSections {
-			t.Run(missing, func(t *testing.T) {
-				dir := t.TempDir()
-				var lines []string
-				for _, line := range strings.Split(validDecisionRecord, "\n") {
-					if line == missing {
-						continue
-					}
-					lines = append(lines, line)
-				}
-				decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, strings.Join(lines, "\n"), "support log")
-
-				p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
-				outcome, _, err := p.Call(context.Background())
-				if err != nil {
-					t.Fatalf("Call() error = %v; want nil", err)
-				}
-				if outcome != shedengine.Stuck {
-					t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-				}
-			})
+		if pointer != (shedengine.OutputPointer{}) {
+			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
 	})
 
-	t.Run("NotesForPlanWriterAbsentStillPasses", func(t *testing.T) {
+	t.Run("HeadingMissingMapsToStuck", func(t *testing.T) {
 		dir := t.TempDir()
-		withoutNotes := strings.Split(validDecisionRecord, "## Notes for the plan writer")[0]
-		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutNotes, "support log")
+		withoutGoal := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)
+		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutGoal, "support log")
 
 		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
-		outcome, _, err := p.Call(context.Background())
+		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+		if outcome != shedengine.Stuck {
+			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+		}
+		if pointer != (shedengine.OutputPointer{}) {
+			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
 	})
 
-	t.Run("SectionsOutOfOrderStillPasses", func(t *testing.T) {
+	// TestDiscussionValidate_Call/DecisionRecordUnreadableReturnsErrorNotStuck pins the
+	// short-circuit-order-is-load-bearing Shared Decision at the producer level: the support log
+	// exists, so the decision record is read next, and a read failure that is not a not-exist (here,
+	// the path is a directory) must return a non-nil error rather than any verdict -- an accumulating
+	// rewrite that instead treated this as a finding would silently flip this case to Stuck.
+	t.Run("DecisionRecordUnreadableReturnsErrorNotStuck", func(t *testing.T) {
 		dir := t.TempDir()
-		reordered := `# Decision record
-
-## Scope
-
-Scope text.
-
-## Goal
-
-Goal text.
-
-## Acceptance criteria
-
-Criteria text.
-
-## Decisions
-
-Decisions text.
-
-## Constraints
-
-Constraints text.
-
-## Auto-mode assumptions
-
-Assumptions text.
-
-## Open risks
-
-Risks text.
-`
-		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, reordered, "support log")
+		_, supportLogPath := writeDiscussionFixture(t, dir, "", "support log")
+		decisionRecordPath := filepath.Join(dir, "decision-record.md")
+		if err := os.MkdirAll(decisionRecordPath, 0o755); err != nil {
+			t.Fatalf("mkdir decision record: %v", err)
+		}
 
 		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
 		outcome, _, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
+		if err == nil {
+			t.Fatalf("Call() error = nil; want a non-nil error (decision record path is a directory)")
 		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
-	})
-
-	t.Run("ExtraUnexpectedH2StillPasses", func(t *testing.T) {
-		dir := t.TempDir()
-		withExtra := validDecisionRecord + "\n## Unexpected Extra Section\n\nExtra text.\n"
-		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withExtra, "support log")
-
-		p := NewDiscussionValidate("Discussion-Validate", decisionRecordPath, supportLogPath)
-		outcome, _, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+		if outcome == shedengine.Done || outcome == shedengine.Stuck {
+			t.Errorf("Call() outcome = %q; want no verdict alongside a returned error", outcome)
 		}
 	})
 
+	// TestDiscussionValidate_Call/CancelledContextReturnsErrorNotVerdict is the suite's only
+	// cancellation case. entryErr and nonDoneExit's cancelErr consult the identical ctx.Err() value,
+	// and entryErr is Call's very first statement, so a synchronous test that pre-cancels its context
+	// is always caught at entry and can never reach nonDoneExit's own check -- the two are not
+	// independently reachable by fixture choice, and a second pre-cancelled case would be
+	// mechanically identical to this one.
 	t.Run("CancelledContextReturnsErrorNotVerdict", func(t *testing.T) {
 		dir := t.TempDir()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
