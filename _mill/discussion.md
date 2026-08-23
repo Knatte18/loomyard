@@ -100,6 +100,30 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
 - Rejected: a fresh `drive`-specific refusal message naming `lyx loom run --parent <branch>` — marginally more directive, at the cost of stating the same rule in two places that can drift.
   Also rejected: falling back to the seeded status file, which reverses `parent-branch-from-origin-record`.
 
+### assembly-seam-takes-plain-values
+
+- Decision: the `Env.Landing` assembly function takes already-resolved plain values (`taskBranch`, `originURL`, `parentBranch`, the geometry, the registry, the runner, the config, and the location) rather than the opened `*fabricengine.Fabric`.
+  It performs no I/O and returns no error.
+  `drive.go` does the handle reads and both refusal guards above the call.
+- Rationale: this is what makes the drift-guard test tier 1.
+  Were the handle a parameter, a non-zero `TaskBranch`/`OriginURL` would be unreachable without a real wired hub — `newPaired` stat-checks both sides, `CurrentBranch()` and `RemoteURL("origin")` read real git state, and `landingshed.LoadConfig` goes through strict `configengine.Load` where an absent config file is an error.
+  The test would then need `//go:build integration`, a `hubforge` fixture, and a `TestMain` calling `gitkit.HermeticGitEnv` — dragging a pure struct-assembly assertion into the expensive tier for no gain.
+  Splitting the I/O out keeps the assertion where it belongs and preserves `internal/loomcli`'s existing tier-1 posture, which `wiring_test.go`'s own header comment is explicit about protecting.
+- Rejected: passing the handle and tagging the drift guard as an integration test with a hubforge fixture — it works, but pays fixture cost for an assertion about field population, and pulls a tier-1 package toward tier 2.
+
+### scalar-read-errors-refuse-or-defer-by-consumer
+
+- Decision: `drive` disposes of the two eager scalar reads differently, by who consumes them.
+  A `CurrentBranch()` error refuses on the envelope.
+  An `OriginURL()` error does **not** refuse — `drive` passes the empty string through and lets `Publish` be the layer that refuses.
+- Rationale: `TaskBranch` is consumed by both producers — it is `Finalize`'s merge source and `Publish`'s pull-request head — so an unreadable branch (detached HEAD, unborn HEAD) makes the whole landing segment meaningless, and refusing early names the cause precisely.
+  `OriginURL` is different: only `Publish` reads it, and only on the path where `require_pr_to_base` actually contains the parent branch.
+  `gitrepo.RemoteURL` errors outright when no `origin` remote is configured, and a remote-less warp checkout is genuinely reachable — a purely local hub with no upstream.
+  Refusing `lyx loom drive` there would block a run that never needed the value, for a `Publish` row that would have returned `Done` immediately.
+  Passing the empty string through costs nothing and lands the refusal exactly where the value is used: `githubclient.ParseOwnerRepo("")` fails, and `Publish` already turns that into `stuckOrCancelled("origin URL unusable: …")` — a stuck row with a precise reason, not a crash.
+- Rejected: refusing on both — symmetric and simpler to state, but it makes a local-only hub unable to run loom at all over a value its own config says is unnecessary.
+  Also rejected: passing both through empty — an empty `TaskBranch` would reach `Finalize`'s merge and `Publish`'s pull-request head with no layer positioned to catch it.
+
 ### self-parent-is-loom-policy-not-fabric-policy
 
 - Decision: `fabricengine.OpenParent` matches on branch alone and special-cases nothing;
@@ -147,7 +171,7 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
   It also reuses the identical carve-out already invoked for `Fabric.OriginURL()` — `fabric.go`'s rule that a single-sided uncoordinated op earns a named `Fabric` method precisely when it must be callable from outside the package — so the two additions land as one consistent pair, and `drive.go` already holds the handle both need.
   Naming it `PushBranch` matches `landingshed.Deps.PushBranch` exactly, so the closure reads as a straight pass-through.
 - Note: this changes only the *spelling* and call site.
-  The rebase-free semantics chosen in `push-uses-the-rebase-free-warp-primitive` are unaffected — `Fabric.PushBranch` delegates to that same primitive, and `gitrepo.ErrPushRejected` still propagates unwrapped through both the method and the closure, so `publish.go:120`'s `errors.Is` check keeps matching.
+  The rebase-free semantics chosen in `push-uses-the-rebase-free-warp-primitive` are unaffected — `Fabric.PushBranch` delegates to that same primitive, and `gitrepo.ErrPushRejected` still propagates unwrapped through both the method and the closure, so `Publish.Call`'s `errors.Is` check keeps matching.
 - Also note: `Deps.PushBranch` remains an injected closure rather than a direct call.
   That is still correct and still required — `landingshed` may not import a verb it cannot name, and the field doc's reasoning stands even though its phrase "the layer that names it is the caller" now resolves to `fabricengine` rather than to `loomcli`.
 - Rejected: a package-level `fabricengine.PushTaskBranchAt(path, opts)` — same delegation and no handle required, but it widens the package surface and re-passes a path the handle already carries.
@@ -225,12 +249,12 @@ Detached entries carry `Branch == "(detached)"` and cannot collide with a real b
 | Field | Source |
 | --- | --- |
 | `WorktreeRoot` | `c.location.WorktreePath()` |
-| `TaskBranch` | `handle.CurrentBranch()` |
+| `TaskBranch` | `handle.CurrentBranch()`, refusing on the envelope on error |
 | `ParentBranch` | `fabricengine.ReadOrigin(c.location)` → `resolveParentBranch(recorded, found, "")`, refusing on the envelope when unrecorded or empty |
 | `WebsterDir` | `c.runDeps.Geom.WebsterDir` |
 | `StencilsDir` | `c.runDeps.Geom.StencilsDir` |
 | `ScratchDir` | new `loomengine.LoomScratchDir(c.location)` |
-| `OriginURL` | new `handle.OriginURL()` |
+| `OriginURL` | new `handle.OriginURL()`, passing `""` through on error so `Publish` refuses instead of `drive` |
 | `PushSkipped` | `fabricengine.EnvSyncOptions().SkipPush` |
 | `PushBranch` | closure over the new `handle.PushBranch(fabricengine.EnvSyncOptions())`, discarding the `PushResult` |
 | `OpenFabric` | closure over `fabricengine.Open(c.location)` |
@@ -307,6 +331,16 @@ From `CONSTRAINTS.md`, in order of how easily this task could trip them:
 - **Lyxdirs Single-Declarer Invariant.**
   `LoomScratchDir` must use `lyxdirs.DotLyxDirName`, never the `.lyx` literal.
   Enforced by `TestEnforcement_GeometryLiterals`.
+- **Test Tier Purity Invariant.**
+  An untagged test file must not call `gitexec.Run`, `exec.Command`/`exec.CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub` — matched as a **raw substring**, so even a comment or string-literal mention trips it.
+  This is what forces `assembly-seam-takes-plain-values`: the `loomcli` drift guard stays untagged only because it never touches a fixture.
+  Enforced by `cmd/lyx/tierpurity_test.go`'s `TestTierPurity_UntaggedTestsSpawnNothing`.
+- **Hermetic Git Test Environment Invariant.**
+  Any test package that spawns git, directly or through a `gitkit`/`hubforge` fixture helper, must have a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`.
+  `internal/fabricengine` already has `testmain_test.go`, so the new `OpenParent` integration test inherits it and adds nothing.
+  `internal/loomcli` also already has one — but under `assembly-seam-takes-plain-values` the new test spawns no git, so this invariant does not newly bind it.
+  Enforced by `cmd/lyx/hermeticenv_test.go` (presence only;
+  correct ordering is a review obligation).
 - **hubforge Fabric-Fixture Invariant.**
   Every hub fixture goes through `hubforge`, and no package inside `internal/fabriccli`'s dependency set may import it — so the `OpenParent` integration test must live in the external `fabricengine_test` package, exactly as `worktreelist_test.go` already does.
 - **Fabric Git Invariant.**
@@ -354,7 +388,29 @@ A table test asserting it equals the directory `LoomRunLock`/`LoomDriverLog`/`Lo
 `wiring_test.go` already drives `wire` against a hand-built `*lyxcwd.Location` and stays tier 1 — its header comment records this explicitly.
 Carrying `registry` and `runner` onto the struct must not break that: the test's tier-1 status depends on `wire` resolving no cwd and spawning no process, and both values are already built there today.
 The `Env.Landing` assembly itself moves to `drive.go`, so it should be extracted into its own testable function (mirroring how `wire` was extracted from the pre-run for exactly this reason) rather than written inline in the `RunE` closure.
-That function takes the location, the opened handle, the registry, the runner, and the config, and returns a `landingshed.Deps` — testable without spawning a driver.
+**The seam takes plain values, never the opened handle.**
+This is what keeps the drift guard tier 1, and it is a decision, not a detail — see `assembly-seam-takes-plain-values`.
+The stated signature is:
+
+```go
+func landingDeps(
+    l *lyxcwd.Location,
+    geom websterengine.Geometry,
+    taskBranch, originURL, parentBranch string,
+    registry modelspec.Registry,
+    runner *shuttleengine.Runner,
+    cfg landingshed.Config,
+) landingshed.Deps
+```
+
+`taskBranch`, `originURL`, and `parentBranch` arrive already resolved, so the function performs no I/O and returns no error.
+`geom` supplies `WebsterDir` and `StencilsDir`;
+`l` supplies `WorktreeRoot` and backs the three closures.
+`drive.go` keeps the handle reads (`CurrentBranch()`, `OriginURL()`) and both refusal guards above this call.
+
+Because the seam takes plain values, this test is **untagged (tier 1)**: no `git init`, no `hubforge.NewHub`, no fixture tree, so it needs no `//go:build integration` tag and no `TestMain` calling `gitkit.HermeticGitEnv`.
+That is the whole reason the signature is shaped this way.
+`internal/loomcli`'s existing untagged tests stay untagged, and `wiring_test.go`'s tier-1 property is preserved.
 
 The drift guard on that function is the point of the test: a field added to `Deps` later must fail loudly here rather than nil-panicking mid-run.
 State it as "every field except `PushSkipped` is non-zero", not "all fourteen".
@@ -386,12 +442,14 @@ The package's own `publish_test.go`/`finalize_test.go` already fill the closures
 - **Q:** What does `OpenParent` actually *open*? **A:** It returns a `*Fabric` handle over the parent worktree's own warp+weft pair — the same sense `fabricengine.Open` already carries. It creates and mutates nothing. A handle rather than a path because `Finalize` must call `Merge` inside the parent's own checkout, which a path cannot express.
 - **Q:** Is `Env.Landing` filled in `wire()` or in `drive.go`? **A:** `drive.go`. `wire()` runs for every verb including `status`/`pause`, and `OpenFabric()` is opened eagerly at construction — filling in `wire()` risks exactly what the existing `OpenBisector` comment warns against. `drive` is the only path reaching `loomrecipe.New` and already checks the status file exists.
 - **Q:** Where does `ParentBranch` come from? **A:** `fabricengine.ReadOrigin`. Established precedent at `run.go:76`, and named explicitly by the roadmap. A status-file fallback would cover a divergence `resolveParentBranch` already refuses to permit.
-- **Q:** What happens when no worktree matches the parent branch? **A:** A plain error from the closure, which the producers convert to `Stuck`. `finalize.go:120` already implements exactly this. No new error type; a missing parent pair is operator-fixable, not a crash.
-- **Q:** Which push primitive backs `PushBranch` — `PushWarpAt` or `PushWarpRebaseFreeAt`? **A:** `PushWarpRebaseFreeAt`, overriding the initial recommendation of `PushWarpAt`. Only `PushRebaseFree` produces `gitrepo.ErrPushRejected`, and `publish.go:120` already has an explicit branch handling that sentinel — `PushWarpAt` would leave it dead code. It also avoids the SHA-rewriting hazard that invalidates the warp/weft correspondence index, which the method's own doc names. The code is already built for non-rebase behaviour.
+- **Q:** What happens when no worktree matches the parent branch? **A:** A plain error from the closure, which the producers convert to `Stuck`. `Finalize.Call`'s `parentOpener()` error path already implements exactly this. No new error type; a missing parent pair is operator-fixable, not a crash.
+- **Q:** Which push primitive backs `PushBranch` — `PushWarpAt` or `PushWarpRebaseFreeAt`? **A:** `PushWarpRebaseFreeAt`, overriding the initial recommendation of `PushWarpAt`. Only `PushRebaseFree` produces `gitrepo.ErrPushRejected`, and `Publish.Call` already has an explicit branch handling that sentinel — `PushWarpAt` would leave it dead code. It also avoids the SHA-rewriting hazard that invalidates the warp/weft correspondence index, which the method's own doc names. The code is already built for non-rebase behaviour.
 - **Q:** Where does `Deps.ScratchDir` come from? **A:** A new `loomengine.LoomScratchDir(l)`. Matches the Durable-vs-Ephemeral invariant's rule that each module owns its own scratch accessor. The stale `LoomStatusLock` comment saying "loomengine has no `Dir(l)` accessor" must be corrected in the same commit regardless.
 - **Q:** Where does `Deps.OriginURL` come from? **A:** A new `Fabric.OriginURL()` method. `gitrepo.Repo.RemoteURL` already exists with zero callers — built precisely for this. Matches `fabric.go`'s documented carve-out for single-sided operations that must be callable from outside the package.
 - **Q:** What test coverage? **A:** An integration test via `hubforge` mirroring `worktreelist_test.go`'s existing pattern, plus a dedicated unit test for the matching logic. An end-to-end test would need GitHub credentials and would prove only construction, not behaviour.
 - **Q:** Can `loomcli` name `PushWarpRebaseFreeAt` in the push closure? **A:** No — and the earlier decision assuming it could was wrong. The bare warp/weft ban is not `landingshed`-specific: `fabricVocabularyOwners` excludes `internal/loomcli`, `bareVocabularyToken` is a substring test, and the AST walk visits a selector's `Sel`, so the call fails `TestEnforcement_FabricVocabulary`. Resolved by adding a neutral `Fabric.PushBranch(opts)` method inside the owner package, reusing the same carve-out as `Fabric.OriginURL()`. The rebase-free semantics are unchanged.
 - **Q:** What does `drive` do when `ReadOrigin` reports no record, an empty `ParentBranch`, or an error? **A:** Refuse on the envelope, by calling the existing `resolveParentBranch(recorded, found, "")` with an empty flag and surfacing its message verbatim. Absent and present-but-empty are already treated identically by that function's own table, and reusing it means the rule cannot drift from `run`'s.
 - **Q:** What happens when the parent branch equals the acting worktree's own branch? **A:** `OpenParent` matches it and returns that pair — it special-cases nothing, staying policy-free so a future Hardener can reuse it. `drive` refuses the configuration, as a second clause of the same guard handling the unrecorded-parent case. A corrupt provenance record gets named rather than silently accepted.
+- **Q:** Does the `Deps` drift-guard test need a hub fixture? **A:** No, and the seam is shaped specifically so it doesn't. The assembly function takes plain resolved values rather than the opened handle, so it does no I/O and the test stays untagged (tier 1). Passing the handle would have made a non-zero `TaskBranch`/`OriginURL`/`Config` unreachable without a real wired hub, dragging a struct-population assertion into the integration tier and pulling `loomcli` off its documented tier-1 posture.
+- **Q:** What does `drive` do when `CurrentBranch()` or `OriginURL()` errors? **A:** Different things, by consumer. `CurrentBranch()` refuses on the envelope — both producers need it, so an unreadable branch makes the segment meaningless. `OriginURL()` passes `""` through instead, because only `Publish` reads it and only when a pull request is actually required; a remote-less local hub is reachable, and `Publish` already turns an unusable origin URL into a stuck row with a precise reason.
 - **Q:** Does `internal/landingshed` itself change? **A:** Comments only. `deps.go`'s "the next roadmap item builds it" claims become false when this lands and must be corrected in the same commit. Tightening `NewPublish`/`NewFinalize` validation would be real scope creep beyond the roadmap item.
