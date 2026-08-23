@@ -53,6 +53,34 @@ func resolveParentBranch(recorded fabricengine.Origin, found bool, parentFlag st
 	)
 }
 
+// resolveLandingParent resolves the parent branch drive.go seeds Env.Landing with, wrapping
+// resolveParentBranch with the two refusal clauses landing's own bootstrap needs.
+//
+// It calls resolveParentBranch(recorded, found, "") -- an empty flag, since drive.go has no --parent
+// flag of its own, which lands resolveParentBranch's table on its final row for an absent-or-empty
+// record. A present-but-empty recorded value is treated exactly as absent, inherited unchanged from
+// resolveParentBranch.
+//
+// Two refusal clauses apply:
+//   - an unrecorded (or empty) parent: resolveParentBranch's own error is returned unchanged, per the
+//     drive-refuses-an-unrecorded-parent decision, which deliberately reuses that message rather than
+//     writing a drive-specific one.
+//   - a resolved parent equal to taskBranch: refused here, not inside fabricengine.OpenParent, per the
+//     self-parent-is-loom-policy-not-fabric-policy decision -- a task may not be its own parent.
+func resolveLandingParent(recorded fabricengine.Origin, found bool, taskBranch string) (parentBranch string, err error) {
+	parent, _, err := resolveParentBranch(recorded, found, "")
+	if err != nil {
+		return "", err
+	}
+	if parent == taskBranch {
+		return "", fmt.Errorf(
+			"loom: recorded parent branch %q equals the task's own branch %q; a task may not be its own parent",
+			parent, taskBranch,
+		)
+	}
+	return parent, nil
+}
+
 // seedSlug returns the seed's slug from worktreeName unchanged.
 //
 // This is the single place the slug's source is stated -- the worktree's own resolved name -- so the

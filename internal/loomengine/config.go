@@ -82,8 +82,7 @@ func LoomStatusFile(l *lyxcwd.Location) string {
 // LoomStatusFile(l).
 // It is AnchorPath-anchored like LoomStatusFile, but lives under lyxdirs.DotLyxDirName rather than
 // LoomStatusFile's lyxdirs.LyxDirName: the lock is a never-tracked transient, not durable orchestration
-// status, so it is stated outright at its mirrored .lyx subpath rather than derived by analogy --
-// loomengine has no Dir(l) accessor for a ScratchDir(l) to mirror.
+// status, so it is stated outright at its mirrored .lyx subpath rather than derived by analogy.
 // Scoped under the same "loom" subdirectory as LoomStatusFile, for the same product-collision reason.
 func LoomStatusLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "status.json.lock")
@@ -120,6 +119,15 @@ func LoomDriverLog(l *lyxcwd.Location) string {
 // the operator's entire session.
 func LoomBootstrapLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "bootstrap.lock")
+}
+
+// LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.
+// It is AnchorPath-anchored, like LoomRunLock, LoomDriverLog, and LoomBootstrapLock, and names the
+// directory those three already share: lyxdirs.DotLyxDirName joined with loomDirName.
+// Per the Durable-vs-Ephemeral State Invariant, this accessor is the mirrored-subpath counterpart
+// loomengine exposes beside its durable LoomStatusFile.
+func LoomScratchDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.

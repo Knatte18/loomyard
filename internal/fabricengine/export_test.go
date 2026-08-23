@@ -48,6 +48,10 @@ const WarpProbeDirPrefixForTest = warpProbeDirPrefix
 // assert on the anchored .git/info/exclude pattern without duplicating its spelling.
 var ExcludePatternForTest = excludePatternFor
 
+// MatchParentBranchForTest re-exports matchParentBranch for package fabricengine_test files that
+// need to drive it directly with hand-built WorktreeEntry slices, without a hubforge fixture.
+var MatchParentBranchForTest = matchParentBranch
+
 // RemoveWarpWorktreeDirForTest re-exports removeWarpWorktreeDir for package fabricengine_test
 // integration tests that need to drive the gate's registered-linked-worktree ownership kind
 // directly against an arbitrary target, rather than through Topology.Remove — whose own top-level

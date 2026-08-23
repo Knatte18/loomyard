@@ -60,20 +60,20 @@ type Deps struct {
 	// pull request for an unpushed branch.
 	PushSkipped bool
 	// PushBranch is the injected push closure. The push verb's own name carries a token this
-	// package may not write in any identifier, so the layer that names it is the caller, and this
-	// package only calls the closure.
+	// package may not write in any identifier, so the verb is named inside internal/fabricengine's
+	// Fabric.PushBranch, never by this package or its caller -- this package only calls the closure.
 	PushBranch func() error
 
 	// OpenFabric and OpenParentFabric are the two lazy opener closures Publish and Finalize hold,
 	// respectively -- Publish's over the task worktree's own pair, Finalize's over the parent
 	// branch's pair. Laziness is required, not stylistic: the constructor each closure wraps
 	// stat-checks the paired layout, so opening eagerly would fail before the run's own preflight
-	// has confirmed anything is wired.
+	// has confirmed anything is wired -- a constraint that holds regardless of which layer fills
+	// the closure.
 	//
-	// Nothing in this task fills either closure: the resolution chain (list the worktrees, match
-	// the entry whose branch equals the parent branch, resolve that path, open it) belongs to the
-	// layer that legitimately resolves geometry, and the next roadmap item builds it. Until then
-	// both closures are exercised only by this package's own tests, which fill them directly.
+	// internal/loomcli/drive.go fills both closures via fabricengine.Open and fabricengine.OpenParent,
+	// respectively, since it is the layer that legitimately resolves geometry. This package's own
+	// tests still fill them directly with fakes rather than depending on a real fabric.
 	OpenFabric       func() (*fabricengine.Fabric, error)
 	OpenParentFabric func() (*fabricengine.Fabric, error)
 

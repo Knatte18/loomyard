@@ -7,6 +7,7 @@ package fabricengine_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -115,6 +116,44 @@ func TestList(t *testing.T) {
 
 			tt.verify(t, hub, entries)
 		})
+	}
+}
+
+// TestList_ParsesPrunable covers parseWorktreePorcelain's Prunable branch through the public List
+// entry point: a worktree deleted without `git worktree prune` reports Prunable == true, while the
+// hub's own prime entry — never deleted — reports Prunable == false.
+func TestList_ParsesPrunable(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	hub := h.PrimeWorktree()
+
+	wtPath := filepath.Join(filepath.Dir(hub), "wt-prunable")
+	gitkit.MustRun(t, hub, "git", "worktree", "add", wtPath)
+	if err := os.RemoveAll(wtPath); err != nil {
+		t.Fatalf("RemoveAll(%q): %v", wtPath, err)
+	}
+
+	entries, err := fabricengine.List(hub)
+	if err != nil {
+		t.Fatalf("List() error = %v; want nil", err)
+	}
+
+	var prunableCount int
+	var primePrunable bool
+	for _, e := range entries {
+		if e.Prunable {
+			prunableCount++
+		}
+		if e.Main {
+			primePrunable = e.Prunable
+		}
+	}
+	if prunableCount != 1 {
+		t.Errorf("List() prunable entry count = %d; want 1", prunableCount)
+	}
+	if primePrunable {
+		t.Error("List() prime entry Prunable = true; want false")
 	}
 }
 

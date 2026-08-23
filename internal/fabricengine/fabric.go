@@ -151,6 +151,23 @@ func WeftLyxDir(l *lyxcwd.Location) string {
 	return filepath.Join(WeftWorktree(l), l.AnchorRel, lyxdirs.LyxDirName)
 }
 
+// OriginURL returns f's warp side's configured "origin" remote URL.
+// This is the single-sided-op-callable-from-outside-the-package carve-out this file's own package
+// doc comment already states, the same carve-out WeftWorktree and the warp-only accessors named in
+// that comment use — internal/loomcli needs the origin URL and is not a Fabric Vocabulary Invariant
+// owner.
+func (f *Fabric) OriginURL() (string, error) {
+	return f.warp.RemoteURL("origin")
+}
+
+// PushBranch pushes f's warp side via PushWarpRebaseFreeAt — the vocabulary-neutral spelling
+// internal/loomcli must call instead of naming PushWarpRebaseFreeAt directly (see the
+// fabric-vocabulary-owner-confinement Shared Decision).
+// PushBranch performs no discarding of the returned PushResult; that is the caller's choice.
+func (f *Fabric) PushBranch(opts SyncOptions) (PushResult, error) {
+	return PushWarpRebaseFreeAt(f.warpPath, opts)
+}
+
 // ScopedPathspec returns a slice of pathspec entries, each being the join of relPath with each
 // directory in dirs.
 // At relPath == ".", this returns dirs unchanged;
