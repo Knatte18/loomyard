@@ -134,7 +134,36 @@ No card in this batch has a non-empty `Moves:`.
   `OpenFabric`/`OpenParentFabric`/`PushBranch` are `func` fields — `IsZero()` on a `reflect.Value` of kind `Func` reports whether the func value itself is nil, which is exactly the failure mode worth catching (a field left unset), so no special-casing is needed for the three closure fields.
 - **Commit:** `loom: drift-guard test for landingDeps`
 
-### Card 16: Load `landing.yaml` in `wire()`, carry `registry`/`runner` onto the struct
+### Card 16: New `loomCLI` struct fields
+
+- **Context:** none
+- **Edits:**
+  - `internal/loomcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  Add `"github.com/Knatte18/loomyard/internal/landingshed"` and `"github.com/Knatte18/loomyard/internal/modelspec"` to `cli.go`'s import block (`"github.com/Knatte18/loomyard/internal/shuttleengine"` is already imported there).
+
+  Add three new fields to the `loomCLI` struct, placed after the existing `runDeps websterengine.RunDeps` field:
+
+  ```go
+  	// registry is the resolved model-spec registry, carried onto the struct so drive.go can pass
+  	// it to landingDeps without a second modelspec.LoadRegistry call.
+  	registry modelspec.Registry
+  	// runner is the constructed shuttle runner, carried onto the struct so drive.go can pass it to
+  	// landingDeps as the landing seam's Shuttle value.
+  	runner *shuttleengine.Runner
+  	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
+  	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
+  	// the operator's own terminal on every verb, not only inside drive's detached driver log.
+  	landingCfg landingshed.Config
+  ```
+
+  Write each field's doc comment in this struct's existing per-field comment style (see the surrounding fields for the pattern).
+- **Commit:** `loom: add registry, runner, and landingCfg fields to loomCLI`
+
+### Card 17: Load `landing.yaml` in `wire()`, carry `registry`/`runner` onto the struct
 
 - **Context:**
   - `internal/landingshed/config.go`
@@ -149,6 +178,7 @@ No card in this batch has a non-empty `Moves:`.
   Add a new config load in `wire()`, placed after the existing `websterCfg, err := websterengine.LoadConfig(anchorPath, "webster")` block and before `registry, err := modelspec.LoadRegistry(anchorPath)`: `` landingCfg, err := landingshed.LoadConfig(anchorPath, "landing") `` followed by the same `if err != nil { return err }` shape every other load in this function already uses.
 
   At the bottom of `wire()`, alongside the existing `c.location = location`, `c.cwd = cwd`, `c.cfg = loomCfg`, `c.reed = reedEngine`, `c.runDeps = runDeps` assignments, add three more: `c.registry = registry`, `c.runner = runner`, `c.landingCfg = landingCfg` — `registry` and `runner` are already local variables `wire()` builds earlier in the function (`registry, err := modelspec.LoadRegistry(anchorPath)` and `runner := shuttleengine.NewRunner(...)`); this card stores the two existing values onto the struct rather than reloading or reconstructing them.
+  This card is sequenced after card 16 specifically because it assigns into the three fields card 16 adds — a `loomCLI` struct literal with no such fields would not compile if this card's commit landed first.
 
   Replace the existing comment block that currently reads:
 
@@ -180,35 +210,6 @@ No card in this batch has a non-empty `Moves:`.
   This is an exact text replacement inside the existing `c.env = shedrecipe.Env{...}` struct literal's trailing comment block (wiring.go:105-112) — locate it by the quoted text above, which is a byte-exact substring of the current file.
 - **Commit:** `loom: load landing.yaml in wire(), carry registry and runner onto the struct`
 
-### Card 17: New `loomCLI` struct fields
-
-- **Context:** none
-- **Edits:**
-  - `internal/loomcli/cli.go`
-- **Creates:** none
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:**
-  Add `"github.com/Knatte18/loomyard/internal/landingshed"` and `"github.com/Knatte18/loomyard/internal/modelspec"` to `cli.go`'s import block (`"github.com/Knatte18/loomyard/internal/shuttleengine"` is already imported there).
-
-  Add three new fields to the `loomCLI` struct, placed after the existing `runDeps websterengine.RunDeps` field:
-
-  ```go
-  	// registry is the resolved model-spec registry, carried onto the struct so drive.go can pass
-  	// it to landingDeps without a second modelspec.LoadRegistry call.
-  	registry modelspec.Registry
-  	// runner is the constructed shuttle runner, carried onto the struct so drive.go can pass it to
-  	// landingDeps as the landing seam's Shuttle value.
-  	runner *shuttleengine.Runner
-  	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
-  	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
-  	// the operator's own terminal on every verb, not only inside drive's detached driver log.
-  	landingCfg landingshed.Config
-  ```
-
-  Write each field's doc comment in this struct's existing per-field comment style (see the surrounding fields for the pattern).
-- **Commit:** `loom: add registry, runner, and landingCfg fields to loomCLI`
-
 ### Card 18: Seed `landing.yaml`, assert the new fields populate
 
 - **Context:**
@@ -221,7 +222,7 @@ No card in this batch has a non-empty `Moves:`.
 - **Requirements:**
   Add `"github.com/Knatte18/loomyard/internal/landingshed"` to `wiring_test.go`'s import block.
 
-  Add a new helper, `seedLandingConfig(t *testing.T, anchorPath string)`, mirroring `seedLoomConfig`'s exact shape (same `os.MkdirAll`/`os.WriteFile` pattern, `0o644`), writing `<anchorPath>/_lyx/config/landing.yaml` with `landingshed.ConfigTemplate()`'s contents — `landingshed.LoadConfig` is strict (an absent file is an error), so `wire()` fails on every existing test in this file without this seed once card 16 lands.
+  Add a new helper, `seedLandingConfig(t *testing.T, anchorPath string)`, mirroring `seedLoomConfig`'s exact shape (same `os.MkdirAll`/`os.WriteFile` pattern, `0o644`), writing `<anchorPath>/_lyx/config/landing.yaml` with `landingshed.ConfigTemplate()`'s contents — `landingshed.LoadConfig` is strict (an absent file is an error), so `wire()` fails on every existing test in this file without this seed once card 17 lands.
   Call `seedLandingConfig(t, loc.AnchorPath())` from `hubLocation` (this file's shared fixture builder), immediately after the existing `seedLoomConfig(t, loc.AnchorPath())` call — every existing test in this file goes through `hubLocation`, so this one seed addition keeps them all green.
 
   Add a new test function, `TestWire_LandingSeamFieldsPopulated`: build a location via `hubLocation`, call `c.wire(loc, cwd)`, then assert `c.registry` is non-nil, `c.runner` is non-nil, and `c.landingCfg` equals the value returned by calling `landingshed.LoadConfig(loc.AnchorPath(), "landing")` directly in the test — the same "compare against the accessor's own direct call" pattern `TestWire_PathFieldsMatchLoomengineAccessors` already uses for its own path-field assertions, but compared via `reflect.DeepEqual(c.landingCfg, want)`, not `!=`: `landingshed.Config` carries a `RequirePRToBase []string` field, which makes the struct non-comparable, so a plain `!=` does not compile here the way it does for `TestWire_PathFieldsMatchLoomengineAccessors`'s plain-string field comparisons.

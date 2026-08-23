@@ -37,6 +37,8 @@ No card in this batch has a non-empty `Moves:` — every path is a plain edit or
 
 - **Context:**
   - `internal/lyxcwd/lyxcwd.go`
+  - `internal/fabricengine/open.go`
+  - `internal/fabricengine/fabric.go`
 - **Edits:**
   - `internal/fabricengine/worktreelist.go`
 - **Creates:** none
@@ -127,6 +129,8 @@ No card in this batch has a non-empty `Moves:` — every path is a plain edit or
 
 - **Context:**
   - `internal/fabricengine/open_integration_test.go`
+  - `internal/hubforge/hub.go`
+  - `internal/fabricengine/export_test.go`
 - **Edits:** none
 - **Creates:**
   - `internal/fabricengine/openparent_integration_test.go`
