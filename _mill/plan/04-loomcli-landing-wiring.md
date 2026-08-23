@@ -67,6 +67,7 @@ No card in this batch has a non-empty `Moves:`.
   - `internal/loomcli/drive.go`
   - `internal/landingshed/deps.go`
   - `internal/websterengine/geometry.go`
+  - `internal/loomengine/config.go`
 - **Edits:** none
 - **Creates:**
   - `internal/loomcli/landingdeps.go`
@@ -120,6 +121,7 @@ No card in this batch has a non-empty `Moves:`.
 
 - **Context:**
   - `internal/loomcli/wiring_test.go`
+  - `internal/loomcli/landingdeps.go`
 - **Edits:** none
 - **Creates:**
   - `internal/loomcli/landingdeps_test.go`
@@ -134,7 +136,8 @@ No card in this batch has a non-empty `Moves:`.
 
 ### Card 16: Load `landing.yaml` in `wire()`, carry `registry`/`runner` onto the struct
 
-- **Context:** none
+- **Context:**
+  - `internal/landingshed/config.go`
 - **Edits:**
   - `internal/loomcli/wiring.go`
 - **Creates:** none
@@ -174,7 +177,7 @@ No card in this batch has a non-empty `Moves:`.
   // env-landing-filled-in-drive-not-wire design decision.
   ```
 
-  This is an exact text replacement inside the existing `c.env = shedrecipe.Env{...}` struct literal's trailing comment block (wiring.go:105-113) — locate it by the quoted text above, which is a byte-exact substring of the current file.
+  This is an exact text replacement inside the existing `c.env = shedrecipe.Env{...}` struct literal's trailing comment block (wiring.go:105-112) — locate it by the quoted text above, which is a byte-exact substring of the current file.
 - **Commit:** `loom: load landing.yaml in wire(), carry registry and runner onto the struct`
 
 ### Card 17: New `loomCLI` struct fields
@@ -221,7 +224,8 @@ No card in this batch has a non-empty `Moves:`.
   Add a new helper, `seedLandingConfig(t *testing.T, anchorPath string)`, mirroring `seedLoomConfig`'s exact shape (same `os.MkdirAll`/`os.WriteFile` pattern, `0o644`), writing `<anchorPath>/_lyx/config/landing.yaml` with `landingshed.ConfigTemplate()`'s contents — `landingshed.LoadConfig` is strict (an absent file is an error), so `wire()` fails on every existing test in this file without this seed once card 16 lands.
   Call `seedLandingConfig(t, loc.AnchorPath())` from `hubLocation` (this file's shared fixture builder), immediately after the existing `seedLoomConfig(t, loc.AnchorPath())` call — every existing test in this file goes through `hubLocation`, so this one seed addition keeps them all green.
 
-  Add a new test function, `TestWire_LandingSeamFieldsPopulated`: build a location via `hubLocation`, call `c.wire(loc, cwd)`, then assert `c.registry` is non-nil, `c.runner` is non-nil, and `c.landingCfg` equals the value returned by calling `landingshed.LoadConfig(loc.AnchorPath(), "landing")` directly in the test — the same "compare against the accessor's own direct call" pattern `TestWire_PathFieldsMatchLoomengineAccessors` already uses for its own path-field assertions.
+  Add a new test function, `TestWire_LandingSeamFieldsPopulated`: build a location via `hubLocation`, call `c.wire(loc, cwd)`, then assert `c.registry` is non-nil, `c.runner` is non-nil, and `c.landingCfg` equals the value returned by calling `landingshed.LoadConfig(loc.AnchorPath(), "landing")` directly in the test — the same "compare against the accessor's own direct call" pattern `TestWire_PathFieldsMatchLoomengineAccessors` already uses for its own path-field assertions, but compared via `reflect.DeepEqual(c.landingCfg, want)`, not `!=`: `landingshed.Config` carries a `RequirePRToBase []string` field, which makes the struct non-comparable, so a plain `!=` does not compile here the way it does for `TestWire_PathFieldsMatchLoomengineAccessors`'s plain-string field comparisons.
+  Import `"reflect"` for this comparison.
 - **Commit:** `loom: seed landing.yaml, assert wire() populates the new fields`
 
 ### Card 19: Fill `Env.Landing` in `drive.go`

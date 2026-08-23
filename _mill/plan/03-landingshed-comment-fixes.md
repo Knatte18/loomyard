@@ -6,13 +6,13 @@ batch: landingshed-comment-fixes
 number: 3
 cards: 1
 verify: go test ./internal/landingshed/...
-depends-on: []
+depends-on: [1, 4]
 ```
 
 ## Batch Scope
 
 This batch is comment-only, per the plan's `landing-config-loads-in-wire`/scope decisions: `internal/landingshed`'s production logic does not change, only three doc comments in `deps.go` that describe a gap this task closes elsewhere.
-It is independent of every other batch — no other batch's code depends on the wording of these comments, and this batch depends on nothing.
+It depends on batch 1 and batch 4: card 11's rewritten comments assert that batch 1's `Fabric.PushBranch` and batch 4's `drive.go` closure-filling already exist, so this batch must land after both, or an intermediate commit would describe code that is not there yet — the same hazard batch 5's own scope note names for depending on every code batch.
 
 No card in this batch has a non-empty `Moves:`.
 

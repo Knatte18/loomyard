@@ -30,7 +30,7 @@ batches:
   - number: 3
     name: landingshed-comment-fixes
     file: 03-landingshed-comment-fixes.md
-    depends-on: []
+    depends-on: [1, 4]
     verify: go test ./internal/landingshed/...
   - number: 4
     name: loomcli-landing-wiring

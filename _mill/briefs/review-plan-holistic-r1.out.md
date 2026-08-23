@@ -1,0 +1,43 @@
+MILL_REVIEW_BEGIN
+# Review: landing: parent-fabric resolution chain — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-23
+```
+
+## Findings
+
+### [BLOCKING:design] Card 10's assertion is arithmetically wrong
+**Location:** batch 2, card 10 (`TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent`).
+**Issue:** As specified, the test asserts `filepath.Dir(LoomScratchDir(loc))` equals `filepath.Dir(LoomRunLock(loc))` (and the other two). `LoomScratchDir(loc)` (card 9) already equals `filepath.Dir(LoomRunLock(loc))` == `.../.lyx/loom`; wrapping the LHS in an extra `filepath.Dir()` strips one more path segment (`.../.lyx`), so the two sides can never be equal against correctly-implemented production code.
+**Fix:** Compare `LoomScratchDir(loc)` directly (no extra `filepath.Dir()` on that side) against `filepath.Dir(LoomRunLock(loc))`, `filepath.Dir(LoomDriverLog(loc))`, `filepath.Dir(LoomBootstrapLock(loc))`.
+
+### [BLOCKING:consistency] Card 18's Config equality check will not compile
+**Location:** batch 4, card 18 (`TestWire_LandingSeamFieldsPopulated`).
+**Issue:** The card asks for `c.landingCfg` to be checked against a direct `landingshed.LoadConfig(...)` call using "the same ... pattern `TestWire_PathFieldsMatchLoomengineAccessors` already uses" — i.e. plain `!=`. `landingshed.Config` (`internal/landingshed/config.go`) carries `RequirePRToBase []string`, which makes the struct non-comparable; `==`/`!=` on it is a Go compile error, unlike the plain-string fields `TestWire_PathFieldsMatchLoomengineAccessors` compares.
+**Fix:** Specify `reflect.DeepEqual(c.landingCfg, want)` (or a field-by-field comparison) instead of `!=`.
+
+### [BLOCKING:design] Batch 3 is missing a dependency on batches 1 and 4
+**Location:** batch 3 (`landingshed-comment-fixes`), card 11.
+**Issue:** Card 11 rewrites `deps.go`'s comments to assert that batch 1's `Fabric.PushBranch` and batch 4's `drive.go` closure-filling already exist, yet batch 3 declares `depends-on: []`. This is exactly the hazard batch 5's own scope note names as its reason for depending on batches 1-4 ("writing them before batches 1-4 land would make the docs false the moment they were committed") — the DAG as written permits batch 3 to schedule before 1/4, landing a comment describing code that does not exist yet at that commit.
+**Fix:** Set batch 3's `depends-on: [1, 4]`.
+
+### [BLOCKING:scope] Context completeness gaps in batch 4
+**Location:** batch 4, cards 14, 15, 16.
+**Issue:** Card 14's required `landingDeps` body calls `loomengine.LoomScratchDir` (`internal/loomengine/config.go`), a file absent from its Context (`drive.go`/`deps.go`/`geometry.go`); card 16 calls `landingshed.LoadConfig` with Context `none`; card 15 must reproduce card 14's own `landingDeps` parameter list to write a valid call, but `internal/loomcli/landingdeps.go` is absent from card 15's Context (`wiring_test.go` only). This review's own Context-completeness rule states the implementer may only read files in `Context:`.
+**Fix:** Add `internal/loomengine/config.go` to card 14's Context, `internal/landingshed/config.go` to card 16's Context, and `internal/loomcli/landingdeps.go` to card 15's Context.
+
+### [NIT:consistency] Card 16's line-range citation is off by one
+**Location:** batch 4, card 16.
+**Issue:** Card 16 cites the replaced comment block as "wiring.go:105-113", but the comment itself spans 105-112; line 113 is the struct literal's closing `}`, not comment text.
+**Fix:** Cite "wiring.go:105-112" (harmless in practice since the byte-exact quoted text, not the line range, is what locates the edit).
+
+## Verdict
+
+REQUEST_CHANGES
+Two test specs won't pass/compile as written, one batch is missing a dependency edge, and three cards omit files their own Requirements reference.
+MILL_REVIEW_END

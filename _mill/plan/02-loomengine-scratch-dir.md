@@ -43,7 +43,7 @@ No card in this batch has a non-empty `Moves:`.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Add a new test function to `config_test.go`, `TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent`, asserting `filepath.Dir(LoomScratchDir(loc))` equals `filepath.Dir(LoomRunLock(loc))`, `filepath.Dir(LoomDriverLog(loc))`, and `filepath.Dir(LoomBootstrapLock(loc))` for a hand-built `*lyxcwd.Location` — the assertion that keeps the four from drifting apart, per the plan's own testing note for this accessor.
+  Add a new test function to `config_test.go`, `TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent`, asserting `LoomScratchDir(loc)` (no wrapping `filepath.Dir()` on this side — `LoomScratchDir` already names the directory the other three's parent resolves to, so wrapping it again strips one extra path segment and the assertion could never pass) equals `filepath.Dir(LoomRunLock(loc))`, `filepath.Dir(LoomDriverLog(loc))`, and `filepath.Dir(LoomBootstrapLock(loc))` for a hand-built `*lyxcwd.Location` — the assertion that keeps the four from drifting apart, per the plan's own testing note for this accessor.
   Build the `*lyxcwd.Location` the same way this file's existing tests do (a bare `&lyxcwd.Location{...}` over a `t.TempDir()`, no fixture, no git spawn — this file stays untagged Tier 1).
 - **Commit:** `loom: test LoomScratchDir's mirrored placement`
 
