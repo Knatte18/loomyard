@@ -472,6 +472,15 @@
 // `Open(l *lyxcwd.Location) (*Fabric, error)` is the only constructor any other package calls — it
 // derives both paths from l and stat-validates them, performing no wiring of its own (wiring is
 // Topology's job: Add/Checkout/Reconcile/Remove/Prune/Cleanup).
+// `OpenParent` is the parent-fabric resolution chain built on `List` — it matches the hub's
+// worktrees against a caller-supplied branch, skipping any `Prunable` entry (git's own signal that a
+// worktree's directory is gone but its administrative entry survives), resolves the match via
+// `lyxcwd.ResolveWorktree`, and opens it through `Open`, returning a plain error a caller turns into
+// `Stuck` when no live pair matches; `Fabric.OriginURL()` and `Fabric.PushBranch(opts)` are the two
+// single-sided methods a caller like `internal/loomcli` reaches for under the same carve-out `Open`'s
+// own bullet already states, `OriginURL` wrapping the warp side's `RemoteURL("origin")` and
+// `PushBranch` wrapping `PushWarpRebaseFreeAt` under a vocabulary-neutral name `internal/loomcli` is
+// not permitted to say itself.
 // `Fabric.Commit`'s `CommitResult.Committed() bool` is the one commit result a consumer outside the
 // owner set should read;
 // the four raw `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted` fields stay exported only because
