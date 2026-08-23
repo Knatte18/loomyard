@@ -100,6 +100,25 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
 - Rejected: a fresh `drive`-specific refusal message naming `lyx loom run --parent <branch>` — marginally more directive, at the cost of stating the same rule in two places that can drift.
   Also rejected: falling back to the seeded status file, which reverses `parent-branch-from-origin-record`.
 
+### landing-config-loads-in-wire
+
+- Decision: `landingshed.LoadConfig(anchorPath, "landing")` is called in `wire()`, alongside the four module configs it already loads, and stored on the `loomCLI` struct.
+  `drive.go` reads it off `c` rather than loading it.
+  This is a deliberate carve-out from `env-landing-filled-in-drive-not-wire`, which stays in force for everything else.
+- Rationale: `drive` is not normally an operator-facing command.
+  `run` spawns it as a **detached child** with stdout and stderr redirected to `LoomDriverLog`, so a `drive` envelope error is written to a log file, not the operator's terminal.
+  What the operator sees on the normal `lyx loom run` path is `awaitRunLock` failing and the generic message *"loom: driver did not take the run lock; see &lt;log&gt;"*.
+  Every pre-existing `drive` precondition is safe from this because `run` guarantees it first — `run` seeds the status file, and `wire()` loads loom's, reed's, shuttle's and webster's configs before either verb proceeds.
+  `landing.yaml` would be the **first** precondition not guaranteed anywhere, so an unreconciled hub would turn a one-line, self-remedying config error into "the driver died, go read a log".
+  Loading it in `wire()` puts the message back on the operator's own terminal, for every verb.
+- Why the cost is acceptable: `wire()` already performs a strict load that fails identically on a hub missing its config — `loomengine.LoadConfig` — so `status` and `pause` already refuse on an unreconciled hub today.
+  Adding `landing.yaml` widens the set of files that must exist, not the set of commands that can fail, and `landing` is already a registered `configreg` module, so `lyx config reconcile` writes it with everything else.
+  This carve-out does not weaken the original decision: what that decision protects against is the **eager `OpenFabric()`** at producer construction, which stat-checks a possibly-unwired pair.
+  A config load performs no fabric I/O and opens nothing, so moving it earlier is safe in exactly the way moving the closures earlier is not.
+- Concrete cost to name in the plan: `internal/loomcli/wiring_test.go` drives `wire` against a hand-built location with a seeded config set, so `landing.yaml` must be added to that seed set or the existing test fails.
+- Rejected: leaving the load in `drive.go` and accepting the log-only symptom — cheapest, but it degrades a precise, self-remedying error into a generic driver-death message on the path operators actually use.
+  Also rejected: a lenient/degrading load — `landingshed`'s package doc records that strictness is required rather than chosen ("neither producer in this package has a standalone entry point, both are reachable only inside a hub, and there an absent config means the hub is broken").
+
 ### assembly-seam-takes-plain-values
 
 - Decision: the `Env.Landing` assembly function takes already-resolved plain values (`taskBranch`, `originURL`, `parentBranch`, the geometry, the registry, the runner, the config, and the location) rather than the opened `*fabricengine.Fabric`.
@@ -123,12 +142,8 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
   Passing the empty string through costs nothing and lands the refusal exactly where the value is used: `githubclient.ParseOwnerRepo("")` fails, and `Publish` already turns that into `stuckOrCancelled("origin URL unusable: …")` — a stuck row with a precise reason, not a crash.
 - Rejected: refusing on both — symmetric and simpler to state, but it makes a local-only hub unable to run loom at all over a value its own config says is unnecessary.
   Also rejected: passing both through empty — an empty `TaskBranch` would reach `Finalize`'s merge and `Publish`'s pull-request head with no layer positioned to catch it.
-- The two remaining error sources in the same block refuse on the envelope, for completeness rather than by analogy:
-  `fabricengine.Open(c.location)` failing means the pair is not wired, which `drive` cannot proceed past at all — no producer in the list can run without it.
-  `landingshed.LoadConfig(anchorPath, "landing")` failing is the same class: it routes through strict `configengine.Load`, where an absent `landing.yaml` yields *"config file … not found; run `lyx config reconcile`"*.
-  That is an acceptable drive-blocking refusal and deliberately not a degrade — `landingshed`'s own package doc records why the strict entry point is required rather than chosen ("neither producer in this package has a standalone entry point, both are reachable only inside a hub, and there an absent config means the hub is broken"), and the message already names its own remedy.
-  Note this is a genuinely new hard-failure mode for `lyx loom drive` on an unreconciled hub, introduced by filling `Env.Landing` at all;
-  it is named here so it is a decision rather than a surprise.
+- `fabricengine.Open(c.location)` failing refuses on `drive`'s envelope: the pair is not wired, and no producer in the list can run without it.
+- The landing config load is different, and it is the one part of `Env.Landing`'s assembly that **does** belong in `wire()` — see `landing-config-loads-in-wire`.
 
 ### self-parent-is-loom-policy-not-fabric-policy
 
@@ -269,7 +284,7 @@ Detached entries carry `Branch == "(detached)"` and cannot collide with a real b
 | `OpenParentFabric` | closure over new `fabricengine.OpenParent(c.location, parentBranch)` |
 | `Shuttle` | the `*shuttleengine.Runner` already built in `wire()` — a compile-time assertion that it satisfies `mergeresolve.Shuttle` already exists at `mergeresolve/deps.go:46` |
 | `Registry` | the `modelspec.Registry` already loaded in `wire()` |
-| `Config` | `landingshed.LoadConfig(anchorPath, "landing")` — `"landing"` is already a registered config module in `internal/configreg/configreg.go:47` |
+| `Config` | `c.landingCfg`, loaded by `wire()` via `landingshed.LoadConfig(anchorPath, "landing")` — `"landing"` is already a registered config module in `internal/configreg/configreg.go:47` |
 
 Three of these values are `wire()` locals today, and they are reachable from `drive.go` by two different routes — do not conflate them.
 
@@ -294,10 +309,11 @@ Nothing in `status`, `pause`, or `run` reaches it, which is what makes the eager
 - `internal/fabricengine/export_test.go` — re-export the matcher for unit testing.
 - `internal/fabricengine/fabric.go` — add `OriginURL()` and `PushBranch(opts)`, the two neutral-named methods.
 - `internal/loomengine/config.go` — add `LoomScratchDir`, correct `LoomStatusLock`'s doc comment.
-- `internal/loomcli/wiring.go` — carry `registry` and `runner` onto the struct;
-  replace the "Landing is left unfilled" comment block.
-- `internal/loomcli/cli.go` — the two new struct fields.
-- `internal/loomcli/drive.go` — assemble `Env.Landing` before `loomrecipe.New`.
+- `internal/loomcli/wiring.go` — carry `registry` and `runner` onto the struct, add the `landingshed.LoadConfig` call, and replace the "Landing is left unfilled" comment block.
+- `internal/loomcli/wiring_test.go` — add `landing.yaml` to the seeded config set, or the existing tier-1 test fails on the new strict load.
+- `internal/loomcli/cli.go` — the three new struct fields (`registry`, `runner`, `landingCfg`).
+- `internal/loomcli/drive.go` — the handle reads, `resolveLandingParent`, and the `landingDeps` call before `loomrecipe.New`.
+- `internal/loomcli/seedinput.go` (or a sibling) — the new `resolveLandingParent` pure helper, beside the existing `resolveParentBranch` it wraps.
 - `internal/landingshed/deps.go` — correct the `OpenFabric`/`OpenParentFabric` field doc's deferral to "the next roadmap item", plus its laziness wording per the `two-opens-in-drive-rather-than-a-shared-handle` decision's implementer note.
   That field doc is the only deferral in this file;
   the second one lives in `internal/loomcli/wiring.go`, already listed separately above.
@@ -305,7 +321,9 @@ Nothing in `status`, `pause`, or `run` reaches it, which is what makes the eager
 Docs, required by the Documentation Lifecycle in the same commit:
 
 - `manifest/roadmap.md` — move the item to Done, and correct its stale "no worktree-listing helper exists yet" claim rather than carrying it into the Done entry.
+  Also clear the forward reference in the `loom: convert to a Shed recipe` Done entry, which states "`Env.Landing` is deliberately left unfilled by `internal/loomcli`, preserving the pre-existing gap the new `landing: parent-fabric resolution chain` Planned item above closes" — false the moment this lands, and it names this very item.
 - `manifest/designs/loom.md` — the landing rows are now constructible in a real run, which is the observable behaviour change.
+  Its "`loom: phase-machine scaffolding` stubs both and swaps in the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands" sentence is the same shape of stale forward reference and is cleared in the same commit.
 - Package docs for each module whose surface grows: `internal/fabricengine` (`OpenParent`, `Fabric.OriginURL`), `internal/loomengine` (`LoomScratchDir`), and `internal/loomcli` (`Env.Landing` now filled).
 - `docs/overview.md` — only if the module table or execution stack changes;
   this task adds no module, so most likely untouched.
@@ -436,7 +454,8 @@ Every value arrives already resolved, so the function performs no I/O of any kin
 `pushSkipped` likewise arrives as a plain `bool`.
 `drive.go` calls `fabricengine.EnvSyncOptions()` exactly once and uses that single value for both `pushSkipped` and the closure's `opts`, so the two cannot disagree.
 
-`drive.go` therefore owns, above this call: the handle open, both handle reads, `EnvSyncOptions()`, the config load, and both refusal guards.
+`drive.go` therefore owns, above this call: the handle open, both handle reads, `EnvSyncOptions()`, and the `resolveLandingParent` call whose error it surfaces.
+The landing config is *not* loaded here — `wire()` owns it, per `landing-config-loads-in-wire`, and `drive.go` reads it off `c`.
 `landingDeps` owns only the struct population.
 
 Because the seam takes plain values, this test is **untagged (tier 1)**: no `git init`, no `hubforge.NewHub`, no fixture tree, so it needs no `//go:build integration` tag and no `TestMain` calling `gitkit.HermeticGitEnv`.
@@ -451,13 +470,30 @@ The env-to-bool wiring itself now lives in `drive.go` beside the other reads, wh
 A reflection-based field walk is the shape that actually catches a newly added field;
 an enumerated list of fourteen assertions silently keeps passing when a fifteenth is added.
 
-The two refusal paths are the other half of this package's coverage, and both are pure-function tests needing no fixture:
+**Both refusal clauses live in a second extracted pure helper, not inline in `RunE`.**
+Inline in the `RunE` closure they would be reachable only through the CLI with a resolved `*lyxcwd.Location`, and the "pure-function tests needing no fixture" claim would be false.
+The extraction rationale is the one `wire` and `landingDeps` already carry in this package.
+The stated signature is:
+
+```go
+func resolveLandingParent(
+    recorded fabricengine.Origin,
+    found bool,
+    taskBranch string,
+) (parentBranch string, err error)
+```
+
+It calls `resolveParentBranch(recorded, found, "")`, then applies the self-parent clause to the result.
+Both inputs are plain values, so it does no I/O and is tier 1.
+`drive.go` calls it between the handle reads and `landingDeps`, and surfaces its error on the envelope.
+
+Scenarios:
 
 - Unrecorded parent (`found == false`) and present-but-empty `ParentBranch` both refuse, with the message `resolveParentBranch` already emits.
-  `resolveParentBranch` has its own tests already;
-  what is new here is that `drive`'s assembly *calls* it with an empty flag and propagates rather than proceeding.
-- `parentBranch == taskBranch` refuses.
-  Cover the negative too — an ordinary differing parent must not trip the guard.
+  That function has its own tests;
+  what is new — and what this helper's tests cover — is that the empty flag is passed and the error propagated rather than swallowed.
+- `parentBranch == taskBranch` refuses with its own distinct message.
+- The negative: an ordinary differing parent returns cleanly and trips neither clause.
 
 `TestEnforcement_FabricVocabulary` is the guard that catches a regression on `push-verb-gets-a-neutral-fabric-method`: it already exists, needs no change, and will fail if an implementer "simplifies" `handle.PushBranch(...)` back into a direct `fabricengine.PushWarpRebaseFreeAt(...)` call in `drive.go`.
 No new enforcement test is needed for that;
@@ -487,4 +523,6 @@ The package's own `publish_test.go`/`finalize_test.go` already fill the closures
 - **Q:** Does the push closure open a third `Fabric`? **A:** No. It is built in `drive.go` over the handle already opened there and passed into the assembly seam prebuilt, so exactly two `Open` sites exist in the path: `drive.go`'s own, and whatever `OpenFabric`/`OpenParentFabric` open when the producers call them. `EnvSyncOptions()` is likewise called once in `drive.go` and feeds both `pushSkipped` and the closure's `opts`, so they cannot disagree.
 - **Q:** What do `fabricengine.Open` and `landingshed.LoadConfig` errors do in `drive`? **A:** Both refuse on the envelope. An unwired pair blocks every producer, and `LoadConfig` is strict by design — `landingshed`'s package doc records that an absent config inside a hub means the hub is broken, and the error already names `lyx config reconcile` as its remedy. This is a genuinely new hard-failure mode for `lyx loom drive` on an unreconciled hub, recorded as a decision rather than left as a surprise.
 - **Q:** Do the two new `Fabric` methods get their own tests? **A:** `OriginURL()` gets one assertion folded into the `OpenParent` integration test. `PushBranch(opts)` gets no new integration test — a real push needs a real remote the fixture lacks, and `internal/gitrepo`'s `PushRebaseFree` tests already cover the delegation target including the `ErrPushRejected` sentinel; only the `SkipPush`/`SkipGit` short-circuit is worth asserting cheaply. `TestEnforcement_FabricVocabulary` is the load-bearing guard on that method, not a unit test.
+- **Q:** Who actually sees the new refusals, given `drive` is normally detached? **A:** Nobody, on the `run` path — which is why the landing config load moves to `wire()`. `run` spawns `drive` with stdio redirected to the driver log, so the operator sees only "driver did not take the run lock; see &lt;log&gt;". `landing.yaml` would have been the first `drive` precondition not guaranteed beforehand; loading it in `wire()` puts a precise, self-remedying error back on the operator's own terminal. The cost is that `wiring_test.go`'s seed set must gain `landing.yaml`. This does not weaken `env-landing-filled-in-drive-not-wire`: that decision protects against the eager `OpenFabric()` at producer construction, and a config load opens no fabric.
+- **Q:** Where do the two refusal clauses live, if their tests are to be tier 1? **A:** In a second extracted pure helper, `resolveLandingParent(recorded, found, taskBranch)`, not inline in `RunE`. Inline they would be reachable only through the CLI and the "pure-function tests needing no fixture" claim would have been false. The extraction rationale is the one `wire` and `landingDeps` already carry.
 - **Q:** Does `internal/landingshed` itself change? **A:** Comments only. `deps.go`'s "the next roadmap item builds it" claims become false when this lands and must be corrected in the same commit. Tightening `NewPublish`/`NewFinalize` validation would be real scope creep beyond the roadmap item.
