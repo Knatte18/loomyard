@@ -40,7 +40,7 @@ They are two ten-to-twenty-line `RunE` bodies over the same receiver fields with
 - **Moves:** none
 - **Requirements:**
   Create `internal/loomcli/validate.go` in `package loomcli`, holding `(*loomCLI).validateDiscussionCmd() *cobra.Command` and `(*loomCLI).validatePlanCmd() *cobra.Command`, both modelled on `internal/loomcli/status.go`'s `statusCmd` shape: a `*cobra.Command` with `Use`, a non-empty `Short`, a `Long` carrying a concrete example line, and a `RunE` whose **first** statement is `if clihelp.ShouldAbort(cmd.Context()) { return nil }`, followed by `out := cmd.OutOrStdout()`.
-  Neither command declares any flag, and both set `Args: cobra.NoArgs` — per the `zero-argument-verbs` decision, a path override is the one mechanism by which the self-check and the gate could be pointed at different files.
+  Neither command declares any flag, and both set `Args: cobra.NoArgs` — per the discussion's `zero-argument-verbs` decision, a path override is the one mechanism by which the self-check and the gate could be pointed at different files.
 
   `validateDiscussionCmd` has `Use: "validate-discussion"`.
   Its `RunE` calls `discussionparser.Validate(c.env.DecisionRecordPath, c.env.SupportLogPath)` once — the same function `loomshed.discussionValidate.Call` calls, per the `shared-implementation-is-the-whole-point` Shared Decision — and maps the result per the `envelope-and-exit-contract` Shared Decision: a non-nil error emits `output.Err` with a message naming the failure and the decision-record path;
@@ -72,6 +72,7 @@ They are two ten-to-twenty-line `RunE` bodies over the same receiver fields with
   - `internal/loomcli/validate.go`
   - `internal/loomcli/wiring.go`
   - `internal/discussionparser/validate.go`
+  - `internal/planparser/validate.go`
   - `internal/planparser/testdata/goodplan/00-overview.md`
   - `internal/planparser/testdata/goodplan/01-json-flag.md`
 - **Edits:** none

@@ -114,8 +114,9 @@ Batch-local decisions live in each batch file._
 ### Decision: go-conventions-and-verify-scope
 
 - **Decision:** this is a Go repo, so no `verify:` command carries a `PYTHONPATH=` prefix; each batch's `verify:` is a `go test` over exactly the packages that batch touches.
-  Batches whose cards edit a `.md` file under `manifest/` or `docs/` additionally run `go test ./internal/lyxcwd/...`, because `internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks` is the Markdown Link Integrity check over those two roots.
+  Batches whose cards edit a `.md` file under `manifest/` or `docs/`, **or** edit `CONSTRAINTS.md`, additionally run `go test ./internal/lyxcwd/...`, because `internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks` is the Markdown Link Integrity check over those two roots.
 - **Rationale:** the batch-verify scope must match what the batch touches, and the markdown link check lives in a package no docs batch would otherwise compile.
+  `CONSTRAINTS.md` is a trigger despite sitting outside both scanned roots because the check's root restriction is source-side only: links under `manifest/` and `docs/` resolve their `#anchor` into `CONSTRAINTS.md` wherever it lands, so adding or renaming a section heading there changes the anchor set those links resolve against.
 - **Applies to:** all batches
 
 ### Decision: markdown-semantic-line-breaks
