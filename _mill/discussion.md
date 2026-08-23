@@ -16,7 +16,9 @@ Today no production caller fills them.
 This is that item.
 
 Why now: `loom` cannot complete an end-to-end run until it lands.
-The `Publish` and `Finalize` rows exist in loom's recipe and are constructible in tests only — the moment a real run reaches them, `shedbuild.Build` fails at construction for want of the closures.
+This is not a latent gap that bites only once a run reaches the landing rows — it breaks `lyx loom drive` on **every** invocation today.
+`Publish` and `Finalize` are live rows in `contracts/recipes/loom-recipe.yaml`, and `shedbuild.Build` calls every row's constructor up front, so `publishEntry`/`finalizeEntry` invoke `NewPublish`/`NewFinalize` at build time.
+Those constructors reject the nil closures, so `loomrecipe.New` fails in `drive.go` before a single producer runs.
 The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, so it is the single remaining gap between loom's current state and a run that can actually finish.
 
 ## Scope
@@ -24,6 +26,7 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
 **In:**
 
 - A new exported `fabricengine.OpenParent(l *lyxcwd.Location, parentBranch string) (*Fabric, error)` implementing the full four-step chain: list the hub's worktrees, match the entry whose branch equals `parentBranch`, resolve that worktree's path to a `*lyxcwd.Location`, and open its pair.
+- A `Prunable bool` field on `WorktreeEntry`, parsed from the `prunable` porcelain line the parser currently drops, so the matcher can skip stale entries.
 - An unexported matching helper beside it, re-exported through `internal/fabricengine/export_test.go` so the branch-matching logic is unit-testable without a hub fixture.
 - Two new vocabulary-neutral `Fabric` methods, both justified by the same `fabric.go` carve-out: `OriginURL()` wrapping the warp side's existing `gitrepo.Repo.RemoteURL("origin")`, and `PushBranch(opts SyncOptions)` delegating to `PushWarpRebaseFreeAt`.
 - A new `loomengine.LoomScratchDir(l *lyxcwd.Location) string` accessor returning loom's ephemeral directory, plus the correction of `LoomStatusLock`'s now-false doc comment.
@@ -59,6 +62,23 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
   The `loomcli` closure then collapses to one line.
 - Rejected: a `hubgeom.LandingGeometry(l)` adapter — `landingshed.Deps` is not a `Geometry` struct (it also carries `Shuttle`, `Registry`, `Config`), so the adapter would have to return a partial `Deps` or a bare closure triple, neither of which matches the existing `ReedGeometry`/`WebsterGeometry`/`BurlerGeometry` shape.
   Also rejected: inlining the chain in `loomcli/wiring.go` — cheapest, but buries a reusable chain where a second product cannot reach it.
+
+### prunable-entries-are-skipped-and-resolve-failures-name-the-branch
+
+- Decision: two changes, covering two different failure modes.
+  First, add a `Prunable bool` field to `WorktreeEntry` and parse the `prunable` porcelain line;
+  the matcher treats a prunable entry as **no match**, exactly as if the branch were absent.
+  Second, `OpenParent` wraps any step-3 or step-4 failure in its own error naming the parent branch and the resolved path, rather than letting the underlying error escape bare.
+- Rationale: both are needed because they catch different things.
+  `prunable` is git's own flag for "the directory is gone but the admin entry survives" — a state reachable by deleting a worktree directory without `git worktree prune`, and one `parseWorktreePorcelain` currently discards entirely, so the stale entry keeps a real `branch` value and matches.
+  Skipping it makes `OpenParent` report the honest condition — no live pair for that branch — which is precisely the operator-fixable case `Finalize` already turns into `Stuck` with a remedy.
+  The error wrap covers what the flag cannot: a directory removed between the `List` call and the `ResolveWorktree` call, a genuine TOCTOU no snapshot can close.
+  Without the wrap, `gitWorktreeRoot` returns a bare `ErrNotAGitRepo`, which names neither the branch nor the path and reads as "this is not a git repository" — actively misleading, since the acting worktree plainly is one.
+- Note the two error classes stay distinguishable, extending the rule already stated for the missing-weft case: "no live pair for this branch" (no match, or prunable) is the operator materializes-a-pair case;
+  "the pair exists but is broken" (`*ErrMissingPath` from `Open`, or a resolve failure at a path that did exist) is a repair case.
+  `OpenParent`'s wrap must not collapse the second into the first.
+- Rejected: relying on the error wrap alone and leaving `prunable` unparsed — it would report every stale entry as a broken pair needing repair, when the correct remedy is `git worktree prune` or creating the pair.
+  Also rejected: skipping prunable entries without the wrap, which leaves the TOCTOU path emitting a bare `ErrNotAGitRepo`.
 
 ### open-returns-a-pair-handle-not-a-path
 
@@ -265,6 +285,11 @@ Given the task worktree's `l` and `parentBranch = "main"`:
 Git forbids the same branch being checked out in two worktrees, so at most one entry can match — no ambiguity handling is needed.
 Detached entries carry `Branch == "(detached)"` and cannot collide with a real branch name.
 
+**Stale and prunable entries need explicit handling — see `prunable-entries-are-skipped-and-resolve-failures-name-the-branch`.**
+`parseWorktreePorcelain` currently reads only the `worktree`, `HEAD`, `branch`, `detached`, and `bare` porcelain lines;
+it silently drops `prunable`, which git emits for a worktree whose directory is gone but whose administrative entry has not been pruned.
+Such an entry still carries a real `branch` value and would match, sending step 3 to a path that no longer exists.
+
 ### Where each `Deps` field comes from in `drive.go`
 
 `landingshed.Deps` has fourteen fields and **all** of them must be filled — the task is not only the three closures, because `Env.Landing` is currently the zero value in its entirety.
@@ -314,9 +339,13 @@ Nothing in `status`, `pause`, or `run` reaches it, which is what makes the eager
 - `internal/loomcli/cli.go` — the three new struct fields (`registry`, `runner`, `landingCfg`).
 - `internal/loomcli/drive.go` — the handle reads, `resolveLandingParent`, and the `landingDeps` call before `loomrecipe.New`.
 - `internal/loomcli/seedinput.go` (or a sibling) — the new `resolveLandingParent` pure helper, beside the existing `resolveParentBranch` it wraps.
-- `internal/landingshed/deps.go` — correct the `OpenFabric`/`OpenParentFabric` field doc's deferral to "the next roadmap item", plus its laziness wording per the `two-opens-in-drive-rather-than-a-shared-handle` decision's implementer note.
-  That field doc is the only deferral in this file;
-  the second one lives in `internal/loomcli/wiring.go`, already listed separately above.
+- `internal/landingshed/deps.go` — three comment corrections, all in the same commit:
+  the `OpenFabric`/`OpenParentFabric` field doc's deferral to "the next roadmap item";
+  its laziness wording, per the `two-opens-in-drive-rather-than-a-shared-handle` decision's implementer note;
+  and the `PushBranch` field doc's phrase "the layer that names it is the caller", which `push-verb-gets-a-neutral-fabric-method` shows now resolves to `fabricengine` rather than to any caller.
+  That last one is corrected, not left as-is — leaving it would point an implementer straight back at the spelling that fails `TestEnforcement_FabricVocabulary`.
+  The field doc's *conclusion* (that `PushBranch` stays an injected closure) is unchanged and must survive the rewording.
+  Note the deferral in `internal/loomcli/wiring.go` is a separate one, already listed above.
 
 Docs, required by the Documentation Lifecycle in the same commit:
 
@@ -324,7 +353,8 @@ Docs, required by the Documentation Lifecycle in the same commit:
   Also clear the forward reference in the `loom: convert to a Shed recipe` Done entry, which states "`Env.Landing` is deliberately left unfilled by `internal/loomcli`, preserving the pre-existing gap the new `landing: parent-fabric resolution chain` Planned item above closes" — false the moment this lands, and it names this very item.
 - `manifest/designs/loom.md` — the landing rows are now constructible in a real run, which is the observable behaviour change.
   Its "`loom: phase-machine scaffolding` stubs both and swaps in the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands" sentence is the same shape of stale forward reference and is cleared in the same commit.
-- Package docs for each module whose surface grows: `internal/fabricengine` (`OpenParent`, `Fabric.OriginURL`), `internal/loomengine` (`LoomScratchDir`), and `internal/loomcli` (`Env.Landing` now filled).
+- Package docs for each module whose surface grows: `internal/fabricengine` (`OpenParent`, `Fabric.OriginURL`, `Fabric.PushBranch`, and `WorktreeEntry.Prunable`), `internal/loomengine` (`LoomScratchDir`), and `internal/loomcli` (`Env.Landing` now filled).
+  `Fabric.PushBranch` carries the load-bearing vocabulary rationale, so its doc comment must say *why* the neutral spelling exists, not merely what it delegates to.
 - `docs/overview.md` — only if the module table or execution stack changes;
   this task adds no module, so most likely untouched.
 - `CONSTRAINTS.md` — no new cross-cutting invariant is introduced, so no change expected.
@@ -395,6 +425,10 @@ Scenarios that must be covered:
   Assert the match explicitly so a future implementer does not "fix" it into an error.
 - A path with forward slashes → normalized via `filepath.FromSlash`.
 - The main worktree matching (`Main == true`) is not treated specially — matching is on branch alone.
+- A `Prunable == true` entry whose branch equals the parent branch → **no match**, per `prunable-entries-are-skipped-and-resolve-failures-name-the-branch`.
+  This is the case the matcher must not fall for, since the stale entry still carries a real branch value.
+- The porcelain parser gains its own case: a block containing a `prunable` line sets `Prunable`, and one without it leaves the field false.
+  Add this to `worktreelist_test.go`'s existing parser coverage rather than a new file.
 
 ### `internal/fabricengine` — `OpenParent` end to end (integration)
 
@@ -404,7 +438,10 @@ Scenarios:
 - Parent found: `OpenParent(taskLocation, "main")` returns a usable `*Fabric` over the prime pair, verified by an operation that proves it is the *parent's* pair and not the task's.
 - No live pair for the branch: a branch that exists but has no worktree → error, and the error text names the branch.
 - The parent's weft sibling is missing → `Open` fails with `*ErrMissingPath`, and `OpenParent` surfaces it rather than masking it as not-found.
-  These two failure modes must stay distinguishable, since only the first is the operator-fixable "materialize the pair" case.
+- The parent worktree's directory is gone but its git admin entry survives (create a pair, delete the directory, do **not** run `git worktree prune`) → reported as no live pair for that branch, not as a broken pair.
+  This is the scenario that fails today if `prunable` stays unparsed.
+- A resolve failure at a path that did exist at list time → the error names the branch and the path, never a bare `ErrNotAGitRepo`.
+  These failure modes must stay distinguishable: "no live pair" (absent, or prunable) is the materialize-a-pair case, while "the pair exists but is broken" is a repair case, and only the first is what `Finalize` surfaces as its operator-fixable `Stuck`.
 
 ### `internal/fabricengine` — the two new `Fabric` methods
 
@@ -525,4 +562,5 @@ The package's own `publish_test.go`/`finalize_test.go` already fill the closures
 - **Q:** Do the two new `Fabric` methods get their own tests? **A:** `OriginURL()` gets one assertion folded into the `OpenParent` integration test. `PushBranch(opts)` gets no new integration test — a real push needs a real remote the fixture lacks, and `internal/gitrepo`'s `PushRebaseFree` tests already cover the delegation target including the `ErrPushRejected` sentinel; only the `SkipPush`/`SkipGit` short-circuit is worth asserting cheaply. `TestEnforcement_FabricVocabulary` is the load-bearing guard on that method, not a unit test.
 - **Q:** Who actually sees the new refusals, given `drive` is normally detached? **A:** Nobody, on the `run` path — which is why the landing config load moves to `wire()`. `run` spawns `drive` with stdio redirected to the driver log, so the operator sees only "driver did not take the run lock; see &lt;log&gt;". `landing.yaml` would have been the first `drive` precondition not guaranteed beforehand; loading it in `wire()` puts a precise, self-remedying error back on the operator's own terminal. The cost is that `wiring_test.go`'s seed set must gain `landing.yaml`. This does not weaken `env-landing-filled-in-drive-not-wire`: that decision protects against the eager `OpenFabric()` at producer construction, and a config load opens no fabric.
 - **Q:** Where do the two refusal clauses live, if their tests are to be tier 1? **A:** In a second extracted pure helper, `resolveLandingParent(recorded, found, taskBranch)`, not inline in `RunE`. Inline they would be reachable only through the CLI and the "pure-function tests needing no fixture" claim would have been false. The extraction rationale is the one `wire` and `landingDeps` already carry.
-- **Q:** Does `internal/landingshed` itself change? **A:** Comments only. `deps.go`'s "the next roadmap item builds it" claims become false when this lands and must be corrected in the same commit. Tightening `NewPublish`/`NewFinalize` validation would be real scope creep beyond the roadmap item.
+- **Q:** What happens when the parent worktree's directory is gone but its git entry survives? **A:** It must not match. `parseWorktreePorcelain` drops the `prunable` porcelain line today, so such an entry keeps a real branch value and would match, sending the resolve step to a nonexistent path and yielding a bare `ErrNotAGitRepo` that names neither the branch nor the remedy. Fixed by parsing `prunable` into a new `WorktreeEntry.Prunable` field and skipping those entries, *plus* wrapping resolve/open failures in an error naming the branch and path — the flag covers the stale entry, the wrap covers a directory removed between listing and resolving.
+- **Q:** Does `internal/landingshed` itself change? **A:** Comments only — three of them, including the `PushBranch` field doc's "the layer that names it is the caller", which is now false and would point an implementer back at the spelling that fails the vocabulary test. `deps.go`'s "the next roadmap item builds it" claims become false when this lands and must be corrected in the same commit. Tightening `NewPublish`/`NewFinalize` validation would be real scope creep beyond the roadmap item.
