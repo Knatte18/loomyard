@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs and roadmap
+phase: holistic-reviewing
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-loomshed thin wrap  '2026-08-23T10:47:26Z'
 approved-loom CLI validate verbs  '2026-08-23T10:53:17Z'
 approved-gate parity tests  '2026-08-23T10:57:30Z'
 approved-docs and roadmap  '2026-08-23T11:06:10Z'
+holistic-reviewing  '2026-08-23T11:06:50Z'
 ```
 
 ## Batches
