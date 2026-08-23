@@ -54,7 +54,9 @@ batches:
     commit_sha: a471ff48b8ed9716d1276560a5071befd0a2f7f6
     verify_baseline_failures: []
   - name: landingshed-comment-fixes
-    state: pending
+    state: running
+    implementer_session: 5e332042-8cdd-4663-8c21-d192cc537395
+    start_sha: c6c525dc27be49eccf9d603595020833cdd5d012
     verify_baseline_failures: []
   - name: docs-roadmap-and-design
     state: pending
