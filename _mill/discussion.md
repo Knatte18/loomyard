@@ -25,7 +25,7 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
 
 - A new exported `fabricengine.OpenParent(l *lyxcwd.Location, parentBranch string) (*Fabric, error)` implementing the full four-step chain: list the hub's worktrees, match the entry whose branch equals `parentBranch`, resolve that worktree's path to a `*lyxcwd.Location`, and open its pair.
 - An unexported matching helper beside it, re-exported through `internal/fabricengine/export_test.go` so the branch-matching logic is unit-testable without a hub fixture.
-- A new `Fabric.OriginURL()` method wrapping the warp side's existing `gitrepo.Repo.RemoteURL("origin")`.
+- Two new vocabulary-neutral `Fabric` methods, both justified by the same `fabric.go` carve-out: `OriginURL()` wrapping the warp side's existing `gitrepo.Repo.RemoteURL("origin")`, and `PushBranch(opts SyncOptions)` delegating to `PushWarpRebaseFreeAt`.
 - A new `loomengine.LoomScratchDir(l *lyxcwd.Location) string` accessor returning loom's ephemeral directory, plus the correction of `LoomStatusLock`'s now-false doc comment.
 - Filling `shedrecipe.Env.Landing` — the whole `landingshed.Deps` struct, not only the three closures — in `internal/loomcli/drive.go`, immediately before the `loomrecipe.New` call.
 - Comment corrections in `internal/landingshed/deps.go` where it defers the chain to "the next roadmap item".
@@ -86,6 +86,32 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
 - Rejected: reading `loomengine.Status.Parent` from the seeded status file — it does reflect a `--parent` flag override, but `resolveParentBranch` already refuses to let the flag and the record disagree, so the divergence the fallback would cover cannot occur.
   Also rejected: reading the record with the status file as fallback — complexity for that same impossible divergence.
 
+### drive-refuses-an-unrecorded-parent
+
+- Decision: `drive.go` disposes of all three `ReadOrigin` returns explicitly, by calling `resolveParentBranch(recorded, found, "")` — the existing pure function — with an empty flag, and surfacing its error on the envelope verbatim.
+  The `error` return from `ReadOrigin` itself propagates as an ordinary envelope error before that call is reached.
+- Rationale: `ReadOrigin` is `(Origin, bool, error)`, and a `false` bool is the documented legacy-worktree case that is explicitly *not* an error.
+  Without a stated disposition, an absent or empty `ParentBranch` would flow into `Deps.ParentBranch`, become the pull request's base branch, and reach `OpenParent`'s matcher as `""` — matching nothing and surfacing much later as a `Finalize` `Stuck`, far from the actual cause.
+  Rejecting an empty `ParentBranch` inside `landingshed` is out of scope by the `landingshed-comment-only` decision, so nothing else in the chain catches it;
+  `drive` is the last place it can be caught cleanly.
+  Passing an empty flag drives `resolveParentBranch`'s table straight to its final row, which already handles absent-record and present-but-empty identically ("A present-but-empty recorded value is treated exactly as an absent record throughout") and already emits the right remedy: *"no recorded parent branch for this worktree pair; pass --parent once to record it"*.
+  Reusing it adds no new error text and cannot drift from `run`'s own rule.
+  It also matches `drive`'s existing refusal style, which already refuses on the envelope when the status file is absent and names `lyx loom run` as the remedy.
+- Rejected: a fresh `drive`-specific refusal message naming `lyx loom run --parent <branch>` — marginally more directive, at the cost of stating the same rule in two places that can drift.
+  Also rejected: falling back to the seeded status file, which reverses `parent-branch-from-origin-record`.
+
+### self-parent-is-loom-policy-not-fabric-policy
+
+- Decision: `fabricengine.OpenParent` matches on branch alone and special-cases nothing;
+  if the parent branch names the acting worktree's own branch, it returns that worktree's own pair, correctly and without complaint.
+  `drive.go` refuses when `parentBranch == taskBranch`, as a second clause of the same guard that implements `drive-refuses-an-unrecorded-parent`.
+- Rationale: the case is reachable — `resolveParentBranch` does not reject `--parent <own-branch>`, so a mis-repaired legacy worktree can record itself as its own parent — and if it reached `Finalize`, `parentHandle.Merge` would merge a branch into itself.
+  But "a task may not be its own parent" is loom's policy, not a truth about opening a pair by branch name.
+  `OpenParent` is meant to be reusable verbatim by the Someday `Hardener` (the whole reason for `chain-lives-in-fabricengine`), and baking one consumer's policy into a generic helper is what would break that reuse.
+  Putting the refusal in `drive` beside the unrecorded-parent refusal means both provenance-record defects are caught in one place, with one shape, at the point the record is read.
+- Rejected: refusing inside `OpenParent` — it cannot be forgotten by a future second caller, but it makes a generic helper enforce a consumer's rule.
+  Also rejected: matching self and proceeding — git would report already-up-to-date and nothing would crash, but a corrupt provenance record would be silently accepted rather than named.
+
 ### no-match-is-a-plain-error-becoming-stuck
 
 - Decision: when no worktree's branch matches `parentBranch`, `OpenParent` returns an ordinary error.
@@ -107,14 +133,25 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
 - Rejected: `PushWarpAt` — pairs neatly with `PushSkipped` from the same `EnvSyncOptions()`, but leaves `publish.go`'s rejection handling unreachable and reintroduces the rebase hazards.
   Also rejected: `CoalescePushBothAt`, which pushes both sides and contradicts `publish.go`'s stated rule that only the externally visible branch is pushed here.
 
-### push-verb-named-by-the-caller
+### push-verb-gets-a-neutral-fabric-method
 
-- Decision: the closure body naming `PushWarpRebaseFreeAt` lives in `loomcli`, never in `landingshed`.
-- Rationale: `landingshed` is not in the Fabric Vocabulary Invariant's owner set, so none of its identifiers, string literals, or comments may name either side.
-  `PushWarpRebaseFreeAt` carries `Warp`.
-  This is the entire reason `Deps.PushBranch` is an injected closure rather than a direct call, as its field doc states.
-  The ban is machine-enforced by `internal/lyxcwd`'s `TestEnforcement_FabricVocabulary`.
-- Rejected: nothing — this is a hard constraint, recorded here so the plan does not "simplify" the closure away.
+- Decision: add a vocabulary-neutral method `Fabric.PushBranch(opts SyncOptions) (PushResult, error)`, delegating internally to `PushWarpRebaseFreeAt(f.warpPath, opts)`.
+  `drive.go`'s closure body calls `handle.PushBranch(...)` and never names the underlying verb.
+- Rationale: the bare warp/weft ban is **not** `landingshed`-specific, and an earlier version of this decision was wrong to assume it was.
+  `fabricVocabularyOwners` (`internal/lyxcwd/enforcement_test.go:597`) is exactly `{fabricengine, fabriccli, weftname, gitkit, boardengine, configsync, hubforge}`;
+  `internal/loomcli` is not in it.
+  `bareVocabularyToken` (`:654`) is a case-insensitive **substring** test, and `fabricVocabularyHits` (`:699`) walks every `*ast.Ident` — which includes a selector expression's `Sel`.
+  So `fabricengine.PushWarpRebaseFreeAt(...)` written anywhere in `internal/loomcli` fails `TestEnforcement_FabricVocabulary`, whose walk covers all production `.go` under `internal` and `cmd` (`:907`).
+  There is therefore no valid caller for the closure as originally framed: `landingshed` may not name the verb, and neither may `loomcli`.
+  The neutral method resolves it inside the one package that *is* an owner.
+  It also reuses the identical carve-out already invoked for `Fabric.OriginURL()` — `fabric.go`'s rule that a single-sided uncoordinated op earns a named `Fabric` method precisely when it must be callable from outside the package — so the two additions land as one consistent pair, and `drive.go` already holds the handle both need.
+  Naming it `PushBranch` matches `landingshed.Deps.PushBranch` exactly, so the closure reads as a straight pass-through.
+- Note: this changes only the *spelling* and call site.
+  The rebase-free semantics chosen in `push-uses-the-rebase-free-warp-primitive` are unaffected — `Fabric.PushBranch` delegates to that same primitive, and `gitrepo.ErrPushRejected` still propagates unwrapped through both the method and the closure, so `publish.go:120`'s `errors.Is` check keeps matching.
+- Also note: `Deps.PushBranch` remains an injected closure rather than a direct call.
+  That is still correct and still required — `landingshed` may not import a verb it cannot name, and the field doc's reasoning stands even though its phrase "the layer that names it is the caller" now resolves to `fabricengine` rather than to `loomcli`.
+- Rejected: a package-level `fabricengine.PushTaskBranchAt(path, opts)` — same delegation and no handle required, but it widens the package surface and re-passes a path the handle already carries.
+  Also rejected: adding `internal/loomcli` to `fabricVocabularyOwners` with the `CONSTRAINTS.md` amendment it implies — it would grant loom permission to know weft exists, which is exactly what the Fabric Vocabulary and Hub Containment rules exist to prevent, and it would make this discussion's "no `CONSTRAINTS.md` change expected" false.
 
 ### loom-owns-its-scratch-dir
 
@@ -189,13 +226,13 @@ Detached entries carry `Branch == "(detached)"` and cannot collide with a real b
 | --- | --- |
 | `WorktreeRoot` | `c.location.WorktreePath()` |
 | `TaskBranch` | `handle.CurrentBranch()` |
-| `ParentBranch` | `fabricengine.ReadOrigin(c.location)` → `Origin.ParentBranch` |
+| `ParentBranch` | `fabricengine.ReadOrigin(c.location)` → `resolveParentBranch(recorded, found, "")`, refusing on the envelope when unrecorded or empty |
 | `WebsterDir` | `c.runDeps.Geom.WebsterDir` |
 | `StencilsDir` | `c.runDeps.Geom.StencilsDir` |
 | `ScratchDir` | new `loomengine.LoomScratchDir(c.location)` |
 | `OriginURL` | new `handle.OriginURL()` |
 | `PushSkipped` | `fabricengine.EnvSyncOptions().SkipPush` |
-| `PushBranch` | closure over `fabricengine.PushWarpRebaseFreeAt` |
+| `PushBranch` | closure over the new `handle.PushBranch(fabricengine.EnvSyncOptions())`, discarding the `PushResult` |
 | `OpenFabric` | closure over `fabricengine.Open(c.location)` |
 | `OpenParentFabric` | closure over new `fabricengine.OpenParent(c.location, parentBranch)` |
 | `Shuttle` | the `*shuttleengine.Runner` already built in `wire()` — a compile-time assertion that it satisfies `mergeresolve.Shuttle` already exists at `mergeresolve/deps.go:46` |
@@ -223,7 +260,7 @@ Nothing in `status`, `pause`, or `run` reaches it, which is what makes the eager
 
 - `internal/fabricengine/worktreelist.go` — add `OpenParent` and the unexported matcher.
 - `internal/fabricengine/export_test.go` — re-export the matcher for unit testing.
-- `internal/fabricengine/fabric.go` — add `OriginURL()`.
+- `internal/fabricengine/fabric.go` — add `OriginURL()` and `PushBranch(opts)`, the two neutral-named methods.
 - `internal/loomengine/config.go` — add `LoomScratchDir`, correct `LoomStatusLock`'s doc comment.
 - `internal/loomcli/wiring.go` — carry `registry` and `runner` onto the struct;
   replace the "Landing is left unfilled" comment block.
@@ -246,10 +283,15 @@ Docs, required by the Documentation Lifecycle in the same commit:
 From `CONSTRAINTS.md`, in order of how easily this task could trip them:
 
 - **Fabric Vocabulary Invariant.**
-  `internal/landingshed` is *not* in the owner set, so no identifier, string literal, or comment there may name either side.
-  This is why `PushBranch` is a closure.
-  Machine-enforced by `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_FabricVocabulary` over production `.go` files under `internal/` and `cmd/`, plus an `internal/**/*.md` walk.
-  `internal/fabricengine` and `internal/fabriccli` *are* in the owner set, so `OpenParent`'s implementation may name warp and weft freely.
+  This is the sharpest constraint on this task and the one it already tripped once — read it before writing any call site.
+  The owner set is exactly `{internal/fabricengine, internal/fabriccli, internal/weftname, internal/gitkit, internal/boardengine, internal/configsync, internal/hubforge}` (`enforcement_test.go:597`).
+  **Neither `internal/landingshed` nor `internal/loomcli` is in it**, so neither may name warp or weft in any identifier, string literal, or comment.
+  The check is unforgiving in three specific ways the plan must respect: `bareVocabularyToken` (`:654`) is a case-insensitive **substring** test, not a word match;
+  `fabricVocabularyHits` (`:699`) walks every `*ast.Ident`, which includes the `Sel` of a selector expression, so `pkg.SomeWarpThing(...)` is a hit at the call site;
+  and the walk covers all production `.go` under `internal/` and `cmd/` (`:907`), plus an `internal/**/*.md` and `contracts/stencils/**/*.md` walk.
+  Test files are excluded.
+  This is why `Deps.PushBranch` is a closure *and* why the closure body cannot name the underlying verb either — see `push-verb-gets-a-neutral-fabric-method`.
+  `internal/fabricengine` *is* an owner, so `OpenParent`'s implementation and the two new neutral methods may name warp and weft freely inside that package.
 - **Told-Geometry Invariant.**
   `internal/landingshed` is machine-enforced via its `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`: no direct production import of `internal/lyxcwd`, every absolute path told by the caller.
   This task adds no import there, so the allowlist is untouched.
@@ -286,9 +328,9 @@ Scenarios that must be covered:
 - Exactly one entry matches the parent branch → that entry's path is returned.
 - No entry matches → the not-found signal, which `OpenParent` turns into its error.
 - The only candidate is detached (`Branch == "(detached)"`) → no match, and no panic on the parenthesised sentinel.
-- The parent branch equals the acting worktree's own branch → matches the acting worktree itself.
-  Decide and pin the behaviour here rather than leaving it implicit;
-  it is reachable when a task branch is somehow its own parent, and the resulting `Fabric` would merge a branch into itself.
+- The parent branch equals the acting worktree's own branch → matches, and returns that worktree's own pair.
+  This is the decided behaviour, not an accident: per `self-parent-is-loom-policy-not-fabric-policy`, `OpenParent` special-cases nothing and the refusal lives in `drive`.
+  Assert the match explicitly so a future implementer does not "fix" it into an error.
 - A path with forward slashes → normalized via `filepath.FromSlash`.
 - The main worktree matching (`Main == true`) is not treated specially — matching is on branch alone.
 
@@ -321,6 +363,18 @@ Cover `PushSkipped` separately with a two-case assertion driving the env var set
 A reflection-based field walk is the shape that actually catches a newly added field;
 an enumerated list of fourteen assertions silently keeps passing when a fifteenth is added.
 
+The two refusal paths are the other half of this package's coverage, and both are pure-function tests needing no fixture:
+
+- Unrecorded parent (`found == false`) and present-but-empty `ParentBranch` both refuse, with the message `resolveParentBranch` already emits.
+  `resolveParentBranch` has its own tests already;
+  what is new here is that `drive`'s assembly *calls* it with an empty flag and propagates rather than proceeding.
+- `parentBranch == taskBranch` refuses.
+  Cover the negative too — an ordinary differing parent must not trip the guard.
+
+`TestEnforcement_FabricVocabulary` is the guard that catches a regression on `push-verb-gets-a-neutral-fabric-method`: it already exists, needs no change, and will fail if an implementer "simplifies" `handle.PushBranch(...)` back into a direct `fabricengine.PushWarpRebaseFreeAt(...)` call in `drive.go`.
+No new enforcement test is needed for that;
+it is named here so the plan does not add a redundant one.
+
 ### `internal/landingshed`
 
 No new tests.
@@ -337,4 +391,7 @@ The package's own `publish_test.go`/`finalize_test.go` already fill the closures
 - **Q:** Where does `Deps.ScratchDir` come from? **A:** A new `loomengine.LoomScratchDir(l)`. Matches the Durable-vs-Ephemeral invariant's rule that each module owns its own scratch accessor. The stale `LoomStatusLock` comment saying "loomengine has no `Dir(l)` accessor" must be corrected in the same commit regardless.
 - **Q:** Where does `Deps.OriginURL` come from? **A:** A new `Fabric.OriginURL()` method. `gitrepo.Repo.RemoteURL` already exists with zero callers — built precisely for this. Matches `fabric.go`'s documented carve-out for single-sided operations that must be callable from outside the package.
 - **Q:** What test coverage? **A:** An integration test via `hubforge` mirroring `worktreelist_test.go`'s existing pattern, plus a dedicated unit test for the matching logic. An end-to-end test would need GitHub credentials and would prove only construction, not behaviour.
+- **Q:** Can `loomcli` name `PushWarpRebaseFreeAt` in the push closure? **A:** No — and the earlier decision assuming it could was wrong. The bare warp/weft ban is not `landingshed`-specific: `fabricVocabularyOwners` excludes `internal/loomcli`, `bareVocabularyToken` is a substring test, and the AST walk visits a selector's `Sel`, so the call fails `TestEnforcement_FabricVocabulary`. Resolved by adding a neutral `Fabric.PushBranch(opts)` method inside the owner package, reusing the same carve-out as `Fabric.OriginURL()`. The rebase-free semantics are unchanged.
+- **Q:** What does `drive` do when `ReadOrigin` reports no record, an empty `ParentBranch`, or an error? **A:** Refuse on the envelope, by calling the existing `resolveParentBranch(recorded, found, "")` with an empty flag and surfacing its message verbatim. Absent and present-but-empty are already treated identically by that function's own table, and reusing it means the rule cannot drift from `run`'s.
+- **Q:** What happens when the parent branch equals the acting worktree's own branch? **A:** `OpenParent` matches it and returns that pair — it special-cases nothing, staying policy-free so a future Hardener can reuse it. `drive` refuses the configuration, as a second clause of the same guard handling the unrecorded-parent case. A corrupt provenance record gets named rather than silently accepted.
 - **Q:** Does `internal/landingshed` itself change? **A:** Comments only. `deps.go`'s "the next roadmap item builds it" claims become false when this lands and must be corrected in the same commit. Tightening `NewPublish`/`NewFinalize` validation would be real scope creep beyond the roadmap item.
