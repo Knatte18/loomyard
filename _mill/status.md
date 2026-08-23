@@ -33,13 +33,20 @@ implementing  '2026-08-23T11:13:30Z'
 ```yaml
 batches:
   - name: fabricengine-parent-resolution
-    state: pending
+    state: running
+    implementer_session: 2ade0f90-1783-4d9f-be2f-b697f4d4a6e3
+    start_sha: a715ddf4ed167b041222da73848052c3ea9d0b8e
+    verify_baseline_failures: []
   - name: loomengine-scratch-dir
     state: pending
+    verify_baseline_failures: []
   - name: loomcli-landing-wiring
     state: pending
+    verify_baseline_failures: []
   - name: landingshed-comment-fixes
     state: pending
+    verify_baseline_failures: []
   - name: docs-roadmap-and-design
     state: pending
+    verify_baseline_failures: []
 ```
