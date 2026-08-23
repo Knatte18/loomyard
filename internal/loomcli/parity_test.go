@@ -6,8 +6,9 @@
 // The comparison is three-way, not binary, per the discussion's parity-tests-per-gate decision: the
 // producer's Done/Stuck/error trio and the verb's ok/findings-key trio are each mapped onto one
 // shared parityVerdict before comparison, so a Stuck-vs-error mismatch is caught rather than
-// collapsed onto a single "fail" side. Both halves take told paths and construct no repository, so
-// both stay tier 1: no process spawn of any kind, no gitexec, no hubforge.NewHub, no RunCLIIn.
+// collapsed onto a single "fail" side. Both halves take told paths and construct no repository and
+// spawn no process, real hub, or fixture-tree copy, and no test here calls RunCLIIn -- so both stay
+// tier 1.
 package loomcli
 
 import (
