@@ -35,7 +35,7 @@ A CLI verb there is a direct call into existing code.
 - Move the check-level tests into `internal/discussionparser`; keep a thinner `loomshed` test for the producer's outcome mapping and cancellation.
 - Add a parity test per gate asserting the verb and the producer reach the same verdict over the same fixtures.
 - Add a `leaf_enforcement_test.go` to `internal/discussionparser`.
-- Update `cmd/lyx`'s help-tree / drift tests for the two new verbs.
+- Extend `internal/loomcli/cli_test.go`'s registered-verb assertion to six verbs, and add the two verbs to `cmd/lyx/helptree_test.go`'s `loom` `wantSubs` list.
 - Docs in the same commit: `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md` (one new invariant), `manifest/roadmap.md` (item moves to Done).
 
 **Out:**
@@ -82,6 +82,14 @@ A CLI verb there is a direct call into existing code.
 ### findings-not-bool
 
 - Decision: the extracted entry point is `Validate(decisionRecordPath, supportLogPath string) ([]Finding, error)` — a non-empty slice means the gate fails, a returned error means an I/O fault, and the two are never both non-zero.
+- Decision (ordering, and it is load-bearing): `Validate` **short-circuits across files in exactly today's order** and accumulates only within the heading check.
+  Concretely, reproducing `discussionvalidate.go`'s current control flow step for step: `os.Stat` the support log first — a not-exist returns immediately with exactly one finding and no error, and any other stat error returns immediately as an error with a nil findings slice;
+  then `os.ReadFile` the decision record — a not-exist returns immediately with exactly one finding, any other read error returns immediately as an error;
+  only then does the heading check run, and only there do findings accumulate, one per missing required heading.
+  An error therefore always wins over any finding that a *later* check would have produced, because the later check never runs.
+- Rationale for the ordering clause: an accumulating `Validate` would change the producer's outward behaviour in a case that exists today.
+  With the support log missing and the decision record unreadable for a reason that is not not-exist, `Call` currently returns `Stuck` (it never reaches the read), whereas an accumulating implementation would surface the read fault as a returned error — `Stuck` persists blocked and bounces to `Discussion-Write`, a returned error persists failed and aborts the run.
+  Pinning the order is what makes `producer-contract-unchanged` a checkable claim rather than an aspiration.
 - Rationale: this mirrors `planparser.Validate`'s `[]ValidationError` return, which the `Plan-Validate` verb will render.
   The self-checking agent needs to know *which* required heading is missing or *which* file is absent;
   a bare `bool` would leave the verb able to say only "failed", which reproduces the information-free bounce this task exists to avoid.
@@ -91,9 +99,9 @@ A CLI verb there is a direct call into existing code.
 
 - Decision: `loomshed.discussionValidate.Call` keeps its current outward contract exactly — any non-empty findings slice maps to `shedengine.Stuck` with an empty `OutputPointer`, both checks passing maps to `Done` with the decision record's path as the pointer, and an I/O fault that is not a not-exist maps to a returned error, never to `Stuck`.
   Only the body changes, into a call to `discussionparser.Validate`.
-- Rationale: the roadmap item is about making the check callable standalone, not about changing what the gate does.
-  Widening the pointer to carry findings would change a contract governed by the Producer Pointer-Rule Invariant, with no consumer asking for it.
+- Rationale: the roadmap item is about making the check callable standalone, not about changing what the gate does, and no consumer has asked for findings on the pointer — `Discussion-Write` is a stub today, and the task that replaces it will read the findings from the CLI verb it calls itself, not from the pointer of a gate it bounced off.
   The existing `entryErr` / `cancelErr` cancellation discipline and the `nonDoneExit` helper stay as they are.
+  What makes "unchanged" verifiable rather than asserted is the pinned short-circuit order under `findings-not-bool` above — without it, the accumulate-vs-short-circuit choice silently flips one case from `Stuck` to a returned error.
 - Rejected: propagating findings through the producer's `OutputPointer`.
 
 ### required-sections-move-unexported
@@ -101,7 +109,8 @@ A CLI verb there is a direct call into existing code.
 - Decision: `requiredDiscussionSections` moves into `internal/discussionparser`, stays unexported, and carries its existing pointer comment to `contracts/stencils/loom/loom-template-discussion.md`'s Step 5 verbatim.
   `internal/loomshed` keeps no copy.
 - Rationale: it is the check's own data, and two copies is exactly the disagreement this task is eliminating.
-  Exporting it would be export-on-speculation with no caller.
+  The existing comment points at the stencil rather than restating its content, which is the right shape and costs nothing to preserve across the move.
+  Exporting the list would be export-on-speculation with no caller.
 - Rejected: exporting it so docs or tests can enumerate it.
 
 ### two-flat-verbs-on-the-loom-subtree
@@ -177,7 +186,11 @@ A CLI verb there is a direct call into existing code.
 
 ### new-constraints-invariant
 
-- Decision: add one new section to `CONSTRAINTS.md` — a **Discussionparser Sole-Parser Invariant** mirroring the existing Planparser Sole-Parser Invariant, stating that `internal/discussionparser` is the sole reader of `_lyx/discussion/`'s format, that it declares no on-disk location, and that a mechanical gate's `ShedProducer` row and its CLI self-check verb must call the same package function.
+- Decision: add one new section to `CONSTRAINTS.md` — a **Discussionparser Sole-Parser Invariant** mirroring the existing Planparser Sole-Parser Invariant, with four bullets: `internal/discussionparser` is the sole reader of `_lyx/discussion/`'s format;
+  it declares no on-disk location of its own;
+  it imports the standard library and nothing else, enforced by `internal/discussionparser/leaf_enforcement_test.go`'s allowlist;
+  and a mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function, enforced by the parity tests named under `parity-tests-per-gate`.
+  The import-cap bullet is not optional decoration — every one of the repo's existing `leaf_enforcement_test.go` files is backed by a `CONSTRAINTS.md` section naming its allowlist, so a machine check with no stated rule behind it would be the odd one out.
 - Rationale: both rules are cross-cutting and review-enforced, and CLAUDE.md requires recording a new cross-cutting invariant in the same commit.
   Without it, the "can never disagree" rule lives only in a roadmap entry that gets archived when this item completes.
 - Rejected: no new invariant.
@@ -225,8 +238,11 @@ The pre-run skips resolution only when `cmd.Name() == "loom"`, so both new verbs
 Whatever `Finding` shape `internal/discussionparser` grows should be renderable into the envelope the same way the plan verb renders `[]planparser.ValidationError`, so the two verbs' payloads read alike;
 the exact field set is mill-plan's call.
 
-**Registration tests to update.**
-`cmd/lyx/drift_test.go` (non-empty `Short` on every command), `helptree_test.go`, `registration_test.go`, and `longlist_test.go` all assert over the assembled tree, so adding two verbs touches them.
+**Registration tests — only two files actually move, and only one of them is forced.**
+Most of `cmd/lyx`'s tree tests derive their expectations from the live tree and need no edit at all: `drift_test.go` walks `newRoot()` collecting empty `Short`s, `longlist_test.go` iterates `root.Commands()` at module granularity, and `registration_test.go` is an AST scan for packages exposing `Command()` — none of the three has a per-verb list.
+The one `cmd/lyx` file to touch is `helptree_test.go`, whose `TestHelpTree_VerbModuleSubcommands` pins `wantSubs: []string{"run", "drive", "status", "pause"}` for `loom`;
+its assertions are documented superset checks, so it would not fail without the addition — adding the two verbs there is deliberate coverage, not a forced update.
+The one genuinely forced update is in `internal/loomcli/cli_test.go`: `TestCommand_AllFourVerbsRegistered` (line 35) asserts the exact registered-verb set and will fail until it is extended to six (and renamed accordingly).
 `cmd/lyx/seamsignature_test.go` is unaffected — no new seam module.
 
 **Allowlist to update.**
@@ -257,15 +273,12 @@ From `CONSTRAINTS.md`:
 - **Planparser Sole-Parser Invariant.**
   `internal/planparser` is the sole parser of `_lyx/plan/` and the sole declarer of that directory's path.
   The `validate-plan` verb consumes it through its public API and parses nothing itself.
-- **Producer Pointer-Rule Invariant.**
-  An instruction file must never duplicate or paraphrase another producer's format-contract content, only point at it.
-  Relevant here because `requiredDiscussionSections`' comment points at the stencil rather than restating it — keep that pointer on the move.
 - **Documentation Lifecycle** (`docs/overview.md#documentation-lifecycle`) plus CLAUDE.md's task-completion rule: module doc, `docs/overview.md`, and `CONSTRAINTS.md` land in the same commit as the change.
 - **Test Tier Purity Invariant.**
   Tier-1 tests resolve no cwd and spawn no process.
   `internal/discussionparser`'s tests are naturally tier 1 (told paths into a `t.TempDir()`).
-  The CLI verb tests reach the tree through `RunCLIIn(cwd, out, args)`, which seeds cwd into the execution context without touching the process cwd — the pattern `internal/loomcli`'s existing `cli_test.go` already uses.
-- **Never Force-Add Invariant** — applies to any fixture placed under a gitignored path.
+  The CLI verb tests stay tier 1 only by avoiding `RunCLIIn` and driving the leaf `*cobra.Command` against a hand-populated `*loomCLI` receiver — see the `internal/loomcli` paragraph under `## Testing`, which explains why the `RunCLIIn` route is not available here.
+  `internal/loomcli` already carries a `//go:build smoke` suite, so anything that genuinely needs a wired hub has a tagged home to go to.
 
 From this repo's `CLAUDE.md`:
 
@@ -299,21 +312,37 @@ a cancelled context at entry and at each `nonDoneExit` site → a non-nil error,
 `planvalidate_test.go` is unchanged.
 `seam_enforcement_test.go` needs `internal/discussionparser` on its allowlist.
 
-**`internal/loomcli` (new).**
-Per verb, through the CLI seam so the envelope contract is exercised end to end:
+**`internal/loomcli` (new) — and the mechanism matters, because the obvious one does not work.**
+These tests must NOT go through `RunCLIIn`.
+The two existing `RunCLIIn` calls in `cli_test.go` (lines 76 and 90) are untagged only because they exercise the `cmd.Name() == "loom"` group-guard path, where `resolvePersistentPreRun` returns before resolving anything.
+A real verb takes the other branch: `lyxcwd.Resolve` spawns `git rev-parse`, and `wire` then calls `loomengine.LoadConfig`, which is strict about an absent `_lyx/` or config file.
+Driving a verb through `RunCLIIn` therefore needs a real wired hub and breaches the Test Tier Purity Invariant in an untagged suite.
+
+The mechanism to use instead is the one `TestVerbRefusals` (`cli_test.go:106`) already establishes for `drive` and `pause`: build the leaf `*cobra.Command` from `(*loomCLI).validateDiscussionCmd` / `(*loomCLI).validatePlanCmd` against a **hand-populated `*loomCLI` receiver** — `c.env` filled with a `shedrecipe.Env` whose `DecisionRecordPath` / `SupportLogPath` / `AnchorPath` / `WorktreeRoot` point into a `t.TempDir()` — and run it via `clihelp.Execute(cmd, &out, nil)`.
+No `PersistentPreRunE`, no `wire`, no git spawn, so these stay tier 1.
+The cases, per verb:
 
 - clean gate → exit 0, exactly one JSON line, `ok: true`.
 - gate with findings → exit 1, exactly one JSON line, `ok: false`, with the findings payload present and naming the specific failure.
 - I/O fault (discussion) and unparseable plan (plan) → exit 1, one line, `ok: false`, with a message distinguishable from the findings case.
-- exactly one envelope per invocation in every case — the smoke-suite single-object unmarshal is what this protects.
+- exactly one envelope per invocation in every case, `clihelp.ShouldAbort` checked first — the smoke-suite single-object unmarshal is what this protects.
 
-**Parity tests (the task's own guard).**
+A genuine end-to-end run through `RunCLIIn` against a `hubforge.NewHub` fixture would add value but needs a tagged suite (the package already carries a `//go:build smoke` file), and it is **not** required by this task: nothing in the verbs' behaviour depends on how `c.env` got populated, and `wiring_test.go`'s `TestWire_PathFieldsMatchLoomengineAccessors` already pins that population separately.
+mill-plan may add one if it judges the fixture cost worthwhile;
+it is explicitly optional.
+
+**Parity tests (the task's own guard) — both halves stay tier 1.**
 One per gate, driving the producer path and the CLI path over the same fixture set and asserting the verdicts agree.
-Reuse the same fixture builders both directions rather than writing two fixture sets — two sets could drift and hide exactly the divergence the test exists to catch.
+Both halves take told paths, so neither needs a repository: the producer half constructs the producer via `NewDiscussionValidate` / `NewPlanValidate` with the fixture's paths and calls `Call`;
+the CLI half uses the hand-populated-receiver mechanism above with the same paths.
+Reuse one fixture builder for both directions rather than writing two fixture sets — two sets could drift and hide exactly the divergence the test exists to catch.
+Where the test lives follows its imports: the discussion parity test can sit in `internal/loomcli` (which may import `loomshed`'s exported constructors), and the same for the plan one.
 
-**`cmd/lyx`.**
-The existing `drift_test.go`, `helptree_test.go`, `registration_test.go`, and `longlist_test.go` are updated for the two new verbs;
-they are assertions over the assembled tree, not new tests.
+**Registered-verb assertions.**
+`internal/loomcli/cli_test.go`'s `TestCommand_AllFourVerbsRegistered` pins the exact verb set and must be extended to six and renamed — this is the one update the compiler-adjacent suite forces.
+In `cmd/lyx`, only `helptree_test.go`'s `loom` `wantSubs` entry gains the two verbs, as deliberate coverage;
+`drift_test.go`, `longlist_test.go`, and `registration_test.go` derive from the live tree and need no edit.
+See the Registration-tests paragraph under `## Technical context` for why.
 
 **Leaf enforcement.**
 `internal/discussionparser/leaf_enforcement_test.go`, in the shape the repo's other leaves already use: walk the package's non-test `.go` files, parse imports only, fail on anything outside stdlib.
@@ -325,8 +354,11 @@ they are assertions over the assembled tree, not new tests.
   the package takes told absolute paths only. **Why:** those accessors take a `*lyxcwd.Location`, which a leaf may not import;
   full parity would force a reshape of three accessors this task has no other reason to touch.
 - **Q:** What API shape does the extracted check expose? **A:** [auto-pick] `Validate(decisionRecordPath, supportLogPath string) ([]Finding, error)`. **Why:** mirrors `planparser.Validate`'s `[]ValidationError`, and the self-checking agent needs to know which heading or file failed — a bare `bool` reproduces the information-free bounce this task exists to avoid.
-- **Q:** Does the `discussionValidate` producer's outward contract change? **A:** [auto-pick] No — only its body changes. **Why:** the roadmap item is about callability, not about changing what the gate does;
-  widening the pointer would touch a contract governed by the Producer Pointer-Rule Invariant with no consumer asking for it.
+- **Q:** Does the `discussionValidate` producer's outward contract change? **A:** [auto-pick] No — only its body changes. **Why:** the roadmap item is about callability, not about changing what the gate does, and no consumer asks for findings on the pointer — the task that replaces the `Discussion-Write` stub reads them from the CLI verb it calls itself.
+- **Q:** (review r1 gap) Does `Validate` short-circuit across the two files or accumulate, and which wins when a finding on one file coexists with an I/O error on the other? **A:** Short-circuit, in exactly today's stat-then-read order;
+  an error always wins over a later check's finding because the later check never runs. **Why:** an accumulating implementation flips one real case — support log missing plus an unreadable decision record — from `Stuck` to a returned error, i.e. from persist-blocked-and-bounce to persist-failed-and-abort, which would make `producer-contract-unchanged` false.
+- **Q:** (review r1 gap) How do the CLI-verb tests stay tier 1, given that a real verb's pre-run spawns `git rev-parse` and strictly loads config? **A:** They avoid `RunCLIIn` entirely and drive the leaf `*cobra.Command` against a hand-populated `*loomCLI` receiver, the mechanism `TestVerbRefusals` already uses;
+  both halves of each parity test do the same. **Why:** the existing `RunCLIIn` calls in this package are untagged only because they take the group-guard path that skips resolution — that precedent does not extend to a real verb, and a hub-fixture suite is optional extra coverage, not a prerequisite.
 - **Q:** Where does `requiredDiscussionSections` live after the extraction? **A:** [auto-pick] In the new package, unexported, with its stencil pointer comment carried over verbatim. **Why:** it is the check's own data, and a second copy in `loomshed` is precisely the disagreement being eliminated.
 - **Q:** How are the CLI verbs placed and named? **A:** [auto-pick] Two flat verbs on the existing subtree — `lyx loom validate-discussion` and `lyx loom validate-plan`. **Why:** the subtree is already flat, and the names track the `Discussion-Validate` / `Plan-Validate` row names one-to-one, which is what makes the mapping obvious to an agent reading a prompt that names the row.
 - **Q:** Do the verbs reuse loom's existing heavy `PersistentPreRunE` wiring, or get a lighter paths-only path? **A:** [auto-pick] Reuse it unchanged. **Why:** loom is hub-only and the calling agent runs inside a fully-wired worktree mid-run, so every config `wire` loads is present by construction;
