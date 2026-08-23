@@ -10,9 +10,11 @@ package loomcli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -31,13 +33,29 @@ func seedLoomConfig(t *testing.T, anchorPath string) {
 	}
 }
 
+// seedLandingConfig creates <anchorPath>/_lyx/config/landing.yaml with the embedded template's
+// contents. landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every
+// existing test in this file without this seed.
+func seedLandingConfig(t *testing.T, anchorPath string) {
+	t.Helper()
+	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+	}
+	cfgPath := filepath.Join(configDir, "landing.yaml")
+	if err := os.WriteFile(cfgPath, []byte(landingshed.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml only.
+// seeded on disk with loom.yaml and landing.yaml.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
 	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
 	seedLoomConfig(t, loc.AnchorPath())
+	seedLandingConfig(t, loc.AnchorPath())
 	return loc
 }
 
@@ -225,5 +243,38 @@ func TestWire_BisectorOpenerNonNilInHubOnlyMode(t *testing.T) {
 
 	if c.runDeps.OpenBisector == nil {
 		t.Fatal("runDeps.OpenBisector = nil; want a non-nil closure in hub-only mode")
+	}
+}
+
+// TestWire_LandingSeamFieldsPopulated asserts wire() populates c.registry, c.runner, and
+// c.landingCfg -- the three fields drive.go passes to landingDeps.
+//
+// c.landingCfg is compared via reflect.DeepEqual, not !=, because landingshed.Config carries a
+// RequirePRToBase []string field, which makes the struct non-comparable and would fail to compile
+// under a plain != the way TestWire_PathFieldsMatchLoomengineAccessors's plain-string field
+// comparisons do.
+func TestWire_LandingSeamFieldsPopulated(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.registry == nil {
+		t.Error("c.registry = nil; want the resolved model-spec registry")
+	}
+	if c.runner == nil {
+		t.Error("c.runner = nil; want the constructed shuttle runner")
+	}
+
+	want, err := landingshed.LoadConfig(loc.AnchorPath(), "landing")
+	if err != nil {
+		t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", loc.AnchorPath(), err)
+	}
+	if !reflect.DeepEqual(c.landingCfg, want) {
+		t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
 	}
 }
