@@ -33,6 +33,7 @@ Batch-local decision: `manifest/roadmap.md` gets its own card rather than being 
 - **Edits:**
   - `manifest/designs/loom.md`
   - `docs/overview.md`
+  - `internal/loomcli/parity_test.go` (this batch's `Batch Tests` run `./cmd/lyx/...`, whose `TestTierPurity_UntaggedTestsSpawnNothing` raw-substring-matches the literal string `exec.Command` inside this file's own package-doc comment, a false positive with no actual process spawn; the fix rewords the comment to drop the literal token)
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
