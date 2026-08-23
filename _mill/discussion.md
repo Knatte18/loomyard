@@ -35,8 +35,9 @@ A CLI verb there is a direct call into existing code.
 - Move the check-level tests into `internal/discussionparser`; keep a thinner `loomshed` test for the producer's outcome mapping and cancellation.
 - Add a parity test per gate asserting the verb and the producer reach the same verdict over the same fixtures.
 - Add a `leaf_enforcement_test.go` to `internal/discussionparser`.
-- Extend `internal/loomcli/cli_test.go`'s registered-verb assertion to six verbs, and add the two verbs to `cmd/lyx/helptree_test.go`'s `loom` `wantSubs` list.
-- Docs in the same commit: `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md` (one new invariant), `manifest/roadmap.md` (item moves to Done).
+- Tighten `internal/loomcli/cli_test.go`'s registered-verb assertion from its current four-name subset check into a genuine exact-set assertion over `parent.Commands()` (with a rename), and add the two verbs to `cmd/lyx/helptree_test.go`'s `loom` `wantSubs` list.
+  Neither is a forced update — see the Registration-tests paragraph under `## Technical context`.
+- Docs in the same commit: `manifest/designs/loom.md`, `docs/overview.md`, `CONSTRAINTS.md` (two new invariants), `manifest/roadmap.md` (item moves to Done).
 
 **Out:**
 
@@ -66,7 +67,8 @@ A CLI verb there is a direct call into existing code.
 
 - Decision: the extracted checks land in `internal/discussionparser`.
 - Rationale: it mirrors `internal/planparser`'s name one-to-one, which is the split the roadmap item explicitly names as the pattern to follow.
-  The roadmap's `Plan-Sweep` item already anticipates a second consumer of the same section parsing ("reads `decision-record.md`'s Scope section — the same section-parsing `Discussion-Validate` already does"), so the package genuinely becomes the sole reader of the discussion format, not just a checker.
+  A second consumer of the same section parsing is already anticipated: `manifest/designs/loom.md:119` specifies that `Plan-Sweep` "reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Validate` already does to check presence)" — `manifest/roadmap.md`'s own `Plan-Sweep` entry only points at that design section rather than stating it.
+  So the package genuinely becomes the sole reader of the discussion format, not just a checker.
 - Rejected: `internal/discussioncheck` (names the checking rather than the parsing, and reads oddly for the future `Plan-Sweep` consumer);
   `internal/discussionvalidate` (one character from `internal/loomshed/discussionvalidate.go`, so two "validate" names would sit side by side).
 
@@ -166,7 +168,12 @@ A CLI verb there is a direct call into existing code.
 
 ### parity-tests-per-gate
 
-- Decision: each gate gets a test that drives both the producer's `Call` and the verb's CLI path over the same fixture set and asserts the pass/fail verdicts agree.
+- Decision: each gate gets a test that drives both the producer's `Call` and the verb's CLI path over the same fixture set and asserts the verdicts agree **three-way, not two-way**.
+  The producer has three outcomes (`Done`, `Stuck`, returned error) and the verb has two exit codes, so the comparison maps the verb's envelope to three values before comparing: `ok: true` ↔ `Done`;
+  `ok: false` **with** a `findings` key ↔ `Stuck`;
+  `ok: false` **without** one ↔ a returned error.
+  A binary pass/fail comparison would collapse `Stuck` and error onto the same side, which is precisely the distinction `findings-not-bool`'s pinned short-circuit order exists to protect — a parity test blind to it would pass while the two paths disagreed on the one case that motivated pinning the order.
+  This is also why the envelope's findings-vs-fault distinction must be structural (the presence of the `findings` key) rather than a matter of message wording.
 - Rationale: "one shared implementation, so the agent's self-check and the mechanical gate can never disagree" is the roadmap item's whole point, and nothing asserts it today.
   For `Discussion-Validate` the shared call site is `discussionparser.Validate`;
   for `Plan-Validate` it is `planparser.Validate`.
@@ -190,10 +197,14 @@ A CLI verb there is a direct call into existing code.
 
 ### new-constraints-invariant
 
-- Decision: add one new section to `CONSTRAINTS.md` — a **Discussionparser Sole-Parser Invariant** mirroring the existing Planparser Sole-Parser Invariant, with four bullets: `internal/discussionparser` is the sole reader of `_lyx/discussion/`'s format;
+- Decision: add **two** new sections to `CONSTRAINTS.md`, not one.
+  First, a **Discussionparser Sole-Parser Invariant** mirroring the existing Planparser Sole-Parser Invariant, with three bullets: `internal/discussionparser` is the sole reader of `_lyx/discussion/`'s format;
   it declares no on-disk location of its own;
-  it imports the standard library and nothing else, enforced by `internal/discussionparser/leaf_enforcement_test.go`'s allowlist;
-  and a mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function, enforced by the parity tests named under `parity-tests-per-gate`.
+  it imports the standard library and nothing else, enforced by `internal/discussionparser/leaf_enforcement_test.go`'s allowlist.
+  Second, a short **Gate Self-Check Parity Invariant** of its own: a mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function, and a parity test asserts their verdicts agree three-way (see `parity-tests-per-gate`).
+- Rationale for the split: the parity rule binds both gates, including the `planparser`-backed one, and it binds every mechanical gate added later.
+  Filed as a bullet inside a *Discussionparser*-named section, a future gate author would have no reason to look for it there.
+  Its own section is where a cross-cutting rule belongs, and it keeps the mirrored Planparser/Discussionparser pair symmetric.
   The import-cap bullet is not optional decoration — every one of the repo's existing `leaf_enforcement_test.go` files is backed by a `CONSTRAINTS.md` section naming its allowlist, so a machine check with no stated rule behind it would be the odd one out.
 - Rationale: both rules are cross-cutting and review-enforced, and CLAUDE.md requires recording a new cross-cutting invariant in the same commit.
   Without it, the "can never disagree" rule lives only in a roadmap entry that gets archived when this item completes.
@@ -202,7 +213,7 @@ A CLI verb there is a direct call into existing code.
 ### docs-in-the-same-commit
 
 - Decision: `manifest/designs/loom.md` (rows 4 and 8 in the producer table, plus the "Validation checks" section, note the standalone verb), `docs/overview.md` (module table gains `internal/discussionparser`;
-  the loom entry's verb list gains the two verbs), `CONSTRAINTS.md` (the new invariant above), and `manifest/roadmap.md` (the item moves to Done) all land in this task's commits.
+  the loom entry's verb list gains the two verbs), `CONSTRAINTS.md` (both new invariants above), and `manifest/roadmap.md` (the item moves to Done) all land in this task's commits.
 - Rationale: CLAUDE.md's task-completion rule — a task adding a module, changing observable CLI behaviour, or introducing cross-cutting infrastructure updates docs in the same commit.
   This task does all three.
   `manifest/roadmap.md` moves because a planned item is completing, which is exactly the case the rule allows.
@@ -344,8 +355,11 @@ A genuine end-to-end run through `RunCLIIn` against a `hubforge.NewHub` fixture 
 mill-plan may add one if it judges the fixture cost worthwhile;
 it is explicitly optional.
 
-**Parity tests (the task's own guard) — both halves stay tier 1.**
-One per gate, driving the producer path and the CLI path over the same fixture set and asserting the verdicts agree.
+**Parity tests (the task's own guard) — both halves stay tier 1, comparison is three-way.**
+One per gate, driving the producer path and the CLI path over the same fixture set and asserting the verdicts agree across all three outcomes (`Done` ↔ `ok: true`;
+`Stuck` ↔ `ok: false` with a `findings` key;
+returned error ↔ `ok: false` without one) — see `parity-tests-per-gate` for why a binary pass/fail comparison would be blind to the case that matters most.
+Each fixture set must therefore include at least one instance of each of the three outcomes, not just a passing and a failing document.
 Both halves take told paths, so neither needs a repository: the producer half constructs the producer via `NewDiscussionValidate` / `NewPlanValidate` with the fixture's paths and calls `Call`;
 the CLI half uses the hand-populated-receiver mechanism above with the same paths.
 Reuse one fixture builder for both directions rather than writing two fixture sets — two sets could drift and hide exactly the divergence the test exists to catch.

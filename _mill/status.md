@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-23T09:31:46Z'
 discussion-fix-r2  '2026-08-23T09:59:02Z'
+discussion-fix-r3  '2026-08-23T10:03:32Z'
+discussed  '2026-08-23T10:03:32Z'
 ```
