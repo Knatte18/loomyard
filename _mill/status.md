@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-landingshed-comment-fixes
+phase: approved-docs-roadmap-and-design
 slug: landing-parent-fabric-resolution-chain
 branch: landing-parent-fabric-resolution-chain
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-fabricengine-parent-resolution  '2026-08-23T11:20:39Z'
 approved-loomengine-scratch-dir  '2026-08-23T11:24:25Z'
 approved-loomcli-landing-wiring  '2026-08-23T11:29:39Z'
 approved-landingshed-comment-fixes  '2026-08-23T11:31:17Z'
+approved-docs-roadmap-and-design  '2026-08-23T11:33:48Z'
 ```
 
 ## Batches
@@ -61,8 +62,9 @@ batches:
     commit_sha: ad2c7f5c38bd0d61e8582b2da761f305124c57e0
     verify_baseline_failures: []
   - name: docs-roadmap-and-design
-    state: running
+    state: approved
     implementer_session: d77a4a5c-5c59-47f0-92b3-a6c1030b58b6
     start_sha: 30a8c47ee3cd9561a80d7575c42d376319deb2e8
+    commit_sha: d388a590358e98783c569c5cc556e301dd1a1359
     verify_baseline_failures: []
 ```
