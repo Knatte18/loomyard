@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: planned
 slug: landing-parent-fabric-resolution-chain
 branch: landing-parent-fabric-resolution-chain
 plan: _mill/plan
@@ -24,4 +24,5 @@ plan-fix-r1  '2026-08-23T10:51:01Z'
 plan-review-r2  '2026-08-23T11:00:50Z'
 plan-fix-r2  '2026-08-23T11:02:41Z'
 plan-fix-r3  '2026-08-23T11:14:10Z'
+planned  '2026-08-23T11:12:55Z'
 ```
