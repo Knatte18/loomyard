@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-08-23T11:10:41Z'
 nits-fixed-holistic  '2026-08-23T11:12:51Z'
 holistic-approved  '2026-08-23T11:13:06Z'
 done  '2026-08-23T11:14:47Z'
+pr-pending  '2026-08-23T11:15:47Z'
 ```
 
 ## Batches
