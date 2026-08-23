@@ -40,7 +40,9 @@ batches:
     commit_sha: 5961604b38cd1fe8af4e8b5447a3d159813d80ea
     verify_baseline_failures: []
   - name: loomengine-scratch-dir
-    state: pending
+    state: running
+    implementer_session: cf0c6bad-1da6-4a19-8f7c-280135c76c46
+    start_sha: 286a31c2a45ecd41be11ae9f56575dc0800b46ab
     verify_baseline_failures: []
   - name: loomcli-landing-wiring
     state: pending
