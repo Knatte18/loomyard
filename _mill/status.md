@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom CLI validate verbs
+phase: approved-gate parity tests
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: _mill/plan
@@ -29,6 +29,7 @@ implementing  '2026-08-23T10:36:49Z'
 approved-discussionparser leaf package  '2026-08-23T10:43:07Z'
 approved-loomshed thin wrap  '2026-08-23T10:47:26Z'
 approved-loom CLI validate verbs  '2026-08-23T10:53:17Z'
+approved-gate parity tests  '2026-08-23T10:57:30Z'
 ```
 
 ## Batches
@@ -54,9 +55,10 @@ batches:
     commit_sha: 338c8dccc095e70caf076368d4beaeb2fe38e0fe
     verify_baseline_failures: []
   - name: gate parity tests
-    state: running
+    state: approved
     implementer_session: c78f09e6-ad04-40bf-a3e1-b9ffd8509266
     start_sha: 4be6b306cbb6720dbe564de73bf074e1acf28c48
+    commit_sha: 7e8aa7f22a2f349814780589d3bdabe993d11308
     verify_baseline_failures: []
   - name: docs and roadmap
     state: pending
