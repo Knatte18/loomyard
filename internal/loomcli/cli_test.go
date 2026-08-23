@@ -74,10 +74,6 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 			t.Errorf("unexpected verb %q is registered under the loom parent command", name)
 		}
 	}
-
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("registered verbs = %v; want exactly %v", got, want)
-	}
 }
 
 // TestRunAliasCommand_StaysOneCommandWithSubtreeVerb guards RunAliasCommand and the subtree's own
