@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabricengine-parent-resolution
+phase: approved-loomengine-scratch-dir
 slug: landing-parent-fabric-resolution-chain
 branch: landing-parent-fabric-resolution-chain
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r3  '2026-08-23T11:14:10Z'
 planned  '2026-08-23T11:12:55Z'
 implementing  '2026-08-23T11:13:30Z'
 approved-fabricengine-parent-resolution  '2026-08-23T11:20:39Z'
+approved-loomengine-scratch-dir  '2026-08-23T11:24:25Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: 5961604b38cd1fe8af4e8b5447a3d159813d80ea
     verify_baseline_failures: []
   - name: loomengine-scratch-dir
-    state: running
+    state: approved
     implementer_session: cf0c6bad-1da6-4a19-8f7c-280135c76c46
     start_sha: 286a31c2a45ecd41be11ae9f56575dc0800b46ab
+    commit_sha: 6685b6a68c2707bf5ab1292295c86c99ff84fd0b
     verify_baseline_failures: []
   - name: loomcli-landing-wiring
     state: pending
