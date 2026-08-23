@@ -123,6 +123,12 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
   Passing the empty string through costs nothing and lands the refusal exactly where the value is used: `githubclient.ParseOwnerRepo("")` fails, and `Publish` already turns that into `stuckOrCancelled("origin URL unusable: …")` — a stuck row with a precise reason, not a crash.
 - Rejected: refusing on both — symmetric and simpler to state, but it makes a local-only hub unable to run loom at all over a value its own config says is unnecessary.
   Also rejected: passing both through empty — an empty `TaskBranch` would reach `Finalize`'s merge and `Publish`'s pull-request head with no layer positioned to catch it.
+- The two remaining error sources in the same block refuse on the envelope, for completeness rather than by analogy:
+  `fabricengine.Open(c.location)` failing means the pair is not wired, which `drive` cannot proceed past at all — no producer in the list can run without it.
+  `landingshed.LoadConfig(anchorPath, "landing")` failing is the same class: it routes through strict `configengine.Load`, where an absent `landing.yaml` yields *"config file … not found; run `lyx config reconcile`"*.
+  That is an acceptable drive-blocking refusal and deliberately not a degrade — `landingshed`'s own package doc records why the strict entry point is required rather than chosen ("neither producer in this package has a standalone entry point, both are reachable only inside a hub, and there an absent config means the hub is broken"), and the message already names its own remedy.
+  Note this is a genuinely new hard-failure mode for `lyx loom drive` on an unreconciled hub, introduced by filling `Env.Landing` at all;
+  it is named here so it is a decision rather than a surprise.
 
 ### self-parent-is-loom-policy-not-fabric-policy
 
@@ -213,6 +219,8 @@ The five `loom: real LLM producers` tasks are explicitly *not* blocked on this, 
   A second `Open` is cheap regardless: two stat checks plus two `gitrepo.New` calls, no git subprocess.
 - Note for the implementer: `deps.go`'s own laziness comment ("opening eagerly would fail before the run's own preflight has confirmed anything is wired") reads as absolute, while `publish.go`'s constructor doc already carves out why construction-time opening is nonetheless correct there.
   If that tension is worth resolving, it is a third comment correction in the same commit — but the correction is to `deps.go`'s wording, never to the closure's shape.
+- Exactly two `Open` calls exist in this path, and no third: `drive.go`'s own handle (used for `CurrentBranch()`, `OriginURL()`, and the prebuilt push closure), and whatever `OpenFabric`/`OpenParentFabric` open when the producers call them.
+  The push closure specifically must **not** open a third time — it closes over `drive.go`'s handle, which is why `pushBranch` is passed into the assembly seam prebuilt rather than constructed from `l` inside it.
 - Rejected: caching the handle into the closure — saves negligible work, breaks `OpenParentFabric`'s real per-`Call` semantics, and makes `OpenFabric`'s name false.
 
 ## Technical context
@@ -255,8 +263,8 @@ Detached entries carry `Branch == "(detached)"` and cannot collide with a real b
 | `StencilsDir` | `c.runDeps.Geom.StencilsDir` |
 | `ScratchDir` | new `loomengine.LoomScratchDir(c.location)` |
 | `OriginURL` | new `handle.OriginURL()`, passing `""` through on error so `Publish` refuses instead of `drive` |
-| `PushSkipped` | `fabricengine.EnvSyncOptions().SkipPush` |
-| `PushBranch` | closure over the new `handle.PushBranch(fabricengine.EnvSyncOptions())`, discarding the `PushResult` |
+| `PushSkipped` | `fabricengine.EnvSyncOptions().SkipPush`, from the single `EnvSyncOptions()` call `drive.go` also builds the push closure's `opts` from |
+| `PushBranch` | prebuilt in `drive.go` as a closure over the already-open `handle.PushBranch(opts)`, discarding the `PushResult`; passed into the assembly seam, never constructed inside it |
 | `OpenFabric` | closure over `fabricengine.Open(c.location)` |
 | `OpenParentFabric` | closure over new `fabricengine.OpenParent(c.location, parentBranch)` |
 | `Shuttle` | the `*shuttleengine.Runner` already built in `wire()` — a compile-time assertion that it satisfies `mergeresolve.Shuttle` already exists at `mergeresolve/deps.go:46` |
@@ -290,7 +298,9 @@ Nothing in `status`, `pause`, or `run` reaches it, which is what makes the eager
   replace the "Landing is left unfilled" comment block.
 - `internal/loomcli/cli.go` — the two new struct fields.
 - `internal/loomcli/drive.go` — assemble `Env.Landing` before `loomrecipe.New`.
-- `internal/landingshed/deps.go` — correct the two comments deferring to "the next roadmap item", and reconcile the `OpenFabric` laziness wording per the `two-opens-in-drive-rather-than-a-shared-handle` decision's implementer note.
+- `internal/landingshed/deps.go` — correct the `OpenFabric`/`OpenParentFabric` field doc's deferral to "the next roadmap item", plus its laziness wording per the `two-opens-in-drive-rather-than-a-shared-handle` decision's implementer note.
+  That field doc is the only deferral in this file;
+  the second one lives in `internal/loomcli/wiring.go`, already listed separately above.
 
 Docs, required by the Documentation Lifecycle in the same commit:
 
@@ -378,6 +388,18 @@ Scenarios:
 - The parent's weft sibling is missing → `Open` fails with `*ErrMissingPath`, and `OpenParent` surfaces it rather than masking it as not-found.
   These two failure modes must stay distinguishable, since only the first is the operator-fixable "materialize the pair" case.
 
+### `internal/fabricengine` — the two new `Fabric` methods
+
+Both are thin single-sided delegations, and their coverage is stated here so the plan does not over- or under-build it.
+
+`OriginURL()` gets one assertion folded into the existing `OpenParent` integration test rather than a test of its own — a `hubforge` hub has an `origin` remote, so asserting the returned URL is non-empty and matches the fixture's proves the delegation and the warp-side targeting in one line.
+Its error path (no `origin` remote configured) needs no new test: `internal/gitrepo`'s own `RemoteURL` tests already cover it, and `scalar-read-errors-refuse-or-defer-by-consumer` deliberately routes that case to `Publish` rather than to a refusal here.
+
+`PushBranch(opts)` gets **no** new integration test, deliberately.
+Exercising a real push needs a real remote, which the fixture does not provide, and the delegation target's behaviour — including the `ErrPushRejected` sentinel this whole decision rests on — is already covered by `internal/gitrepo`'s `PushRebaseFree` tests.
+What *is* worth asserting cheaply is the `opts.SkipPush`/`SkipGit` short-circuit, which returns before touching git at all and so needs no remote.
+The load-bearing guard on this method is not a unit test but `TestEnforcement_FabricVocabulary`, which is what stops the neutral spelling being "simplified" away at the call site.
+
 ### `internal/loomengine`
 
 `LoomScratchDir` is a pure path join.
@@ -397,25 +419,35 @@ func landingDeps(
     l *lyxcwd.Location,
     geom websterengine.Geometry,
     taskBranch, originURL, parentBranch string,
+    pushSkipped bool,
+    pushBranch func() error,
     registry modelspec.Registry,
     runner *shuttleengine.Runner,
     cfg landingshed.Config,
 ) landingshed.Deps
 ```
 
-`taskBranch`, `originURL`, and `parentBranch` arrive already resolved, so the function performs no I/O and returns no error.
+Every value arrives already resolved, so the function performs no I/O of any kind — not filesystem, not git, not process environment — and returns no error.
 `geom` supplies `WebsterDir` and `StencilsDir`;
-`l` supplies `WorktreeRoot` and backs the three closures.
-`drive.go` keeps the handle reads (`CurrentBranch()`, `OriginURL()`) and both refusal guards above this call.
+`l` supplies `WorktreeRoot` and backs `OpenFabric`/`OpenParentFabric`, the two closures that are *meant* to open lazily.
+
+`pushBranch` is passed in prebuilt rather than constructed here, and that is deliberate: it closes over the handle `drive.go` already opened, so there is no third `fabricengine.Open` anywhere in this path.
+`drive.go` builds it as `func() error { _, err := handle.PushBranch(opts); return err }`, discarding the `PushResult`.
+`pushSkipped` likewise arrives as a plain `bool`.
+`drive.go` calls `fabricengine.EnvSyncOptions()` exactly once and uses that single value for both `pushSkipped` and the closure's `opts`, so the two cannot disagree.
+
+`drive.go` therefore owns, above this call: the handle open, both handle reads, `EnvSyncOptions()`, the config load, and both refusal guards.
+`landingDeps` owns only the struct population.
 
 Because the seam takes plain values, this test is **untagged (tier 1)**: no `git init`, no `hubforge.NewHub`, no fixture tree, so it needs no `//go:build integration` tag and no `TestMain` calling `gitkit.HermeticGitEnv`.
 That is the whole reason the signature is shaped this way.
 `internal/loomcli`'s existing untagged tests stay untagged, and `wiring_test.go`'s tier-1 property is preserved.
 
 The drift guard on that function is the point of the test: a field added to `Deps` later must fail loudly here rather than nil-panicking mid-run.
-State it as "every field except `PushSkipped` is non-zero", not "all fourteen".
-`PushSkipped` is a `bool` sourced from `EnvSyncOptions().SkipPush`, which reads `WEFT_SKIP_PUSH` and is therefore `false` in every ordinary invocation — an all-fields-non-zero assertion could never pass.
-Cover `PushSkipped` separately with a two-case assertion driving the env var set and unset, which tests the wiring rather than the value.
+Because `pushSkipped` is now a parameter rather than an env read inside the function, the guard can simply pass `true` — so a plain "every field is non-zero" assertion is achievable, with no carve-out for the bool and no `WEFT_SKIP_PUSH` manipulation.
+(An earlier draft of this section carved `PushSkipped` out as unassertable;
+that carve-out was an artefact of the older seam shape and no longer applies.)
+The env-to-bool wiring itself now lives in `drive.go` beside the other reads, where the single `EnvSyncOptions()` call feeding both `pushSkipped` and the push closure's `opts` is the thing worth asserting — that the two agree.
 A reflection-based field walk is the shape that actually catches a newly added field;
 an enumerated list of fourteen assertions silently keeps passing when a fifteenth is added.
 
@@ -452,4 +484,7 @@ The package's own `publish_test.go`/`finalize_test.go` already fill the closures
 - **Q:** What happens when the parent branch equals the acting worktree's own branch? **A:** `OpenParent` matches it and returns that pair — it special-cases nothing, staying policy-free so a future Hardener can reuse it. `drive` refuses the configuration, as a second clause of the same guard handling the unrecorded-parent case. A corrupt provenance record gets named rather than silently accepted.
 - **Q:** Does the `Deps` drift-guard test need a hub fixture? **A:** No, and the seam is shaped specifically so it doesn't. The assembly function takes plain resolved values rather than the opened handle, so it does no I/O and the test stays untagged (tier 1). Passing the handle would have made a non-zero `TaskBranch`/`OriginURL`/`Config` unreachable without a real wired hub, dragging a struct-population assertion into the integration tier and pulling `loomcli` off its documented tier-1 posture.
 - **Q:** What does `drive` do when `CurrentBranch()` or `OriginURL()` errors? **A:** Different things, by consumer. `CurrentBranch()` refuses on the envelope — both producers need it, so an unreadable branch makes the segment meaningless. `OriginURL()` passes `""` through instead, because only `Publish` reads it and only when a pull request is actually required; a remote-less local hub is reachable, and `Publish` already turns an unusable origin URL into a stuck row with a precise reason.
+- **Q:** Does the push closure open a third `Fabric`? **A:** No. It is built in `drive.go` over the handle already opened there and passed into the assembly seam prebuilt, so exactly two `Open` sites exist in the path: `drive.go`'s own, and whatever `OpenFabric`/`OpenParentFabric` open when the producers call them. `EnvSyncOptions()` is likewise called once in `drive.go` and feeds both `pushSkipped` and the closure's `opts`, so they cannot disagree.
+- **Q:** What do `fabricengine.Open` and `landingshed.LoadConfig` errors do in `drive`? **A:** Both refuse on the envelope. An unwired pair blocks every producer, and `LoadConfig` is strict by design — `landingshed`'s package doc records that an absent config inside a hub means the hub is broken, and the error already names `lyx config reconcile` as its remedy. This is a genuinely new hard-failure mode for `lyx loom drive` on an unreconciled hub, recorded as a decision rather than left as a surprise.
+- **Q:** Do the two new `Fabric` methods get their own tests? **A:** `OriginURL()` gets one assertion folded into the `OpenParent` integration test. `PushBranch(opts)` gets no new integration test — a real push needs a real remote the fixture lacks, and `internal/gitrepo`'s `PushRebaseFree` tests already cover the delegation target including the `ErrPushRejected` sentinel; only the `SkipPush`/`SkipGit` short-circuit is worth asserting cheaply. `TestEnforcement_FabricVocabulary` is the load-bearing guard on that method, not a unit test.
 - **Q:** Does `internal/landingshed` itself change? **A:** Comments only. `deps.go`'s "the next roadmap item builds it" claims become false when this lands and must be corrected in the same commit. Tightening `NewPublish`/`NewFinalize` validation would be real scope creep beyond the roadmap item.
