@@ -40,7 +40,9 @@ batches:
     commit_sha: 1d297f84edb19cc3d877f2b6de37d0fbb2c7f875
     verify_baseline_failures: ["FAIL\t./internal/discussionparser/... [setup failed]"]
   - name: loomshed thin wrap
-    state: pending
+    state: running
+    implementer_session: 8f1b5c04-fe0b-47df-9035-ea112f7b010e
+    start_sha: 22db4e691f7bbdb770d0cd0790928fda560ae848
     verify_baseline_failures: []
   - name: loom CLI validate verbs
     state: pending
