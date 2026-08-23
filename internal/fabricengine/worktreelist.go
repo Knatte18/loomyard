@@ -15,10 +15,11 @@ import (
 
 // WorktreeEntry represents a single git worktree in the output of `git worktree list`.
 type WorktreeEntry struct {
-	Path   string `json:"path"`
-	Head   string `json:"head"`
-	Branch string `json:"branch"`
-	Main   bool   `json:"main"`
+	Path     string `json:"path"`
+	Head     string `json:"head"`
+	Branch   string `json:"branch"`
+	Main     bool   `json:"main"`
+	Prunable bool   `json:"prunable"`
 }
 
 // List returns a list of all git worktrees in the repository.
@@ -67,6 +68,11 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 				entry.Branch = strings.TrimPrefix(branchRef, "refs/heads/")
 			} else if line == "detached" {
 				entry.Branch = "(detached)"
+			} else if strings.HasPrefix(line, "prunable") {
+				// Real porcelain output emits "prunable <reason>" (a reason string
+				// follows the keyword), never a bare "prunable" line, so an
+				// exact-equality match would silently never fire.
+				entry.Prunable = true
 			} else if line == "bare" {
 				return nil, fmt.Errorf("bare repositories are not supported")
 			}
