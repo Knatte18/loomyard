@@ -47,7 +47,9 @@ batches:
     commit_sha: 3e3459aa371bbcf01c3e786ad5050f212f202d0a
     verify_baseline_failures: []
   - name: loom CLI validate verbs
-    state: pending
+    state: running
+    implementer_session: 9d34a226-2ddb-416c-b303-df84965a192d
+    start_sha: 8b21ac1fdf83dd9e1a5c38699cc5ef0c85d6cbc3
     verify_baseline_failures: []
   - name: gate parity tests
     state: pending
