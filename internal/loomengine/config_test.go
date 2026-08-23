@@ -174,3 +174,25 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 		})
 	}
 }
+
+// TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent verifies LoomScratchDir names
+// exactly the directory LoomRunLock, LoomDriverLog, and LoomBootstrapLock already share, so the
+// four never drift apart.
+func TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+	}
+
+	got := LoomScratchDir(l)
+
+	if want := filepath.Dir(LoomRunLock(l)); got != want {
+		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomRunLock()))", got, want)
+	}
+	if want := filepath.Dir(LoomDriverLog(l)); got != want {
+		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomDriverLog()))", got, want)
+	}
+	if want := filepath.Dir(LoomBootstrapLock(l)); got != want {
+		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomBootstrapLock()))", got, want)
+	}
+}
