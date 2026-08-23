@@ -33,11 +33,11 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 1 | `Preflight` | simple | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
 | 2 | `Loom-Preflight` | simple | mechanical | loom's own status file → `loom-status-spec.md`'s check-4 validation checklist | pass/fail — no artifact, a gate signal only |
 | 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
-| 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail |
+| 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail, also callable standalone as `lyx loom validate-discussion` |
 | 5 | `Discussion-Review` | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
 | 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
-| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail, also callable standalone as `lyx loom validate-plan` |
 | 9 | `Plan-Review` | bespoke | LLM/review segment | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
 | 10 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
 | 11 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like a review segment" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) |
@@ -85,6 +85,10 @@ Per-run checks:
 
 This mechanical producer is **exhaustively defined by the checks listed above** — it has no judgment, and nothing beyond these two checks is "its" to look for.
 
+The same two checks are callable standalone as `lyx loom validate-discussion`.
+The verb and this row call the identical package function, `discussionparser.Validate`, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
+The verb reports *which* file or heading failed, while the row's `Stuck` deliberately carries an empty pointer.
+
 **The `Plan-never-reads-support-log` boundary is not a per-run check.**
 The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
 It is asserted once, at build/test time, over `Plan-Write`'s producer *definition* — never re-evaluated per run — because it is a property of the definition itself, and there is nothing per-run for a mechanical producer to evaluate about it.
@@ -105,6 +109,11 @@ Do not flag any of the following as a finding:
 - **Incomplete call-site or cross-reference enumeration.**
   That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
 
+### Plan-Validate detail
+
+`lyx loom validate-plan` makes the same three `planparser` calls this row's `ShedProducer` makes, in the same order: `planparser.PlanDir`, `planparser.ParsePlan`, then `planparser.Validate`.
+The verb and the row call the identical `planparser` functions, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
+
 ## Plan-Sweep detail — the quarry-inventory spec
 
 **Build order note:** `Plan-Sweep` is not built in `loom: phase-machine scaffolding` — it stays a stub there, alongside `Plan-Write`, its only consumer.
@@ -117,7 +126,7 @@ Its job is grounding, not selection: hand `Plan-Write` real `quarry` lookups for
 
 **Deterministic extraction.**
 The repo's own doc convention is the extraction rule: every code identifier, file path, and symbol name in `decision-record.md`'s prose is backtick-quoted, the same convention this doc and every other `manifest/designs/*.md` file already follows.
-`Plan-Sweep` reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Validate` already does to check presence) and collects every backtick-quoted span inside it — nothing outside Scope, and no judgment about which spans "matter."
+`Plan-Sweep` reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Validate` already does to check presence, now living in `internal/discussionparser`) and collects every backtick-quoted span inside it — nothing outside Scope, and no judgment about which spans "matter."
 
 **Resolution, not selection.**
 Each collected span is classified mechanically, by shape, not meaning: a span containing `/` or a `.go`/`.md`-style extension is treated as a path and checked for existence on disk;

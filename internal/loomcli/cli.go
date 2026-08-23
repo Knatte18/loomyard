@@ -134,14 +134,19 @@ verb: it seeds the status file, commits the seed, and spawns/attaches the
 detached driver session; "drive" is the no-tmux escape hatch that runs the
 phase machine in the foreground for debugging and CI; "status" reports the
 current phase and, with --watch, tails it one line at a time; "pause"
-requests a pause at the next producer boundary.
+requests a pause at the next producer boundary. "validate-discussion" and
+"validate-plan" are the standalone form of the Discussion-Validate and
+Plan-Validate mechanical gates, callable by the writer agent before
+handoff.
 
 Example:
   lyx loom run
   lyx loom drive
   lyx loom status
   lyx loom status --watch
-  lyx loom pause`,
+  lyx loom pause
+  lyx loom validate-discussion
+  lyx loom validate-plan`,
 		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
 		// loom bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
@@ -149,7 +154,7 @@ Example:
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
-	parent.AddCommand(c.runCmd(), c.driveCmd(), c.statusCmd(), c.pauseCmd())
+	parent.AddCommand(c.runCmd(), c.driveCmd(), c.statusCmd(), c.pauseCmd(), c.validateDiscussionCmd(), c.validatePlanCmd())
 
 	return parent
 }
