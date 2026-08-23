@@ -129,6 +129,11 @@ A CLI verb there is a direct call into existing code.
   One non-zero code is enough — the envelope's message already names which kind of failure it is.
 - Rejected: emitting findings through `output.Ok` with exit 0 (an agent checking `$?` would read a failed gate as a pass);
   separate exit codes for findings vs I/O fault (redundant with the envelope).
+- **Flagged for the plan stage:** this collapses two genuinely different failure modes — "the artifact needs more work" and "something is broken" — onto the same exit code, distinguished only by envelope content.
+  That is deliberate, and it is only correct while the anticipated consumer is an LLM agent reading the JSON body.
+  `internal/output` offers no natural third state (`Ok` returns 0, both `Err` and `ErrFields` return 1), so a distinct code would mean a new helper, not a flag.
+  The plan stage must confirm the LLM agent is still the only anticipated consumer;
+  if a shell script that branches on `$?` alone ever becomes a consumer, this decision has to be revisited before that consumer is written, not after.
 
 ### zero-argument-verbs
 
