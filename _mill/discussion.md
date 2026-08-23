@@ -110,8 +110,12 @@ A CLI verb there is a direct call into existing code.
   `internal/loomshed` keeps no copy.
 - Rationale: it is the check's own data, and two copies is exactly the disagreement this task is eliminating.
   The existing comment points at the stencil rather than restating its content, which is the right shape and costs nothing to preserve across the move.
-  Exporting the list would be export-on-speculation with no caller.
-- Rejected: exporting it so docs or tests can enumerate it.
+- Decision (how out-of-package fixtures get a passing decision record, since they can no longer see the list): by a hardcoded fixture constant, not an export.
+  `internal/loomshed/discussionvalidate_test.go` already has exactly this in its `validDecisionRecord` constant;
+  the retained producer test and both parity-test fixture builders keep using a hardcoded seven-heading document of that shape.
+  Only the per-heading iteration case genuinely needs the list itself (`discussionvalidate_test.go:112` iterates `requiredDiscussionSections` today), and that case moves into `internal/discussionparser`, where the unexported list is in scope.
+  So no caller outside the package needs the list after the move — the export would exist purely to serve a fixture that a literal already serves.
+- Rejected: exporting it so out-of-package tests can enumerate it.
 
 ### two-flat-verbs-on-the-loom-subtree
 
@@ -242,7 +246,11 @@ the exact field set is mill-plan's call.
 Most of `cmd/lyx`'s tree tests derive their expectations from the live tree and need no edit at all: `drift_test.go` walks `newRoot()` collecting empty `Short`s, `longlist_test.go` iterates `root.Commands()` at module granularity, and `registration_test.go` is an AST scan for packages exposing `Command()` — none of the three has a per-verb list.
 The one `cmd/lyx` file to touch is `helptree_test.go`, whose `TestHelpTree_VerbModuleSubcommands` pins `wantSubs: []string{"run", "drive", "status", "pause"}` for `loom`;
 its assertions are documented superset checks, so it would not fail without the addition — adding the two verbs there is deliberate coverage, not a forced update.
-The one genuinely forced update is in `internal/loomcli/cli_test.go`: `TestCommand_AllFourVerbsRegistered` (line 35) asserts the exact registered-verb set and will fail until it is extended to six (and renamed accordingly).
+**No test in the repo is forced to change by this task, and that is itself the finding.**
+`internal/loomcli/cli_test.go`'s `TestCommand_AllFourVerbsRegistered` (line 35) looks like an exact-set assertion but is not: it builds `want := map[string]bool{"run": false, "drive": false, "status": false, "pause": false}`, marks only names already in that map, and asserts those four are present.
+Two extra verbs pass it unchanged.
+So both it and `helptree_test.go` are deliberate coverage additions, not forced updates — and without them the task would ship two new verbs with no mechanical registration guard whatsoever.
+Decision: tighten `TestCommand_AllFourVerbsRegistered` into a genuine exact-set assertion over `parent.Commands()` (renamed accordingly), so the guard fails on both a missing verb and an unexpected extra one, rather than merely extending its four-entry map to six and preserving the same blind spot.
 `cmd/lyx/seamsignature_test.go` is unaffected — no new seam module.
 
 **Allowlist to update.**
@@ -302,7 +310,12 @@ Cases to carry over and extend, all against a `t.TempDir()`:
 - `## Notes for the plan writer` absent → not a finding (documented non-check).
 - headings present but out of stencil order → not a finding (documented non-check).
 - an extra unexpected `## ` heading → not a finding (documented non-check).
-- an unreadable path that is not a not-exist (e.g. a directory where a file is expected) → returned error with an empty findings slice.
+- the **decision record** path unreadable for a reason that is not a not-exist (a directory where a file is expected is the easy fixture) → returned error with an empty findings slice.
+  This case applies to the decision record only, because that is the one file actually read;
+  the support log is merely `os.Stat`ed.
+- the **support log** path being a directory → `os.Stat` succeeds, so it counts as present and validation proceeds to the decision record.
+  This is today's behaviour and it is preserved deliberately rather than tightened — "both files exist" is exhaustively what the check is defined to ask about the support log, and adding an is-regular-file test would be a new check smuggled in under an extraction.
+  Assert it explicitly so the choice is visible rather than accidental.
 
 **`internal/loomshed` (retained, narrowed).**
 `discussionvalidate_test.go` keeps only the producer-level mapping and the existing cancellation cases: non-empty findings → `Stuck` with an empty `OutputPointer`;
@@ -338,9 +351,9 @@ the CLI half uses the hand-populated-receiver mechanism above with the same path
 Reuse one fixture builder for both directions rather than writing two fixture sets — two sets could drift and hide exactly the divergence the test exists to catch.
 Where the test lives follows its imports: the discussion parity test can sit in `internal/loomcli` (which may import `loomshed`'s exported constructors), and the same for the plan one.
 
-**Registered-verb assertions.**
-`internal/loomcli/cli_test.go`'s `TestCommand_AllFourVerbsRegistered` pins the exact verb set and must be extended to six and renamed — this is the one update the compiler-adjacent suite forces.
-In `cmd/lyx`, only `helptree_test.go`'s `loom` `wantSubs` entry gains the two verbs, as deliberate coverage;
+**Registered-verb assertions — both are deliberate coverage, neither is forced.**
+`internal/loomcli/cli_test.go`'s `TestCommand_AllFourVerbsRegistered` passes unchanged with two extra verbs (it marks only names already in its four-entry map), so this task tightens it into a real exact-set assertion over `parent.Commands()` and renames it, rather than extending the map and keeping the blind spot.
+In `cmd/lyx`, only `helptree_test.go`'s `loom` `wantSubs` entry gains the two verbs, also as deliberate coverage — its assertions are documented superset checks;
 `drift_test.go`, `longlist_test.go`, and `registration_test.go` derive from the live tree and need no edit.
 See the Registration-tests paragraph under `## Technical context` for why.
 
