@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -40,6 +41,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	websterCfg, err := websterengine.LoadConfig(anchorPath, "webster")
+	if err != nil {
+		return err
+	}
+	landingCfg, err := landingshed.LoadConfig(anchorPath, "landing")
 	if err != nil {
 		return err
 	}
@@ -105,11 +110,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// StencilsDir, RunRoot, Shuttle, Burler, and Now are left zero -- only SingleLLM, Bouncer,
 		// and BurlerRound read them, and no row in loom's recipe uses those engines yet.
 		//
-		// Landing is left unfilled, per the landing-parity Shared Decision: internal/landingshed's
-		// own account of the gap (see internal/landingshed/deps.go's OpenFabric/OpenParentFabric
-		// field doc) is what this omission preserves, and the parent-fabric resolution chain that
-		// closes it is a roadmap item this task adds (see manifest/roadmap.md), not something this
-		// conversion may build.
+		// Landing is deliberately left unfilled here too, but for a different reason than the other
+		// five: Env.Landing is assembled in drive.go, immediately before loomrecipe.New, because
+		// NewPublish/NewFinalize both open their fabric pair eagerly at construction, and wire()
+		// runs for every verb including "status"/"pause" -- the same OpenBisector hazard the
+		// comment above already guards against. See landingDeps (landingdeps.go) and the
+		// env-landing-filled-in-drive-not-wire design decision.
 	}
 
 	// c.shedPaths carries the four told values shedengine.Shed itself reads and no shedrecipe.Env
@@ -134,5 +140,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.cfg = loomCfg
 	c.reed = reedEngine
 	c.runDeps = runDeps
+	c.registry = registry
+	c.runner = runner
+	c.landingCfg = landingCfg
 	return nil
 }

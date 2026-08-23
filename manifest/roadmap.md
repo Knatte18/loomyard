@@ -9,17 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
 
-### landing: parent-fabric resolution chain
-
-`internal/landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` closures are what a caller must fill to construct `landingshed.NewPublish`/`NewFinalize`;
-today no production caller fills them, and `deps.go`'s own comment says the resolution chain "belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it" — this is that item.
-
-1. **landing: parent-fabric resolution chain** — fill `landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` closures for loom, building the resolution chain `deps.go` already documents: list the current hub's worktrees, match the entry whose branch equals the task's recorded parent branch, resolve that worktree's path, and open its fabric.
-   `internal/fabricengine`'s `origin.json`/`ReadOrigin` already carries `ParentBranch`, told at pair-creation time; no worktree-listing helper exists yet in `internal/gitrepo`/`internal/fabricengine`, and one must be added to do the matching.
-   Consequence that makes this worth its own item: until it lands, `Publish`/`Finalize` construction fails for want of `Env.Landing` wherever a caller tries to fill it — `loom: convert to a Shed recipe` (see Done below) hits exactly this and deliberately leaves `Env.Landing` unfilled, preserving the pre-existing gap rather than working around it — so `loom` cannot complete an end-to-end run until this item lands.
-   The five `loom: real LLM producers` tasks below are not blocked on this: they add rows to the recipe and are developable independently of whether a full run can complete.
-   See `internal/landingshed/deps.go` and [designs/loom.md](designs/loom.md).
-
 ### loom: real LLM producers
 
 What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. The three review-producer tasks depend on those two shipped items — both landed, all three are unblocked; `Discussion-Write`/`Plan-Write` don't depend on either and could in principle land in any order, but stay grouped here for continuity with the original split. Sequenced after the four now-Done "Shed recipe" entries below so these five tasks write their rows directly as recipe entries in `contracts/recipes/loom-recipe.yaml`.
@@ -182,7 +171,7 @@ No build order is implied between these items.
    `internal/loomrecipe` sits above `internal/loomshed` (avoiding the production import cycle `internal/shedrecipe`'s registry would otherwise close) and is the recipe's sole production consumer; `internal/loomcli` wires to it in place of `loomshed.New`.
    `internal/loomshed` shed its own `New`/`Deps`/`ShedPaths` entirely, keeping only the thirteen row-name constants, its six exported producer constructors the registry reaches for, and its status-seed/preflight helpers; its assembled-graph tests (coverage guard, sequencing, cancellation, resume) moved to `internal/loomrecipe` along with duplicated fixture helpers, per the row-name-authority-stays-with-the-go-constants and duplicate-test-helpers-rather-than-share-them decisions.
    Landed the Recipe-Format Sole-Parser Invariant in `CONSTRAINTS.md`, alongside repointed Shed Recipe Registry Invariant and Told-Geometry Invariant enforcement lines.
-   `Env.Landing` is deliberately left unfilled by `internal/loomcli`, preserving the pre-existing gap the new `landing: parent-fabric resolution chain` Planned item above closes.
+   `Env.Landing` was deliberately left unfilled by `internal/loomcli` at the time this entry shipped, and the `landing: parent-fabric resolution chain` Done entry closed that gap.
    See [designs/shed-recipe.md](designs/shed-recipe.md), [designs/loom.md](designs/loom.md), and the `internal/loomrecipe` package documentation.
 
 1. **Retire perch** — deleted `internal/perchengine`, `internal/perchcli`, and the `lyx perch run|pause` CLI verb outright, together with every perch-only surface they anchored: `hubgeom.PerchGeometry`, `standalonegeom.PerchGeometry`, `configreg`'s `perch` config module, `shedadapters.PerchProducer`, and the `perch-suite` sandbox scheme.
@@ -329,6 +318,12 @@ No build order is implied between these items.
    It always returns `Stuck` to its segment's `Bouncer`, never `Done`, and resolves its round from disk over the review/fixer-report pair predicate rather than holding an attempt number in memory.
    `burlerengine.Profile.ClusterExclude` shipped alongside it as the per-call cluster-fan trimming knob.
    See the `internal/shedadapters` package documentation.
+
+1. **landing: parent-fabric resolution chain** — filled `landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` closures for loom with `fabricengine.OpenParent`, a four-step resolution chain inside `internal/fabricengine`: list the current hub's worktrees, match the entry whose branch equals the task's recorded parent branch, resolve that worktree's path, and open its fabric.
+   A `Prunable` field on `WorktreeEntry` lets a stale worktree entry be skipped rather than matched, and two vocabulary-neutral methods, `Fabric.OriginURL`/`Fabric.PushBranch`, give `internal/loomcli` a way to reach fabric's push primitive without a bare `warp`/`weft` token.
+   `internal/loomengine.LoomScratchDir` and `internal/loomcli/drive.go` filling `shedrecipe.Env.Landing` in full, immediately before `loomrecipe.New`, close the gap that made `lyx loom drive` fail construction on every invocation.
+   The worktree-listing helper this used, `fabricengine.List`, already existed before this task — what this task added was the matcher, the resolver, and the opener on top of it.
+   See [internal/fabricengine](../internal/fabricengine/doc.go) and [designs/loom.md](designs/loom.md).
 
 1. **loom: self-checkable mechanical gates** — `Discussion-Validate`'s two checks (both `_lyx/discussion/` files exist, the decision record carries all seven required headings) moved out of `internal/loomshed` into a new stdlib-only leaf, `internal/discussionparser`, returning `[]Finding` rather than a bare bool — mirroring `internal/planparser`'s existing split from `loomshed.planValidate`.
    `loomshed.discussionValidate.Call` became a thin wrap over `discussionparser.Validate`, its outward `Done`/`Stuck`/returned-error contract deliberately unchanged; the short-circuit order pinned in the new package (stat the support log first, then read the decision record, then check headings, an error always winning over a finding a later check would have produced) is what makes that unchanged-contract claim checkable rather than an aspiration.

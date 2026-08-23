@@ -14,9 +14,11 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -48,6 +50,16 @@ type loomCLI struct {
 	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps. It is
 	// also kept here directly so a test can inspect it without unwrapping env.
 	runDeps websterengine.RunDeps
+	// registry is the resolved model-spec registry, carried onto the struct so drive.go can pass
+	// it to landingDeps without a second modelspec.LoadRegistry call.
+	registry modelspec.Registry
+	// runner is the constructed shuttle runner, carried onto the struct so drive.go can pass it to
+	// landingDeps as the landing seam's Shuttle value.
+	runner *shuttleengine.Runner
+	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
+	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
+	// the operator's own terminal on every verb, not only inside drive's detached driver log.
+	landingCfg landingshed.Config
 }
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
