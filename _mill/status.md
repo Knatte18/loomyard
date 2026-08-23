@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: _mill/plan
@@ -25,4 +25,21 @@ plan-review-r2  '2026-08-23T10:29:35Z'
 plan-fix-r2  '2026-08-23T10:29:35Z'
 plan-fix-r3  '2026-08-23T10:35:37Z'
 planned  '2026-08-23T10:35:56Z'
+implementing  '2026-08-23T10:36:49Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: discussionparser leaf package
+    state: pending
+  - name: loomshed thin wrap
+    state: pending
+  - name: loom CLI validate verbs
+    state: pending
+  - name: gate parity tests
+    state: pending
+  - name: docs and roadmap
+    state: pending
 ```
