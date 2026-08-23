@@ -26,6 +26,7 @@ What batch 4 consumes is the *behaviour* pinned here: `NewDiscussionValidate` ov
 
 - **Context:**
   - `internal/loomshed/discussionvalidate.go`
+  - `internal/loomshed/ctx.go`
   - `internal/discussionparser/validate_test.go`
 - **Edits:**
   - `internal/loomshed/discussionvalidate_test.go`
@@ -51,7 +52,10 @@ What batch 4 consumes is the *behaviour* pinned here: `NewDiscussionValidate` ov
     This is the case the `short-circuit-order-is-load-bearing` Shared Decision exists to protect;
     without it, nothing in this package would notice an accumulating rewrite flipping it to `Stuck`.
 
-  Add a cancellation case covering the `nonDoneExit` path taken on a finding, not only the entry path: a cancelled context together with a missing support log must still produce a non-nil error and no verdict.
+  Add no second cancellation case.
+  `entryErr` and `nonDoneExit`'s `cancelErr` consult the identical `ctx.Err()` value, and `entryErr` is `Call`'s very first statement, so a synchronous test that pre-cancels its context is always caught at entry and can never reach `nonDoneExit`'s own check — the two are not independently reachable by fixture choice, and a second pre-cancelled case would be mechanically identical to `CancelledContextReturnsErrorNotVerdict`.
+  Keep that one case and state this reasoning in its doc comment, so a later reader does not mistake the single case for an oversight.
+
   Update the file's header comment, if one is added, and every retained subtest's intent so it reads as the producer's own mapping suite rather than the check's.
   Do not touch `internal/loomshed/planvalidate_test.go`.
 - **Commit:** `test(loomshed): narrow discussionValidate's suite to producer-level outcome mapping`
@@ -94,7 +98,7 @@ What batch 4 consumes is the *behaviour* pinned here: `NewDiscussionValidate` ov
 
 ## Batch Tests
 
-`verify: go test ./internal/loomshed/...` covers `internal/loomshed/discussionvalidate_test.go` (the narrowed producer-mapping suite, including the two added cases and the extra cancellation case), `internal/loomshed/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`, which must accept the new `discussionparser` import and would fail without the allowlist entry), and `internal/loomshed/planvalidate_test.go`, which this batch leaves untouched but which shares the package and so must keep passing.
+`verify: go test ./internal/loomshed/...` covers `internal/loomshed/discussionvalidate_test.go` (the narrowed producer-mapping suite, including the two added cases and the single retained cancellation case), `internal/loomshed/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`, which must accept the new `discussionparser` import and would fail without the allowlist entry), and `internal/loomshed/planvalidate_test.go`, which this batch leaves untouched but which shares the package and so must keep passing.
 The scope is one package because every file this batch edits lives in it;
 no other package's behaviour changes, and the producer's outward contract is deliberately identical before and after.
 Both cards are tier 1 — every fixture is a `t.TempDir()` and no case spawns a process.

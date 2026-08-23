@@ -27,6 +27,8 @@ They are two ten-to-twenty-line `RunE` bodies over the same receiver fields with
 - **Context:**
   - `internal/loomcli/status.go`
   - `internal/loomcli/wiring.go`
+  - `internal/loomshed/discussionvalidate.go`
+  - `internal/loomshed/planvalidate.go`
   - `internal/discussionparser/validate.go`
   - `internal/planparser/parse.go`
   - `internal/planparser/validate.go`

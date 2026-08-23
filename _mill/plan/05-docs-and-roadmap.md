@@ -50,8 +50,10 @@ Batch-local decision: `manifest/roadmap.md` gets its own card rather than being 
 
   In `docs/overview.md`:
 
-  - Add `├── internal/discussionparser/     the sole reader of `_lyx/discussion/`'s format, a stdlib-only leaf` to the module tree listing, placed adjacent to the other loom-adjacent entries and aligned with the surrounding column convention.
-  - Add a `discussionparser` bullet to the module list, in the shape the neighbouring `planparser` bullet uses: the sole reader of `_lyx/discussion/`'s on-disk format, taking told absolute paths and declaring no location of its own (deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location` a stdlib-only leaf may not import), consumed by `loomshed.discussionValidate` and by the `lyx loom validate-discussion` verb, with the ✅ Implemented marker the neighbouring entries carry.
+  - Add no entry to the module-tree listing for the new package.
+    `internal/planparser` — the closest existing analog, a told-path sole-format-reader — has no tree entry either, so adding one only for the new package would make the tree inconsistent with the very package it mirrors.
+    The module list below is where the discussion's "module table gains `internal/discussionparser`" obligation is discharged.
+  - Add a `discussionparser` bullet to the module list, immediately after the existing `planparser` bullet and in the shape that bullet uses: the sole reader of `_lyx/discussion/`'s on-disk format, taking told absolute paths and declaring no location of its own (deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location` a stdlib-only leaf may not import), consumed by `loomshed.discussionValidate` and by the `lyx loom validate-discussion` verb, with the ✅ Implemented marker the neighbouring entries carry.
   - In the `loom` module bullet, extend the parenthetical verb list from `lyx loom run|drive|status|pause` to include `validate-discussion` and `validate-plan`, and add two sentences describing them in the same one-sentence-per-verb style the existing `run` / `drive` / `status` / `pause` sentences use: each runs its phase's mechanical gate standalone, exits 0 on a clean gate and 1 otherwise, and emits the findings in the failure envelope so a writer agent can self-check before handing off.
 
   Every edited paragraph and list item uses semantic line breaks, per the `markdown-semantic-line-breaks` Shared Decision, and any markdown link added must resolve — both its file part and, for a `.md` target, its `#anchor`.

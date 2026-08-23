@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: loom-self-checkable-mechanical-gates
 branch: loom-self-checkable-mechanical-gates
 plan: _mill/plan
@@ -21,4 +21,6 @@ discussed  '2026-08-23T10:03:32Z'
 planning  '2026-08-23T10:12:06Z'
 plan-review-r1  '2026-08-23T10:20:58Z'
 plan-fix-r1  '2026-08-23T10:20:58Z'
+plan-review-r2  '2026-08-23T10:29:35Z'
+plan-fix-r2  '2026-08-23T10:29:35Z'
 ```

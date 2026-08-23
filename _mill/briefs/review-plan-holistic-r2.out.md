@@ -1,0 +1,32 @@
+MILL_REVIEW_BEGIN
+# Review: loom: self-checkable mechanical gates — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (self-assessed, per session metadata)
+reviewed_file: plan/
+date: 2026-08-23
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 5's Context omits the loomshed files it cites by name
+**Location:** batch `loom CLI validate verbs` / card 5.
+**Issue:** Requirements justify both `RunE` bodies' call sequence by naming `loomshed.discussionValidate.Call` and `loomshed.planValidate.Call` verbatim ("the same function `loomshed.discussionValidate.Call` calls"; "the same three calls ... that `loomshed.planValidate.Call` makes"), but neither `internal/loomshed/discussionvalidate.go` nor `internal/loomshed/planvalidate.go` appears in card 5's `Context:` or `Edits:` (only `status.go`, `wiring.go`, `discussionparser/validate.go`, `planparser/parse.go`, `planparser/validate.go`, `output/output.go`, `clihelp/exec.go` are listed).
+**Fix:** Add `internal/loomshed/discussionvalidate.go` and `internal/loomshed/planvalidate.go` to card 5's `Context:`.
+
+### [BLOCKING:design] Card 3's new cancellation case can't reach the path it claims to cover
+**Location:** batch `loomshed thin wrap` / card 3.
+**Issue:** Card 3 asks for "a cancellation case covering the `nonDoneExit` path taken on a finding, not only the entry path: a cancelled context together with a missing support log." But `entryErr` (`internal/loomshed/ctx.go`) checks `ctx.Err()` and returns immediately, as `Call`'s very first statement, before `os.Stat`/`nonDoneExit` ever run. A synchronous test that cancels `ctx` before calling `Call` is caught by `entryErr` regardless of fixture, so this case is mechanically identical to the already-existing `CancelledContextReturnsErrorNotVerdict` (which also pre-cancels `ctx`) — it can never actually exercise `nonDoneExit`'s own `cancelErr` check on a finding. The requirement's premise that these are two distinguishable code paths reachable by fixture choice is false for a synchronous producer with no goroutine/channel to flip `ctx.Err()` mid-call.
+**Fix:** Either drop the claim of new coverage (the existing entry-path test already exercises the only reachable branch), or rewrite the requirement to state honestly that `entryErr` and `nonDoneExit`'s `cancelErr` consult the identical `ctx.Err()` value and are therefore not independently testable via a pre-set context.
+
+### [NIT:consistency] docs/overview.md tree-placement guidance has no real precedent to follow
+**Location:** batch `docs and roadmap` / card 9.
+**Issue:** Card 9 asks for the new `internal/discussionparser/` module-tree entry to be "placed adjacent to the other loom-adjacent entries and aligned with the surrounding column convention," but `internal/planparser` — the closest existing analog (a told-path, sole-format-reader leaf) — is not in the module tree at all, so there is no actual precedent for where this shape of package sits.
+**Fix:** Either name a concrete anchor line to insert after, or state explicitly that placement is implementer judgment rather than "the convention."
+
+## Verdict
+REQUEST_CHANGES
+Two Context-completeness/false-premise defects need fixing before this plan is ready to implement.
+MILL_REVIEW_END
