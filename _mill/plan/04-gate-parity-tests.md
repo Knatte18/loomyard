@@ -32,6 +32,7 @@ it is not a preference.
   - `internal/loomshed/planvalidate.go`
   - `internal/discussionparser/validate.go`
   - `internal/planparser/validate.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/clihelp/exec.go`
 - **Edits:**
   - `CONSTRAINTS.md`

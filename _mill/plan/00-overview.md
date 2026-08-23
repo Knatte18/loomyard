@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: self-checkable mechanical gates'
 slug: 'loom-self-checkable-mechanical-gates'
-approved: false
+approved: true
 started: '20260823-100622'
 parent: 'main'
 root: ""

@@ -73,6 +73,7 @@ They are two ten-to-twenty-line `RunE` bodies over the same receiver fields with
   - `internal/loomcli/cli_test.go`
   - `internal/loomcli/validate.go`
   - `internal/loomcli/wiring.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/discussionparser/validate.go`
   - `internal/planparser/validate.go`
   - `internal/planparser/testdata/goodplan/00-overview.md`
