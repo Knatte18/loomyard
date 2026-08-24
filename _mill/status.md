@@ -56,7 +56,9 @@ batches:
     commit_sha: 427c28a26e99ef5d87abba192e82208c2b880faa
     verify_baseline_failures: []
   - name: documentation lifecycle
-    state: pending
+    state: running
+    implementer_session: a8394e75-6e11-4d1c-8b5a-5c9783f27b81
+    start_sha: cb79d0dad9ae07628c76272c92bf9de9c6c4f8f9
     verify_baseline_failures: ['--- FAIL: TestEnforcement_MarkdownLinks (0.01s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/lyxcwd\t\
     0.140s", "FAIL\tgithub.com/Knatte18/loomyard/internal/lyxcwd\t0.142s"]
 ```
