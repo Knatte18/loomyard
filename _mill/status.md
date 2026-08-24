@@ -45,7 +45,9 @@ batches:
     commit_sha: bbcf1c5b787a21164ec986cf52ba417b23d8e9ec
     verify_baseline_failures: []
   - name: loomcli-wiring
-    state: pending
+    state: running
+    implementer_session: 5fd7211e-e216-4b6c-b4f4-d97e8295ee67
+    start_sha: 33cbacfa5813e69cdeba7851ecb0d78dae7a9753
     verify_baseline_failures: []
   - name: stencil-prompt-and-docs
     state: pending
