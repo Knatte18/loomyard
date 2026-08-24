@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: webster-dag-card-sequencing
 branch: webster-dag-card-sequencing
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-docs  '2026-08-24T19:08:48Z'
 holistic-reviewing  '2026-08-24T19:09:20Z'
 holistic-approved  '2026-08-24T19:14:10Z'
 done  '2026-08-24T19:15:54Z'
+pr-pending  '2026-08-24T19:16:51Z'
 ```
 
 ## Batches
