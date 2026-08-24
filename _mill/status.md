@@ -31,11 +31,17 @@ implementing  '2026-08-24T18:47:12Z'
 ```yaml
 batches:
   - name: planparser-archive-name-and-loomshed-decorator
-    state: pending
+    state: running
+    implementer_session: a3f0276a-a22c-460e-822c-00a47839818c
+    start_sha: e9b843893a0087bade236b30fac231b755f08ee7
+    verify_baseline_failures: []
   - name: shedrecipe-entry-and-recipe-row
     state: pending
+    verify_baseline_failures: []
   - name: loomcli-wiring
     state: pending
+    verify_baseline_failures: []
   - name: stencil-prompt-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
