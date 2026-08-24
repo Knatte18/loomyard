@@ -11,19 +11,16 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### loom: rewrite for the new Plan Card format
 
-A 2026-08-23 discussion redesigned loom's own Discussion/Plan pipeline around symbol-level Cards and Quarry as the mechanical backing (degraded/LLM-manual mode first, Quarry as a pure speed upgrade later, never a hard dependency) — see [designs/plan-card-format.md](designs/plan-card-format.md), already written. Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and `loom-template-plan.md`; the discussion stencil's own scoped supersession claim now lives in [designs/loom-format-discussion.md](designs/loom-format-discussion.md). `manifest/designs/scout-plan-symbol-fields.md` and `webster-parallel-execution.md` predate this and are stale, to be reconciled or deleted once this group ships. Three waves, in order — each wave depends on the previous one landing.
+A 2026-08-23 discussion redesigned loom's own Discussion/Plan pipeline around symbol-level Cards and Quarry as the mechanical backing (degraded/LLM-manual mode first, Quarry as a pure speed upgrade later, never a hard dependency) — see [designs/plan-card-format.md](designs/plan-card-format.md), already written. Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and `loom-template-plan.md`. `manifest/designs/scout-plan-symbol-fields.md` and `webster-parallel-execution.md` predate this and are stale, to be reconciled or deleted once this group ships. Three waves, in order — each wave depends on the previous one landing.
 
 **Wave 1:** complete — both items shipped, see Done below (**loom: redesign the Discussion format**, **loom: code-writing skills — comments, build, testing**).
 
 **Wave 2** (depends on Wave 1 landing):
 
-1. **planparser: Card-format migration to `Edits`/`Uses`** — replace `planparser.Card`'s file-op fields (`ContextFiles`/`EditsFiles`/`CreatesFiles`/`DeletesFiles`/`Moves`) with the new `Edits`/`Uses` shape from `designs/plan-card-format.md`, and update every direct consumer in `internal/websterengine` (rendering, report parsing, deviation-checking) to read the new fields. No behavior change — webster still executes strictly in declared plan order after this lands, same as today, just against the new field shape. Bounded, format-only migration; the two packages' changes land together since websterengine's field reads would not compile against the old shape otherwise. Sequenced first in this wave since it's a hard prerequisite for both Wave 3 items below.
+1. **planparser: Card-format migration to `Edits`/`Uses`** — replace `planparser.Card`'s file-op fields (`ContextFiles`/`EditsFiles`/`CreatesFiles`/`DeletesFiles`/`Moves`) with the new `Edits`/`Uses` shape from `designs/plan-card-format.md`, and update every direct consumer in `internal/websterengine` (rendering, report parsing, deviation-checking) to read the new fields. No behavior change — webster still executes strictly in declared plan order after this lands, same as today, just against the new field shape. Bounded, format-only migration; the two packages' changes land together since websterengine's field reads would not compile against the old shape otherwise. It is a hard prerequisite for both Wave 3 items below — the only item left in this wave, now that **loom: Discussion-Write producer** has shipped (see Done below).
    See [designs/plan-card-format.md](designs/plan-card-format.md).
 
-1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the new Discussion format (the Done **loom: redesign the Discussion format** item), instructing the agent to load the new code-writing skills (the Done **loom: code-writing skills — comments, build, testing** item) where it writes code. Expected to be small — the mechanical/Quarry layer now carries what used to be prompt content. Independent of the planparser migration above; grouped in this wave because it has no remaining blockers of its own, not because it depends on that item.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [designs/plan-card-format.md](designs/plan-card-format.md).
-
-**Wave 3** (depends on Wave 2's planparser migration landing):
+**Wave 3** (depends on Wave 2 landing):
 
 1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the Card format in `designs/plan-card-format.md`. Depends on Wave 2's **planparser: Card-format migration** item — a prompt targeting the new `Edits`/`Uses` shape is only useful once `planparser` can parse it. `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no quarry inventory available yet," not as an error.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [designs/plan-card-format.md](designs/plan-card-format.md).
@@ -51,6 +48,12 @@ What "loom: write and wire in the real LLM producers" split into — one prompt/
    Two rubric dimensions this task must add on top of the pre-redesign scope: compliance with `designs/code-comment-conventions.md` in any new/changed doc comment (no unnecessary symbol cross-references), and, per card, whether its Type-specific mechanical check actually ran and passed (the AST-script-plus-grep for a Rename card, `assert-no-callers` for a Delete card) rather than only checking that the diff compiles and tests pass.
    Replace the `Webster-Review` stub with a `Webster-Bouncer`/`Webster-Burler` segment: `Webster-Bouncer` is the entry point, `Segment: "Webster-Review"`, `OnStuck: Webster-Burler` from both the seed call and on rejection, `OnDone` exits the segment — same shape as the other two review-producer items above, against the full diff rather than a single artifact.
    Depends on the shipped `shedadapters: Burler-round producer` and `Bouncer` producers — both landed, this item is unblocked.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+
+1. **loom: interactive Discussion-Write** — flip the `autonomous` argument at `internal/loomcli`'s `wire()` from `true` to whatever a real mode selector resolves, and solve the resume defect that made autonomous-only the right call.
+   `shuttleengine`'s `Wait` classifies a turn ending without all output files present as `OutcomeAsking`, `SingleLLMProducer` maps that to `Stuck`, and on resume it archives both freshly-written files and spawns an agent that knows nothing of the interview.
+   A naive fix walks into a trap: a resume-on-output-files pre-check reporting `Done` when both files exist cannot distinguish an interrupted interview from a `Discussion-Validate` bounce, which also re-enters the row with both files present, and would ping-pong until the bounce budget is exhausted.
+   `loomengine.DiscussionSpec` already keeps its `autonomous` parameter and `prompt.go`'s `modeRules` already keeps both branches with their tests, so the prose half is done.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 ## Someday
@@ -165,13 +168,21 @@ No build order is implied between these items.
 ## Done
 
 1. **loom: redesign the Discussion format** — a companion design doc to `plan-card-format.md`, bounding `Discussion-Write`'s exploration scope (no deep architecture/interface/dependency gathering — that class of fact is Quarry's or manual grep's job at Plan time), plus a relocation-and-exclusion rubric principle recorded in `designs/loom.md` for the future `Discussion-Review` producer to point at.
-   See [designs/loom-format-discussion.md](designs/loom-format-discussion.md).
+   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric), where the folded-in content now lives, alongside `contracts/stencils/loom/loom-template-discussion.md` itself.
+
+1. **loom: Discussion-Write producer** — replaced the `Discussion-Write` stub with a real `SingleLLMProducer` behind a new `loomshed` commit decorator, reached through a new `DiscussionWrite` registry entry over two injected `shedrecipe.Env` closures (`DiscussionSpec`, `CommitDiscussion`).
+   The stencil was rewritten with the folded-in exploration bound, a bounded coarse-level architecture interview category, a `scribe:prose`/`scribe:conversation` load step, and a closing `lyx loom validate-discussion` self-check.
+   The producer is autonomous-only.
+   `manifest/designs/loom-format-discussion.md` is deleted per its own Lifecycle section, its durable content folded into the stencil and into `designs/loom.md`'s own copy of the relocation-and-exclusion rubric.
+   Two manual operator prerequisites remain outside what this task automates: `/plugin install scribe@loomyard`, which nothing in the tree performs or verifies, so a missing plugin degrades prose quality rather than breaking a run;
+   and `lyx stencil sync`, because `stencilstore`'s `ModeDev` reconcile warns instead of writing for an untouched stencil, so an already-seeded hub on a `-dev` binary keeps the old stencil text until the sync forces a refresh.
+   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
 1. **Shed recipe: engine registry** — shipped `internal/shedrecipe`, the name → constructor mapping the future recipe loader resolves each row's `Engine` field against, registering all twelve engine names: `Batchifier`, `Bouncer`, `BurlerRound`, `DiscussionValidate`, `Finalize`, `LoomPreflight`, `PlanValidate`, `Preflight`, `Publish`, `SingleLLM`, `Stub`, `Webster`.
    Every registry value has the fixed `Constructor` signature `func(name string, cfg Config, env Env) (shedengine.ShedProducer, error)`, with the `Config`/`Env` split this task settled: `Config` is the recipe row's portable, already-decoded configuration, and `Env` is the caller-filled bundle of absolute roots and injected seams, never a value that differs between two rows.
    `internal/loomshed` exported six of its own producer constructors (`NewLoomPreflight`, `NewBatchifier`, `NewDiscussionValidate`, `NewPlanValidate`, `NewStub`, `NewWebsterProducer`) so the registry could reach them, widening only their declared return type to `shedengine.ShedProducer` and keeping every concrete type unexported.
    A coverage guard pinned the registry against loom's real row list, both directions, at the time this piece shipped;
-   that guard has since moved to `internal/loomrecipe/coverage_guard_test.go` (the loom-driving half) and `internal/shedrecipe/registry_test.go` (the exact-twelve-names pin) when `loom: convert to a Shed recipe` landed — see that entry below.
+   that guard has since moved to `internal/loomrecipe/coverage_guard_test.go` (the loom-driving half) and `internal/shedrecipe/registry_test.go` (the exact-names pin) when `loom: convert to a Shed recipe` landed — see that entry below.
    This piece deliberately did not build the recipe file format, the loader, or the loom conversion — the `loom: convert to a Shed recipe` entry below shipped that; the Shed-setup validity checker piece has since shipped too, see its own entry below.
    See [designs/shed-recipe.md](designs/shed-recipe.md) and the `internal/shedrecipe` package documentation.
 
