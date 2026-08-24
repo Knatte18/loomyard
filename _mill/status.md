@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-stencil-prompt-and-docs
+phase: holistic-reviewing
 slug: loom-plan-write-producer
 branch: loom-plan-write-producer
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-planparser-archive-name-and-loomshed-decorator  '2026-08-24T18:52:45Z'
 approved-shedrecipe-entry-and-recipe-row  '2026-08-24T19:01:40Z'
 approved-loomcli-wiring  '2026-08-24T19:04:10Z'
 approved-stencil-prompt-and-docs  '2026-08-24T19:09:11Z'
+holistic-reviewing  '2026-08-24T19:09:47Z'
 ```
 
 ## Batches
