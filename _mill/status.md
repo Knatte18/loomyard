@@ -32,5 +32,8 @@ implementing  '2026-08-24T09:15:14Z'
 ```yaml
 batches:
   - name: discussion-format doc and manifest cleanup
-    state: pending
+    state: running
+    implementer_session: 6c2fdc77-e431-48eb-8d44-2ebd7597ba9a
+    start_sha: 457b12e317c5d6f4bdc765e9cce69b0fcac4e386
+    verify_baseline_failures: []
 ```
