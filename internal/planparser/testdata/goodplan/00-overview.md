@@ -1,5 +1,5 @@
 ---
-format: 3
+format: 4
 approved: true
 root: internal/boardcli
 ---
@@ -12,10 +12,13 @@ of a later extraction.
 
 ## Card Index
 
-1 — json-flag — add the `--json` bool flag and RowJSON struct
-2 — json-emission — marshal each row through output.Ok when --json is set
-3 — json-tests — cover --json in boardcli list tests
-4 — helptree-rename — update help-tree pins and rename the row mapper
+1 — json-row-type — define the RowJSON struct
+2 — json-flag — add the --json bool flag and wire list.go
+3 — json-emission — marshal each row through output.Ok when --json is set
+4 — legacy-rows-delete — remove the superseded legacy row-conversion file
+5 — rowmapper-rename — rename the row mapper ahead of a later extraction
+6 — helppins-move — relocate the pinned help-tree fixture
+7 — json-docs — update the package doc comment and the standalone docs page
 
 ## Shared Decisions
 
@@ -32,7 +35,8 @@ of a later extraction.
 1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.
 2. Then make ONLY surgical edits (package declaration, imports, identifier
    retargeting) — no unrelated rewrites.
-3. Use `Creates:` only for genuinely new files, never for the relocated file itself.
+3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
+   into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
 

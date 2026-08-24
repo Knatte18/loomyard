@@ -185,30 +185,16 @@ func TestPlanSpec_PromptStatesRootResolution(t *testing.T) {
 	}
 }
 
-// TestPlanSpec_PromptStatesContextSemantics verifies Context semantics are documented.
+// TestPlanSpec_PromptStatesContextSemantics verifies Uses: semantics are documented.
 func TestPlanSpec_PromptStatesContextSemantics(t *testing.T) {
 	prompt := renderedPlanPrompt(t)
 
 	for _, want := range []string{
-		"read but not change",
-		"ONE of the five fields",
+		"names what the card reads but does not change",
+		"is a contradiction: is it being changed, or only read?",
 	} {
 		if !strings.Contains(prompt, want) {
-			t.Errorf("PlanSpec(...).Prompt does not contain %q; Context:/exclusivity semantics must reach the agent", want)
-		}
-	}
-}
-
-// TestPlanSpec_PromptStatesMoveRedundantRule verifies the move-redundant rule is documented.
-func TestPlanSpec_PromptStatesMoveRedundantRule(t *testing.T) {
-	prompt := renderedPlanPrompt(t)
-
-	for _, want := range []string{
-		"must not also appear",
-		"split-out file is a separate plain `Creates:` entry",
-	} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("PlanSpec(...).Prompt does not contain %q; the move-redundant rule must reach the agent", want)
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; Uses:/overlap semantics must reach the agent", want)
 		}
 	}
 }
@@ -227,32 +213,30 @@ func TestPlanSpec_PromptStatesVerifyIsRunnable(t *testing.T) {
 	}
 }
 
-// TestPlanSpec_PromptStatesMovedFileNotInEdits verifies moved files aren't in Edits.
-func TestPlanSpec_PromptStatesMovedFileNotInEdits(t *testing.T) {
+// TestPlanSpec_PromptStatesTypeLabelGrammar verifies the type-label grammar is documented.
+func TestPlanSpec_PromptStatesTypeLabelGrammar(t *testing.T) {
 	prompt := renderedPlanPrompt(t)
 
 	for _, want := range []string{
-		"already declared by its `Moves:` entry",
-		"either endpoint — in that same card's `Edits:`",
-		"same card-field-overlap contradiction",
+		"exactly one bold type label from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`",
+		"sub-bullets are the card's targets",
 	} {
 		if !strings.Contains(prompt, want) {
-			t.Errorf("PlanSpec(...).Prompt does not contain %q; the moved-file-not-in-Edits rule must reach the agent", want)
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the type-label grammar must reach the agent", want)
 		}
 	}
 }
 
-// TestPlanSpec_PromptStatesDependsOnCriterion verifies Depends-on criterion is documented.
-func TestPlanSpec_PromptStatesDependsOnCriterion(t *testing.T) {
+// TestPlanSpec_PromptStatesImpactSummaryRequirement verifies the ImpactSummary requirement is documented.
+func TestPlanSpec_PromptStatesImpactSummaryRequirement(t *testing.T) {
 	prompt := renderedPlanPrompt(t)
 
 	for _, want := range []string{
-		"what depends on what",
-		"not compile-visible",
-		"other card were dropped",
+		"`**ImpactSummary:**` on `Edit`/`Delete` cards only",
+		"inline on the label line",
 	} {
 		if !strings.Contains(prompt, want) {
-			t.Errorf("PlanSpec(...).Prompt does not contain %q; the Depends-on declaration criterion must reach the agent", want)
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the ImpactSummary requirement must reach the agent", want)
 		}
 	}
 }

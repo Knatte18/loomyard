@@ -161,10 +161,11 @@ func TestValidateDiscussionCmd(t *testing.T) {
 	}
 }
 
-// planFixture writes a minimal, genuinely valid plan under <anchorPath>/_lyx/plan/, materializing
-// every path the card names under worktreeRoot, then returns a *loomCLI wired only with the two
-// plan path fields validatePlanCmd's RunE reads. approved controls the overview frontmatter's
-// approved: value, so callers can trip plan-unapproved without touching anything else.
+// planFixture writes a minimal, genuinely valid format-4 plan under <anchorPath>/_lyx/plan/,
+// materializing every path the card names under worktreeRoot, then returns a *loomCLI wired only
+// with the two plan path fields validatePlanCmd's RunE reads. approved controls the overview
+// frontmatter's approved: value, so callers can trip plan-unapproved without touching anything
+// else. The sole card is a format-4 Create card carrying a pinned Commit: value.
 func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *loomCLI {
 	t.Helper()
 
@@ -174,7 +175,7 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 	}
 
 	overview := "---\n" +
-		"format: 3\n" +
+		"format: 4\n" +
 		"approved: " + strconvBool(approved) + "\n" +
 		"root: \n" +
 		"---\n\n" +
@@ -186,16 +187,10 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 	}
 
 	card := "# Card 1 — validate-fixture\n\n" +
-		"**What:** minimal fixture card for validate-plan tests.\n" +
-		"**Context:** none\n" +
-		"**Edits:** none\n" +
-		"**Creates:**\n" +
-		"- `fixture-output.txt`\n" +
-		"**Deletes:** none\n" +
-		"**Moves:** none\n" +
-		"**Depends-on:** none\n" +
-		"**Commit:** `1: validate-fixture`\n" +
-		"**verify:** none\n"
+		"**Create:**\n" +
+		"- `fixture-output.txt`\n\n" +
+		"**Intent:** minimal fixture card for validate-plan tests.\n\n" +
+		"**Commit:** `1: validate-fixture`\n"
 	if err := os.WriteFile(filepath.Join(planDir, "01-validate-fixture.md"), []byte(card), 0o644); err != nil {
 		t.Fatalf("write card file: %v", err)
 	}

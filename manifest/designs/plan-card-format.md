@@ -1,6 +1,6 @@
 # Plan Card format — symbol-level, Quarry-ready
 
-> **Status: designed, not implemented.** Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and `contracts/stencils/loom/loom-template-plan.md` — neither is rewritten yet. `manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md` predate this doc and are stale; reconcile or delete them when this lands.
+> **Status: implemented**, by the **planparser: Card-format migration to `Edits`/`Uses`** task — see the Done entry in `manifest/roadmap.md`. `contracts/specs/loom-plan-spec.md` is the as-built format-4 contract this doc designed; see it, not this doc, for the pinned Card fields — both the spec and `contracts/stencils/loom/loom-template-plan.md` are rewritten to this design by that task. `manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md` predate this doc and are stale, and their reconciliation is the roadmap's job, not this doc's: the Someday `webster: worktree-per-card parallel execution` item owns and reconciles `webster-parallel-execution.md`, and the Someday `scout-backed plan symbol fields` item owns `scout-plan-symbol-fields.md`.
 
 ## Card fields
 
@@ -79,6 +79,13 @@ Correctness backstop: dependency-list completeness cannot be proven mechanically
 
 ## Open, not decided here
 
-- Whether `Custom` needs its own mechanical check at all, or is purely an escape hatch by design.
-- Whether `ImpactSummary` on Delete needs a structured shape beyond one line of prose.
-- Reconciliation with `contracts/specs/loom-plan-spec.md`'s existing 14 validator checks — which of those still apply, which are now redundant, which need rewriting.
+All three items below closed when the **planparser: Card-format migration to `Edits`/`Uses`** task landed:
+
+- **Whether `Custom` needs its own mechanical check at all, or is purely an escape hatch by design.**
+  Closed in the affirmative: `Custom` needs no type-specific mechanical check.
+  It stays a principled, deliberate escape hatch — bound by every card-generic check (path well-formedness, field presence, and so on) but exempt from `path-missing` on its own targets and from the `Prosa` target-shape rule, exactly as documented and nothing more.
+- **Whether `ImpactSummary` on Delete needs a structured shape beyond one line of prose.**
+  Closed: it stays one line of prose, identical in shape to an `Edit` card's.
+  A structured shape (e.g. an enumerated caller list) would need a caller enumeration the parser cannot produce without the symbol lookup this task deliberately excludes — see the shape classifier's own deviation from ground-truth resolution, above.
+- **Reconciliation with `contracts/specs/loom-plan-spec.md`'s existing validator checks — which of those still apply, which are now redundant, which need rewriting.**
+  Closed: the disposition table this task implemented lands on sixteen distinct check IDs, one row per ID, in `contracts/specs/loom-plan-spec.md`'s own Validation checks section — up from the spec's former 14-row list, which itself bundled two distinct IDs into its first row.

@@ -47,43 +47,41 @@ cards run `1..M` with no gaps.
 Scalar-only frontmatter:
 
 ```yaml
-format: 3
+format: 4
 approved: false
 root: <optional worktree-relative dir>
 ```
 
-`root:` is optional shorthand for a plan whose cards repeat one directory prefix: when set, every card file-op path resolves as `<root>/<path>` — unless the path starts with `//`, which is always worktree-root-relative (root set or not).
+`root:` is optional shorthand for a plan whose cards repeat one directory prefix: when set, every card path resolves as `<root>/<path>` — unless the path starts with `//`, which is always worktree-root-relative (root set or not).
 Omit `root:` when there is no shared prefix.
 Card paths are always worktree-relative and clean: never absolute, never containing `..`.
 
 Always write `approved: false` — you never self-approve;
 a future review gate flips it to `true`.
-Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required iff any card has a non-empty `Moves:`), `## verify:`.
+Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required when any card is type `Rename`), `## verify:`.
 
 ### Each `NN-<card-slug>.md`
 
 In this exact order: `# Card N — <name>`;
-`**What:**` (prose);
-the five REQUIRED typed file-op fields, always present and in this order — `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**` — each either the literal `none` on its label line, or indented backtick-wrapped path sub-bullets with no commentary and no line ranges (`Moves:` sub-bullets are `` `old` -> `new` `` pairs);
-then `**Depends-on:**` (card numbers or `none`, referencing only earlier cards in this same plan);
-optionally `**Commit:**` (must start `N: `) and `**verify:**`.
+exactly one bold type label from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`, whose own indented backtick-wrapped sub-bullets are the card's targets;
+optionally `**Uses:**`, in the same bullet shape, for what the card reads but does not change;
+a required, multi-line `**Intent:**` (prose — what, and why);
+`**ImpactSummary:**` on `Edit`/`Delete` cards only, taking its value inline on the label line;
+optionally `**Commit:**` (must start `N: `) and `**Verify:**`.
 
-`Context:` names files to read but not change (advisory, not exhaustive);
-never repeat a path from the same card's `Edits:` there.
-Within one card a path may appear in only ONE of the five fields (a `Moves:` endpoint counts);
-across different cards, repeating a path is normal sequencing.
+A field with no content is omitted entirely — never write a `none` sentinel on any field.
 
-`Depends-on:` records intent — what depends on what — not just compile order: name every earlier card whose output this card relies on (a file it reads, edits, or references that the earlier card `Creates:` or `Moves:` into place), even when the reliance is not compile-visible — a card whose `Context:` names a file an earlier card creates depends on that card. `none` claims this card lands correctly even if every other card were dropped.
+**`Uses:` names what the card reads but does not change — never a target.**
+An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read?
+That is the `card-field-overlap` finding — see `contracts/specs/loom-plan-spec.md`'s own Card fields section for the full grammar and the complete validation-check set.
 
-Every `verify:` value — a card's optional `**verify:**` and the plan-level `## verify:` section — is one or more runnable shell commands, never prose;
+Every `Verify:`/`verify:` value — a card's optional `**Verify:**` and the plan-level `## verify:` section — is one or more runnable shell commands, never prose;
 the plan-level `## verify:` is the single integration check run once at the end of the whole plan.
 
-### `## Rename mechanic` — reproduce verbatim when any card has a `Moves:`
+### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`
 
-A `Moves:` endpoint must not also appear in any card's `Creates:`/`Deletes:` anywhere in the same plan — that is two contradictory instructions for one file.
-The moved file's own surgical edits (package/import/identifier retargeting, dropping any content that splits out) are already declared by its `Moves:` entry, so never also list a moved file — either endpoint — in that same card's `Edits:`;
-a path in both `Edits:` and a `Moves:` endpoint is the same card-field-overlap contradiction.
-When a rename also splits new content out of the relocated file, the relocation stays exactly one `Moves:` pair and the split-out file is a separate plain `Creates:` entry.
+A `Rename` card's bullets are `` `old` -> `new` `` pairs.
+A genuinely new file with no predecessor belongs in a separate `Create` card, never folded into a `Rename` pair.
 
 ```markdown
 ## Rename mechanic
@@ -91,7 +89,8 @@ When a rename also splits new content out of the relocated file, the relocation 
 1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.
 2. Then make ONLY surgical edits (package declaration, imports, identifier
    retargeting) — no unrelated rewrites.
-3. Use `Creates:` only for genuinely new files, never for the relocated file itself.
+3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
+   into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
 ```
@@ -102,7 +101,7 @@ When a rename also splits new content out of the relocated file, the relocation 
 
 ```markdown
 ---
-format: 3
+format: 4
 approved: false
 ---
 
@@ -120,14 +119,10 @@ approved: false
 ```markdown
 # Card 1 — <name>
 
-**What:** <the change to make, concretely>
-**Context:** none
-**Edits:**
+**Edit:**
 - `path/to/file.go`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
-**Depends-on:** none
+
+**Intent:** <the change to make, concretely>
 ```
 
 ## Step 4 — Write `{{.overview_path}}` LAST
