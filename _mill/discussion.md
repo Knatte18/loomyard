@@ -46,7 +46,8 @@ The real consumer surface is much smaller — see Technical context.
 - `manifest/designs/plan-card-format.md` — its status banner (`:3`) is rewritten **clause by clause**, not just its opening phrase:
   - *"Status: designed, not implemented"* → implemented, naming this task.
   - *"Supersedes `loom-plan-spec.md`'s Card fields and `loom-template-plan.md` — neither is rewritten yet"* → both **are** rewritten here (`doc-reach`), so the clause becomes a plain pointer at the spec rather than a pending-work note.
-  - *"`scout-plan-symbol-fields.md` and `webster-parallel-execution.md` … reconcile or delete them when this lands"* → **repointed at the two owning roadmap items** (`manifest/roadmap.md:62` for `webster-parallel-execution.md`, `roadmap.md:136-138` for `scout-plan-symbol-fields.md`) rather than left as an unactioned instruction this task visibly does not follow.
+  - *"`scout-plan-symbol-fields.md` and `webster-parallel-execution.md` … reconcile or delete them when this lands"* → **repointed at the owning roadmap items** — `roadmap.md:14`'s group-level reconcile instruction plus the Someday item at `roadmap.md:61-62` for `webster-parallel-execution.md`, and `roadmap.md:136-138` for `scout-plan-symbol-fields.md` — rather than left as an unactioned instruction this task visibly does not follow.
+    Do **not** encode "assigned to the Wave 3 DAG task" here: `roadmap.md:31`'s Wave 3 item does not name that doc.
     Leaving it as-is would make the doc read as instructing work the task deliberately declines.
   - The doc's *"Open, not decided here"* section records that this task closes **all three** items: `Custom` needs no *type-specific* mechanical check (`validator-checks`), `ImpactSummary` on `Delete` stays one line of prose (`prose-fields`), and the validator-check reconciliation is the `validator-checks` table.
     Its own check-count figure at `:84` is corrected by Sweep 3 (`stale-comments`).
@@ -65,7 +66,8 @@ The real consumer surface is much smaller — see Technical context.
 - **The `HasSymbolFields()` seam's activation** in `internal/websterengine`. Its doc comment is corrected;
   the seam stays dead.
 - **Reconciling `manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md`.** Both are stale as documents;
-  `webster-parallel-execution.md` is explicitly assigned to the Wave 3 DAG task (`manifest/roadmap.md:62`), and `scout-plan-symbol-fields.md` has its own roadmap item (`manifest/roadmap.md:136-138`).
+  `webster-parallel-execution.md` is owned by the **Someday** item "webster: worktree-per-card parallel execution" (`manifest/roadmap.md:61-62`) and by the group-level reconcile instruction at `roadmap.md:14` — **not** by the Wave 3 DAG item, which does not mention the doc at all.
+  `scout-plan-symbol-fields.md` has its own roadmap item (`manifest/roadmap.md:136-138`).
   **Narrow exception:** `scout-plan-symbol-fields.md:64`'s stale check-count figure *is* corrected here, as one of six sites — see `stale-comments`.
   Correcting a number is not reconciling a document.
 - **`Delete`'s assert-no-callers and `Create`'s "nothing equivalent exists"** mechanical checks.
@@ -244,7 +246,11 @@ The real consumer surface is much smaller — see Technical context.
 
 ### retired-label-disposition
 
-- **Decision:** the seven retired labels — `**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**` — stay **recognized by the parser** even though no field consumes them.
+- **Decision:** the **eight** retired labels — `**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**`, and the format-3 lowercase spelling `**verify:**` — stay **recognized by the parser** even though no field consumes them.
+  The eighth is easy to miss: `field-mapping` recapitalizes the card field to `**Verify:**`, and `parse.go:307`'s `cardVerifyLabel = "**verify:**"` is matched case-sensitively via `strings.HasPrefix`, so a stale lowercase line would otherwise fall through `default: i++` and vanish silently — the exact misparse class this decision exists to prevent.
+  `card-retired-label` reports it with the mapping `**verify:**` → `**Verify:**`.
+  **Deliberate asymmetry:** only the *card* field is recapitalized.
+  The *plan-level* `## verify:` section heading stays lowercase, because `sections.go` is unchanged (`planVerifyHeading = "## verify:"`) and nothing in the design doc asks for it to move.
   Concretely:
   - They remain in `cardLabels`, so `isCardLabelLine` still returns true for them.
     This is load-bearing: without it, a stray `**Context:**` line in a half-migrated card is swallowed into `Intent:`'s collect-until-next-label prose instead of terminating it.
@@ -268,7 +274,8 @@ The real consumer surface is much smaller — see Technical context.
   - **What it never checks:** a `Create` card's targets (by definition they do not exist yet), a `Rename` pair's `New` side (the post-rename path does not exist yet either), and **`Custom` card targets** — a `Custom` card used to create something would otherwise produce a spurious finding for doing exactly what the escape hatch is for.
 
     **`Custom` is exempt from *type-specific* checks only, never from the card-generic ones.** Stated precisely so no implementer writes a blanket skip:
-    - **Exempt:** `path-missing`, and any target-shape rule (`prosa-symbol-target`'s analogue).
+    - **Exempt:** `path-missing` **on its own targets only** — a `Custom` card's `Uses:` paths are checked exactly like any other card's, since `Uses:` means read-not-written for `Custom` too and the escape-hatch rationale (a `Custom` card creating something) applies only to targets.
+      Also exempt from any target-shape rule (`prosa-symbol-target`'s analogue).
     - **Still binding, like every other card:** `card-type-missing`, `card-missing-field` (a `Custom` card still needs `Intent:`), `card-field-empty`, `card-field-overlap`, `card-path-malformed`, `card-retired-label`, `card-numbering`, `commit-subject-mismatch`.
     Well-formedness is not existence: a `Custom` card may name a path that does not exist yet, but it may not name a malformed one.
   - **What satisfies an otherwise-missing path:** `createTargetsUnion` — the union, across the plan, of every `Create`-type card's path-shaped targets — and `renameTargetsUnion` — the union of every `Rename` pair's `New` side.
@@ -422,8 +429,9 @@ The real consumer surface is much smaller — see Technical context.
 - `internal/loomshed/planvalidate.go` — calls `planparser.ParsePlan` then `planparser.Validate` and maps a non-empty `[]ValidationError` to `shedengine.Stuck`. **No field reads.** Needs no change;
   its test fixture does.
 - `internal/batcher` — `Batch{Cards []planparser.Card}` and the identity batcher pass cards through. **No field reads.** No change.
-- `internal/websterengine` — `render.go` reads only `Card.SourcePath` (in `renderCardPointers`), and `Number`/`Slug`/`Intent` in `RenderBatchIndex`/`RenderProgress`.
-  The `Intent` → `Summary` rename touches those two functions.
+- `internal/websterengine` — `render.go` reads only `Card.SourcePath` (in `renderCardPointers`) and `Number`/`Slug`/`Intent` in `RenderBatchIndex`.
+  `RenderProgress` (`render.go:277-294`) reads `Number`/`Slug` only.
+  The `Intent` → `Summary` rename therefore touches exactly one function, **`RenderBatchIndex` (`render.go:268`)**.
   `runlevel.go` calls `ParsePlan`/`Validate`. `beginbatch.go`/`recoverbatch.go`/`integration.go` hold a `*planparser.Plan` and read `Plan.Verify`.
   **No non-test file reads any file-op field.**
 - `internal/loomengine/plan.go` — `PlanSpec` composes the `loom-template-plan` stencil prompt.
@@ -535,7 +543,7 @@ Write the tests first here.
 - **One test per validator check.** Every surviving, reworked, and new check from the `validator-checks` table gets its own focused test.
   The five `move-*` tests and the `depends-on-order` test are **deleted, not adapted** — retrofitting a dropped check's test onto a new check produces a test that documents the wrong thing.
 - **Golden all-checks-pass test**: `validate_test.go`'s existing "all checks pass simultaneously on the happy path" test, retargeted to the new count.
-- **Parse-lenient scenarios**: a label present with no bullets (`card-field-empty`), a card with two type labels and a card with none (`card-type-missing`), a malformed `Rename` bullet landing in `RenameRaw` (`rename-format`), a multi-line `ImpactSummary` whose trailing lines reach `ImpactSummaryTrailing` (`impact-summary-multiline`), a `Prosa` card with a symbol target (`prosa-symbol-target`), and a **half-migrated card carrying a retired `**Context:**` label** (`card-retired-label`) — the last must also assert the retired label terminated `Intent:`'s prose collection rather than being swallowed into it.
+- **Parse-lenient scenarios**: a label present with no bullets (`card-field-empty`), a card with two type labels and a card with none (`card-type-missing`), a malformed `Rename` bullet landing in `RenameRaw` (`rename-format`), a multi-line `ImpactSummary` whose trailing lines reach `ImpactSummaryTrailing` (`impact-summary-multiline`), a `Prosa` card with a symbol target (`prosa-symbol-target`), and a **half-migrated card carrying a retired `**Context:**` label, plus one carrying the lowercase `**verify:**`** (`card-retired-label`) — the last two must also assert the retired label terminated `Intent:`'s prose collection rather than being swallowed into it, and the `**verify:**` case specifically pins that the case-sensitive match does not let it slip through as unrecognized text.
 - **Fail-loud scenarios stay fail-loud**: an inline value on a field admitting only bullets must still be a `ParsePlan` error, not a finding.
 
 **`internal/loomengine` — stencil-pinning tests.**
@@ -583,7 +591,7 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
 - **Q:** Dual-read `format: 3`? **A:** No. Bump to 4 and hard-reject 3.
 - **Q:** Is the three-tier Verify model implemented here? **A:** Specified only.
   Implementing tier1 would be exactly the behavior change the roadmap entry rules out, so spec-only is the correct scope, not merely the recommended one.
-- **Q:** What happens to a card that still carries a retired label like `**Context:**`? **A:** The seven retired labels stay recognized by the parser — otherwise a stray one is swallowed into `Intent:`'s prose — are routed to a `RetiredLabels` slot, and each produces a `card-retired-label` finding naming its format-3 → format-4 mapping.
+- **Q:** What happens to a card that still carries a retired label like `**Context:**`? **A:** The eight retired labels — including the format-3 lowercase `**verify:**`, which is matched case-sensitively and would otherwise vanish once the card field becomes `**Verify:**` — stay recognized by the parser — otherwise a stray one is swallowed into `Intent:`'s prose — are routed to a `RetiredLabels` slot, and each produces a `card-retired-label` finding naming its format-3 → format-4 mapping.
   A hard parse error was rejected for aborting the whole plan instead of enumerating every defect in one pass.
 - **Q:** How can `impact-summary-multiline` report lines the parser discards? **A:** It cannot, so it does not discard them — the `ImpactSummary:` branch captures trailing non-label lines into `ImpactSummaryTrailing`, the same lenient-capture pattern `MovesRaw` uses today.
 - **Q:** How does `path-missing` survive when `Creates:` is no longer a field? **A:** It becomes type-conditional and keeps both union helpers under new names — `createTargetsUnion` (every `Create` card's path-shaped targets) and `renameTargetsUnion` (every `Rename` pair's `New` side).
@@ -595,7 +603,7 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
 - **Q:** How is the old-format fixture inventory established? **A:** By re-running `grep -rln '\*\*What:\*\*\|format: 3' internal/ tools/ contracts/ cmd/`, not by trusting a hand list.
   Two sweeps, not one: a markdown/instruction sweep the compiler cannot see, and a Go-model sweep the compiler catches anyway.
   `internal/websterengine/template_test.go` appears only in the second.
-  The first surfaces three carriers an initial hand list missed — `internal/loomcli/validate_test.go`, `internal/webstercli/cli_test.go`, and `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, the last of which the green-tree gate cannot catch because it is an agent-facing markdown instruction file.
+  The first surfaces three carriers an initial hand list missed (and the roadmap ownership of the two stale design docs is `roadmap.md:14`/`:61-62`/`:136-138`, not the Wave 3 item) — `internal/loomcli/validate_test.go`, `internal/webstercli/cli_test.go`, and `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, the last of which the green-tree gate cannot catch because it is an agent-facing markdown instruction file.
 - **Q:** Does `ImpactSummary` on `Delete` need a structured shape? **A:** No — one line of prose, identical to `Edit`.
   Closes the third of the design doc's open items;
   a structured shape would need caller enumeration planparser cannot produce without the symbol lookup this task excludes.
