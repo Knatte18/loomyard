@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: webster-dag-card-sequencing
 branch: webster-dag-card-sequencing
 plan: _mill/plan
@@ -22,4 +22,5 @@ plan-review-r1  '2026-08-24T18:33:59Z'
 plan-fix-r1  '2026-08-24T18:35:12Z'
 plan-review-r2  '2026-08-24T18:43:49Z'
 plan-fix-r2  '2026-08-24T18:45:47Z'
+planned  '2026-08-24T18:45:56Z'
 ```
