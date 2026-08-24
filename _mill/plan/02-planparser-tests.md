@@ -65,7 +65,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   Card 6 is `Move`, its single target the `//`-escaped `//cmd/lyx/helppins.go`, with its destination stated in `**Intent:**` prose rather than in the target list, per the `Move` type's own rule.
   Card 7 is `Prosa` with two path-shaped targets and no symbol among them — the root-relative `doc.go` and the `//`-escaped `//docs/boardcli-json.md`.
   Every card file's heading stays `# Card N — <slug>` so `card-numbering` keeps passing, and the file prefix `NN` matches.
-  The fixture must produce zero findings from `Validate` once card 11's zero-findings test materializes the six paths it names, and the two paths it deliberately leaves absent must be exactly the `Custom` card's own path-shaped target and the `Rename` pair's post-rename side.
+  The fixture must produce zero findings from `Validate` once card 11's zero-findings test materializes the seven distinct paths its checked entries name — card 2's own path target, card 2's `Uses` entry, card 3's `Uses` entry (which resolves to the same file as card 2's target and therefore dedups to no eighth path), card 4's target, card 5's pre-rename side, card 6's target, and both of card 7's targets — and the two paths it deliberately leaves absent must be exactly the `Custom` card's own path-shaped target and the `Rename` pair's post-rename side.
 - **Commit:** `test(planparser): rebuild the golden fixture as a seven-type format-4 plan`
 
 ### Card 9: parse tests
@@ -162,7 +162,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   a `Custom` card's absent path-shaped target produces none while that same card's absent `Uses` path does produce one;
   and an otherwise-missing path is satisfied by membership in either union — a `Create` card's path-shaped target, or a `Rename` pair's `New` side.
   Add a test asserting that a `Custom` card remains bound by the card-generic checks, so a blanket-skip regression fails: give a `Custom` card a malformed path-shaped target, no `Intent`, an entry in both `Targets` and `Uses`, and a badly prefixed `Commit`, then assert one finding each from `card-path-malformed`, `card-missing-field`, `card-field-overlap`, and `commit-subject-mismatch`.
-  Rewrite `TestValidate_GoldenFixture_ZeroFindings` to parse the seven-card fixture and materialize under a `t.TempDir()` worktree root exactly the six paths the fixture's checked entries name, deliberately leaving absent the `Custom` card's own path-shaped target and the `Rename` pair's post-rename side, then assert zero findings across the whole sixteen-check run.
+  Rewrite `TestValidate_GoldenFixture_ZeroFindings` to parse the seven-card fixture and materialize under a `t.TempDir()` worktree root exactly the seven distinct paths the fixture's checked entries name — every path-shaped `Uses` entry on any card, every path-shaped target of the `Edit`, `Delete`, `Move`, and `Prosa` cards, and the `Rename` pair's pre-rename side, with the one path two cards both name counted once — deliberately leaving absent the `Custom` card's own path-shaped target and the `Rename` pair's post-rename side, then assert zero findings across the whole sixteen-check run.
   Update the file's leading file-purpose comment to say sixteen checks and to name the two deliberately-absent paths and why.
 - **Commit:** `test(planparser): cover the format-4 sixteen-check validator set`
 

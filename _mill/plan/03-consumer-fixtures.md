@@ -43,6 +43,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   In `cardWithSourcePath`, rename the `intent` parameter and the struct field it sets to `Summary`, matching the `Card.Intent`-to-`Card.Summary` rename, and update every call site in the file.
   In the test that asserts the rendered fork prompt carries the `## Rename mechanic` section regardless of whether the batch has a rename-bearing card, replace the `card.Moves = []planparser.MovePair{...}` assignment with a format-4 `Rename` card: set `card.Type` to `planparser.CardTypeRename`, set `card.Pairs` to the same single pair, and set `card.Targets` to that pair's two endpoints in pair order.
   Keep the test's own assertion unchanged — the rendered output must still carry the section either way.
+  Reword that same test's own doc comment while its body is being touched: it says the section renders regardless of whether the batch has a "Moves-bearing" card, and `Moves` is a field this migration removes, so it must say "rename-bearing" instead.
   Leave every other test in the file untouched.
 - **Commit:** `test(websterengine): build format-4 cards in the template tests`
 
