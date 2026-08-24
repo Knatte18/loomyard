@@ -40,7 +40,9 @@ batches:
     commit_sha: 9ea9289b636676e557c99664cfb853436045c0c4
     verify_baseline_failures: []
   - name: planparser tests — golden fixture and per-check suite
-    state: pending
+    state: running
+    implementer_session: 98beb5de-4a41-4ae2-bcba-e68ae16d3189
+    start_sha: 83a6eb75430584cd42f4b050c9ecc2d3b8fb2128
     verify_baseline_failures: []
   - name: consumer fixtures — websterengine, loomshed, loomrecipe, loomcli, webstercli
     state: pending
