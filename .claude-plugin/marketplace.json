@@ -16,6 +16,16 @@
       },
       "source": "./plugins/prowler",
       "category": "productivity"
+    },
+    {
+      "name": "scribe",
+      "description": "Code-writing conventions: quality, comments, testing, and Go mechanics",
+      "version": "1.0.0",
+      "author": {
+        "name": "Knatte18"
+      },
+      "source": "./plugins/scribe",
+      "category": "productivity"
     }
   ]
 }

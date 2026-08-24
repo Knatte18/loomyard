@@ -13,14 +13,11 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 A 2026-08-23 discussion redesigned loom's own Discussion/Plan pipeline around symbol-level Cards and Quarry as the mechanical backing (degraded/LLM-manual mode first, Quarry as a pure speed upgrade later, never a hard dependency) — see [designs/plan-card-format.md](designs/plan-card-format.md), already written. Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and `loom-template-plan.md`; the discussion stencil's own scoped supersession claim now lives in [designs/loom-format-discussion.md](designs/loom-format-discussion.md). `manifest/designs/scout-plan-symbol-fields.md` and `webster-parallel-execution.md` predate this and are stale, to be reconciled or deleted once this group ships. Two waves, in order — Wave 2 depends on Wave 1.
 
-**Wave 1:**
-
-1. **loom: code-writing skills — comments, build, testing** — deploy `code-comment-conventions.md`'s rule as an actual installable skill (Go only for now), plus the two other legs millhouse's own code-writing skill set has: build and testing. Mirrors millhouse's shape — general `code-comments`/`code-quality` skills plus per-language `golang-comments`/`golang-build`/`golang-testing` — but under different names to avoid colliding with millhouse's own installed plugins. `golang-build`/`golang-testing` are close to a verbatim copy (language mechanics, not proprietary content); `golang-comments`/`code-comments` are new, from `code-comment-conventions.md`. Deployed via loomyard's own marketplace (`.claude-plugin/marketplace.json`, the same mechanism `prowler` already uses) and kept in sync via `update-plugins.sh`.
-   See [designs/code-comment-conventions.md](designs/code-comment-conventions.md).
+**Wave 1:** complete — both items shipped, see Done below (**loom: redesign the Discussion format**, **loom: code-writing skills — comments, build, testing**).
 
 **Wave 2** (depends on Wave 1 landing):
 
-1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the new Discussion format (the Done **loom: redesign the Discussion format** item), instructing the agent to load the new code-writing skills (the **loom: code-writing skills — comments, build, testing** item) where it writes code. Expected to be small — the mechanical/Quarry layer now carries what used to be prompt content.
+1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the new Discussion format (the Done **loom: redesign the Discussion format** item), instructing the agent to load the new code-writing skills (the Done **loom: code-writing skills — comments, build, testing** item) where it writes code. Expected to be small — the mechanical/Quarry layer now carries what used to be prompt content.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [designs/plan-card-format.md](designs/plan-card-format.md).
 
 1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the Card format in `designs/plan-card-format.md`.
@@ -356,6 +353,17 @@ No build order is implied between these items.
    Two invariants were recorded in `CONSTRAINTS.md`: the Discussionparser Sole-Parser Invariant and the Gate Self-Check Parity Invariant.
    No stencil under `contracts/stencils/loom/` was touched — instructing the writer agent to call these verbs belongs to the Planned `loom: Discussion-Write producer` and `loom: Plan-Write producer` items, which this item was sequenced ahead of precisely so the verbs would exist first.
    See the `internal/discussionparser` package documentation and [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
+
+1. **loom: code-writing skills — comments, build, testing** — shipped `scribe`, a new Claude Code plugin with eight skills at `plugins/scribe/skills/`.
+   `prose` and `conversation` are always-active writing-style discipline for every piece of text an agent writes, not only chat replies — tone, user-choice, and file/shell conventions.
+   `code-quality` covers naming, abstraction, error handling, file organization, and comment content in one skill, since comment content is one craft with the rest of the code, not a separate skill.
+   `testing` holds language-agnostic testing principles; `golang-comments`, `golang-build`, and `golang-testing` cover Go-specific mechanics, each with a "this repo's configuration" section filled in with loomyard's own real toolchain and two-tier test scheme.
+   `handoff` is an eighth, explicit-invocation-only skill added after the review rounds closed: it writes a session handoff document to `.scratch/handoff.md` (or an argument-given path), opening with an instruction for the receiving session to load `scribe:conversation`/`scribe:prose` before reading the rest.
+   The plugin is registered in loomyard's own marketplace (`.claude-plugin/marketplace.json`, the same mechanism `prowler` already uses) and synced via `update-plugins.sh`; a `SessionStart` hook in `plugins/scribe/hooks/hooks.json` nudges `prose` and `conversation` to load at the start of any session with the plugin installed.
+   `code-comment-conventions.md`'s doc-comment rule now lives in `code-quality` as the canonical text; the design doc is kept, not deleted, holding only rationale and pointing at the skill — an exception to the usual module-doc lifecycle, since a skill has no Go package header to carry that rationale instead.
+   A `golang-quality` skill (Go-idiom content: accept-interfaces/return-structs, error-as-value mechanics, package design) was considered and explicitly not built — no concrete observed problem motivated it, unlike every other skill here.
+   Installing the plugin (`/plugin install scribe@loomyard`) is a manual step, not yet done.
+   See [designs/code-comment-conventions.md](designs/code-comment-conventions.md) and [_mill/discussion.md](../_mill/discussion.md).
 
 ## Maintenance
 
