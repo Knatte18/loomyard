@@ -12,6 +12,7 @@ Card:
     - symbol-or-file, ...    # read/depended on, not the target — omit if empty
   Intent: "..."               # what, and why — prose, can be multi-sentence
   ImpactSummary: "..."        # one line, required for Edit/Delete only
+  Verify: "..."                # optional, rare — see Verify model
 ```
 
 The type name is the key — no separate `Type:` field. A card's own list can hold symbols or file paths mixed together, distinguished by shape (a file path has an extension/separator, a symbol reference does not) and, where ambiguous, resolvable against ground truth (`go doc` for a symbol, file existence for a path). Omit any field with no content — no `Uses: []`, no `Uses: None`.
@@ -35,6 +36,16 @@ No `DependsOn`/`Produces` field. Dependency edges are derived, never authored: a
 `Intent` vs. `ImpactSummary`: `Intent` is what/why, the card's main content. `ImpactSummary` is a separate, hard-capped one-line blast-radius conclusion ("3 callers, all local to billing package, no cross-module effects") — kept as its own field specifically so it stays terse; folding it into `Intent` lets it balloon into unbounded reasoning.
 
 **Rename does not require `ImpactSummary`.** A correctly executed AST-aware rename is binary — every reference updates and the build/tests pass, or a leftover reference fails the build immediately. There is no graded blast-radius judgment to summarize. The same blind spot `assert-no-callers` has for Delete still applies: string/reflection-based references (a registry keyed by name, `getattr` in Python) survive a rename without failing the build. Rename must also rewrite the target symbol's own leading self-reference in its own doc comment (Go convention opens a doc comment with the symbol's name) — safe to do mechanically, since the card's own `old -> new` pair names exactly what changed; verify with the same grep pass.
+
+## Verify model
+
+Three tiers, matching this repo's own test-tier discipline (`internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes) — not three tiers invented for this format:
+
+- **Tier1 (per card, automatic, no author action).** Tier1 tests are fast by construction (the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn), so no "known-slow package" carve-out is needed. Scope: `go test`, restricted to the package(s) holding the card's own target symbol(s) plus every package holding a caller found via impact lookup (the same lookup that derives `Uses`-based dependency edges elsewhere in this doc). Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
+- **Tier2 (plan-level, not per card).** Real git-against-remote tests (built via `internal/hubforge` — real repo creation, real clone) are genuinely slower; paying that cost once per plan, not once per card that happens to touch an affected package, is the point. Defaults to the existing plan-level `## verify:` integration suite (`contracts/specs/loom-plan-spec.md`'s model, unchanged) — the same gate the Concurrency section's post-merge `go build && go test` backstop already assumes. **Someday, not now:** a batch could eventually own its own tier2 verify instead of waiting for the whole plan — not designed here, deliberately deferred.
+- **Tier3 (rare, explicit only, never automatic).** Tests that drive a real LLM — expensive in both wall-clock and tokens, and rare-to-nonexistent in this repo today. Never swept into an automatic per-card or per-plan gate under any circumstance. If a card genuinely needs one, that is exactly what the optional `Verify:` field is for — an explicit, deliberate, author-named exception, not something inferred.
+
+The optional per-card `Verify:` field (V1's own mechanism, kept) exists for what tier1's automatic package-scoped run cannot catch on its own — a specific CLI smoke test, a targeted tier2 scenario, or (rare) a tier3 case. It stays genuinely optional and exceptional; the default, automatic tier1 run is what most cards rely on, which is what keeps `Verify:` from becoming the long, hand-maintained list it was in millhouse's own equivalent.
 
 Granularity rule: one card per independently reviewable/testable unit, not one card per literal symbol. A symbol with no independent meaning or testability apart from another symbol in the same card (a private supporting type, a constructor inseparable from its type) is bundled into that other symbol's card. A symbol that is independently testable/reusable gets its own card even if one card happens to be its first consumer.
 
