@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-discussion-format doc and manifest cleanup
+phase: holistic-reviewing
 slug: loom-redesign-discussion-format
 branch: loom-redesign-discussion-format
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r2  '2026-08-24T08:59:50Z'
 planned  '2026-08-24T09:14:38Z'
 implementing  '2026-08-24T09:15:14Z'
 approved-discussion-format doc and manifest cleanup  '2026-08-24T09:20:06Z'
+holistic-reviewing  '2026-08-24T09:20:46Z'
 ```
 
 ## Batches
