@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomshed DiscussionWrite commit decorator
+phase: approved-registry entry, recipe row flip, and wiring
 slug: loom-discussion-write-producer
 branch: loom-discussion-write-producer
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-08-24T14:29:48Z'
 implementing  '2026-08-24T14:30:17Z'
 approved-loomengine seam and stencil rewrite  '2026-08-24T14:35:43Z'
 approved-loomshed DiscussionWrite commit decorator  '2026-08-24T14:39:10Z'
+approved-registry entry, recipe row flip, and wiring  '2026-08-24T14:49:18Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     commit_sha: 1a46241fb747dfd2017b70575f7b0fe70799a421
     verify_baseline_failures: []
   - name: registry entry, recipe row flip, and wiring
-    state: running
+    state: approved
     implementer_session: 8ea70cee-5678-4b27-ac29-f7abee593066
     start_sha: 877cc602ac1550bc1171f4185b87ac504d74f649
+    commit_sha: 427c28a26e99ef5d87abba192e82208c2b880faa
     verify_baseline_failures: []
   - name: documentation lifecycle
     state: pending
