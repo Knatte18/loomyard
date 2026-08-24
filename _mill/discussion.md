@@ -44,7 +44,7 @@ The real consumer surface is much smaller — see Technical context.
   the "14 checks" counts in `internal/webstercli/validate.go`, `internal/planparser/validate.go`, and `internal/planparser/validate_test.go` — which are **already wrong today**, see the `validator-checks` decision.
 - `manifest/roadmap.md` — move the Wave 2 planparser item to Done on completion.
 - `manifest/designs/plan-card-format.md` — flip its "Status: designed, not implemented" banner, and record that this task closes **all three** of its "Open, not decided here" items: `Custom` needs no mechanical check (`validator-checks`), `ImpactSummary` on `Delete` stays one line of prose (`prose-fields`), and the validator-check reconciliation is the `validator-checks` table.
-  While resolving that third item, **also correct its own "existing 14 validator checks" figure to 15** (`manifest/designs/plan-card-format.md:84`) — it inherits the same miscount, and leaving a wrong number inside a resolved item moves the staleness rather than removing it.
+  While resolving that third item, **also correct its own "existing 14 validator checks" figure to 16** (`manifest/designs/plan-card-format.md:84`) — it inherits the same miscount, and leaving a wrong number inside a resolved item moves the staleness rather than removing it.
 
 **Out:**
 
@@ -59,7 +59,10 @@ The real consumer surface is much smaller — see Technical context.
 - **`internal/batcher`.** The identity batcher passes `[]planparser.Card` through untouched and needs no change.
 - **The `HasSymbolFields()` seam's activation** in `internal/websterengine`. Its doc comment is corrected;
   the seam stays dead.
-- **`manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md`.** Both are stale, both are already assigned elsewhere by the roadmap — `webster-parallel-execution.md` to the Wave 3 DAG task specifically (`manifest/roadmap.md:62`).
+- **Reconciling `manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md`.** Both are stale as documents;
+  `webster-parallel-execution.md` is explicitly assigned to the Wave 3 DAG task (`manifest/roadmap.md:62`), and `scout-plan-symbol-fields.md` has its own roadmap item (`manifest/roadmap.md:136-138`).
+  **Narrow exception:** `scout-plan-symbol-fields.md:64`'s stale check-count figure *is* corrected here, as one of six sites — see `stale-comments`.
+  Correcting a number is not reconciling a document.
 - **`Delete`'s assert-no-callers and `Create`'s "nothing equivalent exists"** mechanical checks.
   Both are execution-time concerns needing symbol lookup;
   planparser is a parser, not an impact analyser.
@@ -180,7 +183,7 @@ The real consumer surface is much smaller — see Technical context.
 
 ### validator-checks
 
-- **Decision:** the check set moves from **15 to 15**.
+- **Decision:** the check set moves from **15 to 16**.
 
   First, a correction the migration must carry: **the repo's "14 checks" figure is already wrong.**
   `internal/planparser/validate.go` emits **15** distinct `Check:` IDs today — `format-unrecognized`, `plan-unapproved`, `index-file-mismatch`, `card-path-malformed`, `move-format`, `move-redundant`, `move-source-missing`, `move-target-collision`, `move-mechanic-missing`, `card-missing-field`, `card-field-overlap`, `card-numbering`, `path-missing`, `commit-subject-mismatch`, `depends-on-order`.
@@ -208,15 +211,15 @@ The real consumer surface is much smaller — see Technical context.
   | `move-target-collision` | Drop |
   | `depends-on-order` | Drop |
 
-  New checks (4): `card-type-missing` (a card carries zero, or more than one, recognized type label), `impact-summary-multiline`, `card-field-empty`, `prosa-symbol-target` (a `Prosa` card's entries must all be path-shaped).
+  New checks (5): `card-type-missing` (a card carries zero, or more than one, recognized type label), `impact-summary-multiline`, `card-field-empty`, `prosa-symbol-target` (a `Prosa` card's entries must all be path-shaped), and `card-retired-label` (a format-4 card carrying a format-3 field label — see `retired-label-disposition`).
 
   **Required-field presence stays one check, not three.** `card-missing-field` keeps its ID and its existing `[]cardFieldLabel` iteration shape in `checkCardMissingField`;
   only the required set it iterates changes, from the seven old labels to `Intent:` plus the conditional `ImpactSummary:`.
   A card with no `Intent:` therefore produces a `card-missing-field` finding, exactly as a card with no `What:` does today.
   `card-type-missing` is separate because it is not a missing-field condition — it also fires when a card carries **two** type labels, which no presence check can express.
 
-  **Arithmetic:** 15 old − 4 dropped = 11 carried (5 keep + 3 rework + 1 retarget + 2 rename) + 4 new = **15**.
-  That is the number to write into the rewritten spec's banner and the three stale comment sites.
+  **Arithmetic:** 15 old − 4 dropped = 11 carried (5 keep + 3 rework + 1 retarget + 2 rename) + 5 new = **16**.
+  That is the number to write into the rewritten spec's banner and every stale-figure site listed under `stale-comments`.
 
 - **Rationale:** the three dropped `move-*` checks all rest on a mechanical `old -> new` pair plus a destination path resolvable against other cards' `Creates:`/`Deletes:` — and `Creates:`/`Deletes:` no longer exist as fields (see `rename-grammar`);
   `Move`'s destination lives in `Intent` prose by design, so there is nothing to cross-check.
@@ -225,11 +228,31 @@ The real consumer surface is much smaller — see Technical context.
 - **Rejected:** preserving the `move-*` checks by giving `Move` a mechanical destination field (departs from the design doc);
   stripping to format/approval/index-consistency only and deferring content checks to a later hardening pass (leaves the new format almost unchecked at exactly the moment it is least understood).
 
+### retired-label-disposition
+
+- **Decision:** the seven retired labels — `**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**` — stay **recognized by the parser** even though no field consumes them.
+  Concretely:
+  - They remain in `cardLabels`, so `isCardLabelLine` still returns true for them.
+    This is load-bearing: without it, a stray `**Context:**` line in a half-migrated card is swallowed into `Intent:`'s collect-until-next-label prose instead of terminating it.
+  - `parseCardBody` routes each occurrence into a new `RetiredLabels []string` slot on `Card` rather than into any field, and consumes its bullets without storing them.
+  - A new check, **`card-retired-label`**, reports one finding per occurrence, naming the label and its format-3 → format-4 mapping.
+- **Rationale:** `parseCardBody`'s fallthrough is `default: i++` (`parse.go:388-389`), so a label that simply leaves `cardLabels` is silently discarded.
+  A half-migrated card would then parse clean and validate clean while carrying instructions nobody reads — exactly the silent misparse this format's fail-loud discipline exists to prevent, and worse than the fully-stripped card `card-type-missing` already catches.
+  Keeping them recognized also gives the migration a real diagnostic: an author or a stale producer writing format-3 fields into a format-4 card is told which field became what.
+- **`ImpactSummary:`'s trailing lines are retained for the same reason.** `impact-summary-multiline` cannot report lines the parser has already thrown away, so the `ImpactSummary:` branch consumes trailing non-label lines into an `ImpactSummaryTrailing []string` slot and the check fires when it is non-empty.
+  This is the same lenient-capture pattern `MovesRaw` uses today, retargeted.
+- **Rejected:** a hard `ParsePlan` error on a retired label (fail-loud, but a single stale label would abort the whole plan parse instead of enumerating every defect in one pass, breaking `doc.go`'s lenient-card-parse decision);
+  accepting the silent drop (contradicts this discussion's own "a loud validation finding, never a silent misparse" rule).
+- **Not in scope:** a general `card-unknown-label` check for arbitrary unrecognized bold labels.
+  That is today's pre-existing behavior and is unchanged by this migration;
+  widening it here would be a new feature, not a migration.
+
 ### path-missing-rework
 
 - **Decision:** `path-missing` stays, but becomes type-conditional and keeps two union helpers under new definitions.
-  - **What it checks:** path-shaped entries in any card's `Uses:`, and path-shaped targets of `Edit`, `Delete`, `Prosa`, and `Custom` cards, plus a `Rename` pair's `Old` side.
-  - **What it never checks:** a `Create` card's targets (by definition they do not exist yet), and a `Rename` pair's `New` side (the post-rename path does not exist yet either).
+  - **What it checks:** path-shaped entries in any card's `Uses:`, and path-shaped targets of `Edit`, `Delete`, `Move`, and `Prosa` cards, plus a `Rename` pair's `Old` side.
+  - **What it never checks:** a `Create` card's targets (by definition they do not exist yet), a `Rename` pair's `New` side (the post-rename path does not exist yet either), and **`Custom` card targets** — `Custom` is a pure escape hatch that gets no mechanical check at all (`validator-checks`), and a `Custom` card used to create something would otherwise produce a spurious finding for doing exactly what the escape hatch is for.
+    `card-path-malformed` still applies to `Custom` targets: well-formedness is not existence.
   - **What satisfies an otherwise-missing path:** `createTargetsUnion` — the union, across the plan, of every `Create`-type card's path-shaped targets — and `renameTargetsUnion` — the union of every `Rename` pair's `New` side.
     These are today's `createsUnion`/`movesTargetsUnion` renamed and redefined, **not deleted**;
     the Technical context's earlier claim that both "go away" was wrong, since `checkPathMissing` uses both today (`validate.go:528-530`).
@@ -326,8 +349,13 @@ The real consumer surface is much smaller — see Technical context.
      The seam stays dead.
   2. The same file's deviation-union sentence, per `deviation-union`.
   3. The "14 checks" counts in `internal/webstercli/validate.go`, `internal/planparser/validate.go`, and `internal/planparser/validate_test.go`, plus `contracts/specs/loom-plan-spec.md`'s "the fourteen checks below" banner.
-     These are wrong **today**, not merely after this lands — the package emits 15 (see `validator-checks`) — so this is a pre-existing correction the migration absorbs rather than a consequence of it.
-     All four become 15, the post-migration count.
+  4. `manifest/designs/plan-card-format.md:84`'s "existing 14 validator checks" (see the Scope bullet).
+  5. `manifest/designs/scout-plan-symbol-fields.md:64`'s "`loom-plan-spec.md`'s existing 14 checks".
+     This one is a **figure-only** correction, deliberately narrow: the doc as a whole is stale and its substantive reconciliation stays out of scope (see Scope: Out), but the `Out` rationale there covers *reconciling the doc*, not *leaving a number wrong that this task is fixing in four other places*.
+     Correcting five sites and knowingly skipping the sixth would be arbitrary.
+
+     All six figures become **16**, the post-migration count.
+     They are wrong **today** at 14 versus an actual 15 (see `validator-checks`), so part of this is a pre-existing correction the migration absorbs rather than a consequence of it.
 - **Rationale:** all three become factually false the moment this lands, and a knowingly-false doc comment is worse than no comment.
   All are comment-only, no code, no behavior change.
 - **Rejected:** leaving them for Wave 3;
@@ -348,7 +376,7 @@ The real consumer surface is much smaller — see Technical context.
   `Plan` is unchanged except that `Format` now means 4.
 - `parse.go` (482 lines) — the label constants block (`whatLabel` … `cardVerifyLabel`), `cardLabels`, `isCardLabelLine`, the `parseCardBody` switch, `parseFileOpField`, `parseMovesField`, `parseDependsOnField`, `noneSentinel`, `moveLineRe`.
   `parseFileOpField` and `parseMovesField` are the two reusable bullet collectors;
-  `parseDependsOnField` and `noneSentinel` go away.
+  `parseDependsOnField` and `noneSentinel` go away, but the retired **label constants stay** in `cardLabels` per `retired-label-disposition` — deleting them is the specific mistake that turns a half-migrated card into a silent misparse via `parseCardBody`'s `default: i++` fallthrough (`parse.go:388-389`).
   Note `parseFileOpField` currently returns `[]string{}` for the `none` sentinel and errors on an inline value — under `field-presence` the `none` branch is deleted and the inline-value error stays.
 - `normalize.go` (60 lines) — `normalizeCardPath`, `hasWorktreeRootEscape`, `cleanPosixPath`, `normalizeCard`, `normalizePathSlice`.
   Only `normalizeCard` changes shape (it must consult the classifier);
@@ -483,7 +511,7 @@ Write the tests first here.
 - **One test per validator check.** Every surviving, reworked, and new check from the `validator-checks` table gets its own focused test.
   The five `move-*` tests and the `depends-on-order` test are **deleted, not adapted** — retrofitting a dropped check's test onto a new check produces a test that documents the wrong thing.
 - **Golden all-checks-pass test**: `validate_test.go`'s existing "all checks pass simultaneously on the happy path" test, retargeted to the new count.
-- **Parse-lenient scenarios**: a label present with no bullets (`card-field-empty`), a card with two type labels and a card with none (`card-type-missing`), a malformed `Rename` bullet landing in `RenameRaw` (`rename-format`), a multi-line `ImpactSummary` (`impact-summary-multiline`), and a `Prosa` card with a symbol target (`prosa-symbol-target`).
+- **Parse-lenient scenarios**: a label present with no bullets (`card-field-empty`), a card with two type labels and a card with none (`card-type-missing`), a malformed `Rename` bullet landing in `RenameRaw` (`rename-format`), a multi-line `ImpactSummary` whose trailing lines reach `ImpactSummaryTrailing` (`impact-summary-multiline`), a `Prosa` card with a symbol target (`prosa-symbol-target`), and a **half-migrated card carrying a retired `**Context:**` label** (`card-retired-label`) — the last must also assert the retired label terminated `Intent:`'s prose collection rather than being swallowed into it.
 - **Fail-loud scenarios stay fail-loud**: an inline value on a field admitting only bullets must still be a `ParsePlan` error, not a finding.
 
 **`internal/loomengine` — stencil-pinning tests.**
@@ -518,7 +546,7 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
   `Commit:` and `Verify:` survive;
   `Card.Intent` renamed `Card.Summary`.
 - **Q:** Which validator checks survive? **A:** The baseline is **15**, not the 14 the repo's comments and the spec banner claim — that figure is already stale before this task touches anything.
-  Of those 15: keep 5 unchanged, rework 3, retarget 1 (`card-missing-field`), rename 2, drop 4, add 4 — **15 again**.
+  Of those 15: keep 5 unchanged, rework 3, retarget 1 (`card-missing-field`), rename 2, drop 4, add 5 — **16**.
   See the `validator-checks` table.
 - **Q:** What enforces a missing `Intent:`? **A:** `card-missing-field`, which keeps its ID and its `[]cardFieldLabel` shape and simply iterates the new required set (`Intent:`, plus `ImpactSummary:` on Edit/Delete).
   `card-type-missing` stays separate because it also fires on *two* type labels, which a presence check cannot express.
@@ -530,6 +558,9 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
 - **Q:** Dual-read `format: 3`? **A:** No. Bump to 4 and hard-reject 3.
 - **Q:** Is the three-tier Verify model implemented here? **A:** Specified only.
   Implementing tier1 would be exactly the behavior change the roadmap entry rules out, so spec-only is the correct scope, not merely the recommended one.
+- **Q:** What happens to a card that still carries a retired label like `**Context:**`? **A:** The seven retired labels stay recognized by the parser — otherwise a stray one is swallowed into `Intent:`'s prose — are routed to a `RetiredLabels` slot, and each produces a `card-retired-label` finding naming its format-3 → format-4 mapping.
+  A hard parse error was rejected for aborting the whole plan instead of enumerating every defect in one pass.
+- **Q:** How can `impact-summary-multiline` report lines the parser discards? **A:** It cannot, so it does not discard them — the `ImpactSummary:` branch captures trailing non-label lines into `ImpactSummaryTrailing`, the same lenient-capture pattern `MovesRaw` uses today.
 - **Q:** How does `path-missing` survive when `Creates:` is no longer a field? **A:** It becomes type-conditional and keeps both union helpers under new names — `createTargetsUnion` (every `Create` card's path-shaped targets) and `renameTargetsUnion` (every `Rename` pair's `New` side).
   It never checks a `Create` target or a `Rename` pair's `New` side.
   A `Move` destination lives in prose, so there is no third union;
