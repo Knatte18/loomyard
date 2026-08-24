@@ -30,8 +30,6 @@ Without these, an agent working on Go code in this repo, or in any other repo th
 - Discussion review sign-off — in progress; this task finalizes directly from that loop, with no separate plan-writing phase, on explicit operator instruction.
 - Whatever the current review round still surfaces beyond what's already fixed (see Decisions and the Q&A log for what's already been caught and resolved).
 - Moving the roadmap entry to `## Done`, once review concludes.
-- The always-active hook's fate is still an open question — reconsidered mid-review on latency grounds;
-  see Decisions.
 
 **Out:**
 
@@ -147,17 +145,24 @@ Without these, an agent working on Go code in this repo, or in any other repo th
   this would be anticipatory completeness, which `code-quality`'s own YAGNI rule argues against.
 - Rejected: building it now on completeness grounds — proposed, briefly reversed when the first objection to it was identified as too weak to stand alone, then reconsidered a final time against the YAGNI test and dropped again.
 
-### Always-active mechanism: still being reconsidered
+### Always-active mechanism: SessionStart hook, once per session
 
-- Decision: not yet final.
-  First shipped as two mechanisms — an explicit "Load these skills: ..." line inside any lyx-generated prompt (a separate, later roadmap item, still the plan for that context), plus a `hooks/hooks.json` `UserPromptSubmit` hook injecting a load-`prose`/`conversation` reminder into every other session.
-- Rationale for the hook as first shipped: a review round flagged that "always-active" had no mechanism behind it at all, plus a dangling pointer to a mill-transient file that wouldn't travel with the plugin.
-  A hook can only inject prompt text asking the agent to load a skill, never force it — confirmed by research — but that is the same mechanism this very session's own CLAUDE.md-reading hook relies on every turn, and it works reliably in practice.
-- Reconsideration in progress: the operator then questioned whether the hook is worth its cost — it runs on every single prompt in every session with the plugin installed, including sessions doing nothing text-related, for a benefit (nudging skill discovery) that `prose`'s own broad `description` field may already achieve through Claude Code's normal relevance-matching, without forcing per-turn overhead.
-  A lighter option (a `SessionStart` hook, firing once per session instead of once per turn) was also proposed.
-  Unresolved at the time of this writing — see the Q&A log.
-- Rejected so far: leaving "always-active" as a bare, mechanism-less claim (the original gap).
-  Not yet decided: keep the `UserPromptSubmit` hook, switch to `SessionStart`, or drop the hook file entirely and rely on relevance-matching plus explicit lyx-prompt loading alone.
+- Decision: two mechanisms cover "always-active," for two distinct contexts.
+  Inside any lyx-generated prompt, an explicit "Load these skills: ..." line (a separate, later roadmap item, still the plan for that context).
+  For every other session with the plugin installed, `plugins/scribe/hooks/hooks.json` ships a `SessionStart` hook injecting a load-`prose`/`conversation` reminder once, at session start — not a `UserPromptSubmit` hook re-injecting it every turn.
+- Rationale: a review round flagged that "always-active" had no mechanism behind it at all, plus a dangling pointer to a mill-transient file that wouldn't travel with the plugin;
+  a `UserPromptSubmit` hook was shipped first to close that gap.
+  The operator then questioned whether per-turn latency was worth it, for a benefit `prose`'s own broad `description` field might already get through Claude Code's normal relevance-matching most of the time.
+  Confirmed by research that `SessionStart` fires reliably on both fresh and resumed sessions, injects its command's stdout into context the same way `UserPromptSubmit` does, and carries no documented platform caveats — a strictly better cost/benefit trade for a one-time session-level nudge than firing on every turn.
+- Rejected: `UserPromptSubmit` (the first-shipped version) — unnecessary per-turn cost for a reminder that only needs to land once per session;
+  leaving "always-active" as a bare, mechanism-less claim (the original gap); dropping the hook file entirely and relying on relevance-matching alone — rejected because the reviewed gap was specifically the absence of any concrete mechanism, and `SessionStart` closes it at negligible cost.
+
+### Hook shell portability
+
+- Decision: the hook command is a single-quoted `echo`, POSIX-style, unqualified for platform.
+- Rationale: `internal/shuttleengine/claudeengine/settings.go`'s own doc comment states Claude Code hook commands run under git-bash on Windows in this environment, which is POSIX-compatible — the same quoting style lyx's own generated hooks already rely on.
+  No separate Windows-specific command variant is needed.
+- Rejected: writing a cross-shell-safe or PowerShell-specific variant — unnecessary given the confirmed git-bash execution environment.
 
 ### Design doc points to the skill, not the reverse
 
@@ -171,7 +176,7 @@ Without these, an agent working on Go code in this repo, or in any other repo th
 
 ## Technical context
 
-- Plugin lives at `plugins/scribe/`, mirroring `plugins/prowler/`'s shape: `.claude-plugin/plugin.json`, `settings.json` (granting `Skill(scribe:*)`), `hooks/hooks.json` (the always-active mechanism, still under reconsideration — see Decisions), `skills/<name>/SKILL.md` per skill, `skills/INDEX.md`.
+- Plugin lives at `plugins/scribe/`, mirroring `plugins/prowler/`'s shape: `.claude-plugin/plugin.json`, `settings.json` (granting `Skill(scribe:*)`), `hooks/hooks.json` (a `SessionStart` hook for the always-active mechanism — see Decisions), `skills/<name>/SKILL.md` per skill, `skills/INDEX.md`.
 - Registered in `.claude-plugin/marketplace.json` alongside `prowler`.
 - `update-plugins.sh`'s report — `Skipped (not installed): scribe@loomyard -- run '/plugin install scribe@loomyard' first` — proves only that `marketplace.json` parses and names `scribe`;
   the script's not-installed branch returns before it ever touches `plugins/scribe/`'s own contents, so it validates nothing about the plugin's shape.
@@ -232,7 +237,4 @@ For whoever reviews this discussion and the linked skill files (`plugins/scribe/
   **A:** Partially disagree as a blanket claim — an example pins down a fuzzy judgment line ("how much padding is too much") that prose rules alone leave to interpretation, a different function than restating a rule.
   But the count matters: `golang-comments`' exported-symbol section had four examples for one rule, trimmed to three, then consolidated further in a later round.
 - **Q:** Is the always-active hook worth its per-turn latency cost?
-  **A:** Unresolved.
-  It runs on every prompt in every session with the plugin installed, not only sessions that write text — real, ongoing cost for a benefit that normal skill relevance-matching might already deliver.
-  A `SessionStart` hook (once per session) was raised as a lower-cost middle ground.
-  Decision pending.
+  **A:** Not at the `UserPromptSubmit` cost — switched to `SessionStart`, confirmed to fire reliably once per session (fresh or resumed) rather than on every turn, closing the mechanism gap at a cost the operator found acceptable.

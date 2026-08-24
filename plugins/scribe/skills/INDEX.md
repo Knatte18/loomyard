@@ -12,7 +12,7 @@
 
 `prose` and `conversation` are always-active through two distinct mechanisms, depending on context:
 
-- **By default, for any session with this plugin installed:** `hooks/hooks.json` ships a `UserPromptSubmit` hook that injects an instruction to load `scribe:prose` (and `scribe:conversation` for a chat reply) before each response — the same mechanism this very instruction relies on to reach you.
+- **By default, for any session with this plugin installed:** `hooks/hooks.json` ships a `SessionStart` hook that injects an instruction to load `scribe:prose` (and `scribe:conversation` for a chat reply), once, at the start of the session.
   This is a strong nudge, not a platform-enforced guarantee: the hook can only inject text asking the agent to load the skill, it cannot force-load it.
-- **Inside a lyx-generated prompt** (a loom producer stencil, or any prompt lyx itself writes): the stencil carries an explicit "Load these skills: ..." line naming the relevant skills directly, the same way `mill-start` loads `mill:conversation` unconditionally as its own first step.
+- **Inside a lyx-generated prompt** (a loom producer stencil, or any prompt lyx itself writes): the stencil carries an explicit "Load these skills: ..." line naming the relevant skills directly.
   This wiring is a separate, later roadmap item ("loom: Discussion-Write producer") — not yet built.
