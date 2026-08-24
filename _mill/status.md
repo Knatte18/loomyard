@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: webster-dag-card-sequencing
 branch: webster-dag-card-sequencing
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-sequencing core  '2026-08-24T18:53:05Z'
 approved-wiring, render, and master template  '2026-08-24T19:05:19Z'
 approved-docs  '2026-08-24T19:08:48Z'
 holistic-reviewing  '2026-08-24T19:09:20Z'
+holistic-approved  '2026-08-24T19:14:10Z'
 ```
 
 ## Batches
