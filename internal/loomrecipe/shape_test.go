@@ -52,9 +52,9 @@ var wantProducerTable = []wantProducerRow{
 
 // testEnv builds a shedrecipe.Env/ShedPaths pair whose every path field is an absolute path derived
 // from a single t.TempDir(), fills Landing via testLandingDeps, fills WebsterRun and the four
-// WebsterDeps seams the way buildSequenceFixture does, and fills Shuttle, DiscussionSpec, and
-// CommitDiscussion with the non-writing fakeDiscussionShuttle variant so the discussion paths this
-// builder points at stay absent on disk.
+// WebsterDeps seams the way buildSequenceFixture does, and fills Shuttle, DiscussionSpec,
+// CommitDiscussion, PlanSpec, and CommitPlan with the non-writing fakeLoomShuttle variant so the
+// discussion and plan paths this builder points at stay absent on disk.
 func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 	t.Helper()
 	dir := t.TempDir()
@@ -68,6 +68,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 	statusLockPath := filepath.Join(dir, "status.json.lock")
 	decisionRecordPath := filepath.Join(dir, "discussion", "decision-record.md")
 	supportLogPath := filepath.Join(dir, "discussion", "support-log.md")
+	planOverviewPath := filepath.Join(dir, "plan", "00-overview.md")
 
 	env := shedrecipe.Env{
 		Cwd:                cwd,
@@ -85,15 +86,25 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 			RefMatcher: fakeRefMatcher{},
 		},
 		Landing: testLandingDeps(dir),
-		Shuttle: &fakeDiscussionShuttle{writeOutputs: false},
+		Shuttle: &fakeLoomShuttle{writeOutputs: false},
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "discussion prompt",
 				OutputFiles: []string{decisionRecordPath, supportLogPath},
 				Interactive: false,
+				Role:        "discussion",
 			}, nil
 		},
 		CommitDiscussion: func() error { return nil },
+		PlanSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "plan prompt",
+				OutputFiles: []string{planOverviewPath},
+				Interactive: false,
+				Role:        "plan",
+			}, nil
+		},
+		CommitPlan: func() error { return nil },
 	}
 
 	paths := ShedPaths{
@@ -255,7 +266,7 @@ func TestNew_PassesShedValidation(t *testing.T) {
 	// Drive Run to exercise (*Shed).validate() indirectly, since it is unexported: a validation
 	// error (a typo'd OnStuck, a duplicate name, two lock paths naming one file) surfaces as Run
 	// returning a non-nil error before it ever reads the status file. Row 3's fake shuttle
-	// deliberately writes nothing (env.Shuttle is a fakeDiscussionShuttle{writeOutputs: false}), so
+	// deliberately writes nothing (env.Shuttle is a fakeLoomShuttle{writeOutputs: false}), so
 	// each bounce re-runs a real producer that leaves the record absent, and Discussion-Validate
 	// bounces back to Discussion-Write repeatedly; Discussion-Validate never returns Done, so its
 	// own budget -- inherited from paths.MaxBounces (3), since neither producer sets a MaxBounces

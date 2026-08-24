@@ -100,8 +100,8 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 
 	// This is the scenario check that a Done from row 3 genuinely reaches the Fabric-commit seam,
 	// rather than the decorator being silently bypassed.
-	discussionShuttle := env.Shuttle.(*fakeDiscussionShuttle)
-	if discussionShuttle.commitCalls != 1 {
-		t.Errorf("fakeDiscussionShuttle.commitCalls = %d; want exactly 1 after a clean run", discussionShuttle.commitCalls)
+	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
+	if loomShuttle.commitDiscussionCalls != 1 {
+		t.Errorf("fakeLoomShuttle.commitDiscussionCalls = %d; want exactly 1 after a clean run", loomShuttle.commitDiscussionCalls)
 	}
 }
