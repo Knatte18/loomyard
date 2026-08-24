@@ -44,6 +44,7 @@ The real consumer surface is much smaller — see Technical context.
   the "14 checks" counts in `internal/webstercli/validate.go`, `internal/planparser/validate.go`, and `internal/planparser/validate_test.go` — which are **already wrong today**, see the `validator-checks` decision.
 - `manifest/roadmap.md` — move the Wave 2 planparser item to Done on completion.
 - `manifest/designs/plan-card-format.md` — flip its "Status: designed, not implemented" banner, and record that this task closes **all three** of its "Open, not decided here" items: `Custom` needs no mechanical check (`validator-checks`), `ImpactSummary` on `Delete` stays one line of prose (`prose-fields`), and the validator-check reconciliation is the `validator-checks` table.
+  While resolving that third item, **also correct its own "existing 14 validator checks" figure to 15** (`manifest/designs/plan-card-format.md:84`) — it inherits the same miscount, and leaving a wrong number inside a resolved item moves the staleness rather than removing it.
 
 **Out:**
 
@@ -110,6 +111,10 @@ The real consumer surface is much smaller — see Technical context.
   1. contains `/` → **path** (this covers the `//` worktree-root escape too);
   2. else, the segment after the final `.` is entirely lowercase ASCII alphanumerics → **path**;
   3. else → **symbol**.
+  Rule 3 is the explicit default for two cases, not an implementation accident:
+  an entry containing **no `.` at all** (`Lookup`, `Makefile`, a bare directory name) never reaches rule 2's test and falls to rule 3 → symbol;
+  and an entry whose final dot-segment is not all-lowercase (`shedrecipe.Lookup`) → symbol.
+  Both cases are pinned by the classifier table test.
   So `internal/boardcli/list.go` and bare `list.go` are paths;
   `shedrecipe.Lookup` is a symbol.
   The same function is the sole classifier used by `card-path-malformed`, `path-missing`, `prosa-symbol-target`, and by `normalizeCard`.
@@ -193,7 +198,7 @@ The real consumer surface is much smaller — see Technical context.
   | `card-numbering` | Keep unchanged |
   | `commit-subject-mismatch` | Keep unchanged |
   | `card-path-malformed` | Rework — applies only to path-shaped entries |
-  | `path-missing` | Rework — applies only to path-shaped entries |
+  | `path-missing` | Rework — path-shaped entries only, **and type-conditional**; see `path-missing-rework` |
   | `card-field-overlap` | Rework — now means "an entry appears in both this card's target list and its own `Uses:`" |
   | `card-missing-field` | **Keep the ID, retarget the required set** — now enforces `Intent:` on every card, and `ImpactSummary:` on `Edit`/`Delete` cards |
   | `move-format` | Renamed `rename-format` |
@@ -220,12 +225,37 @@ The real consumer surface is much smaller — see Technical context.
 - **Rejected:** preserving the `move-*` checks by giving `Move` a mechanical destination field (departs from the design doc);
   stripping to format/approval/index-consistency only and deferring content checks to a later hardening pass (leaves the new format almost unchecked at exactly the moment it is least understood).
 
+### path-missing-rework
+
+- **Decision:** `path-missing` stays, but becomes type-conditional and keeps two union helpers under new definitions.
+  - **What it checks:** path-shaped entries in any card's `Uses:`, and path-shaped targets of `Edit`, `Delete`, `Prosa`, and `Custom` cards, plus a `Rename` pair's `Old` side.
+  - **What it never checks:** a `Create` card's targets (by definition they do not exist yet), and a `Rename` pair's `New` side (the post-rename path does not exist yet either).
+  - **What satisfies an otherwise-missing path:** `createTargetsUnion` — the union, across the plan, of every `Create`-type card's path-shaped targets — and `renameTargetsUnion` — the union of every `Rename` pair's `New` side.
+    These are today's `createsUnion`/`movesTargetsUnion` renamed and redefined, **not deleted**;
+    the Technical context's earlier claim that both "go away" was wrong, since `checkPathMissing` uses both today (`validate.go:528-530`).
+- **Rationale:** without the two unions, every path a card legitimately creates or renames into place becomes a spurious `path-missing` finding on the card that later reads it — turning a useful check into noise the author learns to ignore.
+  Without the type conditions, a `Create` card is flagged for creating something that does not exist yet, which is its entire purpose.
+- **Known limitation, to be documented in the spec:** a `Move` card states its destination in `Intent` prose, not in a field, so there is no `moveTargetsUnion` to build.
+  A later card whose path-shaped entry names a file an earlier `Move` relocated into place will produce a **false-positive** `path-missing` finding.
+  This is accepted: `Move` is the rarest type, the failure is a loud finding rather than a silent misparse, and the author resolves it by reordering or by naming the pre-move path.
+- **Rejected:** suppressing `path-missing` plan-wide whenever any `Move` card is present (mechanical and simple, but disables a useful check across the entire plan to serve the rarest type);
+  giving `Move` a mechanical destination field to build the third union (already rejected under `rename-grammar` for departing from the design doc).
+
 ### rename-grammar
 
 - **Decision:** bullet grammar is type-conditional.
   A `Rename` card's bullets parse against the existing `` `old` -> `new` `` regex into `[]MovePair` — the type is reused, not deleted.
   Every other type's bullets are plain refs.
-  A `Rename` bullet failing the pair grammar lands in a `RenameRaw` slot, exactly as `MovesRaw` works today, and the new `rename-format` check reports it.
+  A `Rename` bullet failing the pair grammar lands in a `RenameRaw` slot, exactly as `MovesRaw` works today, and the renamed `rename-format` check reports it.
+- **Decision — how `Rename` relates to `Targets`:** a `Rename` card populates **both** `Pairs []MovePair` *and* `Targets`, projecting **both endpoints** of every pair into `Targets` in pair order (`Old`, then `New`).
+  `Pairs` is the structured form the rename mechanic and `rename-format` work from;
+  `Targets` is what every target-list-based consumer reads, so `Rename` is not a hole in the model.
+  Consequences, stated so no consumer has to guess:
+  - `card-field-overlap` sees both endpoints, so a card that renames `X` and also lists `X` in its own `Uses:` is correctly flagged.
+  - `card-path-malformed` and the classifier run over both endpoints.
+  - `path-missing` runs over `Old` only — see `path-missing-rework`.
+  - Wave 3's edge derivation gets both names, which is what it needs: a later card depending on the post-rename name (`New`) and a card depending on the pre-rename name (`Old`) both genuinely depend on this card.
+  `Targets` is therefore never empty for any card type, including `Rename`.
 - **Rationale:** the design doc's card-type table gives `Rename` "existing symbol(s), `old -> new` pairs" and `Move` "destination stated in `Intent`, not the list".
   That asymmetry is deliberate and has to be reflected in the parser.
   Retargeting `MovesRaw`'s lenient-capture mechanism keeps the parse-lenient discipline intact for the one type that still has a grammar to fail.
@@ -324,8 +354,11 @@ The real consumer surface is much smaller — see Technical context.
   Only `normalizeCard` changes shape (it must consult the classifier);
   the rest is reusable as-is.
 - `validate.go` (616 lines) — `Validate`'s fixed call sequence plus one `checkXxx` function per check, `ValidationError`, `cardID`, and the helpers `createsUnion`, `movesTargetsUnion`, `pathExistsOnDisk`, `cardPathMalformedReason`, `cardHeadingNumber`.
-  `createsUnion`/`movesTargetsUnion` exist only to serve dropped checks and go away;
-  `pathExistsOnDisk`, `cardPathMalformedReason`, `cardHeadingNumber`, and `cardID` all survive.
+  `createsUnion` and `movesTargetsUnion` **survive, renamed and redefined** as `createTargetsUnion`/`renameTargetsUnion` — `checkPathMissing` uses both today (`validate.go:528-530`), so deleting them would break a kept check;
+  see `path-missing-rework`.
+  `pathExistsOnDisk`, `cardPathMalformedReason`, `cardHeadingNumber`, and `cardID` all survive unchanged.
+  Note also that `checkPathMissing` today deliberately skips `CreatesFiles` (`validate.go:533`);
+  the type-conditional rework preserves that intent by skipping `Create` targets.
 - `sections.go` (69 lines) — unchanged.
 - `doc.go` (62 lines) — the package doc describes the five typed file-op fields, the `none` sentinel's three-state model, and "the plan format's 14 validation checks" (itself a miscount — see `validator-checks`).
   All three passages need rewriting.
@@ -348,17 +381,29 @@ The real consumer surface is much smaller — see Technical context.
 
 **Files carrying a literal old-format card body or a `format: 3` plan.**
 
-Do not trust the list below as a hand-curated inventory — **re-run the enumeration** before planning, since the tree moves:
+Two disjoint sweeps are needed, because the two carrier kinds fail differently.
+
+**Sweep 1 — markdown/instruction carriers (the compiler cannot see these).** Re-run before planning:
 
 ```
 grep -rln '\*\*What:\*\*\|format: 3' internal/ tools/ contracts/ cmd/
 ```
 
-As of this discussion that yields, beyond `internal/planparser`'s own sources, tests, and `testdata/goodplan/`:
+**Sweep 2 — Go-level model carriers.** These do **not** match Sweep 1's pattern, because they construct a `Card` in Go rather than writing card markdown.
+They are caught by `go build ./... && go test ./...` once the fields are renamed, so the compiler is the authority;
+this grep is only to see them ahead of time:
+
+```
+grep -rln 'MovePair\|\.Moves\|ContextFiles\|EditsFiles\|CreatesFiles\|DeletesFiles\|DependsOn\|HasWhat' internal/ cmd/
+```
+
+`internal/websterengine/template_test.go` is a Sweep-2 carrier only — its sole coupling is `card.Moves = []planparser.MovePair{...}` at line 759, and it contains neither `**What:**` nor `format: 3`.
+A plan writer running Sweep 1 alone will not see it.
+
+As of this discussion Sweep 1 yields, beyond `internal/planparser`'s own sources, tests, and `testdata/goodplan/`:
 
 - `internal/loomshed/planvalidate_test.go`
 - `internal/websterengine/runlevel_test.go`
-- `internal/websterengine/template_test.go` (sets `card.Moves = []planparser.MovePair{...}`)
 - `internal/loomrecipe/fixture_test.go`
 - `internal/loomcli/validate_test.go` — the `validate-plan` verb's fixture, coupled to the Gate Self-Check Parity Invariant
 - `internal/webstercli/cli_test.go`
@@ -433,7 +478,7 @@ Write the tests first here.
   Keep `root:` and a `//`-escaped entry so `root-resolution` is covered by the golden path.
 - **Round-trip test** (`parse_test.go`'s existing `goodPlanDir` pattern): parse the fixture and assert every field of every card, including that a symbol target survives `normalizeCard` **unmodified** under a non-empty `root:` — that is the single most important regression this migration can introduce.
 - **Shape classifier**: a table test over the classification rule.
-  Cover `internal/x/y.go`, bare `list.go`, `//cmd/lyx/main.go`, `shedrecipe.Lookup`, a bare `Lookup`, and the documented `shedrecipe.lookup` misclassification so the limitation is pinned rather than discovered later.
+  Cover `internal/x/y.go`, bare `list.go`, `//cmd/lyx/main.go`, `shedrecipe.Lookup`, a bare `Lookup` and a bare `Makefile` (both no-dot → symbol, pinning rule 3's default), and the documented `shedrecipe.lookup` misclassification so the limitation is pinned rather than discovered later.
   **Deliberately no fuzz test** — the classifier is a small pure function fully covered by a table, and fuzzing it would be scope beyond a bounded migration with no observed problem to solve.
 - **One test per validator check.** Every surviving, reworked, and new check from the `validator-checks` table gets its own focused test.
   The five `move-*` tests and the `depends-on-order` test are **deleted, not adapted** — retrofitting a dropped check's test onto a new check produces a test that documents the wrong thing.
@@ -485,8 +530,16 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
 - **Q:** Dual-read `format: 3`? **A:** No. Bump to 4 and hard-reject 3.
 - **Q:** Is the three-tier Verify model implemented here? **A:** Specified only.
   Implementing tier1 would be exactly the behavior change the roadmap entry rules out, so spec-only is the correct scope, not merely the recommended one.
+- **Q:** How does `path-missing` survive when `Creates:` is no longer a field? **A:** It becomes type-conditional and keeps both union helpers under new names — `createTargetsUnion` (every `Create` card's path-shaped targets) and `renameTargetsUnion` (every `Rename` pair's `New` side).
+  It never checks a `Create` target or a `Rename` pair's `New` side.
+  A `Move` destination lives in prose, so there is no third union;
+  the resulting false positive is accepted and documented rather than suppressed plan-wide.
+- **Q:** Does a `Rename` card populate `Targets`, or only `Pairs`? **A:** Both — both endpoints project into `Targets` in pair order, so no target-list-based check or Wave 3 edge derivation has a hole for `Rename`.
+  `path-missing` is the one consumer that looks at `Old` only.
 - **Q:** How is the old-format fixture inventory established? **A:** By re-running `grep -rln '\*\*What:\*\*\|format: 3' internal/ tools/ contracts/ cmd/`, not by trusting a hand list.
-  That sweep surfaces three carriers an initial hand list missed — `internal/loomcli/validate_test.go`, `internal/webstercli/cli_test.go`, and `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, the last of which the green-tree gate cannot catch because it is an agent-facing markdown instruction file.
+  Two sweeps, not one: a markdown/instruction sweep the compiler cannot see, and a Go-model sweep the compiler catches anyway.
+  `internal/websterengine/template_test.go` appears only in the second.
+  The first surfaces three carriers an initial hand list missed — `internal/loomcli/validate_test.go`, `internal/webstercli/cli_test.go`, and `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, the last of which the green-tree gate cannot catch because it is an agent-facing markdown instruction file.
 - **Q:** Does `ImpactSummary` on `Delete` need a structured shape? **A:** No — one line of prose, identical to `Edit`.
   Closes the third of the design doc's open items;
   a structured shape would need caller enumeration planparser cannot produce without the symbol lookup this task excludes.
@@ -510,7 +563,8 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
 - **Q:** What is the deviation union once targets can be symbols? **A:** The implementer resolves symbol targets to their holding files and unions those with path-shaped targets;
   `Uses:` stays out.
   Stencil prose only, no Go change.
-- **Q:** Type-specific checks for `Prosa`, `Custom`, `Create`, `Delete`? **A:** `impact-summary-missing` (Edit/Delete), `rename-format`, `prosa-symbol-target`.
+- **Q:** Type-specific checks for `Prosa`, `Custom`, `Create`, `Delete`? **A:** Required `ImpactSummary:` on Edit/Delete is enforced by the retargeted `card-missing-field`, not by a separate check;
+  plus `rename-format` and `prosa-symbol-target`.
   `Custom` gets none — a principled closure of that design-doc open item in the affirmative, not an oversight.
 - **Q:** What about the two stale design docs? **A:** Left alone.
   The roadmap already assigns `webster-parallel-execution.md` to the Wave 3 DAG task.
