@@ -122,10 +122,12 @@ func testLandingDeps(dir string) landingshed.Deps {
 // newTestEnv builds a shedrecipe.Env whose every path field is an absolute path derived from a
 // single t.TempDir(), one subdirectory per directory-valued field, and a joined-but-uncreated path
 // for each file-valued field, modelled on internal/shedrecipe/fixture_test.go's builder of the same
-// name. It fills the two per-producer DiscussionWrite seams the same way that sibling does -- a
-// DiscussionSpec closure returning a Spec over one absolute output path under the same temp root,
-// and a CommitDiscussion closure returning nil -- and additionally fills Env.Landing via
-// testLandingDeps, because two of the thirteen engines need it, which its sibling does not do.
+// name. It fills the four per-producer DiscussionWrite/PlanWrite seams the same way that sibling
+// does -- a DiscussionSpec closure returning a Spec over one absolute output path under the same
+// temp root, a CommitDiscussion closure returning nil, a PlanSpec closure returning a Spec over one
+// absolute output path under the same temp root, and a CommitPlan closure returning nil -- and
+// additionally fills Env.Landing via testLandingDeps, because two of the fourteen engines need it,
+// which its sibling does not do.
 //
 // Every seam any registered engine requires non-nil must be filled here:
 // TestBuild_EveryRegisteredEngineBuilds drives its assertion off shedrecipe.Names(), so a new
@@ -173,7 +175,15 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 			}, nil
 		},
 		CommitDiscussion: func() error { return nil },
-		Landing:          testLandingDeps(mustMkdir("landing")),
+		PlanSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "test plan prompt",
+				OutputFiles: []string{filepath.Join(dir, "plan-output.md")},
+				Interactive: false,
+			}, nil
+		},
+		CommitPlan: func() error { return nil },
+		Landing:    testLandingDeps(mustMkdir("landing")),
 	}
 }
 
