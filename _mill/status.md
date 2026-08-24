@@ -38,7 +38,9 @@ batches:
     commit_sha: b427c463982d7b1f709fe459deac71547ddb18e5
     verify_baseline_failures: []
   - name: shedrecipe-entry-and-recipe-row
-    state: pending
+    state: running
+    implementer_session: 7c5987cd-8d84-4426-ab44-f9147ce00b00
+    start_sha: d92ec7040667c7bc1b07aa1c5350bdc13189106a
     verify_baseline_failures: []
   - name: loomcli-wiring
     state: pending
