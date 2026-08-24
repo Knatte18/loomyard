@@ -68,7 +68,11 @@ and blocks until Master writes its own outcome.yaml and summary.md
 exit except a "run is already in progress" refusal (another
 "lyx webster run" already owns the run -- this call touched nothing) runs
 a backstop fabric commit before printing its envelope, so a run that ends in
-error still leaves its completed batches' artifacts committed.
+error still leaves its completed batches' artifacts committed. The envelope's
+"cycles" key reports every dependency cycle the execution sequencer
+condensed: an acyclic plan reports an empty list, and a non-empty list names
+mutually-dependent batches that were condensed and run in declared order --
+never a failure.
 
 Example:
   lyx webster run
@@ -107,6 +111,13 @@ Example:
 				return nil
 			}
 
+			// Default to an empty, non-nil slice so the key renders as [] rather
+			// than null on the common acyclic run.
+			cycles := make([][]int, 0, len(result.Cycles))
+			for _, c := range result.Cycles {
+				cycles = append(cycles, c.Batches)
+			}
+
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"outcome":         result.Outcome,
 				"stuck_reason":    result.StuckReason,
@@ -114,6 +125,7 @@ Example:
 				"summary_title":   result.SummaryTitle,
 				"fabricCommitted": committed,
 				"warnings":        result.Warnings,
+				"cycles":          cycles,
 			}))
 			return nil
 		},

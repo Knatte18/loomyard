@@ -60,7 +60,9 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			batches := c.batcher.Batch(plan.Cards)
+			// Every batch-computation site sequences, so all five agree on
+			// one order by construction rather than by comment.
+			batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
 
 			// Hold the state-mutation lease across the whole load ->
 			// BeginBatch (guards + mutate) -> SaveState sequence: every
