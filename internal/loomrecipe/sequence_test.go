@@ -24,6 +24,11 @@ import (
 // fresh seed, and by the instant row 2 runs, shedengine.Run has already persisted
 // current_producer: "Loom-Preflight" alongside a single Preflight Done history entry -- exactly the
 // shape row 2's told expected name and tolerated set accept.
+//
+// Row 3 (Discussion-Write) passes too, now that it is a real shedadapters.SingleLLMProducer behind
+// loomshed's commit decorator rather than a Stub: the fixture's fake shuttle writes both discussion
+// output files and reports Done, so the decorator's injected commit closure fires and
+// Discussion-Validate finds a complete pair.
 var wantSequenceOrder = []string{
 	loomshed.NamePreflight,
 	loomshed.NameLoomPreflight,
@@ -91,5 +96,12 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	}
 	if got.CurrentProducer != loomshed.NamePublish {
 		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NamePublish)
+	}
+
+	// This is the scenario check that a Done from row 3 genuinely reaches the weft-commit seam,
+	// rather than the decorator being silently bypassed.
+	discussionShuttle := env.Shuttle.(*fakeDiscussionShuttle)
+	if discussionShuttle.commitCalls != 1 {
+		t.Errorf("fakeDiscussionShuttle.commitCalls = %d; want exactly 1 after a clean run", discussionShuttle.commitCalls)
 	}
 }
