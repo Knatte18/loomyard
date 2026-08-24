@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: redesign the Discussion format'
 slug: 'loom-redesign-discussion-format'
-approved: false
+approved: true
 started: '20260824-082547'
 parent: 'main'
 root: ""
