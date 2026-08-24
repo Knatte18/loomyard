@@ -47,7 +47,9 @@ batches:
     commit_sha: fee4e6543d7bfdd41c11deb729e795a600270a9d
     verify_baseline_failures: []
   - name: consumer fixtures — websterengine, loomshed, loomrecipe, loomcli, webstercli
-    state: pending
+    state: running
+    implementer_session: ae0a3eb6-97fe-468a-8d97-0ce6e04bee32
+    start_sha: c008e1b6eb10332ed15284e7b25c1b40a4689b2e
     verify_baseline_failures: []
   - name: docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap
     state: pending
