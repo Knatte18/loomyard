@@ -98,7 +98,8 @@ Under today's identity batchifier the two are identical (batch ≡ card), but th
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Create `internal/websterengine/sequence_test.go` in package `websterengine_test`, matching the external-test-package convention the rest of the package's `_test.go` files already use.
+  Create `internal/websterengine/sequence_test.go` in package `websterengine_test`.
+  The package is split roughly in half between internal `package websterengine` tests and external `package websterengine_test` ones, so this is a choice, not a default: the external package is correct here because `SequenceBatches` and `Cycle` are exported and this file tests only the exported surface, and because it matches every sibling file this task touches (`template_test.go`, `beginbatch_test.go`, `recoverbatch_test.go`, `runlevel_test.go`), all of which are external.
   It must be a Tier 1 file per the **Test Tier Purity Invariant**: untagged, no `//go:build` line, no `gitexec.Run`/`gitexec.RunGit`, no `exec.Command`/`exec.CommandContext`, no `gitkit.Copy*`, no `hubforge.NewHub`, no `time.Sleep`, no disk access, no git.
   Every fixture is a hand-built `[]batcher.Batch` literal;
   nothing goes through `planparser.ParsePlan`.

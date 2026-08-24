@@ -81,6 +81,8 @@ The plan pointer was used for nothing else inside that function, so keeping it w
   Prepend rather than append so the sequencing observations, which describe the whole run, read ahead of the integration stage's own per-failure warnings.
   Document at the assignment, in a short comment, that the non-done outcomes return an error rather than a `RunResult`, so a cycle observed on a run that ends stuck/paused/died reaches the operator through that error path's own message rather than through `Cycles` — an accepted, stated limitation, not an oversight.
 
+  Add no logger to `Run` and no logger seam to `RunDeps`: per the overview's `cycle-visibility-is-the-envelope, not a log line` Shared Decision, the `Cycles` field plus the prepended `Warnings` lines plus card 7's `cycles` envelope key are this task's whole cycle-visibility surface.
+
   Change nothing about `batchIdentity`, `verifyEveryBatchDone`, `ReportFileName`, or `State.Batches`' keying: this card reorders the slice and nothing else.
 - **Commit:** `feat(websterengine): sequence execution batches in Run and report detected cycles`
 
@@ -132,6 +134,7 @@ The plan pointer was used for nothing else inside that function, so keeping it w
   - `internal/websterengine/beginbatch.go`
   - `internal/websterengine/sequence.go`
   - `internal/websterengine/state.go`
+  - `internal/websterengine/render.go`
 - **Edits:**
   - `internal/websterengine/recoverbatch.go`
 - **Creates:** none
@@ -286,6 +289,7 @@ The plan pointer was used for nothing else inside that function, so keeping it w
   - `internal/websterengine/sequence.go`
   - `internal/websterengine/render.go`
   - `internal/websterengine/integration.go`
+  - `internal/websterengine/integration_test.go`
 - **Edits:**
   - `internal/websterengine/runlevel_test.go`
 - **Creates:** none
@@ -296,7 +300,7 @@ The plan pointer was used for nothing else inside that function, so keeping it w
   Reuse `newRunFixture`, `seedRunPlanDir`, `seedMatchingState`, `seedShuttleRunState`, and the file's existing fake `MasterStarter`;
   do not build a new fixture shape.
 
-  Add a small local helper that rewrites one already-seeded card file under the fixture's plan dir to carry a `**Uses:**` field naming a given ref, modelled on however `integration_test.go`'s own `appendIntegrationVerify` mutates a seeded plan.
+  Add a small local helper that rewrites one already-seeded card file under the fixture's plan dir to carry a `**Uses:**` field naming a given ref, modelled on `integration_test.go`'s own `appendIntegrationVerify` (line 36), which mutates an already-seeded plan the same way and sits in the same `websterengine_test` package.
   Two facts constrain the fixture and must both be honored, or `planparser.Validate` will refuse the run before sequencing is ever reached: a path-shaped `Uses` entry IS existence-checked against `Geom.WorktreeRoot` (`checkPathMissing`), while a Create card's own targets are exempt from that check.
   So any card file the helper points at another card's target path must have that path created as a real file inside `fx.Worktree` first.
 

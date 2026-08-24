@@ -69,6 +69,18 @@ batches:
   Renumbering to execution position would invalidate every on-disk report and state file and break crash-resume.
 - **Applies to:** all batches
 
+### Decision: cycle-visibility-is-the-envelope, not a log line
+
+- **Decision:** `discussion.md`'s `cycle-visibility` decision names three surfaces for a detected cycle — `Run` logs one line per cycle, the sequencing function returns them, and the run's result carries them.
+  This plan ships the second and third and deliberately does not ship the first.
+  `SequenceBatches` returns `[]Cycle`;
+  `RunResult` gains a `Cycles` field and one `Cycle.Warning()` line per cycle prepended to `RunResult.Warnings`;
+  and `lyx webster run`'s JSON envelope gains a `cycles` key beside its existing `warnings` key.
+- **Rationale:** Neither `internal/websterengine` nor `internal/webstercli` imports `internal/logger` today, and `RunDeps` carries no logger or writer seam — a log line would mean introducing a new cross-cutting dependency into `Run` for one diagnostic.
+  The envelope is also the better surface for the stated purpose: `discussion.md` asks that the information reach `lyx webster status`-shaped output, and a structured `cycles` key does that where a stderr line does not.
+  Every consumer the discussion names is served, by a mechanism that already exists.
+- **Applies to:** all batches
+
 ### Decision: go-comment-and-markdown-style
 
 - **Decision:** Go doc comments follow the `golang:golang-comments` conventions already in force across `internal/websterengine` — a file-level banner comment on every new `.go` file naming what the file implements, and a doc comment on every exported identifier.
