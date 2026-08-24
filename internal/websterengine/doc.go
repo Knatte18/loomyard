@@ -50,17 +50,21 @@
 //	    // v0: declared order
 //	}
 //
-// HasSymbolFields() is unreachable in v0 — plan-format cards carry no
-// symbol fields yet — so this costs nothing today and turns the eventual
-// quarry-driven rollout into "the planner starts populating fields,"
-// never a webster code change.
+// HasSymbolFields() is unreachable in v0 — the Wave 3 roadmap item
+// (webster: DAG-derived card sequencing) is what activates this seam,
+// not a card-model gap — so this costs nothing today and turns the
+// eventual quarry-driven rollout into "the planner starts populating
+// fields," never a webster code change.
 //
 // # Fork-return contract: OK/FAILED, a head SHA, an informational deviation list
 //
 // A fork's whole return contract is the minimal report shape report.go
 // implements (Report/ParseReport/WriteReport): `status: OK` or `status:
 // FAILED`, the `head_sha` the fork left the worktree at, and a `deviations`
-// list of paths the fork touched beyond its cards' declared file-ops union.
+// list of paths the fork touched beyond its cards' own deviation union —
+// every path-shaped target entry across the batch's cards, plus the files
+// holding every symbol-shaped target entry, with `Uses:` excluded because it
+// is read rather than written.
 // The deviation list is ALWAYS informational, never a failure condition — a
 // fork returns FAILED only on a non-zero build/unit gate or a non-zero
 // per-card `verify:`, never on deviation alone (plan-predicted file impact

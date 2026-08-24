@@ -1,8 +1,8 @@
 // parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
-// parsing, framing extraction), its per-card file-parsing behavior (the title heading, the typed
-// per-card model, Depends-on, Commit, and verify:), the none-vs-nil field distinction, and a full
-// round-trip over the contracts/specs/loom-plan-spec.md worked-example golden fixture
-// (testdata/goodplan).
+// parsing, framing extraction), its per-card file-parsing behavior (the title heading, the
+// format-4 type-label model, Uses:/Intent:/ImpactSummary:, retired-label routing, and
+// Commit:/Verify:), the label-present-vs-absent field distinction, and a full round-trip over the
+// format-4 golden fixture (testdata/goodplan).
 
 package planparser_test
 
@@ -33,11 +33,11 @@ func writePlanFiles(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// minimalOverview is a syntactically complete overview with a single Card Index
+// minimalOverview is a syntactically complete format-4 overview with a single Card Index
 // entry, used as the base fixture for tests that don't care about framing or
 // plan-level sections.
 const minimalOverview = `---
-format: 3
+format: 4
 approved: true
 ---
 
@@ -50,17 +50,12 @@ Framing paragraph.
 1 — only — the only card
 `
 
-// minimalCardFile is a syntactically complete card file body: all five typed
-// file-op fields plus Depends-on carry "none" except a single Edits: bullet.
-func minimalCardFile(number int, name, editsPath string) string {
+// minimalCardFile is a syntactically complete format-4 card file body: one type label carrying a
+// single bullet, plus an **Intent:** line — no "none" sentinel anywhere, since format 4 has none.
+func minimalCardFile(number int, name, editPath string) string {
 	return fmt.Sprintf("# Card %d — %s\n\n", number, name) +
-		"**What:** placeholder card.\n" +
-		"**Context:** none\n" +
-		"**Edits:**\n- `" + editsPath + "`\n" +
-		"**Creates:** none\n" +
-		"**Deletes:** none\n" +
-		"**Moves:** none\n" +
-		"**Depends-on:** none\n"
+		"**Edit:**\n- `" + editPath + "`\n" +
+		"**Intent:** placeholder card.\n"
 }
 
 func TestParsePlan_Overview(t *testing.T) {
@@ -79,8 +74,8 @@ func TestParsePlan_Overview(t *testing.T) {
 	if plan.Dir != dir {
 		t.Errorf("plan.Dir = %q; want %q", plan.Dir, dir)
 	}
-	if plan.Format != 3 {
-		t.Errorf("plan.Format = %d; want 3", plan.Format)
+	if plan.Format != 4 {
+		t.Errorf("plan.Format = %d; want 4", plan.Format)
 	}
 	if !plan.Approved {
 		t.Errorf("plan.Approved = false; want true")
@@ -95,8 +90,8 @@ func TestParsePlan_Overview(t *testing.T) {
 	if len(plan.Cards) != 1 {
 		t.Fatalf("len(plan.Cards) = %d; want 1", len(plan.Cards))
 	}
-	if plan.Cards[0].Number != 1 || plan.Cards[0].Slug != "only" || plan.Cards[0].Intent != "the only card" {
-		t.Errorf("plan.Cards[0] Number/Slug/Intent = %d/%q/%q; want 1/only/%q", plan.Cards[0].Number, plan.Cards[0].Slug, plan.Cards[0].Intent, "the only card")
+	if plan.Cards[0].Number != 1 || plan.Cards[0].Slug != "only" || plan.Cards[0].Summary != "the only card" {
+		t.Errorf("plan.Cards[0] Number/Slug/Summary = %d/%q/%q; want 1/only/%q", plan.Cards[0].Number, plan.Cards[0].Slug, plan.Cards[0].Summary, "the only card")
 	}
 }
 
@@ -104,7 +99,7 @@ func TestParsePlan_Overview_ASCIIDashSeparators(t *testing.T) {
 	t.Parallel()
 
 	const overview = `---
-format: 3
+format: 4
 approved: true
 ---
 
@@ -159,27 +154,27 @@ func TestParsePlan_Overview_Errors(t *testing.T) {
 		},
 		{
 			name:       "unknown frontmatter key",
-			content:    "---\nformat: 3\napproved: true\nextra: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
+			content:    "---\nformat: 4\napproved: true\nextra: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
 			wantSubstr: "field extra not found",
 		},
 		{
 			name:       "duplicate frontmatter key",
-			content:    "---\nformat: 3\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
+			content:    "---\nformat: 4\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
 			wantSubstr: "already defined",
 		},
 		{
 			name:       "unterminated frontmatter fence",
-			content:    "---\nformat: 3\napproved: true\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
+			content:    "---\nformat: 4\napproved: true\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
 			wantSubstr: "unterminated frontmatter fence",
 		},
 		{
 			name:       "missing card index heading",
-			content:    "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n",
+			content:    "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n",
 			wantSubstr: `missing "## Card Index" heading`,
 		},
 		{
 			name:       "unparseable card index line",
-			content:    "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\nnot a valid entry\n",
+			content:    "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\nnot a valid entry\n",
 			wantSubstr: "unparseable card index line",
 		},
 	}
@@ -253,7 +248,7 @@ func TestParsePlan_CardHeading(t *testing.T) {
 
 		dir := writePlanFiles(t, map[string]string{
 			"00-overview.md": minimalOverview,
-			"01-only.md":     "# Card 1 — flag + row struct\n\n**Context:** none\n**Edits:** none\n**Creates:** none\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n",
+			"01-only.md":     "# Card 1 — flag + row struct\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n",
 		})
 		plan, err := planparser.ParsePlan(dir)
 		if err != nil {
@@ -269,7 +264,7 @@ func TestParsePlan_CardHeading(t *testing.T) {
 
 		dir := writePlanFiles(t, map[string]string{
 			"00-overview.md": minimalOverview,
-			"01-only.md":     "# Card 1 -- flag + row struct\n\n**Context:** none\n**Edits:** none\n**Creates:** none\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n",
+			"01-only.md":     "# Card 1 -- flag + row struct\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n",
 		})
 		plan, err := planparser.ParsePlan(dir)
 		if err != nil {
@@ -297,18 +292,16 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_FiveFieldsNoneSentinel covers the three-way distinction plan-format pins
-// for each of the five typed file-op fields (and Depends-on): absent entirely (nil slice, HasX ==
-// false), present with the literal "none" (empty non-nil slice, HasX == true), and present with
-// entries (populated non-nil slice, HasX == true).
-func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
+// TestParsePlan_Card_TypeLabelCount covers TypeLabelCount/Type/HasType bookkeeping for the two
+// defect shapes card-type-missing exists to catch: two recognized type labels on one card, and
+// none at all.
+func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 	t.Parallel()
 
-	t.Run("all none", func(t *testing.T) {
+	t.Run("two type labels", func(t *testing.T) {
 		t.Parallel()
 
-		body := "# Card 1 — none everywhere\n\n**What:** nothing.\n**Context:** none\n**Edits:** none\n" +
-			"**Creates:** none\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n"
+		body := "# Card 1 — dual\n\n**Edit:**\n- `a.go`\n**Delete:**\n- `b.go`\n**Intent:** placeholder.\n"
 		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
 		plan, err := planparser.ParsePlan(dir)
 		if err != nil {
@@ -316,40 +309,21 @@ func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
 		}
 		card := plan.Cards[0]
 
-		for name, got := range map[string][]string{
-			"ContextFiles": card.ContextFiles,
-			"EditsFiles":   card.EditsFiles,
-			"CreatesFiles": card.CreatesFiles,
-			"DeletesFiles": card.DeletesFiles,
-		} {
-			if got == nil {
-				t.Errorf("card.%s = nil; want empty non-nil slice for a present \"none\" field", name)
-			}
-			if len(got) != 0 {
-				t.Errorf("card.%s = %v; want empty", name, got)
-			}
+		if card.TypeLabelCount != 2 {
+			t.Errorf("card.TypeLabelCount = %d; want 2", card.TypeLabelCount)
 		}
-		if card.Moves == nil || len(card.Moves) != 0 {
-			t.Errorf("card.Moves = %v; want empty non-nil slice", card.Moves)
+		if !card.HasType {
+			t.Errorf("card.HasType = false; want true")
 		}
-		if card.DependsOn == nil || len(card.DependsOn) != 0 {
-			t.Errorf("card.DependsOn = %v; want empty non-nil slice", card.DependsOn)
-		}
-		if !card.HasContext || !card.HasEdits || !card.HasCreates || !card.HasDeletes || !card.HasMoves || !card.HasDependsOn || !card.HasWhat {
-			t.Errorf("card Has* = %+v; want all true (every field's label was present)", card)
+		if card.Type != planparser.CardTypeEdit {
+			t.Errorf("card.Type = %q; want %q (the first type label seen)", card.Type, planparser.CardTypeEdit)
 		}
 	})
 
-	t.Run("What prose is captured verbatim", func(t *testing.T) {
+	t.Run("no type label", func(t *testing.T) {
 		t.Parallel()
 
-		// The prose is the implementer's concrete instruction; the fork prompt
-		// renders it verbatim, so the parser must store it — not just record
-		// its presence (found in crucible round fable-r3: the prompt rendered
-		// the index one-liner and the prose was silently dropped).
-		body := "# Card 1 — prose\n\n**What:** First line of the instruction,\n" +
-			"and a second line with detail.\n**Context:** none\n**Edits:** none\n" +
-			"**Creates:** none\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n"
+		body := "# Card 1 — typeless\n\n**Intent:** placeholder.\n"
 		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
 		plan, err := planparser.ParsePlan(dir)
 		if err != nil {
@@ -357,89 +331,25 @@ func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
 		}
 		card := plan.Cards[0]
 
-		want := "First line of the instruction,\nand a second line with detail."
-		if card.What != want {
-			t.Errorf("card.What = %q; want %q", card.What, want)
+		if card.TypeLabelCount != 0 {
+			t.Errorf("card.TypeLabelCount = %d; want 0", card.TypeLabelCount)
 		}
-	})
-
-	t.Run("field absent entirely", func(t *testing.T) {
-		t.Parallel()
-
-		// Edits: and Depends-on: are entirely missing (no label line at all) —
-		// this is a card-level defect (Validate's card-missing-field
-		// territory), not a parse error, per the lenient-card-parse decision.
-		body := "# Card 1 — missing fields\n\n**Context:** none\n**Creates:** none\n**Deletes:** none\n**Moves:** none\n"
-		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		if card.HasType {
+			t.Errorf("card.HasType = true; want false")
 		}
-		card := plan.Cards[0]
-
-		if card.EditsFiles != nil {
-			t.Errorf("card.EditsFiles = %v; want nil (label never present)", card.EditsFiles)
-		}
-		if card.HasEdits {
-			t.Errorf("card.HasEdits = true; want false")
-		}
-		if card.DependsOn != nil {
-			t.Errorf("card.DependsOn = %v; want nil (label never present)", card.DependsOn)
-		}
-		if card.HasDependsOn {
-			t.Errorf("card.HasDependsOn = true; want false")
-		}
-		if card.HasWhat {
-			t.Errorf("card.HasWhat = true; want false (no **What:** label present)")
-		}
-	})
-
-	t.Run("populated bullets and Depends-on ids", func(t *testing.T) {
-		t.Parallel()
-
-		body := "# Card 1 — populated\n\n" +
-			"**Context:**\n- `a.go`\n- `b.go`\n" +
-			"**Edits:**\n- `c.go`\n" +
-			"**Creates:**\n- `d.go`\n" +
-			"**Deletes:**\n- `e.go`\n" +
-			"**Moves:** none\n" +
-			"**Depends-on:** 2, 3\n"
-		dir := writePlanFiles(t, map[string]string{
-			"00-overview.md": "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a\n",
-			"01-only.md":     body,
-		})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		card := plan.Cards[0]
-
-		if want := []string{"a.go", "b.go"}; !slices.Equal(card.ContextFiles, want) {
-			t.Errorf("card.ContextFiles = %v; want %v", card.ContextFiles, want)
-		}
-		if want := []string{"c.go"}; !slices.Equal(card.EditsFiles, want) {
-			t.Errorf("card.EditsFiles = %v; want %v", card.EditsFiles, want)
-		}
-		if want := []string{"d.go"}; !slices.Equal(card.CreatesFiles, want) {
-			t.Errorf("card.CreatesFiles = %v; want %v", card.CreatesFiles, want)
-		}
-		if want := []string{"e.go"}; !slices.Equal(card.DeletesFiles, want) {
-			t.Errorf("card.DeletesFiles = %v; want %v", card.DeletesFiles, want)
-		}
-		if want := []int{2, 3}; !slices.Equal(card.DependsOn, want) {
-			t.Errorf("card.DependsOn = %v; want %v", card.DependsOn, want)
+		if card.Type != planparser.CardTypeUnknown {
+			t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeUnknown)
 		}
 	})
 }
 
-// TestParsePlan_Card_MovesGrammar covers Moves: bullets: well-formed pairs land in Moves,
-// and a bullet that fails the pair grammar is retained verbatim in MovesRaw rather than becoming a
-// parse error (lenient-card-parse decision).
-func TestParsePlan_Card_MovesGrammar(t *testing.T) {
+// TestParsePlan_Card_UsesPresentNoBullets proves a "**Uses:**" label present with zero bullets
+// under it parses to a non-nil zero-length slice, distinguishing it from an absent label (nil,
+// HasUses false).
+func TestParsePlan_Card_UsesPresentNoBullets(t *testing.T) {
 	t.Parallel()
 
-	body := "# Card 1 — moves\n\n**Context:** none\n**Edits:** none\n**Creates:** none\n**Deletes:** none\n" +
-		"**Moves:**\n- `old/path.go` -> `new/path.go`\n- this bullet has no arrow at all\n**Depends-on:** none\n"
+	body := "# Card 1 — empty uses\n\n**Edit:**\n- `a.go`\n**Uses:**\n**Intent:** placeholder.\n"
 	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
 	plan, err := planparser.ParsePlan(dir)
 	if err != nil {
@@ -447,62 +357,153 @@ func TestParsePlan_Card_MovesGrammar(t *testing.T) {
 	}
 	card := plan.Cards[0]
 
-	wantPairs := []planparser.MovePair{{Old: "old/path.go", New: "new/path.go"}}
-	if !slices.Equal(card.Moves, wantPairs) {
-		t.Errorf("card.Moves = %+v; want %+v", card.Moves, wantPairs)
+	if !card.HasUses {
+		t.Errorf("card.HasUses = false; want true")
 	}
-	wantRaw := []string{"this bullet has no arrow at all"}
-	if !slices.Equal(card.MovesRaw, wantRaw) {
-		t.Errorf("card.MovesRaw = %v; want %v", card.MovesRaw, wantRaw)
+	if card.Uses == nil {
+		t.Errorf("card.Uses = nil; want a non-nil, zero-length slice")
+	}
+	if len(card.Uses) != 0 {
+		t.Errorf("card.Uses = %v; want empty", card.Uses)
 	}
 }
 
-// TestParsePlan_Card_DependsOnMalformed covers a Depends-on token that fails to parse as a plain
-// card number: document structure, so it fails loud rather than silently degrading (Validate's
-// depends-on-order check never even sees a non-numeric token).
-func TestParsePlan_Card_DependsOnMalformed(t *testing.T) {
+// TestParsePlan_Card_ImpactSummaryMultiline covers "**ImpactSummary:**"'s inline-remainder-plus-
+// trailing-lines capture: the label line's own remainder lands in ImpactSummary, and every
+// following non-label line lands in ImpactSummaryTrailing — captured rather than discarded so
+// impact-summary-multiline has something to report.
+func TestParsePlan_Card_ImpactSummaryMultiline(t *testing.T) {
 	t.Parallel()
 
-	body := "# Card 1 — bad deps\n\n**Context:** none\n**Edits:** none\n**Creates:** none\n" +
-		"**Deletes:** none\n**Moves:** none\n**Depends-on:** first-card\n"
+	body := "# Card 1 — multiline impact\n\n**Edit:**\n- `a.go`\n" +
+		"**ImpactSummary:** first line.\nsecond line.\nthird line.\n**Intent:** placeholder.\n"
 	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	_, err := planparser.ParsePlan(dir)
-	if err == nil {
-		t.Fatal("ParsePlan() error = nil; want error for the non-numeric Depends-on token")
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
 	}
-	if !strings.Contains(err.Error(), "not a plain card number") {
-		t.Errorf("ParsePlan() error = %q; want it to name the malformed token", err.Error())
+	card := plan.Cards[0]
+
+	if card.ImpactSummary != "first line." {
+		t.Errorf("card.ImpactSummary = %q; want %q", card.ImpactSummary, "first line.")
+	}
+	wantTrailing := []string{"second line.", "third line."}
+	if !slices.Equal(card.ImpactSummaryTrailing, wantTrailing) {
+		t.Errorf("card.ImpactSummaryTrailing = %v; want %v", card.ImpactSummaryTrailing, wantTrailing)
 	}
 }
 
-// TestParsePlan_InlineFieldValueFailsLoud proves a card file-op label line carrying an inline value
-// other than "none" (e.g. "**Edits:** `foo.go`") is a fail-loud parse error, never silently read as
-// an empty field.
+// TestParsePlan_Card_RetiredLabel_Context covers a half-migrated card carrying the retired
+// "**Context:**" label: its literal text lands in RetiredLabels, and its presence terminates the
+// preceding "**Intent:**" prose collection rather than being swallowed into it.
+func TestParsePlan_Card_RetiredLabel_Context(t *testing.T) {
+	t.Parallel()
+
+	body := "# Card 1 — half-migrated\n\n**Intent:** prose before context.\n**Context:**\n- `a.go`\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	card := plan.Cards[0]
+
+	if card.Intent != "prose before context." {
+		t.Errorf("card.Intent = %q; want %q (Context: must terminate collection, not be swallowed)", card.Intent, "prose before context.")
+	}
+	wantRetired := []string{"**Context:**"}
+	if !slices.Equal(card.RetiredLabels, wantRetired) {
+		t.Errorf("card.RetiredLabels = %v; want %v", card.RetiredLabels, wantRetired)
+	}
+}
+
+// TestParsePlan_Card_RetiredLabel_LowercaseVerify covers a half-migrated card carrying format-3's
+// lowercase "**verify:**" label: the case-sensitive match routes it to RetiredLabels rather than
+// falling through as unrecognized text or being mistaken for format-4's "**Verify:**" field, and
+// its presence terminates the preceding "**Intent:**" prose collection.
+func TestParsePlan_Card_RetiredLabel_LowercaseVerify(t *testing.T) {
+	t.Parallel()
+
+	body := "# Card 1 — half-migrated\n\n**Intent:** prose before verify.\n**verify:** go test ./...\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	card := plan.Cards[0]
+
+	if card.Intent != "prose before verify." {
+		t.Errorf("card.Intent = %q; want %q (verify: must terminate collection, not be swallowed)", card.Intent, "prose before verify.")
+	}
+	wantRetired := []string{"**verify:**"}
+	if !slices.Equal(card.RetiredLabels, wantRetired) {
+		t.Errorf("card.RetiredLabels = %v; want %v", card.RetiredLabels, wantRetired)
+	}
+	if card.HasVerify {
+		t.Errorf("card.HasVerify = true; want false (lowercase verify: is not the format-4 Verify: field)")
+	}
+	if card.Verify != "" {
+		t.Errorf("card.Verify = %q; want empty", card.Verify)
+	}
+}
+
+// TestParsePlan_Card_RenameGrammar covers a Rename card's "**Rename:**" field: a well-formed
+// "`old` -> `new`" sub-bullet reaches Pairs, a malformed sub-bullet reaches RenameRaw rather than
+// becoming a parse error (lenient-card-parse decision), and both endpoints of every pair are
+// projected into Targets in pair order, Old before New.
+func TestParsePlan_Card_RenameGrammar(t *testing.T) {
+	t.Parallel()
+
+	body := "# Card 1 — rename\n\n**Rename:**\n- `old.Symbol` -> `new.Symbol`\n- this bullet has no arrow at all\n" +
+		"**Intent:** placeholder.\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	card := plan.Cards[0]
+
+	wantPairs := []planparser.MovePair{{Old: "old.Symbol", New: "new.Symbol"}}
+	if !slices.Equal(card.Pairs, wantPairs) {
+		t.Errorf("card.Pairs = %+v; want %+v", card.Pairs, wantPairs)
+	}
+	wantRaw := []string{"this bullet has no arrow at all"}
+	if !slices.Equal(card.RenameRaw, wantRaw) {
+		t.Errorf("card.RenameRaw = %v; want %v", card.RenameRaw, wantRaw)
+	}
+	wantTargets := []string{"old.Symbol", "new.Symbol"}
+	if !slices.Equal(card.Targets, wantTargets) {
+		t.Errorf("card.Targets = %v; want %v (Old before New, pair order)", card.Targets, wantTargets)
+	}
+}
+
+// TestParsePlan_InlineFieldValueFailsLoud proves a bullet-only field carrying an inline value
+// (e.g. "**Edit:** `foo.go`") is a fail-loud ParsePlan error, never silently read as an empty
+// field — for both a type label and "**Uses:**".
 func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		fieldLine string
+		name string
+		body string
 	}{
-		{name: "inline Edits path", fieldLine: "**Edits:** `list.go`"},
-		{name: "inline Moves pair", fieldLine: "**Moves:** `a.go` -> `b.go`"},
+		{
+			name: "inline value on a type label",
+			body: "# Card 1 — placeholder\n\n**Edit:** `list.go`\n**Intent:** placeholder.\n",
+		},
+		{
+			name: "inline value on Uses:",
+			body: "# Card 1 — placeholder\n\n**Edit:**\n- `list.go`\n**Uses:** `list.go`\n**Intent:** placeholder.\n",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := "# Card 1 — placeholder\n\n**Context:** none\n" + tt.fieldLine + "\n" +
-				"**Creates:** none\n**Deletes:** none\n**Depends-on:** none\n"
-			if strings.HasPrefix(tt.fieldLine, "**Moves:**") {
-				body = strings.Replace(body, "**Context:** none\n", "**Context:** none\n**Edits:** none\n", 1)
-			} else {
-				body = strings.Replace(body, "**Deletes:** none\n", "**Deletes:** none\n**Moves:** none\n", 1)
-			}
+			t.Parallel()
 
-			dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+			dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": tt.body})
 			_, err := planparser.ParsePlan(dir)
 			if err == nil {
-				t.Fatalf("ParsePlan() error = nil; want a fail-loud inline-value error for %q", tt.fieldLine)
+				t.Fatalf("ParsePlan() error = nil; want a fail-loud inline-value error")
 			}
 			if !strings.Contains(err.Error(), "inline value") {
 				t.Errorf("ParsePlan() error = %q; want it to name the inline value", err.Error())
@@ -549,7 +550,7 @@ func TestParsePlan_Card_SourcePath(t *testing.T) {
 		t.Parallel()
 
 		const overview = `---
-format: 3
+format: 4
 approved: true
 ---
 
@@ -589,11 +590,13 @@ Framing paragraph.
 	})
 }
 
+// TestParsePlan_CardCommitAndVerify covers a card's optional "**Commit:**" and recapitalized
+// "**Verify:**" fields, and that HasVerify reports the label's presence.
 func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	t.Parallel()
 
-	body := "# Card 1 — flag\n\n**Context:** none\n**Edits:** none\n**Creates:** none\n**Deletes:** none\n" +
-		"**Moves:** none\n**Depends-on:** none\n**Commit:** `1: add the --json flag`\n**verify:** go build ./...\n"
+	body := "# Card 1 — flag\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n" +
+		"**Commit:** `1: add the --json flag`\n**Verify:** go build ./...\n"
 	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
 	plan, err := planparser.ParsePlan(dir)
 	if err != nil {
@@ -604,21 +607,25 @@ func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	if card.Commit != "1: add the --json flag" {
 		t.Errorf("card.Commit = %q; want %q", card.Commit, "1: add the --json flag")
 	}
+	if !card.HasVerify {
+		t.Errorf("card.HasVerify = false; want true")
+	}
 	if card.Verify != "go build ./..." {
 		t.Errorf("card.Verify = %q; want %q", card.Verify, "go build ./...")
 	}
 }
 
-// goodPlanDir is the contracts/specs/loom-plan-spec.md worked example, materialized
-// verbatim as this package's golden happy-path fixture.
+// goodPlanDir is this package's format-4 golden happy-path fixture, exercising all seven card
+// types.
 func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")
 }
 
-// TestParsePlan_GoldenFixture round-trips testdata/goodplan (the pinned spec's own worked example)
-// exactly: the overview's frontmatter, framing, and every card's typed fields must match the
-// fixture's own byte-consistent content, including the root: internal/boardcli resolution and the
-// // worktree-root escape.
+// TestParsePlan_GoldenFixture round-trips testdata/goodplan exactly: the overview's frontmatter,
+// framing, and every field of every one of the seven cards must match the fixture's own
+// byte-consistent content, including the root: internal/boardcli resolution and the // worktree-
+// root escape. It also pins this migration's sharpest possible regression: a symbol target must
+// survive normalization unmodified under the fixture's non-empty root:.
 func TestParsePlan_GoldenFixture(t *testing.T) {
 	t.Parallel()
 
@@ -627,8 +634,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		t.Fatalf("ParsePlan(%q) error = %v; want nil", goodPlanDir(), err)
 	}
 
-	if plan.Format != 3 {
-		t.Errorf("plan.Format = %d; want 3", plan.Format)
+	if plan.Format != 4 {
+		t.Errorf("plan.Format = %d; want 4", plan.Format)
 	}
 	if !plan.Approved {
 		t.Errorf("plan.Approved = false; want true")
@@ -643,78 +650,146 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		t.Errorf("plan.Framing = %q; want %q", plan.Framing, wantFraming)
 	}
 
-	if len(plan.Cards) != 4 {
-		t.Fatalf("len(plan.Cards) = %d; want 4", len(plan.Cards))
+	if len(plan.Cards) != 7 {
+		t.Fatalf("len(plan.Cards) = %d; want 7", len(plan.Cards))
 	}
 
-	c1 := plan.Cards[0]
-	if c1.Number != 1 || c1.Slug != "json-flag" || c1.Title != "json-flag" {
-		t.Errorf("card 1 Number/Slug/Title = %d/%q/%q; want 1/json-flag/json-flag", c1.Number, c1.Slug, c1.Title)
-	}
-	if c1.Intent != "add the `--json` bool flag and RowJSON struct" {
-		t.Errorf("card 1 Intent = %q; want the Card Index one-liner", c1.Intent)
-	}
-	if !c1.HasWhat {
-		t.Errorf("card 1 HasWhat = false; want true")
-	}
-	wantWhat := "Add a `--json` bool flag to the list command; define `RowJSON` with the existing\n" +
-		"table's columns as fields."
-	if c1.What != wantWhat {
-		t.Errorf("card 1 What = %q; want the card file's own multi-line prose %q", c1.What, wantWhat)
-	}
-	if want := []string{"internal/boardcli/list.go", "internal/boardengine/rows.go"}; !slices.Equal(c1.EditsFiles, want) {
-		t.Errorf("card 1 EditsFiles = %v; want %v (root-joined + // escape)", c1.EditsFiles, want)
-	}
-	if c1.ContextFiles == nil || len(c1.ContextFiles) != 0 {
-		t.Errorf("card 1 ContextFiles = %v; want empty non-nil (none)", c1.ContextFiles)
-	}
-	if c1.Moves == nil || len(c1.Moves) != 0 {
-		t.Errorf("card 1 Moves = %v; want empty non-nil (none)", c1.Moves)
-	}
-	if c1.DependsOn == nil || len(c1.DependsOn) != 0 {
-		t.Errorf("card 1 DependsOn = %v; want empty non-nil (none)", c1.DependsOn)
-	}
-	if c1.Commit != "1: json-flag" {
-		t.Errorf("card 1 Commit = %q; want %q", c1.Commit, "1: json-flag")
-	}
-	if c1.Verify != "go build ./..." {
-		t.Errorf("card 1 Verify = %q; want %q", c1.Verify, "go build ./...")
+	type wantCard struct {
+		number           int
+		slug             string
+		summary          string
+		typ              planparser.CardType
+		typeLabelCount   int
+		targets          []string
+		pairs            []planparser.MovePair
+		uses             []string
+		hasUses          bool
+		intent           string
+		impactSummary    string
+		hasImpactSummary bool
+		commit           string
+		verify           string
+		hasVerify        bool
 	}
 
-	c2 := plan.Cards[1]
-	if want := []string{"internal/output/envelope.go"}; !slices.Equal(c2.ContextFiles, want) {
-		t.Errorf("card 2 ContextFiles = %v; want %v (// escape)", c2.ContextFiles, want)
-	}
-	if want := []string{"internal/boardcli/list.go"}; !slices.Equal(c2.EditsFiles, want) {
-		t.Errorf("card 2 EditsFiles = %v; want %v", c2.EditsFiles, want)
-	}
-	if want := []int{1}; !slices.Equal(c2.DependsOn, want) {
-		t.Errorf("card 2 DependsOn = %v; want %v", c2.DependsOn, want)
-	}
-	if c2.Commit != "" {
-		t.Errorf("card 2 Commit = %q; want empty (field absent)", c2.Commit)
-	}
-	if c2.Verify != "" {
-		t.Errorf("card 2 Verify = %q; want empty (field absent)", c2.Verify)
+	wants := []wantCard{
+		{
+			number: 1, slug: "json-row-type", summary: "define the RowJSON struct",
+			typ: planparser.CardTypeCreate, typeLabelCount: 1,
+			targets: []string{"boardcli.RowJSON"},
+			intent:  "Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.",
+			commit:  "1: json-row-type", verify: "go build ./...", hasVerify: true,
+		},
+		{
+			number: 2, slug: "json-flag", summary: "add the --json bool flag and wire list.go",
+			typ: planparser.CardTypeEdit, typeLabelCount: 1,
+			targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go"},
+			uses:    []string{"internal/output/envelope.go"}, hasUses: true,
+			intent:           "Add the `--json` bool flag to `newListCmd` and branch its row output between the table writer and the JSON path.",
+			impactSummary:    "Adds a --json flag to the list command and branches its row-emission path on it.",
+			hasImpactSummary: true,
+		},
+		{
+			number: 3, slug: "json-emission", summary: "marshal each row through output.Ok when --json is set",
+			typ: planparser.CardTypeCustom, typeLabelCount: 1,
+			targets: []string{"boardcli.emitJSON", "internal/output/emit.go"},
+			uses:    []string{"internal/boardcli/list.go"}, hasUses: true,
+			intent: "Introduce `emitJSON`, a new helper in a new file, marshaling each row through `output.Ok` when `--json` is set.",
+		},
+		{
+			number: 4, slug: "legacy-rows-delete", summary: "remove the superseded legacy row-conversion file",
+			typ: planparser.CardTypeDelete, typeLabelCount: 1,
+			targets:          []string{"internal/boardengine/legacyrows.go"},
+			intent:           "Remove the legacy per-row conversion helper now that `boardengine.MapRowJSON` (card 5) supersedes it.",
+			impactSummary:    "Deletes the legacy row-conversion file; no remaining callers reference it.",
+			hasImpactSummary: true,
+		},
+		{
+			number: 5, slug: "rowmapper-rename", summary: "rename the row mapper ahead of a later extraction",
+			typ: planparser.CardTypeRename, typeLabelCount: 1,
+			targets: []string{"boardengine.MapRow", "boardengine.MapRowJSON", "internal/boardengine/rows.go", "internal/boardengine/rowsjson.go"},
+			pairs: []planparser.MovePair{
+				{Old: "boardengine.MapRow", New: "boardengine.MapRowJSON"},
+				{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"},
+			},
+			intent: "Rename the row mapper and its file to make the JSON-oriented behavior explicit ahead of a later extraction.",
+		},
+		{
+			number: 6, slug: "helppins-move", summary: "relocate the pinned help-tree fixture",
+			typ: planparser.CardTypeMove, typeLabelCount: 1,
+			targets: []string{"cmd/lyx/helppins.go"},
+			intent:  "Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
+		},
+		{
+			number: 7, slug: "json-docs", summary: "update the package doc comment and the standalone docs page",
+			typ: planparser.CardTypeProsa, typeLabelCount: 1,
+			targets: []string{"internal/boardcli/doc.go", "docs/boardcli-json.md"},
+			intent:  "Update the package doc comment and the standalone docs page describing `--json` output.",
+		},
 	}
 
-	c3 := plan.Cards[2]
-	if want := []string{"internal/boardcli/list_test.go"}; !slices.Equal(c3.EditsFiles, want) {
-		t.Errorf("card 3 EditsFiles = %v; want %v", c3.EditsFiles, want)
-	}
-	if want := []int{2}; !slices.Equal(c3.DependsOn, want) {
-		t.Errorf("card 3 DependsOn = %v; want %v", c3.DependsOn, want)
+	for i, w := range wants {
+		c := plan.Cards[i]
+		if c.Number != w.number || c.Slug != w.slug || c.Title != w.slug {
+			t.Errorf("card %d Number/Slug/Title = %d/%q/%q; want %d/%q/%q", w.number, c.Number, c.Slug, c.Title, w.number, w.slug, w.slug)
+		}
+		if c.Summary != w.summary {
+			t.Errorf("card %d Summary = %q; want %q", w.number, c.Summary, w.summary)
+		}
+		if c.Type != w.typ {
+			t.Errorf("card %d Type = %q; want %q", w.number, c.Type, w.typ)
+		}
+		if c.TypeLabelCount != w.typeLabelCount {
+			t.Errorf("card %d TypeLabelCount = %d; want %d", w.number, c.TypeLabelCount, w.typeLabelCount)
+		}
+		if !slices.Equal(c.Targets, w.targets) {
+			t.Errorf("card %d Targets = %v; want %v", w.number, c.Targets, w.targets)
+		}
+		if !slices.Equal(c.Pairs, w.pairs) {
+			t.Errorf("card %d Pairs = %+v; want %+v", w.number, c.Pairs, w.pairs)
+		}
+		if w.hasUses {
+			if !c.HasUses {
+				t.Errorf("card %d HasUses = false; want true", w.number)
+			}
+			if !slices.Equal(c.Uses, w.uses) {
+				t.Errorf("card %d Uses = %v; want %v", w.number, c.Uses, w.uses)
+			}
+		} else {
+			if c.HasUses {
+				t.Errorf("card %d HasUses = true; want false", w.number)
+			}
+			if c.Uses != nil {
+				t.Errorf("card %d Uses = %v; want nil", w.number, c.Uses)
+			}
+		}
+		if c.Intent != w.intent {
+			t.Errorf("card %d Intent = %q; want %q", w.number, c.Intent, w.intent)
+		}
+		if w.hasImpactSummary {
+			if !c.HasImpactSummary {
+				t.Errorf("card %d HasImpactSummary = false; want true", w.number)
+			}
+			if c.ImpactSummary != w.impactSummary {
+				t.Errorf("card %d ImpactSummary = %q; want %q", w.number, c.ImpactSummary, w.impactSummary)
+			}
+		} else if c.HasImpactSummary {
+			t.Errorf("card %d HasImpactSummary = true; want false", w.number)
+		}
+		if c.Commit != w.commit {
+			t.Errorf("card %d Commit = %q; want %q", w.number, c.Commit, w.commit)
+		}
+		if c.HasVerify != w.hasVerify {
+			t.Errorf("card %d HasVerify = %v; want %v", w.number, c.HasVerify, w.hasVerify)
+		}
+		if c.Verify != w.verify {
+			t.Errorf("card %d Verify = %q; want %q", w.number, c.Verify, w.verify)
+		}
 	}
 
-	c4 := plan.Cards[3]
-	if want := []string{"cmd/lyx/helptree_test.go"}; !slices.Equal(c4.EditsFiles, want) {
-		t.Errorf("card 4 EditsFiles = %v; want %v (// escape)", c4.EditsFiles, want)
-	}
-	wantMoves := []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}
-	if !slices.Equal(c4.Moves, wantMoves) {
-		t.Errorf("card 4 Moves = %+v; want %+v (both sides // escaped)", c4.Moves, wantMoves)
-	}
-	if want := []int{1}; !slices.Equal(c4.DependsOn, want) {
-		t.Errorf("card 4 DependsOn = %v; want %v", c4.DependsOn, want)
+	// The sharpest regression this migration can introduce: a symbol target must pass through
+	// normalization unmodified even though the fixture's root: is non-empty.
+	if got := plan.Cards[0].Targets[0]; got != "boardcli.RowJSON" {
+		t.Errorf("card 1 symbol target = %q; want %q unmodified despite non-empty root:", got, "boardcli.RowJSON")
 	}
 }

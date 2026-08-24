@@ -3,8 +3,13 @@
 // file, producing the in-memory Plan the rest of webster drives from.
 // Every distinct parse failure is a "planparser:"-prefixed wrapped error — loom-plan-spec.md's
 // fail-loud discipline admits no silent-default reading of a malformed plan document structure.
-// Per-card content defects (a missing field, a malformed Moves: bullet) are recorded leniently into
-// the Card model instead, per the lenient-card-parse decision documented in doc.go.
+// Per-card content defects (a missing field, a malformed Rename: bullet) are recorded leniently
+// into the Card model instead, per the lenient-card-parse decision documented in doc.go.
+// The card body grammar itself is format-4's type-label model
+// (manifest/designs/plan-card-format.md): a card's own type label (Create/Edit/Delete/Rename/
+// Move/Prosa/Custom) carries its target list, Uses:/Intent:/ImpactSummary: are the remaining
+// recognized field labels, and the eight format-3 labels stay recognized but retired — they route
+// into Card.RetiredLabels instead of being silently discarded or swallowed into Intent:'s prose.
 
 package planparser
 
@@ -66,9 +71,9 @@ type overviewFrontmatter struct {
 
 // cardIndexEntry is one parsed "## Card Index" line's machine-readable fields before the card file is read.
 type cardIndexEntry struct {
-	Number int
-	Slug   string
-	Intent string
+	Number  int
+	Slug    string
+	Summary string
 }
 
 // cardIndexLineRe matches a plan-format Card Index entry's three fields, accepting either the em dash "—" or ASCII hyphens as separators.
@@ -230,9 +235,9 @@ func parseCardIndex(lines []string) ([]cardIndexEntry, error) {
 		}
 
 		entries = append(entries, cardIndexEntry{
-			Number: number,
-			Slug:   m[2],
-			Intent: normalizeWhitespace(m[3]),
+			Number:  number,
+			Slug:    m[2],
+			Summary: normalizeWhitespace(m[3]),
 		})
 	}
 	if len(entries) == 0 {
@@ -259,9 +264,9 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	fileName := cardFileName(entry.Number, entry.Slug)
 
 	card := Card{
-		Number: entry.Number,
-		Slug:   entry.Slug,
-		Intent: entry.Intent,
+		Number:  entry.Number,
+		Slug:    entry.Slug,
+		Summary: entry.Summary,
 		// SourcePath is built from this package's own PlanDirRel (the `_lyx/plan` segment) joined with fileName.
 		SourcePath: path.Join(PlanDirRel(), fileName),
 	}
@@ -294,27 +299,64 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	return card, nil
 }
 
-// Bold-label prefixes for the fields plan-format recognizes inside a card.
+// Bold-label prefixes for the seven type labels format-4 recognizes as a card's own target-list
+// key (manifest/designs/plan-card-format.md's "Card fields"). The type name is the key — there is
+// no separate "Type:" label.
 const (
-	whatLabel       = "**What:**"
-	contextLabel    = "**Context:**"
-	editsLabel      = "**Edits:**"
-	createsLabel    = "**Creates:**"
-	deletesLabel    = "**Deletes:**"
-	movesLabel      = "**Moves:**"
-	dependsOnLabel  = "**Depends-on:**"
-	commitLabel     = "**Commit:**"
-	cardVerifyLabel = "**verify:**"
+	createLabel = "**Create:**"
+	editLabel   = "**Edit:**"
+	deleteLabel = "**Delete:**"
+	renameLabel = "**Rename:**"
+	moveLabel   = "**Move:**"
+	prosaLabel  = "**Prosa:**"
+	customLabel = "**Custom:**"
 )
 
-// cardLabels lists every bold-label prefix parseCardBody recognizes.
-var cardLabels = []string{
-	whatLabel, contextLabel, editsLabel, createsLabel, deletesLabel,
-	movesLabel, dependsOnLabel, commitLabel, cardVerifyLabel,
+// typeLabels maps each of the seven type labels to the CardType it declares. parseCardBody's
+// switch and card-type resolution share this one table so the two never drift apart.
+var typeLabels = map[string]CardType{
+	createLabel: CardTypeCreate,
+	editLabel:   CardTypeEdit,
+	deleteLabel: CardTypeDelete,
+	renameLabel: CardTypeRename,
+	moveLabel:   CardTypeMove,
+	prosaLabel:  CardTypeProsa,
+	customLabel: CardTypeCustom,
 }
 
-// noneSentinel is the literal case-insensitive value a field's label line carries when the field is empty.
-const noneSentinel = "none"
+// Bold-label prefixes for format-4's five remaining recognized field labels.
+const (
+	usesLabel          = "**Uses:**"
+	intentLabel        = "**Intent:**"
+	impactSummaryLabel = "**ImpactSummary:**"
+	commitLabel        = "**Commit:**"
+	cardVerifyLabel    = "**Verify:**"
+)
+
+// Bold-label prefixes retired by format-4. Each stays in cardLabels — deleting one would let it be
+// silently discarded or swallowed into **Intent:**'s prose (see the retired-labels-stay-recognized
+// decision) — but parseCardBody records only that the label occurred, in Card.RetiredLabels, and
+// keeps none of its content.
+const (
+	whatLabel      = "**What:**"
+	contextLabel   = "**Context:**"
+	editsLabel     = "**Edits:**"
+	createsLabel   = "**Creates:**"
+	deletesLabel   = "**Deletes:**"
+	movesLabel     = "**Moves:**"
+	dependsOnLabel = "**Depends-on:**"
+	// legacyVerifyLabel is format-3's lowercase spelling, matched case-sensitively and therefore
+	// distinct from cardVerifyLabel ("**Verify:**").
+	legacyVerifyLabel = "**verify:**"
+)
+
+// cardLabels lists every bold-label prefix parseCardBody recognizes: the seven type labels, the
+// five field labels, and the eight retired labels.
+var cardLabels = []string{
+	createLabel, editLabel, deleteLabel, renameLabel, moveLabel, prosaLabel, customLabel,
+	usesLabel, intentLabel, impactSummaryLabel, commitLabel, cardVerifyLabel,
+	whatLabel, contextLabel, editsLabel, createsLabel, deletesLabel, movesLabel, dependsOnLabel, legacyVerifyLabel,
+}
 
 // isCardLabelLine reports whether line begins one of the card's recognized bold-label fields.
 func isCardLabelLine(line string) bool {
@@ -335,13 +377,14 @@ func stripBackticks(s string) string {
 	return s
 }
 
-// dependsOnSplitRe splits a "**Depends-on:**" inline value into card-id tokens.
-var dependsOnSplitRe = regexp.MustCompile(`[,\s]+`)
-
-// moveLineRe matches a "Moves:" sub-bullet's well-formed two-path grammar after the leading "- " bullet marker.
+// moveLineRe matches a "Rename:" sub-bullet's well-formed two-symbol pair grammar after the leading "- " bullet marker.
 var moveLineRe = regexp.MustCompile("^`([^`]+)` -> `([^`]+)`$")
 
 // parseCardBody parses lines after the card title into card's remaining fields.
+// No label in cardLabels is a prefix of another (**Edit:**/**Edits:**, **Create:**/**Creates:**,
+// **Delete:**/**Deletes:**, and **Move:**/**Moves:** each differ at their seventh byte), so this
+// switch's case order carries no semantics — do not reorder it under the assumption that an
+// earlier case can shadow a later one.
 func parseCardBody(card *Card, lines []string) error {
 	i := 0
 	for i < len(lines) {
@@ -350,41 +393,74 @@ func parseCardBody(card *Card, lines []string) error {
 		switch {
 		case trimmed == "":
 			i++
-		case strings.HasPrefix(trimmed, whatLabel):
-			card.HasWhat = true
-			// Collect the prose: the label line's own remainder plus every following line up to the next field label.
-			proseLines := []string{strings.TrimSpace(strings.TrimPrefix(trimmed, whatLabel))}
+		case strings.HasPrefix(trimmed, createLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, createLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, editLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, editLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, deleteLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, deleteLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, renameLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, renameLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, moveLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, moveLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, prosaLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, prosaLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, customLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, customLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, usesLabel):
+			card.HasUses = true
+			card.Uses, i, fieldErr = parseRefField(trimmed, usesLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, intentLabel):
+			card.HasIntent = true
+			// Collect the prose: the label line's own remainder plus every following line up to the next card label line.
+			proseLines := []string{strings.TrimSpace(strings.TrimPrefix(trimmed, intentLabel))}
 			i++
 			for i < len(lines) && !isCardLabelLine(lines[i]) {
 				proseLines = append(proseLines, strings.TrimSpace(lines[i]))
 				i++
 			}
-			card.What = strings.TrimSpace(strings.Join(proseLines, "\n"))
-		case strings.HasPrefix(trimmed, contextLabel):
-			card.HasContext = true
-			card.ContextFiles, i, fieldErr = parseFileOpField(trimmed, contextLabel, lines, i+1)
-		case strings.HasPrefix(trimmed, editsLabel):
-			card.HasEdits = true
-			card.EditsFiles, i, fieldErr = parseFileOpField(trimmed, editsLabel, lines, i+1)
-		case strings.HasPrefix(trimmed, createsLabel):
-			card.HasCreates = true
-			card.CreatesFiles, i, fieldErr = parseFileOpField(trimmed, createsLabel, lines, i+1)
-		case strings.HasPrefix(trimmed, deletesLabel):
-			card.HasDeletes = true
-			card.DeletesFiles, i, fieldErr = parseFileOpField(trimmed, deletesLabel, lines, i+1)
-		case strings.HasPrefix(trimmed, movesLabel):
-			card.HasMoves = true
-			card.Moves, card.MovesRaw, i, fieldErr = parseMovesField(trimmed, lines, i+1)
-		case strings.HasPrefix(trimmed, dependsOnLabel):
-			card.HasDependsOn = true
-			card.DependsOn, fieldErr = parseDependsOnField(trimmed)
+			card.Intent = strings.TrimSpace(strings.Join(proseLines, "\n"))
+		case strings.HasPrefix(trimmed, impactSummaryLabel):
+			card.HasImpactSummary = true
+			card.ImpactSummary = strings.TrimSpace(strings.TrimPrefix(trimmed, impactSummaryLabel))
 			i++
+			for i < len(lines) && !isCardLabelLine(lines[i]) {
+				if t := strings.TrimSpace(lines[i]); t != "" {
+					card.ImpactSummaryTrailing = append(card.ImpactSummaryTrailing, t)
+				}
+				i++
+			}
 		case strings.HasPrefix(trimmed, commitLabel):
 			card.Commit = stripBackticks(strings.TrimSpace(strings.TrimPrefix(trimmed, commitLabel)))
 			i++
 		case strings.HasPrefix(trimmed, cardVerifyLabel):
+			card.HasVerify = true
 			card.Verify = strings.TrimSpace(strings.TrimPrefix(trimmed, cardVerifyLabel))
 			i++
+		case strings.HasPrefix(trimmed, whatLabel):
+			card.RetiredLabels = append(card.RetiredLabels, whatLabel)
+			i = consumeRetiredLabel(lines, i+1)
+		case strings.HasPrefix(trimmed, contextLabel):
+			card.RetiredLabels = append(card.RetiredLabels, contextLabel)
+			i = consumeRetiredLabel(lines, i+1)
+		case strings.HasPrefix(trimmed, editsLabel):
+			card.RetiredLabels = append(card.RetiredLabels, editsLabel)
+			i = consumeRetiredLabel(lines, i+1)
+		case strings.HasPrefix(trimmed, createsLabel):
+			card.RetiredLabels = append(card.RetiredLabels, createsLabel)
+			i = consumeRetiredLabel(lines, i+1)
+		case strings.HasPrefix(trimmed, deletesLabel):
+			card.RetiredLabels = append(card.RetiredLabels, deletesLabel)
+			i = consumeRetiredLabel(lines, i+1)
+		case strings.HasPrefix(trimmed, movesLabel):
+			card.RetiredLabels = append(card.RetiredLabels, movesLabel)
+			i = consumeRetiredLabel(lines, i+1)
+		case strings.HasPrefix(trimmed, dependsOnLabel):
+			card.RetiredLabels = append(card.RetiredLabels, dependsOnLabel)
+			i = consumeRetiredLabel(lines, i+1)
+		case strings.HasPrefix(trimmed, legacyVerifyLabel):
+			card.RetiredLabels = append(card.RetiredLabels, legacyVerifyLabel)
+			i = consumeRetiredLabel(lines, i+1)
 		default:
 			i++
 		}
@@ -395,17 +471,56 @@ func parseCardBody(card *Card, lines []string) error {
 	return nil
 }
 
-// parseFileOpField parses one of a card's four non-Moves file-op fields, returning the field's raw path list and the index of the first line not consumed.
-func parseFileOpField(labelLine, label string, lines []string, start int) ([]string, int, error) {
-	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
-	if strings.EqualFold(rest, noneSentinel) {
-		return []string{}, start, nil
-	}
-	if rest != "" {
-		return nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `path`\" sub-bullets on the following lines", label, rest)
+// parseTypeLabelCase handles one type-label card-body case: it records the card's type-label
+// bookkeeping (TypeLabelCount, HasType, and, on the first type label seen, Type) and then collects
+// the label's bullets — via parseRenameField for renameLabel, appending both endpoints of every
+// pair to card.Targets in pair order, or via parseRefField for every other type label.
+func parseTypeLabelCase(card *Card, labelLine, label string, lines []string, start int) (next int, err error) {
+	card.TypeLabelCount++
+	card.HasType = true
+	if card.Type == CardTypeUnknown {
+		card.Type = typeLabels[label]
 	}
 
-	var files []string
+	if label == renameLabel {
+		var pairs []MovePair
+		var raw []string
+		pairs, raw, next, err = parseRenameField(labelLine, lines, start)
+		card.Pairs = append(card.Pairs, pairs...)
+		card.RenameRaw = append(card.RenameRaw, raw...)
+		for _, p := range pairs {
+			card.Targets = append(card.Targets, p.Old, p.New)
+		}
+		return next, err
+	}
+
+	var refs []string
+	refs, next, err = parseRefField(labelLine, label, lines, start)
+	card.Targets = append(card.Targets, refs...)
+	return next, err
+}
+
+// consumeRetiredLabel advances past every line following a retired label's own line, up to the
+// next card label line, storing none of that content.
+func consumeRetiredLabel(lines []string, start int) int {
+	i := start
+	for i < len(lines) && !isCardLabelLine(lines[i]) {
+		i++
+	}
+	return i
+}
+
+// parseRefField parses one of a card's ref-list fields (a type label's own target list, or
+// **Uses:**), returning the field's raw ref list and the index of the first line not consumed.
+// A label present with zero bullets under it returns a non-nil empty slice, distinguishing it
+// from an absent label.
+func parseRefField(labelLine, label string, lines []string, start int) ([]string, int, error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
+	if rest != "" {
+		return nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only \"- `ref`\" sub-bullets on the following lines", label, rest)
+	}
+
+	refs := []string{}
 	i := start
 	for i < len(lines) {
 		trimmed := strings.TrimSpace(lines[i])
@@ -417,20 +532,17 @@ func parseFileOpField(labelLine, label string, lines []string, start int) ([]str
 			break
 		}
 		payload := stripBackticks(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
-		files = append(files, payload)
+		refs = append(refs, payload)
 		i++
 	}
-	return files, i, nil
+	return refs, i, nil
 }
 
-// parseMovesField parses a card's "**Moves:**" field, matching each bullet against moveLineRe.
-func parseMovesField(labelLine string, lines []string, start int) (pairs []MovePair, raw []string, next int, err error) {
-	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, movesLabel))
-	if strings.EqualFold(rest, noneSentinel) {
-		return []MovePair{}, nil, start, nil
-	}
+// parseRenameField parses a Rename card's "**Rename:**" field, matching each bullet against moveLineRe.
+func parseRenameField(labelLine string, lines []string, start int) (pairs []MovePair, raw []string, next int, err error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, renameLabel))
 	if rest != "" {
-		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `src` -> `dst`\" sub-bullets on the following lines", movesLabel, rest)
+		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only \"- `old` -> `new`\" sub-bullets on the following lines", renameLabel, rest)
 	}
 
 	i := start
@@ -452,31 +564,4 @@ func parseMovesField(labelLine string, lines []string, start int) (pairs []MoveP
 		i++
 	}
 	return pairs, raw, i, nil
-}
-
-// parseDependsOnField parses a card's inline "**Depends-on:**" value into card numbers.
-func parseDependsOnField(labelLine string) ([]int, error) {
-	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, dependsOnLabel))
-	if strings.EqualFold(rest, noneSentinel) {
-		return []int{}, nil
-	}
-	if rest == "" {
-		return nil, fmt.Errorf("card field %s carries no value; plan-format admits only the literal \"none\" or a list of card numbers", dependsOnLabel)
-	}
-
-	var ids []int
-	for _, tok := range dependsOnSplitRe.Split(rest, -1) {
-		if tok == "" {
-			continue
-		}
-		id, err := strconv.Atoi(tok)
-		if err != nil {
-			return nil, fmt.Errorf("card field %s: %q is not a plain card number: %w", dependsOnLabel, tok, err)
-		}
-		ids = append(ids, id)
-	}
-	if ids == nil {
-		ids = []int{}
-	}
-	return ids, nil
 }

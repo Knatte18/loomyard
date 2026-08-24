@@ -4,7 +4,7 @@
 
 Inherited context can be stale.
 A file you looked at during orientation — your own, or one Master read before forking you — is not necessarily the version on disk right now: a prior batch's own card commits may have changed it since.
-Before you edit anything, re-read — in THIS turn — every card file this section points you at, plus every file that card's own `Context:`/file-op fields name.
+Before you edit anything, re-read — in THIS turn — every card file this section points you at, plus every file that card's own target list and `Uses:` list name.
 Only your own reads, taken now, are current;
 content you merely inherited is not.
 
@@ -23,8 +23,8 @@ For EACH card file listed above, in the order listed:
 
 1. Read the card file.
    It is your whole instruction for that card.
-   If its `**What:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.
-2. Make exactly the changes the card describes, in exactly the files its `Context:`, `Edits:`, `Creates:`, `Deletes:`, and `Moves:` fields declare.
+   If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.
+2. A card names its targets under its own type label and what it reads under `**Uses:**`; see `contracts/specs/loom-plan-spec.md` for the full grammar. Make exactly the changes the card describes, in exactly the targets its type label names.
 3. Run `go build ./...` and this card's package's unit tests from `{{.worktree_root}}`.
    A failure here is the card's own build+unit gate — fix it before moving on;
    this gate is implicit in every card, never optional.
@@ -59,4 +59,4 @@ deviations:
 ```
 
 `status` is `OK` when every card above is committed and every gate it ran passed;
-`FAILED` when you stopped after exhausting the self-fix bound on some card. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made. `deviations` is the list of worktree-relative paths you changed OUTSIDE the union of every card's own declared file-ops fields (`Edits:` ∪ `Creates:` ∪ `Deletes:` ∪ both `Moves:` endpoints) — omitted entirely when you made no such changes. `deviations` is ALWAYS informational: a non-empty list never makes `status` `FAILED` on its own — only a failed build+unit gate or a failed card `verify:` does.
+`FAILED` when you stopped after exhausting the self-fix bound on some card. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made. `deviations` is the list of worktree-relative paths you changed OUTSIDE the deviation union — every path-shaped target entry across the batch's cards, plus the files holding every symbol-shaped target entry, which you resolve yourself since it is already in your worktree and resolving a package-qualified symbol to its file is one read. `Uses:` stays out of the union because it is read rather than written. Omit `deviations` entirely when you made no such changes. `deviations` is ALWAYS informational: a non-empty list never makes `status` `FAILED` on its own — only a failed build+unit gate or a failed card `verify:` does.

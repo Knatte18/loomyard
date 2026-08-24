@@ -265,7 +265,7 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 func RenderBatchIndex(plan *planparser.Plan) string {
 	lines := make([]string, 0, len(plan.Cards))
 	for _, c := range plan.Cards {
-		lines = append(lines, fmt.Sprintf("%02d — %s — %s", c.Number, c.Slug, c.Intent))
+		lines = append(lines, fmt.Sprintf("%02d — %s — %s", c.Number, c.Slug, c.Summary))
 	}
 	return strings.Join(lines, "\n")
 }

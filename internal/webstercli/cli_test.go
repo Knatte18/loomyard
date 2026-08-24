@@ -219,13 +219,12 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	return c, hub
 }
 
-// seedValidPlanDir writes a valid plan-format plan with one card into dir.
+// seedValidPlanDir writes a valid format-4 plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
-	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+	overview := "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
 		"1 — only — placeholder card\n"
-	card := "# Card 1 — only\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n" +
-		"**Creates:**\n- `internal/only/new.go`\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n"
+	card := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n\n**Intent:** placeholder card.\n"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
@@ -270,13 +269,12 @@ func TestValidateCmd_MissingPlan(t *testing.T) {
 	}
 }
 
-// seedMissingFieldPlanDir writes a plan with a card missing the **Deletes:** label.
-func seedMissingFieldPlanDir(t *testing.T, dir string) {
+// seedMissingIntentPlanDir writes a format-4 plan with a card missing the **Intent:** label.
+func seedMissingIntentPlanDir(t *testing.T, dir string) {
 	t.Helper()
-	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+	overview := "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
 		"1 — only — placeholder card\n"
-	card := "# Card 1 — only\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n" +
-		"**Creates:**\n- `internal/only/new.go`\n**Moves:** none\n**Depends-on:** none\n"
+	card := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
@@ -290,7 +288,7 @@ func seedMissingFieldPlanDir(t *testing.T, dir string) {
 
 func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
 	c, _ := newTestCLI(t)
-	seedMissingFieldPlanDir(t, c.geom.PlanDir)
+	seedMissingIntentPlanDir(t, c.geom.PlanDir)
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)

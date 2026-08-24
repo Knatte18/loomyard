@@ -1,6 +1,6 @@
 # Loom plan-spec — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the fourteen checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the sixteen checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
 
 ## Producer and contract
 
@@ -30,10 +30,10 @@ The DAG is a **consequence** of the compile-validity requirement, not a separate
 
 **Batching is a step outside the plan schema, not a plan-schema concept.**
 The plan's unit is always the individual **card** — the smallest, most precise, independently verifiable unit.
-Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared file-op fields) is a later, measured decision made outside the plan format, not something the plan format needs to express or `Plan-Write` needs to decide.
+Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared targets) is a later, measured decision made outside the plan format, not something the plan format needs to express or `Plan-Write` needs to decide.
 
 There is no batch-level "declared ownership" `## Scope` concept.
-A card's own typed file-op fields (`Context:`/`Edits:`/`Creates:`/ `Deletes:`/`Moves:`) *are* its declared footprint;
+A card's own type-label target list *is* its declared footprint;
 there is no wider unit left to declare a footprint for.
 
 ## Plan vs. schedule
@@ -55,7 +55,7 @@ _lyx/plan/
 `00-overview.md` frontmatter carries **scalar-only** keys:
 
 ```yaml
-format: 3
+format: 4
 approved: true
 root: <optional worktree-relative dir>   # optional; see Card path resolution below
 ```
@@ -69,78 +69,81 @@ Card Index ↔ card files are cross-checked mechanically (the `index-file-mismat
 
 ## Card fields and order
 
-Each card lives in its own file,
-and the file's content is, in this order:
+Each card lives in its own file, and the file's content is:
 
 1. **Title heading** — `# Card N — <name>`, where `N` is the card's own flat number (see [Numbering and commit subject](#numbering-and-commit-subject) below).
-2. **`**What:**`** — the instruction: the change to make, concretely (prose, may span multiple lines until the next field label). plan-format keeps lyx's own established `What:` name.
-3. **The five typed file-op fields, all required, in this order:** `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`.
-   Never omitted — a field with nothing to declare carries the literal `none` on its own label line:
+2. **Exactly one bold type label** from the set `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**` — the type name is the key, and there is no separate `Type:` field.
+   The label's own indented, backtick-wrapped sub-bullets are the card's own targets:
 
    ```markdown
-   **Context:** none
+   **Edit:**
+   - `boardcli.newListCmd`
+   - `list.go`
    ```
 
-   A non-`none` field's value is one or more indented sub-bullets below the label line, each a single backtick-wrapped path, no commentary, no line-range suffix, no comma-separated inline list:
+   A `Rename` card's sub-bullets instead carry `` `old` -> `new` `` pairs — see [Rename and Move](#rename-and-move) below.
+3. Optionally, **`**Uses:**`** — what the card reads or depends on but does not change, in the same backtick-wrapped-bullet shape as a target list.
+4. A required, multi-line **`**Intent:**`** — what, and why (prose, may span multiple lines until the next field label).
+5. **`**ImpactSummary:**`**, required for `Edit` and `Delete` cards only, taking its value inline on the label line — a hard-capped one-line blast-radius conclusion, never the card's main content.
+6. Optionally, **`**Commit:**`** and **`**Verify:**`** — see [Numbering and commit subject](#numbering-and-commit-subject) and [verify model](#verify-model) below.
 
-   ```markdown
-   **Edits:**
-   - `internal/boardcli/list.go`
-   ```
+**A field with no content is omitted entirely** — format 4 admits no `none` sentinel on any field.
+An optional field a card has nothing to say under simply does not appear in that card's file;
+a required field a card omits (its type label, `Intent:`, or `ImpactSummary:` on an `Edit`/`Delete` card) is a `card-missing-field` finding, and a label that is present but carries no bullets/prose under it is the distinct `card-field-empty` finding.
 
-   A `Moves:` sub-bullet instead carries a two-path pair, ASCII ` -> ` arrow, both sides backtick-wrapped:
+**Uses:** names what the card reads but does not change — never a target.
+An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read? — flagged by the `card-field-overlap` check.
+This is strictly **per-card**: across two cards of the same plan, one card's `Create` target followed by a later card's `Edit` of the same target is legitimate sequencing.
 
-   ```markdown
-   **Moves:**
-   - `internal/boardengine/rows.go` -> `internal/boardengine/rowsjson.go`
-   ```
+## Card types
 
-   The `card-missing-field` check flags a card missing any of the five (or `What:`/ `Depends-on:`) — `none` sentinels are silent-degradation-proof exactly because an omitted field is mechanically indistinguishable from a forgotten one otherwise;
-   a forgotten `Moves:` in particular would silently degrade into an unstructured create+delete pair, the exact failure this format exists to prevent.
-4. **`**Depends-on:**`** — new required field, placed immediately after `Moves:`.
-   See [Depends-on](#depends-on) below.
-5. Optionally, **`**Commit:**`** and **`**verify:**`** — see [Numbering and commit subject](#numbering-and-commit-subject) and [verify model](#verify-model) below.
+| Type | Target list holds | Mechanical check | `ImpactSummary` | Batchable? |
+|---|---|---|---|---|
+| Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required | No — one judgment unit per card |
+| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed | required | No |
+| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient) | required | Yes — independent targets only |
+| Rename | existing symbol(s), `old -> new` pairs | AST-aware script + grep verify, never text/regex replace | not required | Yes — independent symbols only |
+| Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required | Yes |
+| Prosa | file(s), no symbol target | none | not required | — |
+| Custom | either | none — explicit escape hatch | as applicable | — |
 
-**`Context:` is advisory, not a strict allowlist.** `Context:` names files the implementer is expected to *read but not change* — the implementer may read beyond it when the plan under-specifies something.
-Files in `Edits:` are implicitly read and are never repeated in `Context:` for the same card — that repetition is itself a `card-field-overlap` finding.
+`ImpactSummary` is required for `Edit` and `Delete` only — a `Create` card has no existing callers to have a blast radius over, which is why this spec resolves the design doc's table in favour of the design doc's own prose rather than its table row, a drafting slip the doc's prose does not carry.
 
-**Fields are mutually exclusive within one card.**
-The same path appearing in two of a single card's five fields (or as a `Moves:` endpoint alongside another field) is a contradiction — is the file being edited, or moved, or deleted? — flagged by the `card-field-overlap` check.
-This is strictly **per-card**: across two cards of the same plan, `Creates:` in an earlier card followed by `Edits:` of the same path in a later card is legitimate sequencing,
-and the same path repeated across multiple cards' `Edits:` is entirely normal.
+## The shape classifier
 
-## Depends-on
+A card's own target/`Uses`/`Rename`-pair entries mix symbols and file paths in one flat list, distinguished by shape alone, in this fixed three-rule order:
 
-`**Depends-on:**` is a **new required field**, placed after `Moves:`.
-Its value is a list of card ids (plain card numbers `N`) or the literal `none`.
-It references only other cards in the **same plan** — never a claim about external code.
+1. A separator (`/`) present anywhere in the entry makes it a path — this also covers the `//` worktree-root escape, since it always contains a slash.
+2. Otherwise, an all-lowercase-ASCII-alphanumeric final dot-segment makes it a path (a bare filename with a lowercase extension, e.g. `list.go`).
+3. Otherwise, it is a symbol — the explicit default for an entry with no `.` at all (`Lookup`, `Makefile`) and for an entry whose final dot-segment is not all-lowercase-alphanumeric (`shedrecipe.Lookup`).
 
-**Why it is safe to include in v0, unlike the symbol fields:** it carries no hallucination risk — it only references other cards within the same plan, written by the same planner in the same session, never a claim about external code that could turn out to be wrong.
-Three reasons to include it now:
+This is a deliberate, partial deviation from the design doc's own classification clause.
+The design doc resolves ambiguity "against ground truth (`go doc` for a symbol, file existence for a path)";
+this spec takes that clause in its **shape half only** — a process spawn (`go doc`) is barred from tier1 by the Test Tier Purity Invariant and would stop the parser being a leaf (the Planparser Sole-Parser Invariant).
+The **file-existence half survives**, but at validation time rather than classification time, as the `path-missing` check below — existence never decides an entry's shape, only whether a path-shaped entry's target is satisfied.
 
-1. Human-readable context at escalation time (if card 5 fails, is card 6 known to depend on it?).
-2. Forward-compatible input for a future DAG mechanism (a cross-check layer once quarry-derived edges exist, analogous to how `SHAExists` cross-checks a stored git reference — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
-3. **A cheap, mechanical, pre-review order-validation gate:** it powers the `depends-on-order` check — a card whose `Depends-on:` names a *later* card in the declared order, names itself, or names an id referencing no existing card is flagged before any LLM-based review runs, at zero cost.
+**Known limitation:** an unexported symbol reference whose final dot-segment happens to be all-lowercase (e.g. `shedrecipe.lookup`) misclassifies as a path under rule 2, and surfaces as a loud `path-missing` finding rather than a silent misparse.
+The author resolves it by writing the exported name, or by `//`-escaping the entry so it is unambiguously a path.
 
 ## Card path resolution: `root:` and `//`
 
 `00-overview.md`'s frontmatter may carry an optional **plan-level** `root: <worktree-relative-dir>`.
-When set, every card file-op path in the plan — all five typed fields, both sides of every `Moves:` pair — resolves as `<root>/<path>` **unless** the path starts with `//`, which is *always* worktree-root-relative (root set or not — one rule, no special cases): that is how a card names a file outside the shared root, e.g. `//cmd/lyx/main.go`.
+When set, every path-shaped card entry in the plan resolves as `<root>/<path>` **unless** the path starts with `//`, which is *always* worktree-root-relative (root set or not — one rule, no special cases): that is how a card names a file outside the shared root, e.g. `//cmd/lyx/main.go`.
 This is purely a token-economy shorthand for a plan whose cards repeat the same directory prefix over and over.
 The degenerate `root: "."` case (the worktree root itself) resolves a card path to the raw path unchanged, rather than the unclean `"./<raw>"` a literal string join would produce.
 
-The parser normalizes every card path to a plain worktree-relative, forward-slash path exactly once, at parse time — the validator and any future consumer never see `root:` or `//` again, only normalized paths.
+Normalization applies to **path-shaped entries only**: the parser normalizes every card path to a plain worktree-relative, forward-slash path exactly once, at parse time.
+A **symbol-shaped entry passes through verbatim, regardless of `root:`** — the shape classifier gates normalization, so `root:` never gets prepended onto a symbol reference.
+The validator and any future consumer never see `root:` or `//` again, only normalized paths (or verbatim symbols).
 A single-`/` prefix or a `..` segment in a card path is malformed and is flagged by the `card-path-malformed` check.
 
-## Moves and the Rename mechanic
+## Rename and Move
 
-A `Moves:` sub-bullet declares a rename: `` `old/path` -> `new/path` `` (backtick-wrapped paths on both sides, ASCII ` -> ` arrow, exactly the same grammar as any other field's path bullets, extended to a pair).
-A path appearing as a `Moves:` endpoint must not also appear in the same plan's `Creates:`/`Deletes:` anywhere — that would be two contradictory instructions for the same file, flagged by `move-redundant`.
+A `Rename` card's sub-bullets are `` `old` -> `new` `` pairs on the ASCII arrow grammar (backtick-wrapped on both sides, exactly one arrow), and both endpoints of every pair project into the card's own target list, in pair order (`Old` then `New`).
 
-**Rename-plus-extraction is one `Moves:` pair plus a separate `Creates:` entry**: when a rename also splits new content out of the relocated file, the relocation itself is still exactly one `Moves:` pair (the file that moved),
-and the newly-split-out file is a plain `Creates:` entry in that same card or another — never folded into the `Moves:` pair itself.
+A `Move` card states its destination in `**Intent:**` prose rather than in its target list — the target list holds only the symbol or file being relocated, never its new location.
 
-**`## Rename mechanic` is a plan-level section**, one section in `00-overview.md`, **required when any card in the plan has a non-empty `Moves:`** — the `move-mechanic-missing` check (plan-level) flags a plan that declares a rename but omits it.
+**`## Rename mechanic` is a plan-level section**, one section in `00-overview.md`, **required when any card in the plan is type `Rename`** — the `rename-mechanic-missing` check (plan-level) flags a plan that declares a `Rename` card but omits it.
 The section's text is CANONICAL — reproduce it verbatim (adjusted only for the specific paths involved):
 
 ```markdown
@@ -149,12 +152,19 @@ The section's text is CANONICAL — reproduce it verbatim (adjusted only for the
 1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.
 2. Then make ONLY surgical edits (package declaration, imports, identifier
    retargeting) — no unrelated rewrites.
-3. Use `Creates:` only for genuinely new files, never for the relocated file itself.
+3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
+   into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
 ```
 
+Step 3 names a separate `Create` card rather than the removed `Creates:` field — format 4 has no typed file-op fields, so "genuinely new content" is always its own card under the `Create` label, never a bullet folded into another card's field.
+
 This is the repo's own `git mv` + surgical-edits convention made declarable in a plan and mechanically checkable, rather than an unstated expectation an implementer might miss.
+
+**Accepted false positive:** because a `Move` card's destination lives in `Intent` prose rather than in its own target list, there is no third union (parallel to the `Create`/`Rename` target unions below) for `path-missing` to check a `Move` destination against.
+A later card naming a file an earlier `Move` card relocated into place therefore produces a false-positive `path-missing` finding — the earlier `Move`'s destination is real on disk by the time the later card runs, but nothing in the plan model records that.
+The author resolves it by reordering the cards, or by naming the file's pre-move path in the later card instead.
 
 ## Numbering and commit subject
 
@@ -170,62 +180,58 @@ and a half-done card is resumed by discarding uncommitted changes and restarting
 
 ## verify model
 
-`verify:` is **optional per-card** — a cheap, targeted check where it is useful — plus an **optional plan-level integration verify** that lives as a **`## verify:` body section in `00-overview.md`** (the `00-overview.md` frontmatter itself stays scalar-only: `format`/`approved`/`root`).
-
-There is **no mandatory per-batch/per-card verify gate** — batch is gone, and per-card `verify:` is no longer required either.
-The build+unit-test gate is implicit in the card definition itself (criterion 1 of [What a card is](#what-a-card-is): every card compiles/builds on its own) and is run by the consumer (webster) after each card.
-The plan-level `## verify:` is the single integration suite run once at the end of the plan, not per card.
+The three-tier verify model (tier1 automatic package-scoped, tier2 plan-level integration, tier3 rare and explicit-only) is **designed, not implemented** — see `manifest/designs/plan-card-format.md`'s own Verify model section for the full design.
+This spec pins only what exists today: the per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful, never a required field, never a long hand-maintained list.
+Tier1's automatic package-scoped run is specified only, not implemented, by this task;
+there is no mandatory per-card or per-batch verify gate in the code today.
+The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the single integration suite run once at the end of the plan.
 
 ## Deferred / forward-compat
 
-The symbol fields — `creates-symbols`/`edits-symbols`/`reads-symbols` — are **deliberately omitted in v0**, not just left optional.
-They depend on a working, planner-side-verified `quarry`, which is deprioritized (see the roadmap's Someday list).
-Adding them now as unused optional fields would create confusion later;
-better to add them explicitly once `quarry` is actually ready.
-See [quarry](https://github.com/Knatte18/quarry) for what they'd depend on.
-
-**The derived `changes-files` union** — the union of the typed file-op fields (`Edits:` ∪ `Creates:` ∪ `Deletes:` ∪ both `Moves:` endpoints) — is the artifact webster's future contract-verification compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note;
-a file-list mismatch against `changes-files` is always informational, never blocking on its own).
+The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note; a file-list mismatch against this union is always informational, never blocking on its own) — is, under format 4: every path-shaped target entry across the batch's cards, plus the files holding every symbol-shaped target entry.
+`Uses:` is excluded from this union because it names what a card reads, not what it changes.
 See `internal/websterengine`'s package documentation for the verification semantics.
 
 The detailed continuous-DAG-update / symbol-matching / SCC-merging **scheduling** design is summarized in `internal/websterengine`'s package documentation ("Declared order now, a dead DAG seam for later") — v0 runs strictly in declared order;
-the eventual DAG scheduler waits on quarry-backed symbol fields.
+the eventual DAG scheduler is the roadmap's Wave 3 `webster: DAG-derived card sequencing` item.
 
 A parked, more aggressive parallel-execution idea also exists — see [../../manifest/designs/webster-parallel-execution.md](../../manifest/designs/webster-parallel-execution.md).
 
 ## Validation checks (as implemented by `internal/planparser`)
 
-Machine checks this format is designed to support, in this fixed order:
+Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — sixteen rows, sixteen IDs.
+This figure counts distinct IDs rather than presentation rows, which resolves the row-count-versus-ID-count divergence the repo's former "14" carried (a 14-row list whose row 1 bundled two distinct IDs):
 
-1. `format-unrecognized` / `plan-unapproved` — `format:` recognized, `approved: true`;
-   else refuse to run.
-2. `index-file-mismatch` — Card Index ↔ card files consistent (numbering, slugs, no gaps, no orphaned file on disk).
+1. `format-unrecognized` — `format:` is a recognized version (currently only `4`); else refuse to run.
+2. `plan-unapproved` — `approved: true`; else refuse to run.
+3. `index-file-mismatch` — Card Index ↔ card files consistent (numbering, slugs, no gaps, no orphaned file on disk).
    This check covers the card count because there is no separate `(C cards)` segment to cross-check;
    the index itself IS the card list.
-3. `card-path-malformed` — every card path, once normalized (both `Moves:` sides included, `root:`/`//` resolution applied), is non-empty, relative, clean, and free of `..` escapes.
-4. `move-format` — every non-`none` `Moves:` sub-bullet matches the `` `src` -> `dst` `` grammar.
-5. `move-redundant` — a path is both a `Moves:` endpoint and in `Creates:`/`Deletes:` of the same plan.
-6. `move-source-missing` — a `Moves:` source neither exists on disk nor is a `Creates:` target or `Moves:` destination of an earlier or later card.
-7. `move-target-collision` — a `Moves:` target already exists on disk, is targeted by more than one card, or collides with a different card's `Creates:` entry (same-card overlap is `card-field-overlap`'s job).
-8. `move-mechanic-missing` — the plan has at least one `Moves:` pair somewhere but `00-overview.md` has no `## Rename mechanic` section (plan-level).
-9. `card-missing-field` — a card lacks one of `What:`/`Context:`/`Edits:`/`Creates:`/`Deletes:`/ `Moves:`/`Depends-on:` (now including the new `Depends-on:` field).
-10. `card-field-overlap` — the same path appears in more than one of a single card's `Context:`/`Edits:`/`Creates:`/`Deletes:` fields or `Moves:` endpoints (per-card mutual exclusivity only — the legitimate cross-card `Creates:`-then-`Edits:` sequencing is never flagged).
-11. `card-numbering` — flat `N` runs 1..M across the whole plan, no gaps or duplicates;
-    the per-card file prefix `NN` must equal the heading `N`.
-12. `path-missing` — an `Edits:`/`Deletes:`/`Context:` path (a `Moves:` source is check 6's job) that does not exist on disk and is not a `Creates:` target or `Moves:` destination of any card.
-13. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix.
-14. `depends-on-order` (**new**) — a card's `Depends-on:` names a card at or after its own position (a later card or itself), or names an id that references no existing card.
+4. `card-type-missing` — every card carries exactly one recognized type label; zero or more than one is flagged.
+5. `card-retired-label` — a card body carries a format-3 label (`**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**`, or the lowercase `**verify:**`); each occurrence is its own finding.
+6. `card-path-malformed` — every path-shaped target/`Uses` entry, once normalized (`root:`/`//` resolution applied), is non-empty, relative, clean, and free of `..` escapes.
+7. `rename-format` — every non-well-formed `Rename:` sub-bullet fails the `` `old` -> `new` `` grammar.
+8. `rename-mechanic-missing` — the plan has at least one `Rename` card but `00-overview.md` has no `## Rename mechanic` section (plan-level).
+9. `card-missing-field` — a card lacks its required type label, `Intent:`, or (on an `Edit`/`Delete` card) `ImpactSummary:`.
+10. `card-field-empty` — a label present on a card with no content under it (an empty target list, an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value).
+11. `card-field-overlap` — the same entry appears in both a single card's own target list and its own `Uses:` field (per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged).
+12. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
+13. `prosa-symbol-target` — a `Prosa` card's target list holds a symbol-shaped entry; `Prosa` cards may target only files.
+14. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
+15. `path-missing` — a path-shaped entry that does not exist on disk and is not satisfied by any card's `Create` target or `Rename` destination in the same plan.
+    `Custom` is exempt from this check on its own targets — and from the `prosa-symbol-target` rule above, and from nothing else: it remains bound by every other card-generic check.
+16. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix.
 
 ## Worked example
 
-A complete minimal plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent across Card Index ↔ per-card filenames ↔ card headings/numbering.
-Across its four card files this example demonstrates every plan-format feature: all five typed file-op fields (with `none` sentinels), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with a `//`-escaped path, a `Depends-on:` field with a real dependency, a pinned `Commit:` field, and a `Moves:` card with its plan-level `## Rename mechanic` section.
+A complete plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent with the golden fixture `internal/planparser`'s own tests parse.
+Across its seven card files this example demonstrates every plan-format feature: all seven type labels are exercised across the suite of cards below (`Create`, `Edit`, `Custom`, `Delete`, `Rename`, `Move`, `Prosa`), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with `//`-escaped entries, a pinned `Commit:`/`Verify:` pair, and a `Rename` card with its plan-level `## Rename mechanic` section.
 
 `_lyx/plan/00-overview.md`:
 
 ```markdown
 ---
-format: 3
+format: 4
 approved: true
 root: internal/boardcli
 ---
@@ -238,10 +244,13 @@ of a later extraction.
 
 ## Card Index
 
-1 — json-flag — add the `--json` bool flag and RowJSON struct
-2 — json-emission — marshal each row through output.Ok when --json is set
-3 — json-tests — cover --json in boardcli list tests
-4 — helptree-rename — update help-tree pins and rename the row mapper
+1 — json-row-type — define the RowJSON struct
+2 — json-flag — add the --json bool flag and wire list.go
+3 — json-emission — marshal each row through output.Ok when --json is set
+4 — legacy-rows-delete — remove the superseded legacy row-conversion file
+5 — rowmapper-rename — rename the row mapper ahead of a later extraction
+6 — helppins-move — relocate the pinned help-tree fixture
+7 — json-docs — update the package doc comment and the standalone docs page
 
 ## Shared Decisions
 
@@ -258,7 +267,8 @@ of a later extraction.
 1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.
 2. Then make ONLY surgical edits (package declaration, imports, identifier
    retargeting) — no unrelated rewrites.
-3. Use `Creates:` only for genuinely new files, never for the relocated file itself.
+3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
+   into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
 
@@ -267,81 +277,107 @@ of a later extraction.
 go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 ```
 
-`_lyx/plan/01-json-flag.md`:
+`_lyx/plan/01-json-row-type.md`:
 
 ```markdown
-# Card 1 — json-flag
+# Card 1 — json-row-type
 
-**What:** Add a `--json` bool flag to the list command; define `RowJSON` with the existing
-table's columns as fields.
-**Context:** none
-**Edits:**
-- `list.go`
-- `//internal/boardengine/rows.go`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
-**Depends-on:** none
-**Commit:** `1: json-flag`
-**verify:** go build ./...
+**Create:**
+- `boardcli.RowJSON`
+
+**Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
+
+**Commit:** `1: json-row-type`
+**Verify:** go build ./...
 ```
 
-`_lyx/plan/02-json-emission.md`:
+`_lyx/plan/02-json-flag.md`:
 
 ```markdown
-# Card 2 — json-emission
+# Card 2 — json-flag
 
-**What:** When `--json` is set, marshal each row through `output.Ok` instead of the table
-writer; keep the table path unchanged.
-**Context:**
+**Edit:**
+- `boardcli.newListCmd`
+- `list.go`
+
+**Uses:**
 - `//internal/output/envelope.go`
-**Edits:**
+
+**Intent:** Add the `--json` bool flag to `newListCmd` and branch its row output between the table writer and the JSON path.
+
+**ImpactSummary:** Adds a --json flag to the list command and branches its row-emission path on it.
+```
+
+`_lyx/plan/03-json-emission.md`:
+
+```markdown
+# Card 3 — json-emission
+
+**Custom:**
+- `boardcli.emitJSON`
+- `//internal/output/emit.go`
+
+**Uses:**
 - `list.go`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
-**Depends-on:** 1
+
+**Intent:** Introduce `emitJSON`, a new helper in a new file, marshaling each row through `output.Ok` when `--json` is set.
 ```
 
-`_lyx/plan/03-json-tests.md`:
+`_lyx/plan/04-legacy-rows-delete.md`:
 
 ```markdown
-# Card 3 — json-tests
+# Card 4 — legacy-rows-delete
 
-**What:** Add table-driven tests asserting one `output.Ok` envelope per row for `list --json`,
-and that the table path is unchanged without the flag.
-**Context:** none
-**Edits:**
-- `list_test.go`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
-**Depends-on:** 2
+**Delete:**
+- `//internal/boardengine/legacyrows.go`
+
+**Intent:** Remove the legacy per-row conversion helper now that `boardengine.MapRowJSON` (card 5) supersedes it.
+
+**ImpactSummary:** Deletes the legacy row-conversion file; no remaining callers reference it.
 ```
 
-`_lyx/plan/04-helptree-rename.md`:
+`_lyx/plan/05-rowmapper-rename.md`:
 
 ```markdown
-# Card 4 — helptree-rename
+# Card 5 — rowmapper-rename
 
-**What:** Update the pinned help-tree set with the new `--json` flag help text, and relocate the
-row mapper via `git mv` per the Rename mechanic above (no behavior change in this card).
-**Context:** none
-**Edits:**
-- `//cmd/lyx/helptree_test.go`
-**Creates:** none
-**Deletes:** none
-**Moves:**
+**Rename:**
+- `boardengine.MapRow` -> `boardengine.MapRowJSON`
 - `//internal/boardengine/rows.go` -> `//internal/boardengine/rowsjson.go`
-**Depends-on:** 1
+
+**Intent:** Rename the row mapper and its file to make the JSON-oriented behavior explicit ahead of a later extraction.
 ```
 
-`list.go`/`list_test.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/list_test.go`;
-the `//`-prefixed entries (`rows.go`, `envelope.go`, `helptree_test.go`) stay worktree-root-relative regardless of `root:`, escaping it for the files each card needs outside the shared prefix.
+`_lyx/plan/06-helppins-move.md`:
+
+```markdown
+# Card 6 — helppins-move
+
+**Move:**
+- `//cmd/lyx/helppins.go`
+
+**Intent:** Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.
+```
+
+`_lyx/plan/07-json-docs.md`:
+
+```markdown
+# Card 7 — json-docs
+
+**Prosa:**
+- `doc.go`
+- `//docs/boardcli-json.md`
+
+**Intent:** Update the package doc comment and the standalone docs page describing `--json` output.
+```
+
+`list.go`/`doc.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/doc.go`;
+the `//`-prefixed entries (`envelope.go`, `emit.go`, `legacyrows.go`, `rows.go`, `rowsjson.go`, `helppins.go`, `boardcli-json.md`) stay worktree-root-relative regardless of `root:`, escaping it for the files each card needs outside the shared prefix.
+`boardcli.newListCmd`, `boardcli.RowJSON`, `boardcli.emitJSON`, and `boardengine.MapRow`/`boardengine.MapRowJSON` are symbol-shaped entries and pass through every one of these resolution rules verbatim.
 
 ## Related
 
 - [webster-spec.md](webster-spec.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - `contracts/stencils/loom/loom-template-plan.md` — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
-- [quarry](https://github.com/Knatte18/quarry) — the external module the symbol fields depend on.
+- [manifest/designs/plan-card-format.md](../../manifest/designs/plan-card-format.md) — the design doc this spec's format-4 rewrite implements.

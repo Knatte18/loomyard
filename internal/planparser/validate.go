@@ -1,20 +1,18 @@
-// validate.go implements Validate, plan-format's complete machine check set
-// (contracts/specs/loom-plan-spec.md, "Validation checks"), run in this fixed order: format/approval
-// (format-unrecognized, plan-unapproved), Card Index <-> card-file consistency
-// (index-file-mismatch), card path well-formedness and the Moves: grammar/redundancy/mechanic
-// checks (card-path-malformed, move-format, move-redundant, move-source-missing,
-// move-target-collision, move-mechanic-missing), the per-card structural checks
-// (card-missing-field, card-field-overlap), the card-numbering heading cross-check, the
-// existence-dependent cross-referencing checks (path-missing, commit-subject-mismatch), and the
-// depends-on-order gate.
+// validate.go implements Validate, format-4 plan-format's complete machine check set
+// (manifest/designs/plan-card-format.md), run in this fixed order, emitting exactly these sixteen
+// distinct ValidationError.Check IDs: format-unrecognized, plan-unapproved (both from
+// checkFormatAndApproval), index-file-mismatch (checkIndexFileConsistency), card-type-missing
+// (checkCardTypeMissing), card-retired-label (checkCardRetiredLabel), card-path-malformed
+// (checkCardPathMalformed), rename-format (checkRenameFormat), rename-mechanic-missing
+// (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty
+// (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), impact-summary-multiline
+// (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
+// (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch
+// (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
-//
-// This file is added across three cards (see contracts/specs/loom-plan-spec.md's worked spec):
-// format/structure checks land first, then the card-path/Moves grammar checks, then the
-// existence-dependent and depends-on checks — each addition also extends Validate's call sequence
-// in place, in the spec's fixed numbering, so every intermediate commit still compiles and runs a
-// strict subset of the final 14 checks.
+// No scheduler, dependency graph, or topological sort belongs in this file — per the
+// no-behavior-change-in-webster decision, cards still execute in strict declared plan order.
 
 package planparser
 
@@ -28,7 +26,7 @@ import (
 )
 
 // recognizedFormat is the only plan-format version Validate currently understands.
-const recognizedFormat = 3
+const recognizedFormat = 4
 
 // ValidationError is one finding from Validate: which check tripped, which card it concerns, and a
 // human-readable detail.
@@ -58,18 +56,19 @@ func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 
 	findings = append(findings, checkFormatAndApproval(plan)...)
 	findings = append(findings, checkIndexFileConsistency(plan)...)
+	findings = append(findings, checkCardTypeMissing(plan)...)
+	findings = append(findings, checkCardRetiredLabel(plan)...)
 	findings = append(findings, checkCardPathMalformed(plan)...)
-	findings = append(findings, checkMoveFormat(plan)...)
-	findings = append(findings, checkMoveRedundant(plan)...)
-	findings = append(findings, checkMoveSourceMissing(plan, worktreeRoot)...)
-	findings = append(findings, checkMoveTargetCollision(plan, worktreeRoot)...)
-	findings = append(findings, checkMoveMechanicMissing(plan)...)
+	findings = append(findings, checkRenameFormat(plan)...)
+	findings = append(findings, checkRenameMechanicMissing(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
+	findings = append(findings, checkCardFieldEmpty(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
+	findings = append(findings, checkImpactSummaryMultiline(plan)...)
+	findings = append(findings, checkProsaSymbolTarget(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
 	findings = append(findings, checkPathMissing(plan, worktreeRoot)...)
 	findings = append(findings, checkCommitSubjectMismatch(plan)...)
-	findings = append(findings, checkDependsOnOrder(plan)...)
 
 	return findings
 }
@@ -140,6 +139,59 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	return findings
 }
 
+// checkCardTypeMissing implements card-type-missing: every card must carry exactly one recognized type label.
+func checkCardTypeMissing(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		switch {
+		case c.TypeLabelCount == 0:
+			findings = append(findings, ValidationError{
+				Check:  "card-type-missing",
+				Card:   cardID(c),
+				Detail: fmt.Sprintf("card %d carries no recognized type label (Create/Edit/Delete/Rename/Move/Prosa/Custom)", c.Number),
+			})
+		case c.TypeLabelCount > 1:
+			findings = append(findings, ValidationError{
+				Check:  "card-type-missing",
+				Card:   cardID(c),
+				Detail: fmt.Sprintf("card %d carries %d type labels; exactly one is required", c.Number, c.TypeLabelCount),
+			})
+		}
+	}
+
+	return findings
+}
+
+// retiredLabelMapping names, for each format-3 label, how format-4 replaces it.
+var retiredLabelMapping = map[string]string{
+	whatLabel:         "became **Intent:**",
+	contextLabel:      "became **Uses:**",
+	editsLabel:        "was absorbed into the card's own type-label target list",
+	createsLabel:      "was absorbed into the card's own type-label target list",
+	deletesLabel:      "was absorbed into the card's own type-label target list",
+	movesLabel:        "was absorbed into the card's own type-label target list",
+	dependsOnLabel:    "was dropped because dependency edges are derived rather than authored",
+	legacyVerifyLabel: "became **Verify:**",
+}
+
+// checkCardRetiredLabel implements card-retired-label: every retired format-3 label occurrence on a card is a finding.
+func checkCardRetiredLabel(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		for _, label := range c.RetiredLabels {
+			findings = append(findings, ValidationError{
+				Check:  "card-retired-label",
+				Card:   cardID(c),
+				Detail: fmt.Sprintf("card %d carries the retired label %s; it %s", c.Number, label, retiredLabelMapping[label]),
+			})
+		}
+	}
+
+	return findings
+}
+
 // cardPathMalformedReason reports why p is not a well-formed plan-format card path, or "" when well-formed.
 func cardPathMalformedReason(p string) string {
 	if p == "" {
@@ -162,13 +214,16 @@ func cardPathMalformedReason(p string) string {
 	return ""
 }
 
-// checkCardPathMalformed implements card-path-malformed: every card path must be non-empty, relative, clean, and free of ".." escapes.
+// checkCardPathMalformed implements card-path-malformed: every path-shaped Targets/Uses entry must be non-empty, relative, clean, and free of ".." escapes. Symbol-shaped entries are skipped, and Pairs is not iterated separately because both endpoints of every pair are already projected into Targets.
 func checkCardPathMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		for _, fields := range [][]string{c.ContextFiles, c.EditsFiles, c.CreatesFiles, c.DeletesFiles} {
+		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, p := range fields {
+				if !isPathRef(p) {
+					continue
+				}
 				if reason := cardPathMalformedReason(p); reason != "" {
 					findings = append(findings, ValidationError{
 						Check:  "card-path-malformed",
@@ -178,33 +233,22 @@ func checkCardPathMalformed(plan *Plan) []ValidationError {
 				}
 			}
 		}
-		for _, mv := range c.Moves {
-			for _, p := range []string{mv.Old, mv.New} {
-				if reason := cardPathMalformedReason(p); reason != "" {
-					findings = append(findings, ValidationError{
-						Check:  "card-path-malformed",
-						Card:   cardID(c),
-						Detail: fmt.Sprintf("card %d Moves: endpoint %q is malformed: %s", c.Number, p, reason),
-					})
-				}
-			}
-		}
 	}
 
 	return findings
 }
 
-// checkMoveFormat implements move-format: every card's non-well-formed "Moves:" sub-bullet yields one finding.
-func checkMoveFormat(plan *Plan) []ValidationError {
+// checkRenameFormat implements rename-format: every card's non-well-formed "Rename:" sub-bullet yields one finding.
+func checkRenameFormat(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		for _, raw := range c.MovesRaw {
+		for _, raw := range c.RenameRaw {
 			findings = append(findings, ValidationError{
-				Check: "move-format",
+				Check: "rename-format",
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"card %d Moves: entry %q does not match the required `src` -> `dst` grammar",
+					"card %d Rename: entry %q does not match the required `old` -> `new` grammar",
 					c.Number, raw,
 				),
 			})
@@ -214,173 +258,21 @@ func checkMoveFormat(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkMoveRedundant implements move-redundant: a path that is both a Moves: endpoint and in Creates:/Deletes: is a conflicting instruction.
-func checkMoveRedundant(plan *Plan) []ValidationError {
+// checkRenameMechanicMissing implements rename-mechanic-missing: a plan with at least one Rename card but an empty RenameMechanic section.
+func checkRenameMechanicMissing(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	endpoints := make(map[string]bool)
-	createsDeletes := make(map[string]bool)
+	hasRename := false
 	for _, c := range plan.Cards {
-		for _, mv := range c.Moves {
-			endpoints[mv.Old] = true
-			endpoints[mv.New] = true
-		}
-		for _, p := range c.CreatesFiles {
-			createsDeletes[p] = true
-		}
-		for _, p := range c.DeletesFiles {
-			createsDeletes[p] = true
-		}
-	}
-
-	var conflicts []string
-	for p := range endpoints {
-		if createsDeletes[p] {
-			conflicts = append(conflicts, p)
-		}
-	}
-	sort.Strings(conflicts)
-
-	for _, p := range conflicts {
-		findings = append(findings, ValidationError{
-			Check: "move-redundant",
-			Detail: fmt.Sprintf(
-				"%q is both a Moves: endpoint and in Creates:/Deletes: somewhere in the plan; use Moves: or Creates:/Deletes:, not both",
-				p,
-			),
-		})
-	}
-
-	return findings
-}
-
-// createsUnion returns the union, across every card in plan, of every CreatesFiles entry.
-func createsUnion(plan *Plan) map[string]bool {
-	union := make(map[string]bool)
-	for _, c := range plan.Cards {
-		for _, p := range c.CreatesFiles {
-			union[p] = true
-		}
-	}
-	return union
-}
-
-// movesTargetsUnion returns the union, across every card in plan, of every MovePair.New.
-func movesTargetsUnion(plan *Plan) map[string]bool {
-	union := make(map[string]bool)
-	for _, c := range plan.Cards {
-		for _, mv := range c.Moves {
-			union[mv.New] = true
-		}
-	}
-	return union
-}
-
-// pathExistsOnDisk reports whether worktreeRoot-joined p exists on disk.
-func pathExistsOnDisk(worktreeRoot, p string) bool {
-	_, err := os.Stat(filepath.Join(worktreeRoot, p))
-	return err == nil
-}
-
-// checkMoveSourceMissing implements move-source-missing: a Moves: source that doesn't exist on disk and isn't created/relocated by another card.
-func checkMoveSourceMissing(plan *Plan, worktreeRoot string) []ValidationError {
-	var findings []ValidationError
-
-	creates := createsUnion(plan)
-	movesTargets := movesTargetsUnion(plan)
-
-	for _, c := range plan.Cards {
-		for _, mv := range c.Moves {
-			if pathExistsOnDisk(worktreeRoot, mv.Old) {
-				continue
-			}
-			if creates[mv.Old] || movesTargets[mv.Old] {
-				continue
-			}
-			findings = append(findings, ValidationError{
-				Check: "move-source-missing",
-				Card:  cardID(c),
-				Detail: fmt.Sprintf(
-					"Moves: source %q does not exist on disk and is not a Creates: target or Moves: destination of any card",
-					mv.Old,
-				),
-			})
-		}
-	}
-
-	return findings
-}
-
-// checkMoveTargetCollision implements move-target-collision: a target that already exists, is targeted by multiple cards, or collides with a different card's Creates:.
-func checkMoveTargetCollision(plan *Plan, worktreeRoot string) []ValidationError {
-	var findings []ValidationError
-
-	targetCards := make(map[string]map[string]bool)
-	targetCreatesCards := make(map[string]map[string]bool)
-	for _, c := range plan.Cards {
-		id := cardID(c)
-		for _, mv := range c.Moves {
-			if targetCards[mv.New] == nil {
-				targetCards[mv.New] = make(map[string]bool)
-			}
-			targetCards[mv.New][id] = true
-		}
-		for _, p := range c.CreatesFiles {
-			if targetCreatesCards[p] == nil {
-				targetCreatesCards[p] = make(map[string]bool)
-			}
-			targetCreatesCards[p][id] = true
-		}
-	}
-
-	for _, c := range plan.Cards {
-		id := cardID(c)
-		for _, mv := range c.Moves {
-			target := mv.New
-
-			var detail string
-			switch {
-			case pathExistsOnDisk(worktreeRoot, target):
-				detail = fmt.Sprintf("Moves: target %q already exists on disk", target)
-			case len(targetCards[target]) > 1:
-				detail = fmt.Sprintf("Moves: target %q is targeted by more than one card", target)
-			default:
-				for owner := range targetCreatesCards[target] {
-					if owner != id {
-						detail = fmt.Sprintf("Moves: target %q collides with another card's Creates: entry", target)
-						break
-					}
-				}
-			}
-
-			if detail != "" {
-				findings = append(findings, ValidationError{
-					Check:  "move-target-collision",
-					Card:   id,
-					Detail: detail,
-				})
-			}
-		}
-	}
-
-	return findings
-}
-
-// checkMoveMechanicMissing implements move-mechanic-missing: a plan with at least one Moves: pair but an empty RenameMechanic section.
-func checkMoveMechanicMissing(plan *Plan) []ValidationError {
-	var findings []ValidationError
-
-	hasPair := false
-	for _, c := range plan.Cards {
-		if len(c.Moves) > 0 {
-			hasPair = true
+		if c.Type == CardTypeRename {
+			hasRename = true
 			break
 		}
 	}
-	if hasPair && plan.RenameMechanic == "" {
+	if hasRename && plan.RenameMechanic == "" {
 		findings = append(findings, ValidationError{
-			Check:  "move-mechanic-missing",
-			Detail: `plan declares at least one Moves: pair but has no "## Rename mechanic" section`,
+			Check:  "rename-mechanic-missing",
+			Detail: `plan has at least one Rename card but no "## Rename mechanic" section`,
 		})
 	}
 
@@ -393,19 +285,16 @@ type cardFieldLabel struct {
 	label   string
 }
 
-// checkCardMissingField implements card-missing-field: every card must carry all seven required fields.
+// checkCardMissingField implements card-missing-field: every card must carry Intent:, and a card of type Edit or Delete must also carry ImpactSummary:.
 func checkCardMissingField(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
 		fields := []cardFieldLabel{
-			{c.HasWhat, "What:"},
-			{c.HasContext, "Context:"},
-			{c.HasEdits, "Edits:"},
-			{c.HasCreates, "Creates:"},
-			{c.HasDeletes, "Deletes:"},
-			{c.HasMoves, "Moves:"},
-			{c.HasDependsOn, "Depends-on:"},
+			{c.HasIntent, "Intent:"},
+		}
+		if c.Type == CardTypeEdit || c.Type == CardTypeDelete {
+			fields = append(fields, cardFieldLabel{c.HasImpactSummary, "ImpactSummary:"})
 		}
 		for _, f := range fields {
 			if f.present {
@@ -422,42 +311,60 @@ func checkCardMissingField(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkCardFieldOverlap implements card-field-overlap: a path appearing in more than one field within a single card.
+// checkCardFieldEmpty implements card-field-empty: a label present with no content is distinct from an absent label.
+func checkCardFieldEmpty(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		if c.HasType && len(c.Targets) == 0 {
+			findings = append(findings, ValidationError{
+				Check:  "card-field-empty",
+				Card:   cardID(c),
+				Detail: fmt.Sprintf("card %d's type label carries no targets", c.Number),
+			})
+		}
+		if c.HasUses && len(c.Uses) == 0 {
+			findings = append(findings, ValidationError{
+				Check:  "card-field-empty",
+				Card:   cardID(c),
+				Detail: fmt.Sprintf("card %d's Uses: field carries no entries", c.Number),
+			})
+		}
+		if c.HasIntent && c.Intent == "" {
+			findings = append(findings, ValidationError{
+				Check:  "card-field-empty",
+				Card:   cardID(c),
+				Detail: fmt.Sprintf("card %d's Intent: field carries no prose", c.Number),
+			})
+		}
+		if c.HasImpactSummary && c.ImpactSummary == "" {
+			findings = append(findings, ValidationError{
+				Check:  "card-field-empty",
+				Card:   cardID(c),
+				Detail: fmt.Sprintf("card %d's ImpactSummary: field carries no value", c.Number),
+			})
+		}
+	}
+
+	return findings
+}
+
+// checkCardFieldOverlap implements card-field-overlap: an entry appearing in both a card's Targets and its own Uses.
 func checkCardFieldOverlap(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		fieldsOf := make(map[string][]string)
-		add := func(p, field string) {
-			for _, seen := range fieldsOf[p] {
-				if seen == field {
-					return
-				}
-			}
-			fieldsOf[p] = append(fieldsOf[p], field)
-		}
-
-		for _, p := range c.ContextFiles {
-			add(p, "Context:")
-		}
-		for _, p := range c.EditsFiles {
-			add(p, "Edits:")
-		}
-		for _, p := range c.CreatesFiles {
-			add(p, "Creates:")
-		}
-		for _, p := range c.DeletesFiles {
-			add(p, "Deletes:")
-		}
-		for _, mv := range c.Moves {
-			add(mv.Old, "Moves:")
-			add(mv.New, "Moves:")
+		targets := make(map[string]bool, len(c.Targets))
+		for _, t := range c.Targets {
+			targets[t] = true
 		}
 
 		var duplicated []string
-		for p, fields := range fieldsOf {
-			if len(fields) > 1 {
-				duplicated = append(duplicated, p)
+		seen := make(map[string]bool)
+		for _, u := range c.Uses {
+			if targets[u] && !seen[u] {
+				duplicated = append(duplicated, u)
+				seen[u] = true
 			}
 		}
 		sort.Strings(duplicated)
@@ -467,8 +374,55 @@ func checkCardFieldOverlap(plan *Plan) []ValidationError {
 				Check: "card-field-overlap",
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"card %d path %q appears in more than one field: %s",
-					c.Number, p, strings.Join(fieldsOf[p], ", "),
+					"card %d entry %q appears in both its own target list and its Uses: field",
+					c.Number, p,
+				),
+			})
+		}
+	}
+
+	return findings
+}
+
+// checkImpactSummaryMultiline implements impact-summary-multiline: an ImpactSummary: field followed by trailing lines is a defect, since ImpactSummary is required to stay a single line.
+func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		if len(c.ImpactSummaryTrailing) == 0 {
+			continue
+		}
+		findings = append(findings, ValidationError{
+			Check: "impact-summary-multiline",
+			Card:  cardID(c),
+			Detail: fmt.Sprintf(
+				"card %d's ImpactSummary: field carries %d trailing line(s); ImpactSummary must stay a single line",
+				c.Number, len(c.ImpactSummaryTrailing),
+			),
+		})
+	}
+
+	return findings
+}
+
+// checkProsaSymbolTarget implements prosa-symbol-target: a Prosa card's target list must hold only file(s), never a symbol.
+func checkProsaSymbolTarget(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		if c.Type != CardTypeProsa {
+			continue
+		}
+		for _, t := range c.Targets {
+			if isPathRef(t) {
+				continue
+			}
+			findings = append(findings, ValidationError{
+				Check: "prosa-symbol-target",
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"card %d is a Prosa card but targets the symbol %q; Prosa cards may only target files",
+					c.Number, t,
 				),
 			})
 		}
@@ -522,31 +476,95 @@ func cardHeadingNumber(planDir string, c Card) (int, bool) {
 	return n, true
 }
 
-// checkPathMissing implements path-missing: every card path in ContextFiles, EditsFiles, and DeletesFiles must exist on disk or be satisfied by Creates: or Moves: targets.
+// pathExistsOnDisk reports whether worktreeRoot-joined p exists on disk.
+func pathExistsOnDisk(worktreeRoot, p string) bool {
+	_, err := os.Stat(filepath.Join(worktreeRoot, p))
+	return err == nil
+}
+
+// createTargetsUnion returns the union, across every card in plan, of every CardTypeCreate card's path-shaped Targets entries.
+func createTargetsUnion(plan *Plan) map[string]bool {
+	union := make(map[string]bool)
+	for _, c := range plan.Cards {
+		if c.Type != CardTypeCreate {
+			continue
+		}
+		for _, t := range c.Targets {
+			if isPathRef(t) {
+				union[t] = true
+			}
+		}
+	}
+	return union
+}
+
+// renameTargetsUnion returns the union, across every card in plan, of every Pairs entry's New side that is path-shaped.
+func renameTargetsUnion(plan *Plan) map[string]bool {
+	union := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, p := range c.Pairs {
+			if isPathRef(p.New) {
+				union[p.New] = true
+			}
+		}
+	}
+	return union
+}
+
+// checkPathMissing implements path-missing: type-conditional, existence-dependent path checking.
+// Every card's path-shaped Uses entries are checked, including a Custom card's. A card's
+// path-shaped Targets are checked only when its Type is Edit, Delete, Move, or Prosa. A Rename
+// card's path-shaped Pairs.Old entries are checked, and its Targets are skipped entirely (so a
+// Rename's New side is never checked). Create and Custom cards' Targets are skipped. A path
+// otherwise reported missing is satisfied by existing on disk, by createTargetsUnion membership,
+// or by renameTargetsUnion membership.
 func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 
-	creates := createsUnion(plan)
-	movesTargets := movesTargetsUnion(plan)
+	creates := createTargetsUnion(plan)
+	renames := renameTargetsUnion(plan)
+
+	satisfied := func(p string) bool {
+		return pathExistsOnDisk(worktreeRoot, p) || creates[p] || renames[p]
+	}
+
+	report := func(c Card, p string) {
+		findings = append(findings, ValidationError{
+			Check: "path-missing",
+			Card:  cardID(c),
+			Detail: fmt.Sprintf(
+				"card %d path %q does not exist on disk and is not a Create target or Rename destination of any card",
+				c.Number, p,
+			),
+		})
+	}
 
 	for _, c := range plan.Cards {
-		for _, fields := range [][]string{c.ContextFiles, c.EditsFiles, c.DeletesFiles} {
-			for _, p := range fields {
-				if pathExistsOnDisk(worktreeRoot, p) {
-					continue
-				}
-				if creates[p] || movesTargets[p] {
-					continue
-				}
-				findings = append(findings, ValidationError{
-					Check: "path-missing",
-					Card:  cardID(c),
-					Detail: fmt.Sprintf(
-						"card %d path %q does not exist on disk and is not a Creates: target or Moves: destination of any card",
-						c.Number, p,
-					),
-				})
+		for _, u := range c.Uses {
+			if !isPathRef(u) || satisfied(u) {
+				continue
 			}
+			report(c, u)
+		}
+
+		switch c.Type {
+		case CardTypeEdit, CardTypeDelete, CardTypeMove, CardTypeProsa:
+			for _, t := range c.Targets {
+				if !isPathRef(t) || satisfied(t) {
+					continue
+				}
+				report(c, t)
+			}
+		case CardTypeRename:
+			for _, p := range c.Pairs {
+				if !isPathRef(p.Old) || satisfied(p.Old) {
+					continue
+				}
+				report(c, p.Old)
+			}
+		case CardTypeCreate, CardTypeCustom:
+			// Create's targets are new by definition, and Custom is an explicit escape hatch
+			// exempt from path-missing on its own targets.
 		}
 	}
 
@@ -571,44 +589,6 @@ func checkCommitSubjectMismatch(plan *Plan) []ValidationError {
 					c.Number, c.Commit, prefix,
 				),
 			})
-		}
-	}
-
-	return findings
-}
-
-// checkDependsOnOrder implements depends-on-order: a card's Depends-on: must name only cards strictly earlier in the Card Index.
-func checkDependsOnOrder(plan *Plan) []ValidationError {
-	var findings []ValidationError
-
-	positionOf := make(map[int]int, len(plan.Cards))
-	for i, c := range plan.Cards {
-		positionOf[c.Number] = i
-	}
-
-	for i, c := range plan.Cards {
-		for _, dep := range c.DependsOn {
-			pos, ok := positionOf[dep]
-			switch {
-			case !ok:
-				findings = append(findings, ValidationError{
-					Check: "depends-on-order",
-					Card:  cardID(c),
-					Detail: fmt.Sprintf(
-						"card %d Depends-on: %d references a card number that does not exist",
-						c.Number, dep,
-					),
-				})
-			case pos >= i:
-				findings = append(findings, ValidationError{
-					Check: "depends-on-order",
-					Card:  cardID(c),
-					Detail: fmt.Sprintf(
-						"card %d Depends-on: %d names a card at or after its own position",
-						c.Number, dep,
-					),
-				})
-			}
 		}
 	}
 
