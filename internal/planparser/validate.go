@@ -11,8 +11,10 @@
 // (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
-// No scheduler, dependency graph, or topological sort belongs in this file — per the
-// no-behavior-change-in-webster decision, cards still execute in strict declared plan order.
+// No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
+// and topological order live in internal/websterengine's sequence.go, which derives them from the
+// Targets/Uses refs this package parses, because scheduling is the executor's job and parsing is
+// this package's, per the Planparser Sole-Parser Invariant.
 
 package planparser
 

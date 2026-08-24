@@ -33,10 +33,10 @@ You never run git against `_lyx`; it is committed for you.
 
 {{.batch_index}}
 
-This ordered list is the plan's own flat card list — every card, in declared order, one line each: number, slug, one-line intent.
+This is one line per execution batch, in the order webster derived from the cards' own declared dependencies — number, slug, one-line intent.
 It is your navigation source, not the execution unit: `lyx webster` groups this flat list into execution batches via `batcher.yaml`'s configured batchifier (one card per batch under the default identity batchifier) — you drive the loop below by BATCH number, not by reasoning about grouping yourself.
-Drive it STRICTLY in order — batch N assumes every batch before it is already committed;
-there is no DAG here to reorder around,
+Drive it STRICTLY in order: "in order" means the order listed above, top to bottom — NOT necessarily ascending batch number, since a batch's number is its identity, never its position, so the list may legitimately run `03` before `02`.
+Each entry assumes every entry ABOVE it in the list is already committed,
 and no batch is ever skipped or reordered because it "looks independent."
 
 ## Progress so far
@@ -55,7 +55,7 @@ Read the trail by status — a resumed session thus picks up exactly where the l
 
 ## The loop: begin-batch, fork, await-batch, record-batch — verbatim sequence
 
-For each batch not already reported, in order:
+For each batch not already reported, top to bottom in your card list above:
 
 1. Call `lyx webster begin-batch <NN>` FIRST.
    Never fork without it — this asserts your own model for the batch (idempotent — a no-op if already asserted) and hands you back the fork's prompt file path.
