@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-planparser core — format-4 model, classifier, parser, validator
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r2  '2026-08-24T13:15:52Z'
 plan-review-r3  '2026-08-24T13:24:50Z'
 planned  '2026-08-24T13:24:59Z'
 implementing  '2026-08-24T13:25:30Z'
+approved-planparser core — format-4 model, classifier, parser, validator  '2026-08-24T13:34:38Z'
 ```
 
 ## Batches
@@ -33,9 +34,10 @@ implementing  '2026-08-24T13:25:30Z'
 ```yaml
 batches:
   - name: planparser core — format-4 model, classifier, parser, validator
-    state: running
+    state: approved
     implementer_session: b29f03b4-49fb-4ec6-ba99-3b8ed5b6ab3c
     start_sha: ac68afb6a56e55e6bed60719cda579977fb01ca9
+    commit_sha: 9ea9289b636676e557c99664cfb853436045c0c4
     verify_baseline_failures: []
   - name: planparser tests — golden fixture and per-check suite
     state: pending
