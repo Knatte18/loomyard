@@ -9,7 +9,10 @@
 `internal/loomrecipe.New()` builds loom's thirteen-row `[]shedengine.ProducerDef` by parsing and building the **declarative recipe** at `contracts/recipes/loom-recipe.yaml` — a data file naming, per row, `{Name, Engine, Config, OnDone, OnStuck, Segment, MaxBounces}`, loaded and assembled into the same `[]shedengine.ProducerDef` `shedengine.Shed` already consumes, with no change to `shedengine` itself.
 This replaces the earlier Go literal `internal/loomshed.New()` used to build directly.
 
-Motivation: several rows are already pure `Engine + Config` in spirit — `SingleLLMProducer` differs across `Discussion-Write`/`Plan-Write` only in which prompt stencil and interactivity setting it's given, exactly the shape a declarative recipe expresses cleanly. The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `DiscussionValidate`, `PlanValidate`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
+Motivation: several rows are already pure `Engine + Config` in spirit, exactly the shape a declarative recipe expresses cleanly — but not `Discussion-Write`, which turns out not to fit that mold.
+Its Spec also carries per-run values a static recipe `Config` cannot hold — the task slug and the mode-rules block — plus a model and timeout resolved from the `discussion` role's own config rather than from recipe strings.
+That is why it ships as its own `DiscussionWrite` registry entry, over an injected `shedadapters.SpecSource` closure, rather than as a `SingleLLM` row.
+The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `DiscussionValidate`, `PlanValidate`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
 ## What's in a recipe row
 

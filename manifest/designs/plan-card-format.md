@@ -1,6 +1,6 @@
 # Plan Card format — symbol-level, Quarry-ready
 
-> **Status: designed, not implemented.** Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and `contracts/stencils/loom/loom-template-plan.md` — neither is rewritten yet. `contracts/stencils/loom/loom-template-discussion.md`'s own scoped supersession claim now lives in [loom-format-discussion.md](loom-format-discussion.md). `manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md` predate this doc and are stale; reconcile or delete them when this lands.
+> **Status: designed, not implemented.** Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and `contracts/stencils/loom/loom-template-plan.md` — neither is rewritten yet. `manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md` predate this doc and are stale; reconcile or delete them when this lands.
 
 ## Card fields
 
