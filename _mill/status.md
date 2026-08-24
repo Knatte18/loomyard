@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser core — format-4 model, classifier, parser, validator
+phase: approved-planparser tests — golden fixture and per-check suite
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-review-r3  '2026-08-24T13:24:50Z'
 planned  '2026-08-24T13:24:59Z'
 implementing  '2026-08-24T13:25:30Z'
 approved-planparser core — format-4 model, classifier, parser, validator  '2026-08-24T13:34:38Z'
+approved-planparser tests — golden fixture and per-check suite  '2026-08-24T13:47:22Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: 9ea9289b636676e557c99664cfb853436045c0c4
     verify_baseline_failures: []
   - name: planparser tests — golden fixture and per-check suite
-    state: running
+    state: approved
     implementer_session: 98beb5de-4a41-4ae2-bcba-e68ae16d3189
     start_sha: 83a6eb75430584cd42f4b050c9ecc2d3b8fb2128
+    commit_sha: fee4e6543d7bfdd41c11deb729e795a600270a9d
     verify_baseline_failures: []
   - name: consumer fixtures — websterengine, loomshed, loomrecipe, loomcli, webstercli
     state: pending
