@@ -43,6 +43,22 @@ func PlanDirRel() string {
 	return path.Join(lyxdirs.LyxDirName, PlanDirName)
 }
 
+// archiveDirPrefix is the fixed prefix ArchiveDirName builds its return value from, matching how
+// PlanDirRel builds its own value from PlanDirName.
+const archiveDirPrefix = "archive-"
+
+// ArchiveDirName returns the plan directory's archive-subdirectory name for a rotation stamped
+// stamp with same-second collision suffix suffix: archiveDirPrefix + stamp + suffix. The caller
+// supplies both the already-formatted compact UTC stamp and the already-chosen same-second
+// collision suffix -- ArchiveDirName performs no filesystem work whatsoever, joining no anchor
+// path, formatting no time value, and stat-ing nothing. internal/loomshed is what performs the
+// corresponding os.MkdirAll/os.Rename calls. The function stays in this package because the
+// Planparser Sole-Parser Invariant makes planparser the sole declarer of the plan directory's
+// path -- a subdirectory of that directory being part of the same path vocabulary.
+func ArchiveDirName(stamp, suffix string) string {
+	return archiveDirPrefix + stamp + suffix
+}
+
 // PlanDir returns the absolute path to the plan directory for the worktree anchored at anchorPath.
 // The caller supplies the absolute directory lyx is anchored at, which in a lyx worktree is
 // lyxcwd.Location.AnchorPath() and never WorktreePath() — planparser is the sole declarer of this

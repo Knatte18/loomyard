@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
 // seedLoomConfig creates <anchorPath>/_lyx/config/loom.yaml with the embedded template's contents --
@@ -70,8 +71,26 @@ func seedDiscussionStencil(t *testing.T, hubPath string) {
 	}
 }
 
+// seedPlanStencil writes stencils.LoomTemplatePlan's embedded bytes to
+// <hubPath>/<fabricengine.StencilsDir relative form>/loom/loom-template-plan.md, creating the parent
+// directories first, identical in shape to seedDiscussionStencil beside it. This is what the PlanSpec
+// closure wire() builds actually reads: stencilstore.Read hard-errors on a missing file rather than
+// falling back to the embedded default, so without this seed the closure returns an error and every
+// Spec assertion below it is unreachable.
+func seedPlanStencil(t *testing.T, hubPath string) {
+	t.Helper()
+	loomDir := filepath.Join(fabricengine.StencilsDir(hubPath), "loom")
+	if err := os.MkdirAll(loomDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
+	}
+	cfgPath := filepath.Join(loomDir, "loom-template-plan.md")
+	if err := os.WriteFile(cfgPath, stencils.LoomTemplatePlan, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and landing.yaml, and its hub seeded with the discussion stencil.
+// seeded on disk with loom.yaml and landing.yaml, and its hub seeded with both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -79,6 +98,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 	seedLoomConfig(t, loc.AnchorPath())
 	seedLandingConfig(t, loc.AnchorPath())
 	seedDiscussionStencil(t, hub)
+	seedPlanStencil(t, hub)
 	return loc
 }
 
@@ -361,6 +381,69 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 	}
 
 	wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
+	if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
+		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
+	}
+
+	if spec.Prompt == "" {
+		t.Error("spec.Prompt = \"\"; want non-empty")
+	}
+	if strings.Contains(spec.Prompt, "{{") {
+		t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
+	}
+}
+
+// TestWire_PlanSeamsFilled asserts c.env.PlanSpec and c.env.CommitPlan are each non-nil after wire().
+func TestWire_PlanSeamsFilled(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.env.PlanSpec == nil {
+		t.Error("c.env.PlanSpec = nil; want a non-nil shedadapters.SpecSource")
+	}
+	if c.env.CommitPlan == nil {
+		t.Error("c.env.CommitPlan = nil; want a non-nil commit closure")
+	}
+}
+
+// TestWire_PlanSpecEvaluatesToExpectedShape evaluates c.env.PlanSpec() once and asserts on the
+// returned shuttleengine.Spec's shape.
+func TestWire_PlanSpecEvaluatesToExpectedShape(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	spec, err := c.env.PlanSpec()
+	if err != nil {
+		t.Fatalf("c.env.PlanSpec() = %v; want nil", err)
+	}
+
+	if spec.Interactive {
+		t.Error("spec.Interactive = true; want false (autonomous by design)")
+	}
+	if spec.Role != "plan" {
+		t.Errorf("spec.Role = %q; want %q", spec.Role, "plan")
+	}
+	wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
+	if spec.Timeout != wantTimeout {
+		t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
+	}
+	if spec.Model == "" {
+		t.Error("spec.Model = \"\"; want non-empty")
+	}
+
+	wantOutputs := []string{planparser.PlanOverview(loc.AnchorPath())}
 	if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
 		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
 	}

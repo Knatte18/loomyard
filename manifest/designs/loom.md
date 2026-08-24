@@ -36,7 +36,7 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail, also callable standalone as `lyx loom validate-discussion` |
 | 5 | `Discussion-Review` | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
-| 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
+| 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory, once `Plan-Sweep` is built for real — its absence today is the normal degraded state the stencil now names outright, not an error | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
 | 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail, also callable standalone as `lyx loom validate-plan` |
 | 9 | `Plan-Review` | bespoke | LLM/review segment | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
 | 10 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
@@ -92,7 +92,7 @@ The verb reports *which* file or heading failed, while the row's `Stuck` deliber
 **The `Plan-never-reads-support-log` boundary is not a per-run check.**
 The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
 It is asserted once, at build/test time, over `Plan-Write`'s producer *definition* — never re-evaluated per run — because it is a property of the definition itself, and there is nothing per-run for a mechanical producer to evaluate about it.
-This assertion lands with the real `Plan-Write`: today `Plan-Write` is a stub declaring no input set at all, so there is nothing to assert against — writing the assertion now would either assert a vacuous truth or invent a declaration the real producer has not yet made.
+This assertion has landed, as `TestPlanSpec_PromptNeverNamesSupportLog` in `internal/loomengine/plan_test.go`, which proves the composed plan prompt names neither `support-log.md` nor the support log's own absolute path.
 
 ### Discussion-Review rubric — what not to flag
 
@@ -268,7 +268,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | the review segment (`Bouncer` + `Burler`-round producer) | new Shed adapters | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by the segment's `Burler`-round producer |
 | webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-spec.md](../../contracts/specs/webster-spec.md), webster's own cross-module contract |
-| producers (discussion / plan) | prompt/profile files | **not** modules — a prompt + `shuttleengine.Spec` factory in `internal/loomengine` each (`DiscussionSpec`, `PlanSpec`); `DiscussionSpec` is ✅ **built and wired**, as recipe row 3's `DiscussionWrite` engine, while `PlanSpec` is still ✅ **built** but not yet wired into `Shed` — see `manifest/roadmap.md`'s `loom: Plan-Write producer` item. |
+| producers (discussion / plan) | prompt/profile files | **not** modules — a prompt + `shuttleengine.Spec` factory in `internal/loomengine` each (`DiscussionSpec`, `PlanSpec`); `DiscussionSpec` is ✅ **built and wired**, as recipe row 3's `DiscussionWrite` engine, and `PlanSpec` is likewise ✅ **built and wired**, as the recipe's `Plan-Write` row's `PlanWrite` engine. |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight (row 1, generic) | new Go package (`internal/preflightshed`) | ✅ **Done**, engine-only (no cobra module yet) — validates the tier-1/tier-2 preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync) over git/filesystem state, over `internal/preflight.Check`; reusable verbatim by a second product's producer list |

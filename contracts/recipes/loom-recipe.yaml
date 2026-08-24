@@ -38,7 +38,7 @@ producers:
     on_done: Plan-Write
 
   - name: Plan-Write
-    engine: Stub
+    engine: PlanWrite
     on_done: Plan-Validate
 
   - name: Plan-Validate

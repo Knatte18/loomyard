@@ -225,7 +225,7 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 // restore the file this test just removed and destroy the test's own premise.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
-	env.Shuttle.(*fakeDiscussionShuttle).writeOutputs = false
+	env.Shuttle.(*fakeLoomShuttle).writeOutputs = false
 	if err := os.Remove(env.DecisionRecordPath); err != nil {
 		t.Fatalf("remove decision record: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // TestBounceRouting_StuckContinuesAtDeclaredTarget does.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
-	env.Shuttle.(*fakeDiscussionShuttle).writeOutputs = false
+	env.Shuttle.(*fakeLoomShuttle).writeOutputs = false
 	paths.MaxBounces = 2
 	if err := os.Remove(env.DecisionRecordPath); err != nil {
 		t.Fatalf("remove decision record: %v", err)

@@ -81,4 +81,15 @@ type Env struct {
 	// CommitDiscussion is the injected closure that commits the discussion output directory,
 	// invoked by the DiscussionWrite entry's commit decorator on a Done outcome.
 	CommitDiscussion func() error
+	// PlanSpec is the injected shedadapters.SpecSource the PlanWrite entry evaluates once per Call.
+	// It arrives as a closure rather than as recipe Config because building the Spec needs a
+	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing
+	// directly; internal/loomcli's wire() is what supplies it. It is a second per-producer named
+	// field, not the first entry of a generic keyed map, because Env already carries per-producer
+	// named fields and forking that convention on the second instance would abandon a decision one
+	// commit old.
+	PlanSpec shedadapters.SpecSource
+	// CommitPlan is the injected closure that commits the plan output directory, invoked by the
+	// PlanWrite entry's commit decorator on a Done outcome.
+	CommitPlan func() error
 }

@@ -25,7 +25,7 @@ var loomRowEngines = map[string]string{
 	loomshed.NameDiscussionWrite:    "DiscussionWrite",
 	loomshed.NameDiscussionValidate: "DiscussionValidate",
 	loomshed.NameDiscussionReview:   "Stub",
-	loomshed.NamePlanWrite:          "Stub",
+	loomshed.NamePlanWrite:          "PlanWrite",
 	loomshed.NamePlanValidate:       "PlanValidate",
 	loomshed.NamePlanReview:         "Stub",
 	loomshed.NameBatchifier:         "Batchifier",
@@ -36,10 +36,10 @@ var loomRowEngines = map[string]string{
 }
 
 // coverageGuardAllowedUnreachableEngines names the registry engines this task's coverage guard
-// tolerates as unreferenced by any of the thirteen built rows: the four remaining "loom: real LLM
-// producers" roadmap items (manifest/roadmap.md) still stub out Discussion-Review, Plan-Write/-
-// Review, and Webster-Review, and each will consume one of these three engines when it lands. Until
-// then the registry legitimately ships more entries than the recipe currently reaches.
+// tolerates as unreferenced by any of the thirteen built rows: the remaining "loom: real LLM
+// producers" roadmap items (manifest/roadmap.md) still stub out Discussion-Review, Plan-Review, and
+// Webster-Review, and each will consume one of these three engines when it lands. Until then the
+// registry legitimately ships more entries than the recipe currently reaches.
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
 	"SingleLLM":   true,
 	"Bouncer":     true,

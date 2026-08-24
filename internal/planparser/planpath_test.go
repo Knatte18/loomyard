@@ -33,3 +33,22 @@ func TestPlanOverview(t *testing.T) {
 		t.Errorf("PlanOverview(%q) = %q; want %q (via overviewFileName)", anchor, got, wantFromConstant)
 	}
 }
+
+func TestArchiveDirName(t *testing.T) {
+	tests := []struct {
+		name   string
+		stamp  string
+		suffix string
+		want   string
+	}{
+		{"EmptySuffix", "20260824T170000Z", "", "archive-20260824T170000Z"},
+		{"CollisionSuffix", "20260824T170000Z", "-1", "archive-20260824T170000Z-1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ArchiveDirName(tt.stamp, tt.suffix); got != tt.want {
+				t.Errorf("ArchiveDirName(%q, %q) = %q; want %q", tt.stamp, tt.suffix, got, tt.want)
+			}
+		})
+	}
+}
