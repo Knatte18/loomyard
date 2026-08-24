@@ -40,7 +40,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionValidate, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionValidate, loomshed.NameDiscussionWrite, loomshed.NameDiscussionReview, reflect.TypeOf(loomshed.NewDiscussionValidate("", "", ""))},
 	{loomshed.NameDiscussionReview, loomshed.NameDiscussionWrite, loomshed.NamePlanWrite, reflect.TypeOf(loomshed.NewStub(""))},
-	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, reflect.TypeOf(loomshed.NewStub(""))},
+	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil, "", nil))},
 	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanReview, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
 	{loomshed.NamePlanReview, loomshed.NamePlanWrite, loomshed.NameBatchifier, reflect.TypeOf(loomshed.NewStub(""))},
 	{loomshed.NameBatchifier, "", loomshed.NameWebster, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
