@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-archive-name-and-loomshed-decorator
+phase: approved-shedrecipe-entry-and-recipe-row
 slug: loom-plan-write-producer
 branch: loom-plan-write-producer
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-24T18:45:18Z'
 planned  '2026-08-24T18:45:28Z'
 implementing  '2026-08-24T18:47:12Z'
 approved-planparser-archive-name-and-loomshed-decorator  '2026-08-24T18:52:45Z'
+approved-shedrecipe-entry-and-recipe-row  '2026-08-24T19:01:40Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     commit_sha: b427c463982d7b1f709fe459deac71547ddb18e5
     verify_baseline_failures: []
   - name: shedrecipe-entry-and-recipe-row
-    state: running
+    state: approved
     implementer_session: 7c5987cd-8d84-4426-ab44-f9147ce00b00
     start_sha: d92ec7040667c7bc1b07aa1c5350bdc13189106a
+    commit_sha: bbcf1c5b787a21164ec986cf52ba417b23d8e9ec
     verify_baseline_failures: []
   - name: loomcli-wiring
     state: pending
