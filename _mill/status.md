@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: loom-redesign-discussion-format
 branch: loom-redesign-discussion-format
-plan: null
+plan: _mill/plan
 parent: main
 task: 'loom: redesign the Discussion format'
 task_description: |
@@ -20,4 +20,5 @@ discussion-fix-r2  '2026-08-24T08:02:18Z'
 discussion-fix-r4  '2026-08-24T08:19:04Z'
 discussion-fix-r5  '2026-08-24T08:24:19Z'
 discussed  '2026-08-24T08:24:19Z'
+planning  '2026-08-24T08:28:43Z'
 ```
