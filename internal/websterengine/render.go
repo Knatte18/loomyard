@@ -5,8 +5,8 @@
 // RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold
 // recovery strand), RenderMasterPrompt (called by run at Master's own spawn), and
 // RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when
-// ShouldRunIntegration reports true), plus the two batch-list/progress renderers those prompts
-// embed (RenderBatchIndex, RenderProgress).
+// ShouldRunIntegration reports true), plus the two sequenced-execution-order renderers those
+// prompts embed (RenderBatchIndex, RenderProgress).
 // Every asset ships as an embedded default in the top-level stencils package and is read from a
 // told stencils directory at call time via stencilstore.Read, per the runtime-read-not-embed Shared
 // Decision — this file carries no //go:embed directive of its own.
@@ -226,10 +226,12 @@ const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 
 // RenderMasterPrompt fills webster-template-master for one `lyx webster run` invocation, read from
 // the caller-supplied stencilsDir.
+// batches is the sequenced execution order — the caller is responsible for handing it a slice
+// SequenceBatches already reordered, since nothing in this function reorders it further.
 // It fills no {{.worktree_root}} key at all — anchorRoot feeds only pattern.Directive's own probe.
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
-func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, anchorRoot, stencilsDir string) ([]byte, error) {
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, anchorRoot, stencilsDir string) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath
@@ -241,8 +243,8 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 	}
 
 	values := map[string]string{
-		"batch_index":             RenderBatchIndex(plan),
-		"progress":                RenderProgress(plan, st),
+		"batch_index":             RenderBatchIndex(batches),
+		"progress":                RenderProgress(batches, st),
 		"outcome_path":            outcomePath,
 		"summary_path":            summaryPath,
 		"integration_prompt_path": integrationPrompt,
@@ -261,31 +263,51 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 	return prompt, nil
 }
 
-// RenderBatchIndex renders plan's flat card list into ordered-list text for {{.batch_index}}.
-func RenderBatchIndex(plan *planparser.Plan) string {
-	lines := make([]string, 0, len(plan.Cards))
-	for _, c := range plan.Cards {
-		lines = append(lines, fmt.Sprintf("%02d — %s — %s", c.Number, c.Slug, c.Summary))
+// RenderBatchIndex renders batches into ordered-list text for {{.batch_index}}, one line per
+// batch in the slice's own order — the caller is responsible for handing it a sequenced slice.
+// The rendered order is the execution order; the number on each line is the batch's identity,
+// which the verbs key on, not its position in this list.
+// Each line follows the "%02d — %s — %s" shape, where the number and slug come from
+// batchIdentity(b) and the third field is every card's Summary in that batch joined with "; ".
+// Under the identity batchifier a batch holds exactly one card, so the joined form renders
+// byte-identically to the flat-card-list rendering this function replaced.
+// A batch with no cards is skipped rather than emitting a "00 —" line.
+func RenderBatchIndex(batches []batcher.Batch) string {
+	lines := make([]string, 0, len(batches))
+	for _, b := range batches {
+		if len(b.Cards) == 0 {
+			continue
+		}
+		number, slug := batchIdentity(b)
+		summaries := make([]string, len(b.Cards))
+		for i, c := range b.Cards {
+			summaries[i] = c.Summary
+		}
+		lines = append(lines, fmt.Sprintf("%02d — %s — %s", number, slug, strings.Join(summaries, "; ")))
 	}
 	return strings.Join(lines, "\n")
 }
 
-// RenderProgress renders {{.progress}}'s per-batch state summary for resume, built from st's
-// persisted BatchState entries.
+// RenderProgress renders {{.progress}}'s per-batch state summary for resume, walking batches in
+// the sequenced execution order the caller hands it and looking each one up in st's persisted
+// BatchState entries by its own identity.
 // Returns "none" when no batch has reached terminal state.
 // st may be nil (as-yet-uninitialized run).
-func RenderProgress(plan *planparser.Plan, st *State) string {
+// Walking batches rather than cards preserves the property doc.go already relies on: every batch
+// number is positive, so State.Batches' reserved -1 integration key can never surface here.
+func RenderProgress(batches []batcher.Batch, st *State) string {
 	if st == nil {
 		return "none"
 	}
 
 	var lines []string
-	for _, c := range plan.Cards {
-		bs, ok := st.Batches[c.Number]
+	for _, b := range batches {
+		number, slug := batchIdentity(b)
+		bs, ok := st.Batches[number]
 		if !ok || !bs.Terminal {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%02d-%s: %s", c.Number, c.Slug, bs.Status))
+		lines = append(lines, fmt.Sprintf("%02d-%s: %s", number, slug, bs.Status))
 	}
 	if len(lines) == 0 {
 		return "none"
