@@ -241,6 +241,105 @@ func TestPlanSpec_PromptStatesImpactSummaryRequirement(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesSkillLoads verifies the prompt's Step 0 loads scribe:prose and
+// scribe:testing but not scribe:conversation.
+func TestPlanSpec_PromptStatesSkillLoads(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"scribe:prose",
+		"scribe:testing",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; Step 0's skill load must reach the agent", want)
+		}
+	}
+	if strings.Contains(prompt, "scribe:conversation") {
+		t.Errorf("PlanSpec(...).Prompt contains %q; the Plan producer is autonomous, with no operator for chat-reply discipline to serve", "scribe:conversation")
+	}
+}
+
+// TestPlanSpec_PromptStatesDegradedQuarryMode verifies the prompt states that no quarry inventory
+// is handed to the agent, that its absence is never an error, and that the agent performs the
+// mechanical lookups itself.
+func TestPlanSpec_PromptStatesDegradedQuarryMode(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"No quarry inventory is handed to you",
+		"never an error",
+		"go doc <pkg> <Symbol>",
+		"grep -rn",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the degraded quarry-inventory mode must reach the agent", want)
+		}
+	}
+}
+
+// TestPlanSpec_PromptStatesSelfCheck verifies the prompt's closing Step 5 runs validate-plan and
+// instructs a re-run until it exits 0.
+func TestPlanSpec_PromptStatesSelfCheck(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"lyx loom validate-plan",
+		"re-run it until it exits 0",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the Step 5 self-check must reach the agent", want)
+		}
+	}
+}
+
+// TestPlanSpec_PromptStatesVerifyIsExceptional verifies the prompt states that a per-card Verify:
+// is exceptional and that the plan-level ## verify: is the single integration check.
+// It does not weaken or delete TestPlanSpec_PromptStatesVerifyIsRunnable, which pins the separate
+// never-prose rule.
+func TestPlanSpec_PromptStatesVerifyIsExceptional(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"exceptional rather than routine",
+		"the single integration check for the whole plan",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the Verify-authoring rule must reach the agent", want)
+		}
+	}
+}
+
+// TestPlanSpec_PromptNeverNamesSupportLog proves the composed plan prompt names neither the literal
+// support-log.md filename nor the support log's own absolute path.
+// manifest/designs/loom.md states that the Plan-never-reads-support-log boundary is asserted once,
+// at build/test time, over Plan-Write's producer definition rather than per run, and that the
+// assertion lands with the real Plan-Write -- this is that assertion.
+// It builds its own layout rather than calling renderedPlanPrompt because it needs the
+// *lyxcwd.Location in hand to compute DiscussionSupportLog's absolute path.
+func TestPlanSpec_PromptNeverNamesSupportLog(t *testing.T) {
+	worktreeRoot := filepath.Join("home", "user", "repo")
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
+
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+	if err != nil {
+		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
+	}
+
+	if strings.Contains(spec.Prompt, "support-log.md") {
+		t.Error("PlanSpec(...).Prompt contains \"support-log.md\"; the Plan producer must never read the support log")
+	}
+	supportLogPath := DiscussionSupportLog(layout)
+	if strings.Contains(spec.Prompt, supportLogPath) {
+		t.Errorf("PlanSpec(...).Prompt contains the support log's own absolute path %q; the Plan producer must never read the support log", supportLogPath)
+	}
+}
+
 // renderedPlanPrompt returns the prompt PlanSpec renders for template-content assertions.
 func renderedPlanPrompt(t *testing.T) string {
 	t.Helper()
