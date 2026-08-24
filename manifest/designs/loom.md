@@ -32,7 +32,7 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 |---|---|---|---|---|---|
 | 1 | `Preflight` | simple | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
 | 2 | `Loom-Preflight` | simple | mechanical | loom's own status file → `loom-status-spec.md`'s check-4 validation checklist | pass/fail — no artifact, a gate signal only |
-| 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
+| 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`); exploration-scope bound in [loom-format-discussion.md](loom-format-discussion.md) |
 | 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail, also callable standalone as `lyx loom validate-discussion` |
 | 5 | `Discussion-Review` | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
@@ -108,6 +108,20 @@ Do not flag any of the following as a finding:
   their absence from `decision-record.md` is by design, not an omission.
 - **Incomplete call-site or cross-reference enumeration.**
   That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
+
+### Discussion-Review rubric — what to also flag (relocation and exclusion)
+
+This is the text the future `Bouncer` rubric for `Discussion-Review` must **point at**, per the Producer Pointer-Rule Invariant — never copy or paraphrase into the profile itself.
+See [loom-format-discussion.md](loom-format-discussion.md) as the companion design doc stating the writer-side half of this same principle; that doc is deleted at Wave 2, so this subsection, not that doc, is the durable copy.
+
+- **Relocation and exclusion findings are legitimate, on equal footing with gap-filling findings.**
+  `Discussion-Review` must accept "this belongs in `support-log.md`, not `decision-record.md`" and "this doesn't belong in Discussion at all" as legitimate findings.
+  A review loop that can only resolve a finding by adding content is the concrete mechanism behind discussion files that only grow across rounds.
+- **The completeness-before-leanness test.**
+  Before any relocation finding, check whether the content carries a requirement or constraint Planner needs.
+  Extract that into `decision-record.md`'s own Decisions or Constraints first, and move only the surrounding deliberation narrative — because `Plan-Write` never reads `support-log.md`, making a careless move a silent loss rather than a relocation.
+- **The writer/reviewer symmetry note.**
+  Whatever `Discussion-Write`'s stencil says not to gather, this rubric must say not to flag as missing, or the additive bias reappears even with the writer-side fix in place.
 
 ### Plan-Validate detail
 

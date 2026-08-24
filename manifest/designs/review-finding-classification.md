@@ -54,6 +54,7 @@ But then the right behaviour is to raise it **once, as a design finding about me
    Conversely, instructing only the reviewer wastes the writer's own budget on enumeration nobody will use.
    Both sides must state the same boundary, from their own side: the writer's stencil says "do not enumerate X here, that belongs to <stage>"; the reviewer's rubric says "do not flag missing X here, that belongs to <stage>."
    For discussion review in a Go repo, that explicitly includes "complete call-site enumeration belongs to the compiler / a mechanical sweep, not this stage, on both sides."
+   [loom.md](loom.md#discussion-review-rubric--what-to-also-flag-relocation-and-exclusion)'s relocation-and-exclusion rubric subsection is a concrete instance of this same principle.
 
 ## `scope` splits into two mechanical halves, neither an LLM lens
 
