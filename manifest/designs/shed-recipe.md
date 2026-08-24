@@ -78,7 +78,7 @@ Three decisions this doc originally deferred, settled by piece 4:
 
 - **On-disk location.** loom's recipe ships as an embedded default at `contracts/recipes/loom-recipe.yaml`, read through `shedbuild.Parse` on the embedded bytes (`contracts/recipes/recipes.go`'s `LoomRecipe`) — never `shedbuild.Load`.
   There is no seeding, no operator override, and no runtime on-disk path.
-- **The consumer.** `internal/loomrecipe` is the recipe's sole consumer, sitting above `internal/loomshed` rather than inside it: `internal/shedrecipe`'s registry already imports `loomshed` for six of its constructors, so a `loomshed` → `shedbuild` → `shedrecipe` → `loomshed` production import cycle would not compile if the consumer lived inside `loomshed` instead.
+- **The consumer.** `internal/loomrecipe` is the recipe's sole consumer, sitting above `internal/loomshed` rather than inside it: `internal/shedrecipe`'s registry already imports `loomshed` for seven of its constructors, so a `loomshed` → `shedbuild` → `shedrecipe` → `loomshed` production import cycle would not compile if the consumer lived inside `loomshed` instead.
 - **Test ownership.** The assembled-graph tests — the coverage guard driving loom's real row list against the registry, the sequencing/cancellation/resume tests that build the real thirteen-row list — live in `internal/loomrecipe`, not `internal/loomshed`.
 
 **Accepted consequence.** `shedbuild.Load` now has no production caller — loom's only caller reaches its recipe through the embedded bytes, never a told path.
