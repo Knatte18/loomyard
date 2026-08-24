@@ -52,6 +52,16 @@ Batch-local decisions live in each batch file._
   `docsLinkSlug` in `internal/lyxcwd/docslink_test.go` implements GitHub's rule — lowercase, backticks stripped, punctuation (including the em dash and the parentheses) dropped, spaces to hyphens — so any change to the heading's wording or punctuation silently breaks both links.
 - **Applies to:** all batches
 
+### Decision: the new doc's filename is module-first, then category
+
+- **Decision:** The new design doc is `manifest/designs/loom-format-discussion.md` — module first (`loom-`), then category (`format-`), then the specific artefact (`discussion`).
+  Not `discussion-format.md`.
+- **Rationale:** Operator preference, given during planning: `manifest/designs/` is a flat directory whose names sort by whatever word happens to come first, which scatters related docs.
+  Module-first groups a module's docs together and matches the siblings that already follow it (`shed-recipe.md`, `webster-parallel-execution.md`, `scout-plan-symbol-fields.md`);
+  a later `loom-format-plan-card.md` then sorts next to this one.
+  Renaming the existing siblings that break the pattern is deliberately not part of this task.
+- **Applies to:** all batches
+
 ### Decision: semantic line breaks on every written or edited line
 
 - **Decision:** One sentence per line;
@@ -74,7 +84,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 Cards are the source of truth;
 this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` check cross-references against the derived union of every card's `Edits:`/`Creates:`/Move-target paths, to catch drift between the hand/agent-maintained list here and that derived union._
 
-- `manifest/designs/discussion-format.md`
+- `manifest/designs/loom-format-discussion.md`
 - `manifest/designs/loom.md`
 - `manifest/designs/plan-card-format.md`
 - `manifest/designs/review-finding-classification.md`
