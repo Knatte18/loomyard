@@ -24,7 +24,7 @@ producers:
     on_done: Discussion-Write
 
   - name: Discussion-Write
-    engine: Stub
+    engine: DiscussionWrite
     on_done: Discussion-Validate
 
   - name: Discussion-Validate
