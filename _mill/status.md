@@ -6,6 +6,7 @@ slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Migrate planparser.Card to Edits/Uses fields
 task_description: |
   Migrate planparser.Card to Edits/Uses fields
@@ -32,11 +33,17 @@ implementing  '2026-08-24T13:25:30Z'
 ```yaml
 batches:
   - name: planparser core — format-4 model, classifier, parser, validator
-    state: pending
+    state: running
+    implementer_session: b29f03b4-49fb-4ec6-ba99-3b8ed5b6ab3c
+    start_sha: ac68afb6a56e55e6bed60719cda579977fb01ca9
+    verify_baseline_failures: []
   - name: planparser tests — golden fixture and per-check suite
     state: pending
+    verify_baseline_failures: []
   - name: consumer fixtures — websterengine, loomshed, loomrecipe, loomcli, webstercli
     state: pending
+    verify_baseline_failures: []
   - name: docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap
     state: pending
+    verify_baseline_failures: []
 ```
