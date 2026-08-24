@@ -27,7 +27,7 @@ A prompt targeting the new shape is only useful once the parser accepts it, and 
 - A new `PlanWrite` engine entry in `internal/shedrecipe`'s registry (`internal/shedrecipe/entries_planwrite.go`), taking the registry from thirteen entries to fourteen.
 - Two new `shedrecipe.Env` seams — `PlanSpec shedadapters.SpecSource` and `CommitPlan func() error` — filled by `internal/loomcli`'s `wire()`.
 - A new `loomshed.NewPlanWrite` decorator (`internal/loomshed/planwrite.go`): rotate the stale plan directory, delegate to the wrapped producer, commit on a `Done`-with-nil-error outcome.
-- A pure name-token declarer for the archive subdirectory in `internal/planparser`, beside `PlanDirRel`.
+- `planparser.ArchiveDirName`, a pure name-token declarer for the archive subdirectory, beside `PlanDirRel`.
 - `contracts/recipes/loom-recipe.yaml`: the `Plan-Write` row's `engine:` flips from `Stub` to `PlanWrite`.
 - `contracts/stencils/loom/loom-template-plan.md`: a Step 0 skill-loading section, a degraded-mode (no quarry inventory) section, a Verify-model paragraph, and a `lyx loom validate-plan` self-check step.
 - Tests across `internal/loomshed`, `internal/shedrecipe`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomengine`.
@@ -62,7 +62,15 @@ A prompt targeting the new shape is only useful once the parser accepts it, and 
 
 ### planparser-declares-the-archive-name-loomshed-moves-the-files
 
-- Decision: `internal/planparser` gains one pure, stdlib-only string helper beside `PlanDirRel` — given a timestamp string and a collision suffix, it returns the archive subdirectory's name (`archive-<stamp><suffix>`). It performs no filesystem work. `internal/loomshed`'s `planWrite` does the `os.MkdirAll` and the `os.Rename` calls.
+- Decision: `internal/planparser` gains one pure, stdlib-only string helper beside `PlanDirRel`:
+
+  ```go
+  // ArchiveDirName returns the name of the plan directory's archive subdirectory for the given
+  // compact UTC stamp and collision suffix: "archive-<stamp><suffix>".
+  func ArchiveDirName(stamp, suffix string) string
+  ```
+
+  It performs no filesystem work — it does not join an anchor path, does not format the stamp, and does not stat anything. `internal/loomshed`'s `planWrite` formats the stamp (the same `20060102T150405Z` layout `shedadapters.archiveTimestampFormat` uses), walks the collision suffixes, and does the `os.MkdirAll` and `os.Rename` calls.
 - Rationale: the Planparser Sole-Parser Invariant makes `planparser` "the sole declarer of the plan directory's path", and a subdirectory of the plan directory is part of that path vocabulary — a name literal invented in `loomshed` would be a second declarer. A pure string function keeps `planparser` stdlib-only and adds no parsing, so the invariant's parser half is untouched. The mutation belongs in `loomshed` because that is where the producer lives and because a parser package performing renames would be a genuine charter violation.
 - Rejected: `loomshed` declaring the literal (second declarer of a plan-directory path); `loomengine` declaring it (`planparser`, not `loomengine`, owns `_lyx/plan`); putting an `ArchiveStalePlan` mutating function in `planparser` (turns the parser into a filesystem mutator).
 
@@ -215,7 +223,7 @@ Tier-1 throughout. No tier-2 or integration test is warranted: nothing here spaw
 - Rotation failure returns an error and never calls the inner producer (drive it by making the archive path unwritable, or by pre-creating a regular file where the archive directory must go — pick whichever is portable to Windows).
 - A nil `now` defaults to `time.Now` without panicking.
 
-**`internal/planparser`** — one table test over the archive-name helper: name shape for an empty suffix and for a `-1` suffix. Add it to whichever existing `_test.go` file already covers `PlanDirRel`/`PlanDir`.
+**`internal/planparser`** — one table test over `ArchiveDirName`: name shape for an empty suffix and for a `-1` suffix. Add it to whichever existing `_test.go` file already covers `PlanDirRel`/`PlanDir`.
 
 **`internal/shedrecipe/entries_planwrite_test.go`** (new; model it on `entries_discussionwrite_test.go`, 165 lines):
 
