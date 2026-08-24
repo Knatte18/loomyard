@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
@@ -24,4 +24,19 @@ plan-review-r2  '2026-08-24T13:15:52Z'
 plan-fix-r2  '2026-08-24T13:15:52Z'
 plan-review-r3  '2026-08-24T13:24:50Z'
 planned  '2026-08-24T13:24:59Z'
+implementing  '2026-08-24T13:25:30Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: planparser core — format-4 model, classifier, parser, validator
+    state: pending
+  - name: planparser tests — golden fixture and per-check suite
+    state: pending
+  - name: consumer fixtures — websterengine, loomshed, loomrecipe, loomcli, webstercli
+    state: pending
+  - name: docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap
+    state: pending
 ```
