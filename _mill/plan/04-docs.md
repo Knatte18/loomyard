@@ -151,6 +151,15 @@ Both clauses are deleted outright rather than repointed, because pointing them a
   Before committing, grep `manifest/` and `docs/` for any remaining `loom-format-discussion` occurrence and resolve it — the deletion is only correct if the repo-wide reference count reaches zero.
 - **Commit:** `docs: delete loom-format-discussion.md per its own lifecycle`
 
+## Verify follow-up: fabric-vocabulary comment fix
+
+This batch's `verify:` (`go test ./internal/lyxcwd/...`) also runs `TestEnforcement_FabricVocabulary`, which walks the whole `internal/`/`cmd/` tree, not only `manifest/`/`docs/`.
+That test failed on three bare "weft" tokens inside prose comments in files batches 2/3 committed (`internal/loomcli/wiring.go`, `internal/loomshed/discussionwrite.go`, `internal/shedrecipe/recipe.go`), none in this batch's original `Edits:`/`Creates:`/`Context:` lists and none of them owner-set directories for the bare weft/warp rule.
+Confirmed not pre-existing on `main` — `git log main..HEAD` shows the offending lines were added by same-task commits `d4984ca3`, `848ba744`, and `c28a5150`.
+Per the implementer brief's rule 2, this note extends this batch's scope to cover the comment-only fix: reword each hit to drop the bare "weft" token without changing meaning.
+- **Edits (added):** `internal/loomcli/wiring.go`, `internal/loomshed/discussionwrite.go`, `internal/shedrecipe/recipe.go`
+- **Commit:** `fix(loomcli,loomshed,shedrecipe): drop bare weft tokens from prose comments`
+
 ## Batch Tests
 
 `verify: go test ./internal/lyxcwd/...` is the right scope for a batch whose only runnable surface is markdown-link integrity.
