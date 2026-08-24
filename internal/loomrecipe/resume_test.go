@@ -218,8 +218,14 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 // TestBounceRouting_StuckContinuesAtDeclaredTarget drives Discussion-Validate (a real producer)
 // genuinely Stuck by removing its decision record from disk, and asserts the run continues at its
 // declared OnStuck target, Discussion-Write, immediately afterward.
+//
+// Discussion-Write is a real producer now, and the bounce it receives must leave the record absent
+// for the bounce to repeat: the fixture's fake shuttle is switched to its non-writing variant here,
+// immediately after buildSequenceFixture and before New, since the default writing variant would
+// restore the file this test just removed and destroy the test's own premise.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
+	env.Shuttle.(*fakeDiscussionShuttle).writeOutputs = false
 	if err := os.Remove(env.DecisionRecordPath); err != nil {
 		t.Fatalf("remove decision record: %v", err)
 	}
@@ -290,9 +296,15 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // it never returns Done, and its episode (the run of its own history entries since its last Done)
 // is therefore the whole run: every Stuck entry it authors counts. Discussion-Write, the producer
 // it bounces to, consumes none of Discussion-Validate's budget -- each producer's episode count is
-// its own.
+// its own, and its own episode restarts on each of its own Done verdicts.
+//
+// Discussion-Write is a real producer now, and the bounce it receives must leave the record absent
+// for the bounce to repeat: the fixture's fake shuttle is switched to its non-writing variant here,
+// immediately after buildSequenceFixture and before New, for the same reason
+// TestBounceRouting_StuckContinuesAtDeclaredTarget does.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
+	env.Shuttle.(*fakeDiscussionShuttle).writeOutputs = false
 	paths.MaxBounces = 2
 	if err := os.Remove(env.DecisionRecordPath); err != nil {
 		t.Fatalf("remove decision record: %v", err)
