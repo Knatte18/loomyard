@@ -72,4 +72,13 @@ type Env struct {
 	// Now is the injected clock. Nil is legal and defaults to time.Now inside the underlying
 	// constructors.
 	Now func() time.Time
+	// DiscussionSpec is the injected shedadapters.SpecSource the DiscussionWrite entry evaluates
+	// once per Call. It arrives as a closure rather than as recipe Config because building the
+	// Spec needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package
+	// from importing directly. It is named per-producer rather than carried in a generic keyed
+	// map because Env already carries per-producer named fields.
+	DiscussionSpec shedadapters.SpecSource
+	// CommitDiscussion is the injected closure that commits the discussion output directory into
+	// the weft, invoked by the DiscussionWrite entry's commit decorator on a Done outcome.
+	CommitDiscussion func() error
 }
