@@ -11,7 +11,7 @@ import (
 // registry is the single place every engine name is declared, mapping each recipe row's engine
 // name to the Constructor that builds it.
 //
-// The table is complete at twelve keys. Any thirteenth entry must arrive with a coverage-guard
+// The table is complete at thirteen keys. Any fourteenth entry must arrive with a coverage-guard
 // update in the same commit.
 //
 // init() self-registration was rejected: the entries span four packages
@@ -25,6 +25,7 @@ var registry = map[string]Constructor{
 	"LoomPreflight":      loomPreflightEntry,
 	"Batchifier":         batchifierEntry,
 	"DiscussionValidate": discussionValidateEntry,
+	"DiscussionWrite":    discussionWriteEntry,
 	"PlanValidate":       planValidateEntry,
 	"Stub":               stubEntry,
 	"Webster":            websterEntry,
