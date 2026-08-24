@@ -1,6 +1,8 @@
 # Code comment conventions — Go only for now
 
-> **Status: designed, not implemented.** No stencil or CONSTRAINTS.md entry wires this in yet. C#/Python versions deferred until Go is proven.
+> **Status: implemented as the `scribe` plugin's `code-quality` (Comments section) and `golang-comments` skills** (`plugins/scribe/skills/`), installable via loomyard's own marketplace.
+> No producer-stencil wiring yet — that's a separate, later roadmap item ("loom: Discussion-Write producer"), not this one.
+> C#/Python versions deferred until Go is proven.
 
 ## The rule
 
