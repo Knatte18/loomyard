@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-discussion-write-producer
 branch: loom-discussion-write-producer
 plan: _mill/plan
@@ -26,4 +26,19 @@ plan-review-r2  '2026-08-24T14:17:36Z'
 plan-fix-r2  '2026-08-24T14:17:36Z'
 plan-fix-r3  '2026-08-24T14:29:37Z'
 planned  '2026-08-24T14:29:48Z'
+implementing  '2026-08-24T14:30:17Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: loomengine seam and stencil rewrite
+    state: pending
+  - name: loomshed DiscussionWrite commit decorator
+    state: pending
+  - name: registry entry, recipe row flip, and wiring
+    state: pending
+  - name: documentation lifecycle
+    state: pending
 ```
