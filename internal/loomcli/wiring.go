@@ -121,7 +121,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// CommitDiscussion mirrors the seed commit run.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
 		// directory deliberately, so archiveStaleOutputs' timestamped siblings are committed rather
-		// than left as untracked weft dirt. A second Done over already-committed artifacts is a
+		// than left as untracked dirt. A second Done over already-committed artifacts is a
 		// no-op rather than an error: CommitAnchoredPaths reports committed == false for an
 		// already-clean, already-tracked path, and this closure discards that result alongside the
 		// sha, returning only the error.

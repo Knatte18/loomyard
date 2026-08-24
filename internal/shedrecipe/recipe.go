@@ -78,7 +78,7 @@ type Env struct {
 	// from importing directly. It is named per-producer rather than carried in a generic keyed
 	// map because Env already carries per-producer named fields.
 	DiscussionSpec shedadapters.SpecSource
-	// CommitDiscussion is the injected closure that commits the discussion output directory into
-	// the weft, invoked by the DiscussionWrite entry's commit decorator on a Done outcome.
+	// CommitDiscussion is the injected closure that commits the discussion output directory,
+	// invoked by the DiscussionWrite entry's commit decorator on a Done outcome.
 	CommitDiscussion func() error
 }

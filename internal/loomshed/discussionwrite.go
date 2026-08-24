@@ -40,8 +40,8 @@ func NewDiscussionWrite(name string, inner shedengine.ShedProducer, commit func(
 // A non-nil commit error maps to a returned error, never to shedengine.Stuck: a git fault is not
 // something re-writing the discussion can fix, the same reasoning discussionvalidate.go already
 // applies to a non-not-exist read failure. The commit fires before Discussion-Validate has judged
-// the output, and that is intentional -- the commit keeps the weft clean and the artifact durable,
-// it does not certify it.
+// the output, and that is intentional -- the commit keeps the working tree clean and the artifact
+// durable, it does not certify it.
 func (p *discussionWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	outcome, pointer, err := p.inner.Call(ctx)
 	if err != nil || outcome != shedengine.Done {
