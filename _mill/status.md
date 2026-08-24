@@ -52,6 +52,8 @@ batches:
     commit_sha: 922cb5ea1e3543c38d98f0b63868353bfb138902
     verify_baseline_failures: []
   - name: stencil-prompt-and-docs
-    state: pending
+    state: running
+    implementer_session: 0fed305a-9514-40dd-b986-e976c5d426bb
+    start_sha: c25eca8417ecce9e7edd330301177c1ac46c1bdd
     verify_baseline_failures: []
 ```
