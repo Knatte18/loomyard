@@ -320,12 +320,12 @@ func recoveryTemplateMarkerValues() map[string]string {
 // batcher.Batch{Cards: [...]} values, not produced by ParsePlan, so
 // SourcePath — normally computed by planparser from planparser.PlanDirRel()
 // plus the card's own NN-<slug>.md filename — must be set explicitly here.
-func cardWithSourcePath(number int, slug, intent string) planparser.Card {
+func cardWithSourcePath(number int, slug, summary string) planparser.Card {
 	return planparser.Card{
 		Number:     number,
 		Slug:       slug,
 		Title:      slug,
-		Intent:     intent,
+		Summary:    summary,
 		SourcePath: fmt.Sprintf("%s/%02d-%s.md", planparser.PlanDirRel(), number, slug),
 	}
 }
@@ -751,12 +751,15 @@ func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
 }
 
 // TestRenderForkPrompt_OmitsRenameMechanic asserts the composed thin fork prompt never carries a
-// "## Rename mechanic" section, regardless of whether the batch has a Moves-bearing card — that
+// "## Rename mechanic" section, regardless of whether the batch has a rename-bearing card — that
 // mechanism, like Shared Decisions, is already in the fork's inherited Master context — and that it
 // DOES carry the card's own relative SourcePath pointer.
 func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 	card := cardWithSourcePath(4, "helptree-rename", "rename the row mapper")
-	card.Moves = []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}
+	card.Type = planparser.CardTypeRename
+	pair := planparser.MovePair{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}
+	card.Pairs = []planparser.MovePair{pair}
+	card.Targets = []string{pair.Old, pair.New}
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
 	anchorRoot, stencilsDir := testLayout(t)
