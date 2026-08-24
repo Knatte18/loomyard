@@ -183,7 +183,7 @@ No build order is implied between these items.
    The registry grew to fourteen entries.
    The stencil gained a `scribe:prose`/`scribe:testing` load step, a degraded-mode section for the absent quarry inventory, a Verify-authoring rule, and a closing `lyx loom validate-plan` self-check.
    The producer is autonomous-only.
-   Two manual operator prerequisites remain outside what this task automates, both inherited for the same reason the Discussion-Write entry above records them: `/plugin install scribe@loomyard`, which nothing in the tree performs or verifies, so a missing plugin degrades the plan agent's prose quality rather than breaking a run — card 12 gives `Plan-Write` the identical Step 0 skill load that prerequisite exists for;
+   Two manual operator prerequisites remain outside what this task automates, both inherited for the same reason the Discussion-Write entry above records them: `/plugin install scribe@loomyard`, which nothing in the tree performs or verifies, so a missing plugin degrades the plan agent's prose quality rather than breaking a run — the plan stencil's Step 0 gives `Plan-Write` the identical skill load that prerequisite exists for;
    and `lyx stencil sync`, because `stencilstore`'s `ModeDev` reconcile warns instead of writing for an untouched stencil, so an already-seeded hub keeps the old stencil text until the sync forces a refresh.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
