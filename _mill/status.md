@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap 
 holistic-reviewing  '2026-08-24T14:05:36Z'
 holistic-approved  '2026-08-24T14:10:21Z'
 done  '2026-08-24T14:11:49Z'
+pr-pending  '2026-08-24T14:12:44Z'
 ```
 
 ## Batches
