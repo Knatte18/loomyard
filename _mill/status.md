@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap
+phase: holistic-reviewing
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-planparser core — format-4 model, classifier, parser, validator  '202
 approved-planparser tests — golden fixture and per-check suite  '2026-08-24T13:47:22Z'
 approved-consumer fixtures — websterengine, loomshed, loomrecipe, loomcli, webstercli  '2026-08-24T13:52:51Z'
 approved-docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap  '2026-08-24T14:05:04Z'
+holistic-reviewing  '2026-08-24T14:05:36Z'
 ```
 
 ## Batches
