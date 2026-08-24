@@ -32,7 +32,7 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 |---|---|---|---|---|---|
 | 1 | `Preflight` | simple | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
 | 2 | `Loom-Preflight` | simple | mechanical | loom's own status file → `loom-status-spec.md`'s check-4 validation checklist | pass/fail — no artifact, a gate signal only |
-| 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`); exploration-scope bound in [loom-format-discussion.md](loom-format-discussion.md) |
+| 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
 | 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail, also callable standalone as `lyx loom validate-discussion` |
 | 5 | `Discussion-Review` | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
@@ -112,7 +112,8 @@ Do not flag any of the following as a finding:
 ### Discussion-Review rubric — what to also flag (relocation and exclusion)
 
 This is the text the future `Bouncer` rubric for `Discussion-Review` must **point at**, per the Producer Pointer-Rule Invariant — never copy or paraphrase into the profile itself.
-See [loom-format-discussion.md](loom-format-discussion.md) as the companion design doc stating the writer-side half of this same principle; that doc is deleted at Wave 2, so this subsection, not that doc, is the durable copy.
+The writer-side half of this same principle now lives in `contracts/stencils/loom/loom-template-discussion.md` itself;
+this subsection remains the durable copy.
 
 - **Relocation and exclusion findings are legitimate, on equal footing with gap-filling findings.**
   `Discussion-Review` must accept "this belongs in `support-log.md`, not `decision-record.md`" and "this doesn't belong in Discussion at all" as legitimate findings.
@@ -267,7 +268,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | the review segment (`Bouncer` + `Burler`-round producer) | new Shed adapters | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by the segment's `Burler`-round producer |
 | webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-spec.md](../../contracts/specs/webster-spec.md), webster's own cross-module contract |
-| producers (discussion / plan) | prompt/profile files | **not** modules — a prompt + `shuttleengine.Spec` factory in `internal/loomengine` each (`DiscussionSpec`, `PlanSpec`), both ✅ **built** but not yet wired into `Shed` — see `manifest/roadmap.md`'s `loom: Discussion-Write producer` and `loom: Plan-Write producer` items. |
+| producers (discussion / plan) | prompt/profile files | **not** modules — a prompt + `shuttleengine.Spec` factory in `internal/loomengine` each (`DiscussionSpec`, `PlanSpec`); `DiscussionSpec` is ✅ **built and wired**, as recipe row 3's `DiscussionWrite` engine, while `PlanSpec` is still ✅ **built** but not yet wired into `Shed` — see `manifest/roadmap.md`'s `loom: Plan-Write producer` item. |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight (row 1, generic) | new Go package (`internal/preflightshed`) | ✅ **Done**, engine-only (no cobra module yet) — validates the tier-1/tier-2 preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync) over git/filesystem state, over `internal/preflight.Check`; reusable verbatim by a second product's producer list |
