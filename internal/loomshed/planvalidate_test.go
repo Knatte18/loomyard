@@ -13,8 +13,9 @@ import (
 )
 
 // seedPlanValidateFixture writes a syntactically complete, one-card plan-format plan under
-// <anchorPath>/_lyx/plan/, approved or not per approved. The sole card carries a Creates: entry so
-// path-missing never fires regardless of worktreeRoot's contents.
+// <anchorPath>/_lyx/plan/, approved or not per approved. The sole card is a Create card so
+// path-missing never fires regardless of worktreeRoot's contents — a Create card's targets stay
+// exempt from on-disk existence checking.
 func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
 
@@ -23,14 +24,14 @@ func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
 
-	cardBody := "# Card 1 — first-card\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n" +
-		"**Creates:**\n- `internal/firstcard/new.go`\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n"
+	cardBody := "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
+		"**Intent:** placeholder card.\n"
 	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(cardBody), 0o644); err != nil {
 		t.Fatalf("write card file: %v", err)
 	}
 
 	overview := fmt.Sprintf(
-		"---\nformat: 3\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
+		"---\nformat: 4\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
 		approved,
 	)
 	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
