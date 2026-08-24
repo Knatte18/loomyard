@@ -3,7 +3,7 @@
 ```yaml
 task: Migrate planparser.Card to Edits/Uses fields
 slug: planparser-card-format-migration
-approved: false
+approved: true
 started: 20260824-124808
 parent: main
 root: ""

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-review-r3
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
@@ -22,4 +22,5 @@ planning  '2026-08-24T12:57:58Z'
 plan-fix-r1  '2026-08-24T13:06:10Z'
 plan-review-r2  '2026-08-24T13:15:52Z'
 plan-fix-r2  '2026-08-24T13:15:52Z'
+plan-review-r3  '2026-08-24T13:24:50Z'
 ```
