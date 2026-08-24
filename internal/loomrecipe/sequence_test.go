@@ -98,7 +98,7 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NamePublish)
 	}
 
-	// This is the scenario check that a Done from row 3 genuinely reaches the weft-commit seam,
+	// This is the scenario check that a Done from row 3 genuinely reaches the Fabric-commit seam,
 	// rather than the decorator being silently bypassed.
 	discussionShuttle := env.Shuttle.(*fakeDiscussionShuttle)
 	if discussionShuttle.commitCalls != 1 {
