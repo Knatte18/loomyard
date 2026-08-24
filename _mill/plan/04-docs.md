@@ -4,7 +4,7 @@
 task: 'loom: Discussion-Write producer'
 batch: 'documentation lifecycle'
 number: 4
-cards: 5
+cards: 6
 verify: go test ./internal/lyxcwd/...
 depends-on: [3]
 ```
@@ -58,7 +58,7 @@ Both clauses are deleted outright rather than repointed, because pointing them a
 - **Moves:** none
 - **Requirements:** In `manifest/designs/plan-card-format.md`'s status blockquote, delete the sentence "`contracts/stencils/loom/loom-template-discussion.md`'s own scoped supersession claim now lives in [loom-format-discussion.md](loom-format-discussion.md)." outright.
   Do not repoint it at the stencil: the claim describes a supersession relationship that stops existing once the superseding content folds into the stencil itself.
-  Leave the blockquote's other three sentences — the `loom-plan-spec.md` supersession, the `loom-template-plan.md` supersession, and the `scout-plan-symbol-fields.md`/`webster-parallel-execution.md` staleness note — unchanged, and keep the blockquote on one physical line per this repo's blockquote convention.
+  Leave the blockquote's other two sentences unchanged — the opening one that supersedes the plan spec's Card fields and the plan stencil together, and the closing staleness note naming two predating design docs — and keep the blockquote on one physical line per this repo's blockquote convention.
   In `manifest/designs/shed-recipe.md`'s motivation paragraph, correct the assertion that `SingleLLMProducer` differs across `Discussion-Write`/`Plan-Write` "only in which prompt stencil and interactivity setting it's given, exactly the shape a declarative recipe expresses cleanly".
   That premise turns out to be false: `Discussion-Write`'s Spec also carries per-run values a static recipe `Config` cannot hold — the task slug and the mode-rules block — plus a model and timeout resolved from the `discussion` role's own config rather than from recipe strings, which is why it ships as its own `DiscussionWrite` registry entry over an injected `SpecSource` closure rather than as a `SingleLLM` row.
   Correct the paragraph rather than annotating it as historical rationale: it is a live design doc for a shipped module, and its argument is the one a future recipe author reasons from.
@@ -116,7 +116,24 @@ Both clauses are deleted outright rather than repointed, because pointing them a
   Change no other line of `CONSTRAINTS.md`.
 - **Commit:** `docs(constraints): move the registry-names pin from twelve to thirteen`
 
-### Card 27: Delete the discussion-format design doc
+### Card 27: Record the shipped skill-load wiring in scribe's index
+
+- **Context:**
+  - `contracts/stencils/loom/loom-template-discussion.md`
+  - `manifest/roadmap.md`
+- **Edits:**
+  - `plugins/scribe/skills/INDEX.md`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `plugins/scribe/skills/INDEX.md`, correct the line under the "Inside a lyx-generated prompt" bullet reading "This wiring is a separate, later roadmap item (\"loom: Discussion-Write producer\") — not yet built."
+  That item is this task, and batch 1 card 4 adds the Step 0 skill-load section to the discussion stencil, so the claim is false the moment this task ships.
+  Replace it with a statement that the wiring now ships in `contracts/stencils/loom/loom-template-discussion.md`'s Step 0, which loads `scribe:prose` then `scribe:conversation`, and that the load is best-effort — a missing plugin degrades prose quality rather than breaking a run, because nothing in the tree installs or verifies plugins.
+  Leave the bullet's first line and the whole `SessionStart`-hook bullet above it unchanged.
+  Apply semantic line breaks to the rewritten line.
+- **Commit:** `docs(scribe): record the shipped stencil skill-load wiring`
+
+### Card 28: Delete the discussion-format design doc
 
 - **Context:**
   - `manifest/designs/loom.md`
@@ -137,9 +154,9 @@ Both clauses are deleted outright rather than repointed, because pointing them a
 ## Batch Tests
 
 `verify: go test ./internal/lyxcwd/...` is the right scope for a batch whose only runnable surface is markdown-link integrity.
-`internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks` walks every inline link under `manifest/` and `docs/` and fails on any unresolved file part or `#anchor`, which is exactly what card 27's deletion risks and what cards 23, 24, and 25 exist to prevent.
+`internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks` walks every inline link under `manifest/` and `docs/` and fails on any unresolved file part or `#anchor`, which is exactly what card 28's deletion risks and what cards 23, 24, and 25 exist to prevent.
 The same run also executes that package's anchor-extraction and heading-anchor tests, so a retargeted link whose `#anchor` fragment no longer resolves is caught too, not only a missing file.
 
 No other test in the tree reads any of these documents, so a wider scope would buy nothing here;
 `pipeline.done_gate`'s repo-wide sweep at the end of the run is what confirms the earlier batches' code is still green after this docs-only batch.
-Card 27's own grep-to-zero step is a manual completeness check the link test cannot make on its own: the link test only sees markdown links, while a bare backtick or prose mention of the deleted filename would slip past it.
+Card 28's own grep-to-zero step is a manual completeness check the link test cannot make on its own: the link test only sees markdown links, while a bare backtick or prose mention of the deleted filename would slip past it.

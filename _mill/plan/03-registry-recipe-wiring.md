@@ -137,7 +137,8 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/shedrecipe/registry_test.go`, rename `TestRegistry_ShipsTwelveEntries` to `TestRegistry_ShipsThirteenEntries` and insert `"DiscussionWrite"` into its `want` slice in the correct sorted position — between `"BurlerRound"` and `"DiscussionValidate"`, since `Names` sorts and the test compares element by element.
+- **Requirements:** In `internal/shedrecipe/registry_test.go`, rename `TestRegistry_ShipsTwelveEntries` to `TestRegistry_ShipsThirteenEntries` and insert `"DiscussionWrite"` into its `want` slice in the correct sorted position — immediately after `"DiscussionValidate"` and before `"Finalize"`, since `Names` sorts byte-wise and the test compares element by element.
+  The slot is after `"DiscussionValidate"`, not before it: the two names share the `Discussion` prefix and diverge at `V` versus `W`, so `DiscussionValidate` sorts first.
   Update the test's own doc comment so its "exactly the sorted twelve engine names" phrasing reads thirteen.
   Leave `TestLookup` and `TestNames` unchanged: `TestNames`' sortedness assertion holds with the new key inserted, and its `MatchesRegistryKeys` subtest is derived from `len(registry)` rather than a literal.
 - **Commit:** `test(shedrecipe): pin the registry at thirteen entries`
@@ -174,7 +175,11 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
 - **Requirements:** In `internal/loomrecipe/fixture_test.go`, declare a `fakeDiscussionShuttle` implementing `shedadapters.Shuttle`, carrying a `writeOutputs bool` field, a recorded call count, and the file contents to write.
   Its `Run` reports `shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}` and, when `writeOutputs` is true, first writes every entry of the received `Spec.OutputFiles` — the decision record with `validDecisionRecord`'s contents (already declared in this file) and the support log with any non-empty placeholder — creating the parent directory if needed.
   Then extend `buildSequenceFixture` to fill three `Env` fields it currently leaves zero: `Shuttle` with a `fakeDiscussionShuttle{writeOutputs: true}`, `DiscussionSpec` with a closure returning a `shuttleengine.Spec` whose `OutputFiles` is `[]string{decisionRecordPath, supportLogPath}` — the same two absolute paths the fixture already computes for `DecisionRecordPath`/`SupportLogPath` — with a non-empty `Prompt` and `Interactive: false`, and `CommitDiscussion` with a closure recording its invocation count and returning nil.
-  Return the fixture's shuttle and commit-counter handles alongside the existing three return values, or expose them through a small struct, so a test can assert on them and so the two bounce tests can flip `writeOutputs` to false.
+  Give `fakeDiscussionShuttle` a second counter field recording commit invocations, and build `CommitDiscussion`'s closure over that same fake so one handle carries both signals.
+  Do NOT change `buildSequenceFixture`'s return signature: it keeps returning exactly `(anchorPath string, env shedrecipe.Env, paths ShedPaths)`.
+  Seven call sites across `sequence_test.go` and `resume_test.go` destructure it as `_, env, paths := buildSequenceFixture(t)`, and Go requires an exact arity match on `:=`, so adding a fourth return value or wrapping the three in a struct would fail to compile at five call sites no card in this batch otherwise touches.
+  A test that needs the fake reaches it through the returned `Env` instead, by type-asserting `env.Shuttle.(*fakeDiscussionShuttle)` — the fixture is the only thing that ever fills that field, so the assertion is total.
+  State that reasoning in the fake's own doc comment so a later fixture edit does not reintroduce the arity change.
   Update `buildSequenceFixture`'s doc comment: row 3 is no longer skipped over by a stub — it now runs a real `SingleLLMProducer` behind the commit decorator, and the fake shuttle writing both output files is what keeps `Discussion-Validate` passing, because `archiveStaleOutputs` renames the fixture's pre-written files away on every `Call`.
 - **Commit:** `test(loomrecipe): add a discussion shuttle fake to the sequence fixture`
 
@@ -227,7 +232,8 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/loomrecipe/resume_test.go`, both `TestBounceRouting_StuckContinuesAtDeclaredTarget` and `TestBounceRouting_BudgetExhaustionBlocks` remove the decision record from disk and depend on nothing restoring it.
-  With row 3 now real, `buildSequenceFixture`'s writing shuttle would restore it and destroy both premises, so switch both tests to the non-writing variant — flip the fixture's shuttle handle to `writeOutputs: false` immediately after calling `buildSequenceFixture` and before calling `New`.
+  With row 3 now real, `buildSequenceFixture`'s writing shuttle would restore it and destroy both premises, so switch both tests to the non-writing variant — type-assert `env.Shuttle.(*fakeDiscussionShuttle)` and set its `writeOutputs` field to false, immediately after calling `buildSequenceFixture` and before calling `New`.
+  Both tests keep their existing `_, env, paths := buildSequenceFixture(t)` destructuring unchanged: card 16 deliberately leaves the fixture's return signature alone, so no call site in this file needs an arity edit.
   Extend each test's doc comment to record why: `Discussion-Write` is a real producer now, and the bounce it receives must leave the record absent for the bounce to repeat.
   `TestBounceRouting_BudgetExhaustionBlocks`' existing per-producer, episode-scoped budget assertion stays exactly as it is — `Discussion-Write` consumes none of `Discussion-Validate`'s budget, and its own episode restarts on each of its `Done` verdicts.
   Leave `TestBounceRouting_EmptyTargetBlocksInstead` on the default writing fixture: it drives `Batchifier` stuck through a malformed config and needs rows 3 and 4 to pass cleanly on the way there.
@@ -246,7 +252,8 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
 - **Moves:** none
 - **Requirements:** In `internal/loomrecipe/sequence_test.go`, leave `wantSequenceOrder`'s twelve entries and `TestSequence_FullRunBlocksAtPublish`'s assertions structurally unchanged — the sequence, the halt at `Publish`, the per-entry outcome expectations, and the persisted-status assertions all still hold.
   Extend `wantSequenceOrder`'s doc comment, which currently explains only why row 2 passes against the fixture, with a sentence explaining why row 3 now passes too: it is a real `SingleLLMProducer` behind the commit decorator, and the fixture's shuttle fake writes both discussion output files and reports `Done`, so the decorator's injected commit closure fires and `Discussion-Validate` finds a complete pair.
-  Add one assertion to `TestSequence_FullRunBlocksAtPublish` proving the commit side actually ran: the fixture's commit-invocation counter is exactly 1 after a clean run.
+  Add one assertion to `TestSequence_FullRunBlocksAtPublish` proving the commit side actually ran: type-assert `env.Shuttle.(*fakeDiscussionShuttle)` and assert its commit-invocation counter is exactly 1 after a clean run.
+  Keep the existing `_, env, paths := buildSequenceFixture(t)` destructuring — card 16 leaves the fixture's return signature unchanged, so the handle arrives through `env`, not through a fourth return value.
   This is the scenario check that a `Done` from row 3 genuinely reaches the weft-commit seam, rather than the decorator being silently bypassed.
 - **Commit:** `test(loomrecipe): assert the discussion commit fires on a clean sequence run`
 
@@ -287,8 +294,14 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
   - `internal/loomcli/wiring.go`
   - `internal/loomengine/config.go`
   - `internal/loomengine/discussion.go`
+  - `internal/loomengine/prompt.go`
+  - `internal/loomengine/prompt_test.go`
   - `internal/shuttleengine/spec.go`
   - `internal/shedrecipe/recipe.go`
+  - `internal/stencilstore/reconcile.go`
+  - `internal/fabricengine/junctionnames.go`
+  - `internal/hubgeom/webstergeom.go`
+  - `contracts/stencils/stencils.go`
 - **Edits:**
   - `internal/loomcli/wiring_test.go`
 - **Creates:** none
@@ -296,10 +309,14 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
 - **Moves:** none
 - **Requirements:** Add tests to `internal/loomcli/wiring_test.go` covering card 21, following the file's existing `hubLocation(t, ...)` + `c.wire(loc, cwd)` shape and its `t.Parallel()` convention.
   Add a test asserting `c.env.Shuttle`, `c.env.DiscussionSpec`, and `c.env.CommitDiscussion` are each non-nil after `wire()`, and that `c.env.Shuttle` is the same `*shuttleengine.Runner` value `c.runner` holds.
+  Before that second test can evaluate the Spec closure, the discussion stencil must exist on disk.
+  Add a `seedDiscussionStencil(t *testing.T, hubPath string)` helper to this file that writes `stencils.LoomTemplateDiscussion`'s embedded bytes to `filepath.Join(fabricengine.StencilsDir(hubPath), "loom", "loom-template-discussion.md")`, creating the parent directories first, and mirroring `internal/loomengine/prompt_test.go`'s `newTestStencilsDir` in shape.
+  That path is what the closure actually reads: `hubgeom.WebsterGeometry`'s `StencilsDir` field is `fabricengine.StencilsDir(l.HubPath)`, and `stencilstore.Read` hard-errors on a missing file rather than falling back to the embedded default, so without this seed the closure returns an error and every Spec assertion below is unreachable.
+  `hubLocation` currently seeds only `loom.yaml` and `landing.yaml` under the anchor's `_lyx/config/`, so call the new helper from `hubLocation` — every test in this file then keeps a fully-seeded hub, and no existing test changes shape.
   Add a second test evaluating `c.env.DiscussionSpec()` once and asserting on the returned `shuttleengine.Spec`: `Interactive` is false, `Role` is `"discussion"`, `Timeout` equals `time.Duration(loomengine.ConfigTemplate()`'s `discussion_timeout_min`) in minutes — read it from the loaded `c.cfg.DiscussionTimeoutMin` rather than hard-coding 480 — `Model` is non-empty, and `OutputFiles` holds exactly two absolute paths equal to `loomengine.DiscussionDecisionRecord(loc)` and `loomengine.DiscussionSupportLog(loc)` in that order.
   Assert `Prompt` is non-empty and contains no unrendered `{{` marker, which is what proves the stencil actually filled rather than the closure returning a half-built Spec.
   Do not invoke `c.env.CommitDiscussion` in any test: it would run a real fabric commit against a temp directory that is no fabric, which the Test Tier Purity Invariant forbids — assert only that it is non-nil.
-  Leave every existing test in this file unchanged.
+  Leave every existing test function in this file unchanged — the only pre-existing symbol this card touches is the `hubLocation` helper, which gains the one seeding call above and nothing else.
 - **Commit:** `test(loomcli): assert wire fills the discussion spec, commit closure, and shuttle`
 
 ## Batch Tests

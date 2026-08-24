@@ -134,3 +134,4 @@ batches:
 - `manifest/designs/plan-card-format.md`
 - `manifest/designs/shed-recipe.md`
 - `manifest/roadmap.md`
+- `plugins/scribe/skills/INDEX.md`
