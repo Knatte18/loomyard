@@ -29,7 +29,7 @@ Both are waiting on this task and neither has any other consumer.
 - Correct `internal/loomengine/prompt.go`'s autonomous `modeRules` text, which currently names a `--auto` flag that does not exist.
 - Flip `contracts/recipes/loom-recipe.yaml`'s row 3 from `engine: Stub` to `engine: DiscussionWrite`, routing unchanged.
 - Delete `manifest/designs/loom-format-discussion.md` and retarget its five inbound markdown links.
-- Update `manifest/designs/loom.md` (producer-table row 3 and the module-decomposition table's stale "built but not yet wired into `Shed`" claim), `internal/loomengine/discussion.go`'s stale header comment, `internal/loomshed/stub.go`'s doc comment, `manifest/roadmap.md` (this item Planned → Done, plus a new Planned item for interactive mode), and one sentence of `CONSTRAINTS.md`.
+- Update `manifest/designs/loom.md` (producer-table row 3 and the module-decomposition table's stale "built but not yet wired into `Shed`" claim), `internal/loomengine/discussion.go`'s stale header comment, `internal/loomshed/stub.go`'s doc comment, `internal/shedrecipe/registry.go`'s "complete at twelve keys … any thirteenth entry" count comment, `manifest/designs/shed-recipe.md`'s motivation paragraph, `manifest/roadmap.md` (this item Planned → Done, plus a new Planned item for interactive mode), and one sentence of `CONSTRAINTS.md`.
 - Tests at the sites listed under Testing below.
 
 **Out:**
@@ -66,6 +66,7 @@ Both are waiting on this task and neither has any other consumer.
 - **Committing before validation is intentional, not an oversight.** The decorator fires on `Discussion-Write`'s `Done`, which is before `Discussion-Validate` has judged anything, so a bounce round genuinely commits output the validator is about to reject, and the following round commits the corrected version as a second commit. That is the right trade: the commit exists to keep the weft clean and the artifact durable, not to certify it. Moving it behind validation (a decorator on `Discussion-Validate` instead) would leave the files untracked for the whole write-to-validate window — exactly the dirt this decision exists to eliminate — and would leave them uncommitted entirely whenever a run blocks at validation. Weft is a state repo; an honest intermediate commit followed by its fix is better history than a gap.
 - **Pathspec is the whole `_lyx/discussion/` directory, and that deliberately includes the archive siblings.** `shedadapters.archiveStaleOutputs` renames a stale output to a timestamped sibling *in the same directory*, so each bounce round leaves a `decision-record-<stamp>.md` beside the live files. A two-file pathspec would leave those as untracked weft dirt, re-creating the problem; the directory pathspec commits them instead. That is also useful — the archived draft is the only surviving record of what the validator rejected — and it is bounded by the per-producer bounce budget over two small markdown files.
 - **Commit message** is `fmt.Sprintf("loom: discussion artifacts for %s", slug)`, mirroring `run.go:120`'s `"loom: seed session bootstrap for %s"` shape. The slug is already in scope at the wiring site, and this text is durable weft history, so it is pinned here rather than left to the plan writer.
+- **A commit failure costs the whole agent run, and that is accepted.** `shedengine/run.go:175` persists a returned error as `StateFailed` and halts; the operator's resume re-calls `Discussion-Write`, and `SingleLLMProducer.Call` archives both freshly-written files and spawns a fresh agent — so a transient weft-git fault throws away a completed discussion, whose content survives only as archive siblings. This is accepted rather than worked around: mapping the failure to `Stuck` instead would bounce to a producer that cannot fix a git fault (the same reasoning `discussionvalidate.go` applies to a non-not-exist read failure), and any retry-in-place scheme is real machinery for a fault an operator can resolve directly and then resume. The cost is one wasted agent run in a rare case, and the failure is loud rather than silent.
 - Rejected: declaring it out of scope and recording the dirty-weft consequence (ships a pipeline with a known break); deferring to `Publish`/`Finalize` (`landingshed` is shared by reference with the Someday `Hardener`, so teaching it about `_lyx/discussion/` puts loom-specific knowledge in a generic producer); having the discussion agent run `git` itself (barred by the Fabric Write-Side Containment Invariant); decorating `Discussion-Validate` instead so only validated output is committed (leaves the write-to-validate window dirty, and commits nothing at all when a run blocks at validation); a two-file pathspec with the archive siblings deleted after a successful commit (throws away the rejected draft and adds delete logic for no gain).
 
 ### blind-revalidate-bounce
@@ -135,9 +136,12 @@ Both are waiting on this task and neither has any other consumer.
 It errors on an empty slug.
 This task's job is to call it, not to rewrite it — apart from the `--auto` wording correction in `modeRules`.
 
-**Two doc claims that go stale the moment this lands.**
-`internal/loomengine/discussion.go`'s header comment says "the future loom phase machine drives the returned Spec through shuttle.Run", and `manifest/designs/loom.md`'s module-decomposition table says `DiscussionSpec`/`PlanSpec` are "both ✅ **built** but not yet wired into `Shed`".
-Both must be corrected in the same commit; `PlanSpec` is still genuinely unwired, so the latter becomes a per-Spec statement rather than a joint one.
+**Four doc claims that go stale the moment this lands.**
+`internal/loomengine/discussion.go`'s header comment says "the future loom phase machine drives the returned Spec through shuttle.Run", and `manifest/designs/loom.md`'s module-decomposition table says `DiscussionSpec`/`PlanSpec` are "both ✅ **built** but not yet wired into `Shed`" — `PlanSpec` is still genuinely unwired, so the latter becomes a per-Spec statement rather than a joint one.
+`internal/shedrecipe/registry.go:14` reads "The table is complete at twelve keys. Any thirteenth entry must arrive with a coverage-guard update in the same commit" — this task *is* that thirteenth entry, so the comment's count moves to thirteen and its instruction is satisfied by this task's own coverage-guard update.
+`manifest/designs/shed-recipe.md`'s motivation paragraph asserts `SingleLLMProducer` differs across `Discussion-Write`/`Plan-Write` "only in which prompt stencil and interactivity setting it's given, exactly the shape a declarative recipe expresses cleanly" — `spec-closure-in-env` supersedes that premise, since the difference turns out to include per-run values a declarative recipe cannot carry.
+That paragraph is **corrected, not kept as historical rationale**: it is a live design doc for a shipped module, and its argument is the one a future recipe author would reason from.
+All four land in the same commit as the code.
 
 **The registry.**
 `internal/shedrecipe/registry.go` holds one central `map[string]Constructor` literal reached only through `Lookup` and `Names` — no `init()` self-registration, no runtime `Register`.
@@ -169,7 +173,15 @@ See Decisions → `blind-revalidate-bounce` for why that is accepted.
 
 **The five inbound links to the doc being deleted** (Markdown Link Integrity is machine-enforced by `internal/lyxcwd/docslink_test.go`):
 `manifest/designs/loom.md:35` (producer-table row 3) and `:115` (the relocation-rubric subsection's companion-doc pointer), `manifest/roadmap.md:14` (the card-format group intro) and `:168` (the `## Done` entry for `loom: redesign the Discussion format`), and `manifest/designs/plan-card-format.md:3` (the status blockquote).
-The deleted doc's Lifecycle section states the natural retarget for each is the stencil, and that the `## Done` entry may instead keep a historical, non-link reference — that call is this task's.
+Two of the five are **not** retargetable to the stencil: `manifest/roadmap.md:14` and `manifest/designs/plan-card-format.md:3` both read "the discussion stencil's own scoped supersession claim now lives in \[loom-format-discussion.md]", and that sentence becomes false once Fix 1 is folded in — there is no supersession left once the superseding content *is* the stencil. Pointing them at the stencil would ship a wrong statement with a working link. Per-link disposition, decided here rather than left to the plan writer:
+
+| Link site | Disposition |
+|---|---|
+| `manifest/designs/loom.md:35` (producer-table row 3) | Delete the trailing `; exploration-scope bound in [loom-format-discussion.md](…)` clause. The same cell already names the stencil, which is where the bound now lives. |
+| `manifest/designs/loom.md:115` (relocation-rubric companion pointer) | Replace the sentence with a non-link statement that the writer-side half now lives in `contracts/stencils/loom/loom-template-discussion.md`, keeping the existing "this subsection is the durable copy" claim. |
+| `manifest/roadmap.md:14` (card-format group intro) | Delete the supersession clause outright — it describes a state that no longer exists. |
+| `manifest/roadmap.md:168` (`## Done` entry for `loom: redesign the Discussion format`) | Retarget the `See …` link to `contracts/stencils/loom/loom-template-discussion.md`, where Fix 1's content landed, and name the deleted doc in prose only, as a bare historical mention outside link scope. |
+| `manifest/designs/plan-card-format.md:3` (status blockquote) | Delete the supersession clause outright, same false-sentence reason as `roadmap.md:14`. |
 
 **The stencil's four markers.**
 `stencil.Fill` requires all four of `{{.slug}}`, `{{.mode_rules}}`, `{{.decision_record_path}}`, `{{.support_log_path}}` to be non-empty, and the file must contain no `{{if}}`/`{{range}}` conditionals — a required marker inside a conditional branch renders silently blank.
