@@ -124,6 +124,10 @@ Batch-local decisions beyond `## Shared Decisions`:
   Add a test asserting the classifier gate: under a non-empty root, a symbol entry in `Targets` and a symbol entry in `Uses` each pass through `normalizeCard` byte-identical, while a path entry in the same list is root-joined.
   Add a test asserting that a `Rename` card's `Pairs` and its projected `Targets` normalize to the same strings on both endpoints, so the two representations cannot drift.
   In `sections_test.go`, keep both tests and update `TestParsePlan_GoldenFixture_PlanLevelSections` to expect the fixture's rewritten `## Rename mechanic` body text and its unchanged `## Shared Decisions` and `## verify:` bodies.
+  Update `TestParsePlan_PlanLevelSections_AbsentAreEmpty` as well: its inline overview string carries `format: 3` and its inline card string carries the six format-3 field labels, and both must move to format 4 — the overview to `format: 4`, and the card to a minimal format-4 body of one type label with a single bullet plus an `**Intent:**` line.
+  This test only calls `ParsePlan` and never `Validate`, so it is not a deliberate `format-unrecognized` case and does not qualify for either exemption card 26's Sweep 1 allows;
+  left alone it would be a genuine missed carrier that trips that sweep after every other card is already committed.
+  Keep its three assertions — that all three plan-level sections default to empty when their headings are absent — exactly as they are.
   Update both files' leading file-purpose comments where the format-3 wording no longer holds.
 - **Commit:** `test(planparser): cover classifier-gated normalization and the format-4 fixture sections`
 
