@@ -121,7 +121,11 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
 - **Moves:** none
 - **Requirements:** Create `internal/shedrecipe/entries_discussionwrite_test.go`, mirroring `entries_singlellm_test.go`'s existing table shape and using `newTestEnv(t)` as its base `Env`.
   Cover the construction-time rejections first: a nil `Env.DiscussionSpec`, a nil `Env.CommitDiscussion`, and a nil `Env.Shuttle` each fail with an error naming both the entry string `DiscussionWrite` and the offending field name.
-  Add a typed-nil case for each of the two func fields — assigning a nil-valued variable of the field's own func type, not the untyped `nil` literal — so `requireSeam`'s reflect-based typed-nil detection is genuinely exercised rather than only its plain-nil branch.
+  One nil-value subtest per field is enough — do not add a separate "typed-nil versus untyped-nil" variant for `DiscussionSpec` or `CommitDiscussion`.
+  Both are declared as concrete named func types, so `env.DiscussionSpec = nil` already boxes as a typed-nil when it reaches `requireSeam`'s `any` parameter;
+  the plain-nil branch (`seam == nil`) is unreachable for a concretely-typed field, which is why `entries_simple_test.go`'s `zeroEnvField` helper covers the structurally identical `WebsterRun` func field with a bare zero-value assignment and no second variant.
+  Follow that helper's precedent — a bare zero-value assignment on a copy of `newTestEnv(t)`'s `Env` — rather than inventing a second nil-construction idiom in the new file.
+  Do not edit `internal/shedrecipe/entries_simple_test.go`; it is read here as the precedent only.
   Cover an unknown `Config` key being rejected, and cover the happy path returning a non-nil `shedengine.ShedProducer` with a nil error.
   Then drive that happy-path producer's `Call` once with `context.Background()` against a `fakeShuttle` whose `result` is set to `shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}`, and assert three things: the injected `SpecSource` was evaluated (the fake records the `Spec` it received, so assert on that recorded value), the returned `shedengine.OutputPointer.Path` equals the Spec's first `OutputFiles` entry, and the injected commit closure was invoked exactly once.
   Add one further case where the shuttle reports `shuttleengine.OutcomeAsking`, asserting the outcome maps to `shedengine.Stuck` and the commit closure was not invoked — the mapping the decorator must preserve untouched.
@@ -198,7 +202,7 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
 - **Requirements:** In `internal/loomrecipe/shape_test.go`, change `wantProducerTable`'s `Discussion-Write` row's `producerType` from `reflect.TypeOf(loomshed.NewStub(""))` to `reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))`.
   Leave that row's `name`, `onStuck` (empty), and `onDone` columns unchanged, and leave every other row of the table unchanged.
   Extend `testEnv` to fill the same three `Env` fields card 16 fills — `Shuttle`, `DiscussionSpec`, and `CommitDiscussion` — but with the non-writing variant: a `fakeDiscussionShuttle{writeOutputs: false}`, so the discussion paths this builder points at stay absent on disk.
-  That absence is load-bearing for `TestNew_ValidateSucceedsOnTheRealList`, whose whole premise is that `Discussion-Validate` never reaches `Done` and exhausts its own bounce budget;
+  That absence is load-bearing for `TestNew_PassesShedValidation`, whose whole premise is that `Discussion-Validate` never reaches `Done` and exhausts its own bounce budget;
   update that test's inline comment, which currently explains the bounce in terms of a stub row 3, to say instead that row 3's fake shuttle deliberately writes nothing, so each bounce re-runs a real producer that leaves the record absent.
   Update `testEnv`'s own doc comment to name the three new fields.
   Leave `TestNew_RoutingGraphIsClean` unchanged — row 3's routing is untouched by this task.
