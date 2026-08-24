@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -187,6 +188,52 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 	return websterengine.RunResult{Outcome: "done"}, nil
 }
 
+// fakeDiscussionShuttle implements shedadapters.Shuttle for row 3 (Discussion-Write). It always
+// reports shuttleengine.OutcomeDone and, when writeOutputs is true, writes both discussion output
+// files from the received Spec.OutputFiles before returning, creating any missing parent
+// directory. commitCalls records how many times the fixture's CommitDiscussion closure built over
+// this fake was invoked.
+//
+// buildSequenceFixture's return signature stays fixed at exactly (anchorPath string, env
+// shedrecipe.Env, paths ShedPaths): seven call sites across sequence_test.go and resume_test.go
+// destructure it as "_, env, paths := buildSequenceFixture(t)", and Go requires an exact arity
+// match on ":=", so a fourth return value here would fail to compile at every one of those call
+// sites. A test that needs this fake instead reaches it by type-asserting
+// env.Shuttle.(*fakeDiscussionShuttle) -- buildSequenceFixture is the only thing that ever fills
+// that field, so the assertion is total.
+type fakeDiscussionShuttle struct {
+	writeOutputs          bool
+	runCalls              int
+	commitCalls           int
+	decisionRecordContent string
+	supportLogContent     string
+}
+
+var _ shedadapters.Shuttle = (*fakeDiscussionShuttle)(nil)
+
+// Run implements shedadapters.Shuttle: it records the call and, when f.writeOutputs is true, writes
+// every entry of spec.OutputFiles with this fake's configured content before reporting
+// shuttleengine.OutcomeDone.
+func (f *fakeDiscussionShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+	f.runCalls++
+	if f.writeOutputs {
+		contents := []string{f.decisionRecordContent, f.supportLogContent}
+		for i, path := range spec.OutputFiles {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return shuttleengine.Result{}, fmt.Errorf("fakeDiscussionShuttle: mkdir %s: %w", filepath.Dir(path), err)
+			}
+			content := ""
+			if i < len(contents) {
+				content = contents[i]
+			}
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				return shuttleengine.Result{}, fmt.Errorf("fakeDiscussionShuttle: write %s: %w", path, err)
+			}
+		}
+	}
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+}
+
 // writeBatcherConfig writes content as <anchorPath>/_lyx/config/batcher.yaml.
 func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 	t.Helper()
@@ -231,6 +278,16 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // producer's own merge logic for real needs a genuine two-worktree pair and therefore git, which
 // this task's own decision keeps out of this package's untagged tier; the real thing is covered by
 // a later integration tier instead.
+//
+// Row 3 (Discussion-Write) is no longer skipped over by a Stub: it now runs a real
+// shedadapters.SingleLLMProducer behind loomshed's commit decorator. env.Shuttle is a
+// fakeDiscussionShuttle{writeOutputs: true}, env.DiscussionSpec is a closure returning a Spec whose
+// OutputFiles is the same [decisionRecordPath, supportLogPath] pair this fixture already computes
+// above, and env.CommitDiscussion is a closure recording its invocation count on that same fake.
+// The fake shuttle writing both output files on every Run is what keeps Discussion-Validate
+// passing here: shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away
+// on every Call, so without the fake rewriting them the clean sequence run would find both files
+// absent.
 func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths ShedPaths) {
 	t.Helper()
 
@@ -259,6 +316,12 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("mkdir cwd: %v", err)
 	}
 
+	discussionShuttle := &fakeDiscussionShuttle{
+		writeOutputs:          true,
+		decisionRecordContent: validDecisionRecord,
+		supportLogContent:     "support log",
+	}
+
 	env = shedrecipe.Env{
 		Cwd:                cwd,
 		AnchorPath:         dir,
@@ -275,6 +338,18 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			RefMatcher: fakeRefMatcher{},
 		},
 		Landing: landing,
+		Shuttle: discussionShuttle,
+		DiscussionSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "discussion prompt",
+				OutputFiles: []string{decisionRecordPath, supportLogPath},
+				Interactive: false,
+			}, nil
+		},
+		CommitDiscussion: func() error {
+			discussionShuttle.commitCalls++
+			return nil
+		},
 	}
 
 	paths = ShedPaths{

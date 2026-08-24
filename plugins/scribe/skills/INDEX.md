@@ -16,4 +16,5 @@
 - **By default, for any session with this plugin installed:** `hooks/hooks.json` ships a `SessionStart` hook that injects an instruction to load `scribe:conversation` (which builds on `scribe:prose`) once, at the start of the session.
   This is a strong nudge, not a platform-enforced guarantee: the hook can only inject text asking the agent to load the skill, it cannot force-load it.
 - **Inside a lyx-generated prompt** (a loom producer stencil, or any prompt lyx itself writes): the stencil carries an explicit "Load these skills: ..." line naming the relevant skills directly.
-  This wiring is a separate, later roadmap item ("loom: Discussion-Write producer") — not yet built.
+  This wiring now ships in `contracts/stencils/loom/loom-template-discussion.md`'s Step 0, which loads `scribe:prose` then `scribe:conversation`.
+  The load is best-effort: nothing in the tree installs or verifies plugins, so a missing plugin degrades prose quality rather than breaking a run.

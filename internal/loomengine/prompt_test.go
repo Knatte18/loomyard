@@ -87,7 +87,37 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 			if !strings.Contains(rendered, "lyx board get") {
 				t.Errorf("composePrompt(...) output does not contain the board-read command substring %q", "lyx board get")
 			}
+			if !strings.Contains(rendered, "scribe:prose") {
+				t.Errorf("composePrompt(...) output does not contain the Step 0 skill name %q", "scribe:prose")
+			}
+			if !strings.Contains(rendered, "scribe:conversation") {
+				t.Errorf("composePrompt(...) output does not contain the Step 0 skill name %q", "scribe:conversation")
+			}
+			if !strings.Contains(rendered, "lyx loom validate-discussion") {
+				t.Errorf("composePrompt(...) output does not contain the Step 6 self-check command %q", "lyx loom validate-discussion")
+			}
+			if !strings.Contains(rendered, "MUST NOT gather exact signatures") {
+				t.Errorf("composePrompt(...) output does not contain the exploration bound's MUST NOT clause")
+			}
 		})
+	}
+}
+
+// TestComposePrompt_AutonomousOutputHasNoAutoFlag verifies the rendered autonomous output does not
+// name the nonexistent `--auto` flag.
+func TestComposePrompt_AutonomousOutputHasNoAutoFlag(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+	slug := "add-json-flag"
+	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
+	supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
+
+	got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, true)
+	if err != nil {
+		t.Fatalf("composePrompt(..., autonomous=true) = _, %v; want nil error", err)
+	}
+
+	if strings.Contains(string(got), "--auto") {
+		t.Errorf("composePrompt(..., autonomous=true) output contains %q; want no reference to the nonexistent flag", "--auto")
 	}
 }
 
@@ -132,5 +162,8 @@ func TestModeRules(t *testing.T) {
 	}
 	if autonomous == interactive {
 		t.Error("modeRules(true) == modeRules(false); want distinct strings")
+	}
+	if strings.Contains(autonomous, "--auto") {
+		t.Errorf("modeRules(true) contains %q; want no reference to the nonexistent flag", "--auto")
 	}
 }

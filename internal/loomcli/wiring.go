@@ -7,6 +7,8 @@
 package loomcli
 
 import (
+	"fmt"
+
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -107,11 +109,35 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// WebsterRun, unlike loomshed.Deps.WebsterRun, which shedadapters.NewWebsterProducer
 		// defaulted when left nil.
 		WebsterRun: websterengine.Run,
-		// StencilsDir, RunRoot, Shuttle, Burler, and Now are left zero -- only SingleLLM, Bouncer,
-		// and BurlerRound read them, and no row in loom's recipe uses those engines yet.
+		// Shuttle is runner, already built above: *shuttleengine.Runner already satisfies
+		// shedadapters.Shuttle, and row 3 (Discussion-Write) reads it now.
+		Shuttle: runner,
+		// DiscussionSpec is evaluated per Call, not resolved here, so the stencil is read at call
+		// time -- what the Stencil Ownership Invariant requires. autonomous is the literal true,
+		// unconditionally, per the autonomous-only Shared Decision.
+		DiscussionSpec: func() (shuttleengine.Spec, error) {
+			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName), true)
+		},
+		// CommitDiscussion mirrors the seed commit run.go already performs, including its
+		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
+		// directory deliberately, so archiveStaleOutputs' timestamped siblings are committed rather
+		// than left as untracked dirt. A second Done over already-committed artifacts is a
+		// no-op rather than an error: CommitAnchoredPaths reports committed == false for an
+		// already-clean, already-tracked path, and this closure discards that result alongside the
+		// sha, returning only the error.
+		CommitDiscussion: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDirRel()}, fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
+		},
+		// StencilsDir, RunRoot, Burler, and Now are left zero -- only SingleLLM and Bouncer/
+		// BurlerRound read StencilsDir/RunRoot, and no row in loom's recipe uses those engines yet.
+		// StencilsDir in particular stays unfilled here even though DiscussionWrite is now wired:
+		// the DiscussionSpec closure above captures websterGeom.StencilsDir directly rather than
+		// reading it back off Env. A nil Now is legal, defaulting to time.Now inside
+		// NewSingleLLMProducer.
 		//
 		// Landing is deliberately left unfilled here too, but for a different reason than the other
-		// five: Env.Landing is assembled in drive.go, immediately before loomrecipe.New, because
+		// four: Env.Landing is assembled in drive.go, immediately before loomrecipe.New, because
 		// NewPublish/NewFinalize both open their fabric pair eagerly at construction, and wire()
 		// runs for every verb including "status"/"pause" -- the same OpenBisector hazard the
 		// comment above already guards against. See landingDeps (landingdeps.go) and the

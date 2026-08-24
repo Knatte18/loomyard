@@ -54,6 +54,26 @@ func TestDiscussionSupportLog(t *testing.T) {
 	}
 }
 
+func TestDiscussionDirRel(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		// AnchorRel deliberately differs from "." to prove the accessor's
+		// relative value composes correctly against DiscussionDir's absolute
+		// one.
+		AnchorRel: filepath.Join("sub", "dir"),
+	}
+
+	want := filepath.Join(l.AnchorPath(), DiscussionDirRel())
+	if got := DiscussionDir(l); got != want {
+		t.Errorf("DiscussionDir() = %q; want %q", got, want)
+	}
+
+	if filepath.IsAbs(DiscussionDirRel()) {
+		t.Errorf("DiscussionDirRel() = %q; want a relative path", DiscussionDirRel())
+	}
+}
+
 func TestDiscussionDir_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-HUB"),
