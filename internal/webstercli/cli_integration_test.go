@@ -44,7 +44,7 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
 	}
-	seedMissingFieldPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+	seedMissingIntentPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
 
 	var out strings.Builder
 	exitCode := RunCLIIn(target, &out, []string{"run"})

@@ -169,8 +169,9 @@ var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 
 // seedRunPlanDir writes a syntactically complete, validation-clean
 // plan-format plan with numCards cards into a fresh temp plan directory:
-// each card's sole file-op field is a Creates: entry (so path-missing never
-// fires — a Creates: target need not exist on disk), and Depends-on: none.
+// each card is a format-4 Create card whose single target is the card's own
+// new-file path (so path-missing never fires — a Create card's targets stay
+// exempt from on-disk existence checking exactly as Creates: entries were).
 // The overview carries NO plan-level "## verify:" section — deliberately,
 // so ShouldRunIntegration(plan) is false and the integration stage
 // (runlevel.go's runIntegrationStage) stays a no-op for every fixture built
@@ -194,13 +195,12 @@ func seedRunPlanDir(t *testing.T, numCards int) string {
 
 		creates := fmt.Sprintf("internal/%s/new.go", slug)
 		body := fmt.Sprintf(
-			"# Card %d — %s\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n"+
-				"**Creates:**\n- `%s`\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n",
+			"# Card %d — %s\n\n**Create:**\n- `%s`\n\n**Intent:** placeholder card.\n",
 			i, slug, creates,
 		)
 		files[file] = body
 	}
-	files["00-overview.md"] = "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+	files["00-overview.md"] = "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
 		index.String()
 
 	for name, content := range files {
