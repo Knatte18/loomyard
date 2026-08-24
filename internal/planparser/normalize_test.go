@@ -3,7 +3,9 @@
 // case,
 // and the malformed forms (a single-"/" prefix, a ".."
 // escape) that normalizeCardPath resolves but deliberately does not reject — that is Validate's
-// card-path-malformed check, not this package's job.
+// card-path-malformed check, not this package's job. It also covers normalizeCard's
+// classifier-gated application of that rule across Targets, Uses, and both endpoints of every
+// Rename Pairs entry, and the nil-vs-empty-non-nil preservation those slices must keep.
 
 package planparser
 
@@ -80,44 +82,92 @@ func TestNormalizeCardPath(t *testing.T) {
 	}
 }
 
-// TestNormalizeCard_MovesBothEndpoints covers normalizeCard applying normalizeCardPath to both
-// sides of every Moves: pair.
-func TestNormalizeCard_MovesBothEndpoints(t *testing.T) {
+// TestNormalizeCard_PairsBothEndpoints covers normalizeCard applying normalizeCardPath to both
+// sides of every Rename Pairs entry.
+func TestNormalizeCard_PairsBothEndpoints(t *testing.T) {
 	t.Parallel()
 
 	card := Card{
-		EditsFiles: []string{"list.go"},
-		Moves: []MovePair{
+		Targets: []string{"list.go"},
+		Pairs: []MovePair{
 			{Old: "old.go", New: "//cmd/lyx/new.go"},
 		},
-		MovesRaw: []string{"a malformed bullet, left as-is"},
+		RenameRaw: []string{"a malformed bullet, left as-is"},
 	}
 	normalizeCard(&card, "internal/boardcli")
 
-	if want := []string{"internal/boardcli/list.go"}; card.EditsFiles[0] != want[0] {
-		t.Errorf("card.EditsFiles = %v; want %v", card.EditsFiles, want)
+	if want := "internal/boardcli/list.go"; card.Targets[0] != want {
+		t.Errorf("card.Targets[0] = %q; want %q", card.Targets[0], want)
 	}
-	wantMoves := []MovePair{{Old: "internal/boardcli/old.go", New: "cmd/lyx/new.go"}}
-	if card.Moves[0] != wantMoves[0] {
-		t.Errorf("card.Moves = %+v; want %+v (crossing the root boundary)", card.Moves, wantMoves)
+	wantPair := MovePair{Old: "internal/boardcli/old.go", New: "cmd/lyx/new.go"}
+	if card.Pairs[0] != wantPair {
+		t.Errorf("card.Pairs[0] = %+v; want %+v (crossing the root boundary)", card.Pairs[0], wantPair)
 	}
-	if card.MovesRaw[0] != "a malformed bullet, left as-is" {
-		t.Errorf("card.MovesRaw = %v; want it untouched", card.MovesRaw)
+	if card.RenameRaw[0] != "a malformed bullet, left as-is" {
+		t.Errorf("card.RenameRaw = %v; want it untouched", card.RenameRaw)
 	}
 }
 
 // TestNormalizeCard_NilSliceStaysNil proves normalizeCard preserves the nil-vs-empty-non-nil
-// distinction.
+// distinction on both Targets and Uses.
 func TestNormalizeCard_NilSliceStaysNil(t *testing.T) {
 	t.Parallel()
 
 	card := Card{}
 	normalizeCard(&card, "internal/boardcli")
 
-	if card.ContextFiles != nil {
-		t.Errorf("card.ContextFiles = %v; want nil", card.ContextFiles)
+	if card.Targets != nil {
+		t.Errorf("card.Targets = %v; want nil", card.Targets)
 	}
-	if card.EditsFiles != nil {
-		t.Errorf("card.EditsFiles = %v; want nil", card.EditsFiles)
+	if card.Uses != nil {
+		t.Errorf("card.Uses = %v; want nil", card.Uses)
+	}
+}
+
+// TestNormalizeCard_ClassifierGate proves normalizeCard consults the shape classifier before
+// touching an entry: a symbol entry in Targets and a symbol entry in Uses each pass through
+// byte-identical, while a path entry in the same list is root-joined — the single sharpest
+// regression this migration can introduce.
+func TestNormalizeCard_ClassifierGate(t *testing.T) {
+	t.Parallel()
+
+	card := Card{
+		Targets: []string{"boardcli.newListCmd", "list.go"},
+		Uses:    []string{"boardcli.RowJSON", "helpers.go"},
+	}
+	normalizeCard(&card, "internal/boardcli")
+
+	if want := "boardcli.newListCmd"; card.Targets[0] != want {
+		t.Errorf("card.Targets[0] (symbol) = %q; want %q unmodified", card.Targets[0], want)
+	}
+	if want := "internal/boardcli/list.go"; card.Targets[1] != want {
+		t.Errorf("card.Targets[1] (path) = %q; want %q root-joined", card.Targets[1], want)
+	}
+	if want := "boardcli.RowJSON"; card.Uses[0] != want {
+		t.Errorf("card.Uses[0] (symbol) = %q; want %q unmodified", card.Uses[0], want)
+	}
+	if want := "internal/boardcli/helpers.go"; card.Uses[1] != want {
+		t.Errorf("card.Uses[1] (path) = %q; want %q root-joined", card.Uses[1], want)
+	}
+}
+
+// TestNormalizeCard_PairsAndTargetsAgree proves a Rename card's Pairs and its projected Targets
+// normalize to the same strings on both endpoints, so the two representations cannot drift apart.
+func TestNormalizeCard_PairsAndTargetsAgree(t *testing.T) {
+	t.Parallel()
+
+	card := Card{
+		Targets: []string{"old.go", "//cmd/lyx/new.go"},
+		Pairs: []MovePair{
+			{Old: "old.go", New: "//cmd/lyx/new.go"},
+		},
+	}
+	normalizeCard(&card, "internal/boardcli")
+
+	if card.Targets[0] != card.Pairs[0].Old {
+		t.Errorf("card.Targets[0] = %q; card.Pairs[0].Old = %q; want them equal", card.Targets[0], card.Pairs[0].Old)
+	}
+	if card.Targets[1] != card.Pairs[0].New {
+		t.Errorf("card.Targets[1] = %q; card.Pairs[0].New = %q; want them equal", card.Targets[1], card.Pairs[0].New)
 	}
 }

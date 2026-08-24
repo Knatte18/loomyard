@@ -1,5 +1,5 @@
 // sections_test.go covers the three plan-level body sections extracted from 00-overview.md: they
-// are exposed verbatim from the golden fixture,
+// are exposed verbatim from the format-4 golden fixture,
 // and each is empty when its heading is absent from the overview.
 
 package planparser_test
@@ -33,7 +33,8 @@ func TestParsePlan_GoldenFixture_PlanLevelSections(t *testing.T) {
 	wantRenameMechanic := "1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.\n" +
 		"2. Then make ONLY surgical edits (package declaration, imports, identifier\n" +
 		"   retargeting) — no unrelated rewrites.\n" +
-		"3. Use `Creates:` only for genuinely new files, never for the relocated file itself.\n" +
+		"3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded\n" +
+		"   into the `Rename` pair.\n" +
 		"4. Never write the relocated file from scratch and delete the original — that loses\n" +
 		"   git history exactly as an unstructured create+delete pair would."
 	if plan.RenameMechanic != wantRenameMechanic {
@@ -52,9 +53,8 @@ func TestParsePlan_PlanLevelSections_AbsentAreEmpty(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
-	card := "# Card 1 — only\n\n**Context:** none\n**Edits:** none\n**Creates:** none\n" +
-		"**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n"
+	overview := "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
+	card := "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
 	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
 		t.Fatalf("write overview fixture: %v", err)
 	}
