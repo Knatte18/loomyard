@@ -16,14 +16,21 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
 
 ## Scope
 
-**In:**
+**Already in the worktree** (built during this discussion, ahead of the usual mill-plan/mill-go order, on explicit operator instruction — see the Q&A log entry on sequencing):
 
-- A new plugin, `scribe`, deployed via loomyard's own marketplace (`.claude-plugin/marketplace.json`), containing seven skills: `prose`, `conversation`, `code-quality`, `testing`, `golang-comments`, `golang-build`, `golang-testing`.
-  All seven are drafted at `plugins/scribe/skills/*/SKILL.md` (see Technical context for the exact structure).
-- `code-quality` implements `code-comment-conventions.md`'s self-containment rule, folded into its own Comments section, alongside general code-shape principles (naming, YAGNI, error handling, file/module organization).
-- `golang-comments`, `golang-build`, `golang-testing` add Go-specific mechanics on top of the general skills — `golang-build`/`golang-testing` close to a verbatim port of millhouse's equivalents, `golang-comments` substantially reworked.
-- `prose` and `conversation` — new skills, not present in the original roadmap text, splitting millhouse's `conversation` skill's "Response Style" into a universal writing-style skill (`prose`, always-active) and a thinner chat-interaction-only skill (`conversation`, also always-active).
-- `manifest/designs/code-comment-conventions.md`'s status line updated to point at the implementation.
+- The `scribe` plugin at `plugins/scribe/`: seven skills (`prose`, `conversation`, `code-quality`, `testing`, `golang-comments`, `golang-build`, `golang-testing`), `.claude-plugin/plugin.json`, `settings.json`, `hooks/hooks.json`, `skills/INDEX.md`.
+- `.claude-plugin/marketplace.json` registers `scribe` alongside `prowler`.
+- `manifest/designs/code-comment-conventions.md` rewritten: the operative self-containment rule now lives in `code-quality`'s Comments section; the design doc keeps only rationale content and points to the skill (Producer Pointer-Rule Invariant, `CONSTRAINTS.md:567`).
+- `manifest/roadmap.md`'s Wave 1 entry for this task reworded to match what was actually decided (see Decisions) and to point at this discussion; not yet moved to the `## Done` section — see the Testing section below for why.
+- A real structural verification pass (not just marketplace-JSON parsing): every skill's frontmatter `name` matches its directory, `plugin.json`/`settings.json`/`hooks.json` all parse, `INDEX.md` lists all seven, `marketplace.json`'s `scribe` entry points at the right source path.
+  All checks passed at the time of this writing.
+
+**Still to do:**
+
+- Discussion review sign-off — this is what's currently in progress.
+- Whatever the sign-off surfaces beyond what's already fixed (see Decisions' two newest entries and the Q&A log for what a first review round already caught and fixed in-place).
+- Moving the roadmap entry to `## Done`, once review actually concludes.
+- Handoff to `/mill-plan` — normally where implementation would start; here it inherits an already-built plugin instead, so its job is closer to verification-and-polish planning than build-from-scratch planning.
 
 **Out:**
 
@@ -31,7 +38,8 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
   Considered at length and explicitly rejected — see Decisions.
 - C#/Python equivalents of any skill here — out of scope; this task is Go-only, per `code-comment-conventions.md`'s own stated scope.
 - Wiring "load these skills" into loom's own producer stencils (Discussion-Write, Plan-Write, etc.) — a separate, later roadmap item ("loom: Discussion-Write producer"), not this one.
-- Actually running `/plugin install scribe@loomyard` — the plugin's files and marketplace entry are in place and confirmed wired (`update-plugins.sh` correctly reports it as not-yet-installed), but installing it into a live Claude Code environment is a manual operator step, not part of this task.
+  The plugin's own `hooks/hooks.json` covers default-loading in the meantime — see Decisions.
+- Actually running `/plugin install scribe@loomyard` — the plugin's files and marketplace entry are in place; installing it into a live Claude Code environment is a manual operator step, not part of this task.
 - A mechanical lint pass enforcing the self-containment rule — `code-comment-conventions.md`'s own "Wave 2" enforcement tier, which was always scoped as future/Quarry-dependent work.
   Today's enforcement is review discipline only, unchanged from the design doc's original plan.
 
@@ -132,20 +140,43 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
   The candidate content is also mostly well-established Go community knowledge that a capable model already leans toward by default, unlike the self-containment rule, which is a genuine project-specific departure from default behavior.
 - Rejected: building it now on completeness grounds — proposed, briefly reversed into "yes, build it" when "millhouse doesn't have it" was correctly identified as a non-argument, then reconsidered a final time against the YAGNI test and dropped again.
 
+### Always-active mechanism: a hook nudge, plus explicit loading inside lyx's own prompts
+
+- Decision: two distinct mechanisms cover "always-active," for two distinct contexts.
+  For a lyx-generated prompt (a loom producer stencil, or anything lyx itself writes), the prompt carries an explicit "Load these skills: ..." line — the same pattern `mill-start` already uses to load `mill:conversation` unconditionally as its own first step;
+  this wiring is the separate, later roadmap item named in Scope Out.
+  For any other session with the plugin installed, `plugins/scribe/hooks/hooks.json` ships a `UserPromptSubmit` hook whose command injects an instruction to load `scribe:prose` (and `scribe:conversation` for a chat reply) before responding.
+- Rationale: a first review round flagged that "always-active" shipped as a bare claim with no mechanism behind it, plus a dangling pointer to a mill-transient file (`discussion.md`) that wouldn't travel with the plugin.
+  Researched whether Claude Code plugins can force-load a skill; confirmed answer: no — a hook can only inject prompt text asking the agent to load a skill, the same mechanism this very discussion.md's own CLAUDE.md-reading hook already relies on in every turn of this session, reliably in practice even though it isn't a platform-enforced guarantee.
+  That's the best available mechanism today, so it's what shipped.
+- Rejected: leaving the claim undefined (the reviewed state); waiting for the producer-stencil wiring alone to cover it, which would leave every non-lyx-driven session with no default loading at all.
+
+### Design doc points to the skill, not the reverse
+
+- Decision: `code-comment-conventions.md`'s operative rule text (the rule, its two exceptions, the information triage) is no longer duplicated in the design doc — it points to `code-quality`'s Comments section as the canonical text.
+  The design doc keeps only content a skill shouldn't carry: the deeper rationale for why the rule is stronger than a staleness rule, and the not-yet-built Quarry query mechanism.
+- Rationale: a first review round cited `CONSTRAINTS.md`'s Producer Pointer-Rule Invariant — an instruction file must never duplicate or paraphrase another file's format-contract content, only point at it — against the design doc and the skill both carrying the same rule text.
+  Resolved in favor of the skill as the source, not the design doc, because the skill is the artifact an agent actually loads at runtime;
+  the design doc lives under `manifest/designs/` in this repo only and won't exist at all in another repo that installs the `scribe` plugin, so making it the canonical source would leave the skill non-self-contained everywhere else it ships.
+- Rejected: making the design doc canonical and the skill a bare pointer — would break the skill's portability, a worse failure than the duplication the invariant guards against.
+
 ## Technical context
 
-- Plugin lives at `plugins/scribe/`, mirroring `plugins/prowler/`'s shape: `.claude-plugin/plugin.json`, `settings.json` (granting `Skill(scribe:*)`), `skills/<name>/SKILL.md` per skill, `skills/INDEX.md`.
+- Plugin lives at `plugins/scribe/`, mirroring `plugins/prowler/`'s shape: `.claude-plugin/plugin.json`, `settings.json` (granting `Skill(scribe:*)`), `hooks/hooks.json` (the always-active nudge, see Decisions), `skills/<name>/SKILL.md` per skill, `skills/INDEX.md`.
 - Registered in `.claude-plugin/marketplace.json` alongside `prowler`.
-- `update-plugins.sh` confirmed the wiring is correct — it reports `Skipped (not installed): scribe@loomyard -- run '/plugin install scribe@loomyard' first`, which is the expected state;
-  installing it into a live Claude Code environment is a manual operator step outside this task.
+- `update-plugins.sh --dry-run`-equivalent check: it reports `Skipped (not installed): scribe@loomyard -- run '/plugin install scribe@loomyard' first`.
+  That line alone proves only that `marketplace.json` parses and names `scribe` — the script's not-installed branch returns before it ever touches `plugins/scribe/`'s own contents, so it validates nothing about the plugin's shape.
+  A separate, real structural check was run instead (see Scope's "Already in the worktree" for what it covers) and passed;
+  installing the plugin into a live Claude Code environment (`/plugin install scribe@loomyard`) remains a manual operator step outside this task.
 - Cross-references between skills: `golang-comments` → `code-quality`'s Comments section;
   `golang-testing` → `testing` (a same-plugin reference, replacing millhouse's cross-plugin `@code:testing` textual pointer, since everything here lands in one plugin);
   `conversation` → `prose`;
   `code-quality`'s Comments section → `prose` for writing style.
 - A separate, unrelated future plugin — "everything needed to use loomyard" (a compiled `lyx` binary, stencils, a handful of skills) — was discussed in passing as a different, not-yet-built plugin, naming leaning toward `lyxsmith`/`lyxkit` but not finalized.
   It is out of scope here; don't conflate it with `scribe`.
-- `manifest/designs/code-comment-conventions.md`'s status line now points at `scribe`'s `code-quality`/`golang-comments` skills as the implementation.
-- No stencil/producer wiring exists yet — "load these skills" instructions in loom's own prompts are a separate, later roadmap item, out of scope here.
+- `manifest/designs/code-comment-conventions.md` now points at `code-quality`'s Comments section as the canonical rule text rather than duplicating it — see Decisions.
+- No producer-stencil wiring exists yet — "load these skills" instructions in loom's own prompts are a separate, later roadmap item, out of scope here;
+  `hooks/hooks.json` covers default-loading for every other context in the meantime.
 
 ## Constraints
 
@@ -154,10 +185,15 @@ No new CONSTRAINTS.md entry is needed.
 
 ## Testing
 
-Not applicable in the executable-code sense — the deliverable is prose/markdown skill content.
-"Testing" here means content review: each skill file should be read against its own stated rules (does `code-quality.md` avoid padding by its own standard?
+Two different senses, since the deliverable is mostly prose/markdown skill content, not executable code.
+
+**Content review:** each skill file read against its own stated rules (does `code-quality.md` avoid padding by its own standard?
 does `golang-comments.md` avoid restating `code-quality`?).
-This was done iteratively during discussion, including two dedicated trim passes on `golang-comments` and one orchestrator-relayed review pass that caught a genuine logic bug (the file-header exception).
+Done iteratively during discussion, including two dedicated trim passes on `golang-comments` and this task's own discussion-review round, which caught the file-header logic bug, the always-active gap, the Pointer-Rule Invariant violation, and the other findings resolved in Decisions above.
+
+**Structural verification:** a real check (not just `update-plugins.sh`'s marketplace-JSON parse) confirming `plugin.json`/`settings.json`/`hooks.json` all parse, every skill's frontmatter `name` matches its directory, `INDEX.md` lists all seven skills, and `marketplace.json`'s `scribe` entry points at the right source path.
+Passed at time of writing;
+no persisted test script was added for this — it was a one-time check, not a mechanical gate this task decided the repo needs going forward.
 
 ## Review guidance
 
@@ -171,6 +207,9 @@ For whoever reviews this discussion and the linked skill files (`plugins/scribe/
 
 ## Q&A log
 
+- **Q:** Should implementation (the plugin scaffold, marketplace entry) happen before or after this discussion.md is written?
+  **A:** Before, on explicit operator instruction ("do all the rest, then write discussion.md") — the reverse of mill-start's usual order, where discussion normally precedes and gates implementation.
+  This is why Scope is split into "already in the worktree" versus "still to do" rather than reading as a pre-implementation plan.
 - **Q:** Does the file-header exception apply to any small file, or only the sole file in a package?
   **A:** Only the sole file in a package — size was never the actual test;
   a small file sharing a package with siblings still needs its own header.

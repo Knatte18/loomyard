@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Load the scribe:prose skill now, before responding -- it governs the style of everything you write this turn: chat replies, markdown, code comments, docstrings. If this turn includes a chat reply, load scribe:conversation too.'"
+          }
+        ]
+      }
+    ]
+  }
+}

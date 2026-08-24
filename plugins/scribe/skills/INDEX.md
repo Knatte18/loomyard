@@ -10,4 +10,9 @@
 | [golang-build](golang-build/SKILL.md) | Build and test commands for Go. Use after completing a task. |
 | [golang-testing](golang-testing/SKILL.md) | Testing conventions for Go projects. Use when writing tests. |
 
-`prose` and `conversation` are marked always-active by convention: any skill in this plugin that produces user-facing text should load `prose` first (and `conversation` too, if the text is a chat reply), the same way `mill-start` loads `mill:conversation` unconditionally as its own first step. Which skills in a future orchestration layer count as that entry point is not yet decided — see `discussion.md` for this task.
+`prose` and `conversation` are always-active through two distinct mechanisms, depending on context:
+
+- **By default, for any session with this plugin installed:** `hooks/hooks.json` ships a `UserPromptSubmit` hook that injects an instruction to load `scribe:prose` (and `scribe:conversation` for a chat reply) before each response — the same mechanism this very instruction relies on to reach you.
+  This is a strong nudge, not a platform-enforced guarantee: the hook can only inject text asking the agent to load the skill, it cannot force-load it.
+- **Inside a lyx-generated prompt** (a loom producer stencil, or any prompt lyx itself writes): the stencil carries an explicit "Load these skills: ..." line naming the relevant skills directly, the same way `mill-start` loads `mill:conversation` unconditionally as its own first step.
+  This wiring is a separate, later roadmap item ("loom: Discussion-Write producer") — not yet built.
