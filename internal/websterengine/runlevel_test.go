@@ -309,6 +309,36 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 	return &runFixture{Deps: deps, Reed: reed, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
 }
 
+// addCardUses rewrites an already-seeded card file under planDir — one of seedRunPlanDir's own
+// "%02d-batch%d.md" files — to carry a "**Uses:**" field naming ref, modelled on
+// integration_test.go's own appendIntegrationVerify: read the file, splice the field in, write it
+// back. Inserted ahead of the card's own "**Intent:**" line, which every seedRunPlanDir card
+// carries.
+// A path-shaped ref this points at another card's Create target is already satisfied by
+// planparser.Validate's own createTargetsUnion check within the same plan, but a caller that wants
+// the ref to also resolve on disk (mirroring a real cross-card file dependency) must still create it
+// under the fixture's own worktree — this helper only edits the plan-format text.
+func addCardUses(t *testing.T, planDir string, cardNumber int, ref string) {
+	t.Helper()
+	slug := fmt.Sprintf("batch%d", cardNumber)
+	path := filepath.Join(planDir, fmt.Sprintf("%02d-%s.md", cardNumber, slug))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read card fixture %s: %v", path, err)
+	}
+	const marker = "\n**Intent:**"
+	body := string(data)
+	idx := strings.Index(body, marker)
+	if idx == -1 {
+		t.Fatalf("card fixture %s carries no **Intent:** marker to splice **Uses:** ahead of", path)
+	}
+	usesBlock := fmt.Sprintf("\n**Uses:**\n- `%s`\n", ref)
+	newBody := body[:idx] + usesBlock + body[idx:]
+	if err := os.WriteFile(path, []byte(newBody), 0o644); err != nil {
+		t.Fatalf("write card fixture with Uses: %v", err)
+	}
+}
+
 // seedMatchingState saves st into fx's webster dir after stamping its
 // PlanFingerprint to match fx's own on-disk plan directory (and defaulting
 // its Batches map when nil), so Run's own fingerprint gate passes and the
@@ -1096,5 +1126,165 @@ func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("RunResult.Warnings = %v; want one explaining the unlocalized failure (no fabric repo to bisect against)", result.Warnings)
+	}
+}
+
+// runToDone drives fx's Run to a done outcome with the given ForkAudit forks, scripting
+// outcome.yaml/summary.md the same way TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult
+// does, and returns the RunResult.
+func runToDone(t *testing.T, fx *runFixture, strandGUID, sessionID string, forks []shuttleengine.ForkReport, batchesDone int) websterengine.RunResult {
+	t.Helper()
+
+	handle := &runFakeHandle{
+		strandGUID: strandGUID,
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: sessionID,
+			RunDir:    "/run/dir/" + sessionID,
+			ForkAudit: &shuttleengine.ForkAudit{Forks: forks},
+		},
+		onWait: func() {
+			outcome := fmt.Sprintf("outcome: done\nstuck_reason: null\nbatches_done: %d\n", batchesDone)
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte(outcome), 0o644); err != nil {
+				t.Fatalf("write outcome.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
+				t.Fatalf("write summary.md: %v", err)
+			}
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, strandGUID, sessionID)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	return result
+}
+
+// TestRun_ReorderingIsObservableInMasterPrompt proves card 4's sequencing is load-bearing on the
+// prompt Run hands Master: a two-card fixture where card 1 Uses card 2's own Create target makes
+// batch 2 the execution predecessor of batch 1, so the rendered Master prompt's {{.batch_index}}
+// region lists batch 02 above batch 01.
+func TestRun_ReorderingIsObservableInMasterPrompt(t *testing.T) {
+	fx := newRunFixture(t, 2)
+
+	// Card 1 Uses card 2's own Create target, so batch 2 must run before
+	// batch 1. The path is a Create target of card 2 within the same plan
+	// (satisfied by planparser's own createTargetsUnion check), but this also
+	// creates the file for real under the worktree, mirroring a genuine
+	// cross-card file dependency.
+	addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
+	if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "batch2"), 0o755); err != nil {
+		t.Fatalf("mkdir internal/batch2: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "batch2", "new.go"), []byte("package batch2\n"), 0o644); err != nil {
+		t.Fatalf("seed internal/batch2/new.go: %v", err)
+	}
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	runToDone(t, fx, "master-strand-reorder", "master-session-reorder", []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+	}, 2)
+
+	if fx.Starter.callCount() != 1 {
+		t.Fatalf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
+	}
+	prompt := fx.Starter.startCalls[0].Prompt
+	idx02 := strings.Index(prompt, "02 — batch2")
+	idx01 := strings.Index(prompt, "01 — batch1")
+	if idx02 == -1 || idx01 == -1 || idx02 >= idx01 {
+		t.Errorf("rendered Master prompt does not list batch 02 above batch 01: idx02=%d idx01=%d\n%s", idx02, idx01, prompt)
+	}
+}
+
+// TestRun_CycleReportingSurfacesOnRunResultButNeverFails proves a dependency cycle between two
+// batches is condensed, reported on RunResult.Cycles, and surfaced as a warning — while the run
+// still reaches its ordinary done outcome, since a cycle is never fatal and never changes the exit
+// path.
+func TestRun_CycleReportingSurfacesOnRunResultButNeverFails(t *testing.T) {
+	fx := newRunFixture(t, 2)
+
+	// Card 1 Uses card 2's target and card 2 Uses card 1's target: a mutual
+	// dependency SequenceBatches condenses into one cycle.
+	addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
+	addCardUses(t, fx.PlanDir, 2, "internal/batch1/new.go")
+	for _, slug := range []string{"batch1", "batch2"} {
+		dir := filepath.Join(fx.Worktree, "internal", slug)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir internal/%s: %v", slug, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "new.go"), []byte("package "+slug+"\n"), 0o644); err != nil {
+			t.Fatalf("seed internal/%s/new.go: %v", slug, err)
+		}
+	}
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	result := runToDone(t, fx, "master-strand-cycle", "master-session-cycle", []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+	}, 2)
+
+	if result.Outcome != "done" {
+		t.Errorf("RunResult.Outcome = %q; want %q (a cycle is never fatal)", result.Outcome, "done")
+	}
+	if len(result.Cycles) != 1 {
+		t.Fatalf("RunResult.Cycles = %v; want exactly 1 cycle", result.Cycles)
+	}
+	if got := result.Cycles[0].Batches; len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Errorf("RunResult.Cycles[0].Batches = %v; want [1 2]", got)
+	}
+
+	wantWarning := result.Cycles[0].Warning()
+	found := false
+	for _, w := range result.Warnings {
+		if w == wantWarning {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RunResult.Warnings = %v; want the cycle's own Warning() line %q", result.Warnings, wantWarning)
+	}
+}
+
+// TestRun_AcyclicPlanReportsNoCycles proves the common case: an unmodified newRunFixture plan,
+// whose cards reference nothing of each other's, produces an empty RunResult.Cycles and adds no
+// sequencing warning.
+func TestRun_AcyclicPlanReportsNoCycles(t *testing.T) {
+	fx := newRunFixture(t, 2)
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	result := runToDone(t, fx, "master-strand-acyclic", "master-session-acyclic", []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+	}, 2)
+
+	if len(result.Cycles) != 0 {
+		t.Errorf("RunResult.Cycles = %v; want empty for an acyclic plan", result.Cycles)
+	}
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "dependency cycle") {
+			t.Errorf("RunResult.Warnings = %v; want no sequencing-cycle warning for an acyclic plan", result.Warnings)
+		}
 	}
 }

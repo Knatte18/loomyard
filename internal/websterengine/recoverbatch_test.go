@@ -93,6 +93,7 @@ var _ shuttleengine.ReedOps = (*recoverFakeReed)(nil)
 type recoverFakeEngine struct {
 	mu           sync.Mutex
 	prepareCalls int
+	lastPrompt   string
 	events       []shuttleengine.Event
 	eventsErr    error
 }
@@ -101,6 +102,7 @@ func (e *recoverFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.prepareCalls++
+	e.lastPrompt = spec.Prompt
 	return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: "fake-session"}, nil
 }
 
@@ -138,6 +140,15 @@ func (e *recoverFakeEngine) prepareCallCount() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.prepareCalls
+}
+
+// lastPromptText returns the Spec.Prompt text of the most recent Prepare call, the recovery
+// prompt RecoverSpawnOrAttach rendered and handed to the (fake) provider — the only place this
+// fixture ever sees that prompt's bytes, since the fake Prepare never writes prompt.md to disk.
+func (e *recoverFakeEngine) lastPromptText() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.lastPrompt
 }
 
 // recoverFakeClock is a package-local, scriptable clock double: Now starts
@@ -584,6 +595,71 @@ func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	if _, statErr := os.Stat(runDir); statErr != nil {
 		t.Errorf("stat(%s) = %v; want the dead-classified run dir kept", runDir, statErr)
 	}
+}
+
+// TestRecoverSpawnOrAttach_PredecessorDigestFollowsExecutionOrder proves RecoverSpawnOrAttach's
+// recovery prompt carries the execution predecessor's digest rather than the batchNumber-1
+// batch, and that the batch sitting first in execution order renders the no-previous-digest
+// sentinel regardless of its own number — the same execution-predecessor semantics card 5 proved
+// for BeginBatch, mirrored here for the recovery path.
+func TestRecoverSpawnOrAttach_PredecessorDigestFollowsExecutionOrder(t *testing.T) {
+	t.Run("predecessor is the batch that actually ran before it", func(t *testing.T) {
+		fx := newRecoverFixture(t)
+		// Batch 2 (list-tests) runs before batch 1 (json-flag) in execution
+		// order, even though batch 1's declared number is lower.
+		fx.Deps.Batches = []batcher.Batch{
+			{Cards: []planparser.Card{{Number: 2, Slug: "list-tests", Title: "list-tests", Intent: "list the tests"}}},
+			{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
+		}
+		fx.Deps.State.Batches[2] = &websterengine.BatchState{
+			Slug:     "list-tests",
+			Terminal: true,
+			Status:   "done",
+			Digest: &websterengine.Digest{
+				Batch:   "02-list-tests",
+				Status:  websterengine.DigestStatusDone,
+				HeadSHA: "cafef00d",
+			},
+		}
+
+		clk := &recoverFakeClock{now: time.Unix(0, 0)}
+		_, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+		if err != nil {
+			t.Fatalf("RecoverSpawnOrAttach() error = %v; want nil", err)
+		}
+		if !spawned {
+			t.Fatal("RecoverSpawnOrAttach() spawned = false; want true")
+		}
+
+		prompt := fx.Engine.lastPromptText()
+		for _, want := range []string{"02-list-tests", "head_sha=cafef00d"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("recovery prompt does not contain %q; got:\n%s", want, prompt)
+			}
+		}
+	})
+
+	t.Run("the batch sitting first renders the sentinel regardless of its number", func(t *testing.T) {
+		fx := newRecoverFixture(t)
+		fx.Deps.Batches = []batcher.Batch{
+			{Cards: []planparser.Card{{Number: 2, Slug: "list-tests", Title: "list-tests", Intent: "list the tests"}}},
+			{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
+		}
+
+		clk := &recoverFakeClock{now: time.Unix(0, 0)}
+		_, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 2, clk)
+		if err != nil {
+			t.Fatalf("RecoverSpawnOrAttach() error = %v; want nil", err)
+		}
+		if !spawned {
+			t.Fatal("RecoverSpawnOrAttach() spawned = false; want true")
+		}
+
+		prompt := fx.Engine.lastPromptText()
+		if !strings.Contains(prompt, "none (first batch)") {
+			t.Errorf("recovery prompt does not contain the first-batch sentinel; got:\n%s", prompt)
+		}
+	})
 }
 
 // TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh proves the spawn-or-attach decision spawns

@@ -161,6 +161,10 @@ type RunResult struct {
 	// shape and contract: a nil OpenBisector's unlocalized-failure notice is
 	// the one warning this stage currently produces.
 	Warnings []string
+	// Cycles carries every non-trivial strongly-connected component
+	// SequenceBatches condensed for this run — always informational, never
+	// a failure, and empty for the overwhelmingly common acyclic plan.
+	Cycles []Cycle
 }
 
 // newRunGUID returns a 128-bit random identifier, hex-encoded, generated
@@ -340,10 +344,20 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
 	// webster's own pre-flight over the batchifier's own output, per
-	// discussion.md's run-verb-shape decision.
+	// discussion.md's run-verb-shape decision. This refusal runs against the
+	// batchifier's own output, still naming the batchifier, because
+	// SequenceBatches below is length-preserving and can neither create nor
+	// remove this condition.
 	if len(batches) == 0 {
 		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.Geom.PlanDir)
 	}
+
+	// Re-bind batches through the sequencer: every later use in this
+	// function (the Master prompt, mapMasterDone, runIntegrationStage) then
+	// sees the derived execution order rather than the batchifier's own
+	// declared order.
+	var cycles []Cycle
+	batches, cycles = SequenceBatches(batches)
 
 	fingerprint, err := fingerprint(deps.Geom.PlanDir)
 	if err != nil {
@@ -480,7 +494,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
-	prompt, err := RenderMasterPrompt(plan, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -555,6 +569,22 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
 		if mapErr != nil {
 			return RunResult{}, mapErr
+		}
+		// Cycles are always informational: prepend one warning per cycle
+		// ahead of the integration stage's own per-failure warnings below,
+		// so the sequencing observations, which describe the whole run,
+		// read first. Non-done outcomes (asking/died/timeout) return an
+		// error rather than a RunResult, so a cycle observed on a run that
+		// ends stuck/paused/died reaches the operator through that error
+		// path's own message rather than through Cycles — an accepted,
+		// stated limitation, not an oversight.
+		runResult.Cycles = cycles
+		if len(cycles) > 0 {
+			cycleWarnings := make([]string, len(cycles))
+			for i, c := range cycles {
+				cycleWarnings[i] = c.Warning()
+			}
+			runResult.Warnings = append(cycleWarnings, runResult.Warnings...)
 		}
 		// The integration-suite stage is a minimal call-site addition at the
 		// end of the run, not a rewrite of the batch loop above: it re-derives
@@ -868,7 +898,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	return warnings, nil
 }
 
-// accumulatedCardSHAs walks batches in plan order and collects every
+// accumulatedCardSHAs walks batches in execution order and collects every
 // terminal batch's own CardSHAs alongside a matching "NN-slug" label — the
 // ordered per-card SHA trail and parallel label set bisect and its
 // escalation search over. A batch with no persisted record (should never

@@ -463,6 +463,64 @@ func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 			t.Errorf("PromptPath dir = %q; want %q", filepath.Dir(result.PromptPath), fx.PromptDir)
 		}
 	})
+
+	t.Run("reordered execution: predecessor is the batch that actually ran before it", func(t *testing.T) {
+		fx := newBeginFixture(t)
+		// Batch 2 (list-tests) runs before batch 1 (json-flag) in execution
+		// order, even though batch 1's declared number is lower.
+		fx.Deps.Batches = []batcher.Batch{
+			beginCard(2, "list-tests"),
+			beginCard(1, "json-flag"),
+		}
+		fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+			2: {
+				Slug:     "list-tests",
+				Terminal: true,
+				Status:   "done",
+				Digest: &websterengine.Digest{
+					Batch:   "02-list-tests",
+					Status:  websterengine.DigestStatusDone,
+					HeadSHA: "cafef00d",
+				},
+			},
+		}
+
+		result, err := websterengine.BeginBatch(fx.Deps, 1)
+		if err != nil {
+			t.Fatalf("BeginBatch() error = %v; want nil", err)
+		}
+		data, err := os.ReadFile(result.PromptPath)
+		if err != nil {
+			t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
+		}
+		for _, want := range []string{"02-list-tests", "head_sha=cafef00d"} {
+			if !strings.Contains(string(data), want) {
+				t.Errorf("prompt file does not contain %q; got:\n%s", want, data)
+			}
+		}
+	})
+
+	t.Run("reordered execution: the batch sitting first renders the sentinel regardless of its number", func(t *testing.T) {
+		fx := newBeginFixture(t)
+		// Same reordering as above: batch 2 sits first in execution order, so
+		// it renders the first-batch sentinel even though its number is not 1.
+		fx.Deps.Batches = []batcher.Batch{
+			beginCard(2, "list-tests"),
+			beginCard(1, "json-flag"),
+		}
+
+		result, err := websterengine.BeginBatch(fx.Deps, 2)
+		if err != nil {
+			t.Fatalf("BeginBatch() error = %v; want nil", err)
+		}
+		data, err := os.ReadFile(result.PromptPath)
+		if err != nil {
+			t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
+		}
+		if !strings.Contains(string(data), "none (first batch)") {
+			t.Errorf("prompt file does not contain the first-batch sentinel; got:\n%s", data)
+		}
+	})
 }
 
 // TestBeginBatch_StateUpdated proves BeginBatch mutates State exactly as documented: CurrentBatch

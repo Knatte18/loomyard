@@ -47,6 +47,8 @@ type Clock interface {
 
 // RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config,
 // Engine, Reed, ShuttleCfg, and Geom, the told Geometry every path is read from.
+// Batches is the sequenced execution order (SequenceBatches); predecessorDigestLine's lookup
+// depends on Batches already being in that order.
 type RecoverDeps struct {
 	Starter    Starter
 	Plan       *planparser.Plan
@@ -211,12 +213,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		return prior, false, nil
 	}
 
-	var prevDigest string
-	if batchNumber > 1 {
-		if prev, ok := deps.State.Batches[batchNumber-1]; ok && prev != nil {
-			prevDigest = digestSummaryLine(prev.Digest)
-		}
-	}
+	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)
 
 	fresh, err := recoverSpawn(deps, batch, prior, prevDigest, clk)
 	if err != nil {

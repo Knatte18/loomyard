@@ -2,8 +2,8 @@
 // implementer loop: instead of spawning a fresh reed/tmux strand per batch, one long-lived Master
 // session reads the codebase and the whole plan once, then forks one implementer
 // per execution batch in-session (Claude Code's Agent tool, subagent_type "fork"),
-// sequentially,
-// in the plan's declared card order. websterengine holds no loop itself —
+// sequentially — one fork at a time, one worktree — in an order sequence.go derives from the
+// cards' own declared dependencies, not the plan's declared order. websterengine holds no loop itself —
 // the loop is the Master session driving fat `lyx webster` verbs
 // (internal/webstercli); this package provides only those verbs' logic plus
 // the distillation behind them.
@@ -35,26 +35,26 @@
 // which happens to coincide with card number today; a future grouping
 // batchifier changes that coincidence, not this package's contract.
 //
-// # Declared order now, a dead DAG seam for later
+// # Execution order is derived, not declared
 //
-// Cards — and so batches — run strictly in the plan's declared order; there
-// is no dependency graph, no cycle detection, and no strongly-connected-
-// component merging in v0. The eventual scheduler is written with the
-// conditional branch already in place even though only one arm is live:
-//
-//	if card.HasSymbolFields() {
-//	    // Mechanism 1: DAG from plan-internal cross-matching (dead code
-//	    // until quarry lands and a planner starts populating symbol
-//	    // fields)
-//	} else {
-//	    // v0: declared order
-//	}
-//
-// HasSymbolFields() is unreachable in v0 — the Wave 3 roadmap item
-// (webster: DAG-derived card sequencing) is what activates this seam,
-// not a card-model gap — so this costs nothing today and turns the
-// eventual quarry-driven rollout into "the planner starts populating
-// fields," never a webster code change.
+// sequence.go's SequenceBatches derives edges from Targets/Uses ref matching across the plan's
+// cards — a Uses entry naming another card's Targets entry orders the producer before the
+// consumer, and two cards writing the same Targets entry settle by declared card number — then
+// condenses every strongly-connected component it finds and returns a deterministic topological
+// order plus the cycles it condensed. A cycle is reported, never fatal: SequenceBatches keeps
+// every cycle's member batches together, in declared order, and hands the caller both the
+// reordered slice and the []Cycle it condensed. An already dependency-correct plan sequences to
+// exactly its declared order, so this is a strict superset of the old declared-order behavior, not
+// a divergent one. Sequencing is unconditional — there is no config key and no opt-in — which is
+// why every batch-computation site must sequence: Run plus each of the four internal/webstercli
+// bracket verbs (begin-batch, await-batch, record-batch, recover-batch) call SequenceBatches over
+// the batchifier's own output before doing anything else with the result, so all five agree on one
+// order by construction. The previous-digest lookup in beginbatch.go/recoverbatch.go
+// (predecessorDigestLine) depends on that ordering: it reads whichever batch actually sits
+// immediately before the target batch in the sequenced slice, not the batch one number lower.
+// internal/batcher still owns grouping (which cards land in the same batch, per the Batcher
+// Registry+Config Invariant); this package owns only the sequencing of the batches a batchifier
+// already returned — SequenceBatches reorders, never regroups.
 //
 // # Fork-return contract: OK/FAILED, a head SHA, an informational deviation list
 //
@@ -248,7 +248,7 @@
 // logarithmic, not linear, re-runs. BisectAndEscalate then records that
 // localized finding as a terminal, non-successful entry in State.Batches
 // under the reserved key -1 (RecordIntegrationFailure — never a real plan
-// card number, so RenderProgress's walk over positive card numbers can
+// card number, so RenderProgress's walk over batch numbers, which are equally positive, can
 // never surface it by accident) and extends summary.md naming the
 // offending card (AppendIntegrationFailure). A Master claiming outcome: done
 // over a FAILED suite is then fail-loud after that escalation — symmetric

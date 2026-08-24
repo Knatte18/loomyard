@@ -472,6 +472,22 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "never end your turn")
 }
 
+// TestMasterTemplate_OrderingRuleMeansListedOrderNotAscendingNumber asserts the reworded
+// card-list ordering instruction: "Drive it STRICTLY in order" still appears verbatim, the
+// template now states the order is the listed one rather than ascending batch number, the
+// skip/reorder prohibition still appears, and neither retired clause remains.
+func TestMasterTemplate_OrderingRuleMeansListedOrderNotAscendingNumber(t *testing.T) {
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+
+	requireContains(t, text, "Drive it STRICTLY in order")
+	requireContains(t, text, "the order listed above, top to bottom")
+	requireContains(t, text, "NOT necessarily ascending batch number")
+	requireContains(t, text, `no batch is ever skipped or reordered because it "looks independent."`)
+
+	requireNotContains(t, text, "there is no DAG here to reorder around")
+	requireNotContains(t, text, "batch N assumes every batch before it is already committed")
+}
+
 // TestMasterTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of
 // MasterTemplate's seven required markers plus the optional pattern_directive marker is supplied,
 // and fails — naming the marker — when any single REQUIRED one is absent.
@@ -853,10 +869,10 @@ func TestRenderRecoveryPrompt_MissingPatternStencilErrors(t *testing.T) {
 // stencils are absent, rather than dropping the error the hoist out of the map literal made
 // checkable in the first place.
 func TestRenderMasterPrompt_MissingPatternStencilErrors(t *testing.T) {
-	plan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "seam-extensions"}}}
+	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
 	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
 
-	if _, err := websterengine.RenderMasterPrompt(plan, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, anchorRoot, stencilsDir); err == nil {
+	if _, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, anchorRoot, stencilsDir); err == nil {
 		t.Fatal("RenderMasterPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
 	}
 }
@@ -932,9 +948,9 @@ func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) 
 // fills no {{.worktree_root}} key, and webster-template-master must never gain the token.
 func TestRenderMasterPrompt_NeverFillsWorktreeRoot(t *testing.T) {
 	anchorRoot, stencilsDir := testLayout(t)
-	plan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "seam-extensions"}}}
+	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
 
-	got, err := websterengine.RenderMasterPrompt(plan, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, anchorRoot, stencilsDir)
+	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, anchorRoot, stencilsDir)
 	if err != nil {
 		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
 	}
@@ -1082,18 +1098,16 @@ func TestMasterTemplate_MissingBoardIsAHardError(t *testing.T) {
 // omitting any batch with no BatchState entry yet or one recorded but not yet terminal — never
 // re-parsing a report file, only ever reading the persisted record.
 func TestRenderProgress_ListsOnlyTerminalBatches(t *testing.T) {
-	plan := &planparser.Plan{
-		Cards: []planparser.Card{
-			{Number: 1, Slug: "seam-extensions"},
-			{Number: 2, Slug: "webster-foundation"},
-			{Number: 3, Slug: "webster-audit-policy"},
-			{Number: 4, Slug: "webster-templates"},
-		},
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}},
+		{Cards: []planparser.Card{cardWithSourcePath(2, "webster-foundation", "add the foundation")}},
+		{Cards: []planparser.Card{cardWithSourcePath(3, "webster-audit-policy", "add the audit policy")}},
+		{Cards: []planparser.Card{cardWithSourcePath(4, "webster-templates", "add the templates")}},
 	}
 
 	t.Run("nil state renders none", func(t *testing.T) {
-		if got := websterengine.RenderProgress(plan, nil); got != "none" {
-			t.Errorf("RenderProgress(plan, nil) = %q; want %q", got, "none")
+		if got := websterengine.RenderProgress(batches, nil); got != "none" {
+			t.Errorf("RenderProgress(batches, nil) = %q; want %q", got, "none")
 		}
 	})
 
@@ -1101,8 +1115,8 @@ func TestRenderProgress_ListsOnlyTerminalBatches(t *testing.T) {
 		st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "seam-extensions", Terminal: false},
 		}}
-		if got := websterengine.RenderProgress(plan, st); got != "none" {
-			t.Errorf("RenderProgress(plan, st) = %q; want %q", got, "none")
+		if got := websterengine.RenderProgress(batches, st); got != "none" {
+			t.Errorf("RenderProgress(batches, st) = %q; want %q", got, "none")
 		}
 	})
 
@@ -1115,8 +1129,69 @@ func TestRenderProgress_ListsOnlyTerminalBatches(t *testing.T) {
 		}}
 
 		want := "01-seam-extensions: done\n02-webster-foundation: stuck"
-		if got := websterengine.RenderProgress(plan, st); got != want {
-			t.Errorf("RenderProgress(plan, st) = %q; want %q", got, want)
+		if got := websterengine.RenderProgress(batches, st); got != want {
+			t.Errorf("RenderProgress(batches, st) = %q; want %q", got, want)
 		}
 	})
+}
+
+// TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber asserts RenderBatchIndex emits one line
+// per batch in the slice's own order, not sorted by ascending batch number: handed a slice already
+// ordered 03, 01, 02, the rendered lines appear in that same order, each still carrying its own
+// batch number.
+func TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber(t *testing.T) {
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{cardWithSourcePath(3, "third", "do the third thing")}},
+		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
+		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
+	}
+
+	want := "03 — third — do the third thing\n01 — first — do the first thing\n02 — second — do the second thing"
+	if got := websterengine.RenderBatchIndex(batches); got != want {
+		t.Errorf("RenderBatchIndex(batches) = %q; want %q", got, want)
+	}
+}
+
+// TestRenderProgress_FollowsSliceOrderNotAscendingNumber asserts RenderProgress walks batches in
+// the slice's own order, not sorted by ascending batch number, against a state where all three
+// batches are terminal.
+func TestRenderProgress_FollowsSliceOrderNotAscendingNumber(t *testing.T) {
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{cardWithSourcePath(3, "third", "do the third thing")}},
+		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
+		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
+	}
+	st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		1: {Slug: "first", Terminal: true, Status: "done"},
+		2: {Slug: "second", Terminal: true, Status: "done"},
+		3: {Slug: "third", Terminal: true, Status: "done"},
+	}}
+
+	want := "03-third: done\n01-first: done\n02-second: done"
+	if got := websterengine.RenderProgress(batches, st); got != want {
+		t.Errorf("RenderProgress(batches, st) = %q; want %q", got, want)
+	}
+}
+
+// TestRenderMasterPrompt_ReflectsSequencedOrder asserts the {{.batch_index}} region of
+// RenderMasterPrompt's rendered output reflects the sequenced order it was handed, so the rendered
+// list and the verbs Master drives cannot diverge.
+func TestRenderMasterPrompt_ReflectsSequencedOrder(t *testing.T) {
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
+		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
+	}
+	anchorRoot, stencilsDir := testLayout(t)
+
+	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, anchorRoot, stencilsDir)
+	if err != nil {
+		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
+
+	idxSecond := strings.Index(text, "02 — second")
+	idxFirst := strings.Index(text, "01 — first")
+	if idxSecond == -1 || idxFirst == -1 || idxSecond >= idxFirst {
+		t.Errorf("rendered batch_index does not list batch 02 above batch 01: idxSecond=%d idxFirst=%d", idxSecond, idxFirst)
+	}
 }

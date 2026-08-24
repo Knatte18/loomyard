@@ -59,7 +59,9 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			batches := c.batcher.Batch(plan.Cards)
+			// Every batch-computation site sequences, so all five agree on
+			// one order by construction rather than by comment.
+			batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
 
 			// Default to a SHORT block (not poll_wait_s): await-batch runs as
 			// Master's foreground call, and Claude Code auto-backgrounds a

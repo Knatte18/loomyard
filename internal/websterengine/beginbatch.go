@@ -48,8 +48,9 @@ type Injector interface {
 
 // BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently: Plan is
 // the already-parsed plan;
-// Batches is the batchifier-derived execution batches (see RunDeps.Batcher) `run` computed
-// once at entry and threads through every bracket verb call;
+// Batches is the sequenced execution order (see RunDeps.Batcher and SequenceBatches) `run` computed
+// once at entry and threads through every bracket verb call — predecessorDigestLine's lookup
+// depends on Batches already being in that order;
 // State is the already-loaded run state BeginBatch reads and mutates;
 // Roles is the pre-flight-resolved role->model-spec map (see ResolveRoles);
 // Config is the loaded webster.yaml;
@@ -106,6 +107,38 @@ func digestSummaryLine(d *Digest) string {
 		line += fmt.Sprintf(" deviations=%s", strings.Join(d.Deviations, ","))
 	}
 	return line
+}
+
+// predecessorDigestLine renders the digest of whichever batch actually ran immediately before
+// batchNumber in execution order.
+// batches is required to already be in execution order — SequenceBatches at every call site
+// guarantees this; the old batchNumber-1 arithmetic this helper replaces was correct only while
+// the identity batchifier made batch number and execution position coincide.
+// It locates batchNumber's position in batches by batchIdentity, exactly as findBatch does, and
+// returns "" when the batch is absent from batches or sits at index 0 (nothing executed before
+// it), or when the predecessor's state entry or its digest is absent.
+// It tolerates a nil st and a nil st.Batches by returning "".
+func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) string {
+	idx := -1
+	for i, b := range batches {
+		if n, _ := batchIdentity(b); n == batchNumber {
+			idx = i
+			break
+		}
+	}
+	if idx <= 0 {
+		return ""
+	}
+	if st == nil || st.Batches == nil {
+		return ""
+	}
+
+	prevNumber, _ := batchIdentity(batches[idx-1])
+	prev, ok := st.Batches[prevNumber]
+	if !ok || prev == nil {
+		return ""
+	}
+	return digestSummaryLine(prev.Digest)
 }
 
 // BeginBatch drives one begin-batch call to completion, immediately before Master forks
@@ -173,12 +206,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	targetModel := resolved.Model
 
-	var prevDigest string
-	if batchNumber > 1 {
-		if prev, ok := deps.State.Batches[batchNumber-1]; ok && prev != nil {
-			prevDigest = digestSummaryLine(prev.Digest)
-		}
-	}
+	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)
 
 	batchName := fmt.Sprintf("%02d-%s", number, slug)
 	reportPath, err := filepath.Abs(filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug)))
