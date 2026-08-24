@@ -15,13 +15,7 @@ A 2026-08-23 discussion redesigned loom's own Discussion/Plan pipeline around sy
 
 **Wave 1:** complete — both items shipped, see Done below (**loom: redesign the Discussion format**, **loom: code-writing skills — comments, build, testing**).
 
-**Wave 2** (depends on Wave 1 landing):
-
-1. **planparser: Card-format migration to `Edits`/`Uses`** — replace `planparser.Card`'s file-op fields (`ContextFiles`/`EditsFiles`/`CreatesFiles`/`DeletesFiles`/`Moves`) with the new `Edits`/`Uses` shape from `designs/plan-card-format.md`, and update every direct consumer in `internal/websterengine` (rendering, report parsing, deviation-checking) to read the new fields. No behavior change — webster still executes strictly in declared plan order after this lands, same as today, just against the new field shape. Bounded, format-only migration; the two packages' changes land together since websterengine's field reads would not compile against the old shape otherwise. It is a hard prerequisite for both Wave 3 items below.
-   See [designs/plan-card-format.md](designs/plan-card-format.md).
-
-1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the new Discussion format (the Done **loom: redesign the Discussion format** item), instructing the agent to load the new code-writing skills (the Done **loom: code-writing skills — comments, build, testing** item) where it writes code. Expected to be small — the mechanical/Quarry layer now carries what used to be prompt content. Independent of the planparser migration above; grouped in this wave because it has no remaining blockers of its own, not because it depends on that item.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [designs/plan-card-format.md](designs/plan-card-format.md).
+**Wave 2:** complete — both items shipped, see Done below (**planparser: Card-format migration to `Edits`/`Uses`**, **loom: Discussion-Write producer**).
 
 **Wave 3** (depends on Wave 2's planparser migration landing):
 
@@ -371,7 +365,7 @@ No build order is implied between these items.
    `lyx loom validate-discussion` and `lyx loom validate-plan` shipped as zero-argument verbs on the existing `loom` subtree, each calling the exact function its `ShedProducer` row calls (`discussionparser.Validate`, `planparser.Validate` respectively), exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope under a `findings` key.
    A three-way parity test per gate now asserts the verb and the row agree across `Done`, `Stuck`, and returned-error.
    Two invariants were recorded in `CONSTRAINTS.md`: the Discussionparser Sole-Parser Invariant and the Gate Self-Check Parity Invariant.
-   No stencil under `contracts/stencils/loom/` was touched — instructing the writer agent to call these verbs belongs to the Planned `loom: Discussion-Write producer` and `loom: Plan-Write producer` items, which this item was sequenced ahead of precisely so the verbs would exist first.
+   No stencil under `contracts/stencils/loom/` was touched — instructing the writer agent to call these verbs belongs to the Done `loom: Discussion-Write producer` item and the Planned `loom: Plan-Write producer` item, which this item was sequenced ahead of precisely so the verbs would exist first.
    See the `internal/discussionparser` package documentation and [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
 1. **loom: code-writing skills — comments, build, testing** — shipped `scribe`, a new Claude Code plugin with eight skills at `plugins/scribe/skills/`.
