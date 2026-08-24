@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: webster-dag-card-sequencing
 branch: webster-dag-card-sequencing
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-24T17:13:14Z'
+discussion-fix-r1  '2026-08-24T18:12:33Z'
+discussed  '2026-08-24T18:12:33Z'
 ```

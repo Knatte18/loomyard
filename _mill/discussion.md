@@ -26,6 +26,7 @@ This task makes webster do that job.
 - Applying that sequencing at every site that computes execution batches, so all of webster's verbs and its Master prompt agree on one order.
 - Rendering Master's `{{.batch_index}}` in the sequenced execution order, and rewording `contracts/stencils/webster/webster-template-master.md` so "in order" unambiguously means "in the order listed", not "in ascending batch number".
 - Surfacing detected cycles (non-trivial SCCs) so a plan defect is visible rather than silently absorbed.
+- Correcting `beginbatch.go`'s and `recoverbatch.go`'s previous-digest lookup from `batchNumber-1` arithmetic to a true execution-predecessor lookup — the one existing site this task's reordering would otherwise silently break.
 - Tier1 unit tests for edge derivation, SCC condensation, ordering stability, and cross-call determinism;
   a render test proving `{{.batch_index}}` reflects the sequenced order;
   master-template property-test updates.
@@ -160,6 +161,19 @@ This task makes webster do that job.
   The cost is one pure function call per verb over an already-parsed plan.
 - Rejected: Applying it only in `Run` — cheaper, but leaves two different orderings live in the codebase with only a comment separating them.
 
+### digest-predecessor-lookup
+
+- Decision: Correct `beginbatch.go:178` and `recoverbatch.go:216`'s `deps.State.Batches[batchNumber-1]` to a genuine **execution-predecessor** lookup — the batch immediately preceding this one in the sequenced order — rather than the batch whose number is one lower.
+  This is the recommended default;
+  the plan may depart from it only if implementation turns up a concrete reason, and must then record that reason and the resulting accepted deviation explicitly.
+- Rationale: That lookup fetches "the previous batch's digest" to render into the next fork's prompt, and it is correct today only because the identity batchifier makes batch number and execution position coincide.
+  This task breaks that coincidence deliberately (see `producer-first-regardless-of-declared-position`), so on any reordered plan the arithmetic silently hands a fork the digest of a batch that has not run yet, or skips the one that just did.
+  Leaving it is not neutral: it converts a correct-by-coincidence lookup into a wrong one as a side effect of this change, which is this task's own regression to own rather than a pre-existing issue to defer.
+  The sequenced batch slice this task already computes makes the correct predecessor directly available, so the fix is small and local.
+  Note the two sites differ slightly — `beginbatch` renders the digest into a fork prompt, `recoverbatch` into a cold recovery prompt — but both want the same "what actually ran before this" answer, so both take the same correction.
+- Rejected: Leaving the arithmetic and documenting an accepted deviation — the deviation would be a wrong digest in an LLM's prompt, which fails silently and is close to undiagnosable from the outside.
+  Suppressing the previous-digest render entirely whenever the plan reorders — throws away working context for every batch in the plan to avoid fixing one lookup.
+
 ### no-planparser-change
 
 - Decision: `internal/planparser` is not modified. No new validation check for cycles, no exported ref classifier, no new `Card` field.
@@ -211,8 +225,7 @@ This task makes webster do that job.
 - `verifyEveryBatchDone` (`runlevel.go:655`) iterates batches to assert every one reached terminal-done. It is order-insensitive and needs no change, but it must still see the full batch set after sequencing — sequencing reorders, never filters.
 - `beginbatch.go:178` and `recoverbatch.go:216` read `deps.State.Batches[batchNumber-1]` to fetch "the previous batch's digest" for the next fork's prompt.
   **`batchNumber-1` is arithmetic on the card number, not the execution predecessor.** Under a reordering plan this fetches the wrong digest — the card numerically before it, not the batch that actually ran before it.
-  Deciding whether to correct this to a genuine execution-predecessor lookup is in scope for the plan;
-  it is the one place where reordering makes an existing correct-by-coincidence lookup wrong.
+  It is the one place where reordering makes an existing correct-by-coincidence lookup wrong, and the `digest-predecessor-lookup` decision above resolves it: correct both sites to a true execution-predecessor lookup.
 - `Run` refuses a zero-batch plan (`runlevel.go:344`). Sequencing must preserve that: it is length-preserving, and the plan should assert it.
 
 ## Constraints
@@ -296,7 +309,9 @@ Existing template property tests live in `internal/websterengine/template_test.g
 Add a property asserting the template tells Master to drive **the listed order** and still forbids skipping or self-directed reordering.
 
 **Digest-predecessor lookup.**
-If the plan corrects `beginbatch.go:178` / `recoverbatch.go:216`'s `batchNumber-1` arithmetic to a true execution-predecessor lookup, that needs its own test: a reordered plan where the execution predecessor's number is not `batchNumber-1`, asserting the correct digest is rendered into the fork prompt.
+Per the `digest-predecessor-lookup` decision, both sites are corrected to a true execution-predecessor lookup, and that correction needs its own test: a reordered plan where the execution predecessor's number is not `batchNumber-1`, asserting the correct digest is rendered into the fork prompt — and the same for `recoverbatch`'s cold recovery prompt.
+A first batch in execution order still has no predecessor and must render the no-previous-digest sentinel, which `TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty` already covers;
+that case must keep passing when the first executed batch is no longer batch 1.
 Existing `beginbatch_test.go` / `recoverbatch_test.go` coverage of the current behavior must be updated rather than left asserting the old arithmetic.
 
 **Regression surface to keep green:** `internal/websterengine`'s full untagged suite, `internal/batcher`'s suite (should be untouched), `cmd/lyx/tierpurity_test.go`, `cmd/lyx/hermeticenv_test.go`, and the markdown link-integrity test.
@@ -321,7 +336,8 @@ Existing `beginbatch_test.go` / `recoverbatch_test.go` coverage of the current b
 - **Q:** One `{{.batch_index}}` list in execution order, or a second `{{.execution_order}}` marker? **A:** [auto-pick] One list. **Why:** two orderings, one of which must be ignored, is exactly the confusion this task removes.
 - **Q:** Where is sequencing applied — only in `Run`, or at every batch-computation site? **A:** [auto-pick] Every site: `Run` plus the four `internal/webstercli` verbs, through one exported function. **Why:** defensive today (the verbs look up by number), but it makes "the batch list is always the sequenced one" true by construction rather than by comment.
 - **Q:** Does `internal/planparser` change — a cycle-detection validation check, an exported ref classifier? **A:** [auto-pick] No change at all. **Why:** the Planparser Sole-Parser Invariant scopes it to parsing, and a new mechanical gate would drag in the Gate Self-Check Parity Invariant's verb-plus-parity-test obligation for no stated need.
-- **Q:** `beginbatch.go:178` and `recoverbatch.go:216` fetch the previous digest with `State.Batches[batchNumber-1]`, which is arithmetic on the *card* number. Reordering makes that the wrong batch. Fix it here? **A:** [auto-pick] Flag it as in scope for the plan to decide and test. **Why:** it is the one existing lookup that is correct only by the batch-number/execution-order coincidence this task breaks, so it cannot be left unexamined — but whether the fix is a true execution-predecessor lookup or a documented accepted deviation is a plan-level call.
+- **Q:** `beginbatch.go:178` and `recoverbatch.go:216` fetch the previous digest with `State.Batches[batchNumber-1]`, which is arithmetic on the *card* number. Reordering makes that the wrong batch. Fix it here? **A:** [auto-pick] Yes — correct both sites to a true execution-predecessor lookup (see the `digest-predecessor-lookup` decision);
+  a departure is allowed only with a recorded reason. **Why:** this task is what breaks the batch-number/execution-order coincidence the lookup relies on, so the wrong digest would be this change's own regression, and it fails silently inside an LLM prompt where it is close to undiagnosable.
 - **Q:** Which docs land in the same commit? **A:** [auto-pick] `internal/websterengine/doc.go`, `contracts/specs/loom-plan-spec.md`, `docs/overview.md`, `manifest/roadmap.md` (item to Done + the Someday item's dependency pointer);
   check `contracts/specs/webster-spec.md`;
   explicitly **not** `manifest/designs/webster-parallel-execution.md`. **Why:** the Documentation Lifecycle requires it, and the roadmap assigns that stale design doc's reconciliation to the Someday worktree-per-card item, not this one.
