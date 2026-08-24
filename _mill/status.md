@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomcli-wiring
+phase: approved-stencil-prompt-and-docs
 slug: loom-plan-write-producer
 branch: loom-plan-write-producer
 plan: _mill/plan
@@ -27,6 +27,7 @@ implementing  '2026-08-24T18:47:12Z'
 approved-planparser-archive-name-and-loomshed-decorator  '2026-08-24T18:52:45Z'
 approved-shedrecipe-entry-and-recipe-row  '2026-08-24T19:01:40Z'
 approved-loomcli-wiring  '2026-08-24T19:04:10Z'
+approved-stencil-prompt-and-docs  '2026-08-24T19:09:11Z'
 ```
 
 ## Batches
@@ -52,8 +53,9 @@ batches:
     commit_sha: 922cb5ea1e3543c38d98f0b63868353bfb138902
     verify_baseline_failures: []
   - name: stencil-prompt-and-docs
-    state: running
+    state: approved
     implementer_session: 0fed305a-9514-40dd-b986-e976c5d426bb
     start_sha: c25eca8417ecce9e7edd330301177c1ac46c1bdd
+    commit_sha: f6ea756b583f877cbe6a113078606ba345b52a11
     verify_baseline_failures: []
 ```
