@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: webster-dag-card-sequencing
 branch: webster-dag-card-sequencing
 plan: _mill/plan
@@ -23,4 +23,17 @@ plan-fix-r1  '2026-08-24T18:35:12Z'
 plan-review-r2  '2026-08-24T18:43:49Z'
 plan-fix-r2  '2026-08-24T18:45:47Z'
 planned  '2026-08-24T18:45:56Z'
+implementing  '2026-08-24T18:46:24Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: sequencing core
+    state: pending
+  - name: wiring, render, and master template
+    state: pending
+  - name: docs
+    state: pending
 ```
