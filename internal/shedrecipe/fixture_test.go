@@ -73,7 +73,9 @@ type (
 // RunRoot, AnchorPath) is created with os.MkdirAll, while a file field (StatusPath,
 // StatusLockPath, DecisionRecordPath, SupportLogPath) is left as a joined path nobody creates. It
 // fills Shuttle, Burler, and WebsterRun with this file's fakes, fills WebsterDeps with the four
-// required seams non-nil and every other field left zero, leaves Landing zero, and leaves Now nil.
+// required seams non-nil and every other field left zero, fills DiscussionSpec with a closure
+// returning a shuttleengine.Spec over one absolute output path under the same temp root, fills
+// CommitDiscussion with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
 // No test in this package may reference a path outside its own t.TempDir(): a real repo path would
 // mask a told-geometry violation, which is the exact property this package's own Env validation
@@ -110,5 +112,13 @@ func newTestEnv(t *testing.T) Env {
 			Engine:     fakeShuttleEngine{},
 			RefMatcher: fakeRefMatcher{},
 		},
+		DiscussionSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "test discussion prompt",
+				OutputFiles: []string{filepath.Join(dir, "discussion-output.md")},
+				Interactive: false,
+			}, nil
+		},
+		CommitDiscussion: func() error { return nil },
 	}
 }

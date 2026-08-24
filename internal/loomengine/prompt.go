@@ -37,7 +37,7 @@ func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath string,
 // modeRules returns the {{.mode_rules}} block for autonomous or interactive mode.
 func modeRules(autonomous bool) string {
 	if autonomous {
-		return "This session is running in autonomous (`--auto`) mode: no operator will " +
+		return "This session is running autonomously: no operator will " +
 			"answer questions. For every decision point, make your own best-judgment " +
 			"choice and proceed — never block waiting for input, and never call the " +
 			"`AskUserQuestion` tool. Record each self-made pick and its rationale in the " +

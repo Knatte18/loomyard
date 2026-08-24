@@ -11,8 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -48,14 +51,34 @@ func seedLandingConfig(t *testing.T, anchorPath string) {
 	}
 }
 
+// seedDiscussionStencil writes stencils.LoomTemplateDiscussion's embedded bytes to
+// <hubPath>/<fabricengine.StencilsDir relative form>/loom/loom-template-discussion.md, creating the
+// parent directories first. This is the path hubgeom.WebsterGeometry's StencilsDir field actually
+// resolves to (fabricengine.StencilsDir(l.HubPath)), and it is what the DiscussionSpec closure
+// wire() builds actually reads: stencilstore.Read hard-errors on a missing file rather than falling
+// back to the embedded default, so without this seed the closure returns an error and every Spec
+// assertion below it is unreachable.
+func seedDiscussionStencil(t *testing.T, hubPath string) {
+	t.Helper()
+	loomDir := filepath.Join(fabricengine.StencilsDir(hubPath), "loom")
+	if err := os.MkdirAll(loomDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
+	}
+	cfgPath := filepath.Join(loomDir, "loom-template-discussion.md")
+	if err := os.WriteFile(cfgPath, stencils.LoomTemplateDiscussion, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and landing.yaml.
+// seeded on disk with loom.yaml and landing.yaml, and its hub seeded with the discussion stencil.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
 	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
 	seedLoomConfig(t, loc.AnchorPath())
 	seedLandingConfig(t, loc.AnchorPath())
+	seedDiscussionStencil(t, hub)
 	return loc
 }
 
@@ -276,5 +299,76 @@ func TestWire_LandingSeamFieldsPopulated(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c.landingCfg, want) {
 		t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
+	}
+}
+
+// TestWire_DiscussionSeamsFilled asserts c.env.Shuttle, c.env.DiscussionSpec, and
+// c.env.CommitDiscussion are each non-nil after wire(), and that c.env.Shuttle is the same
+// *shuttleengine.Runner value c.runner holds.
+func TestWire_DiscussionSeamsFilled(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.env.Shuttle == nil {
+		t.Error("c.env.Shuttle = nil; want a non-nil shedadapters.Shuttle")
+	}
+	if c.env.DiscussionSpec == nil {
+		t.Error("c.env.DiscussionSpec = nil; want a non-nil shedadapters.SpecSource")
+	}
+	if c.env.CommitDiscussion == nil {
+		t.Error("c.env.CommitDiscussion = nil; want a non-nil commit closure")
+	}
+	if c.env.Shuttle != c.runner {
+		t.Errorf("c.env.Shuttle = %v; want the same *shuttleengine.Runner value as c.runner = %v", c.env.Shuttle, c.runner)
+	}
+}
+
+// TestWire_DiscussionSpecEvaluatesToExpectedShape evaluates c.env.DiscussionSpec() once and asserts
+// on the returned shuttleengine.Spec's shape.
+func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	spec, err := c.env.DiscussionSpec()
+	if err != nil {
+		t.Fatalf("c.env.DiscussionSpec() = %v; want nil", err)
+	}
+
+	if spec.Interactive {
+		t.Error("spec.Interactive = true; want false (autonomous-only)")
+	}
+	if spec.Role != "discussion" {
+		t.Errorf("spec.Role = %q; want %q", spec.Role, "discussion")
+	}
+	wantTimeout := time.Duration(c.cfg.DiscussionTimeoutMin) * time.Minute
+	if spec.Timeout != wantTimeout {
+		t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
+	}
+	if spec.Model == "" {
+		t.Error("spec.Model = \"\"; want non-empty")
+	}
+
+	wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
+	if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
+		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
+	}
+
+	if spec.Prompt == "" {
+		t.Error("spec.Prompt = \"\"; want non-empty")
+	}
+	if strings.Contains(spec.Prompt, "{{") {
+		t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
 	}
 }

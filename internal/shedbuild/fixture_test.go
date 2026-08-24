@@ -122,8 +122,14 @@ func testLandingDeps(dir string) landingshed.Deps {
 // newTestEnv builds a shedrecipe.Env whose every path field is an absolute path derived from a
 // single t.TempDir(), one subdirectory per directory-valued field, and a joined-but-uncreated path
 // for each file-valued field, modelled on internal/shedrecipe/fixture_test.go's builder of the same
-// name. It additionally fills Env.Landing via testLandingDeps, because two of the twelve engines
-// need it, which its sibling in internal/shedrecipe does not do.
+// name. It fills the two per-producer DiscussionWrite seams the same way that sibling does -- a
+// DiscussionSpec closure returning a Spec over one absolute output path under the same temp root,
+// and a CommitDiscussion closure returning nil -- and additionally fills Env.Landing via
+// testLandingDeps, because two of the thirteen engines need it, which its sibling does not do.
+//
+// Every seam any registered engine requires non-nil must be filled here:
+// TestBuild_EveryRegisteredEngineBuilds drives its assertion off shedrecipe.Names(), so a new
+// registry entry with a new required Env seam fails that test until this builder covers it.
 //
 // No test in this package may reference a path outside its own t.TempDir(): a real repo path would
 // mask a told-geometry violation, which is the exact property this package's guard exists to catch.
@@ -159,7 +165,15 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 			Engine:     fakeShuttleEngine{},
 			RefMatcher: fakeRefMatcher{},
 		},
-		Landing: testLandingDeps(mustMkdir("landing")),
+		DiscussionSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "test discussion prompt",
+				OutputFiles: []string{filepath.Join(dir, "discussion-output.md")},
+				Interactive: false,
+			}, nil
+		},
+		CommitDiscussion: func() error { return nil },
+		Landing:          testLandingDeps(mustMkdir("landing")),
 	}
 }
 

@@ -2,7 +2,7 @@
 // buildable from a recipe given a sufficiently filled environment. It is deliberately not
 // filesystem-free: the bouncer and burler-round engines create the run directory they resolve, and
 // the bouncer and single-LLM engines eagerly read their configured stencil. Restricting the
-// assertion to the nine effect-free engines was rejected -- it would drop exactly the three
+// assertion to the ten effect-free engines was rejected -- it would drop exactly the three
 // engines whose config shapes are the most complex, which is the coverage most worth having.
 
 package shedbuild
@@ -14,8 +14,12 @@ import (
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the three engines
-// that need one. The other nine engines take no config at all and are given none in this test,
+// that need one. The other ten engines take no config at all and are given none in this test,
 // since a non-empty config block on any of them is an error from the constructor.
+//
+// DiscussionWrite is one of the ten: it wraps a single-LLM producer, but its Spec arrives as an
+// injected Env.DiscussionSpec closure rather than as recipe Config, so it has no config keys of its
+// own and its seams are filled by newTestEnv instead.
 func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[string]any {
 	return map[string]map[string]any{
 		"SingleLLM": {
@@ -36,7 +40,7 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 
 // TestBuild_EveryRegisteredEngineBuilds asserts every name shedrecipe.Names() returns builds from
 // a one-row Recipe against a sufficiently filled shedrecipe.Env, driving the assertion off
-// shedrecipe.Names() rather than a local list so a thirteenth registered engine fails this test
+// shedrecipe.Names() rather than a local list so a fourteenth registered engine fails this test
 // until this fixture covers it.
 func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	env := newTestEnv(t)

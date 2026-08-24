@@ -1,8 +1,9 @@
 // discussion.go implements DiscussionSpec, the discussion producer's Spec factory: a pure composer
 // that resolves the discussion role's model, names the two _lyx/discussion/ output files, composes
 // the interview prompt, and returns a shuttleengine.Spec ready for shuttle.Run.
-// It does no spawning, polling, or filesystem writing itself — the future loom phase machine drives
-// the returned Spec through shuttle.Run and reacts to its outcome.
+// It does no spawning, polling, or filesystem writing itself — shedadapters.SingleLLMProducer drives
+// the returned Spec through the shuttle seam, reached from internal/shedrecipe's DiscussionWrite
+// registry entry.
 
 package loomengine
 
