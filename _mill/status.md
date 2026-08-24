@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-consumer fixtures — websterengine, loomshed, loomrecipe, loomcli, web
 approved-docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap  '2026-08-24T14:05:04Z'
 holistic-reviewing  '2026-08-24T14:05:36Z'
 holistic-approved  '2026-08-24T14:10:21Z'
+done  '2026-08-24T14:11:49Z'
 ```
 
 ## Batches
