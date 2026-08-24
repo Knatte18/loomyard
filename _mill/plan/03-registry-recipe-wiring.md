@@ -170,6 +170,8 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
   - `internal/shedadapters/singlellm.go`
   - `internal/shedadapters/archive.go`
   - `internal/shuttleengine/spec.go`
+  - `internal/shuttleengine/run.go`
+  - `internal/shuttleengine/engine.go`
   - `internal/shedrecipe/recipe.go`
 - **Edits:**
   - `internal/loomrecipe/fixture_test.go`
@@ -271,6 +273,8 @@ and `Env.StencilsDir` stays unfilled in `wire()`, because the `DiscussionSpec` c
   - `internal/loomengine/discussion.go`
   - `internal/loomengine/config.go`
   - `internal/fabricengine/commitweftpaths.go`
+  - `internal/fabricengine/mutation.go`
+  - `internal/fabricengine/fabric.go`
   - `internal/hubgeom/webstergeom.go`
   - `internal/shedrecipe/recipe.go`
 - **Edits:**
