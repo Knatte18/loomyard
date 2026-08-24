@@ -49,7 +49,9 @@ batches:
     commit_sha: 1a46241fb747dfd2017b70575f7b0fe70799a421
     verify_baseline_failures: []
   - name: registry entry, recipe row flip, and wiring
-    state: pending
+    state: running
+    implementer_session: 8ea70cee-5678-4b27-ac29-f7abee593066
+    start_sha: 877cc602ac1550bc1171f4185b87ac504d74f649
     verify_baseline_failures: []
   - name: documentation lifecycle
     state: pending
