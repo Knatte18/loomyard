@@ -42,7 +42,9 @@ batches:
     commit_sha: bd047b6fa175500d3d89c32b1afa18f25a661068
     verify_baseline_failures: []
   - name: loomshed DiscussionWrite commit decorator
-    state: pending
+    state: running
+    implementer_session: e8855ef5-3752-47f2-ac30-4525cfb05921
+    start_sha: bf2e13ad65fdd8ef5691465db0d627977899a03c
     verify_baseline_failures: []
   - name: registry entry, recipe row flip, and wiring
     state: pending
