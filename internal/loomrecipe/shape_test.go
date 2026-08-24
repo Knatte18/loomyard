@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedcheck"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -36,7 +37,7 @@ type wantProducerRow struct {
 var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "", loomshed.NameLoomPreflight, reflect.TypeOf(preflightshed.NewPreflight("", ""))},
 	{loomshed.NameLoomPreflight, "", loomshed.NameDiscussionWrite, reflect.TypeOf(loomshed.NewLoomPreflight("", "", ""))},
-	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionValidate, reflect.TypeOf(loomshed.NewStub(""))},
+	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionValidate, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionValidate, loomshed.NameDiscussionWrite, loomshed.NameDiscussionReview, reflect.TypeOf(loomshed.NewDiscussionValidate("", "", ""))},
 	{loomshed.NameDiscussionReview, loomshed.NameDiscussionWrite, loomshed.NamePlanWrite, reflect.TypeOf(loomshed.NewStub(""))},
 	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, reflect.TypeOf(loomshed.NewStub(""))},
@@ -50,8 +51,10 @@ var wantProducerTable = []wantProducerRow{
 }
 
 // testEnv builds a shedrecipe.Env/ShedPaths pair whose every path field is an absolute path derived
-// from a single t.TempDir(), fills Landing via testLandingDeps, and fills WebsterRun and the four
-// WebsterDeps seams the way buildSequenceFixture does.
+// from a single t.TempDir(), fills Landing via testLandingDeps, fills WebsterRun and the four
+// WebsterDeps seams the way buildSequenceFixture does, and fills Shuttle, DiscussionSpec, and
+// CommitDiscussion with the non-writing fakeDiscussionShuttle variant so the discussion paths this
+// builder points at stay absent on disk.
 func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 	t.Helper()
 	dir := t.TempDir()
@@ -63,6 +66,8 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
+	decisionRecordPath := filepath.Join(dir, "discussion", "decision-record.md")
+	supportLogPath := filepath.Join(dir, "discussion", "support-log.md")
 
 	env := shedrecipe.Env{
 		Cwd:                cwd,
@@ -70,8 +75,8 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 		WorktreeRoot:       dir,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
-		DecisionRecordPath: filepath.Join(dir, "discussion", "decision-record.md"),
-		SupportLogPath:     filepath.Join(dir, "discussion", "support-log.md"),
+		DecisionRecordPath: decisionRecordPath,
+		SupportLogPath:     supportLogPath,
 		WebsterRun:         (&fakeWebsterRun{}).run,
 		WebsterDeps: websterengine.RunDeps{
 			Starter:    fakeMasterStarter{},
@@ -80,6 +85,15 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 			RefMatcher: fakeRefMatcher{},
 		},
 		Landing: testLandingDeps(dir),
+		Shuttle: &fakeDiscussionShuttle{writeOutputs: false},
+		DiscussionSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "discussion prompt",
+				OutputFiles: []string{decisionRecordPath, supportLogPath},
+				Interactive: false,
+			}, nil
+		},
+		CommitDiscussion: func() error { return nil },
 	}
 
 	paths := ShedPaths{
@@ -240,13 +254,14 @@ func TestNew_PassesShedValidation(t *testing.T) {
 
 	// Drive Run to exercise (*Shed).validate() indirectly, since it is unexported: a validation
 	// error (a typo'd OnStuck, a duplicate name, two lock paths naming one file) surfaces as Run
-	// returning a non-nil error before it ever reads the status file. The discussion-record and
-	// support-log paths in env do not exist on disk, so Discussion-Validate bounces back to
-	// Discussion-Write repeatedly; Discussion-Validate never returns Done, so its own budget --
-	// inherited from paths.MaxBounces (3), since neither producer sets a MaxBounces of its own --
-	// is spent entirely on this one producer's episode, and the run blocks once it is exhausted.
-	// That is an ordinary Stuck/blocked outcome, not a validation failure, and is what this test
-	// expects.
+	// returning a non-nil error before it ever reads the status file. Row 3's fake shuttle
+	// deliberately writes nothing (env.Shuttle is a fakeDiscussionShuttle{writeOutputs: false}), so
+	// each bounce re-runs a real producer that leaves the record absent, and Discussion-Validate
+	// bounces back to Discussion-Write repeatedly; Discussion-Validate never returns Done, so its
+	// own budget -- inherited from paths.MaxBounces (3), since neither producer sets a MaxBounces
+	// of its own -- is spent entirely on this one producer's episode, and the run blocks once it is
+	// exhausted. That is an ordinary Stuck/blocked outcome, not a validation failure, and is what
+	// this test expects.
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil (no shedengine.validate() failure)", err)
