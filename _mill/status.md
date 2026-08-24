@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-loomengine seam and stencil rewrite
 slug: loom-discussion-write-producer
 branch: loom-discussion-write-producer
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r2  '2026-08-24T14:17:36Z'
 plan-fix-r3  '2026-08-24T14:29:37Z'
 planned  '2026-08-24T14:29:48Z'
 implementing  '2026-08-24T14:30:17Z'
+approved-loomengine seam and stencil rewrite  '2026-08-24T14:35:43Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-24T14:30:17Z'
 ```yaml
 batches:
   - name: loomengine seam and stencil rewrite
-    state: running
+    state: approved
     implementer_session: cdf664de-0dce-467d-a359-b66828ba047f
     start_sha: 018a004e7a35c6e04342b49b5f1054a3271a762c
+    commit_sha: bd047b6fa175500d3d89c32b1afa18f25a661068
     verify_baseline_failures: []
   - name: loomshed DiscussionWrite commit decorator
     state: pending
