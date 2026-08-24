@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -129,12 +130,34 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDirRel()}, fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
+		// PlanSpec is evaluated per Call, not resolved here, so the stencil is read at call time --
+		// what the Stencil Ownership Invariant requires. Unlike DiscussionSpec beside it, PlanSpec
+		// takes no autonomous argument: the Plan producer is autonomous by design and hard-codes
+		// Interactive: false internally.
+		PlanSpec: func() (shuttleengine.Spec, error) {
+			return loomengine.PlanSpec(location, websterGeom.StencilsDir, loomCfg, registry)
+		},
+		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
+		// that follow, makes the artifact durable across a crash or a resume, and sweeps the
+		// decorator's archive subdirectory into git rather than leaving it as untracked dirt. A
+		// second Done over already-committed artifacts is a no-op rather than an error:
+		// CommitAnchoredPaths reports committed == false for an already-clean, already-tracked path,
+		// and this closure discards that result alongside the sha, returning only the error. This
+		// commit fires before Plan-Validate has judged the plan, and that is intentional and matches
+		// the discussion precedent: the commit keeps the artifact durable, it does not certify it.
+		// The pathspec is the whole plan directory via planparser.PlanDirRel(), never a hand-built
+		// filepath.Join naming the _lyx literal, which the Lyxdirs Single-Declarer Invariant forbids
+		// in production path-construction context.
+		CommitPlan: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{planparser.PlanDirRel()}, fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
+		},
 		// StencilsDir, RunRoot, Burler, and Now are left zero -- only SingleLLM and Bouncer/
 		// BurlerRound read StencilsDir/RunRoot, and no row in loom's recipe uses those engines yet.
-		// StencilsDir in particular stays unfilled here even though DiscussionWrite is now wired:
-		// the DiscussionSpec closure above captures websterGeom.StencilsDir directly rather than
-		// reading it back off Env. A nil Now is legal, defaulting to time.Now inside
-		// NewSingleLLMProducer.
+		// StencilsDir in particular stays unfilled here even though DiscussionWrite and PlanWrite are
+		// now wired: the DiscussionSpec and PlanSpec closures above each capture
+		// websterGeom.StencilsDir directly rather than reading it back off Env. A nil Now is legal,
+		// defaulting to time.Now inside NewSingleLLMProducer.
 		//
 		// Landing is deliberately left unfilled here too, but for a different reason than the other
 		// four: Env.Landing is assembled in drive.go, immediately before loomrecipe.New, because

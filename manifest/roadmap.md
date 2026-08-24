@@ -17,10 +17,7 @@ A 2026-08-23 discussion redesigned loom's own Discussion/Plan pipeline around sy
 
 **Wave 2:** complete — both items shipped, see Done below (**planparser: Card-format migration to `Edits`/`Uses`**, **loom: Discussion-Write producer**).
 
-**Wave 3** (depends on Wave 2's planparser migration landing):
-
-1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around a prompt rewritten for the Card format in `designs/plan-card-format.md`. Depends on the Done **planparser: Card-format migration to `Edits`/`Uses`** item — a prompt targeting the new `Edits`/`Uses` shape is only useful once `planparser` can parse it. `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no quarry inventory available yet," not as an error.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [designs/plan-card-format.md](designs/plan-card-format.md).
+**Wave 3** (depends on Wave 2's planparser migration landing): complete — its sole remaining item shipped, see Done below (**loom: Plan-Write producer**).
 
 ### loom: real LLM producers
 
@@ -151,7 +148,7 @@ No build order is implied between these items.
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
 
-1. **loom: build `Plan-Sweep` for real** — stays a stub past the split-out `loom: Plan-Write producer` item above; deferred because quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry — see the Someday `scout-backed plan symbol fields` item below.
+1. **loom: build `Plan-Sweep` for real** — stays a stub past the shipped Done **loom: Plan-Write producer** item; deferred because quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry — see the Someday `scout-backed plan symbol fields` item below.
    Mechanical quarry inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec`.
    Partial building blocks: quarry's reference-lookup and symbol-lookup APIs exist as an external dependency, but no ready-made "inventory" function — needs new composition, not a new engine.
 
@@ -159,7 +156,7 @@ No build order is implied between these items.
    Only the ordinary-git-conflict shape shipped; the document shape is not built.
    The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
 
-1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a new producer access to a new capability today means adding a passthrough field to `shedrecipe.Env` and threading it by hand through three layers (`shedrecipe` → `loomrecipe` → `loomcli`), since `shedrecipe` can't import the capability's owning package directly (Shed Recipe Registry Invariant). The Done **loom: Discussion-Write producer** entry below is a concrete data point: its two new `Env` fields (`DiscussionSpec`, `CommitDiscussion`) each required an edit in all three layers, for what was otherwise one small producer. The idea — not yet designed — is for a producer to declare what it needs and have the registry wire it automatically, closer to how a VS Code extension declares its own capabilities than to hand-editing a host per extension. Genuinely deep: likely touches the Shed Recipe Registry Invariant itself and all thirteen existing registry entries already wired the old way. Not scoped, just recorded.
+1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a new producer access to a new capability today means adding a passthrough field to `shedrecipe.Env` and threading it by hand through three layers (`shedrecipe` → `loomrecipe` → `loomcli`), since `shedrecipe` can't import the capability's owning package directly (Shed Recipe Registry Invariant). The Done **loom: Discussion-Write producer** entry below is a concrete data point: its two new `Env` fields (`DiscussionSpec`, `CommitDiscussion`) each required an edit in all three layers, for what was otherwise one small producer. The Done **loom: Plan-Write producer** entry below is a second data point: its own two new `Env` fields (`PlanSpec`, `CommitPlan`) repeated the identical three-layer threading verbatim one task later, which strengthens the case that motivates this item. The idea — not yet designed — is for a producer to declare what it needs and have the registry wire it automatically, closer to how a VS Code extension declares its own capabilities than to hand-editing a host per extension. Genuinely deep: likely touches the Shed Recipe Registry Invariant itself and all fourteen existing registry entries already wired the old way. Not scoped, just recorded.
 
 ## Done
 
@@ -186,6 +183,16 @@ No build order is implied between these items.
    Two manual operator prerequisites remain outside what this task automates: `/plugin install scribe@loomyard`, which nothing in the tree performs or verifies, so a missing plugin degrades prose quality rather than breaking a run;
    and `lyx stencil sync`, because `stencilstore`'s `ModeDev` reconcile warns instead of writing for an untouched stencil, so an already-seeded hub on a `-dev` binary keeps the old stencil text until the sync forces a refresh.
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
+
+1. **loom: Plan-Write producer** — replaced the `Plan-Write` stub with a real `SingleLLMProducer` behind a new `loomshed` rotate-and-commit decorator, reached through a new `PlanWrite` registry entry over two injected `shedrecipe.Env` closures (`PlanSpec`, `CommitPlan`).
+   The decorator archives every top-level `.md` file of `_lyx/plan/` into an `archive-<stamp>/` subdirectory before delegating, which is what keeps a `Plan-Validate` or `Plan-Review` bounce from ping-ponging on `index-file-mismatch`.
+   `internal/planparser` gained one pure string helper, `ArchiveDirName`, as the sole declarer of that subdirectory's name.
+   The registry grew to fourteen entries.
+   The stencil gained a `scribe:prose`/`scribe:testing` load step, a degraded-mode section for the absent quarry inventory, a Verify-authoring rule, and a closing `lyx loom validate-plan` self-check.
+   The producer is autonomous-only.
+   Two manual operator prerequisites remain outside what this task automates, both inherited for the same reason the Discussion-Write entry above records them: `/plugin install scribe@loomyard`, which nothing in the tree performs or verifies, so a missing plugin degrades the plan agent's prose quality rather than breaking a run — the plan stencil's Step 0 gives `Plan-Write` the identical skill load that prerequisite exists for;
+   and `lyx stencil sync`, because `stencilstore`'s `ModeDev` reconcile warns instead of writing for an untouched stencil, so an already-seeded hub keeps the old stencil text until the sync forces a refresh.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **Shed recipe: engine registry** — shipped `internal/shedrecipe`, the name → constructor mapping the future recipe loader resolves each row's `Engine` field against, registering all twelve engine names: `Batchifier`, `Bouncer`, `BurlerRound`, `DiscussionValidate`, `Finalize`, `LoomPreflight`, `PlanValidate`, `Preflight`, `Publish`, `SingleLLM`, `Stub`, `Webster`.
    Every registry value has the fixed `Constructor` signature `func(name string, cfg Config, env Env) (shedengine.ShedProducer, error)`, with the `Config`/`Env` split this task settled: `Config` is the recipe row's portable, already-decoded configuration, and `Env` is the caller-filled bundle of absolute roots and injected seams, never a value that differs between two rows.

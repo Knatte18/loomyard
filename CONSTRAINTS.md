@@ -178,7 +178,7 @@ and the registry is one central `map[string]Constructor` literal reached only th
 `internal/shedbuild` is the registry's first outside caller: it reaches `internal/shedrecipe` only through its two exported accessors, `Lookup` and `Names`, and adds no registration mechanism of its own — a recipe naming an unregistered engine is an error for `internal/shedbuild` to report, never a reason to register one.
 
 - **Enforced by** `internal/shedrecipe/seam_enforcement_test.go` (`TestToldGeometryInvariant_AllowlistOnly`) for the told-geometry half, and, for the registry-coverage half, two tests in two homes: `internal/loomrecipe/coverage_guard_test.go` (`TestCoverageGuard_EveryLoomRowHasAnEngine`), which drives loom's real row list against the registry,
-  and `internal/shedrecipe/registry_test.go` (`TestRegistry_ShipsThirteenEntries`), which pins the registry's exact thirteen names.
+  and `internal/shedrecipe/registry_test.go` (`TestRegistry_ShipsFourteenEntries`), which pins the registry's exact fourteen names.
   The `ShedProducer`-only restriction itself is a review obligation, since the `Constructor` signature already makes it a compile-time fact.
 
 ## Tokenvocab Leaf Invariant
