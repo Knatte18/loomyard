@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-plan-write-producer
 branch: loom-plan-write-producer
 plan: _mill/plan
@@ -33,6 +33,7 @@ holistic-fixing  '2026-08-24T19:13:29Z'
 nits-fixed-holistic  '2026-08-24T19:14:57Z'
 holistic-approved  '2026-08-24T19:15:03Z'
 done  '2026-08-24T19:16:39Z'
+pr-pending  '2026-08-24T19:17:23Z'
 ```
 
 ## Batches
