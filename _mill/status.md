@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: loom-code-writing-skills
 branch: loom-code-writing-skills
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-24T05:21:25Z'
+done  '2026-08-24T09:02:46Z'
 ```
