@@ -7,7 +7,6 @@
 **Uses:**
 - `//internal/output/envelope.go`
 
-**Intent:** Add the `--json` bool flag to `newListCmd` and branch the command's row output between
-the existing table writer and the JSON path, reusing `internal/output`'s envelope shape.
+**Intent:** Add the `--json` bool flag to `newListCmd` and branch its row output between the table writer and the JSON path.
 
 **ImpactSummary:** Adds a --json flag to the list command and branches its row-emission path on it.

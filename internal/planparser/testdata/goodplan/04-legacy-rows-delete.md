@@ -3,8 +3,6 @@
 **Delete:**
 - `//internal/boardengine/legacyrows.go`
 
-**Intent:** Remove the legacy per-row conversion helper `legacyrows.go` now that
-`boardengine.MapRowJSON` (card 5) supersedes it — no remaining caller depends on it once card 5
-lands.
+**Intent:** Remove the legacy per-row conversion helper now that `boardengine.MapRowJSON` (card 5) supersedes it.
 
 **ImpactSummary:** Deletes the legacy row-conversion file; no remaining callers reference it.
