@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-registry entry, recipe row flip, and wiring
+phase: approved-documentation lifecycle
 slug: loom-discussion-write-producer
 branch: loom-discussion-write-producer
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-24T14:30:17Z'
 approved-loomengine seam and stencil rewrite  '2026-08-24T14:35:43Z'
 approved-loomshed DiscussionWrite commit decorator  '2026-08-24T14:39:10Z'
 approved-registry entry, recipe row flip, and wiring  '2026-08-24T14:49:18Z'
+approved-documentation lifecycle  '2026-08-24T14:59:31Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     commit_sha: 427c28a26e99ef5d87abba192e82208c2b880faa
     verify_baseline_failures: []
   - name: documentation lifecycle
-    state: running
+    state: approved
     implementer_session: a8394e75-6e11-4d1c-8b5a-5c9783f27b81
     start_sha: cb79d0dad9ae07628c76272c92bf9de9c6c4f8f9
+    commit_sha: 943f6f60824479d8f570eb2ca6aafd600a41d0dd
     verify_baseline_failures: ['--- FAIL: TestEnforcement_MarkdownLinks (0.01s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/lyxcwd\t\
     0.140s", "FAIL\tgithub.com/Knatte18/loomyard/internal/lyxcwd\t0.142s"]
 ```
