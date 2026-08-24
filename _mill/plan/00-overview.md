@@ -99,6 +99,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/loomengine/plan_test.go`
 - `internal/loomrecipe/coverage_guard_test.go`
 - `internal/loomrecipe/fixture_test.go`
+- `internal/loomrecipe/resume_test.go`
 - `internal/loomrecipe/sequence_test.go`
 - `internal/loomrecipe/shape_test.go`
 - `internal/loomshed/doc.go`

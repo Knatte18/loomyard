@@ -27,6 +27,8 @@ Batch-local decision, differing from nothing in `## Shared Decisions`: `internal
   - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/entries_planwrite.go`
   - `internal/fabricengine/doc.go`
+  - `internal/pattern/pattern.go`
+  - `contracts/stencils/stencils.go`
 - **Edits:**
   - `internal/loomcli/wiring.go`
   - `internal/loomcli/wiring_test.go`
@@ -41,7 +43,11 @@ Batch-local decision, differing from nothing in `## Shared Decisions`: `internal
 
   The pathspec is the whole plan directory via `planparser.PlanDirRel()` — never a hand-built `filepath.Join` naming the `_lyx` literal, which the Lyxdirs Single-Declarer Invariant forbids in production path-construction context. Add `"github.com/Knatte18/loomyard/internal/planparser"` to the import block in its sorted position. The trailing comment block in the same literal explains why `StencilsDir`, `RunRoot`, `Burler`, and `Now` are left zero and notes that `DiscussionSpec` captures `websterGeom.StencilsDir` directly rather than reading it back off `Env` — extend that sentence so it covers the `PlanSpec` closure doing the same thing. Change nothing else in `wire`.
 
-  In `internal/loomcli/wiring_test.go`, add two tests modelled on `TestWire_DiscussionSeamsFilled` and `TestWire_DiscussionSpecEvaluatesToExpectedShape`, both `t.Parallel()` and both driving `c.wire(loc, loc.AnchorPath())` against a `hubLocation(t, "warp", ".")`. `TestWire_PlanSeamsFilled` asserts `c.env.PlanSpec` and `c.env.CommitPlan` are each non-nil after `wire()`. `TestWire_PlanSpecEvaluatesToExpectedShape` evaluates `c.env.PlanSpec()` once and asserts `spec.Interactive` is false, `spec.Role` is `"plan"`, `spec.Timeout` equals `time.Duration(c.cfg.PlanTimeoutMin) * time.Minute`, `spec.Model` is non-empty, `spec.OutputFiles` deep-equals `[]string{planparser.PlanOverview(loc.AnchorPath())}` — the `AnchorPath()`-rooted overview path, never a `WorktreePath()`-rooted one — `spec.Prompt` is non-empty, and `spec.Prompt` contains no unrendered `{{` marker. Add `"github.com/Knatte18/loomyard/internal/planparser"` to this file's import block if it is not already present.
+  In `internal/loomcli/wiring_test.go`, first seed the plan stencil, then add the two tests.
+
+  Seeding is not optional here. `loomengine.PlanSpec` reads `loom-template-plan` through `stencilstore.Read` at call time, and that read hard-errors on a missing file, but `hubLocation` today calls only `seedDiscussionStencil`, which writes `loom-template-discussion.md` alone — so evaluating `c.env.PlanSpec()` against an unseeded hub returns a non-nil error and the new shape test fails before it asserts anything. Add a `seedPlanStencil(t *testing.T, hubPath string)` helper beside `seedDiscussionStencil`, identical in shape but writing `stencils.LoomTemplatePlan` to `loom-template-plan.md` in the same `filepath.Join(fabricengine.StencilsDir(hubPath), "loom")` directory, and call it from `hubLocation` immediately after the `seedDiscussionStencil(t, hub)` call. Update `hubLocation`'s doc comment, which says its hub is seeded with the discussion stencil, to say both loom stencils. No pattern stencil is needed: `pattern.Directive` returns an empty string and a nil error when PATTERN is inactive at the anchor, which it is in a bare `t.TempDir()`.
+
+  Then add two tests modelled on `TestWire_DiscussionSeamsFilled` and `TestWire_DiscussionSpecEvaluatesToExpectedShape`, both `t.Parallel()` and both driving `c.wire(loc, loc.AnchorPath())` against a `hubLocation(t, "warp", ".")`. `TestWire_PlanSeamsFilled` asserts `c.env.PlanSpec` and `c.env.CommitPlan` are each non-nil after `wire()`. `TestWire_PlanSpecEvaluatesToExpectedShape` evaluates `c.env.PlanSpec()` once and asserts `spec.Interactive` is false, `spec.Role` is `"plan"`, `spec.Timeout` equals `time.Duration(c.cfg.PlanTimeoutMin) * time.Minute`, `spec.Model` is non-empty, `spec.OutputFiles` deep-equals `[]string{planparser.PlanOverview(loc.AnchorPath())}` — the `AnchorPath()`-rooted overview path, never a `WorktreePath()`-rooted one — `spec.Prompt` is non-empty, and `spec.Prompt` contains no unrendered `{{` marker. Add `"github.com/Knatte18/loomyard/internal/planparser"` to this file's import block if it is not already present.
 - **Commit:** `feat(loomcli): wire the PlanSpec and CommitPlan seams`
 
 ## Batch Tests
