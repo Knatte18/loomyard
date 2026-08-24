@@ -114,6 +114,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/webstercli/validate.go`
 - **Edits:**
   - `internal/webstercli/cli_test.go`
+  - `internal/webstercli/cli_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none

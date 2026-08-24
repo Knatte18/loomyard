@@ -130,6 +130,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/planparser/testdata/goodplan/07-json-docs.md`
 - `internal/planparser/validate.go`
 - `internal/planparser/validate_test.go`
+- `internal/webstercli/cli_integration_test.go`
 - `internal/webstercli/cli_test.go`
 - `internal/webstercli/validate.go`
 - `internal/websterengine/doc.go`
