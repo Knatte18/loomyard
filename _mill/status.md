@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-wiring, render, and master template
+phase: approved-docs
 slug: webster-dag-card-sequencing
 branch: webster-dag-card-sequencing
 plan: _mill/plan
@@ -27,6 +27,7 @@ planned  '2026-08-24T18:45:56Z'
 implementing  '2026-08-24T18:46:24Z'
 approved-sequencing core  '2026-08-24T18:53:05Z'
 approved-wiring, render, and master template  '2026-08-24T19:05:19Z'
+approved-docs  '2026-08-24T19:08:48Z'
 ```
 
 ## Batches
@@ -46,8 +47,9 @@ batches:
     commit_sha: db5c3269d187a08fd1324ae3553cb9fccb200567
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: 61b364df-6446-46ff-8a77-b35ec5f7b7d8
     start_sha: ee29ca97b39c0953be8a71dcfa9e9893e9b547d8
+    commit_sha: 9db50307c611d26852bafc461ed4326e87811a99
     verify_baseline_failures: []
 ```
