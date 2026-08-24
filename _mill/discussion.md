@@ -132,9 +132,10 @@ Without these, an agent working on Go code in this repo, or in any other repo th
 - Decision: both skills carry Go build/lint/test commands and testing-framework conventions (table-driven tests, `t.Helper()`, `t.Cleanup`, same-package vs. external test files), drafted directly and reformatted for line-break/terseness discipline — no content redesign, since neither skill's subject matter was contested during discussion.
 - Rationale: comment content and code quality needed real design work because this project's actual philosophy diverges from generic defaults in specific, observed ways;
   build commands and Go testing-framework mechanics don't — there was nothing to redesign.
-  One real gap surfaced independent of drafting quality: `golang-build`'s default `goimports`/`golangci-lint` mandate and its "run all tests found" default didn't reconcile with this repo's own established two-tier test scheme.
-  Fixed by filling in the skill's own "per-project configuration" section with this repo's actual convention (Tier 1 `go test ./...`, Tier 2 `-tags integration`, a separate `smoke` tag; `goimports`/`golangci-lint` noted as not adopted here) rather than changing the generic top-level defaults, which stay reasonable for other repos installing this plugin.
-- Rejected: leaving the generic defaults unreconciled with this repo's actual practice — a real inconsistency, not a stylistic one, since an agent following the skill literally here would have run tools this repo doesn't use and missed the tier this repo actually relies on.
+  Two real gaps surfaced independent of drafting quality, both now fixed: `golang-build`'s default `goimports`/`golangci-lint` mandate and its "run all tests found" default didn't reconcile with this repo's own established two-tier test scheme, and `golang-testing`'s per-project section was left as an unfilled generic placeholder even though this repo has two machine-enforced test invariants (Test Tier Purity, Hermetic Git Test Environment) an agent following the skill here would otherwise violate.
+  Fixed both the same way: filled each skill's own "per-project configuration" section with this repo's actual convention, rather than changing the generic top-level defaults, which stay reasonable for other repos installing this plugin.
+  `golang-build`'s generic "Tool installation" section also got one line added, noting the mandate is overridable per project — the unqualified "stop" language and the repo-specific "skip" note read as contradictory without it.
+- Rejected: leaving the generic defaults unreconciled with this repo's actual practice — a real inconsistency, not a stylistic one, since an agent following either skill literally here would have run tools this repo doesn't use, missed the tier this repo actually relies on, or written a test that fails CI under a machine-enforced invariant.
 
 ### golang-quality not built
 
@@ -164,6 +165,21 @@ Without these, an agent working on Go code in this repo, or in any other repo th
   No separate Windows-specific command variant is needed.
 - Rejected: writing a cross-shell-safe or PowerShell-specific variant — unnecessary given the confirmed git-bash execution environment.
 
+### Hook discovery: declared explicitly, firing itself still unverified
+
+- Decision: `plugin.json` now declares `"hooks": "./hooks/hooks.json"` explicitly, rather than relying on directory-convention auto-discovery alone.
+- Rationale: a review round noted the structural check only confirmed `hooks.json` parses as JSON, not that Claude Code actually discovers or fires it, and that `plugin.json` named no `hooks` key while this repo's own precedent (`prowler`) ships no hook at all to compare against.
+  Explicit declaration mirrors how this repo's own `mill` plugin declares its `agents` list explicitly rather than trusting directory convention alone — the safer pattern where one exists.
+- Rejected: leaving discovery to directory convention only — plausible per research, but unconfirmed in this specific environment, and a one-line declaration removes the ambiguity at no cost.
+  Actually verifying the hook fires (installing the plugin, starting a session, confirming the injected text lands) is still not done — see Testing;
+  that requires `/plugin install`, which stays a manual step outside this task.
+
+### Portable skills don't carry repo-specific jargon
+
+- Decision: `conversation`'s file-writing bullet no longer names "lyx" by name — reworded to "a task orchestrator's status/plan/discussion files, if the project has one."
+- Rationale: a review round pointed out this skill ships to other repos, where "lyx" means nothing — the same portability argument the design-doc decision already rests on, just not yet applied to this bullet.
+- Rejected: leaving it as a loomyard-specific reference — inconsistent with every other portability call made elsewhere in this task.
+
 ### Design doc points to the skill, not the reverse
 
 - Decision: `code-comment-conventions.md`'s operative rule text (the rule, its two exceptions, the information triage) is no longer duplicated in the design doc — it points to `code-quality`'s Comments section as the canonical text.
@@ -172,6 +188,8 @@ Without these, an agent working on Go code in this repo, or in any other repo th
   A review round also cited `CONSTRAINTS.md`'s Producer Pointer-Rule Invariant against the duplication;
   a later round corrected that citation — the invariant's own text exempts "design docs restating the rule for a human reader," which plausibly covers this document, so the invariant doesn't cleanly mandate the outcome.
   The portability argument stands on its own regardless, and is what this decision actually rests on.
+  A later review round caught that the document's own header still cited the retracted invariant while its body restated the rule anyway — a straight self-contradiction, not just a stale citation;
+  the header now says only that the document is rationale, not a rule copy, with no invariant name attached.
 - Rejected: making the design doc canonical and the skill a bare pointer — would break the skill's portability, independent of whether the cited invariant strictly applies.
 
 ## Technical context
@@ -207,6 +225,11 @@ Done iteratively during discussion, including two dedicated trim passes on `gola
 **Structural verification:** a real check (not just `update-plugins.sh`'s marketplace-JSON parse) confirming `plugin.json`/`settings.json`/`hooks.json` all parse, every skill's frontmatter `name` matches its directory, `INDEX.md` lists all seven skills, and `marketplace.json`'s `scribe` entry points at the right source path.
 Passed at time of writing;
 no persisted test script was added for this — it was a one-time check, not a mechanical gate this task decided the repo needs going forward.
+
+**Explicitly not verified:** that the `SessionStart` hook actually fires and its text actually lands in context.
+The structural check only confirms `hooks.json` is well-formed JSON;
+confirming delivery requires `/plugin install scribe@loomyard` and a real session, which stays a manual step outside this task (see Scope Out).
+This is accepted, not overlooked.
 
 ## Review guidance
 

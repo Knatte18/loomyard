@@ -43,6 +43,7 @@ Required before running the build workflow:
   Install: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 
 If either is missing, report which one and its install command, then stop — don't skip the step silently.
+This default can be retired per project (see "Project configuration" below) — a project that hasn't adopted one or both tools overrides this section instead of blocking on it.
 
 ---
 

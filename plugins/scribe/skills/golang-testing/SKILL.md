@@ -144,4 +144,12 @@ external for integration tests and library packages.
 - **Integration test markers:** `//go:build integration` build tags to exclude integration tests from the fast unit run;
   `go test -tags=integration ./...` runs them separately.
 
-<!-- Project-specific testing configuration goes here -->
+### This repo's configuration
+
+- **Three tags, not one:** `integration` (as above) plus a separate `smoke` tag (`go test -tags smoke ./...`) for tests requiring a live `claude` session — see `docs/benchmarks/running-tests.md`.
+- **Untagged files spawn nothing expensive.**
+  A file whose first non-empty line isn't a `//go:build` constraint naming `integration` or `smoke` must not spawn git, run an external process, or copy a fixture tree — Test Tier Purity Invariant (`CONSTRAINTS.md`).
+- **Git-spawning packages are hermetic.**
+  Any package whose tests spawn git, directly or via a fixture helper, needs a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()` — Hermetic Git Test Environment Invariant (`CONSTRAINTS.md`).
+  Both invariants are machine-enforced;
+  writing a test that violates either fails CI, not just review.

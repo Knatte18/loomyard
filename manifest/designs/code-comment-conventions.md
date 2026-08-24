@@ -2,7 +2,7 @@
 
 > **Status: implemented.**
 > The operative rule lives in the `scribe` plugin's `code-quality` skill (Comments section) and `golang-comments` skill (`plugins/scribe/skills/`), installable via loomyard's own marketplace — that skill is the single source an agent actually loads and follows.
-> This document is design rationale, not a second copy of the rule (Producer Pointer-Rule Invariant, `CONSTRAINTS.md`).
+> This document is design rationale — the "why" behind the rule, not the rule text itself, which is restated once below only as context for a reader of this file.
 > No producer-stencil wiring yet: "Load these skills" lines in loom's own producer prompts are planned as a separate, later roadmap item ("loom: Discussion-Write producer"), not this one.
 > C#/Python versions deferred until Go is proven.
 

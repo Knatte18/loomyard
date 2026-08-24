@@ -32,7 +32,7 @@ Load `prose` first — this skill assumes those rules already apply.
 
 - Ephemeral files — drafts, scratch fixtures, debug dumps — go in `.scratch/` under the current working directory, never the repo root regardless of where in the repo that is.
   Never a system temp directory.
-- Task-state files owned by lyx's own tooling are not scratch — don't treat them as interchangeable with `.scratch/`.
+- Files a project's own tooling manages as task-state (a task orchestrator's status/plan/discussion files, if the project has one) are not scratch — don't treat them as interchangeable with `.scratch/`.
 
 ## Shell commands
 
