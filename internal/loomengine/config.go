@@ -35,12 +35,20 @@ const loomDirName = "loom"
 // loomengine is this segment's sole declarer.
 const loomStatusFileName = "status.json"
 
+// DiscussionDirRel returns the worktree-anchor-relative form of DiscussionDir's path: the join of
+// lyxdirs.LyxDirName and discussionDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment
+// loomengine owns.
+func DiscussionDirRel() string {
+	return filepath.Join(lyxdirs.LyxDirName, discussionDirName)
+}
+
 // DiscussionDir returns the path to the Discussion phase's output directory for this worktree (the
 // decision-record.md/support-log.md pair).
 // It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, discussionDirName)
+	return filepath.Join(l.AnchorPath(), DiscussionDirRel())
 }
 
 // DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
