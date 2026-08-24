@@ -2,9 +2,12 @@
 // (contracts/specs/loom-plan-spec.md, "Card path resolution: root: and //"): normalizeCardPath
 // resolves one raw card path against the plan's root:, and normalizeCard applies it to every path
 // field on a single Card.
+// Normalization is classifier-gated: normalizeCard and normalizeRefSlice consult classify.go's
+// isPathRef before touching an entry, so only path-shaped refs are rewritten — a symbol entry
+// (e.g. "shedrecipe.Lookup") passes through verbatim, never picking up a spurious root: prefix.
 // ParsePlan calls normalizeCard exactly once per card, right after that card's body is parsed, so
 // every downstream consumer — Validate included — only ever sees plain, forward-slash,
-// worktree-relative paths.
+// worktree-relative paths for the refs that are paths at all.
 
 package planparser
 
@@ -38,23 +41,38 @@ func cleanPosixPath(p string) string {
 	return path.Clean(filepath.ToSlash(p))
 }
 
-// normalizeCard rewrites every card path field in place against root via normalizeCardPath.
+// normalizeCard rewrites card.Targets, card.Uses, and both endpoints of every card.Pairs entry in
+// place against root, applying normalizeCardPath only to entries isPathRef classifies as paths —
+// a symbol entry passes through verbatim. Because card.Targets already carries both endpoints of
+// every Pairs entry (parseTypeLabelCase projects them there), normalizing Pairs and Targets
+// independently yields the same result on both sides; both normalizations are kept rather than
+// deriving one from the other.
 func normalizeCard(card *Card, root string) {
-	normalizePathSlice(card.ContextFiles, root)
-	normalizePathSlice(card.EditsFiles, root)
-	normalizePathSlice(card.CreatesFiles, root)
-	normalizePathSlice(card.DeletesFiles, root)
-	for i, m := range card.Moves {
-		card.Moves[i] = MovePair{
-			Old: normalizeCardPath(root, m.Old),
-			New: normalizeCardPath(root, m.New),
+	normalizeRefSlice(card.Targets, root)
+	normalizeRefSlice(card.Uses, root)
+	for i, p := range card.Pairs {
+		card.Pairs[i] = MovePair{
+			Old: normalizeRefIfPath(root, p.Old),
+			New: normalizeRefIfPath(root, p.New),
 		}
 	}
 }
 
-// normalizePathSlice normalizes every element of files in place against root, preserving nil vs empty-slice distinction.
-func normalizePathSlice(files []string, root string) {
-	for i, f := range files {
-		files[i] = normalizeCardPath(root, f)
+// normalizeRefSlice normalizes every path-shaped element of refs in place against root, preserving
+// nil vs empty-slice distinction. A symbol-shaped element is left untouched.
+func normalizeRefSlice(refs []string, root string) {
+	for i, r := range refs {
+		refs[i] = normalizeRefIfPath(root, r)
 	}
+}
+
+// normalizeRefIfPath applies normalizeCardPath to raw only when isPathRef classifies it as a
+// path; a symbol-shaped raw is returned unchanged. This is the single sharpest regression this
+// migration can introduce: without this gate, a non-empty root: would turn "shedrecipe.Lookup"
+// into "internal/boardcli/shedrecipe.Lookup".
+func normalizeRefIfPath(root, raw string) string {
+	if !isPathRef(raw) {
+		return raw
+	}
+	return normalizeCardPath(root, raw)
 }
