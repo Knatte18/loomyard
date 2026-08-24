@@ -10,27 +10,28 @@ parent: main
 ## Problem
 
 `manifest/designs/code-comment-conventions.md` states a self-containment rule for doc comments — a comment must be a standalone contract, never referencing another named symbol — but has no installable skill implementing it.
-loomyard also lacks the "build" and "testing" legs of a code-writing skill set the way millhouse has for its own consumers.
-Without these, an agent working on Go code in this repo, or in any other repo that installs loomyard's plugins, has no explicit encoding of this project's actual comment/quality/testing philosophy;
-it falls back to generic defaults or to millhouse's own installed skills, which are outdated in several concrete places and not owned by this project.
+loomyard also lacks build- and testing-convention skills of its own.
+Without these, an agent working on Go code in this repo, or in any other repo that installs loomyard's plugins, has no explicit, owned encoding of this project's actual comment/quality/testing philosophy to follow — it falls back to generic defaults instead.
 
 ## Scope
 
-**Already in the worktree** (built during this discussion, ahead of the usual mill-plan/mill-go order, on explicit operator instruction — see the Q&A log entry on sequencing):
+**Already in the worktree** (built during this discussion, ahead of the usual discussion-then-implementation order, on explicit operator instruction — see the Q&A log entry on sequencing):
 
 - The `scribe` plugin at `plugins/scribe/`: seven skills (`prose`, `conversation`, `code-quality`, `testing`, `golang-comments`, `golang-build`, `golang-testing`), `.claude-plugin/plugin.json`, `settings.json`, `hooks/hooks.json`, `skills/INDEX.md`.
 - `.claude-plugin/marketplace.json` registers `scribe` alongside `prowler`.
-- `manifest/designs/code-comment-conventions.md` rewritten: the operative self-containment rule now lives in `code-quality`'s Comments section; the design doc keeps only rationale content and points to the skill (Producer Pointer-Rule Invariant, `CONSTRAINTS.md:567`).
+- `manifest/designs/code-comment-conventions.md` rewritten: the operative self-containment rule now lives in `code-quality`'s Comments section; the design doc keeps only rationale content and points to the skill.
 - `manifest/roadmap.md`'s Wave 1 entry for this task reworded to match what was actually decided (see Decisions) and to point at this discussion; not yet moved to the `## Done` section — see the Testing section below for why.
 - A real structural verification pass (not just marketplace-JSON parsing): every skill's frontmatter `name` matches its directory, `plugin.json`/`settings.json`/`hooks.json` all parse, `INDEX.md` lists all seven, `marketplace.json`'s `scribe` entry points at the right source path.
   All checks passed at the time of this writing.
+- `golang-build`'s toolchain reconciled with this repo's actual test-tier scheme (Tier 1 `go test ./...`, Tier 2 `-tags integration`, separate `smoke` tag) and its `goimports`/`golangci-lint` mandate scoped as not-adopted-here.
 
 **Still to do:**
 
-- Discussion review sign-off — this is what's currently in progress.
-- Whatever the sign-off surfaces beyond what's already fixed (see Decisions' two newest entries and the Q&A log for what a first review round already caught and fixed in-place).
-- Moving the roadmap entry to `## Done`, once review actually concludes.
-- Handoff to `/mill-plan` — normally where implementation would start; here it inherits an already-built plugin instead, so its job is closer to verification-and-polish planning than build-from-scratch planning.
+- Discussion review sign-off — in progress; this task finalizes directly from that loop, with no separate plan-writing phase, on explicit operator instruction.
+- Whatever the current review round still surfaces beyond what's already fixed (see Decisions and the Q&A log for what's already been caught and resolved).
+- Moving the roadmap entry to `## Done`, once review concludes.
+- The always-active hook's fate is still an open question — reconsidered mid-review on latency grounds;
+  see Decisions.
 
 **Out:**
 
@@ -38,7 +39,6 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
   Considered at length and explicitly rejected — see Decisions.
 - C#/Python equivalents of any skill here — out of scope; this task is Go-only, per `code-comment-conventions.md`'s own stated scope.
 - Wiring "load these skills" into loom's own producer stencils (Discussion-Write, Plan-Write, etc.) — a separate, later roadmap item ("loom: Discussion-Write producer"), not this one.
-  The plugin's own `hooks/hooks.json` covers default-loading in the meantime — see Decisions.
 - Actually running `/plugin install scribe@loomyard` — the plugin's files and marketplace entry are in place; installing it into a live Claude Code environment is a manual operator step, not part of this task.
 - A mechanical lint pass enforcing the self-containment rule — `code-comment-conventions.md`'s own "Wave 2" enforcement tier, which was always scoped as future/Quarry-dependent work.
   Today's enforcement is review discipline only, unchanged from the design doc's original plan.
@@ -47,34 +47,33 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
 
 ### One plugin, not two
 
-- Decision: a single plugin, `scribe`, not a two-plugin split mirroring millhouse's `mill` (general) + `golang` (per-language) structure.
-- Rationale: loomyard's only existing precedent, `prowler`, is one plugin holding several skills under one `skills/` directory.
+- Decision: a single plugin, `scribe`, holding all seven skills under one `skills/` directory.
+- Rationale: loomyard's own marketplace precedent, `prowler`, is one plugin holding several skills.
   The operator wants very few skills per plugin;
-  splitting into general + per-language plugins adds plugin-count overhead without a corresponding benefit here.
-- Rejected: mirroring millhouse's two-plugin split — no local precedent for it, and it doesn't reduce total skill count.
+  splitting further adds plugin-count overhead without a corresponding benefit here.
+- Rejected: a general-plugin-plus-per-language-plugin split — no local precedent for it, and it doesn't reduce total skill count.
 
 ### Plugin name: scribe
 
 - Decision: `scribe`.
-- Rationale: needed to avoid colliding with millhouse's installed `mill`/`golang` plugin names, and to stay distinct from a separate, not-yet-built "everything needed to use loomyard" plugin (tentatively `lyxsmith`) discussed in passing — a different scope entirely, see Technical context.
+- Rationale: needed a name distinct from other plugins that might be installed in the same Claude Code environment, and distinct from a separate, not-yet-built "everything needed to use loomyard" plugin (tentatively `lyxsmith`) discussed in passing — a different scope entirely, see Technical context.
   `scribe` is an agent-noun (one who writes) with no collision in this codebase's existing vocabulary — `loom`, `weft`, `reed`, `shed`, `fabric`, `hub`, `webster` are all already claimed internally.
 - Rejected: `code-writing` (operator didn't like the name); `quill`, `ink` (considered alongside `scribe`, `scribe` preferred).
 
 ### code-quality and code-comments merged
 
-- Decision: the roadmap's original two general skills, `code-quality` and `code-comments`, are one skill — `code-quality` — with comment-content rules in its own "Comments" section rather than a separate file.
+- Decision: comment content is a section of `code-quality`, not a separate skill.
 - Rationale: code and its comments are one craft, not two separable concerns.
-  Keeping them split forced an artificial "where's the line" boundary that had no natural answer — early drafts needed a dedicated note explaining the split, which is itself a symptom the split was wrong.
-  Millhouse has no standalone "code-comments" skill to mirror in the first place;
-  this was never a rename of an existing split, just new territory drafted as two files, then corrected to one.
-- Rejected: keeping them as two skills, the roadmap's literal original text — rejected once the artificial boundary became apparent in drafting.
+  An early two-file draft forced an artificial "where's the line" boundary that had no natural answer — needing a dedicated note to explain the split was itself a symptom the split was wrong.
+  Corrected to one file once that became apparent.
+- Rejected: keeping them as two skills — rejected once the artificial boundary became apparent in drafting.
 
 ### prose and conversation split out of comment content
 
 - Decision: a new `prose` skill (always-active by convention) governs the STYLE of all text an agent writes — chat replies, markdown, code comments, docstrings: terseness, no empty intensifiers, no padding, semantic line breaks.
   `code-quality`'s Comments section governs only comment CONTENT (self-containment, necessary-and-sufficient).
   A separate, thinner `conversation` skill (also always-active) carries chat-interaction rules that aren't about writing style at all — tone, no compliments, numbered-choice-list formatting, `.scratch/` conventions, no `sed`.
-- Rationale: the operator observed a concrete, recurring problem — Claude writes disciplined, terse chat replies (millhouse's own `conversation` skill already governs that) but sloppy, padded markdown and docstrings, because that skill's style rules never applied outside chat.
+- Rationale: the operator observed a concrete, recurring problem: Claude writes disciplined, terse chat replies but sloppy, padded markdown and docstrings, because no style discipline applied outside chat replies.
   Splitting style (`prose`) from comment content (`code-quality`) and from chat mechanics (`conversation`) lets the same style discipline apply everywhere text is produced, not only in chat.
 - Rejected: a separate `markdown` skill — considered, then dropped once `prose` was established as always-active, since a conditionally-loaded skill is a poor fit for something written this often;
   markdown's real content (semantic line breaks, single-line table cells/blockquotes, heading discipline) is folded directly into `prose` instead.
@@ -101,7 +100,7 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
 - Decision: a file header may be skipped only when the file is the sole file in its directory/module — never based on file size.
 - Rationale: the header exists so a reader can disambiguate among sibling files;
   a module with only one file has nothing to disambiguate from, since the module-level doc already covers it, but a small file sharing a directory with others still needs its own header, because the reader is choosing among siblings regardless of any individual file's size.
-  An earlier draft tied the exception to "small, single-purpose file" — a real logic bug, caught by an independent orchestrator review, not just imprecise wording.
+  An earlier draft tied the exception to "small, single-purpose file" — a real logic bug, caught during review, not just imprecise wording.
 - Rejected: the size-based exception (the bug); no exception at all (rejected as needless, since the sole-file case genuinely has nothing to disambiguate).
 
 ### Trust the caller; fix the defect, don't band-aid the symptom
@@ -125,10 +124,19 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
 - Decision: `golang-comments` adds only Go-specific mechanics on top of a `code-quality` reference — it never restates a concept `code-quality` already states in full.
   Small single-fact sections ("Boolean-returning functions," "Methods on a type") are folded into "Exported symbol doc comments" as bullets with inline illustrations rather than full separate headings and example pairs;
   "File-level comments" and "Package doc comments" are merged into one section, contrasted by the one fact that actually distinguishes them (whether a blank line separates the comment from `package`).
-- Rationale: two independent review passes — the operator's own read and a relayed orchestrator review — both found the same class of problem: the file re-explained concepts (why a file header exists, what "necessary and sufficient" means) that already live in `code-quality`, instead of only adding Go-specific syntax.
+- Rationale: two independent review passes both found the same class of problem: the file re-explained concepts (why a file header exists, what "necessary and sufficient" means) that already live in `code-quality`, instead of only adding Go-specific syntax.
   Went through every section on that basis, not only the flagged examples.
-  Net effect across three trim rounds: roughly 2,120 to 1,560 estimated tokens (~26% reduction), with no rule content lost — only duplication and marginal examples cut.
+  Net effect across three trim rounds: roughly a 26% size reduction, with no rule content lost — only duplication and marginal examples cut.
 - Rejected: the fuller, more expository version — explicitly rejected twice by the operator as still too long even after the first dedup pass.
+
+### golang-build and golang-testing: minimal drafting, one real toolchain question surfaced
+
+- Decision: both skills carry Go build/lint/test commands and testing-framework conventions (table-driven tests, `t.Helper()`, `t.Cleanup`, same-package vs. external test files), drafted directly and reformatted for line-break/terseness discipline — no content redesign, since neither skill's subject matter was contested during discussion.
+- Rationale: comment content and code quality needed real design work because this project's actual philosophy diverges from generic defaults in specific, observed ways;
+  build commands and Go testing-framework mechanics don't — there was nothing to redesign.
+  One real gap surfaced independent of drafting quality: `golang-build`'s default `goimports`/`golangci-lint` mandate and its "run all tests found" default didn't reconcile with this repo's own established two-tier test scheme.
+  Fixed by filling in the skill's own "per-project configuration" section with this repo's actual convention (Tier 1 `go test ./...`, Tier 2 `-tags integration`, a separate `smoke` tag; `goimports`/`golangci-lint` noted as not adopted here) rather than changing the generic top-level defaults, which stay reasonable for other repos installing this plugin.
+- Rejected: leaving the generic defaults unreconciled with this repo's actual practice — a real inconsistency, not a stylistic one, since an agent following the skill literally here would have run tools this repo doesn't use and missed the tier this repo actually relies on.
 
 ### golang-quality not built
 
@@ -137,46 +145,46 @@ it falls back to generic defaults or to millhouse's own installed skills, which 
   Comments got its rework because of an observed verbosity/cross-referencing problem;
   testing's determinism section addressed a real, demonstrated gap;
   this would be anticipatory completeness, which `code-quality`'s own YAGNI rule argues against.
-  The candidate content is also mostly well-established Go community knowledge that a capable model already leans toward by default, unlike the self-containment rule, which is a genuine project-specific departure from default behavior.
-- Rejected: building it now on completeness grounds — proposed, briefly reversed into "yes, build it" when "millhouse doesn't have it" was correctly identified as a non-argument, then reconsidered a final time against the YAGNI test and dropped again.
+- Rejected: building it now on completeness grounds — proposed, briefly reversed when the first objection to it was identified as too weak to stand alone, then reconsidered a final time against the YAGNI test and dropped again.
 
-### Always-active mechanism: a hook nudge, plus explicit loading inside lyx's own prompts
+### Always-active mechanism: still being reconsidered
 
-- Decision: two distinct mechanisms cover "always-active," for two distinct contexts.
-  For a lyx-generated prompt (a loom producer stencil, or anything lyx itself writes), the prompt carries an explicit "Load these skills: ..." line — the same pattern `mill-start` already uses to load `mill:conversation` unconditionally as its own first step;
-  this wiring is the separate, later roadmap item named in Scope Out.
-  For any other session with the plugin installed, `plugins/scribe/hooks/hooks.json` ships a `UserPromptSubmit` hook whose command injects an instruction to load `scribe:prose` (and `scribe:conversation` for a chat reply) before responding.
-- Rationale: a first review round flagged that "always-active" shipped as a bare claim with no mechanism behind it, plus a dangling pointer to a mill-transient file (`discussion.md`) that wouldn't travel with the plugin.
-  Researched whether Claude Code plugins can force-load a skill; confirmed answer: no — a hook can only inject prompt text asking the agent to load a skill, the same mechanism this very discussion.md's own CLAUDE.md-reading hook already relies on in every turn of this session, reliably in practice even though it isn't a platform-enforced guarantee.
-  That's the best available mechanism today, so it's what shipped.
-- Rejected: leaving the claim undefined (the reviewed state); waiting for the producer-stencil wiring alone to cover it, which would leave every non-lyx-driven session with no default loading at all.
+- Decision: not yet final.
+  First shipped as two mechanisms — an explicit "Load these skills: ..." line inside any lyx-generated prompt (a separate, later roadmap item, still the plan for that context), plus a `hooks/hooks.json` `UserPromptSubmit` hook injecting a load-`prose`/`conversation` reminder into every other session.
+- Rationale for the hook as first shipped: a review round flagged that "always-active" had no mechanism behind it at all, plus a dangling pointer to a mill-transient file that wouldn't travel with the plugin.
+  A hook can only inject prompt text asking the agent to load a skill, never force it — confirmed by research — but that is the same mechanism this very session's own CLAUDE.md-reading hook relies on every turn, and it works reliably in practice.
+- Reconsideration in progress: the operator then questioned whether the hook is worth its cost — it runs on every single prompt in every session with the plugin installed, including sessions doing nothing text-related, for a benefit (nudging skill discovery) that `prose`'s own broad `description` field may already achieve through Claude Code's normal relevance-matching, without forcing per-turn overhead.
+  A lighter option (a `SessionStart` hook, firing once per session instead of once per turn) was also proposed.
+  Unresolved at the time of this writing — see the Q&A log.
+- Rejected so far: leaving "always-active" as a bare, mechanism-less claim (the original gap).
+  Not yet decided: keep the `UserPromptSubmit` hook, switch to `SessionStart`, or drop the hook file entirely and rely on relevance-matching plus explicit lyx-prompt loading alone.
 
 ### Design doc points to the skill, not the reverse
 
 - Decision: `code-comment-conventions.md`'s operative rule text (the rule, its two exceptions, the information triage) is no longer duplicated in the design doc — it points to `code-quality`'s Comments section as the canonical text.
   The design doc keeps only content a skill shouldn't carry: the deeper rationale for why the rule is stronger than a staleness rule, and the not-yet-built Quarry query mechanism.
-- Rationale: a first review round cited `CONSTRAINTS.md`'s Producer Pointer-Rule Invariant — an instruction file must never duplicate or paraphrase another file's format-contract content, only point at it — against the design doc and the skill both carrying the same rule text.
-  Resolved in favor of the skill as the source, not the design doc, because the skill is the artifact an agent actually loads at runtime;
-  the design doc lives under `manifest/designs/` in this repo only and won't exist at all in another repo that installs the `scribe` plugin, so making it the canonical source would leave the skill non-self-contained everywhere else it ships.
-- Rejected: making the design doc canonical and the skill a bare pointer — would break the skill's portability, a worse failure than the duplication the invariant guards against.
+- Rationale: the design doc lives under `manifest/designs/` in this repo only and won't exist at all in another repo that installs the `scribe` plugin — making it the canonical source would leave the skill non-self-contained everywhere else it ships, since a skill needs to carry its own operative rule text to function on its own.
+  A review round also cited `CONSTRAINTS.md`'s Producer Pointer-Rule Invariant against the duplication;
+  a later round corrected that citation — the invariant's own text exempts "design docs restating the rule for a human reader," which plausibly covers this document, so the invariant doesn't cleanly mandate the outcome.
+  The portability argument stands on its own regardless, and is what this decision actually rests on.
+- Rejected: making the design doc canonical and the skill a bare pointer — would break the skill's portability, independent of whether the cited invariant strictly applies.
 
 ## Technical context
 
-- Plugin lives at `plugins/scribe/`, mirroring `plugins/prowler/`'s shape: `.claude-plugin/plugin.json`, `settings.json` (granting `Skill(scribe:*)`), `hooks/hooks.json` (the always-active nudge, see Decisions), `skills/<name>/SKILL.md` per skill, `skills/INDEX.md`.
+- Plugin lives at `plugins/scribe/`, mirroring `plugins/prowler/`'s shape: `.claude-plugin/plugin.json`, `settings.json` (granting `Skill(scribe:*)`), `hooks/hooks.json` (the always-active mechanism, still under reconsideration — see Decisions), `skills/<name>/SKILL.md` per skill, `skills/INDEX.md`.
 - Registered in `.claude-plugin/marketplace.json` alongside `prowler`.
-- `update-plugins.sh --dry-run`-equivalent check: it reports `Skipped (not installed): scribe@loomyard -- run '/plugin install scribe@loomyard' first`.
-  That line alone proves only that `marketplace.json` parses and names `scribe` — the script's not-installed branch returns before it ever touches `plugins/scribe/`'s own contents, so it validates nothing about the plugin's shape.
-  A separate, real structural check was run instead (see Scope's "Already in the worktree" for what it covers) and passed;
+- `update-plugins.sh`'s report — `Skipped (not installed): scribe@loomyard -- run '/plugin install scribe@loomyard' first` — proves only that `marketplace.json` parses and names `scribe`;
+  the script's not-installed branch returns before it ever touches `plugins/scribe/`'s own contents, so it validates nothing about the plugin's shape.
+  A separate, real structural check was run instead (see Scope's "Already in the worktree") and passed;
   installing the plugin into a live Claude Code environment (`/plugin install scribe@loomyard`) remains a manual operator step outside this task.
 - Cross-references between skills: `golang-comments` → `code-quality`'s Comments section;
-  `golang-testing` → `testing` (a same-plugin reference, replacing millhouse's cross-plugin `@code:testing` textual pointer, since everything here lands in one plugin);
+  `golang-testing` → `testing` (a same-plugin reference);
   `conversation` → `prose`;
   `code-quality`'s Comments section → `prose` for writing style.
 - A separate, unrelated future plugin — "everything needed to use loomyard" (a compiled `lyx` binary, stencils, a handful of skills) — was discussed in passing as a different, not-yet-built plugin, naming leaning toward `lyxsmith`/`lyxkit` but not finalized.
   It is out of scope here; don't conflate it with `scribe`.
 - `manifest/designs/code-comment-conventions.md` now points at `code-quality`'s Comments section as the canonical rule text rather than duplicating it — see Decisions.
-- No producer-stencil wiring exists yet — "load these skills" instructions in loom's own prompts are a separate, later roadmap item, out of scope here;
-  `hooks/hooks.json` covers default-loading for every other context in the meantime.
+- No producer-stencil wiring exists yet — "load these skills" instructions in loom's own prompts are a separate, later roadmap item, out of scope here.
 
 ## Constraints
 
@@ -189,7 +197,7 @@ Two different senses, since the deliverable is mostly prose/markdown skill conte
 
 **Content review:** each skill file read against its own stated rules (does `code-quality.md` avoid padding by its own standard?
 does `golang-comments.md` avoid restating `code-quality`?).
-Done iteratively during discussion, including two dedicated trim passes on `golang-comments` and this task's own discussion-review round, which caught the file-header logic bug, the always-active gap, the Pointer-Rule Invariant violation, and the other findings resolved in Decisions above.
+Done iteratively during discussion, including two dedicated trim passes on `golang-comments` and this task's own discussion-review rounds, which caught the file-header logic bug, the always-active gap, a self-refuting rule in `prose` itself (it banned "any" as an empty intensifier while using "any" load-bearingly elsewhere in the same file — fixed by dropping it from the list), and the other findings resolved in Decisions above.
 
 **Structural verification:** a real check (not just `update-plugins.sh`'s marketplace-JSON parse) confirming `plugin.json`/`settings.json`/`hooks.json` all parse, every skill's frontmatter `name` matches its directory, `INDEX.md` lists all seven skills, and `marketplace.json`'s `scribe` entry points at the right source path.
 Passed at time of writing;
@@ -200,16 +208,15 @@ no persisted test script was added for this — it was a one-time check, not a m
 For whoever reviews this discussion and the linked skill files (`plugins/scribe/skills/*/SKILL.md`):
 
 - Focus on: can anything be shortened further, is anything redundant — within one file, or duplicated across two files — and is any worked example pulling its weight relative to its size.
-- Do not compare against millhouse's equivalent skills as a baseline.
-  This plugin is deliberately not a port of millhouse's content in several places (see Decisions above) and isn't meant to match it — it's meant to improve on it.
+- These are loomyard's own skills, evaluated on their own merits.
 - You don't have access to why each decision above was made beyond what's written here.
   If something reads as a real design gap rather than a wording or length issue, flag it as a question rather than assuming the omission was accidental.
 
 ## Q&A log
 
-- **Q:** Should implementation (the plugin scaffold, marketplace entry) happen before or after this discussion.md is written?
-  **A:** Before, on explicit operator instruction ("do all the rest, then write discussion.md") — the reverse of mill-start's usual order, where discussion normally precedes and gates implementation.
-  This is why Scope is split into "already in the worktree" versus "still to do" rather than reading as a pre-implementation plan.
+- **Q:** Should implementation (the plugin scaffold, marketplace entry) happen before or after this discussion.md is written, and does this task hand off to a separate plan-writing phase afterward?
+  **A:** Implementation first, discussion.md after — explicit operator instruction, the reverse of the usual order where discussion normally precedes and gates implementation.
+  No separate plan-writing/execution phase either: the operator asked for everything to be written directly following the review rounds, so this task concludes from the review loop itself rather than handing off.
 - **Q:** Does the file-header exception apply to any small file, or only the sole file in a package?
   **A:** Only the sole file in a package — size was never the actual test;
   a small file sharing a package with siblings still needs its own header.
@@ -224,3 +231,8 @@ For whoever reviews this discussion and the linked skill files (`plugins/scribe/
 - **Q:** Are worked code examples in a skill ever just redundant restatement, given `prose`'s "say it once" rule?
   **A:** Partially disagree as a blanket claim — an example pins down a fuzzy judgment line ("how much padding is too much") that prose rules alone leave to interpretation, a different function than restating a rule.
   But the count matters: `golang-comments`' exported-symbol section had four examples for one rule, trimmed to three, then consolidated further in a later round.
+- **Q:** Is the always-active hook worth its per-turn latency cost?
+  **A:** Unresolved.
+  It runs on every prompt in every session with the plugin installed, not only sessions that write text — real, ongoing cost for a benefit that normal skill relevance-matching might already deliver.
+  A `SessionStart` hook (once per session) was raised as a lower-cost middle ground.
+  Decision pending.

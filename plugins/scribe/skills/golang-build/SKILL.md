@@ -72,4 +72,15 @@ Specify these when the defaults don't apply:
 - Build flags (`-tags`, `-ldflags`).
 - Test flags (`-race`, `-cover`).
 
-<!-- Project-specific build configuration goes here -->
+### This repo's configuration
+
+- **Two test tiers, not the plain `go test ./...` default above.**
+  Tier 1 (`go test ./... -count=1`, no build tag) is the default loop — pure-unit and static-guard tests only, no real git/filesystem/tmux/cross-compilation substrate.
+  Tier 2 (`go test -tags integration ./... -count=1`) adds the gated tests that spawn one of those substrates.
+  Run Tier 1 after every task;
+  add Tier 2 only when the change touches git/filesystem-junction/tmux/cross-compilation behavior.
+  A third tag, `smoke` (`go test -tags smoke ./...`), requires a live `claude` session and isn't part of either default loop.
+  See `docs/benchmarks/running-tests.md`.
+- **`goimports`/`golangci-lint` are not wired into this repo** — no `.golangci.*` config, no CI step for either.
+  Skip that step here rather than blocking on tools this project hasn't adopted;
+  `go vet ./...` and `go build ./...` still apply.

@@ -35,7 +35,7 @@ Two tiers, same shape as every other mechanical gate in this initiative:
 1. **Now — review discipline**, carried by the `code-quality`/`golang-comments` skills above.
    No mechanical check exists yet.
 2. **Once Quarry exists — a lint pass, advisory not a hard gate.**
-   Because the rule has no "except when load-bearing" carve-out, the check is a clean mechanical target: flag any identifier-shaped token in a doc comment that resolves to a real symbol outside the current type/package (excluding the two exceptions above).
+   Because the rule has no "except when load-bearing" carve-out, the check is a clean mechanical target: flag any identifier-shaped token in a doc comment that resolves to a real symbol outside the current type/package (excluding the two exceptions named in `code-quality`'s Comments section — self-reference and stdlib/language contracts).
    No judgment about necessity is required — the rule is absolute, so a hit is always a violation.
 
 Wiring into producer prompts is planned, not yet done: once loom's own producers write code, their stencils are meant to compose in a "Load these skills: ..." section (see `plan-card-format.md`) naming `code-quality`/`golang-comments`, not leave invocation to model discretion.

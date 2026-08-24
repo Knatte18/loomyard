@@ -18,7 +18,7 @@ No throat-clearing, no "let me explain," no restating what's about to be said be
 
 ## Eliminate empty intensifiers
 
-Words that add emphasis without meaning: "any", "actually", "really", "genuinely", "truly", "completely", "totally", "fully", "definitely", "certainly", "absolutely", "just", "simply", "merely".
+Words that add emphasis without meaning: "actually", "really", "genuinely", "truly", "completely", "totally", "fully", "definitely", "certainly", "absolutely", "just", "simply", "merely".
 Test: remove the word.
 If the sentence means the same thing, delete it.
 
