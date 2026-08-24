@@ -1,0 +1,21 @@
+MILL_REVIEW_BEGIN
+# Review: loom: Plan-Write producer — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 4.5 (Anthropic), invoked as "Sonnet 5" per harness label
+reviewed_file: plan/
+date: 2026-08-24
+```
+
+## Findings
+
+### [NIT:consistency] Roadmap Done entry drops one of two mirrored operator prerequisites
+**Location:** batch 4 / card 14 **Issue:** Card 14 tells the roadmap entry to "follow the shape of the Done `loom: Discussion-Write producer` entry directly" and explicitly names only one of that entry's two recorded operator prerequisites (`lyx stencil sync`), omitting `/plugin install scribe@loomyard` — even though card 12 gives Plan-Write the identical Step 0 `scribe:prose`/`scribe:testing` load this task's own template entry names the plugin prerequisite for. **Fix:** Have card 14 note both prerequisites, matching the Discussion-Write entry's own two-item list, since Plan-Write now depends on the same plugin for the same reason.
+
+## Verdict
+
+REQUEST_CHANGES
+One NIT: the roadmap Done entry (card 14) should mirror both of Discussion-Write's operator prerequisites, not just one.
+MILL_REVIEW_END

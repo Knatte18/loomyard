@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: Plan-Write producer'
 slug: 'loom-plan-write-producer'
-approved: false
+approved: true
 started: '20260824-181800'
 parent: 'main'
 root: ""
