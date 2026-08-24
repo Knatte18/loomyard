@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-plan-write-producer
 branch: loom-plan-write-producer
 plan: _mill/plan
@@ -23,4 +23,19 @@ plan-fix-r1  '2026-08-24T18:34:43Z'
 plan-review-r2  '2026-08-24T18:44:40Z'
 plan-fix-r2  '2026-08-24T18:45:18Z'
 planned  '2026-08-24T18:45:28Z'
+implementing  '2026-08-24T18:47:12Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: planparser-archive-name-and-loomshed-decorator
+    state: pending
+  - name: shedrecipe-entry-and-recipe-row
+    state: pending
+  - name: loomcli-wiring
+    state: pending
+  - name: stencil-prompt-and-docs
+    state: pending
 ```
