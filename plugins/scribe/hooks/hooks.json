@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Load the scribe:prose skill now -- it governs the style of everything you write this session: chat replies, markdown, code comments, docstrings. Load scribe:conversation too for chat replies.'"
+            "command": "echo 'Load the scribe:conversation skill now -- it governs how you write in this session and builds on scribe:prose, which governs the style of everything written: chat replies, markdown, code comments, docstrings. Load both.'"
           }
         ]
       }
