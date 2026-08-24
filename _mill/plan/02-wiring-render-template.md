@@ -83,6 +83,10 @@ The plan pointer was used for nothing else inside that function, so keeping it w
 
   Add no logger to `Run` and no logger seam to `RunDeps`: per the overview's `cycle-visibility-is-the-envelope, not a log line` Shared Decision, the `Cycles` field plus the prepended `Warnings` lines plus card 7's `cycles` envelope key are this task's whole cycle-visibility surface.
 
+  Correct one doc comment this same file already carries: `accumulatedCardSHAs`' comment opens "accumulatedCardSHAs walks batches in plan order and collects every terminal batch's own CardSHAs".
+  Once `batches` is re-bound above, it walks execution order, which is the more correct order for the SHA-bisect it feeds.
+  Change the phrase "in plan order" to say execution order, and leave the rest of that comment and the function body untouched.
+
   Change nothing about `batchIdentity`, `verifyEveryBatchDone`, `ReportFileName`, or `State.Batches`' keying: this card reorders the slice and nothing else.
 - **Commit:** `feat(websterengine): sequence execution batches in Run and report detected cycles`
 
@@ -198,7 +202,10 @@ The plan pointer was used for nothing else inside that function, so keeping it w
   - The sentence currently reading "This ordered list is the plan's own flat card list — every card, in declared order, one line each: number, slug, one-line intent." must instead say the list is one line per execution batch in the order webster derived from the cards' own declared dependencies, still carrying number, slug, and one-line intent.
   - Keep the existing "It is your navigation source, not the execution unit" sentence and its batchifier explanation as they are.
   - Keep the literal phrase `Drive it STRICTLY in order` — an existing template property test asserts it — but make "in order" mean **the order listed above, top to bottom**, and state explicitly that this is NOT necessarily ascending batch number: a batch's number is its identity, never its position, so the list may legitimately run `03` before `02`.
-  - Replace the clause "there is no DAG here to reorder around" — now false — with the statement that each entry assumes every entry ABOVE it in the list is already committed.
+  - Rewrite the whole three-clause tail as one clean statement of the ordering rule, rather than patching one clause and leaving its neighbour.
+    Both "batch N assumes every batch before it is already committed" and "there is no DAG here to reorder around" go: the first is number-versus-position ambiguous in exactly the way this task exists to remove, and the second is now false.
+    In their place, state once that each entry assumes every entry ABOVE it in the list is already committed.
+    The paragraph must end up stating the rule a single time, with no leftover clause restating it in number terms.
   - Keep the prohibition "no batch is ever skipped or reordered because it 'looks independent.'" verbatim.
   - In the `## The loop` section, change the line "For each batch not already reported, in order:" so it reads "top to bottom in your card list above" rather than a bare "in order".
 
@@ -240,7 +247,7 @@ The plan pointer was used for nothing else inside that function, so keeping it w
   - A `RenderBatchIndex` test asserting the emitted lines follow the slice's own order, not ascending batch number: hand it a slice already ordered `03`, `01`, `02` and assert the rendered text's lines appear in that order, each still carrying its own batch number.
   - A `RenderProgress` test asserting the same ordering property against a state where all three batches are terminal.
   - A `RenderMasterPrompt` test asserting the `{{.batch_index}}` region of the rendered prompt reflects the sequenced order it was handed, so the rendered list and the verbs cannot diverge.
-  - Extend `TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder`, or add a sibling template property test beside it, asserting the reworded template: it still contains `Drive it STRICTLY in order`, it now states that the order is the listed one and not ascending batch number, it still forbids skipping or self-directed reordering (`looks independent`), and it no longer contains the retired clause `there is no DAG here to reorder around`.
+  - Extend `TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder`, or add a sibling template property test beside it, asserting the reworded template: it still contains `Drive it STRICTLY in order`, it now states that the order is the listed one and not ascending batch number, it still forbids skipping or self-directed reordering (`looks independent`), and it no longer contains either retired clause — `there is no DAG here to reorder around` or `batch N assumes every batch before it is already committed`.
 
   Keep the file in package `websterengine_test` and Tier 1 — no new spawn, no new git, no `time.Sleep`.
 - **Commit:** `test(websterengine): cover sequenced rendering and the reworded master template`

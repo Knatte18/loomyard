@@ -3,7 +3,7 @@
 ```yaml
 task: 'webster: DAG-derived card sequencing'
 slug: 'webster-dag-card-sequencing'
-approved: false
+approved: true
 started: '20260824-181726'
 parent: 'main'
 root: ""
@@ -31,7 +31,7 @@ batches:
     name: docs
     file: 03-docs.md
     depends-on: [2]
-    verify: go test ./internal/lyxcwd/...
+    verify: go test ./internal/lyxcwd/... ./internal/planparser/...
 ```
 
 ## Shared Decisions
@@ -91,8 +91,10 @@ batches:
 
 ### Decision: no-planparser-and-no-batcher-change
 
-- **Decision:** `internal/planparser` and `internal/batcher` are not modified by any card in this plan — no new parse rule, no new validation check, no new `Card` field, no exported ref classifier, no new registry entry.
+- **Decision:** Neither `internal/planparser` nor `internal/batcher` gains or loses behavior in this plan — no new parse rule, no new validation check, no new `Card` field, no exported ref classifier, no new registry entry, and no change to any function body in either package.
   Ref matching is exact string equality over the refs `planparser` already hands back.
+  The one carve-out is a comment-only correction: `internal/planparser/validate.go`'s file banner asserts that "cards still execute in strict declared plan order," which this task makes false, and the **Documentation Lifecycle** requires correcting a now-false claim in the same commit.
+  Card 16 fixes that one sentence and touches nothing else in the package.
 - **Rationale:** `discussion.md`'s `no-planparser-change` decision plus the **Planparser Sole-Parser Invariant** and the **Batcher Registry+Config Invariant**.
   `normalizeCard` runs once per card inside `ParsePlan`, so string equality across two cards' ref lists is well-defined without touching either package.
 - **Applies to:** all batches
@@ -102,6 +104,7 @@ batches:
 - `contracts/stencils/webster/webster-template-master.md`
 - `contracts/specs/loom-plan-spec.md`
 - `docs/overview.md`
+- `internal/planparser/validate.go`
 - `internal/websterengine/beginbatch.go`
 - `internal/websterengine/beginbatch_test.go`
 - `internal/websterengine/doc.go`

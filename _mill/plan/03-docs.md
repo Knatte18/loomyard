@@ -4,15 +4,15 @@
 task: 'webster: DAG-derived card sequencing'
 batch: 'docs'
 number: 3
-cards: 3
-verify: go test ./internal/lyxcwd/...
+cards: 4
+verify: go test ./internal/lyxcwd/... ./internal/planparser/...
 depends-on: [2]
 ```
 
 ## Batch Scope
 
 This batch corrects every repo doc outside `internal/websterengine` that now makes a false claim about webster's execution order, and moves the roadmap item to Done.
-It is its own batch because it consumes batch 2's shipped behavior and touches no Go source at all — three `.md` files, no compile surface.
+It is its own batch because it consumes batch 2's shipped behavior and changes no behavior of its own: three `.md` files plus one comment-only line in `internal/planparser/validate.go`, with no function body edited anywhere.
 `internal/websterengine/doc.go` is deliberately NOT here: it is a Go doc comment describing the code that changed, so batch 2's card 12 lands it alongside that code.
 
 Batch-local decision beyond `## Shared Decisions`: `contracts/specs/webster-spec.md` is checked and left alone unless the check turns up a false claim.
@@ -106,6 +106,28 @@ Its line 7 — Master "forks one implementer per execution batch in-session, seq
   Use semantic line breaks.
 - **Commit:** `docs(roadmap): move webster DAG-derived card sequencing to Done`
 
+### Card 16: correct validate.go's declared-order banner claim
+
+- **Context:**
+  - `_mill/discussion.md`
+  - `CONSTRAINTS.md`
+  - `internal/websterengine/sequence.go`
+  - `internal/websterengine/doc.go`
+- **Edits:**
+  - `internal/planparser/validate.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  `internal/planparser/validate.go`'s file banner comment ends with the sentence "No scheduler, dependency graph, or topological sort belongs in this file — per the no-behavior-change-in-webster decision, cards still execute in strict declared plan order."
+  Its second clause is false once this task ships.
+  Rewrite that one sentence so the first clause survives unchanged in force — no scheduler, dependency graph, or topological sort belongs in this file — while the justification becomes accurate: the dependency graph and topological order live in `internal/websterengine`'s `sequence.go`, which derives them from the `Targets`/`Uses` refs this package parses, because scheduling is the executor's job and parsing is this package's, per the **Planparser Sole-Parser Invariant**.
+
+  This is a comment-only edit, and it is the ONLY change this card makes to `internal/planparser`.
+  Change no function body, no check, no signature, no `Check:` ID, and no other line of the banner — the surrounding enumeration of check names and the findings-keying paragraph stay exactly as they are.
+  Its whole justification is the **Documentation Lifecycle**'s same-commit rule for a now-false claim, and it is the one carve-out the overview's `no-planparser-and-no-batcher-change` Shared Decision records.
+- **Commit:** `docs(planparser): correct validate.go's stale declared-order banner claim`
+
 ## Batch Tests
 
 `verify: go test ./internal/lyxcwd/...` runs `TestEnforcement_MarkdownLinks` (`docslink_test.go`), the machine check that every inline markdown link under `manifest/` and `docs/` resolves — both its file part and any `#anchor`.
@@ -113,4 +135,6 @@ That covers two of this batch's three edited files directly (`docs/overview.md`,
 `contracts/specs/loom-plan-spec.md` is outside the scan-source roots, so its own outgoing links are a review obligation, which card 13 handles by adding no new link.
 The same package's `TestEnforcement_GeometryLiterals` and the Fabric Vocabulary walk also live here and cover the `.md` half of the vocabulary rule, so a doc edit that reintroduced a policed `host`-sense phrase would fail this same command.
 
-No Go source changes in this batch, so no compile or behavior surface needs a test beyond the overview's module-wide `go build ./...`.
+`./internal/planparser/...` is chained on for card 16, whose single comment-only edit to `validate.go` has no behavioral surface of its own but must still leave that package compiling and its own validator suite green.
+
+Card 16 aside, this batch changes no Go source, so nothing else here needs a test beyond the overview's module-wide `go build ./...`.
