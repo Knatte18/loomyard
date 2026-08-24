@@ -14,12 +14,13 @@ import (
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the three engines
-// that need one. The other ten engines take no config at all and are given none in this test,
+// that need one. The other eleven engines take no config at all and are given none in this test,
 // since a non-empty config block on any of them is an error from the constructor.
 //
-// DiscussionWrite is one of the ten: it wraps a single-LLM producer, but its Spec arrives as an
-// injected Env.DiscussionSpec closure rather than as recipe Config, so it has no config keys of its
-// own and its seams are filled by newTestEnv instead.
+// DiscussionWrite and PlanWrite are two of the eleven: each wraps a single-LLM producer behind its
+// own commit decorator, but its Spec arrives as an injected Env closure (DiscussionSpec or
+// PlanSpec) rather than as recipe Config, so it has no config keys of its own and its seams are
+// filled by newTestEnv instead.
 func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[string]any {
 	return map[string]map[string]any{
 		"SingleLLM": {
@@ -40,7 +41,7 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 
 // TestBuild_EveryRegisteredEngineBuilds asserts every name shedrecipe.Names() returns builds from
 // a one-row Recipe against a sufficiently filled shedrecipe.Env, driving the assertion off
-// shedrecipe.Names() rather than a local list so a fourteenth registered engine fails this test
+// shedrecipe.Names() rather than a local list so a fifteenth registered engine fails this test
 // until this fixture covers it.
 func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	env := newTestEnv(t)

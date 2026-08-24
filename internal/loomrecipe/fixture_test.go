@@ -150,10 +150,28 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 	return decisionRecordPath, supportLogPath
 }
 
+// planFixtureCard is the syntactically complete, one-card plan-format card body seedPlanValidateFixture
+// and fakeLoomShuttle's "plan"-role branch both write, kept as a single package-level constant so the
+// two writers never drift apart. The sole card is a Create card so path-missing never fires
+// regardless of worktreeRoot's contents — a Create card's targets stay exempt from on-disk existence
+// checking.
+const planFixtureCard = "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
+	"**Intent:** placeholder card.\n"
+
+// planFixtureOverview returns the plan-format overview body naming approved in its frontmatter,
+// pointing at the sole card planFixtureCard writes. It is kept alongside planFixtureCard as a
+// single package-level function so seedPlanValidateFixture and fakeLoomShuttle's "plan"-role branch
+// never drift apart.
+func planFixtureOverview(approved bool) string {
+	return fmt.Sprintf(
+		"---\nformat: 4\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
+		approved,
+	)
+}
+
 // seedPlanValidateFixture writes a syntactically complete, one-card plan-format plan under
-// <anchorPath>/_lyx/plan/, approved or not per approved. The sole card is a Create card so
-// path-missing never fires regardless of worktreeRoot's contents — a Create card's targets stay
-// exempt from on-disk existence checking.
+// <anchorPath>/_lyx/plan/, approved or not per approved, via planFixtureCard and
+// planFixtureOverview.
 func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
 
@@ -162,17 +180,11 @@ func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
 
-	cardBody := "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
-		"**Intent:** placeholder card.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(cardBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(planFixtureCard), 0o644); err != nil {
 		t.Fatalf("write card file: %v", err)
 	}
 
-	overview := fmt.Sprintf(
-		"---\nformat: 4\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
-		approved,
-	)
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(planFixtureOverview(approved)), 0o644); err != nil {
 		t.Fatalf("write overview file: %v", err)
 	}
 }
@@ -188,46 +200,72 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 	return websterengine.RunResult{Outcome: "done"}, nil
 }
 
-// fakeDiscussionShuttle implements shedadapters.Shuttle for row 3 (Discussion-Write). It always
-// reports shuttleengine.OutcomeDone and, when writeOutputs is true, writes both discussion output
-// files from the received Spec.OutputFiles before returning, creating any missing parent
-// directory. commitCalls records how many times the fixture's CommitDiscussion closure built over
-// this fake was invoked.
+// fakeLoomShuttle implements shedadapters.Shuttle for row 3 (Discussion-Write) and row 6
+// (Plan-Write) both: shedrecipe.Env carries one Shuttle field, not one per row, so this single fake
+// serves both real LLM rows, branching on the Spec's own Role. On spec.Role == "plan" it writes the
+// whole plan-directory fixture -- planFixtureCard and planFixtureOverview(true) via f.planDir --
+// rather than only spec.OutputFiles, because loomshed.NewPlanWrite's rotation archives every
+// top-level .md file in the plan directory (including the card file seedPlanValidateFixture
+// pre-wrote) before the shuttle runs, so writing only the overview would leave the Card Index
+// naming a card file that no longer exists and Plan-Validate would report Stuck and bounce.
+// Otherwise (row 3's branch) it keeps the discussion behaviour: when writeOutputs is true, it
+// writes both discussion output files from the received Spec.OutputFiles, creating any missing
+// parent directory. Both branches always report shuttleengine.OutcomeDone. commitDiscussionCalls
+// and commitPlanCalls record how many times the fixture's CommitDiscussion and CommitPlan closures
+// built over this fake were invoked, respectively.
 //
 // buildSequenceFixture's return signature stays fixed at exactly (anchorPath string, env
 // shedrecipe.Env, paths ShedPaths): seven call sites across sequence_test.go and resume_test.go
 // destructure it as "_, env, paths := buildSequenceFixture(t)", and Go requires an exact arity
 // match on ":=", so a fourth return value here would fail to compile at every one of those call
 // sites. A test that needs this fake instead reaches it by type-asserting
-// env.Shuttle.(*fakeDiscussionShuttle) -- buildSequenceFixture is the only thing that ever fills
+// env.Shuttle.(*fakeLoomShuttle) -- buildSequenceFixture is the only thing that ever fills
 // that field, so the assertion is total.
-type fakeDiscussionShuttle struct {
+type fakeLoomShuttle struct {
 	writeOutputs          bool
 	runCalls              int
-	commitCalls           int
+	commitDiscussionCalls int
+	commitPlanCalls       int
 	decisionRecordContent string
 	supportLogContent     string
+	planDir               string
 }
 
-var _ shedadapters.Shuttle = (*fakeDiscussionShuttle)(nil)
+var _ shedadapters.Shuttle = (*fakeLoomShuttle)(nil)
 
-// Run implements shedadapters.Shuttle: it records the call and, when f.writeOutputs is true, writes
-// every entry of spec.OutputFiles with this fake's configured content before reporting
-// shuttleengine.OutcomeDone.
-func (f *fakeDiscussionShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+// Run implements shedadapters.Shuttle: on spec.Role == "plan" it rewrites the whole plan directory
+// and reports Done; otherwise it records the call and, when f.writeOutputs is true, writes every
+// entry of spec.OutputFiles with this fake's configured content before reporting
+// shuttleengine.OutcomeDone. See fakeLoomShuttle's own doc comment for why the "plan" branch writes
+// the whole directory rather than only spec.OutputFiles.
+func (f *fakeLoomShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	f.runCalls++
+
+	if spec.Role == "plan" {
+		if err := os.MkdirAll(f.planDir, 0o755); err != nil {
+			return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: mkdir plan dir %s: %w", f.planDir, err)
+		}
+		if err := os.WriteFile(filepath.Join(f.planDir, "01-first-card.md"), []byte(planFixtureCard), 0o644); err != nil {
+			return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write plan card file: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(f.planDir, "00-overview.md"), []byte(planFixtureOverview(true)), 0o644); err != nil {
+			return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write plan overview file: %w", err)
+		}
+		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+	}
+
 	if f.writeOutputs {
 		contents := []string{f.decisionRecordContent, f.supportLogContent}
 		for i, path := range spec.OutputFiles {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				return shuttleengine.Result{}, fmt.Errorf("fakeDiscussionShuttle: mkdir %s: %w", filepath.Dir(path), err)
+				return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: mkdir %s: %w", filepath.Dir(path), err)
 			}
 			content := ""
 			if i < len(contents) {
 				content = contents[i]
 			}
 			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-				return shuttleengine.Result{}, fmt.Errorf("fakeDiscussionShuttle: write %s: %w", path, err)
+				return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write %s: %w", path, err)
 			}
 		}
 	}
@@ -281,13 +319,22 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 //
 // Row 3 (Discussion-Write) is no longer skipped over by a Stub: it now runs a real
 // shedadapters.SingleLLMProducer behind loomshed's commit decorator. env.Shuttle is a
-// fakeDiscussionShuttle{writeOutputs: true}, env.DiscussionSpec is a closure returning a Spec whose
+// fakeLoomShuttle{writeOutputs: true}, env.DiscussionSpec is a closure returning a Spec whose
 // OutputFiles is the same [decisionRecordPath, supportLogPath] pair this fixture already computes
 // above, and env.CommitDiscussion is a closure recording its invocation count on that same fake.
 // The fake shuttle writing both output files on every Run is what keeps Discussion-Validate
 // passing here: shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away
 // on every Call, so without the fake rewriting them the clean sequence run would find both files
 // absent.
+//
+// Row 6 (Plan-Write) is likewise a real shedadapters.SingleLLMProducer behind loomshed's
+// rotate-and-commit decorator. The same fakeLoomShuttle serves this row too: its planDir field is
+// set to the same _lyx/plan expression seedPlanValidateFixture already builds, env.PlanSpec is a
+// closure returning a Spec naming Role: "plan" and OutputFiles holding the single overview path,
+// and env.CommitPlan is a closure recording its invocation count on that same fake. The fake's
+// "plan"-role branch rewrites the whole plan directory (see fakeLoomShuttle's own doc comment for
+// why) rather than only the overview, so Plan-Validate still finds a complete, approved,
+// zero-findings plan after the decorator's rotation archived the seeded one away.
 func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths ShedPaths) {
 	t.Helper()
 
@@ -316,10 +363,13 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("mkdir cwd: %v", err)
 	}
 
-	discussionShuttle := &fakeDiscussionShuttle{
+	planDir := filepath.Join(dir, lyxdirs.LyxDirName, "plan")
+
+	loomShuttle := &fakeLoomShuttle{
 		writeOutputs:          true,
 		decisionRecordContent: validDecisionRecord,
 		supportLogContent:     "support log",
+		planDir:               planDir,
 	}
 
 	env = shedrecipe.Env{
@@ -338,16 +388,29 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			RefMatcher: fakeRefMatcher{},
 		},
 		Landing: landing,
-		Shuttle: discussionShuttle,
+		Shuttle: loomShuttle,
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "discussion prompt",
 				OutputFiles: []string{decisionRecordPath, supportLogPath},
 				Interactive: false,
+				Role:        "discussion",
 			}, nil
 		},
 		CommitDiscussion: func() error {
-			discussionShuttle.commitCalls++
+			loomShuttle.commitDiscussionCalls++
+			return nil
+		},
+		PlanSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "plan prompt",
+				OutputFiles: []string{filepath.Join(planDir, "00-overview.md")},
+				Interactive: false,
+				Role:        "plan",
+			}, nil
+		},
+		CommitPlan: func() error {
+			loomShuttle.commitPlanCalls++
 			return nil
 		},
 	}
