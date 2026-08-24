@@ -6,6 +6,7 @@ slug: webster-dag-card-sequencing
 branch: webster-dag-card-sequencing
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'webster: DAG-derived card sequencing'
 task_description: |
   webster: DAG-derived card sequencing
@@ -31,9 +32,14 @@ implementing  '2026-08-24T18:46:24Z'
 ```yaml
 batches:
   - name: sequencing core
-    state: pending
+    state: running
+    implementer_session: 66df0333-d368-4004-8bc9-1c3283147abb
+    start_sha: b09407c77cefc61aa068def37ffa5c47d393bd02
+    verify_baseline_failures: []
   - name: wiring, render, and master template
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
