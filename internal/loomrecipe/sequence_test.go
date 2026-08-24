@@ -29,6 +29,11 @@ import (
 // loomshed's commit decorator rather than a Stub: the fixture's fake shuttle writes both discussion
 // output files and reports Done, so the decorator's injected commit closure fires and
 // Discussion-Validate finds a complete pair.
+//
+// Row 6 (Plan-Write) passes for the same reason: it is now a real shedadapters.SingleLLMProducer
+// behind loomshed's rotate-and-commit decorator, and the fixture's fake shuttle rewrites the whole
+// plan directory on its "plan"-role branch, so Plan-Validate still finds a complete, approved,
+// zero-findings plan after the decorator's rotation archived the seeded one away.
 var wantSequenceOrder = []string{
 	loomshed.NamePreflight,
 	loomshed.NameLoomPreflight,
@@ -103,5 +108,11 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
 	if loomShuttle.commitDiscussionCalls != 1 {
 		t.Errorf("fakeLoomShuttle.commitDiscussionCalls = %d; want exactly 1 after a clean run", loomShuttle.commitDiscussionCalls)
+	}
+
+	// The equivalent check for row 6: a Done from Plan-Write must reach its own commit seam too,
+	// rather than the decorator being silently bypassed.
+	if loomShuttle.commitPlanCalls != 1 {
+		t.Errorf("fakeLoomShuttle.commitPlanCalls = %d; want exactly 1 after a clean run", loomShuttle.commitPlanCalls)
 	}
 }
