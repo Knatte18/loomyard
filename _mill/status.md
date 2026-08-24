@@ -39,7 +39,9 @@ batches:
     commit_sha: 1a132ff5b9088f96e2b4793c85d5060473f0822a
     verify_baseline_failures: []
   - name: wiring, render, and master template
-    state: pending
+    state: running
+    implementer_session: 1c5f481d-6b27-4c49-af18-10659146aeaf
+    start_sha: 68c1cb7d06c5e65e88ab099afee51f6ea1b94406
     verify_baseline_failures: []
   - name: docs
     state: pending
