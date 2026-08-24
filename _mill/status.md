@@ -54,6 +54,8 @@ batches:
     commit_sha: 30f780c2bff90dbe263b3c0bf993ab7940b62995
     verify_baseline_failures: []
   - name: docs — spec rewrite, stencils, sandbox suite, stale figures, roadmap
-    state: pending
+    state: running
+    implementer_session: af9a2a28-ba24-49ca-835d-74db90f1d6be
+    start_sha: c6e8dd7f8d0bc87c5fc8a0588d8d817f20b794d9
     verify_baseline_failures: []
 ```
