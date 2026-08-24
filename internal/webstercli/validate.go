@@ -44,12 +44,13 @@ func (c *websterCLI) validateCmd() *cobra.Command {
 		Use:   "validate",
 		Short: "lint the plan against the plan-format machine checks without running anything",
 		Long: `validate parses the plan at _lyx/plan and runs every plan-format machine
-check against it -- the 14 checks contracts/specs/loom-plan-spec.md's
-"Validation checks" section pins: format/approval, Card Index <-> card-file
-consistency, card path well-formedness, the Moves: grammar/redundancy/
-mechanic checks, the per-card structural checks, the card-numbering
-heading cross-check, the existence-dependent path/commit-subject checks,
-and the depends-on-order gate. A clean plan prints {"valid": true,
+check against it -- the 16 checks contracts/specs/loom-plan-spec.md's
+"Validation checks" section pins: format and approval, Card Index <->
+card-file consistency, card type presence and retired-label detection,
+card path well-formedness, the Rename pair grammar and its plan-level
+mechanic section, the per-card structural and field-presence checks, the
+card-numbering heading cross-check, and the existence-dependent path and
+commit-subject checks. A clean plan prints {"valid": true,
 "cards": N}. A plan with findings prints an error envelope carrying every
 finding (check, card, detail) and exits non-zero -- this is the SAME gate
 "lyx webster run" runs automatically before ever forking an implementer;
