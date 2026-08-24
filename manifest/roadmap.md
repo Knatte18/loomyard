@@ -381,7 +381,7 @@ No build order is implied between these items.
    `code-comment-conventions.md`'s doc-comment rule now lives in `code-quality` as the canonical text; the design doc is kept, not deleted, holding only rationale and pointing at the skill — an exception to the usual module-doc lifecycle, since a skill has no Go package header to carry that rationale instead.
    A `golang-quality` skill (Go-idiom content: accept-interfaces/return-structs, error-as-value mechanics, package design) was considered and explicitly not built — no concrete observed problem motivated it, unlike every other skill here.
    Installing the plugin (`/plugin install scribe@loomyard`) is a manual step, not yet done.
-   See [designs/code-comment-conventions.md](designs/code-comment-conventions.md) and [_mill/discussion.md](../_mill/discussion.md).
+   See [designs/code-comment-conventions.md](designs/code-comment-conventions.md).
 
 ## Maintenance
 
