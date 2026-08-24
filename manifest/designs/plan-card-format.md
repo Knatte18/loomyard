@@ -87,5 +87,5 @@ All three items below closed when the **planparser: Card-format migration to `Ed
 - **Whether `ImpactSummary` on Delete needs a structured shape beyond one line of prose.**
   Closed: it stays one line of prose, identical in shape to an `Edit` card's.
   A structured shape (e.g. an enumerated caller list) would need a caller enumeration the parser cannot produce without the symbol lookup this task deliberately excludes — see the shape classifier's own deviation from ground-truth resolution, above.
-- **Reconciliation with `contracts/specs/loom-plan-spec.md`'s existing 14 validator checks — which of those still apply, which are now redundant, which need rewriting.**
-  Closed: the disposition table this task implemented lands on sixteen distinct check IDs, one row per ID, in `contracts/specs/loom-plan-spec.md`'s own Validation checks section.
+- **Reconciliation with `contracts/specs/loom-plan-spec.md`'s existing validator checks — which of those still apply, which are now redundant, which need rewriting.**
+  Closed: the disposition table this task implemented lands on sixteen distinct check IDs, one row per ID, in `contracts/specs/loom-plan-spec.md`'s own Validation checks section — up from the spec's former 14-row list, which itself bundled two distinct IDs into its first row.
