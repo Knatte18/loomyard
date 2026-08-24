@@ -43,8 +43,13 @@ The real consumer surface is much smaller — see Technical context.
 - Stale comment corrections: `internal/websterengine/doc.go`'s "dead DAG seam" passage and its deviation-union sentence;
   the "14 checks" counts in `internal/webstercli/validate.go`, `internal/planparser/validate.go`, and `internal/planparser/validate_test.go` — which are **already wrong today**, see the `validator-checks` decision.
 - `manifest/roadmap.md` — move the Wave 2 planparser item to Done on completion.
-- `manifest/designs/plan-card-format.md` — flip its "Status: designed, not implemented" banner, and record that this task closes **all three** of its "Open, not decided here" items: `Custom` needs no mechanical check (`validator-checks`), `ImpactSummary` on `Delete` stays one line of prose (`prose-fields`), and the validator-check reconciliation is the `validator-checks` table.
-  While resolving that third item, **also correct its own "existing 14 validator checks" figure to 16** (`manifest/designs/plan-card-format.md:84`) — it inherits the same miscount, and leaving a wrong number inside a resolved item moves the staleness rather than removing it.
+- `manifest/designs/plan-card-format.md` — its status banner (`:3`) is rewritten **clause by clause**, not just its opening phrase:
+  - *"Status: designed, not implemented"* → implemented, naming this task.
+  - *"Supersedes `loom-plan-spec.md`'s Card fields and `loom-template-plan.md` — neither is rewritten yet"* → both **are** rewritten here (`doc-reach`), so the clause becomes a plain pointer at the spec rather than a pending-work note.
+  - *"`scout-plan-symbol-fields.md` and `webster-parallel-execution.md` … reconcile or delete them when this lands"* → **repointed at the two owning roadmap items** (`manifest/roadmap.md:62` for `webster-parallel-execution.md`, `roadmap.md:136-138` for `scout-plan-symbol-fields.md`) rather than left as an unactioned instruction this task visibly does not follow.
+    Leaving it as-is would make the doc read as instructing work the task deliberately declines.
+  - The doc's *"Open, not decided here"* section records that this task closes **all three** items: `Custom` needs no *type-specific* mechanical check (`validator-checks`), `ImpactSummary` on `Delete` stays one line of prose (`prose-fields`), and the validator-check reconciliation is the `validator-checks` table.
+    Its own check-count figure at `:84` is corrected by Sweep 3 (`stale-comments`).
 
 **Out:**
 
@@ -185,11 +190,17 @@ The real consumer surface is much smaller — see Technical context.
 
 - **Decision:** the check set moves from **15 to 16**.
 
-  First, a correction the migration must carry: **the repo's "14 checks" figure is already wrong.**
-  `internal/planparser/validate.go` emits **15** distinct `Check:` IDs today — `format-unrecognized`, `plan-unapproved`, `index-file-mismatch`, `card-path-malformed`, `move-format`, `move-redundant`, `move-source-missing`, `move-target-collision`, `move-mechanic-missing`, `card-missing-field`, `card-field-overlap`, `card-numbering`, `path-missing`, `commit-subject-mismatch`, `depends-on-order`.
-  Reproduce with `grep -o 'Check: *"[a-z-]*"' internal/planparser/validate.go | grep -o '"[a-z-]*"' | sort -u | wc -l`.
-  So the three "14 checks" comment sites and `contracts/specs/loom-plan-spec.md`'s "the fourteen checks below" banner are stale independently of this task;
-  this task fixes them to the correct post-migration figure rather than propagating a wrong baseline.
+  First, a metric mismatch the migration must resolve — **not** a miscount, as an earlier draft of this discussion wrongly claimed.
+  The repo's "14" and this discussion's "15" count two different things:
+  - **14** is the **row count** of `contracts/specs/loom-plan-spec.md:200-217`'s numbered list, whose row 1 bundles two IDs (`format-unrecognized` / `plan-unapproved`).
+    The three Go comment sites cite that row count, so they are internally consistent with the spec today.
+  - **15** is the count of **distinct `Check:` IDs** `internal/planparser/validate.go` emits: `format-unrecognized`, `plan-unapproved`, `index-file-mismatch`, `card-path-malformed`, `move-format`, `move-redundant`, `move-source-missing`, `move-target-collision`, `move-mechanic-missing`, `card-missing-field`, `card-field-overlap`, `card-numbering`, `path-missing`, `commit-subject-mismatch`, `depends-on-order`.
+    Reproduce with `grep -o 'Check: *"[a-z-]*"' internal/planparser/validate.go | grep -o '"[a-z-]*"' | sort -u | wc -l`.
+
+  **Decision: the figure is a count of distinct `Check:` IDs**, and the rewritten spec's numbered list must carry **one row per ID** — `format-unrecognized` and `plan-unapproved` unbundled into their own rows.
+  Otherwise a 15-row list under a "16 checks" banner recreates exactly the row-count-versus-ID-count discrepancy this task is resolving.
+  A finding's ID is what a consumer greps for and what `ValidationError.Check` carries;
+  a row is a presentation choice.
 
   Disposition of every existing check:
 
@@ -213,6 +224,9 @@ The real consumer surface is much smaller — see Technical context.
 
   New checks (5): `card-type-missing` (a card carries zero, or more than one, recognized type label), `impact-summary-multiline`, `card-field-empty`, `prosa-symbol-target` (a `Prosa` card's entries must all be path-shaped), and `card-retired-label` (a format-4 card carrying a format-3 field label — see `retired-label-disposition`).
 
+  **`Custom` is exempt from type-specific checks only**, never from the card-generic ones — the full split is enumerated in `path-missing-rework`.
+  "No mechanical check" for `Custom` means no *type-specific* rule, not a blanket skip.
+
   **Required-field presence stays one check, not three.** `card-missing-field` keeps its ID and its existing `[]cardFieldLabel` iteration shape in `checkCardMissingField`;
   only the required set it iterates changes, from the seven old labels to `Intent:` plus the conditional `ImpactSummary:`.
   A card with no `Intent:` therefore produces a `card-missing-field` finding, exactly as a card with no `What:` does today.
@@ -224,7 +238,7 @@ The real consumer surface is much smaller — see Technical context.
 - **Rationale:** the three dropped `move-*` checks all rest on a mechanical `old -> new` pair plus a destination path resolvable against other cards' `Creates:`/`Deletes:` — and `Creates:`/`Deletes:` no longer exist as fields (see `rename-grammar`);
   `Move`'s destination lives in `Intent` prose by design, so there is nothing to cross-check.
   `depends-on-order` has no field left to check.
-  This closes the design doc's open item "Reconciliation with `contracts/specs/loom-plan-spec.md`'s existing 14 validator checks" — noting that the doc's "14" inherits the same miscount corrected above.
+  This closes the design doc's open item "Reconciliation with `contracts/specs/loom-plan-spec.md`'s existing 14 validator checks" — the doc's "14" cites the spec's row count and is corrected to 16 by Sweep 3 along with every other site.
 - **Rejected:** preserving the `move-*` checks by giving `Move` a mechanical destination field (departs from the design doc);
   stripping to format/approval/index-consistency only and deferring content checks to a later hardening pass (leaves the new format almost unchecked at exactly the moment it is least understood).
 
@@ -251,8 +265,12 @@ The real consumer surface is much smaller — see Technical context.
 
 - **Decision:** `path-missing` stays, but becomes type-conditional and keeps two union helpers under new definitions.
   - **What it checks:** path-shaped entries in any card's `Uses:`, and path-shaped targets of `Edit`, `Delete`, `Move`, and `Prosa` cards, plus a `Rename` pair's `Old` side.
-  - **What it never checks:** a `Create` card's targets (by definition they do not exist yet), a `Rename` pair's `New` side (the post-rename path does not exist yet either), and **`Custom` card targets** — `Custom` is a pure escape hatch that gets no mechanical check at all (`validator-checks`), and a `Custom` card used to create something would otherwise produce a spurious finding for doing exactly what the escape hatch is for.
-    `card-path-malformed` still applies to `Custom` targets: well-formedness is not existence.
+  - **What it never checks:** a `Create` card's targets (by definition they do not exist yet), a `Rename` pair's `New` side (the post-rename path does not exist yet either), and **`Custom` card targets** — a `Custom` card used to create something would otherwise produce a spurious finding for doing exactly what the escape hatch is for.
+
+    **`Custom` is exempt from *type-specific* checks only, never from the card-generic ones.** Stated precisely so no implementer writes a blanket skip:
+    - **Exempt:** `path-missing`, and any target-shape rule (`prosa-symbol-target`'s analogue).
+    - **Still binding, like every other card:** `card-type-missing`, `card-missing-field` (a `Custom` card still needs `Intent:`), `card-field-empty`, `card-field-overlap`, `card-path-malformed`, `card-retired-label`, `card-numbering`, `commit-subject-mismatch`.
+    Well-formedness is not existence: a `Custom` card may name a path that does not exist yet, but it may not name a malformed one.
   - **What satisfies an otherwise-missing path:** `createTargetsUnion` — the union, across the plan, of every `Create`-type card's path-shaped targets — and `renameTargetsUnion` — the union of every `Rename` pair's `New` side.
     These are today's `createsUnion`/`movesTargetsUnion` renamed and redefined, **not deleted**;
     the Technical context's earlier claim that both "go away" was wrong, since `checkPathMissing` uses both today (`validate.go:528-530`).
@@ -290,7 +308,7 @@ The real consumer surface is much smaller — see Technical context.
 - **Decision:** the plan-level `## Rename mechanic` section survives.
   `Plan.RenameMechanic` and `sections.go` are unchanged.
   `move-mechanic-missing` is renamed `rename-mechanic-missing` and fires when any card is type `Rename` and the section is absent.
-- **Rationale:** this is a deliberate partial amendment to `validator-checks` — five `move-*` checks drop, one returns renamed.
+- **Rationale:** this is a deliberate partial amendment to `validator-checks` — of the five `move-*` checks, **three drop and two survive renamed** (`move-format` → `rename-format`, `move-mechanic-missing` → `rename-mechanic-missing`), which is what the disposition table and the 15 − 4 arithmetic both encode.
   The design doc requires a `Rename` to be executed by an AST-aware script, never text/regex, which makes the plan-level mechanic section *more* load-bearing than it was for the old `Moves:` field, not less.
   Letting it fall with the other four would invite exactly the text/regex rename the design doc bans.
 - **Rejected:** keeping the section but dropping the check (nothing then enforces its presence);
@@ -348,14 +366,20 @@ The real consumer surface is much smaller — see Technical context.
      Rewrite so the reason the seam is inactive is "Wave 3 activates it", not "cards carry no symbol fields".
      The seam stays dead.
   2. The same file's deviation-union sentence, per `deviation-union`.
-  3. The "14 checks" counts in `internal/webstercli/validate.go`, `internal/planparser/validate.go`, and `internal/planparser/validate_test.go`, plus `contracts/specs/loom-plan-spec.md`'s "the fourteen checks below" banner.
-  4. `manifest/designs/plan-card-format.md:84`'s "existing 14 validator checks" (see the Scope bullet).
-  5. `manifest/designs/scout-plan-symbol-fields.md:64`'s "`loom-plan-spec.md`'s existing 14 checks".
-     This one is a **figure-only** correction, deliberately narrow: the doc as a whole is stale and its substantive reconciliation stays out of scope (see Scope: Out), but the `Out` rationale there covers *reconciling the doc*, not *leaving a number wrong that this task is fixing in four other places*.
-     Correcting five sites and knowingly skipping the sixth would be arbitrary.
+  3. **Every stale check-count figure.** Do not work from a hand list — the card-format carriers get two re-runnable sweeps above, and this deserves its own.
+     **Sweep 3:**
 
-     All six figures become **16**, the post-migration count.
-     They are wrong **today** at 14 versus an actual 15 (see `validator-checks`), so part of this is a pre-existing correction the migration absorbs rather than a consequence of it.
+     ```
+     grep -rn "14 checks\|fourteen checks\|14 validation checks\|14 validator checks" --include=*.go --include=*.md . | grep -v '^./.git/' | grep -v '_mill/'
+     ```
+
+     As of this discussion that hits `contracts/specs/loom-plan-spec.md:3` (the "fourteen checks below" banner), `internal/planparser/validate.go:17`, `internal/planparser/validate_test.go:89`, `internal/planparser/doc.go:58`, `internal/webstercli/validate.go:47`, `manifest/designs/plan-card-format.md:84`, and `manifest/designs/scout-plan-symbol-fields.md:64`.
+     Note that a single file can carry more than one occurrence (`validate_test.go` has three, at lines 1, 9, and 89), which is why the sweep uses `-n` rather than `-l` and why no fixed site count is stated here.
+
+     Every hit becomes **16**, the post-migration count of distinct `Check:` IDs — see `validator-checks` for why the figure counts IDs and not spec rows, and for the requirement that the rewritten spec's list carry one row per ID.
+
+     `manifest/designs/scout-plan-symbol-fields.md:64` is a **figure-only** correction, deliberately narrow: that doc as a whole is stale and its substantive reconciliation stays out of scope (see Scope: Out).
+     Correcting a number is not reconciling a document, and skipping one site out of a mechanical sweep would be arbitrary.
 - **Rationale:** all three become factually false the moment this lands, and a knowingly-false doc comment is worse than no comment.
   All are comment-only, no code, no behavior change.
 - **Rejected:** leaving them for Wave 3;
@@ -388,7 +412,7 @@ The real consumer surface is much smaller — see Technical context.
   Note also that `checkPathMissing` today deliberately skips `CreatesFiles` (`validate.go:533`);
   the type-conditional rework preserves that intent by skipping `Create` targets.
 - `sections.go` (69 lines) — unchanged.
-- `doc.go` (62 lines) — the package doc describes the five typed file-op fields, the `none` sentinel's three-state model, and "the plan format's 14 validation checks" (itself a miscount — see `validator-checks`).
+- `doc.go` (62 lines) — the package doc describes the five typed file-op fields, the `none` sentinel's three-state model, and "the plan format's 14 validation checks" (a Sweep 3 site — see `stale-comments`).
   All three passages need rewriting.
 - `testdata/goodplan/` — a four-card golden fixture (`00-overview.md` + `01-json-flag.md` … `04-helptree-rename.md`) that is a materialization of the spec's worked example.
   It uses `root: internal/boardcli`, a `//`-escaped path, a `Depends-on:` chain, a pinned `Commit:`, and a `Moves:` card with the `## Rename mechanic` section.
@@ -545,7 +569,8 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
   `Depends-on:` dropped;
   `Commit:` and `Verify:` survive;
   `Card.Intent` renamed `Card.Summary`.
-- **Q:** Which validator checks survive? **A:** The baseline is **15**, not the 14 the repo's comments and the spec banner claim — that figure is already stale before this task touches anything.
+- **Q:** Which validator checks survive, and is the repo's "14" wrong? **A:** "14" is not a miscount — it is the **row count** of the spec's numbered list, whose row 1 bundles `format-unrecognized`/`plan-unapproved`, while **15** is the count of distinct `Check:` IDs the code emits.
+  This task settles on the ID count as the figure and requires the rewritten spec to carry one row per ID, so the two metrics stop diverging.
   Of those 15: keep 5 unchanged, rework 3, retarget 1 (`card-missing-field`), rename 2, drop 4, add 5 — **16**.
   See the `validator-checks` table.
 - **Q:** What enforces a missing `Intent:`? **A:** `card-missing-field`, which keeps its ID and its `[]cardFieldLabel` shape and simply iterates the new required set (`Intent:`, plus `ImpactSummary:` on Edit/Delete).
@@ -601,7 +626,7 @@ The gate does **not** cover the two markdown instruction files (`SANDBOX-WEBSTER
   The roadmap already assigns `webster-parallel-execution.md` to the Wave 3 DAG task.
 - **Q:** The now-false "no symbol fields" claim in `websterengine/doc.go`? **A:** Corrected in this task, comment-only;
   the seam stays dead.
-  Also fixes the stale "14 checks" counts, which are a pre-existing miscount of an actual 15.
+  Also fixes every stale "14 checks" figure via Sweep 3, settling the row-count-versus-ID-count ambiguity in favour of distinct IDs.
   No new `CONSTRAINTS.md` invariant.
 - **Q:** Does the plan-level `## Rename mechanic` section survive? **A:** Yes, with `move-mechanic-missing` renamed `rename-mechanic-missing` and retargeted to `Rename` cards.
   This is a genuine revision of the drop-all-`move-*` answer, not another instance of it: the AST-aware requirement makes the check *more* valuable than it was, and letting it fall would open exactly the text/regex rename the design doc bans.

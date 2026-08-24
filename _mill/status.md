@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r4
 slug: planparser-card-format-migration
 branch: planparser-card-format-migration
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-24T10:32:44Z'
+discussion-fix-r4  '2026-08-24T12:39:00Z'
 ```
