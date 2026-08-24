@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-discussion-format doc and manifest cleanup
 slug: loom-redesign-discussion-format
 branch: loom-redesign-discussion-format
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r1  '2026-08-24T08:35:22Z'
 plan-fix-r2  '2026-08-24T08:59:50Z'
 planned  '2026-08-24T09:14:38Z'
 implementing  '2026-08-24T09:15:14Z'
+approved-discussion-format doc and manifest cleanup  '2026-08-24T09:20:06Z'
 ```
 
 ## Batches
@@ -32,8 +33,9 @@ implementing  '2026-08-24T09:15:14Z'
 ```yaml
 batches:
   - name: discussion-format doc and manifest cleanup
-    state: running
+    state: approved
     implementer_session: 6c2fdc77-e431-48eb-8d44-2ebd7597ba9a
     start_sha: 457b12e317c5d6f4bdc765e9cce69b0fcac4e386
+    commit_sha: 6ea7f5b5fb226cc4b8fd739f912341280ac5113c
     verify_baseline_failures: []
 ```
