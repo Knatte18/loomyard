@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: loom-plan-write-producer
 branch: loom-plan-write-producer
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-shedrecipe-entry-and-recipe-row  '2026-08-24T19:01:40Z'
 approved-loomcli-wiring  '2026-08-24T19:04:10Z'
 approved-stencil-prompt-and-docs  '2026-08-24T19:09:11Z'
 holistic-reviewing  '2026-08-24T19:09:47Z'
+holistic-fixing  '2026-08-24T19:13:29Z'
 ```
 
 ## Batches
