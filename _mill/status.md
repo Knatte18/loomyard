@@ -6,6 +6,7 @@ slug: loom-discussion-write-producer
 branch: loom-discussion-write-producer
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'loom: Discussion-Write producer'
 task_description: |
   loom: Discussion-Write producer
@@ -34,11 +35,18 @@ implementing  '2026-08-24T14:30:17Z'
 ```yaml
 batches:
   - name: loomengine seam and stencil rewrite
-    state: pending
+    state: running
+    implementer_session: cdf664de-0dce-467d-a359-b66828ba047f
+    start_sha: 018a004e7a35c6e04342b49b5f1054a3271a762c
+    verify_baseline_failures: []
   - name: loomshed DiscussionWrite commit decorator
     state: pending
+    verify_baseline_failures: []
   - name: registry entry, recipe row flip, and wiring
     state: pending
+    verify_baseline_failures: []
   - name: documentation lifecycle
     state: pending
+    verify_baseline_failures: ['--- FAIL: TestEnforcement_MarkdownLinks (0.01s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/lyxcwd\t\
+    0.140s", "FAIL\tgithub.com/Knatte18/loomyard/internal/lyxcwd\t0.142s"]
 ```
