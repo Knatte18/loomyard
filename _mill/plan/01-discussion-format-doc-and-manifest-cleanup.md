@@ -134,6 +134,11 @@ Batch-local decisions beyond `## Shared Decisions`: none.
   Write the entry's list marker as the literal `1.`, like every other entry in the file, since numbering renders automatically.
   Leave the Wave 1 and Wave 2 headings, the group intro's wave sentence, and the remaining Wave 1 item (**loom: code-writing skills — comments, build, testing**) structurally untouched — Wave 1 simply has one item after the move.
   Do not renumber anything anywhere.
+  Fourth, repair the two positional cross-references the move above invalidates.
+  The Wave 2 **loom: Discussion-Write producer** item currently reads "a prompt rewritten for the new Discussion format (Wave 1's first item), instructing the agent to load the new code-writing skills (Wave 1's second item)".
+  After the move, the Discussion-format item is not in Wave 1 at all and Wave 1 has no second item, so both parentheticals are false.
+  Reword them to cross-reference by bold item name instead of by position — the Discussion-format item as the shipped Done entry it now is, and the code-writing-skills item by its own name — per this file's own Maintenance rule that numbers are not stable cross-reference IDs and references go by bold item name.
+  Change nothing else in that item.
 - **Commit:** `docs(roadmap): rescope the card-format supersession, trim the Fix 2 restatement, ship the discussion-format item`
 
 ### Card 5: point review-finding-classification.md's item 5 at the new subsection
