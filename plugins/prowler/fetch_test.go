@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -413,4 +414,48 @@ func TestFetchPage_UnsupportedContentEncodingFallsBackToBrowser(t *testing.T) {
 	if got != want {
 		t.Errorf("fetchPage() = %q; want %q", got, want)
 	}
+}
+
+func TestFetchPage_ChallengePageIsNotReturnedAsContent(t *testing.T) {
+	blockPageBody, err := os.ReadFile("testdata/reddit-block-page.html")
+	if err != nil {
+		t.Fatalf("os.ReadFile(testdata/reddit-block-page.html) error = %v", err)
+	}
+
+	t.Run("static_wall_and_rendered_wall_both_rejected", func(t *testing.T) {
+		// A non-Reddit URL is used deliberately: the wall must be rejected by
+		// the generic cascade itself, not by any Reddit-specific routing.
+		const url = "https://example.com/walled"
+		f := stubResponses(t, map[string]*http.Response{
+			url: htmlResponse(string(blockPageBody)),
+		}, func(context.Context, string) (string, bool) {
+			return string(blockPageBody), true
+		})
+
+		got := fetchPage(context.Background(), f, url)
+		if !strings.HasPrefix(got, "# Error fetching "+url) {
+			t.Errorf("fetchPage() = %q; want it to start with \"# Error fetching %s\"", got, url)
+		}
+		if !strings.Contains(got, "blocked:") {
+			t.Errorf("fetchPage() = %q; want it to contain \"blocked:\"", got)
+		}
+		if strings.Contains(strings.ToLower(got), "blocked by network security") {
+			t.Errorf("fetchPage() = %q; want it to NOT contain the block page's marker text", got)
+		}
+	})
+
+	t.Run("browser_fallback_passes_through_genuine_content", func(t *testing.T) {
+		const url = "https://example.com/walled-but-browser-clears-it"
+		f := stubResponses(t, map[string]*http.Response{
+			url: htmlResponse(string(blockPageBody)),
+		}, func(context.Context, string) (string, bool) {
+			return "# Browser Rendered\n\nGenuine article text the browser tier recovered.", true
+		})
+
+		got := fetchPage(context.Background(), f, url)
+		want := "# Browser Rendered\n\nGenuine article text the browser tier recovered."
+		if got != want {
+			t.Errorf("fetchPage() = %q; want %q", got, want)
+		}
+	})
 }

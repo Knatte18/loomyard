@@ -40,6 +40,23 @@ func errorResult(url, detail string) string {
 	return "# Error fetching " + url + "\n\n" + detail
 }
 
+// browserFallback drives f's headless-browser fallback and, when it reports
+// success with non-empty text, additionally runs that text through
+// looksLikeBlockPage before trusting it. This exists because a headless
+// render can land on the same bot-challenge/block page a static fetch would,
+// and the browser's own success/failure signal has no way to distinguish a
+// rendered wall from rendered content.
+func browserFallback(ctx context.Context, f fetcher, url string) (string, bool) {
+	text, ok := f.browser(ctx, url)
+	if !ok || text == "" {
+		return "", false
+	}
+	if _, blocked := looksLikeBlockPage(text); blocked {
+		return "", false
+	}
+	return text, true
+}
+
 // fetchPage fetches url and extracts readable content, trying site adapters
 // then HTML+Readability, body text, and browser render, cascading gracefully.
 // f bundles injectable transport and browser for testability.
@@ -88,7 +105,7 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 		// We cannot statically decode this encoding, so the compressed bytes
 		// are useless to Readability/stripToBodyText — go straight to the
 		// browser fallback rather than feeding either of them garbage.
-		if browserText, ok := f.browser(ctx, url); ok && browserText != "" {
+		if browserText, ok := browserFallback(ctx, f, url); ok {
 			return browserText
 		}
 		return "# " + url + "\n\nCould not extract readable content from this page."
@@ -96,6 +113,20 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 	if err != nil {
 		return errorResult(url, err.Error())
 	}
+
+	// Check the raw static HTML for a bot wall before spending Readability
+	// or the body-text fallback on it: both would happily "succeed" on a
+	// challenge page's chrome text, since it comfortably clears
+	// minUsableTextLen. A real headless browser can still legitimately
+	// clear some challenges on non-Reddit sites, so route straight to it
+	// rather than failing outright.
+	if reason, blocked := looksLikeBlockPage(string(rawHTML)); blocked {
+		if browserText, ok := browserFallback(ctx, f, url); ok {
+			return browserText
+		}
+		return errorResult(url, "blocked: "+reason)
+	}
+
 	cleaned := scriptStyleNoscriptBlock.ReplaceAll(rawHTML, nil)
 
 	// "Succeeds" means both no error AND some non-empty text was extracted:
@@ -113,7 +144,7 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 		// it's the real article (e.g. it landed on a cookie-notice div) —
 		// try the heavier browser fallback before settling for the short
 		// result.
-		if browserText, ok := f.browser(ctx, url); ok && browserText != "" {
+		if browserText, ok := browserFallback(ctx, f, url); ok {
 			return browserText
 		}
 		return "# " + article.Title + "\n\nSource: " + url + "\n\n" + article.TextContent
@@ -126,7 +157,7 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 		return "# " + url + "\n\n" + bodyText
 	}
 
-	if browserText, ok := f.browser(ctx, url); ok && browserText != "" {
+	if browserText, ok := browserFallback(ctx, f, url); ok {
 		return browserText
 	}
 
