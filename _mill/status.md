@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: loom-discussion-review-producer
 branch: loom-discussion-review-producer
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-loomengine-config-and-paths  '2026-08-25T07:28:21Z'
 approved-loomcli-wiring  '2026-08-25T07:31:20Z'
 approved-recipe-rows  '2026-08-25T07:41:05Z'
 approved-docs  '2026-08-25T07:45:02Z'
+holistic-reviewing  '2026-08-25T07:45:42Z'
 ```
 
 ## Batches
