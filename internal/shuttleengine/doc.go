@@ -40,4 +40,13 @@
 // What stays true of BOTH halves is the provider boundary, not hermeticity: nothing here names a
 // tmux command or a Claude specific — panes are reed's vocabulary, reached only through ReedOps,
 // and provider grammar is the concrete Engine's, reached only through the Engine interface.
+//
+// Spec.AwaitOperator is the wait loop's "wait for the operator rather than reporting back" knob,
+// orthogonal to Spec.Interactive's "an operator is present" (which governs launch flags and the
+// AskUserQuestion recording hook): one caller, `lyx shuttle run --interactive`, wants the first
+// without the second, since it needs the real-time asking signal to stay terminal. RunState.Outcome
+// records whether a run ever ended, seeded "running" and overwritten on every terminal
+// classification, so "has this run already ended?" is a fact on disk rather than an inference from
+// pane liveness. Neither field grows a Claude specific — both stay provider-invariant, per the
+// Shuttle Provider-Seam Invariant.
 package shuttleengine
