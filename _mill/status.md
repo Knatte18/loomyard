@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reddit-rss-tier
 branch: reddit-rss-tier
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-08-25T11:15:15Z'
 nits-fixed-holistic  '2026-08-25T11:16:51Z'
 holistic-approved  '2026-08-25T11:17:00Z'
 done  '2026-08-25T11:18:26Z'
+pr-pending  '2026-08-25T11:20:13Z'
 ```
 
 ## Batches
