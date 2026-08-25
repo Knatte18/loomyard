@@ -21,15 +21,17 @@ import (
 // stubResponses builds a fetcher with canned URL-based responses and a stub browser.
 func stubResponses(t *testing.T, responses map[string]*http.Response, browser func(ctx context.Context, url string) (string, bool)) fetcher {
 	t.Helper()
+	respond := func(req *http.Request) (*http.Response, error) {
+		resp, ok := responses[req.URL.String()]
+		if !ok {
+			t.Fatalf("unexpected request URL: %s", req.URL.String())
+		}
+		return resp, nil
+	}
 	return fetcher{
-		do: func(req *http.Request) (*http.Response, error) {
-			resp, ok := responses[req.URL.String()]
-			if !ok {
-				t.Fatalf("unexpected request URL: %s", req.URL.String())
-			}
-			return resp, nil
-		},
-		browser: browser,
+		do:           respond,
+		doNoRedirect: respond,
+		browser:      browser,
 	}
 }
 
