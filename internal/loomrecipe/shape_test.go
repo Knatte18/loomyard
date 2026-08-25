@@ -1,5 +1,5 @@
 // shape_test.go carries the shape-and-identity assertions over New's built list: the literal
-// thirteen-row producer table, the real Publish/Finalize swap, order stability, told-field
+// fourteen-row producer table, the real Publish/Finalize swap, order stability, told-field
 // threading, a missing-Landing-closure construction failure, and the routing-graph guard. It does
 // not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 
@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/preflightshed"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedcheck"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -32,23 +33,26 @@ type wantProducerRow struct {
 	name         string
 	onStuck      string
 	onDone       string
+	segment      string
+	maxBounces   int
 	producerType reflect.Type
 }
 
 var wantProducerTable = []wantProducerRow{
-	{loomshed.NamePreflight, "", loomshed.NameLoomPreflight, reflect.TypeOf(preflightshed.NewPreflight("", ""))},
-	{loomshed.NameLoomPreflight, "", loomshed.NameDiscussionWrite, reflect.TypeOf(loomshed.NewLoomPreflight("", "", ""))},
-	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionValidate, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
-	{loomshed.NameDiscussionValidate, loomshed.NameDiscussionWrite, loomshed.NameDiscussionReview, reflect.TypeOf(loomshed.NewDiscussionValidate("", "", ""))},
-	{loomshed.NameDiscussionReview, loomshed.NameDiscussionWrite, loomshed.NamePlanWrite, reflect.TypeOf(loomshed.NewStub(""))},
-	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil, "", nil))},
-	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanReview, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
-	{loomshed.NamePlanReview, loomshed.NamePlanWrite, loomshed.NameBatchifier, reflect.TypeOf(loomshed.NewStub(""))},
-	{loomshed.NameBatchifier, "", loomshed.NameWebster, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
-	{loomshed.NameWebster, "", loomshed.NameWebsterReview, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
-	{loomshed.NameWebsterReview, loomshed.NameWebster, loomshed.NamePublish, reflect.TypeOf(loomshed.NewStub(""))},
-	{loomshed.NamePublish, "", loomshed.NameFinalize, reflect.TypeOf(&landingshed.Publish{})},
-	{loomshed.NameFinalize, "", "", reflect.TypeOf(&landingshed.Finalize{})},
+	{loomshed.NamePreflight, "", loomshed.NameLoomPreflight, "", 0, reflect.TypeOf(preflightshed.NewPreflight("", ""))},
+	{loomshed.NameLoomPreflight, "", loomshed.NameDiscussionWrite, "", 0, reflect.TypeOf(loomshed.NewLoomPreflight("", "", ""))},
+	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionValidate, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
+	{loomshed.NameDiscussionValidate, loomshed.NameDiscussionWrite, loomshed.NameDiscussionBouncer, "", 0, reflect.TypeOf(loomshed.NewDiscussionValidate("", "", ""))},
+	{loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurler, loomshed.NamePlanWrite, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
+	{loomshed.NameDiscussionBurler, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBouncer, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
+	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, "", 0, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil, "", nil))},
+	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanReview, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
+	{loomshed.NamePlanReview, loomshed.NamePlanWrite, loomshed.NameBatchifier, "", 0, reflect.TypeOf(loomshed.NewStub(""))},
+	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
+	{loomshed.NameWebster, "", loomshed.NameWebsterReview, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
+	{loomshed.NameWebsterReview, loomshed.NameWebster, loomshed.NamePublish, "", 0, reflect.TypeOf(loomshed.NewStub(""))},
+	{loomshed.NamePublish, "", loomshed.NameFinalize, "", 0, reflect.TypeOf(&landingshed.Publish{})},
+	{loomshed.NameFinalize, "", "", "", 0, reflect.TypeOf(&landingshed.Finalize{})},
 }
 
 // testEnv builds a shedrecipe.Env/ShedPaths pair whose every path field is an absolute path derived
@@ -150,11 +154,11 @@ func TestNew_ProducerTable(t *testing.T) {
 		if got.OnDone != want.onDone {
 			t.Errorf("row %d (%s) OnDone = %q; want %q", i, got.Name, got.OnDone, want.onDone)
 		}
-		if got.Segment != "" {
-			t.Errorf("row %d (%s) Segment = %q; want \"\" -- no row in this migration gains a non-empty Segment", i, got.Name, got.Segment)
+		if got.Segment != want.segment {
+			t.Errorf("row %d (%s) Segment = %q; want %q", i, got.Name, got.Segment, want.segment)
 		}
-		if got.MaxBounces != 0 {
-			t.Errorf("row %d (%s) MaxBounces = %d; want 0 -- no row in this migration gains a non-zero MaxBounces", i, got.Name, got.MaxBounces)
+		if got.MaxBounces != want.maxBounces {
+			t.Errorf("row %d (%s) MaxBounces = %d; want %d", i, got.Name, got.MaxBounces, want.maxBounces)
 		}
 		if got.Producer == nil {
 			t.Errorf("row %d (%s) Producer = nil; want non-nil", i, got.Name)
