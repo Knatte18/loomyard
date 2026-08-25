@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-roadmap
+phase: holistic-reviewing
 slug: loom-webster-review-producer
 branch: loom-webster-review-producer
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-25T12:36:44Z'
 approved-rubric-stencil  '2026-08-25T12:40:32Z'
 approved-perch-wiring  '2026-08-25T12:46:24Z'
 approved-docs-and-roadmap  '2026-08-25T12:50:32Z'
+holistic-reviewing  '2026-08-25T12:50:56Z'
 ```
 
 ## Batches
