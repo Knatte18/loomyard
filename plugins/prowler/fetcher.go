@@ -9,12 +9,21 @@ import (
 	"net/http"
 )
 
-// fetcher bundles the two side-effecting operations the fetch cascade needs:
-// issuing HTTP requests and driving a headless-browser fallback. Both fields
-// must be set before use.
+// fetcher bundles the side-effecting operations the fetch cascade needs:
+// issuing HTTP requests (with and without following redirects) and driving a
+// headless-browser fallback. do, doNoRedirect, and browser must all be set
+// before use -- none of them has a nil-fallback, so an unset field is a
+// wiring bug that must fail loudly rather than silently substitute another
+// field's transport semantics.
 type fetcher struct {
-	// do performs the raw HTTP transport.
+	// do performs the raw HTTP transport, following redirects.
 	do func(*http.Request) (*http.Response, error)
+
+	// doNoRedirect performs the raw HTTP transport but returns a 3xx
+	// response to the caller instead of following it, so a fetch path can
+	// observe that it was redirected rather than silently landing on
+	// whatever page the redirect chain ends at.
+	doNoRedirect func(*http.Request) (*http.Response, error)
 
 	// browser drives a headless-Chrome fallback fetch and reports whether it
 	// produced usable content (empty string with false means unavailable/failed).
