@@ -47,7 +47,7 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
 - A mode selector in `loom.yaml` (`discussion_interactive`, default `false`) carried through `loomengine.Config` into `internal/loomcli`'s `wire()`, replacing the hardcoded `true` at `internal/loomcli/wiring.go:139`.
 - A new `shuttleengine.Spec` field, `AwaitOperator bool`, that makes `Run.Wait` treat an `Asking` classification as non-terminal and keep polling.
 - A new `shuttleengine.Runner.Attach(Spec) (Result, bool, error)` that finds a still-live, never-terminated run matching the spec's output files and waits on it instead of starting a new one.
-- One new persisted field, `RunState.Outcome`, written by `Run.finalize` on every terminal classification — see `attach-only-a-run-that-never-terminated`.
+- One new persisted field, `RunState.Outcome`, seeded `"running"` by `Start` and overwritten by `Run.finalize` on every terminal classification — see `attach-only-a-run-that-never-terminated`.
 - Widening the `shedadapters.Shuttle` seam by that one `Attach` method, and re-ordering `SingleLLMProducer.Call` to probe-then-archive-then-run.
 - Test coverage at every seam touched, plus a `loomrecipe` resume test pinning that the `Discussion-Validate` bounce path still respawns.
 - Docs in the same commit, at every site the reversal reaches — this design changes the *discipline* `manifest/designs/loom.md` states, not merely the one paragraph that flagged the trap:
@@ -350,15 +350,32 @@ The reed answers below are therefore about *how to dispose of a candidate that a
 
 ### attach-only-a-run-that-never-terminated
 
-- Decision: `RunState` gains one field — `Outcome string` — written by `Run.finalize` at the moment it classifies, for **every** terminal outcome, not only `Done`.
-  `Attach` treats any matched record carrying a non-empty `Outcome` as `found == false` (respawn), regardless of strand liveness or directory age.
-  An empty `Outcome` means the run never reached a classification, which is the only state `Attach` may attach to.
+- Decision: `RunState` gains one field — `Outcome string` — with **three** writable states, not two:
+  - `Start` writes the explicit sentinel `"running"` when it first persists `run.json`.
+  - `Run.finalize` overwrites it with the classification (`done`/`asking`/`died`/`timeout`) at the moment it classifies, for **every** terminal outcome, not only `Done`.
+  - Any other value, **including the empty string**, means the record was written by a binary that did not know about this field.
+- `Attach` attaches **only** to a candidate whose `Outcome` is exactly `"running"`.
+  A terminal value is respawn-eligible.
+  An empty or unrecognized value is respawn-eligible too — never attachable.
+- Rationale for the `"running"` sentinel rather than "empty means attachable": `RunState` is a plain JSON struct (`rundir.go:65-75`), so every `run.json` written by the pre-change binary decodes with `Outcome == ""`.
+  If empty meant attachable, an in-flight worktree that is blocked on an `Asking` run at upgrade time — the same in-flight population the config-migration note above already has to account for — would attach to an idle pane on its first resume and wait out a fresh 480-minute `discussion_timeout_min`.
+  That is precisely the regression this decision exists to prevent, reintroduced through the upgrade path.
+  Inverting the default costs one string literal and needs no schema-version field, no pointer type, and no absent-vs-empty JSON subtlety.
+- Rejected: `Outcome *string`, using nil-vs-present to detect legacy records.
+  It works, but "absent differs from empty" is exactly the kind of distinction a later refactor silently erases, and the failure would be silent and severe.
+- Rejected: a `SchemaVersion int` field.
+  A second field to express what one sentinel value already expresses.
+- **Disposition for a failed `Outcome` write:** `finalize` **warns and does not fail the run** — the classified `Result` is returned unchanged.
+  Rationale: the run genuinely reached its outcome, and turning a successful run into a failure over a bookkeeping write inverts the cost;
+  this also matches `finalize`'s existing best-effort treatment of `RemoveStrand`/`os.RemoveAll`.
+  Accepted residual, stated rather than hidden: such a record keeps `"running"`, so if its pane is also still live and idle it stays attachable and the live-but-idle regression can occur for that one run.
+  It requires a disk-write failure to reach, the liveness filters catch the dead-pane variants, and the age rule catches the untracked ones.
 - Rationale: without it, `attach-is-unconditional-not-interactive-only` introduces a **regression on the autonomous path it was meant to protect**.
   `finalize` runs its cleanup only on `OutcomeDone` (`wait.go:405`), so a run that classified `OutcomeAsking` leaves its pane live, its strand tracked, and its run dir on disk.
   In autonomous mode `SingleLLMProducer` maps that `Asking` to `Stuck`, and neither `Discussion-Write` nor `Plan-Write` carries an `on_stuck` edge, so the run blocks and the operator resumes with `lyx loom run`.
   Under the unqualified "tracked, with a live pane → attach" rule, that resume would attach to an agent that has finished its turn and is sitting idle — and nothing in loom ever sends a stopped agent new input — so it would wait out a freshly restarted `run_timeout_min` (480 minutes for the discussion role) and then report `OutcomeTimeout`, where today it respawns and makes progress.
   The same holds for a prior `OutcomeTimeout`, whose pane also survives.
-- The field has a useful property that falls out for free: it is written only when `finalize` actually ran, so a genuine crash mid-run leaves it empty — which is exactly the state that *should* attach.
+- The field has a useful property that falls out for free: it is advanced past `"running"` only when `finalize` actually ran, so a genuine crash mid-run leaves it at `"running"` — which is exactly the state that *should* attach.
   "Has this run already ended?" becomes a fact on disk rather than an inference from pane liveness, which is the same resume-on-files discipline the rest of this design rests on.
 - Note that this makes `Attach`'s liveness reads a second line of defence rather than the primary signal.
   Both are kept: the record answers "did this run end", reed answers "is the process there", and they fail in different directions.
@@ -383,6 +400,27 @@ The reed answers below are therefore about *how to dispose of a candidate that a
   This rule fires only when a matching `run.json` exists — i.e. only when some agent demonstrably *did* run for this exact output-file set — and its verdict is "respawn", never "`Done`".
 - Rejected: making the age rule the sole arbiter.
   It converts two ordinary best-effort cleanup failures, and every `KeepPane` run, into a hard resume refusal.
+
+### candidate-evaluation-order
+
+- Decision: `Attach` evaluates candidates in a fixed three-phase order, and the multiplicity rule applies **only to the surviving attachable set**, never to raw matches.
+  1. **Collect** every `run.json` whose resolved `OutputFiles` set-matches the spec.
+     Zero candidates → `found == false`, nil error, no reed read (see the precedence note above).
+  2. **Disposition each candidate independently** against the enumeration above, yielding one of three verdicts per candidate: *attachable*, *respawn-eligible*, or *error*.
+  3. **Combine**, in this precedence:
+     - **Any candidate whose verdict is *error* → `Attach` errors**, whatever the other candidates say.
+       An error verdict means "a live agent here cannot be ruled out", and one unresolvable candidate is enough to make respawning unsafe.
+     - Else **more than one *attachable* candidate → error** (`one-live-match-or-none` below).
+     - Else **exactly one *attachable* candidate → attach it.**
+     - Else (**all candidates respawn-eligible**) → `found == false`, nil error.
+- Rationale: two matched records coexist on an ordinary path, not an exotic one.
+  `finalize` cleans up only on `OutcomeDone` (`wait.go:405`) and `sweepOrphans` removes only *untracked* strands, so an autonomous `Discussion-Write` that ended `Asking` leaves a tracked, live, idle pane behind;
+  the operator resumes, that run respawns, and a second `Asking` leaves a second such directory.
+  The scan then matches two records that are both "live" for one output-file set.
+  Without a stated order, `one-live-match-or-none` ("more than one live match → error") and `attach-only-a-run-that-never-terminated` ("non-empty `Outcome` → `found == false`") give opposite answers for that case, and nothing says which wins.
+  Under the order above both records carry `Outcome: "asking"`, so both are respawn-eligible, the attachable set is empty, and the row respawns — which is the correct outcome and the one that happens today.
+- Rejected: applying the multiplicity check to raw matches before dispositioning.
+  It converts the ordinary two-leftovers case into a hard error, blocking a resume that should simply proceed.
 
 ### one-live-match-or-none
 
@@ -578,12 +616,27 @@ This is the defect-A test and should be written first, red, against the existing
 - `AwaitOperator: true` still returns `OutcomeTimeout` once the deadline passes with the files absent.
 - `AwaitOperator: true` still returns `OutcomeDied` for a tracked strand with a dead pane, and still surfaces `errStrandNotTracked` / `errStrandPaneBindingCleared` as mechanism failures.
 
+**`internal/shuttleengine` — `RunState.Outcome`'s writers.**
+The `Attach` list below consumes this field heavily, so its producers need their own coverage:
+
+- `Start` persists `run.json` with `Outcome: "running"`.
+- `finalize` overwrites it with the matching value for each of `done`, `asking`, `died`, and `timeout` — one case per outcome.
+- On the `Done` path the `Outcome` write **precedes** the `RemoveStrand`/`os.RemoveAll` cleanup (`wait.go:405-413`).
+  This is observable only under `KeepPane`, where the directory survives — which is exactly the case that would otherwise persist a stale `"running"` record for a finished run.
+- A failing `Outcome` write warns and still returns the classified `Result` with its `Outcome` field intact, rather than converting the run into an error.
+
 **`internal/shuttleengine` — `Attach`. TDD candidate.**
 Over a temp run-dir root with hand-written `run.json` files and a fake reed:
 
 - No run dirs at all, and a root that does not exist: `found == false`, nil error — **asserted with reed state absent**, proving the scan short-circuits before any reed read and that the ordinary first call is not blocked by the reed gate.
-- A matched record whose persisted `Outcome` is non-empty (`asking`, `timeout`, `died`, `done`), with the strand **tracked and live**: `found == false`, respawn — the live-but-idle regression guard.
-- The same record with an **empty** `Outcome` and a live strand: attached.
+- A matched record whose persisted `Outcome` is terminal (`asking`, `timeout`, `died`, `done`), with the strand **tracked and live**: `found == false`, respawn — the live-but-idle regression guard.
+- The same record with `Outcome: "running"` and a live strand: attached.
+- The same record with an **empty** `Outcome` (a legacy `run.json` from the pre-change binary) and a live strand: `found == false`, respawn — the upgrade-path regression guard.
+  Assert it against a `run.json` fixture written *without* the field at all, not one written with `""`, so the test proves the decode path and not just the comparison.
+- An unrecognized `Outcome` value: respawn-eligible, same as empty.
+- **Two** matched records both carrying `Outcome: "asking"`, both tracked and live (the ordinary two-leftovers case): `found == false`, respawn — **not** the multiplicity error.
+- One candidate dispositioned *error* (untracked, young) alongside one dispositioned *attachable*: `Attach` errors, proving the error verdict dominates.
+- Two candidates both *attachable*: the multiplicity error.
 - A matched record whose strand is tracked with `Live == false`: `found == false`, respawn, at both dir ages.
 - A run dir whose `OutputFiles` do not match the spec's: not selected.
 - A matching run dir whose strand is absent from reed's table, dir **younger** than `2 * StartupTimeoutS`: error, not a respawn.
