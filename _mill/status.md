@@ -54,7 +54,9 @@ batches:
     commit_sha: ab9ba4f98b012757b5b18111bf82524a0697fcb2
     verify_baseline_failures: []
   - name: loomcli-wiring
-    state: pending
+    state: running
+    implementer_session: b9c4b972-1908-4d7c-a5a5-ee0fb3b8195f
+    start_sha: ea9aea338cf85ce5c36d3b7f65d1d5e4fb97944c
     verify_baseline_failures: []
   - name: recipe-rows
     state: pending
