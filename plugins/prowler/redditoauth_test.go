@@ -8,15 +8,24 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+// updateRedditGolden regenerates testdata/reddit-thread-golden.md from the
+// current formatter's output instead of comparing against it. It is never
+// set in CI; a human sets it deliberately, via
+// `go -C plugins/prowler test -run TestFormatRedditThread_GoldenOAuthOutput . -args -update-golden`,
+// after confirming a formatter change is intended.
+var updateRedditGolden = flag.Bool("update-golden", false, "regenerate testdata/reddit-thread-golden.md from the current formatter's output")
 
 // tokenResponse builds a canned *http.Response for the token endpoint,
 // with the given status and body.
@@ -346,6 +355,47 @@ func TestFormatRedditThread(t *testing.T) {
 			t.Errorf("formatRedditThread() out contains a Top Comments heading with zero comments:\n%s", out)
 		}
 	})
+}
+
+// TestFormatRedditThread_GoldenOAuthOutput compares formatRedditThread's
+// current output for testdata/reddit-thread.json against the byte-for-byte
+// golden file committed at testdata/reddit-thread-golden.md. This is the
+// regression that proves batch 2's refactor onto the tier-neutral
+// representation changes nothing observable on the OAuth path: the golden
+// file is captured before that refactor and must still match after it.
+func TestFormatRedditThread_GoldenOAuthOutput(t *testing.T) {
+	data := readTestdataFile(t, "reddit-thread.json")
+
+	var listings []redditListing
+	if err := json.Unmarshal([]byte(data), &listings); err != nil {
+		t.Fatalf("json.Unmarshal(reddit-thread.json) error = %v", err)
+	}
+
+	const sourceURL = "https://www.reddit.com/r/golang/comments/abc123/idiomatic_errors/"
+	const goldenPath = "testdata/reddit-thread-golden.md"
+
+	out, err := formatRedditThread(listings, sourceURL)
+	if err != nil {
+		t.Fatalf("formatRedditThread() error = %v; want nil", err)
+	}
+
+	if *updateRedditGolden {
+		if err := os.WriteFile(goldenPath, []byte(out), 0o644); err != nil {
+			t.Fatalf("os.WriteFile(%q) error = %v", goldenPath, err)
+		}
+		return
+	}
+
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("os.ReadFile(%q) error = %v", goldenPath, err)
+	}
+
+	if out != string(want) {
+		t.Errorf("formatRedditThread() output does not match golden file %s; want the two byte-for-byte identical.\n"+
+			"If this difference is intended, re-run with -args -update-golden after confirming it.\ngot:\n%s\nwant:\n%s",
+			goldenPath, out, want)
+	}
 }
 
 func TestRedditOAuthURL(t *testing.T) {
