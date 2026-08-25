@@ -245,9 +245,9 @@ func TestFetchOldRedditHTML(t *testing.T) {
 			oldURL: htmlResponse(redditLikeHTMLWithComments),
 		}, nil)
 
-		out, ok := fetchOldRedditHTML(context.Background(), f, url)
-		if !ok {
-			t.Fatalf("fetchOldRedditHTML() ok = false; want true")
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err != nil {
+			t.Fatalf("fetchOldRedditHTML() err = %v; want nil", err)
 		}
 		if !strings.HasPrefix(out, "# "+url) {
 			t.Errorf("fetchOldRedditHTML() out = %q; want it to start with \"# %s\"", out, url)
@@ -268,9 +268,9 @@ func TestFetchOldRedditHTML(t *testing.T) {
 			oldURL: htmlResponse(noArticleButLongBodyHTML),
 		}, nil)
 
-		out, ok := fetchOldRedditHTML(context.Background(), f, url)
-		if !ok {
-			t.Fatalf("fetchOldRedditHTML() ok = false; want true")
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err != nil {
+			t.Fatalf("fetchOldRedditHTML() err = %v; want nil", err)
 		}
 		if !strings.Contains(out, "long stretch of plain body text") {
 			t.Errorf("fetchOldRedditHTML() out = %q; want the body text", out)
@@ -282,36 +282,38 @@ func TestFetchOldRedditHTML(t *testing.T) {
 			oldURL: htmlResponse(noArticleShortBodyHTML),
 		}, nil)
 
-		out, ok := fetchOldRedditHTML(context.Background(), f, url)
-		if ok {
-			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err == nil {
+			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
 		}
 	})
 
 	t.Run("non_2xx_fails", func(t *testing.T) {
-		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+		respond := func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("blocked"))}, nil
-		}}
+		}
+		f := fetcher{do: respond, doNoRedirect: respond}
 
-		out, ok := fetchOldRedditHTML(context.Background(), f, url)
-		if ok {
-			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err == nil {
+			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
 		}
 	})
 
 	t.Run("transport_error_fails", func(t *testing.T) {
-		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+		respond := func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("boom")
-		}}
+		}
+		f := fetcher{do: respond, doNoRedirect: respond}
 
-		out, ok := fetchOldRedditHTML(context.Background(), f, url)
-		if ok {
-			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err == nil {
+			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
 		}
 	})
 
 	t.Run("unsupported_content_encoding_fails", func(t *testing.T) {
-		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+		respond := func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: 200,
 				// "compress" has no decoder in this package or the standard
@@ -319,11 +321,72 @@ func TestFetchOldRedditHTML(t *testing.T) {
 				Header: http.Header{"Content-Encoding": []string{"compress"}},
 				Body:   io.NopCloser(strings.NewReader("compressed-bytes-irrelevant")),
 			}, nil
+		}
+		f := fetcher{do: respond, doNoRedirect: respond}
+
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err == nil {
+			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
+		}
+	})
+
+	t.Run("login_redirect_fails_without_following_it", func(t *testing.T) {
+		const loginLocation = "https://old.reddit.com/login/?reason=lor2&dest=%2Fr%2Fgolang%2F"
+		requestCount := 0
+		f := fetcher{doNoRedirect: func(*http.Request) (*http.Response, error) {
+			requestCount++
+			return &http.Response{
+				StatusCode: 302,
+				Header:     http.Header{"Location": []string{loginLocation}},
+				Body:       io.NopCloser(strings.NewReader("")),
+			}, nil
 		}}
 
-		out, ok := fetchOldRedditHTML(context.Background(), f, url)
-		if ok {
-			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err == nil {
+			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
+		}
+		if !strings.Contains(strings.ToLower(err.Error()), "login") {
+			t.Errorf("fetchOldRedditHTML() err = %q; want it to mention \"login\"", err.Error())
+		}
+		if requestCount != 1 {
+			t.Errorf("fetchOldRedditHTML() issued %d requests; want exactly 1 (the redirect must not be followed)", requestCount)
+		}
+	})
+
+	t.Run("block_page_fixture_fails", func(t *testing.T) {
+		blockPageBody, err := os.ReadFile("testdata/reddit-block-page.html")
+		if err != nil {
+			t.Fatalf("os.ReadFile(testdata/reddit-block-page.html) error = %v", err)
+		}
+		f := stubResponses(t, map[string]*http.Response{
+			oldURL: htmlResponse(string(blockPageBody)),
+		}, nil)
+
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err == nil {
+			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error naming the block reason", out)
+		}
+		wantReason, blocked := looksLikeBlockPage(string(blockPageBody))
+		if !blocked {
+			t.Fatalf("looksLikeBlockPage(fixture) blocked = false; want true (test setup invariant)")
+		}
+		if !strings.Contains(err.Error(), wantReason) {
+			t.Errorf("fetchOldRedditHTML() err = %q; want it to contain %q", err.Error(), wantReason)
+		}
+	})
+
+	t.Run("genuine_reddit_content_is_not_rejected", func(t *testing.T) {
+		f := stubResponses(t, map[string]*http.Response{
+			oldURL: htmlResponse(redditLikeHTMLWithComments),
+		}, nil)
+
+		out, err := fetchOldRedditHTML(context.Background(), f, url)
+		if err != nil {
+			t.Fatalf("fetchOldRedditHTML() err = %v; want nil for genuine content", err)
+		}
+		if out == "" {
+			t.Errorf("fetchOldRedditHTML() out = %q; want non-empty content", out)
 		}
 	})
 }

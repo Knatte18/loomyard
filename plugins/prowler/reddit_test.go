@@ -76,9 +76,10 @@ func TestRedditAdapterFetch(t *testing.T) {
 	})
 
 	t.Run("handled_false_when_fetchOldRedditHTML_fails", func(t *testing.T) {
-		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+		respond := func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("blocked"))}, nil
-		}}
+		}
+		f := fetcher{do: respond, doNoRedirect: respond}
 
 		out, handled := (redditAdapter{}).Fetch(context.Background(), f, url)
 		if handled {

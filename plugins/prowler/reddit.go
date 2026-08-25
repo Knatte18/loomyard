@@ -40,6 +40,11 @@ func (redditAdapter) Matches(url string) bool {
 
 // Fetch retrieves url's old.reddit.com equivalent and formats it into markdown.
 // Reports handled=false when request fails or content is insufficient.
+//
+// This is an interim pass-through adapting fetchOldRedditHTML's (string,
+// error) result to siteAdapter's (string, bool) shape; the next card
+// replaces it with the real three-tier logic.
 func (redditAdapter) Fetch(ctx context.Context, f fetcher, url string) (string, bool) {
-	return fetchOldRedditHTML(ctx, f, url)
+	out, err := fetchOldRedditHTML(ctx, f, url)
+	return out, err == nil
 }
