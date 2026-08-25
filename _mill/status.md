@@ -47,7 +47,9 @@ batches:
     commit_sha: 4ca6ae672aa1791b6903f937d49d1110ebe85244
     verify_baseline_failures: []
   - name: loomengine-config-and-paths
-    state: pending
+    state: running
+    implementer_session: 9910b469-52fa-44c4-8c4b-a519b761f9db
+    start_sha: faeafcb95a971868d69297f8a30e66624fa1c9b3
     verify_baseline_failures: []
   - name: loomcli-wiring
     state: pending
