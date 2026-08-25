@@ -7,7 +7,7 @@ argument-hint: "<url> [url2...] [question]"
 Use this skill only when the built-in `WebFetch` tool fails or returns unusable content (bot-blocked sites, paywalls, JS-rendered pages, Reddit posts).
 It drives a real headless browser plus Readability extraction as a fallback, so it can read pages `WebFetch` cannot.
 
-Raw output is often long and noisy (a fetched Reddit page especially mixes nav/sidebar chrome with the real content), so before deciding whether to read it directly or wrap the fetch in a subagent, load the `distill-subagent` skill by name (`prowler:distill-subagent`) via the Skill tool and apply its rule.
+Raw output is often long and noisy (a fetched Reddit thread especially can carry dozens of comments), so before deciding whether to read it directly or wrap the fetch in a subagent, load the `distill-subagent` skill by name (`prowler:distill-subagent`) via the Skill tool and apply its rule.
 
 Steps:
 
