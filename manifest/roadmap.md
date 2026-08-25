@@ -11,7 +11,7 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — both producer items below are unblocked.
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — all three items below are unblocked.
 
 1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch, same gap as `Plan-Review` (shipped), as a `Webster-Bouncer`/`Webster-Burler` segment judging the full diff rather than a single artifact; criteria now recorded in `designs/loom.md`'s Webster-Review rubric section.
    See [designs/loom.md](designs/loom.md#webster-review-rubric).
