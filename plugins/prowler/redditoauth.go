@@ -1,7 +1,8 @@
 // redditoauth.go implements the authenticated Reddit OAuth API client: credential resolution,
-// app-only token acquisition with a concurrency-safe in-process cache, thread retrieval from
-// oauth.reddit.com, and JSON-to-markdown formatting. It is the module's tier-1 Reddit strategy and
-// the only file that reads the PROWLER_REDDIT_* environment variables.
+// app-only token acquisition with a concurrency-safe in-process cache, and thread retrieval from
+// oauth.reddit.com. It no longer performs JSON-to-markdown formatting itself; it maps decoded
+// listings onto the shared representation in redditformat.go. It is the module's tier-1 Reddit
+// strategy and the only file that reads the PROWLER_REDDIT_* environment variables.
 
 package main
 
@@ -218,94 +219,6 @@ func redditReplies(raw json.RawMessage) []redditChild {
 	return listing.Data.Children
 }
 
-// formatRedditThread renders a decoded Reddit thread response -- listings,
-// in the order oauth.reddit.com's comments endpoint returns them: the post
-// listing, then the comments listing -- into markdown. It returns a
-// non-nil error when listings is empty or its first listing has no "t3"
-// child, since a response carrying no post is a tier failure rather than
-// an empty document.
-//
-// On success it renders, in order: an H1 post title; a metadata line; a
-// "Source:" line; the post's selftext, or a link line when there is no
-// selftext but there is a URL; and, only when at least one comment is
-// present, a "## Top Comments" heading followed by up to maxTopComments
-// top-level comments, each with up to maxTopComments of its own replies
-// rendered one level deep as blockquotes. Comment and selftext bodies are
-// Reddit markdown, not HTML, so they are emitted unchanged -- unlike the
-// Hacker News adapter's Algolia-sourced HTML, nothing here needs
-// htmlToText.
-func formatRedditThread(listings []redditListing, sourceURL string) (string, error) {
-	if len(listings) == 0 {
-		return "", fmt.Errorf("reddit thread response had no listings")
-	}
-
-	var post redditThing
-	var foundPost bool
-	for _, child := range listings[0].Data.Children {
-		if child.Kind == "t3" {
-			post = child.Data
-			foundPost = true
-			break
-		}
-	}
-	if !foundPost {
-		return "", fmt.Errorf("reddit thread response's first listing had no post (t3) child")
-	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", post.Title)
-	fmt.Fprintf(&b, "Reddit | r/%s | %d points | by u/%s\n\n", post.Subreddit, post.Score, post.Author)
-	fmt.Fprintf(&b, "Source: %s\n\n", sourceURL)
-
-	if post.Selftext != "" {
-		b.WriteString(post.Selftext)
-		b.WriteString("\n\n")
-	} else if post.URL != "" {
-		fmt.Fprintf(&b, "Link: %s\n\n", post.URL)
-	}
-
-	var topComments []redditChild
-	if len(listings) > 1 {
-		for _, child := range listings[1].Data.Children {
-			if child.Kind != "t1" {
-				// Skips "more" pagination placeholders and anything else
-				// that is not a rendered comment.
-				continue
-			}
-			topComments = append(topComments, child)
-			if len(topComments) >= maxTopComments {
-				break
-			}
-		}
-	}
-
-	if len(topComments) > 0 {
-		b.WriteString("## Top Comments\n\n")
-		for _, c := range topComments {
-			fmt.Fprintf(&b, "**u/%s** (%d points):\n%s\n\n", c.Data.Author, c.Data.Score, c.Data.Body)
-
-			var rendered int
-			for _, reply := range redditReplies(c.Data.Replies) {
-				if reply.Kind != "t1" {
-					continue
-				}
-				// Only one level of replies is rendered: reply.Data.Replies
-				// (a reply's own replies) is deliberately never consulted.
-				fmt.Fprintf(&b, "> **u/%s**: %s\n", reply.Data.Author, reply.Data.Body)
-				rendered++
-				if rendered >= maxTopComments {
-					break
-				}
-			}
-			if rendered > 0 {
-				b.WriteString("\n")
-			}
-		}
-	}
-
-	return strings.TrimRight(b.String(), "\n"), nil
-}
-
 // redditOAuthHost is the host oauth.reddit.com requests are sent to,
 // distinct from the www/old hosts the anonymous tiers use.
 const redditOAuthHost = "oauth.reddit.com"
@@ -398,5 +311,9 @@ func fetchRedditOAuthThread(ctx context.Context, f fetcher, rawURL string) (stri
 		return "", fmt.Errorf("decode reddit oauth thread response: %w", err)
 	}
 
-	return formatRedditThread(listings, rawURL)
+	post, err := redditPostFromListings(listings)
+	if err != nil {
+		return "", err
+	}
+	return formatRedditThread(post, rawURL), nil
 }

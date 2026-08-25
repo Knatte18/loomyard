@@ -1,7 +1,7 @@
 // hackernews.go implements the Hacker News site adapter: it fetches a discussion thread's clean,
 // structured JSON from the community-run Algolia API (https://hn.algolia.com/api/v1/items/{id})
 // rather than scraping HN's own server-rendered HTML, giving a second adapter strategy distinct
-// from Reddit's HTML-fetch approach.
+// from Reddit's structured-source approach (OAuth JSON or `.rss` Atom feeds).
 
 package main
 

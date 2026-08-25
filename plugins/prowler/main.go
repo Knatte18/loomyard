@@ -13,15 +13,14 @@ import (
 // resultJoiner separates each URL's fetched content in the combined output.
 const resultJoiner = "\n\n---\n\n"
 
-// newFetcher wires real implementations: httpClient.Do,
-// noRedirectHTTPClient.Do, fetchWithBrowser, and defaultAdapters(). It is
-// the only place production code constructs a fetcher.
+// newFetcher wires real implementations: httpClient.Do, fetchWithBrowser,
+// and defaultAdapters(). It is the only place production code constructs a
+// fetcher.
 func newFetcher() fetcher {
 	return fetcher{
-		do:           httpClient.Do,
-		doNoRedirect: noRedirectHTTPClient.Do,
-		browser:      fetchWithBrowser,
-		adapters:     defaultAdapters(),
+		do:       httpClient.Do,
+		browser:  fetchWithBrowser,
+		adapters: defaultAdapters(),
 	}
 }
 

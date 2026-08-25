@@ -11,7 +11,6 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -163,65 +162,6 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 	}
 
 	return "# " + url + "\n\nCould not extract readable content from this page."
-}
-
-// fetchOldRedditHTML fetches Reddit URLs from old.reddit.com's HTML, which
-// deliberately skips Readability to preserve comments that Readability
-// would drop. Anonymous access to old.reddit.com is now login-gated: the
-// request is sent through f.doNoRedirect so a login redirect is observed
-// rather than followed, and the returned error names the specific reason a
-// fetch failed -- a redirect to Reddit's login page, a non-2xx status, a
-// transport failure, an undecodable Content-Encoding, a decoded page that
-// looksLikeBlockPage flags, or too little extracted content -- rather than
-// collapsing every failure into a bare false.
-func fetchOldRedditHTML(ctx context.Context, f fetcher, url string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, toOldRedditURL(url), nil)
-	if err != nil {
-		return "", fmt.Errorf("build old.reddit.com request: %w", err)
-	}
-	for key, values := range defaultHeaders() {
-		req.Header[key] = values
-	}
-
-	resp, err := f.doNoRedirect(req)
-	if err != nil {
-		return "", fmt.Errorf("old.reddit.com request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		// old.reddit.com now redirects anonymous readers to a login page
-		// instead of serving the requested content -- this is the defect
-		// this card fixes, since the shared (redirect-following) client
-		// previously followed this and reported the login page as content.
-		return "", fmt.Errorf("old.reddit.com redirected (login-gated), status %d, Location %q", resp.StatusCode, resp.Header.Get("Location"))
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("old.reddit.com request returned status %d", resp.StatusCode)
-	}
-
-	compressedBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read old.reddit.com response: %w", err)
-	}
-	rawHTML, err := decodeContentEncoding(compressedBody, resp.Header.Get("Content-Encoding"))
-	if err != nil {
-		// Includes errUnsupportedContentEncoding: this fallback has no
-		// browser tier to route around it, so an undecodable encoding is
-		// simply a failed fallback attempt.
-		return "", fmt.Errorf("decode old.reddit.com response: %w", err)
-	}
-
-	if reason, blocked := looksLikeBlockPage(string(rawHTML)); blocked {
-		return "", fmt.Errorf("old.reddit.com response looked like a wall (%s)", reason)
-	}
-
-	bodyText := stripToBodyText(string(rawHTML))
-	if len(bodyText) < minUsableTextLen {
-		return "", fmt.Errorf("old.reddit.com response yielded too little content")
-	}
-
-	return "# " + url + "\n\n" + bodyText, nil
 }
 
 // decodeContentEncoding decompresses body according to Content-Encoding.

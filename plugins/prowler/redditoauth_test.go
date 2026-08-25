@@ -1,13 +1,14 @@
 // redditoauth_test.go exercises Reddit OAuth credential resolution, API User-Agent selection, token
-// request shape, token error handling, and the token cache's caching/concurrency behaviour via a
-// stubbed fetcher.do. No network call.
+// request shape, token error handling, the token cache's caching/concurrency behaviour, URL
+// rewriting, and fetchRedditOAuthThread end to end, via a stubbed fetcher.do. No network call.
+// formatRedditThread and redditPostFromListings are exercised in redditformat_test.go, since they
+// belong to the tier-neutral representation rather than to this file's OAuth-specific concerns.
 
 package main
 
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -278,72 +279,6 @@ func TestRedditTokenCaching(t *testing.T) {
 		mu.Unlock()
 		if got != 1 {
 			t.Errorf("token request count = %d; want exactly 1 across %d concurrent get() calls", got, goroutines)
-		}
-	})
-}
-
-// testdata/reddit-thread.json is hand-authored rather than captured from a
-// live response, because oauth.reddit.com cannot be read without
-// credentials that do not exist yet at this point in the plan; batch 4's
-// live integration test is what validates the real response shape. It is
-// structurally faithful to Reddit's documented comments-endpoint Listing
-// shape: a two-element array of [post listing, comments listing].
-func TestFormatRedditThread(t *testing.T) {
-	data := readTestdataFile(t, "reddit-thread.json")
-
-	var listings []redditListing
-	if err := json.Unmarshal([]byte(data), &listings); err != nil {
-		t.Fatalf("json.Unmarshal(reddit-thread.json) error = %v", err)
-	}
-
-	out, err := formatRedditThread(listings, "https://oauth.reddit.com/r/golang/comments/abc123")
-	if err != nil {
-		t.Fatalf("formatRedditThread() error = %v; want nil", err)
-	}
-
-	if !strings.Contains(out, "What is the idiomatic way to handle errors in Go?") {
-		t.Errorf("formatRedditThread() out missing title:\n%s", out)
-	}
-	if !strings.Contains(out, "I've been writing Go for a few months") {
-		t.Errorf("formatRedditThread() out missing selftext:\n%s", out)
-	}
-
-	if topLevelCount := strings.Count(out, "** ("); topLevelCount != maxTopComments {
-		t.Errorf("formatRedditThread() top-level comment count = %d; want %d", topLevelCount, maxTopComments)
-	}
-	// c20 and c21 fall beyond the cap; the "more" child sits before them in
-	// the fixture, so if it were mistakenly counted toward the cap it would
-	// have displaced a real comment earlier than c20 -- these two absences
-	// together prove the more child contributed nothing and the cap landed
-	// in the right place.
-	if strings.Contains(out, "top_author_20") || strings.Contains(out, "top_author_21") {
-		t.Errorf("formatRedditThread() out contains a comment beyond maxTopComments:\n%s", out)
-	}
-
-	if replyCount := strings.Count(out, "> **u/capreply"); replyCount != maxTopComments {
-		t.Errorf("formatRedditThread() reply count for the over-capped comment = %d; want %d", replyCount, maxTopComments)
-	}
-
-	if strings.Contains(out, "A reply to a reply") {
-		t.Errorf("formatRedditThread() out contains a reply's own nested reply, which must not render:\n%s", out)
-	}
-
-	t.Run("zero_comment_thread", func(t *testing.T) {
-		const fixture = `[{"kind":"Listing","data":{"children":[{"kind":"t3","data":{"title":"A quiet post","selftext":"Nobody has replied yet.","author":"solo","subreddit":"golang","score":1,"url":"","replies":""}}]}}]`
-		var listings []redditListing
-		if err := json.Unmarshal([]byte(fixture), &listings); err != nil {
-			t.Fatalf("json.Unmarshal() error = %v", err)
-		}
-
-		out, err := formatRedditThread(listings, "https://oauth.reddit.com/r/golang/comments/quiet")
-		if err != nil {
-			t.Fatalf("formatRedditThread() error = %v; want nil", err)
-		}
-		if out == "" {
-			t.Error("formatRedditThread() out is empty; want a non-empty result")
-		}
-		if strings.Contains(out, "## Top Comments") {
-			t.Errorf("formatRedditThread() out contains a Top Comments heading with zero comments:\n%s", out)
 		}
 	})
 }
