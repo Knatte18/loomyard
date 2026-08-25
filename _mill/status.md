@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-fabric-git-invariant-fix
 slug: loom-discussion-burler-fix-scope
 branch: loom-discussion-burler-fix-scope
 plan: _mill/plan
@@ -24,6 +24,7 @@ planned  '2026-08-25T14:13:43Z'
 implementing  '2026-08-25T14:14:22Z'
 blocked  '2026-08-25T14:24:53Z'
 implementing  '2026-08-25T15:14:52Z'
+approved-fabric-git-invariant-fix  '2026-08-25T15:15:13Z'
 ```
 
 ## Batches
@@ -31,7 +32,8 @@ implementing  '2026-08-25T15:14:52Z'
 ```yaml
 batches:
   - name: fabric-git-invariant-fix
-    state: running
+    state: approved
     implementer_session: 0ea49e4e-d0e3-49a0-a111-f5dda3392fbb
     start_sha: 85068114ad1374d6b13f3d1823dd2c8e565b041f
+    commit_sha: e8a8c796b268b2818f831a661a3459ca033479fd
 ```
