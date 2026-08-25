@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-recipe-rows
+phase: approved-docs
 slug: loom-discussion-review-producer
 branch: loom-discussion-review-producer
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-shedrecipe-entries  '2026-08-25T07:24:18Z'
 approved-loomengine-config-and-paths  '2026-08-25T07:28:21Z'
 approved-loomcli-wiring  '2026-08-25T07:31:20Z'
 approved-recipe-rows  '2026-08-25T07:41:05Z'
+approved-docs  '2026-08-25T07:45:02Z'
 ```
 
 ## Batches
@@ -68,8 +69,9 @@ batches:
     commit_sha: ff85d58194bc5d6af7896b321d19c6eb6508b4a7
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: 34d1951a-4c29-4822-a1c0-f6ada510ea7c
     start_sha: a64c135f123a4e511ba5c82750308253ae63d8f4
+    commit_sha: c6950b28099f89085a5abd9c900acf86c68328b7
     verify_baseline_failures: []
 ```
