@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-rss-limiter-and-fetch
+phase: approved-tier-rewiring-deletion-and-docs
 slug: reddit-rss-tier
 branch: reddit-rss-tier
 plan: _mill/plan
@@ -30,6 +30,7 @@ implementing  '2026-08-25T10:34:13Z'
 approved-neutral-thread-representation  '2026-08-25T10:40:29Z'
 approved-rss-parsing-foundation  '2026-08-25T10:50:16Z'
 approved-rss-limiter-and-fetch  '2026-08-25T10:59:01Z'
+approved-tier-rewiring-deletion-and-docs  '2026-08-25T11:08:08Z'
 ```
 
 ## Batches
@@ -55,8 +56,9 @@ batches:
     commit_sha: fd44e31294509567868a6cb029f8b368cd4e49ee
     verify_baseline_failures: []
   - name: tier-rewiring-deletion-and-docs
-    state: running
+    state: approved
     implementer_session: 8d7c01fc-5954-4d8a-a196-4242409178b2
     start_sha: e40c187d973ac019d2a5b108724a00cf80a66e81
+    commit_sha: de0a12bfdfc6862903ae612678382780cc144e34
     verify_baseline_failures: []
 ```
