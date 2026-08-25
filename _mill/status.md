@@ -28,11 +28,17 @@ implementing  '2026-08-25T09:27:11Z'
 ```yaml
 batches:
   - name: plan-review-rubric-stencil
-    state: pending
+    state: running
+    implementer_session: 93b58b82-b5e0-4604-9b06-98af52ae265d
+    start_sha: 240cb204fd69ffc6c4fa5742422e3229123a6b4f
+    verify_baseline_failures: []
   - name: bouncer-commit-seam
     state: pending
+    verify_baseline_failures: []
   - name: plan-review-segment-rows
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-stale-text-sweep
     state: pending
+    verify_baseline_failures: []
 ```
