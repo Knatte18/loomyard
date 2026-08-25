@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-tiered-adapter
+phase: approved-live-integration
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
@@ -35,6 +35,7 @@ self-resolved-verify-logic  '2026-08-25T07:35:36Z'
 approved-block-detection  '2026-08-25T07:41:36Z'
 approved-reddit-oauth-client  '2026-08-25T07:51:11Z'
 approved-tiered-adapter  '2026-08-25T07:58:42Z'
+approved-live-integration  '2026-08-25T08:01:25Z'
 ```
 
 ## Batches
@@ -60,8 +61,9 @@ batches:
     commit_sha: 6403ce74f387961caf9595f4bdd026d6eb1a7a09
     verify_baseline_failures: []
   - name: live-integration
-    state: running
+    state: approved
     implementer_session: c9b35ae2-f128-4a8c-a665-794b8caa4a40
     start_sha: a8396934bd580646ea620b6ad2008470daabc2dc
+    commit_sha: e202fbeefdbdc2843565451ca3bb65c58f28c4a5
     verify_baseline_failures: []
 ```
