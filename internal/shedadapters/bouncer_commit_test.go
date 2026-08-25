@@ -85,8 +85,9 @@ func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 }
 
 // TestBouncer_Commit_NilIsNotAnError pins that a nil Commit is not an error and commits nothing:
-// this case is what pins the shipped Discussion-Bouncer row's behaviour as unchanged, since that
-// row's BouncerConfig never sets Commit.
+// this case is what pins the shipped Webster-Bouncer row's behaviour as unchanged, since that row
+// carries no commit_seam key -- its Burler partner commits its own fixes, so BouncerConfig never
+// sets Commit for this row.
 func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
 	cfg := testBouncerConfig(t)
 	cfg.Shuttle = &fakeShuttle{}
