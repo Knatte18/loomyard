@@ -37,7 +37,9 @@ batches:
     commit_sha: 69f4db4d26390a2301622fc6e3f4d94b2a550195
     verify_baseline_failures: []
   - name: perch-wiring
-    state: pending
+    state: running
+    implementer_session: 978eeeeb-e286-4f94-b4bc-bf80f2f44680
+    start_sha: 5193964f18819d135603253da29db8a8af28c3e8
     verify_baseline_failures: []
   - name: docs-and-roadmap
     state: pending
