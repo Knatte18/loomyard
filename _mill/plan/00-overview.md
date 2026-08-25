@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: Webster-Review producer'
 slug: 'loom-webster-review-producer'
-approved: false
+approved: true
 started: '20260825-121952'
 parent: 'main'
 root: ""

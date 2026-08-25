@@ -47,7 +47,7 @@ Every config key this perch uses is already covered by the two shipped segments'
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** in `internal/loomshed/doc.go`, the package doc's "its sixteen durable row names" becomes "seventeen".
-  In `internal/loomshed/stub.go`, reword both comment sites — the file-header comment on line 2 and `stubProducer`'s own doc comment — which today each say the type backs "one row of loom's 16-row producer list that no task has built for real yet -- Webster-Review".
+  In `internal/loomshed/stub.go`, reword both comment sites — the file-header comment on line 2, which today says the type backs "the one row of loom's 16-row producer list that no task has built for real yet." and stops there, and `stubProducer`'s own doc comment, which says the same thing and then names the row: "-- Webster-Review -- replaced by a real producer in a later task".
   After this task the type backs no loom row at all, so this is a change of claim and not only of count: state instead that `stubProducer` is a placeholder `ShedProducer` that loom's own producer list no longer uses, kept because `internal/shedrecipe`'s registry is generic `Shed` machinery shared by reference with a future product's producer list rather than loom's private property, and that it exists so a list's sequencing, resume, crash-recovery, and pause behaviour is real from the start rather than retrofitted.
   Do not change `NewStub`, `Call`, or any other code in either file, and do not delete either file.
 - **Commit:** `docs(loomshed): reword the stub's doc comments now no loom row uses it`
