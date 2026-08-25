@@ -30,9 +30,14 @@ implementing  '2026-08-25T12:36:44Z'
 ```yaml
 batches:
   - name: rubric-stencil
-    state: pending
+    state: running
+    implementer_session: 2cccc025-759c-4b6b-a62a-d7bc8cf9f09a
+    start_sha: e1030344b0a4351d1cd2d3975919f2303e0b15e8
+    verify_baseline_failures: []
   - name: perch-wiring
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-roadmap
     state: pending
+    verify_baseline_failures: []
 ```
