@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: planned
 slug: reddit-rss-tier
 branch: reddit-rss-tier
 plan: _mill/plan
@@ -25,4 +25,5 @@ plan-review-r2  '2026-08-25T10:23:20Z'
 plan-fix-r2  '2026-08-25T10:23:45Z'
 plan-review-r3  '2026-08-25T10:32:46Z'
 plan-fix-r3  '2026-08-25T10:33:19Z'
+planned  '2026-08-25T10:33:29Z'
 ```
