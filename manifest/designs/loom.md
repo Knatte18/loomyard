@@ -283,23 +283,38 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 ### Crash recovery — resume on output files, not live processes
 
 After a crash, a restarted `lyx run` cold-starts from the `_lyx/` status file and must reconcile its logical state with whatever agents may or may not still be alive.
-The discipline that makes this tractable: **loom resumes on output FILES, not on live processes.**
-The file contract means "was the work done" is decoupled from "is the process alive."
+The discipline that makes this tractable: **loom resumes on output files AND on live-agent evidence — file existence is never used on its own to skip a step.**
+The file contract still decouples "was the work done" from "is the process alive," but a check that reads output-file existence alone cannot tell an interrupted step from a re-entered one whose files were left behind by something other than a finished agent — see "The crash-versus-bounce question," below.
 For the step it was on:
 
-1. **Is there a complete output file?** → the step finished;
-   read it and advance. (The agent's process may be long dead — its result survived.
+1. **Is there a complete output file?** → *inside* an attached or started run's own wait loop — where this check lives — the step finished;
+   read it and advance.
+   (The agent's process may be long dead — its result survived.
    This is the common case.)
-2. **Else, is the agent's session still alive?** (via `reed`'s — see [overview.md#modules](../../docs/overview.md#modules) — `.lyx/reed.json` → session id → `claude agents --json`) → *working*: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate). *blocked*: it is a human gate / stuck — surface it.
-3. **Else (dead, no output):** respawn a **fresh** agent for the step, hydrated from the prior round's on-disk artifacts.
+   This is never a producer-level shortcut answering "do files exist" on its own: inside a run there is an agent to attribute the completion to, while at the producer level a `Discussion-Validate` bounce makes the files-exist question true without any agent having run — the trap the next section resolves.
+2. **Else, is the agent's session still alive?** `shuttleengine.Runner.Attach`, probed by `shedadapters.SingleLLMProducer.Call` before it archives anything, scans the run-dir root for a `run.json` whose `OutputFiles` match the spec's and whose persisted `Outcome` is still `"running"`, then asks `reed` (see [overview.md#modules](../../docs/overview.md#modules)) whether that record's `StrandGUID` is still tracked with a live pane.
+   A match: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate).
+3. **Else (dead, no output):** `SingleLLMProducer.Call`'s unchanged archive-then-spawn fallback respawns a **fresh** agent for the step, hydrated from the prior round's on-disk artifacts.
    The round is idempotent, so a fresh handler is deterministic.
 
 loom therefore **never depends on `claude --resume` for correctness** — an unfinished step is respawned, not resumed (reed's `--resume` is finicky for programmatically-driven sessions,
 and a never-conversed session has nothing to resume). reed's pane-`--resume` is a *separate, non-critical* layer that restores the **visible** sessions for the operator (see the `internal/reedengine` package documentation on resume);
-loom's correctness rests on files.
+loom's correctness rests on files and live-agent evidence together.
 A dead claude with a finished output file is, to loom, a **done step** — not a problem.
 
-**The interactive-mode trap.** A resume-on-output-files check that reports `Done` whenever both discussion files exist cannot distinguish an interrupted interview (needs the interview to resume) from a `Discussion-Validate` bounce re-entering the row with both files already present — a naive fix ping-pongs the two cases until the bounce budget is exhausted. Solving this is the Planned `loom: interactive Discussion-Write` item's own problem to close, not resolved here.
+**The crash-versus-bounce question, resolved.** A `Discussion-Validate` bounce re-enters `Discussion-Write` with both discussion files already present on disk, byte-identical to the state a crash mid-interview leaves.
+The two are told apart purely by whether an agent for this producer is still alive: a surviving `run.json` matching the spec's output files, whose persisted `Outcome` is still `"running"` and whose `StrandGUID` reed still tracks with a live pane, means attach;
+anything else — including both files present but nothing alive — means respawn.
+File existence alone never answers this question, which is exactly what made a naive producer-level file-existence check ping-pong the two cases until the bounce budget was exhausted.
+
+**Accepted residual.** A crash in the window between a run reaching `done` and Shed persisting that outcome re-runs the completed step from scratch: `Attach` finds nothing live, because `finalize` already ran its cleanup, so the producer archives a finished interview and re-interviews from the top — in interactive mode, the operator answers the whole interview twice.
+This trade is the right direction.
+The only thing that would rescue that window is a producer-level file-existence check, and that check is the trap itself: on a `Discussion-Validate` bounce the files are also present and complete-looking, and treating that as `Done` there ping-pongs the run until its bounce budget blocks it — a frequent hard failure is worse than a narrow one that costs only rework.
+The deliberate non-fix, should this window ever bite in practice: a marker distinguishing "these files were produced by a run that reached `done`" from "these files are merely present" — a new durable-state contract, not designed here.
+
+**This section's own heading is pinned.**
+`manifest/roadmap.md` and this file's own [Graceful pause](#graceful-pause) section both link `#crash-recovery--resume-on-output-files-not-live-processes`, so the heading text above stays exactly as written even though the rule beneath it has changed — `CONSTRAINTS.md`'s Markdown Link Integrity invariant binds.
+If a future editor judges the heading actively misleading, renaming it is a separate change that must update both inbound links in the same commit.
 
 ## Graceful pause
 
@@ -315,7 +330,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 - **The leaf agent finishes its unit;
   nothing is killed.**
   Boundary pause lets the in-flight worker complete its small unit (one batch / round — its output file written), then the driver stops.
-  Resume (`lyx loom run`) spawns the next step from the status file — the same resume-on-files discipline as [crash recovery](#crash-recovery--resume-on-output-files-not-live-processes), minus the crash.
+  Resume (`lyx loom run`) spawns the next step from the status file — the same resume-on-files-and-live-agent-evidence discipline as [crash recovery](#crash-recovery--resume-on-output-files-not-live-processes), minus the crash.
 - **In-agent interrupt is optional.**
   To pause *faster* than the current unit finishes, `shuttle` (see the `internal/shuttleengine` package documentation) can ESC-and-hold the live agent (session kept warm in the reed server — see [overview.md#modules](../../docs/overview.md#modules), not killed;
   resume continues it in place).
