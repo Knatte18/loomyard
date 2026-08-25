@@ -34,14 +34,16 @@ func shippedBouncerStencilsFixture(t *testing.T, rubricName, rubricBody string) 
 	})
 }
 
-// newTestBouncer builds a *Bouncer over a fresh run dir and the shipped bouncer stencils, ready
-// for a seed-mode Call: an empty run dir with no report and no round-1 focus file.
-func newTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
+// testBouncerConfig builds a BouncerConfig over a fresh run dir and the shipped bouncer stencils,
+// filling every field except Shuttle exactly as newTestBouncer's own literal always has. It exists
+// so a test needing a non-default config field -- the commit seam is the first -- can build one
+// without duplicating the fixture.
+func testBouncerConfig(t *testing.T) BouncerConfig {
 	t.Helper()
 
 	runDir := t.TempDir()
 	stencilsDir := shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nBe thorough and cite evidence.\n")
-	cfg := BouncerConfig{
+	return BouncerConfig{
 		Name:          "gate",
 		RunDir:        runDir,
 		ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
@@ -51,9 +53,17 @@ func newTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
 		Model:         "claude-x",
 		Effort:        "high",
 		Version:       "v1",
-		Shuttle:       shuttle,
 		Now:           fixedClock(time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)),
 	}
+}
+
+// newTestBouncer builds a *Bouncer over a fresh run dir and the shipped bouncer stencils, ready
+// for a seed-mode Call: an empty run dir with no report and no round-1 focus file.
+func newTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
+	t.Helper()
+
+	cfg := testBouncerConfig(t)
+	cfg.Shuttle = shuttle
 	b, err := NewBouncer(cfg)
 	if err != nil {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
