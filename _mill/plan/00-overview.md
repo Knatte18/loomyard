@@ -31,7 +31,7 @@ batches:
     name: tiered-adapter
     file: 03-tiered-adapter.md
     depends-on: [1, 2]
-    verify: go -C plugins/prowler test -run 'TestReddit|TestFetchOldRedditHTML|TestFetchPage|TestRunAll' .
+    verify: go -C plugins/prowler test -run 'TestReddit|TestFetchOldRedditHTML|TestFetchPage|TestRunAll|TestFormatRedditThread|TestFetchRedditOAuthThread' .
   - number: 4
     name: live-integration
     file: 04-live-integration.md

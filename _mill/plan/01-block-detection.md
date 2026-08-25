@@ -51,6 +51,7 @@ Batch-local decision beyond `## Shared Decisions`: the detector takes a plain `s
 - **Context:**
   - `plugins/prowler/htmltext.go`
   - `plugins/prowler/fetch.go`
+  - `plugins/prowler/fetch_test.go`
   - `plugins/prowler/testdata/reddit-block-page.html`
   - `plugins/prowler/testdata/reddit-login-page.html`
   - `plugins/prowler/testdata/reddit-www-interstitial.html`
@@ -70,7 +71,7 @@ Batch-local decision beyond `## Shared Decisions`: the detector takes a plain `s
   Then add one further `login wall` signature whose `marker` is chosen by reading the captured `plugins/prowler/testdata/reddit-login-page.html` and picking a distinctive substring of that page that is absent from `plugins/prowler/testdata/good-article.html`;
   the test named below is what proves the choice is discriminating.
   Do not add a size threshold, a status-code check, or a title-only heuristic: the discussion records that the block page is ~190KB and the login page ~320KB, so size is not a usable signal, and the `www` interstitial's challenge text appears only after JavaScript runs, so the static title is not one either.
-  In `plugins/prowler/blockdetect_test.go`, package `main`, write `TestLooksLikeBlockPage` as a table-driven test reading each of the four fixtures with `os.ReadFile`, asserting `blocked` is `true` for the three wall fixtures and `false` for `plugins/prowler/testdata/good-article.html`, and additionally asserting `blocked` is `false` for the existing `redditLikeHTMLWithComments` and `readableArticleHTML` constants already declared in the package's test files, so a signature that would swallow real Reddit or article content fails the test.
+  In `plugins/prowler/blockdetect_test.go`, package `main`, write `TestLooksLikeBlockPage` as a table-driven test reading each of the four fixtures with `os.ReadFile`, asserting `blocked` is `true` for the three wall fixtures and `false` for `plugins/prowler/testdata/good-article.html`, and additionally asserting `blocked` is `false` for the existing `redditLikeHTMLWithComments` and `readableArticleHTML` constants, both already declared in `plugins/prowler/fetch_test.go` and usable directly because every test file in this module is in package `main`, so a signature that would swallow real Reddit or article content fails the test.
   The test makes no network call and spawns no process.
 - **Commit:** `feat(prowler): add shared block/challenge-page detector`
 

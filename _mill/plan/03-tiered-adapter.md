@@ -5,7 +5,7 @@ task: 'Fix prowler: Reddit adapter blocked'
 batch: 'tiered-adapter'
 number: 3
 cards: 3
-verify: go -C plugins/prowler test -run 'TestReddit|TestFetchOldRedditHTML|TestFetchPage|TestRunAll' .
+verify: go -C plugins/prowler test -run 'TestReddit|TestFetchOldRedditHTML|TestFetchPage|TestRunAll|TestFormatRedditThread|TestFetchRedditOAuthThread' .
 depends-on: [1, 2]
 ```
 
@@ -112,6 +112,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   Never return `handled=false` from this method and never call `f.browser` from it, directly or indirectly — the discussion measured that a second headless request escalates a solvable-looking challenge into a hard IP-level block.
   Update the file's leading package comment, which currently asserts that `old.reddit.com` is not gated;
   that premise has expired and the comment must describe the tier order instead.
+  Update `redditAdapter.Fetch`'s own doc comment in the same pass — it currently reads "Reports handled=false when request fails or content is insufficient", which becomes false the moment the method always reports `handled=true` — and update `redditAdapter`'s type doc comment, which says the adapter delegates entirely to `fetchOldRedditHTML`.
   Leave `redditHostPattern`, `redditHostReplace`, `toOldRedditURL`, and `maxTopComments` unchanged.
   In `plugins/prowler/reddit_test.go`, replace `TestRedditAdapterFetch`'s failure sub-test and add sub-tests covering: both tiers stubbed to fail with a `fetcher` whose `browser` field calls `t.Fatal` if invoked, asserting `handled` is `true`, that the output starts with `"# Error fetching "`, and that it names both tiers — this is the single most important behavioural assertion in the task and must be written so it fails if anyone reintroduces a browser fall-through;
   credentials absent, asserting the output names `PROWLER_REDDIT_CLIENT_ID` and `PROWLER_REDDIT_CLIENT_SECRET` and that no request went to the token endpoint;
@@ -130,8 +131,9 @@ Batch-local decisions beyond `## Shared Decisions`:
 
 ## Batch Tests
 
-`verify:` runs `go -C plugins/prowler test -run 'TestReddit|TestFetchOldRedditHTML|TestFetchPage|TestRunAll' .` from the worktree root.
-`TestReddit` is a prefix covering `TestRedditAdapterMatches`, `TestRedditAdapterFetch`, and every test function batch 2 added whose name begins `TestReddit`, so batch 2's suite is re-run here as a regression guard against the signature and behaviour changes this batch makes.
+`verify:` runs `go -C plugins/prowler test -run 'TestReddit|TestFetchOldRedditHTML|TestFetchPage|TestRunAll|TestFormatRedditThread|TestFetchRedditOAuthThread' .` from the worktree root.
+`TestReddit` is a prefix covering `TestRedditAdapterMatches` and `TestRedditAdapterFetch` plus the four batch-2 test functions whose names begin `TestReddit`;
+the two that do not (`TestFormatRedditThread` and `TestFetchRedditOAuthThread`) are named explicitly in the filter, so the whole of batch 2's suite is re-run here as a regression guard against the signature and behaviour changes this batch makes.
 `TestFetchOldRedditHTML` and `TestFetchPage*` cover the two files this batch edits most heavily, and `TestRunAll` covers `runAll`, which this batch touches indirectly through `newFetcher`'s new field.
 The run is offline: no test in it makes a network call, spawns Chrome, or requires real credentials, and card 9 explicitly requires every Reddit-touching test to neutralise the credential environment with `t.Setenv` so a developer with real credentials exported gets the same result as one without.
 Run the batch once by hand with `-race` as well, because card 9's tier-1 path reaches the shared token cache introduced in batch 2.
