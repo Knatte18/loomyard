@@ -49,7 +49,9 @@ batches:
     start_sha: 9e7fc34e8f2e9c9a7d20357e26a8b5d46d06e7cc
     commit_sha: 2d5156a606abf099381573a9b85d41c029204027
   - name: shedadapters-probe-before-archive
-    state: pending
+    state: running
+    implementer_session: 9a165137-62ed-48c4-88e9-86ec4a7d6285
+    start_sha: 2ab9d6c9079aa86d58d4a30fc42a665a29d425d8
   - name: loomrecipe-regression-and-docs
     state: pending
 ```
