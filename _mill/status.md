@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Fix prowler: Reddit adapter blocked'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-25T06:16:43Z'
 discussion-fix-r1  '2026-08-25T06:33:33Z'
 discussed  '2026-08-25T06:33:33Z'
+planning  '2026-08-25T06:43:58Z'
 ```
