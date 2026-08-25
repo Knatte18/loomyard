@@ -1,5 +1,5 @@
 // shape_test.go carries the shape-and-identity assertions over New's built list: the literal
-// fourteen-row producer table, the real Publish/Finalize swap, order stability, told-field
+// sixteen-row producer table, the real Publish/Finalize swap, order stability, told-field
 // threading, a missing-Landing-closure construction failure, and the routing-graph guard. It does
 // not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 
@@ -46,8 +46,10 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurler, loomshed.NamePlanWrite, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NameDiscussionBurler, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBouncer, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, "", 0, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil, "", nil))},
-	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanReview, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
-	{loomshed.NamePlanReview, loomshed.NamePlanWrite, loomshed.NameBatchifier, "", 0, reflect.TypeOf(loomshed.NewStub(""))},
+	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanBouncer, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
+	{loomshed.NamePlanBouncer, loomshed.NamePlanBurler, loomshed.NamePlanRevalidate, "Plan-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
+	{loomshed.NamePlanBurler, loomshed.NamePlanBouncer, loomshed.NamePlanBouncer, "Plan-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
+	{loomshed.NamePlanRevalidate, loomshed.NamePlanWrite, loomshed.NameBatchifier, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
 	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
 	{loomshed.NameWebster, "", loomshed.NameWebsterReview, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
 	{loomshed.NameWebsterReview, loomshed.NameWebster, loomshed.NamePublish, "", 0, reflect.TypeOf(loomshed.NewStub(""))},
@@ -229,8 +231,8 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 
 // TestNew_ProducerTableOrderUnchangedByWiring re-asserts TestNew_ProducerTable's own table-order and
 // name coverage, now that the list's order is the recipe's own list order rather than a Go literal's:
-// the fourteen rows stay in their existing table order with their existing names, regardless of what
-// backs rows 13 and 14.
+// the sixteen rows stay in their existing table order with their existing names, regardless of what
+// backs rows 15 and 16.
 func TestNew_ProducerTableOrderUnchangedByWiring(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)

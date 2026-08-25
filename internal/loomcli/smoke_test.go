@@ -18,8 +18,8 @@
 // TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
 //
 // A note on driver-liveness timing: loom's own producer table (contracts/recipes/loom-recipe.yaml)
-// backs two of its fourteen rows -- Plan-Review and Webster-Review -- with stub producers that
-// report Done unconditionally, so a freshly-bootstrapped driver against a pair with no
+// backs one of its sixteen rows -- Webster-Review -- with a stub producer that
+// reports Done unconditionally, so a freshly-bootstrapped driver against a pair with no
 // discussion/plan artifacts yet typically bounces through
 // Discussion-Write/Discussion-Validate a bounded number of times (shedengine's own default bounce
 // budget) and then blocks -- a lifecycle that can complete in well under a second. Tests here that

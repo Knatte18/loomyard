@@ -149,9 +149,10 @@ func LoomScratchDir(l *lyxcwd.Location) string {
 // loomDirName a second time: the Lyxdirs Single-Declarer Invariant forbids a hand-built join naming
 // the .lyx literal a second time in production path construction, and LoomScratchDir is already the
 // accessor that names it once.
-// It is ephemeral, not durable: there is no commit seam for a Bouncer row, so the round reports,
-// verdicts, ledgers, focus files, and their archive siblings that land here would be untracked dirt
-// if they lived under the durable tree instead.
+// It is ephemeral, not durable: a Bouncer row's commit seam, where one is configured at all,
+// commits the artifact under review, never this tree, so the round reports, verdicts, ledgers,
+// focus files, and their archive siblings that land here would still be untracked dirt if they
+// lived under the durable tree instead.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReviewsDir(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), reviewsDirName)

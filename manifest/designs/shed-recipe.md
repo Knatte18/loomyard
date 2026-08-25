@@ -6,7 +6,7 @@
 
 ## The idea
 
-`internal/loomrecipe.New()` builds loom's fourteen-row `[]shedengine.ProducerDef` by parsing and building the **declarative recipe** at `contracts/recipes/loom-recipe.yaml` — a data file naming, per row, `{Name, Engine, Config, OnDone, OnStuck, Segment, MaxBounces}`, loaded and assembled into the same `[]shedengine.ProducerDef` `shedengine.Shed` already consumes, with no change to `shedengine` itself.
+`internal/loomrecipe.New()` builds loom's sixteen-row `[]shedengine.ProducerDef` by parsing and building the **declarative recipe** at `contracts/recipes/loom-recipe.yaml` — a data file naming, per row, `{Name, Engine, Config, OnDone, OnStuck, Segment, MaxBounces}`, loaded and assembled into the same `[]shedengine.ProducerDef` `shedengine.Shed` already consumes, with no change to `shedengine` itself.
 This replaces the earlier Go literal `internal/loomshed.New()` used to build directly.
 
 Motivation: several rows are already pure `Engine + Config` in spirit, exactly the shape a declarative recipe expresses cleanly — but not `Discussion-Write`, which turns out not to fit that mold.
@@ -33,6 +33,11 @@ The question the discussion worked through was whether the *other* rows (the loo
 None of these can be written in a file at all — a recipe row names an `Engine` and carries `Config`, and a seam is neither.
 They travel in the same told bundle as geometry, `shedrecipe.Env`, filled once by whichever caller invokes the registry — this extends the existing discipline rather than inventing a second one.
 The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots and run-wide values only, never a value that differs between two rows, and anything per-row is a relative path or scalar in `Config`, resolved against one of those roots by the entry that reads it.
+
+A `Config` key may **select** among the seams the told `Env` already carries, by name, without carrying one — this does not break the rule above, it extends it.
+A `Bouncer` row's `commit_seam` key takes one of exactly two literal values, `plan` and `discussion`, resolving to `Env.CommitPlan` and `Env.CommitDiscussion` respectively.
+Two rules make it safe: an absent key is a legitimate "no seam configured" and leaves the closure nil, while a **present** key naming a closure the `Env` does not carry is a construction error rather than a silent nil — a nil closure would silently mean "commit nothing," the exact condition the key exists to eliminate.
+This is the same shape `rubric_stencil` already has, naming a stencil rather than carrying one, so `commit_seam` extends the existing `Env`-versus-`Config` rule rather than forking it.
 
 ## Pieces to build
 
@@ -80,7 +85,7 @@ Three decisions this doc originally deferred, settled by piece 4:
 - **On-disk location.** loom's recipe ships as an embedded default at `contracts/recipes/loom-recipe.yaml`, read through `shedbuild.Parse` on the embedded bytes (`contracts/recipes/recipes.go`'s `LoomRecipe`) — never `shedbuild.Load`.
   There is no seeding, no operator override, and no runtime on-disk path.
 - **The consumer.** `internal/loomrecipe` is the recipe's sole consumer, sitting above `internal/loomshed` rather than inside it: `internal/shedrecipe`'s registry already imports `loomshed` for eight of its constructors, so a `loomshed` → `shedbuild` → `shedrecipe` → `loomshed` production import cycle would not compile if the consumer lived inside `loomshed` instead.
-- **Test ownership.** The assembled-graph tests — the coverage guard driving loom's real row list against the registry, the sequencing/cancellation/resume tests that build the real fourteen-row list — live in `internal/loomrecipe`, not `internal/loomshed`.
+- **Test ownership.** The assembled-graph tests — the coverage guard driving loom's real row list against the registry, the sequencing/cancellation/resume tests that build the real sixteen-row list — live in `internal/loomrecipe`, not `internal/loomshed`.
 
 **Accepted consequence.** `shedbuild.Load` now has no production caller — loom's only caller reaches its recipe through the embedded bytes, never a told path.
 This is deliberate: `Load` stays exported and covered because it is the entry a future non-embedded consumer needs, exactly the shape a second recipe-backed product would use.

@@ -44,7 +44,7 @@ But then the right behaviour is to raise it **once, as a design finding about me
 
 1. **Discussion-Review's rubric** (`loom.md`'s [Discussion producer detail](loom.md#discussion-producer-detail--validation-checks-and-review-rubric) section, once a real `Bouncer` rubric exists to point at it) — define a finding-class vocabulary for discussion review: `design`, `scope`, `decision`, `consistency`.
    State that only `design` gates the round loop and only `design` is ever escalated to the operator; the rest auto-resolve.
-2. **Plan-Review's own future rubric** — same class dimension for plan review, with its own catchment: batching/sequencing/verify-command correctness gates; prose-level nits do not.
+2. **`Plan-Review`'s shipped rubric** (`contracts/stencils/loom/loom-rubric-plan-review.md`) — what remains open is layering the same finding-class dimension on top of the now-shipped rubric, with its own catchment unchanged: batching/sequencing/verify-command correctness gates; prose-level nits do not.
 3. **Round-exit condition** — replace a flat round cap with "stop when a round returns zero gating-class findings," keeping the cap as a backstop.
    On the observed task this exits at r6 by rule rather than by operator override, and correctly refuses to exit at r2-r4.
 4. **Per-class counts in whatever envelope lyx's review rounds emit** — so "same class, fourth round running" is visible.
