@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-git-invariant-fix
+phase: holistic-reviewing
 slug: loom-discussion-burler-fix-scope
 branch: loom-discussion-burler-fix-scope
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-08-25T14:14:22Z'
 blocked  '2026-08-25T14:24:53Z'
 implementing  '2026-08-25T15:14:52Z'
 approved-fabric-git-invariant-fix  '2026-08-25T15:15:13Z'
+holistic-reviewing  '2026-08-25T15:15:39Z'
 ```
 
 ## Batches
