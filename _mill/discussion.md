@@ -114,7 +114,7 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
 
 ### rss-progress-visibility
 
-- Decision: when a request must wait more than a couple of seconds, write one line to **stderr**: `prowler: reddit rss rate limit, waiting <n>s before fetching <url>`. Never to stdout.
+- Decision: when a request must wait longer than `redditRSSLogWaitThreshold` = **2 seconds**, write one line to **stderr**: `prowler: reddit rss rate limit, waiting <n>s before fetching <url>`. Never to stdout. A wait of exactly the threshold or shorter logs nothing, so the boundary is assertable.
 - Rationale: the task brief asks for "a queue with visible progress". `main` prints exactly one line to stdout — the output file path — and the invoking skill wrapper captures that single line, so stdout is off limits. stderr is already used by `main` for errors and is visible to the operator.
 - Rejected: silence (a 5-minute wait looks like a hang), or stdout (breaks the skill wrapper's contract).
 
@@ -249,6 +249,7 @@ TDD candidates — write the test first for each of these; they are pure functio
 
 - **`redditRSSURL`** — table-driven over: bare/`www.`/`old.` hosts; `http` and `https` schemes; trailing slash present and absent; a query string and a fragment (both dropped); a path already ending in `.rss` (idempotent); a subreddit path; empty path (error); unparseable URL (error).
 - **The Atom parser** — against `testdata/reddit-thread.rss`: post title, subreddit, author with the `/u/` prefix stripped, selftext extracted from between the `SC_OFF`/`SC_ON` markers with the `submitted by … [link] … [comments]` trailer excluded, comment count, comment authors and bodies, `Score` nil throughout, `Replies` nil throughout. Against `testdata/reddit-listing.rss`: every entry `t3_`, titles and links present. Against `testdata/reddit-rss-notfound.rss`: zero entries → error.
+- **Wait logging** — a stubbed wait of `redditRSSLogWaitThreshold` exactly emits nothing to stderr; a wait one second longer emits exactly one line naming the seconds and the URL; nothing is ever written to stdout.
 - **The limiter** — with the clock and wait both stubbed: first request proceeds immediately; a second request waits until `nextAllowed`; the wait duration comes from `x-ratelimit-reset`; a missing or garbage header falls back to `redditRSSMinSpacing`; a cancelled context aborts the wait and returns `ctx.Err()`; the queue wait cap (`redditRSSMaxWait`) is enforced; concurrent callers serialise (drive N goroutines through a stubbed clock and assert exactly one in-flight request at a time). Must complete in milliseconds.
 - **429 retry budget** — a stubbed transport returning 429 twice then 200 succeeds; three 429s produce a tier failure whose message names the reset seconds.
 

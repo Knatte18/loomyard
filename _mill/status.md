@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: reddit-rss-tier
 branch: reddit-rss-tier
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-25T09:24:22Z'
+discussion-fix-r1  '2026-08-25T09:37:00Z'
 ```
