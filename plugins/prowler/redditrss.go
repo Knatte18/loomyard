@@ -410,7 +410,21 @@ func (l *redditRSSLimiter) reset() {
 // deadline, so a goroutine queued behind others could observe neither ctx cancellation nor
 // deadline, and the bounds this tier promises would be unimplementable. A select over a
 // channel receive, ctx.Done(), and a deadline timer honours all three.
+//
+// ctx is checked with its own non-blocking select before the three-way select below: Go's
+// select chooses pseudo-randomly among every case that is already ready, so when ctx is
+// already cancelled and the token happens to be immediately available too (the common case
+// right after reset), the three-way select alone would sometimes return the token instead of
+// ctx.Err() -- silently letting a cancelled caller proceed to issue a request. Checking
+// cancellation first gives it priority over an available token without changing the blocking
+// behaviour of the three-way select for the case ctx is still live.
 func (l *redditRSSLimiter) acquire(ctx context.Context, deadline time.Time) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	wait := deadline.Sub(timeNow())
 	timer := time.NewTimer(wait)
 	defer timer.Stop()

@@ -16,20 +16,11 @@ import (
 // (bare, www, and old.reddit.com).
 var redditHostPattern = regexp.MustCompile(`^https?://(www\.|old\.)?reddit\.com`)
 
-// redditHostReplace captures scheme and host for rewriting to old.reddit.com.
-var redditHostReplace = regexp.MustCompile(`^(https?://)(www\.|old\.)?reddit\.com`)
-
 // maxTopComments bounds top-level comments included when formatting
 // threads, and (in redditoauth.go's formatRedditThread) also bounds the
 // replies rendered under each top-level comment. Used by the Hacker News
 // adapter and the Reddit OAuth adapter.
 const maxTopComments = 20
-
-// toOldRedditURL rewrites a Reddit URL to its old.reddit.com equivalent.
-// No-op when already old.reddit.com.
-func toOldRedditURL(rawURL string) string {
-	return redditHostReplace.ReplaceAllString(rawURL, "${1}old.reddit.com")
-}
 
 // redditAdapter is the siteAdapter for Reddit: it tries the authenticated
 // OAuth API, then an unauthenticated Reddit .rss feed fetch, and always
