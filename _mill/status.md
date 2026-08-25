@@ -6,6 +6,7 @@ slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Fix prowler: Reddit adapter blocked'
 task_description: |
   Fix prowler: Reddit adapter blocked
@@ -37,11 +38,17 @@ implementing  '2026-08-25T07:29:21Z'
 ```yaml
 batches:
   - name: block-detection
-    state: pending
+    state: running
+    implementer_session: 2aa29b30-9256-472d-a617-c23bd0d9f5ec
+    start_sha: 735382cb60da38ef28029c8aad93df27363c7e96
+    verify_baseline_failures: []
   - name: reddit-oauth-client
     state: pending
+    verify_baseline_failures: []
   - name: tiered-adapter
     state: pending
+    verify_baseline_failures: []
   - name: live-integration
     state: pending
+    verify_baseline_failures: []
 ```
