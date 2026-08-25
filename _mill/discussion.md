@@ -62,6 +62,9 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
     `manifest/roadmap.md:17` and `manifest/designs/loom.md:318` both link it, so the `Markdown Link Integrity` invariant binds: the heading text is not to be edited even though the rule beneath it is.
     If a future editor judges the heading actively misleading, renaming it is a separate change that must update both inbound links in the same commit.
   - `internal/shuttleengine/doc.go` and `internal/shedadapters/doc.go`.
+  - `docs/overview.md:319`, which enumerates `loom.yaml`'s keys by name ("the `discussion`/`plan` role model-specs and `discussion_timeout_min`/`plan_timeout_min`) and says the module "reconciles via `lyx config reconcile`".
+    Both halves need touching: `discussion_interactive` joins the key list, and the reconcile mention should carry `--apply` per the migration note below.
+    `:320`'s Discussion-producer description should also gain the fact that the producer now has two modes.
   - `manifest/roadmap.md`, moving the item off Planned.
 
 **Out:**
@@ -139,7 +142,10 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
   there is nothing live to find, and the row respawns.
   "Ordinarily" is load-bearing: that cleanup is skipped entirely under `spec.KeepPane`, and both of its steps are best-effort (a failed `RemoveStrand` or `RemoveAll` is a `logger.Warn`, not an error), so the leftover-directory case is real and is given its own disposition in `leftover-run-dir-from-a-completed-run` below.
   After a crash mid-interview no cleanup ran, so the run dir and its `run.json` survive and — because the tmux server is detached and outlives the driver process — the pane usually does too.
-  Ladder step 1 ("is there a complete output file?") is deliberately **not** implemented here: it is the exact shortcut the doc's trap warns about, and with steps 2 and 3 in place it buys nothing, since a run whose output files are complete has already reached `Done` and cleaned itself up.
+  Ladder step 1 ("is there a complete output file?") is deliberately **not** implemented at the producer level: it is the exact shortcut the doc's trap warns about.
+  It does not buy *nothing*, though — and the honest statement of the trade matters, because the previous phrasing of this decision was wrong.
+  Step 1 would buy the **completed-crash window** described in `accepted-residual-the-completed-crash-window` below, at the price of the bounce ping-pong.
+  We accept losing it: the ping-pong is a hard failure on an ordinary, frequent path, and the window it would rescue is narrow and costs only rework.
 - Rejected: an "interview in progress" marker file written at spawn and cleared on `Done`.
   It is a second, hand-maintained liveness record that a crash can leave stale in the one situation it exists to describe.
 - Rejected: having `Discussion-Validate` leave a bounce marker for `Discussion-Write` to read.
@@ -211,6 +217,21 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   At the producer level it answers only "do files exist", which a `Discussion-Validate` bounce makes true without any agent having run — the ping-pong.
   The `manifest/designs/loom.md` edit must make this distinction explicit rather than deleting step 1, since step 1 is what lets an attached run notice a completion that landed during the outage.
 
+### accepted-residual-the-completed-crash-window
+
+- Decision: a crash in the window between `Run.finalize` returning `OutcomeDone` and `shedengine` persisting that outcome causes the completed step to be **re-run from scratch** on resume.
+  This is accepted, recorded, and not fixed here.
+- The window, precisely: `shedengine.Run` calls `def.Producer.Call(ctx)` and persists history and the next `current_producer` only *after* it returns — deliberately as a single write, since "written as two writes, a crash between them leaves `current_producer` still naming the producer that just finished" (`internal/shedengine/run.go:126-130`, its own comment).
+  A crash inside that window therefore leaves `current_producer: Discussion-Write` with both output files present and complete, and — because `finalize` already ran its cleanup — nothing live to attach to.
+  `Attach` correctly reports `found == false`, and the producer archives a *finished* interview and re-interviews from the top.
+  `leftover-run-dir-from-a-completed-run` routes the variant where the run dir survived to the same respawn, for the same reason.
+- Rationale for accepting: the only thing that would rescue it is a producer-level file-existence check, which is the doc's trap verbatim — on a `Discussion-Validate` bounce the files are also present and complete-looking, and returning `Done` there ping-pongs until the bounce budget blocks the run.
+  Trading a frequent hard failure for a narrow one that costs only rework is the wrong direction.
+- Cost, stated plainly so nobody discovers it as a surprise: in interactive mode the operator answers the whole interview twice.
+  The window is small (one status-file write) and requires a crash inside it, but it is not zero.
+- A future fix, if this ever bites in practice, is a marker distinguishing "these files were produced by a run that reached `Done`" from "these files are merely present" — for instance recording the completing run's id alongside the artifacts.
+  That is a new durable-state contract and is deliberately not designed here.
+
 ### attach-is-unconditional-not-interactive-only
 
 - Decision: `SingleLLMProducer.Call` probes `Attach` on **every** call, regardless of `spec.Interactive` or `spec.AwaitOperator`.
@@ -219,6 +240,11 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   Gating the fix on interactive would leave the documented discipline unimplemented for the majority of rows.
 - Rejected: gating on `spec.Interactive`.
   Smaller blast radius, but it knowingly ships the duplicate-agent path for `Plan-Write` and every generic `SingleLLM` row.
+- **The `Bouncer`/`Burler` review rows are explicitly out of scope, and they keep the duplicate-agent path.**
+  They drive the same `Shuttle` seam (`shedrecipe/entries_bouncer.go:141` hands them `env.Shuttle`) but do not go through `SingleLLMProducer`, so widening that producer does not reach them and this task does not touch their own spawn/resume behaviour.
+  The reason for leaving them is scope, not a claim that they are safe: the argument above — respawning over a live agent is a correctness bug for every row — applies to them too.
+  Fixing them means auditing `Bouncer`'s round-state and run-directory handling, which the sibling roadmap item (`Discussion-Burler`'s `fix-scope: source`) is already scheduled to open, and which has its own stale-run-directory defect recorded there.
+  Doing both in one task would have two changes editing the same rows.
 - Blast radius, stated plainly: this changes `Plan-Write` and any future generic `SingleLLM` row as well as `Discussion-Write`.
   The behaviour change is confined to the case where a live matching run exists at `Call` time, which today only happens on a resume after a crash — on the ordinary first call the probe finds nothing and the existing archive-then-run path is taken unchanged.
 
@@ -361,8 +387,12 @@ if one turns out to be needed, the `Stencil Ownership Invariant` and the `Produc
 
 **Migration obligation for existing worktrees — not optional, and not automatic.**
 Adding a key to a strict-side template breaks every worktree whose `loom.yaml` was written before it.
-`configengine.Load` hard-errors with `config file <path>: missing keys: discussion_interactive; run "lyx config reconcile"` (`internal/configengine/config.go:113`), and nothing reconciles outside that explicit verb — so the very next `lyx loom run` in any already-initialized worktree fails until the operator runs `lyx config reconcile`.
-This is the existing, intended mechanism rather than a defect (the error text names the remedy), but the task must state it: the change note / commit message should carry the `lyx config reconcile` instruction, and it applies to every in-flight worktree, not only new ones.
+`configengine.Load` hard-errors with `config file <path>: missing keys: discussion_interactive; run "lyx config reconcile"` (`internal/configengine/config.go:113`), and nothing reconciles outside that explicit verb — so the very next `lyx loom run` in any already-initialized worktree fails until the operator reconciles.
+**The remedy is `lyx config reconcile --apply`, not the bare verb the error text names.**
+`lyx config reconcile` is a **dry run**: it reports added and removed keys and writes nothing, and `--apply` is what writes the reconciled files (`internal/configcli/configcli.go:338-343`, and the flag at `:343`).
+An operator who follows the error message literally therefore reconciles nothing and fails the next `lyx loom run` identically.
+The change note / commit message must carry the `--apply` form, and it applies to every in-flight worktree, not only new ones.
+Whether the error text's own wording should gain `--apply` is a separate, repo-wide question this task does not settle.
 `config_test.go` is the existing home for key-coverage assertions.
 
 **The wait loop.**
