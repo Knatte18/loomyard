@@ -32,6 +32,7 @@ The live suite itself is run by a human, deliberately, with `go -C plugins/prowl
   - `plugins/prowler/redditoauth.go`
   - `plugins/prowler/fetch.go`
   - `plugins/prowler/fetcher.go`
+  - `plugins/prowler/adapter.go`
   - `plugins/prowler/blockdetect_test.go`
   - `plugins/prowler/testdata/reddit-thread.rss`
   - `plugins/prowler/testdata/reddit-thread.json`
