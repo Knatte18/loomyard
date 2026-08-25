@@ -27,6 +27,7 @@ The live suite itself is run by a human, deliberately, with `go -C plugins/prowl
 
 - **Context:**
   - `plugins/prowler/redditrss.go`
+  - `plugins/prowler/redditrss_test.go`
   - `plugins/prowler/redditformat.go`
   - `plugins/prowler/redditoauth.go`
   - `plugins/prowler/fetch.go`
@@ -109,7 +110,8 @@ The live suite itself is run by a human, deliberately, with `go -C plugins/prowl
   - `decodeContentEncoding`, `stripToBodyText`, `minUsableTextLen`, `errorResult`, and `defaultHeaders` in `plugins/prowler/fetch.go` and `plugins/prowler/headers.go` — the generic cascade uses all of them.
   - `looksLikeBlockPage` in `plugins/prowler/blockdetect.go`, which the RSS tier now calls.
   - `plugins/prowler/testdata/reddit-block-page.html`, which `TestLooksLikeBlockPage`, `TestFetchPage_ChallengePageIsNotReturnedAsContent`, the OAuth wall tests, and the RSS wall test all read.
-    Check each of `fetch_test.go`'s two uses of that fixture individually and keep both.
+    Check each of `fetch_test.go`'s two uses of that fixture individually: one sits inside `TestFetchOldRedditHTML`, which this card deletes, and goes with it, while the one in `TestFetchPage_ChallengePageIsNotReturnedAsContent` stays.
+    The fixture file itself is kept either way — several surviving tests in other files read it.
   - `redditLikeHTMLWithComments` in `plugins/prowler/fetch_test.go` if any surviving test still reads it — `TestLooksLikeBlockPage` in `blockdetect_test.go` does — and delete it only if nothing does.
 
   Update `plugins/prowler/adapter.go`'s file-level doc comment, which cites "Reddit's old.reddit.com HTML" as its example adapter strategy.
@@ -195,6 +197,7 @@ The live suite itself is run by a human, deliberately, with `go -C plugins/prowl
 
 - **Context:**
   - `plugins/prowler/redditrss.go`
+  - `plugins/prowler/redditrss_test.go`
   - `plugins/prowler/reddit.go`
   - `plugins/prowler/redditoauth.go`
   - `plugins/prowler/blockdetect.go`

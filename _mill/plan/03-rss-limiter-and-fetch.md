@@ -108,6 +108,8 @@ A `select` over a channel receive, `ctx.Done()`, and a deadline timer honours al
   - `plugins/prowler/fetcher.go`
   - `plugins/prowler/redditoauth.go`
   - `plugins/prowler/blockdetect.go`
+  - `plugins/prowler/headers.go`
+  - `plugins/prowler/fetch.go`
   - `plugins/prowler/fetch_test.go`
   - `plugins/prowler/blockdetect_test.go`
   - `plugins/prowler/testdata/reddit-thread.rss`

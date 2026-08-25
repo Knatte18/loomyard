@@ -173,6 +173,7 @@ PY
 
 - **Context:**
   - `plugins/prowler/redditformat.go`
+  - `plugins/prowler/redditoauth.go`
   - `plugins/prowler/reddit.go`
   - `plugins/prowler/blockdetect_test.go`
   - `plugins/prowler/testdata/reddit-thread.rss`
