@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: loom-webster-review-producer
 branch: loom-webster-review-producer
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussed  '2026-08-25T12:03:03Z'
 planning  '2026-08-25T12:25:04Z'
 plan-review-r1  '2026-08-25T12:35:36Z'
 plan-fix-r1  '2026-08-25T12:36:05Z'
+planned  '2026-08-25T12:36:17Z'
 ```
