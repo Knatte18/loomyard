@@ -11,6 +11,10 @@
 // alive; the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks
 // (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) —
 // are mechanism failures, not classifications.
+// When the run's Spec.AwaitOperator is true, an OutcomeAsking classification is non-terminal: Wait
+// logs the observation and keeps polling instead of returning, so an interactive interview survives
+// its first question batch. Every other exit (OutcomeDone, OutcomeDied, a liveness mechanism
+// failure, OutcomeTimeout) is unaffected.
 
 package shuttleengine
 
@@ -101,6 +105,9 @@ var errStrandPaneBindingCleared = errors.New(
 
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
+// When run.spec.AwaitOperator is true, an OutcomeAsking classification does not count as terminal —
+// Wait logs the ask and keeps polling, so it terminates only on OutcomeDone, OutcomeDied, a liveness
+// mechanism failure, or OutcomeTimeout.
 //
 // An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
 // empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
@@ -139,7 +146,12 @@ func (run *Run) Wait() (Result, error) {
 			}
 		} else {
 			eventsFailures = 0
-			if outcome != "" {
+			if outcome == OutcomeAsking && run.spec.AwaitOperator {
+				// AwaitOperator makes an ask non-terminal: log the observation so the driver log
+				// records each one, and keep polling instead of finalizing here. OutcomeDone still
+				// falls through to finalize below, unaffected by this branch.
+				logger.Info("shuttle: awaiting operator, ask observed", "strandGUID", run.state.StrandGUID, "lastAssistantMessage", message)
+			} else if outcome != "" {
 				return run.finalize(outcome, message)
 			}
 		}
