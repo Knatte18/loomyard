@@ -69,6 +69,8 @@ Nothing here reads a recipe row, so this batch is independent of batch 1 and bat
 - **Requirements:**
   Change `burlerRoundProfile`'s signature from `burlerRoundProfile(cfg Config) (burlerengine.Profile, error)` to `burlerRoundProfile(cfg Config, stencilsDir string) (burlerengine.Profile, error)` and update its single call site in `burlerRoundEntry` to pass `env.StencilsDir`.
   Inside `burlerRoundProfile`, read a new optional `rubric_stencil` string key alongside the existing `rubric` key, and add `"rubric_stencil"` to the `configRejectUnknown` call's known-key list so the profile map's strict-unknown-key rejection keeps working.
+  Update that function's own doc comment in the same edit: it currently states the function recognises "exactly six keys" and enumerates them, which the seventh key makes false.
+  Make it seven, add `rubric_stencil` to the enumeration, and record the `rubric`/`rubric_stencil` mutual-exclusivity rule there — the comment already explains which burler-profile keys are deliberately absent and why, so it is the right place for the one rule a recipe author cannot infer from the key list alone.
   Enforce mutual exclusivity: exactly one of `rubric` and `rubric_stencil` must be non-empty.
   Both non-empty is an error naming both keys;
   both empty is an error naming both keys and stating that one is required.

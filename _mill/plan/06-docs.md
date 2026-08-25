@@ -42,6 +42,10 @@ It ships no interface and changes no behaviour.
   Wherever the doc names a row count, say which of the two it means.
   Add a short note recording that the doc table and the recipe now diverge deliberately: the recipe is the shipped list and is authoritative for row names and routing;
   the table is the human-readable design record.
+  Correct the sentence introducing the discussion-detail section, which says it carries the detail belonging to `Discussion-Validate` and `Discussion-Review` "instead — two producers not yet built".
+  Neither is unbuilt any more: `Discussion-Validate` was already real before this task, and this task builds `Discussion-Review`.
+  Drop or rewrite the clause;
+  the sentence's actual point — that a mechanical validator's checklist and a review rubric are not part of what the *writing* agent needs to read — stands on its own and must survive.
   Rewrite the two `Discussion-Review rubric` subsections' opening line.
   Each currently says it is "the text the future `Bouncer` rubric ... must point at".
   The rubric is no longer future: name the shipped stencil as the rubric's home, and keep each subsection as the durable human-readable copy, stating that the stencil is the producer's instruction file and this doc is a doc about it, per the Producer Pointer-Rule Invariant.

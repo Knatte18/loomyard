@@ -23,6 +23,7 @@ this batch adds no new function to the package.
 - **Context:**
   - `internal/burlercli/wiring.go`
   - `internal/hubgeom/hubgeom.go`
+  - `internal/hubgeom/webstergeom.go`
   - `internal/burlerengine/config.go`
   - `internal/burlerengine/engine.go`
   - `internal/shedrecipe/recipe.go`
@@ -38,9 +39,13 @@ this batch adds no new function to the package.
   Note the actual signature is `burlerengine.LoadConfig(baseDir string)` — one argument, not the two-argument `(baseDir, module)` shape every other loader in `wire()` uses — so the call is `burlerengine.LoadConfig(anchorPath)`.
   It is an optional-file loader: an absent `burler.yaml` yields a zero `Config` and a nil error, so this adds no new seeding requirement to any caller or test.
   Build the burler engine after `runner` and `websterGeom` already exist: `burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir)`, mirroring `internal/burlercli/wiring.go`'s own hub-branch construction.
-  Use `hubgeom.BurlerGeometry` as-is and do not converge it with `hubgeom.WebsterGeometry`: `BurlerGeometry` uses `l.WorktreePath()` for its `WorktreeRoot` while `WebsterGeometry` uses `l.AnchorPath()`, a deliberate divergence documented in both files.
+  Use `hubgeom.BurlerGeometry` as-is and do not converge it with `hubgeom.WebsterGeometry`: `BurlerGeometry` (in `internal/hubgeom/hubgeom.go`) fills its `WorktreeRoot` from `l.WorktreePath()` while `WebsterGeometry` (in `internal/hubgeom/webstergeom.go`) fills its own from `l.AnchorPath()`.
+  Read that divergence off each function's body directly;
+  do not go looking for a comment pairing the two, because neither doc comment names the other.
+  `WebsterGeometry`'s comment does explain why its `WorktreeRoot` is the anchor path — every webster CLI call site passes it, and converging it with the neighbouring `ReedGeometry` would silently change behaviour in a subpath-anchored hub — and that reasoning is what makes converging Burler onto it wrong too;
+  `BurlerGeometry`'s own comment makes no comparison at all.
   Resolve the review triple and timeout by calling `loomengine.ResolveReview(loomCfg, registry)` after the existing `registry` load, propagating its error the same way the other loads do.
-  Fill six fields on the `shedrecipe.Env` literal: `StencilsDir: websterGeom.StencilsDir`, `RunRoot: loomengine.LoomReviewsDir(location)`, `Burler:` the engine built above, `Now: time.Now`, and `ReviewModel`/`ReviewEffort`/`ReviewVersion`/`ReviewTimeout` from the resolved settings.
+  Fill eight fields on the `shedrecipe.Env` literal: `StencilsDir: websterGeom.StencilsDir`, `RunRoot: loomengine.LoomReviewsDir(location)`, `Burler:` the engine built above, `Now: time.Now`, and `ReviewModel`/`ReviewEffort`/`ReviewVersion`/`ReviewTimeout` from the resolved settings.
   Rewrite the trailing comment that currently says `StencilsDir`, `RunRoot`, `Burler`, and `Now` are left zero because no row uses those engines yet.
   The replacement states that all four are now filled for the `Discussion-Bouncer`/`Discussion-Burler` segment, that `StencilsDir` is the same value the `DiscussionSpec` and `PlanSpec` closures capture directly (so the two are one value, not two that could drift), and that `Now` is filled explicitly rather than left nil even though nil defaults to `time.Now` inside the underlying constructors, because the Bouncer's archive-filename collision suffix is the one place a test wants to inject a clock.
   Keep the surviving half of the original comment — `Landing` is still deliberately unfilled here, for the eager-fabric-open reason `landingdeps.go` and `drive.go` already document — intact and unweakened.
