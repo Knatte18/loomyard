@@ -49,6 +49,7 @@ Batch-local decision beyond `## Shared Decisions`: the detector takes a plain `s
 ### Card 2: Shared block/challenge-page detector
 
 - **Context:**
+  - `_mill/discussion.md`
   - `plugins/prowler/htmltext.go`
   - `plugins/prowler/fetch.go`
   - `plugins/prowler/fetch_test.go`
