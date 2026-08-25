@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: reddit-rss-tier
 branch: reddit-rss-tier
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-rss-parsing-foundation  '2026-08-25T10:50:16Z'
 approved-rss-limiter-and-fetch  '2026-08-25T10:59:01Z'
 approved-tier-rewiring-deletion-and-docs  '2026-08-25T11:08:08Z'
 holistic-reviewing  '2026-08-25T11:08:50Z'
+holistic-fixing  '2026-08-25T11:15:15Z'
 ```
 
 ## Batches
