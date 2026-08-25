@@ -55,13 +55,20 @@ func runDirRoot(cfg Config, anchorPath string) string {
 	return filepath.Join(anchorPath, cfg.RunDir)
 }
 
+// runOutcomeRunning is the sentinel RunState.Outcome value Start writes before any classification is
+// reached. It is explicit rather than relying on "empty means running", because every run.json
+// written by a pre-this-change binary decodes with Outcome == "" — inverting the default this way
+// means an upgraded worktree never mistakes a legacy record for an attachable one (see
+// RunState.Outcome's own doc comment).
+const runOutcomeRunning = "running"
+
 // RunState is the persisted record for one shuttle run, written as <runDir>/run.json.
 // It carries exactly what the CLI's interrupt/send verbs and post-hoc diagnosis need: the run and
 // strand identities, the session the engine resumed/produced, whether the run was launched
 // interactive, the output files the caller expects, the on-disk paths of the run's
 // prompt/settings/event files (so a resumed or re-attached session can find them without
-// recomputing), and when the run was created (RFC3339, supplied by the caller so RunState itself
-// does no clock I/O).
+// recomputing), when the run was created (RFC3339, supplied by the caller so RunState itself does no
+// clock I/O), and whether the run has ever ended.
 type RunState struct {
 	RunID        string   `json:"runId"`
 	StrandGUID   string   `json:"strandGuid"`
@@ -72,6 +79,17 @@ type RunState struct {
 	SettingsPath string   `json:"settingsPath"`
 	EventsPath   string   `json:"eventsPath"`
 	CreatedAt    string   `json:"createdAt"`
+	// Outcome has three writable states. Start writes the sentinel
+	// runOutcomeRunning ("running") when it first persists this record.
+	// Run.finalize overwrites it with the classification string
+	// (done/asking/died/timeout) for EVERY terminal outcome, not only
+	// OutcomeDone. Any other value, INCLUDING THE EMPTY STRING, means the
+	// record was written by a binary that did not know about this field and
+	// is therefore never attachable — a plain "" decodes from every run.json
+	// a pre-change binary wrote, so treating empty as attachable would let an
+	// in-flight worktree upgraded mid-Asking attach to an idle pane and wait
+	// out a freshly restarted run_timeout_min.
+	Outcome string `json:"outcome"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

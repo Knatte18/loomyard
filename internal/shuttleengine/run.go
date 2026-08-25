@@ -185,6 +185,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		SettingsPath: filepath.Join(runDir, settingsFileName),
 		EventsPath:   filepath.Join(runDir, eventsFileName),
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+		Outcome:      runOutcomeRunning,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but

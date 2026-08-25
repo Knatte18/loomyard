@@ -1389,3 +1389,203 @@ func TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin(t *testing.T) {
 		t.Errorf("Outcome = %q; want %q — the output files ARE the run's return value", result.Outcome, OutcomeDone)
 	}
 }
+
+// TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome pins that finalize overwrites the
+// persisted RunState.Outcome with the matching classification string for every terminal outcome, not
+// only OutcomeDone — the fact on disk a later Attach (batch 2) relies on.
+func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) {
+	tests := []struct {
+		name        string
+		seedEvents  string
+		seedOutput  bool
+		statusQueue []reedengine.StatusResult
+		startup     []StartupState
+		timeout     time.Duration
+		wantOutcome Outcome
+	}{
+		{
+			name:        "done",
+			seedEvents:  "STOP:done\n",
+			seedOutput:  true,
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+			startup:     []StartupState{StartupReady},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name:        "asking",
+			seedEvents:  "STOP:need operator input\n",
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+			startup:     []StartupState{StartupReady},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeAsking,
+		},
+		{
+			name:        "died",
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDied,
+		},
+		{
+			name:        "timeout",
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+			startup:     []StartupState{StartupReady},
+			timeout:     time.Second,
+			wantOutcome: OutcomeTimeout,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			outputFile := filepath.Join(runDir, "out.md")
+			if tt.seedEvents != "" {
+				if err := os.WriteFile(eventsPath, []byte(tt.seedEvents), 0o644); err != nil {
+					t.Fatalf("seed events: %v", err)
+				}
+			}
+			if tt.seedOutput {
+				if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+					t.Fatalf("seed output file: %v", err)
+				}
+			}
+
+			reed := &fakeReed{StatusQueue: tt.statusQueue}
+			engine := &fakeEngine{StartupScript: tt.startup}
+			pollMS := 1
+			if tt.name == "timeout" {
+				pollMS = 600
+			}
+			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: pollMS, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
+				clock:    fc,
+				deadline: fc.Now().Add(tt.timeout),
+			}
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Fatalf("Outcome = %q, want %q", result.Outcome, tt.wantOutcome)
+			}
+			if run.state.Outcome != string(tt.wantOutcome) {
+				t.Errorf("run.state.Outcome = %q, want %q", run.state.Outcome, tt.wantOutcome)
+			}
+
+			// The done outcome cleans the run dir up entirely, so there is no run.json left to read —
+			// the in-memory run.state assertion above is the only observable proof for that case.
+			if tt.wantOutcome == OutcomeDone {
+				return
+			}
+			rs, found, err := loadRunState(runDir)
+			if err != nil {
+				t.Fatalf("loadRunState: %v", err)
+			}
+			if !found {
+				t.Fatal("loadRunState: run.json not found")
+			}
+			if rs.Outcome != string(tt.wantOutcome) {
+				t.Errorf("persisted RunState.Outcome = %q, want %q", rs.Outcome, tt.wantOutcome)
+			}
+		})
+	}
+}
+
+// TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup pins that finalize's Outcome write happens before
+// the done-outcome cleanup, using KeepPane: true to observe it: the run dir survives cleanup either
+// way, so its persisted run.json must hold "done" rather than a stale "running" — proving the write
+// is not skipped or reordered after the block that would otherwise remove it.
+func TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+	}
+
+	rs, found, err := loadRunState(runDir)
+	if err != nil {
+		t.Fatalf("loadRunState: %v", err)
+	}
+	if !found {
+		t.Fatal("loadRunState: run.json not found")
+	}
+	if rs.Outcome != string(OutcomeDone) {
+		t.Errorf("persisted RunState.Outcome = %q, want %q (not a stale %q)", rs.Outcome, OutcomeDone, runOutcomeRunning)
+	}
+}
+
+// TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult pins the best-effort
+// disposition: a saveRunState failure inside finalize must not fail the run — the classified Result
+// is returned unchanged, per attach-only-a-run-that-never-terminated's failed-write disposition.
+// saveRunState is made to fail by replacing run.json's path with a directory before Wait finalizes,
+// following fakeEngine.PrepareHook's precedent for planting on-disk state that breaks a later
+// saveRunState call.
+func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	// run.json as a directory makes saveRunState's write fail without disturbing anything else
+	// finalize touches (the outcome is asking, so no cleanup runs regardless).
+	if err := os.MkdirAll(filepath.Join(runDir, runStateFileName), 0o755); err != nil {
+		t.Fatalf("plant run.json dir: %v", err)
+	}
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	buf := captureLoggerOutput(t)
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v, want the classified Result returned despite the failed Outcome write", err)
+	}
+	if result.Outcome != OutcomeAsking {
+		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
+	}
+	if !strings.Contains(buf.String(), "persist run outcome failed") {
+		t.Errorf("logger output = %q; want the best-effort write failure logged", buf.String())
+	}
+}

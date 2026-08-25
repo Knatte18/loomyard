@@ -381,8 +381,18 @@ func (run *Run) identity() Result {
 	}
 }
 
-// finalize builds run's terminal Result and performs cleanup for OutcomeDone.
+// finalize builds run's terminal Result, persists the classification into the run's RunState.Outcome,
+// and performs cleanup for OutcomeDone.
 // For fork mode, audits fork subagents and attaches the result.
+//
+// The Outcome write happens for EVERY terminal outcome, before the fork-audit block: finalize returns
+// early with (result, err) when AuditForks fails, so a write placed after the audit would leave a run
+// that genuinely classified OutcomeDone persisted at "running" — the exact live-but-idle state the
+// sentinel exists to prevent, if its pane is still alive on a later resume. The write is best-effort:
+// a saveRunState failure here is a logger.Warn, never an error, because the run genuinely reached its
+// outcome and turning a successful run into a failure over a bookkeeping write would invert the cost.
+// The accepted residual is that such a record keeps "running", so if its pane is also still live and
+// idle it stays attachable for that one run.
 //
 // It is also the run's teardown observability point, which the Live-Substrate Spawn Observability
 // invariant requires to be as instrumented as the spawn is: Start logs "run started" through
@@ -397,6 +407,11 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 		StrandGUID:           run.state.StrandGUID,
 		LastAssistantMessage: message,
 		RunDir:               run.runDir,
+	}
+
+	run.state.Outcome = string(outcome)
+	if err := saveRunState(run.runDir, run.state); err != nil {
+		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "error", err)
 	}
 
 	if outcome == OutcomeDone && run.spec.ForkSubagents {
