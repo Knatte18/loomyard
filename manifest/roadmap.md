@@ -11,10 +11,7 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — all three items below are unblocked.
-
-1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch, same gap as `Plan-Review` (shipped), as a `Webster-Bouncer`/`Webster-Burler` segment judging the full diff rather than a single artifact; criteria now recorded in `designs/loom.md`'s Webster-Review rubric section.
-   See [designs/loom.md](designs/loom.md#webster-review-rubric).
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — both items below are unblocked.
 
 1. **loom: interactive Discussion-Write** — flip `internal/loomcli`'s `wire()` `autonomous` argument from hardcoded `true` to a real mode selector, and solve the resume defect that made autonomous-only the right call so far. `loomengine.DiscussionSpec`'s `autonomous` plumbing already exists; the trap a naive fix walks into is recorded in `designs/loom.md`'s crash-recovery section.
    See [designs/loom.md](designs/loom.md#crash-recovery--resume-on-output-files-not-live-processes).
@@ -118,6 +115,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **loom: Discussion-Review producer** — replaced the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment.
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
+
+1. **loom: Webster-Review producer** — replaced the `Webster-Review` stub row with a `Webster-Bouncer`/`Webster-Burler` segment gating the committed diff.
+   See [designs/loom.md](designs/loom.md#webster-review-rubric).
 
 ## Maintenance
 

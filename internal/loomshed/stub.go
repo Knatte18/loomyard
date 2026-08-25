@@ -1,5 +1,5 @@
-// stub.go implements stubProducer, the placeholder ShedProducer backing the one row of loom's
-// 16-row producer list that no task has built for real yet.
+// stub.go implements stubProducer, a placeholder ShedProducer that loom's own producer list no
+// longer uses.
 
 package loomshed
 
@@ -9,10 +9,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// stubProducer is a placeholder ShedProducer. It backs one row of loom's 16-row producer list
-// that no task has built for real yet -- Webster-Review -- replaced by a real producer in a later
-// task, so the list's sequencing, resume, crash-recovery, and pause behaviour is real from the
-// start rather than retrofitted.
+// stubProducer is a placeholder ShedProducer that loom's own producer list no longer uses. It is
+// kept because internal/shedrecipe's registry is generic Shed machinery shared by reference with a
+// future product's producer list rather than loom's private property, and it exists so a list's
+// sequencing, resume, crash-recovery, and pause behaviour is real from the start rather than
+// retrofitted.
 type stubProducer struct {
 	name string
 }

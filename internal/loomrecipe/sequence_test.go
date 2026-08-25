@@ -20,19 +20,20 @@ type wantSequenceEntry struct {
 // computed one, so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure
 // rather than a silently-agreeing derivation.
 //
-// Every entry but the two review segments and the trailing Publish carries a Done outcome by rule;
-// the segments themselves do not, so their entries are spelled out explicitly rather than derived.
-// Each segment contributes exactly three entries in the same shape: NameXBouncer with Stuck (the
-// seed call, which spawns a focus-setting pass and always reports Stuck, never judging anything on
-// its first call), NameXBurler with Stuck (one completed review round -- BurlerProducer reports
-// every successful round as Stuck by contract, never Done, since its Stuck is a routine hand-off to
-// the Bouncer rather than a real stuck condition), and NameXBouncer again with Done (the judge
-// call, whose fixture-scripted APPROVED verdict is what advances the run past the segment). The
-// Plan-Review segment carries a fourth, trailing entry the Discussion-Review segment has no
-// counterpart for: NamePlanRevalidate with Done, the post-segment mechanical re-check, which passes
-// here because the fixture's fake burler leaves the plan untouched (buildSequenceFixture never sets
-// fakeLoomBurler.corruptPlanOverview). Stuck entries mid-run are therefore not a failure signal
-// here; they are each segment doing its job. The list runs to seventeen entries total.
+// Every entry but the three review segments and the trailing Publish carries a Done outcome by
+// rule; the segments themselves do not, so their entries are spelled out explicitly rather than
+// derived. Each segment contributes exactly three entries in the same shape: NameXBouncer with
+// Stuck (the seed call, which spawns a focus-setting pass and always reports Stuck, never judging
+// anything on its first call), NameXBurler with Stuck (one completed review round --
+// BurlerProducer reports every successful round as Stuck by contract, never Done, since its Stuck
+// is a routine hand-off to the Bouncer rather than a real stuck condition), and NameXBouncer again
+// with Done (the judge call, whose fixture-scripted APPROVED verdict is what advances the run past
+// the segment). The Plan-Review segment carries a fourth, trailing entry neither the
+// Discussion-Review nor the Webster-Review segment has a counterpart for: NamePlanRevalidate with
+// Done, the post-segment mechanical re-check, which passes here because the fixture's fake burler
+// leaves the plan untouched (buildSequenceFixture never sets fakeLoomBurler.corruptPlanOverview).
+// Stuck entries mid-run are therefore not a failure signal here; they are each segment doing its
+// job. The list runs to nineteen entries total.
 //
 // The sequence stops at Publish deliberately: Publish's OnStuck is "" (escalate), so a Stuck verdict
 // blocks the run and Finalize is never invoked. Driving both producers' real merge logic through a
@@ -70,13 +71,16 @@ var wantSequenceOrder = []wantSequenceEntry{
 	{loomshed.NamePlanRevalidate, shedengine.Done},
 	{loomshed.NameBatchifier, shedengine.Done},
 	{loomshed.NameWebster, shedengine.Done},
-	{loomshed.NameWebsterReview, shedengine.Done},
+	{loomshed.NameWebsterBouncer, shedengine.Stuck},
+	{loomshed.NameWebsterBurler, shedengine.Stuck},
+	{loomshed.NameWebsterBouncer, shedengine.Done},
 	{loomshed.NamePublish, shedengine.Stuck},
 }
 
-// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the sixteen-row list
+// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the seventeen-row list
 // runs Preflight through Publish and blocks on Publish's Stuck verdict, never reaching Finalize --
-// see wantSequenceOrder's own doc comment for why, including for both review segments' entry shapes.
+// see wantSequenceOrder's own doc comment for why, including for all three review segments' entry
+// shapes.
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
@@ -139,15 +143,15 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 		t.Errorf("fakeLoomShuttle.commitPlanCalls = %d; want exactly 2 after a clean run (Plan-Write's commit plus Plan-Bouncer's approval commit)", loomShuttle.commitPlanCalls)
 	}
 
-	// The scenario checks that both review segments genuinely ran rather than being silently
-	// short-circuited: the fake burler ran exactly two rounds (one per segment), and the fake
-	// shuttle recorded exactly two bouncer-judge spawns -- the judge calls whose fixture-scripted
+	// The scenario checks that all three review segments genuinely ran rather than being silently
+	// short-circuited: the fake burler ran exactly three rounds (one per segment), and the fake
+	// shuttle recorded exactly three bouncer-judge spawns -- the judge calls whose fixture-scripted
 	// APPROVED verdicts are what advanced the run past each segment.
 	loomBurler := env.Burler.(*fakeLoomBurler)
-	if loomBurler.calls != 2 {
-		t.Errorf("fakeLoomBurler.calls = %d; want exactly 2 after a clean run", loomBurler.calls)
+	if loomBurler.calls != 3 {
+		t.Errorf("fakeLoomBurler.calls = %d; want exactly 3 after a clean run", loomBurler.calls)
 	}
-	if loomShuttle.bouncerJudgeCalls != 2 {
-		t.Errorf("fakeLoomShuttle.bouncerJudgeCalls = %d; want exactly 2 after a clean run", loomShuttle.bouncerJudgeCalls)
+	if loomShuttle.bouncerJudgeCalls != 3 {
+		t.Errorf("fakeLoomShuttle.bouncerJudgeCalls = %d; want exactly 3 after a clean run", loomShuttle.bouncerJudgeCalls)
 	}
 }

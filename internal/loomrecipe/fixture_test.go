@@ -68,14 +68,15 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
 }
 
-// seedBouncerStencils writes the four stencils a live Discussion-Review or Plan-Review segment
-// reads at dir, keyed by stencilstore.Path(dir, name): the two generic bouncer templates
-// (bouncer-template-seed, bouncer-template-judge) and both segments' rubrics
-// (loom-rubric-discussion-review, loom-rubric-plan-review), each seeded from its real embedded
-// contracts/stencils bytes rather than dummy content. shedadapters.NewBouncer probes the rubric
-// eagerly at construction, and seedCall/judgeCall read the two templates at call time and degrade
-// to Stuck when either is unreadable, so dummy templates would make shedengine.Done unreachable and
-// would also diverge from the marker set internal/stencil's Fill requires in production.
+// seedBouncerStencils writes the five stencils a live Discussion-Review, Plan-Review, or
+// Webster-Review segment reads at dir, keyed by stencilstore.Path(dir, name): the two generic
+// bouncer templates (bouncer-template-seed, bouncer-template-judge) and all three segments' rubrics
+// (loom-rubric-discussion-review, loom-rubric-plan-review, loom-rubric-webster-review), each seeded
+// from its real embedded contracts/stencils bytes rather than dummy content. shedadapters.NewBouncer
+// probes the rubric eagerly at construction, and seedCall/judgeCall read the two templates at call
+// time and degrade to Stuck when either is unreadable, so dummy templates would make
+// shedengine.Done unreachable and would also diverge from the marker set internal/stencil's Fill
+// requires in production.
 func seedBouncerStencils(t *testing.T, dir string) {
 	t.Helper()
 
@@ -84,6 +85,7 @@ func seedBouncerStencils(t *testing.T, dir string) {
 		"bouncer-template-judge":        stencils.BouncerTemplateJudge,
 		"loom-rubric-discussion-review": stencils.LoomRubricDiscussionReview,
 		"loom-rubric-plan-review":       stencils.LoomRubricPlanReview,
+		"loom-rubric-webster-review":    stencils.LoomRubricWebsterReview,
 	}
 	for name, content := range seeds {
 		path := stencilstore.Path(dir, name)
@@ -276,8 +278,8 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 }
 
 // fakeLoomShuttle implements shedadapters.Shuttle for row 3 (Discussion-Write), row 6 (Plan-Write),
-// and both segments' Bouncer rows' spawn roles: shedrecipe.Env carries one Shuttle field, not one
-// per row, so this single fake serves all of them, branching on the Spec's own Role. On
+// and all three segments' Bouncer rows' spawn roles: shedrecipe.Env carries one Shuttle field, not
+// one per row, so this single fake serves all of them, branching on the Spec's own Role. On
 // spec.Role == "plan" it writes the whole plan-directory fixture -- planFixtureCard and
 // planFixtureOverview(true) via f.planDir -- rather than only spec.OutputFiles, because
 // loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory

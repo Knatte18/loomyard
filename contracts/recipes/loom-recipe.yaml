@@ -1,5 +1,5 @@
 # loom-recipe.yaml is loom's producer graph. It is embedded into the binary by the sibling
-# recipes.go rather than read from disk. The sixteen row names below are the durable on-disk
+# recipes.go rather than read from disk. The seventeen row names below are the durable on-disk
 # identities pinned against internal/loomshed's Name* constants by the coverage guard -- a rename
 # here without a matching constant rename breaks resume for any in-flight task.
 #
@@ -9,11 +9,12 @@
 # produces what each of them gates, so there is nothing to bounce to and a human is the only thing
 # that can fix any of the five.
 #
-# Both review segments follow the same shared-segment mutual-on_stuck shape: Discussion-Bouncer and
-# Discussion-Burler carry segment: Discussion-Review, and Plan-Bouncer and Plan-Burler carry
-# segment: Plan-Review, each pair routing to its partner via a mutual on_stuck --
-# internal/shedengine's validator rejects an OnStuck naming a producer in a different Segment, so
-# each pair needs its own non-empty, shared label for that pair of edges to build at all.
+# All three review segments follow the same shared-segment mutual-on_stuck shape: Discussion-Bouncer
+# and Discussion-Burler carry segment: Discussion-Review, Plan-Bouncer and Plan-Burler carry
+# segment: Plan-Review, and Webster-Bouncer and Webster-Burler carry segment: Webster-Review, each
+# pair routing to its partner via a mutual on_stuck -- internal/shedengine's validator rejects an
+# OnStuck naming a producer in a different Segment, so each pair needs its own non-empty, shared
+# label for that pair of edges to build at all.
 
 version: 1
 entry: Preflight
@@ -181,12 +182,86 @@ producers:
 
   - name: Webster
     engine: Webster
-    on_done: Webster-Review
+    on_done: Webster-Bouncer
 
-  - name: Webster-Review
-    engine: Stub
-    on_stuck: Webster
+  - name: Webster-Bouncer
+    engine: Bouncer
+    segment: Webster-Review
+    max_bounces: 5
+    on_stuck: Webster-Burler
     on_done: Publish
+    config:
+      run_subdir: webster
+      # The subject under review is the committed diff, which artifact_paths cannot name at all:
+      # the key is required and non-empty, every entry resolves to an absolute path under
+      # Env.WorktreeRoot, and the generic bouncer-template-judge.md renders the list as the
+      # artifacts under review with "read each one". Whatever value is chosen is a workaround, so
+      # the question is only which one gives the judge the most useful reading -- the single plan
+      # directory entry is the card contract the diff is measured against, and Plan-Bouncer
+      # already proves a bare directory entry works here (NewBouncer stats nothing). The rubric
+      # is where the diff itself is named as the subject, which reaches the judge and the fixer
+      # round alike because both rows read it.
+      artifact_paths:
+        - _lyx/plan
+      rubric_stencil: loom-rubric-webster-review
+      # No commit_seam key, deliberately unlike Plan-Bouncer: Webster-Burler runs fix-scope:
+      # source and commits each fix itself, so there is no artifact left for a loop-owner seam to
+      # commit. bouncerEntry documents the resulting nil Commit as a legitimate configuration and
+      # never an error. The segment's own round artifacts are uncommitted by construction --
+      # Env.RunRoot lands under the ephemeral .lyx tree, not the durable _lyx one.
+      # No model/effort/version key: the absence is what makes this row take the run-wide
+      # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
+      # rebuild model.
+
+  - name: Webster-Burler
+    engine: BurlerRound
+    segment: Webster-Review
+    max_bounces: 5
+    on_stuck: Webster-Bouncer
+    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
+    on_done: Webster-Bouncer
+    config:
+      # The same run_subdir value as Webster-Bouncer is what makes both rows write into one shared
+      # run directory.
+      run_subdir: webster
+      profile:
+        target:
+          # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats
+          # every Target.Paths entry, and a diff has no such file on disk. validate accepts a
+          # FileSet carrying Instructions and no Paths, which is exactly the escape this row
+          # needs.
+          instructions: >
+            The subject under review is the committed diff. The rubric supplied in this prompt is
+            the single definition of the review range: read its "Determining the review range"
+            section and derive the range exactly as written there. This instruction deliberately
+            does not restate the derivation.
+        fasit:
+          paths:
+            - _lyx/plan
+          instructions: >
+            The plan directory named above is the answer key: the diff's job is to implement the
+            cards it carries, and the Card model those cards implement is described in
+            manifest/designs/plan-card-format.md. The mechanical checks over the plan's own format
+            are already enforced upstream by Plan-Validate and Plan-Revalidate, so re-deriving
+            them in this round is duplicated work.
+        rubric_stencil: loom-rubric-webster-review
+        # fix-scope: source, matching the shipped Discussion-Burler row rather than Plan-Burler's
+        # overlay. The target is the repo's own source files, which the Fabric Git Invariant names
+        # as the one explicitly permitted agent commit (commit-per-fix, never a push), whereas the
+        # plan Plan-Burler fixes is overlay content the loop owner commits. An overlay round runs
+        # no git at all and restricts writes to Target.Paths, which this profile deliberately
+        # leaves empty -- a fixer that cannot write source cannot fix a diff.
+        fix-scope: source
+        # tool-use is required: the round reads _lyx/loom/status.json and runs read-only git to
+        # obtain the diff, which is its entire subject.
+        tool-use: true
+        # No cluster-fan key: fork reviewers are read-only and may never run any git command,
+        # which burlerengine's fork boilerplate states and its own round audit enforces, so under
+        # a fan the forks could not reach a subject that exists only through git. Single reviewer,
+        # matching both shipped segments.
+      # No model/effort/timeout_s key, for the same Env fallback reason as Webster-Bouncer.
 
   - name: Publish
     engine: Publish
