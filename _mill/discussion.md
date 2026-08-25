@@ -49,7 +49,20 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
 - A new `shuttleengine.Runner.Attach(Spec) (Result, bool, error)` that finds a still-live run matching the spec's output files and waits on it instead of starting a new one.
 - Widening the `shedadapters.Shuttle` seam by that one `Attach` method, and re-ordering `SingleLLMProducer.Call` to probe-then-archive-then-run.
 - Test coverage at every seam touched, plus a `loomrecipe` resume test pinning that the `Discussion-Validate` bounce path still respawns.
-- Docs in the same commit: `manifest/designs/loom.md`'s crash-recovery section (the open-trap paragraph is replaced by the resolution), `internal/shuttleengine/doc.go`, `internal/shedadapters/doc.go`, and the roadmap item's move off Planned.
+- Docs in the same commit, at every site the reversal reaches — this design changes the *discipline* `manifest/designs/loom.md` states, not merely the one paragraph that flagged the trap:
+  - `manifest/designs/loom.md:286`, the sentence "**loom resumes on output FILES, not on live processes.**"
+    It becomes a two-part rule: loom resumes on output files *and* on live-agent evidence, with file existence never used on its own to skip a step.
+  - `manifest/designs/loom.md:290-292`, ladder step 1 ("Is there a complete output file? → the step finished").
+    It stays in the ladder but is narrowed: it is checked *inside* an attached run, never as a producer-level shortcut — see `ladder-step-1-survives-only-inside-attach` below.
+  - `manifest/designs/loom.md:293-294`, ladder steps 2 and 3, which this task implements for the first time and which the doc should stop describing in the future tense.
+  - `manifest/designs/loom.md`'s "The interactive-mode trap" paragraph, replaced by the resolution.
+  - `manifest/designs/loom.md:318`, the Graceful-pause cross-reference to "the same resume-on-files discipline as crash recovery", which must track the reworded rule.
+  - `manifest/designs/shed.md:30`, which restates the resume-on-output-files rule for the generic `ShedProducer` contract this task changes.
+  - **The section anchor `#crash-recovery--resume-on-output-files-not-live-processes` is preserved unchanged.**
+    `manifest/roadmap.md:17` and `manifest/designs/loom.md:318` both link it, so the `Markdown Link Integrity` invariant binds: the heading text is not to be edited even though the rule beneath it is.
+    If a future editor judges the heading actively misleading, renaming it is a separate change that must update both inbound links in the same commit.
+  - `internal/shuttleengine/doc.go` and `internal/shedadapters/doc.go`.
+  - `manifest/roadmap.md`, moving the item off Planned.
 
 **Out:**
 
@@ -102,9 +115,11 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
 - Rationale: this is the field that makes an interview possible at all.
   An interviewing agent ends a turn every time it asks a question batch, and every one of those turn-ends is an `Asking` classification under today's rules.
 - Rejected: widening `Spec.Interactive` to also mean "asking is non-terminal".
-  `internal/shuttleengine/claudeengine/settings.go` already gives `Interactive` a directly contradictory meaning: in interactive runs it installs a `PreToolUse(AskUserQuestion)` hook that appends to `events.jsonl` specifically so "the run loop can classify it as a real-time asking signal instead of waiting for the timeout" (its own package comment).
-  Making `Interactive` suppress that classification would destroy the one feature that hook exists to deliver, and would silently change `lyx shuttle run --interactive` from a fast-returning probe into a blocking wait.
-  Two orthogonal facts — "an operator is present" and "wait for the operator rather than reporting back" — need two fields.
+  What the separation actually buys, stated precisely rather than generously: it preserves the real-time asking signal for **`lyx shuttle run --interactive`**, and for that caller only.
+  `internal/shuttleengine/claudeengine/settings.go` installs a `PreToolUse(AskUserQuestion)` hook in every interactive run that appends to `events.jsonl` specifically so "the run loop can classify it as a real-time asking signal instead of waiting for the timeout" (its own package comment).
+  Widening `Interactive` would suppress that classification for every caller, turning the CLI's `--interactive` probe from fast-returning into a blocking wait.
+  Note honestly that loom's own interactive `Discussion-Write` sets `AwaitOperator: !autonomous` alongside `Interactive: !autonomous`, so on a loom interactive run that real-time signal is dropped anyway — deliberately, since the whole point there is to wait rather than report back.
+  The two fields are still the right shape, but for the narrower reason: "an operator is present" (which governs launch flags and the recording hook) and "wait for the operator rather than reporting back" (which governs the wait loop) are orthogonal, and one caller wants the first without the second.
 - Rejected: keeping `Asking` terminal and having `SingleLLMProducer` loop, re-entering `Wait` after each ask.
   The producer would have to reconstruct the run handle it just consumed, re-derive the event offset, and re-derive the deadline — all of which are `shuttleengine`'s private state.
   The wait loop is where the polling already lives.
@@ -142,6 +157,40 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
 - Rejected: a dedicated `loomshed` producer or decorator for the attach behaviour.
   The behaviour belongs to every `SingleLLMProducer`, not to `Discussion-Write` alone, so putting it in the loom-specific package would leave `Plan-Write` and the generic `SingleLLM` row with the duplicate-agent bug.
 
+### attach-reconstructs-the-run-explicitly
+
+A `*Run` built by `Start` carries four pieces of state `RunState` does not persist: `offset`, `deadline`, `clock`, and `Wait`'s two loop-local startup variables (`started`, `startupDeadline`).
+`Attach` reconstructs a `Run` without ever calling `Start`, so each is decided here rather than left to whatever the zero value happens to be.
+Getting any of them wrong destroys the interview that `Attach` exists to save.
+
+- **`offset` starts at `0` — the whole `events.jsonl` is deliberately replayed.**
+  Rationale: replay is harmless in exactly the case where it could be wrong, and load-bearing in the case that would otherwise be missed.
+  `pollEventsTick` classifies the *last* event of the batch it parses and checks `allOutputFilesExist` first, so a replay whose backlog ends in a completion classifies `OutcomeDone` — which is how an agent that finished while the driver was down is noticed at all.
+  A replay whose backlog ends in an ask classifies `OutcomeAsking`, and that is correct in both modes: under `AwaitOperator` it is non-terminal, so a stale ask the operator has already answered costs one dropped tick and nothing else;
+  without `AwaitOperator` nothing in loom ever sends a stopped agent new input, so a backlog ask is a genuine terminal ask and `Stuck` is the right verdict.
+- Rejected: seeding `offset` at the file's EOF so only post-attach events classify.
+  Named failure mode: a terminal `Stop` — including a *successful* one — that landed while the driver was down is then never observed.
+  A finished autonomous run would sit unclassified until its whole deadline expired and then report `OutcomeTimeout`, converting a completed step into a failure.
+- **`started` is seeded `true`, and `startupDeadline` is therefore never consulted.**
+  Rationale: `Wait` seeds `started := false` and `startupDeadline := now + StartupTimeoutS` (`wait.go:126-129`), and `checkLivenessTick`'s `if *started { return "", nil }` short-circuit is the only thing standing between an attached run and the startup probe.
+  Without the seed, an attached run re-runs `CapturePane` + `engine.Startup` against a pane that is mid-turn;
+  `claudeengine.Startup` returns `StartupPending` for any capture lacking `❯` or `shortcuts` (`startup.go:26-37`), so `classifyStartupWindow` reports `OutcomeDied` one `startup_timeout_s` after attach — killing a live interview roughly ninety seconds in.
+  Worse, a capture that happens to trip `trustDialogNeedles` would return `StartupTrustPrompt` and *play the dismiss key sequence into a live agent's pane*.
+  Seeding `started = true` is also simply true: `Attach` only proceeds having confirmed a persisted `run.json` with a `SessionID` and a reed strand holding a live pane, which is strictly stronger evidence of "it started" than the capture heuristic provides.
+  The not-tracked / not-live branches of `checkLivenessTick` sit *above* the `started` short-circuit, so an attached run keeps full liveness coverage;
+  only the startup probe is skipped.
+- **`clock` is the runner's production clock**, injectable in tests exactly as `Start`'s is.
+- **`deadline` is `now + spec.Timeout`** — see `attach-restarts-the-deadline` below.
+
+### ladder-step-1-survives-only-inside-attach
+
+- Decision: `allOutputFilesExist` remains a terminal signal, but only *inside* an attached or started `Run`'s own wait loop, where it already lives (`pollEventsTick`, and both not-tracked/not-live branches of `checkLivenessTick`).
+  It is never lifted to the producer level as a "files exist, therefore `Done`" precheck.
+- Rationale: this is the precise line between `loom.md`'s ladder step 1, which is sound, and the doc's trap, which is not.
+  Inside a run, file existence answers "did *this agent* finish", and there is an agent to attribute it to.
+  At the producer level it answers only "do files exist", which a `Discussion-Validate` bounce makes true without any agent having run — the ping-pong.
+  The `manifest/designs/loom.md` edit must make this distinction explicit rather than deleting step 1, since step 1 is what lets an attached run notice a completion that landed during the outage.
+
 ### attach-is-unconditional-not-interactive-only
 
 - Decision: `SingleLLMProducer.Call` probes `Attach` on **every** call, regardless of `spec.Interactive` or `spec.AwaitOperator`.
@@ -172,6 +221,42 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
   Strictly more honest about total elapsed time, and it creates the fail loop above.
 - Rejected: refusing to attach to a run already past `CreatedAt + Timeout`.
   It avoids the loop by falling through to respawn, which for an interactive run discards the interview for the one reason the operator can least control.
+
+### attach-normalizes-the-spec-it-matches-on
+
+- Decision: before scanning, `Attach` performs exactly two of `Spec.validate`'s normalizations on its own copy of the spec — resolving every relative `OutputFiles` entry against the runner's `worktreeRoot`, and replacing a zero `Timeout` with `cfg.RunTimeoutMin` minutes — and performs none of its checks.
+  Matching is then **set** equality between the resolved absolute `OutputFiles` and the `run.json` record's `OutputFiles`, order-insensitive and duplicate-insensitive.
+- Rationale: `Attach` never calls `Start`, so it never reaches `Spec.validate`, which is today the only place either normalization happens (`spec.go:126-155`).
+  Skipping the path resolution would fail to match a caller that passed relative entries against a `run.json` that always records absolute ones.
+  Skipping the `Timeout` default is worse: a zero `Timeout` would make the attached run's deadline `now + 0`, so it would classify `OutcomeTimeout` on its very first tick — the exact footgun `Timeout`'s own doc comment warns about, reintroduced on the attach path.
+  Set rather than ordered equality because `RunState.OutputFiles` is an ordered slice recording whatever order the caller happened to supply, and two specs naming the same files in a different order describe the same run.
+- Rejected: running the full `Spec.validate`.
+  Its reject-if-already-exists check would refuse every attach whose agent has written one of its two output files — and a partially-written output set is a normal mid-interview state.
+  Its negative-`Timeout` rejection is worth keeping in spirit;
+  the plan may reuse it, but it must not drag the existence check along.
+
+### mechanism-failures-do-not-attach-and-do-not-blindly-respawn
+
+- Decision (promoted from what was previously left open in Technical context): reed's three answers about a matched record's strand are given three distinct dispositions, and the disposition is stated here rather than deferred to the plan.
+  - **Tracked, with a live pane** → attach.
+  - **No matching `run.json` at all** → `found == false`, nil error → archive and respawn.
+    This is both the ordinary first-call case and the `Discussion-Validate` bounce case.
+  - **Matched record, but reed does not track the strand (`errStrandNotTracked`) or tracks it with no pane binding (`errStrandPaneBindingCleared`)** → resolved by age, below.
+  - **reed's state file absent or unreadable** → error, never `found == false`.
+    An absent strand table is not evidence that anything is dead, and respawning on it is precisely the duplicate-agent hazard;
+    `sweepOrphansOpportunistic` already refuses to act on either answer for the same reason, and `Attach` mirrors that refusal.
+- Decision on the age question, which is what stops this from deadlocking: a matched record whose strand is untracked or binding-cleared is treated as `found == false` (archive and respawn) **once its run directory is older than `2 * StartupTimeoutS`** — the identical `minAge` guard `sweepOrphans` already applies — and as an error while it is younger than that.
+- Rationale: erroring unconditionally on those two answers deadlocks resume permanently.
+  The only thing that ever removes such a directory is `sweepOrphansOpportunistic`, which runs inside `Runner.Start` — which the error path never reaches — so a single stale `run.json` whose strand reed has forgotten would fail every subsequent `lyx loom run` forever, with no in-band recovery.
+  Reusing the sweep's own `minAge` predicate resolves it without inventing a second policy: the repo has already decided that an untracked run dir past that age is an orphan, to the point of *deleting* it.
+  Treating it as respawnable is strictly gentler than what the sweep already does to it, and the respawn path reaches `Start`, so the sweep then clears the directory as a side effect.
+  Below `minAge` the error stands, because that window is exactly the concurrently-starting run the guard was written to protect.
+- Both error dispositions must log loudly — naming the run dir, the strand guid, and `lyx reed status` — because the operator escape is out of band: check `lyx reed status`, and either kill the orphaned pane or delete the run directory by hand.
+  That is the same remedy reed's own corrupt-state error already prescribes.
+- Rejected: `found == false` for untracked/binding-cleared regardless of age.
+  It respawns over an agent that may still be working in a pane reed can no longer address, which is the hazard both sentinels were written to prevent.
+- Rejected: an unconditional error with a new CLI verb to clear stale run dirs.
+  New surface for a state the existing sweep already handles.
 
 ### one-live-match-or-none
 
@@ -245,10 +330,10 @@ The `clock` interface at the top of the file is the injection point the existing
 
 **Reed liveness.**
 `Wait`'s `checkLivenessTick` is the existing probe and encodes a three-way answer that must not be flattened: a strand reed does not track (`errStrandNotTracked`) and a strand reed tracks with no pane bound (`errStrandPaneBindingCleared`) are *mechanism failures*, not "dead", precisely because the agent may still be working.
-For `Attach`'s purposes, only "tracked **and** pane live" counts as attachable;
-both error states mean "do not attach", and — importantly — they must also mean "do not respawn blindly", since respawning is what the two sentinels exist to prevent.
-The plan should decide whether `Attach` surfaces those as an error (safest, and consistent with the sentinels' own rationale) or as `found == false`.
-Prefer the error.
+For `Attach`'s purposes, only "tracked **and** pane live" counts as attachable.
+The disposition of the other answers is decided in `mechanism-failures-do-not-attach-and-do-not-blindly-respawn` above, not left to the plan: error while the run dir is younger than `2 * StartupTimeoutS`, `found == false` once it is older, and error unconditionally when reed's state file is absent or unreadable.
+Note also that `checkLivenessTick`'s not-tracked and not-live branches each check `allOutputFilesExist` *before* reporting anything, so an agent that finished and then vanished still classifies `OutcomeDone`;
+that behaviour is inherited by an attached run unchanged and must not be duplicated in `Attach` itself.
 
 **The orphan sweep interacts with this.**
 `Runner.Start` calls `sweepOrphansOpportunistic`, which deletes run dirs whose `StrandGUID` is absent from reed's strand table, guarded by `minAge = 2 * StartupTimeoutS`.
@@ -363,13 +448,21 @@ Over a temp run-dir root with hand-written `run.json` files and a fake reed:
 
 - No run dirs at all, and a root that does not exist: `found == false`, nil error.
 - A run dir whose `OutputFiles` do not match the spec's: not selected.
-- A matching run dir whose strand is absent from reed's table: not attached, surfaced as the mechanism failure rather than as a silent respawn.
-- A matching run dir whose strand is tracked but holds no pane id: same.
+- A matching run dir whose strand is absent from reed's table, dir **younger** than `2 * StartupTimeoutS`: error, not a respawn.
+- The same, dir **older** than `2 * StartupTimeoutS`: `found == false`, nil error, so the caller archives and respawns.
+- Both of the above again for a strand that is tracked but holds no pane id.
+- reed's state file absent, and separately unreadable: error in both cases, never `found == false`, at any dir age.
 - A matching run dir whose strand is tracked with a live pane: `found == true`, and `Wait` runs against the persisted `EventsPath`.
 - Two matching live run dirs: error, not a pick.
 - An unreadable or truncated `run.json` mid-scan does not abort the scan.
 - The attached run's deadline is `now + spec.Timeout`, proven by attaching to a record whose `CreatedAt` is already older than `spec.Timeout` and asserting it does not immediately time out.
-- Output-file matching is on the **resolved absolute** set, so a spec with relative entries matches a `run.json` written with absolute ones.
+- A spec with a **zero** `Timeout` attaches with the config default applied, and does **not** classify `OutcomeTimeout` on its first tick.
+- Output-file matching is on the **resolved absolute** set, so a spec with relative entries matches a `run.json` written with absolute ones, and a spec naming the same files in a **different order** still matches.
+- `offset` starts at 0: a pre-existing `events.jsonl` whose last event is a completion (output files present) classifies `OutcomeDone` on the first tick after attach — the missed-terminal-Stop case.
+- The same backlog with output files absent classifies `OutcomeAsking`: terminal without `AwaitOperator`, dropped and polling continues with it.
+- `started` is seeded true: attaching to a strand whose `CapturePane` returns a mid-turn capture (no `❯`, no `shortcuts`) must **not** classify `OutcomeDied` after `startup_timeout_s`, and must **not** play the trust-dismiss sequence when the capture happens to contain a `trustDialogNeedles` phrase.
+  Both are direct regression guards, since both are what an unseeded attach does today.
+- An attached run whose strand later goes not-live with output files present still classifies `OutcomeDone`, confirming the inherited `checkLivenessTick` branches are reached.
 
 **`internal/shedadapters` — `SingleLLMProducer` ordering. TDD candidate.**
 With a fake `Shuttle` recording call order and a temp dir holding pre-existing output files:
