@@ -33,12 +33,13 @@ func TestDiscussionSpec(t *testing.T) {
 	wantTimeout := 480 * time.Minute
 
 	tests := []struct {
-		name            string
-		autonomous      bool
-		wantInteractive bool
+		name              string
+		autonomous        bool
+		wantInteractive   bool
+		wantAwaitOperator bool
 	}{
-		{"Interactive", false, true},
-		{"Autonomous", true, false},
+		{"Interactive", false, true, true},
+		{"Autonomous", true, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -57,6 +58,9 @@ func TestDiscussionSpec(t *testing.T) {
 			}
 			if spec.Interactive != tt.wantInteractive {
 				t.Errorf("DiscussionSpec(..., autonomous=%v).Interactive = %v; want %v", tt.autonomous, spec.Interactive, tt.wantInteractive)
+			}
+			if spec.AwaitOperator != tt.wantAwaitOperator {
+				t.Errorf("DiscussionSpec(..., autonomous=%v).AwaitOperator = %v; want %v", tt.autonomous, spec.AwaitOperator, tt.wantAwaitOperator)
 			}
 			if spec.Role != "discussion" {
 				t.Errorf("DiscussionSpec(...).Role = %q; want %q", spec.Role, "discussion")
