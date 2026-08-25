@@ -29,7 +29,9 @@ implementing  '2026-08-25T15:24:47Z'
 ```yaml
 batches:
   - name: shuttle-await-operator-and-run-outcome
-    state: pending
+    state: running
+    implementer_session: 140aec90-95d5-4b57-9ac7-710e2ac49607
+    start_sha: 86ad4511e7af1ac2e7744ece8d3cb0897fad31cd
   - name: shuttle-attach
     state: pending
   - name: loom-mode-selector
