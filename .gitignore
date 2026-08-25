@@ -27,3 +27,8 @@ godocreflow.exe
 # prowler plugin: build-on-first-run binary + its build lock — never
 # committed (the nested go.mod/go.sum ARE source and stay committed).
 plugins/prowler/bin/
+
+# prowler plugin: loose compiled binary left at the module root by a
+# plain `go build ./...` run from within plugins/prowler — never committed
+# (prowler ships no compiled binary; see plugins/prowler/README.md).
+plugins/prowler/prowler
