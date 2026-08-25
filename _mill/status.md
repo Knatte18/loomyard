@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
+phase: implementing
 slug: loom-discussion-burler-fix-scope
 branch: loom-discussion-burler-fix-scope
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-08-25T14:13:24Z'
 planned  '2026-08-25T14:13:43Z'
 implementing  '2026-08-25T14:14:22Z'
 blocked  '2026-08-25T14:24:53Z'
+implementing  '2026-08-25T15:14:52Z'
 ```
 
 ## Batches
@@ -30,8 +31,7 @@ blocked  '2026-08-25T14:24:53Z'
 ```yaml
 batches:
   - name: fabric-git-invariant-fix
-    state: blocked
+    state: running
     implementer_session: 0ea49e4e-d0e3-49a0-a111-f5dda3392fbb
     start_sha: 85068114ad1374d6b13f3d1823dd2c8e565b041f
-    blocked_reason: parent diff unresolvable -- cannot determine in-scope drift
 ```
