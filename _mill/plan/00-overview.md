@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: Plan-Review producer'
 slug: 'loom-plan-review-producer'
-approved: false
+approved: true
 started: '20260825-090716'
 parent: 'main'
 root: ""
@@ -53,15 +53,36 @@ Batch-local decisions live in each batch file._
   the batch's own `verify:` is what actually runs the tests, and it runs after every card in the batch has landed.
 - **Applies to:** all batches
 
-### Decision: fifteen recipe rows, still fourteen registry engines
+### Decision: sixteen recipe rows, fifteen table entries, still fourteen registry engines
 
-- **Decision:** loom's recipe row list goes from fourteen rows to fifteen.
-  `internal/shedrecipe`'s engine registry stays at fourteen entries, and `TestRegistry_ShipsFourteenEntries` is not touched.
-  `manifest/designs/loom.md`'s own producer table also stays at fourteen entries.
-- **Rationale:** the two new rows reuse the already-registered `Bouncer` and `BurlerRound` engines, so no registry entry is added — the Shed Recipe Registry Invariant is untouched.
-  The design table already collapses each review segment's two recipe rows into one entry by design and says so in its own text.
-  Confusing the three counts is the likeliest mistake in this task, so every "fourteen" hit is classified against which fourteen it counts before it is edited.
+- **Decision:** loom's recipe row list goes from fourteen rows to **sixteen** — the `Plan-Bouncer`/`Plan-Burler` pair replacing the single stubbed row is net +1, and `Plan-Revalidate` is +1 more.
+  `manifest/designs/loom.md`'s own producer table goes from fourteen entries to **fifteen**.
+  `internal/shedrecipe`'s engine registry stays at **fourteen**, and `TestRegistry_ShipsFourteenEntries` is not touched.
+- **Rationale:** all three new rows reuse already-registered engines — `Bouncer`, `BurlerRound`, and (for `Plan-Revalidate`) the same `PlanValidate` engine `Plan-Validate` already uses, since the registry maps engine names to constructors and two rows may share one.
+  No registry entry is added, so the Shed Recipe Registry Invariant is untouched.
+  The design table collapses each review segment's two recipe rows into one entry by design and says so in its own text, so the Plan perch adds no table row — but `Plan-Revalidate` is a genuine new table row, which is why the table moves and the recipe moves by a different amount.
+  Confusing these three counts is the likeliest mistake in this task, so every "fourteen" hit is classified against which fourteen it counts before it is edited.
 - **Applies to:** all batches
+
+### Decision: `Plan-Revalidate` re-runs the mechanical checks after the segment
+
+- **Decision:** a sixteenth row, `Plan-Revalidate` (constant `NamePlanRevalidate`, `engine: PlanValidate`, `on_stuck: Plan-Write`, `on_done: Batchifier`), sits between the segment and `Batchifier`, and `Plan-Bouncer`'s `on_done` points at it rather than at `Batchifier`.
+  `Plan-Validate`'s own row is unchanged.
+- **Rationale:** `Plan-Burler` is `fix-scope: overlay` with the plan directory as its write surface, so a fixer round rewrites card files — and the rubric's "Do not flag" item 1 deliberately forbids the judge from re-deriving the sixteen `planparser` checks.
+  The mechanical validator runs only *before* the segment, `Batchifier`'s own `Call` never parses the plan, and `Webster`'s recipe row carries no `on_stuck` at all — so a fixer-introduced format regression would otherwise land on the one row in the list with no recovery but a human.
+  `on_stuck` is `Plan-Write` rather than `Plan-Bouncer` because bouncing back into the segment live-locks: `judged(n)` is still true for the already-`APPROVED` round, so `settle` returns `Done` immediately and the two rows ping-pong forever.
+- **Applies to:** plan-review-segment-rows, docs-and-stale-text-sweep
+
+### Decision: the stale-verdict replay hazard is confirmed present, and filed rather than fixed
+
+- **Decision:** verified at plan time rather than assumed, per `_mill/discussion.md`'s explicit instruction.
+  When `Plan-Revalidate` bounces to `Plan-Write`, the plan directory is rewritten, but `Plan-Bouncer`'s run directory still holds round *n*'s report, verdict, and ledger — and **nothing clears them**.
+  `loomshed.NewPlanWrite`'s rotate-and-commit decorator rotates the plan artifact directory only, never the reviews run directory, and `shedadapters.archiveStaleOutputs` is called by the Bouncer itself on its own next spawn's outputs, never on the previous round's already-settled files.
+  So on the next pass through the segment `ResolveRound` still resolves round *n*, `judged(n)` is still satisfied, and `settle` returns `Done` over a plan the judge never saw.
+  This plan does not fix it: it is filed as a third bullet on the follow-up roadmap item card 15 adds.
+- **Rationale:** the defect is pre-existing and shared — the shipped `Discussion-Validate` → `Discussion-Write` → `Discussion-Bouncer` path has the identical shape — so it is a `shedadapters` defect affecting both segments, not something this task introduces.
+  Fixing it inline would change shipped `Discussion-Review` behaviour and its tests, which this task deliberately does not do anywhere else either.
+- **Applies to:** plan-review-segment-rows, docs-and-stale-text-sweep
 
 ### Decision: an approved plan is committed by the loop owner, a blocked one is not
 
@@ -119,6 +140,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/loomrecipe/coverage_guard_test.go`
 - `internal/loomrecipe/fixture_test.go`
 - `internal/loomrecipe/recipe_test.go`
+- `internal/loomrecipe/revalidate_test.go`
 - `internal/loomrecipe/sequence_test.go`
 - `internal/loomrecipe/shape_test.go`
 - `internal/loomshed/doc.go`

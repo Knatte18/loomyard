@@ -14,18 +14,18 @@ depends-on: [3]
 This batch lands every doc and doc-comment edit the shipped change invalidates, in the same task the change lands in, per the Documentation Lifecycle.
 It is one batch because it is one sweep over one scan result: the file set was produced by a repo-wide search over four patterns — the row name `Plan-Review`, the Go symbol `NamePlanReview`, commit-seam claims, and the fourteen-row count claim — and every hit is classified against which of those it is before it is touched.
 
-Three of the four counts named "fourteen" in this repo stay fourteen and must not be edited: `internal/shedrecipe`'s engine registry, `manifest/designs/loom.md`'s own producer table, and `landingshed.Deps`' field count.
-Only loom's **recipe row list** becomes fifteen.
+Two of the four counts named "fourteen" in this repo stay fourteen and must not be edited: `internal/shedrecipe`'s engine registry and `landingshed.Deps`' field count.
+Loom's **recipe row list** becomes sixteen, and `manifest/designs/loom.md`'s own producer table becomes fifteen — two different moves, for the reason the overview's own count Shared Decision gives.
 
 The batch depends on batch 3 because it documents what batch 3 shipped;
 nothing here changes production behaviour, and every Go edit in it is a doc comment.
 
 Batch-local decision: "Out of scope" in this task's discussion means production **behaviour**, never doc comments.
-`internal/loomengine/config.go` and `internal/loomcli/wiring.go` are behaviourally out of scope and still have doc comments this change falsifies, and cards 15 and 16 fix exactly those comments and nothing else.
+`internal/loomengine/config.go` and `internal/loomcli/wiring.go` are behaviourally out of scope and still have doc comments this change falsifies, and cards 16 and 17 fix exactly those comments and nothing else.
 
 ## Cards
 
-### Card 11: Bring loom's own design doc in step with the shipped segment
+### Card 12: Bring loom's own design doc in step with the shipped segment
 
 - **Context:**
   - `contracts/recipes/loom-recipe.yaml`
@@ -42,17 +42,22 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
   Five separate edits in this one file.
 
   **1. The two count sentences under "What it is".**
-  The sentence stating the recipe "names the recipe's fourteen rows and their routing" becomes fifteen.
-  The sentence immediately after it — asserting the recipe's rows and the table's entries "are the same count, but not the same set" — is now false in both halves and must be rewritten: the recipe carries fifteen rows, the table fourteen entries, and the note beneath the table explains why.
+  The sentence stating the recipe "names the recipe's fourteen rows and their routing" becomes sixteen.
+  The sentence immediately after it — asserting the recipe's rows and the table's entries "are the same count, but not the same set" — is now false in both halves and must be rewritten: the recipe carries sixteen rows, the table fifteen entries, and the note beneath the table explains why.
 
   **2. Producer-table row 9.**
   Rewrite the row so its `Producer` cell names the segment and its two rows the way row 5 already does for Discussion, and so its `Input` cell names the current plan directory as the subject and the decision record as the answer key rather than pointing at the format spec.
-  Keep the row's `Kind` as `bespoke` and its `Type` as `LLM/review segment`, and keep the table at fourteen entries — row 9 stays one entry, collapsing its two recipe rows exactly as row 5 does.
+  Keep the row's `Kind` as `bespoke` and its `Type` as `LLM/review segment` — row 9 stays one entry, collapsing its two recipe rows exactly as row 5 does.
+
+  Then add a **new table row** for `Plan-Revalidate`, immediately after row 9 and before `Batchifier`, renumbering the rows below it.
+  Unlike the segment pair, this is a genuine new entry rather than a collapsed one: its `Kind` is `simple`, its `Type` is `mechanical`, its `Input` is the plan directory read through the same `planparser` checks `Plan-Validate`'s own row names, and its `Output` is the same pass/fail gate signal.
+  Its row text must say why it exists: the review segment's fixer rounds rewrite the plan after the pre-segment validator has already run, and no row between the segment and `Webster` parses the plan otherwise.
+  The table therefore goes from fourteen entries to fifteen.
 
   **3. The "table and the shipped recipe diverge deliberately" paragraph.**
-  Its "Both count fourteen, but not the same fourteen" opening is now wrong.
-  Rewrite it to say the recipe carries fifteen rows against the table's fourteen entries, and to name **both** collapsed pairs — the Discussion pair it already names, and the Plan pair this task shipped — alongside the `Plan-Sweep` row the table carries and the recipe does not.
-  Keep the closing claim that the table is the human-readable design record, kept at fourteen entries by design and not required to track the recipe's row count row-for-row.
+  Its "Both count fourteen, but not the same fourteen" opening is now wrong on both counts.
+  Rewrite it to say the recipe carries sixteen rows against the table's fifteen entries, and to name **both** collapsed pairs — the Discussion pair it already names, and the Plan pair this task shipped — alongside the `Plan-Sweep` row the table carries and the recipe does not.
+  Keep the closing claim that the table is the human-readable design record, not required to track the recipe's row count row-for-row, but drop the "kept at fourteen entries by design" figure: the table's own count now moves when a genuine new row lands, and only a collapsed segment pair leaves it unchanged.
 
   **4. The stuck-routing example sentence.**
   The parenthetical example naming a stuck route back to `Plan-Write` is stale — in the perch pattern the Bouncer's stuck target is its own Burler, and exhausting the bounce budget escalates to a human rather than re-routing to the writer.
@@ -71,7 +76,7 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
   Follow the repo's semantic-line-break rule in every line touched, and keep every relative link in the file resolvable.
 - **Commit:** `docs(loom): record the shipped Plan-Review segment and its rubric in the design doc`
 
-### Card 12: Fix the stale Plan-Review routing examples outside loom's own doc
+### Card 13: Fix the stale Plan-Review routing examples outside loom's own doc
 
 - **Context:**
   - `contracts/recipes/loom-recipe.yaml`
@@ -102,7 +107,7 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
   Confirm each of these five reads as described before leaving it, rather than assuming from this list.
 - **Commit:** `docs(shed): repoint the stale Plan-Review routing examples at rows that still exist`
 
-### Card 13: Document commit_seam and the fifteen-row list in the recipe design doc
+### Card 14: Document commit_seam and the sixteen-row list in the recipe design doc
 
 - **Context:**
   - `internal/shedrecipe/entries_bouncer.go`
@@ -117,7 +122,7 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
 - **Requirements:**
   Two edits.
 
-  First, the two "fourteen-row" claims about loom's built list — one in the opening "The idea" paragraph, one in the "Test ownership" bullet under "Decisions this piece settled" — both become fifteen-row.
+  First, the two "fourteen-row" claims about loom's built list — one in the opening "The idea" paragraph, one in the "Test ownership" bullet under "Decisions this piece settled" — both become sixteen-row.
   Leave every other count in the file alone.
 
   Second, document the new `commit_seam` key.
@@ -127,9 +132,9 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
   Note that this is the same shape `rubric_stencil` already has, naming a stencil rather than carrying one, so it extends the existing `Env`-versus-`Config` rule rather than forking it.
 
   Do not restate `shedadapters.BouncerConfig`'s own field documentation here — this doc records the recipe-facing key, and the Go doc records the field.
-- **Commit:** `docs(shed-recipe): document the Bouncer row's commit_seam key and loom's fifteen rows`
+- **Commit:** `docs(shed-recipe): document the Bouncer row's commit_seam key and loom's sixteen rows`
 
-### Card 14: Close the Plan-Review roadmap item and open the Discussion-segment follow-up
+### Card 15: Close the Plan-Review roadmap item and open the Discussion-segment follow-up
 
 - **Context:**
   - `manifest/designs/loom.md`
@@ -143,9 +148,9 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
   Remove the Planned item **loom: Plan-Review producer** from the "loom: real LLM producers" group — this task completes it.
   Update that group's own intro sentence, which today says all three items below are unblocked, so its count matches what is left.
 
-  Add one new Planned item in the same group, at the end of its list, covering the two shipped-Discussion-segment defects this task recorded and deliberately did not fix.
+  Add one new Planned item in the same group, at the end of its list, covering the three shipped-review-segment defects this task recorded and deliberately did not fix.
   The item's title names the `fix-scope` violation, since that is the concrete correction;
-  its body must cover both halves, because splitting them would have two tasks editing the same two recipe rows:
+  its body must cover all three, because splitting them would have several tasks editing the same rows and the same shared `Bouncer` code:
 
   - `Discussion-Burler`'s `fix-scope: source` over the discussion artifacts instructs an agent to git-commit weft content, which the Fabric Git Invariant forbids.
     The correction is now a two-line recipe change, because this task shipped the `commit_seam` key and the `Bouncer` `Commit` closure that make the `overlay` form workable;
@@ -154,12 +159,17 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
     The two are identical while `AnchorRel` is `"."`, its default, so this is latent rather than broken;
     re-pointing the resolution root in the shared `Bouncer` entry would silently change both segments at once, which is why it belongs with the row flip rather than with this task.
 
+  - Neither review segment clears its Bouncer run directory when a downstream row bounces past the writer and back through the segment.
+    Confirmed at plan time rather than assumed: `loomshed.NewPlanWrite`'s rotate-and-commit decorator rotates the plan artifact directory only, never the reviews run directory, and `shedadapters.archiveStaleOutputs` runs over the Bouncer's own next spawn's outputs, never over the previous round's already-settled verdict and ledger.
+    So on re-entry `ResolveRound` still resolves round *n*, `judged(n)` is still satisfied, and `settle` returns `Done` over an artifact the judge never saw.
+    The shipped `Discussion-Validate` → `Discussion-Write` → `Discussion-Bouncer` path has the identical shape, so it is a `shedadapters` defect affecting both segments rather than something this task introduces — which is why it is filed here rather than fixed inline.
+
   Point the item at the design doc the way the sibling items do.
   Follow the file's own numbering convention — every Planned item is written as `1.` and rendered sequentially — and the Maintenance section's own rules for how the list is edited;
   read that section before writing rather than inferring the convention from the surrounding items.
 - **Commit:** `docs(roadmap): close the Plan-Review producer item and file the Discussion-segment follow-up`
 
-### Card 15: Reword the reviews-tree ephemerality justification
+### Card 16: Reword the reviews-tree ephemerality justification
 
 - **Context:**
   - `internal/shedadapters/bouncer.go`
@@ -180,7 +190,7 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
   This is the one hit the commit-seam scan pattern found, and it exists because the file is behaviourally out of this task's scope while its doc comment is not.
 - **Commit:** `docs(loomengine): reword LoomReviewsDir's ephemerality justification for the new commit seam`
 
-### Card 16: Widen the segment-specific comments in loomcli
+### Card 17: Widen the segment-specific comments in loomcli
 
 - **Context:**
   - `contracts/recipes/loom-recipe.yaml`
@@ -206,7 +216,7 @@ Batch-local decision: "Out of scope" in this task's discussion means production 
   Verify before editing that neither this test nor `TestWire_ReviewTripleMatchesLoadedConfig` needs an assertion change — they assert `Env` fields both segments share, and this task adds no `Env` field — and leave both bodies untouched if so.
 
   In `internal/loomcli/smoke_test.go`, the driver-liveness timing note says loom's producer table backs two of its fourteen rows, `Plan-Review` and `Webster-Review`, with stub producers.
-  One of its fifteen rows, `Webster-Review`, is backed by a stub now.
+  One of its sixteen rows, `Webster-Review`, is backed by a stub now.
   Leave the rest of that note intact: the bounce-through-Discussion-Write/Discussion-Validate lifecycle it describes still happens well before any plan row is reached, so the timing claim is unaffected.
   This file carries a `smoke` build tag, so nothing but `go vet -tags smoke` compiles it — see this batch's own test section.
 - **Commit:** `docs(loomcli): widen the review-segment comments to cover both shipped segments`
@@ -223,4 +233,4 @@ The third clause exists because `internal/loomcli/smoke_test.go` carries a `//go
 `go vet -tags smoke` is used rather than `go test -tags smoke` deliberately: the suite needs a real tmux server, a real detached driver process, and real advisory-lock interaction, which is not something a batch verify can stand up, while the edit under test is comment-only.
 Vet type-checks the tagged file, which is the whole risk surface for a comment change.
 
-`internal/loomengine`'s suite covers card 15's file, and `internal/loomcli`'s untagged suite covers cards 16's other two files, including `wiring_test.go`'s own two review-segment tests — which must still pass unchanged, since no `Env` field is added by this task.
+`internal/loomengine`'s suite covers card 16's file, and `internal/loomcli`'s untagged suite covers card 17's other two files, including `wiring_test.go`'s own two review-segment tests — which must still pass unchanged, since no `Env` field is added by this task.
