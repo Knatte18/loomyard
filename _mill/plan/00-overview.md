@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: interactive Discussion-Write'
 slug: 'loom-discussion-write-interactive'
-approved: false
+approved: true
 started: '20260825T150258Z'
 parent: 'loom-webster-review-producer'
 root: ""

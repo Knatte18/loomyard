@@ -128,7 +128,7 @@ Per `CLAUDE.md`, the roadmap moves only on completing or adding a planned item.
   The Discussion-producer sentence immediately below it gains the fact that the producer now has two modes — autonomous by default, interactive when `discussion_interactive` is set — and that both prompt renderings already ship in the same stencil.
 
   In `manifest/roadmap.md`, move the **loom: interactive Discussion-Write** item out of the `## Planned` section's `### loom: real LLM producers` sub-category and into `## Done`, written as `1.` like every other item — numbering is automatic and restarts per section, so no renumbering is needed anywhere.
-  Per the file's own Maintenance rules, a Done entry is a name plus one or two sentences and points at the module's own package documentation rather than at a design doc: point at `manifest/designs/loom.md`'s crash-recovery section, which now carries the resolution rather than the open trap, and keep the item's own one-sentence summary short.
+  Per the file's own Maintenance rules, a Done entry is a name plus one or two sentences and carries a link to where its durable detail now lives: point at `manifest/designs/loom.md`'s crash-recovery section, which now carries the resolution rather than the open trap, matching what both existing `loom:` Done entries already do, and keep the item's own one-sentence summary short.
   Check whether the `### loom: real LLM producers` sub-category's own preamble sentence ("What 'loom: write and wire in the real LLM producers' split into … both items below are unblocked") still reads correctly with only one item left beneath it, and adjust it if not.
   Do not touch the sibling **loom: `Discussion-Burler`'s `fix-scope: source` violates the Fabric Git Invariant** item.
 

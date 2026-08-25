@@ -94,7 +94,10 @@ The accepted residual is stated in `attach-only-a-run-that-never-terminated`: su
 
   In `wait.go`, `Run.finalize` must persist the classification: set `run.state.Outcome = string(outcome)` and call `saveRunState(run.runDir, run.state)` for **every** outcome, and it must do so **before** the `cleaned` block that performs `RemoveStrand` and `os.RemoveAll`.
   A `saveRunState` failure here is best-effort: log a `logger.Warn` naming the run dir, the strand guid, the outcome, and the error, then continue — the classified `Result` is returned unchanged and is never converted into an error.
-  Place the write after the fork-audit block so the existing early `return result, err` on an audit failure keeps its current behaviour.
+  Place the write **before** the fork-audit block, not after it.
+  `finalize` returns early with `result, err` when `AuditForks` fails, so a write placed after the audit would leave a run that genuinely classified `OutcomeDone` persisted at `"running"` — the exact live-but-idle state the sentinel exists to prevent, if its pane is still alive on a later resume.
+  No row in this task sets `ForkSubagents`, so the gap is unreached today, which is precisely why it must be closed by placement rather than left as an undocumented forward-looking hole.
+  Writing first costs nothing: the audit's early return still returns the same `result` with the same error, and the write still precedes the cleanup block either way.
   Update `finalize`'s doc comment to describe the write and its best-effort disposition.
 
   Extend `run_test.go` with an assertion that a run started through `Runner.Start` persists `run.json` with `Outcome: "running"`.

@@ -35,6 +35,7 @@ Batch-local decisions that differ from nothing in the overview:
   - `internal/shuttleengine/engine.go`
   - `internal/shuttleengine/reed.go`
   - `internal/shuttleengine/doc.go`
+  - `internal/shuttleengine/claudeengine/startup.go`
   - `internal/reedengine/state.go`
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/render/types.go`
