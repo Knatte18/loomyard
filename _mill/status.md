@@ -40,7 +40,9 @@ batches:
     commit_sha: e9518ad2a0c883eb38f8111bd0cdf5740880a9c0
     verify_baseline_failures: []
   - name: shedrecipe-entries
-    state: pending
+    state: running
+    implementer_session: 5d684d4f-df51-44d2-9678-8eb63a3a387c
+    start_sha: ed40fe0499656a0e07663061b69f4d3d039054d5
     verify_baseline_failures: []
   - name: loomengine-config-and-paths
     state: pending
