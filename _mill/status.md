@@ -46,7 +46,9 @@ batches:
     commit_sha: 2ecb4bc0b72c600cb751bd32169ab7150f4474f3
     verify_baseline_failures: []
   - name: reddit-oauth-client
-    state: pending
+    state: running
+    implementer_session: 7496608b-e9b5-4994-945c-1a9de8223f2d
+    start_sha: 8006f0021b9e3a5365cb7af92b5211a6fe8cf922
     verify_baseline_failures: []
   - name: tiered-adapter
     state: pending
