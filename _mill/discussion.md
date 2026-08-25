@@ -278,8 +278,9 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   Set rather than ordered equality because `RunState.OutputFiles` is an ordered slice recording whatever order the caller happened to supply, and two specs naming the same files in a different order describe the same run.
 - Rejected: running the full `Spec.validate`.
   Its reject-if-already-exists check would refuse every attach whose agent has written one of its two output files — and a partially-written output set is a normal mid-interview state.
-  Its negative-`Timeout` rejection is worth keeping in spirit;
-  the plan may reuse it, but it must not drag the existence check along.
+- Decision on `validate`'s remaining check: **`Attach` rejects a negative `Timeout`**, with the same error `validate` raises, before scanning.
+  Rationale: a negative `Timeout` can only be a caller mistake (0 is the documented "defer to config" value), and its consequence on the attach path is worse than on the start path it was written for — an attached run's deadline would already be in the past, so it classifies `OutcomeTimeout` on its first tick and reports a **live interview** as timed out.
+  Rejecting costs one comparison and cannot fire on any correct caller.
 
 ### mechanism-failures-do-not-attach-and-do-not-blindly-respawn
 
@@ -291,8 +292,26 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   - **reed's state file absent or unreadable** → error, never `found == false`, at any dir age.
     An absent strand table is not evidence that anything is dead, and respawning on it is precisely the duplicate-agent hazard;
     `sweepOrphansOpportunistic` already refuses to act on either answer for the same reason, and `Attach` mirrors that refusal.
+    **On the asymmetry with the untracked answer**, which does get an age escape: the escape exists there because erroring would deadlock with no in-band recovery — the only thing that clears such a directory runs inside `Start`, which the error path never reaches.
+    That is not the situation here.
+    An absent or unreadable `reed.json` is repaired in-band by `lyx reed up` — or simply by `lyx loom run`, which calls `reed.Up()` itself before spawning the driver — after which the table is present and the untracked answer's age rule governs normally.
+    The absent case already has an escape the untracked case lacks, so it does not need a second one.
   - **A matched record whose output files all already exist**, reached only in the non-attachable branches → `found == false`, at any dir age.
     See `leftover-run-dir-from-a-completed-run` below.
+  - **`ReedOps.Status()` itself returns an error** → error, never `found == false`, at any dir age.
+    This is a fourth answer, distinct from the three above, and it is reachable on exactly the reboot-crash resume this whole feature exists to serve: `Status()` calls `requireSessionLocked` first (`internal/reedengine/lifecycle.go:1141-1146`), which fails when the tmux session is gone or `hasSession` itself faults, and `listPanes` below it (`:1154-1157`) fails on any other tmux fault.
+    Erroring is right for both sub-cases, and — unlike the untracked/binding-cleared answers — it is not a deadlock, because the respawn path could not run either: `Start` → `AddStrand` needs a live reed session, so a `Status()` error means the *whole run* is unrunnable, not merely un-attachable.
+    The in-band recovery is the one the operator already performs: `lyx loom run` calls `c.reed.Up()` before spawning the driver (`internal/loomcli/run.go`, step 4), so the ordinary resume command repairs it.
+    No attempt is made to separate "session down" from "tmux faulted" — `reedengine` exposes no sentinel for it, the same reason `errStrandNotTracked` exists rather than a guess.
+- **Decision on which reed read answers which question, and in what order.**
+  Two distinct reads, with fixed roles, because one of them cannot answer both:
+  - `reedengine.LoadState` answers **"does reed have a state table at all"** — present, absent, or unreadable.
+    It is read **first**, as a gate.
+  - `ReedOps.Status()` answers **"is this guid tracked, and is its pane live"**, and is consulted only once `LoadState` reported present.
+  A `Status()` that then lists no matching strand is not a disagreement between the two reads — it is precisely the untracked answer, already dispositioned above.
+  The genuine contradiction (`LoadState` absent but `Status()` listing strands) cannot arise, since `Status()` reads the same file through `loadOrInitStateLocked`.
+  The two reads are not atomic with respect to each other, so reed could be reset between them;
+  that race is benign here, because both of its outcomes are dispositioned answers and neither respawns over a confirmed-live agent.
 - **Decision on how the absent case is observed, because it is not observable through the seam `Attach` would naturally reach for.**
   `Attach` must read reed's state file **directly**, via `reedengine.LoadState(filepath.Join(anchorPath, lyxdirs.DotLyxDirName))` — the identical call `sweepOrphansOpportunistic` already makes in `run.go` — and must **not** try to derive the answer from `ReedOps.Status()`.
   `ReedOps` (`internal/shuttleengine/reed.go:18-25`) exposes only `Status()`, and `reedengine`'s `loadOrInitStateLocked` (`spawn.go:187-196`) substitutes an empty `&ReedState{}` whenever `LoadState` returns "not found".
@@ -535,6 +554,8 @@ Over a temp run-dir root with hand-written `run.json` files and a fake reed:
   The absent case is only reachable because `Attach` reads `reedengine.LoadState` directly;
   a test written against a fake `ReedOps.Status()` cannot express it, since an absent file surfaces there as a successful empty table.
   Add a companion assertion that `Attach` does **not** consult `Status()` for this question.
+- `Status()` itself returning an error (fake reed reporting a torn-down session, and separately a tmux fault): error, never `found == false`, at any dir age — the reboot-resume case.
+- A **negative** `Timeout` on the spec: rejected before scanning, with no reed read attempted.
 - A matched record in a non-attachable branch whose output files **all exist**: `found == false` at any dir age, including a dir younger than `2 * StartupTimeoutS` (the fast-bounce-after-failed-cleanup case) and a `KeepPane` leftover.
 - The same output files present but the strand **tracked and live**: attached, not treated as leftover, and the first tick classifies `OutcomeDone` — with the output files still on disk, unarchived.
 - `Display.Anchor` defaulting: a spec with an empty `Anchor` attaches to a binding-cleared strand and surfaces `errStrandPaneBindingCleared`, rather than taking the hidden-strand carve-out and classifying `OutcomeDied`.
@@ -587,4 +608,4 @@ the unit tiers above prove the seams.
 - **Q:** Do the review segment or `Plan-Write` gain an interactive mode? **A:** [auto-pick] No. **Why:** `PlanSpec` hardcodes `Interactive: false` by design and `wiring_test.go:501` guards it; the `Bouncer`/`Burler` rows are an autonomous review loop, not an interview.
 - **Q:** Is the mode allowed to change between a crash and a resume? **A:** [auto-pick] Yes, and nothing compares them. **Why:** the resume decision is made on live-agent evidence, never on mode; mode only selects the prompt block and `AwaitOperator` for the *next* spawn, so a flip does exactly what an operator flipping it would want.
 - **Q:** What is the default? **A:** [auto-pick] `false` — autonomous, today's behaviour. **Why:** interactive requires a human at the pane; a task spawned unattended must not silently wait for one.
-- **Q:** Does ladder step 1 ("is there a complete output file? → Done") get implemented too? **A:** [auto-pick] No, deliberately not. **Why:** it is the exact shortcut the doc's trap warns about, and with steps 2 and 3 in place it buys nothing — a run whose output files are complete already reached `Done` and cleaned itself up.
+- **Q:** Does ladder step 1 ("is there a complete output file? → Done") get implemented too? **A:** [auto-pick] No, deliberately not. **Why:** it is the exact shortcut the doc's trap warns about — on a `Discussion-Validate` bounce the files are equally present and equally complete-looking, so returning `Done` there ping-pongs until the bounce budget blocks the run. It is a trade, not a free choice: step 1 would genuinely buy the completed-crash window recorded in `accepted-residual-the-completed-crash-window`, and we accept losing that, because a frequent hard failure is worse than a narrow one costing only rework. Step 1 survives *inside* an attached run, where file existence is attributable to a specific agent — see `ladder-step-1-survives-only-inside-attach`.
