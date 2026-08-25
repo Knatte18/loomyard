@@ -29,5 +29,7 @@ implementing  '2026-08-25T14:14:22Z'
 ```yaml
 batches:
   - name: fabric-git-invariant-fix
-    state: pending
+    state: running
+    implementer_session: 0ea49e4e-d0e3-49a0-a111-f5dda3392fbb
+    start_sha: 85068114ad1374d6b13f3d1823dd2c8e565b041f
 ```
