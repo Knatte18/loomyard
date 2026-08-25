@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-webster-review-producer
 branch: loom-webster-review-producer
 plan: _mill/plan
@@ -22,4 +22,17 @@ planning  '2026-08-25T12:25:04Z'
 plan-review-r1  '2026-08-25T12:35:36Z'
 plan-fix-r1  '2026-08-25T12:36:05Z'
 planned  '2026-08-25T12:36:17Z'
+implementing  '2026-08-25T12:36:44Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: rubric-stencil
+    state: pending
+  - name: perch-wiring
+    state: pending
+  - name: docs-and-roadmap
+    state: pending
 ```
