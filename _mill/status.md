@@ -5,7 +5,7 @@ phase: blocked
 slug: loom-discussion-write-interactive
 branch: loom-discussion-write-interactive
 plan: _mill/plan
-parent: loom-webster-review-producer
+parent: main
 task: 'loom: interactive Discussion-Write'
 task_description: |
   loom: interactive Discussion-Write
