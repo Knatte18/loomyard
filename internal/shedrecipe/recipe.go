@@ -54,6 +54,18 @@ type Env struct {
 	// SupportLogPath is the told support log path, read by DiscussionValidate.
 	SupportLogPath string
 
+	// ReviewModel, ReviewEffort, ReviewVersion, and ReviewTimeout are run-wide review defaults read
+	// by the Bouncer and BurlerRound entries: each is used only when the corresponding per-row
+	// Config key is absent. ReviewTimeout is read by BurlerRound alone, because
+	// shedadapters.BouncerConfig carries no timeout field.
+	// These four are legal on Env at all because Env carries roots and run-wide values only, and one
+	// review model shared by every review segment is exactly such a value -- a per-row value would
+	// have to be a Config key instead.
+	ReviewModel   string
+	ReviewEffort  string
+	ReviewVersion string
+	ReviewTimeout time.Duration
+
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
 	// factory over one).
 	Shuttle shedadapters.Shuttle
