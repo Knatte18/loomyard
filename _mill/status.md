@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-discussion-burler-fix-scope
 branch: loom-discussion-burler-fix-scope
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-fabric-git-invariant-fix  '2026-08-25T15:15:13Z'
 holistic-reviewing  '2026-08-25T15:15:39Z'
 holistic-approved  '2026-08-25T15:19:42Z'
 done  '2026-08-25T15:20:20Z'
+pr-pending  '2026-08-25T15:24:15Z'
 ```
 
 ## Batches
