@@ -11,6 +11,10 @@
 // alive; the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks
 // (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) —
 // are mechanism failures, not classifications.
+// When the run's Spec.AwaitOperator is true, an OutcomeAsking classification is non-terminal: Wait
+// logs the observation and keeps polling instead of returning, so an interactive interview survives
+// its first question batch. Every other exit (OutcomeDone, OutcomeDied, a liveness mechanism
+// failure, OutcomeTimeout) is unaffected.
 
 package shuttleengine
 
@@ -101,6 +105,9 @@ var errStrandPaneBindingCleared = errors.New(
 
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
+// When run.spec.AwaitOperator is true, an OutcomeAsking classification does not count as terminal —
+// Wait logs the ask and keeps polling, so it terminates only on OutcomeDone, OutcomeDied, a liveness
+// mechanism failure, or OutcomeTimeout.
 //
 // An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
 // empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
@@ -126,7 +133,15 @@ func (run *Run) Wait() (Result, error) {
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
-	started := false
+	// started seeds from run.attached rather than hard-coding false: an attached run has already
+	// been confirmed live via Attach's own reed reads — strictly stronger evidence than the capture
+	// heuristic below provides — so re-running the startup probe against a pane that is mid-turn
+	// would misclassify a live interview as OutcomeDied one startup_timeout_s after attach, or worse,
+	// play the trust-dismiss key sequence into a live agent's pane if its capture happens to trip a
+	// trust-dialog needle. The not-tracked and not-live branches of checkLivenessTick sit above this
+	// short-circuit, so an attached run keeps full liveness coverage — only the startup probe is
+	// skipped.
+	started := run.attached
 	eventsFailures := 0
 	statusFailures := 0
 
@@ -139,7 +154,12 @@ func (run *Run) Wait() (Result, error) {
 			}
 		} else {
 			eventsFailures = 0
-			if outcome != "" {
+			if outcome == OutcomeAsking && run.spec.AwaitOperator {
+				// AwaitOperator makes an ask non-terminal: log the observation so the driver log
+				// records each one, and keep polling instead of finalizing here. OutcomeDone still
+				// falls through to finalize below, unaffected by this branch.
+				logger.Info("shuttle: awaiting operator, ask observed", "strandGUID", run.state.StrandGUID, "lastAssistantMessage", message)
+			} else if outcome != "" {
 				return run.finalize(outcome, message)
 			}
 		}
@@ -369,8 +389,18 @@ func (run *Run) identity() Result {
 	}
 }
 
-// finalize builds run's terminal Result and performs cleanup for OutcomeDone.
+// finalize builds run's terminal Result, persists the classification into the run's RunState.Outcome,
+// and performs cleanup for OutcomeDone.
 // For fork mode, audits fork subagents and attaches the result.
+//
+// The Outcome write happens for EVERY terminal outcome, before the fork-audit block: finalize returns
+// early with (result, err) when AuditForks fails, so a write placed after the audit would leave a run
+// that genuinely classified OutcomeDone persisted at "running" — the exact live-but-idle state the
+// sentinel exists to prevent, if its pane is still alive on a later resume. The write is best-effort:
+// a saveRunState failure here is a logger.Warn, never an error, because the run genuinely reached its
+// outcome and turning a successful run into a failure over a bookkeeping write would invert the cost.
+// The accepted residual is that such a record keeps "running", so if its pane is also still live and
+// idle it stays attachable for that one run.
 //
 // It is also the run's teardown observability point, which the Live-Substrate Spawn Observability
 // invariant requires to be as instrumented as the spawn is: Start logs "run started" through
@@ -385,6 +415,11 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 		StrandGUID:           run.state.StrandGUID,
 		LastAssistantMessage: message,
 		RunDir:               run.runDir,
+	}
+
+	run.state.Outcome = string(outcome)
+	if err := saveRunState(run.runDir, run.state); err != nil {
+		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "error", err)
 	}
 
 	if outcome == OutcomeDone && run.spec.ForkSubagents {

@@ -39,14 +39,23 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}
 
+	// Interactive and AwaitOperator are both set from the same !autonomous
+	// expression yet remain two fields: Interactive means "an operator is
+	// present" and governs launch flags and the AskUserQuestion recording
+	// hook, while AwaitOperator means "wait for the operator rather than
+	// reporting back" and governs the wait loop. loom's interactive
+	// Discussion-Write deliberately wants both, dropping the real-time
+	// asking signal Interactive alone would add, since the whole point here
+	// is to wait rather than report back.
 	return shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{decisionRecordPath, supportLogPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
-		Interactive: !autonomous,
-		Role:        "discussion",
-		Timeout:     time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
+		Prompt:        string(prompt),
+		OutputFiles:   []string{decisionRecordPath, supportLogPath},
+		Model:         resolved.Model,
+		Effort:        resolved.Params["effort"],
+		Version:       resolved.Params["version"],
+		Interactive:   !autonomous,
+		AwaitOperator: !autonomous,
+		Role:          "discussion",
+		Timeout:       time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
 	}, nil
 }

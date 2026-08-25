@@ -40,6 +40,12 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 	return f.result, f.err
 }
 
+// Attach implements shedadapters.Shuttle's probe method by always reporting not-found; see
+// fakeShuttle's own doc comment for why it is never called.
+func (f *fakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	return shuttleengine.Result{}, false, nil
+}
+
 // fakeBurlerRunner implements shedadapters.BurlerRunner by returning a zero burlerengine.Result and
 // a nil error, recording every burlerengine.Profile and burlerengine.RunOpts it was handed. It is
 // never called: no test in this package invokes a producer's Call.

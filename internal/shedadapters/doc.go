@@ -18,6 +18,13 @@
 //     evaluated Spec's OutputFiles as the pointer's path.
 //     OutcomeAsking maps to Stuck with an empty pointer.
 //     OutcomeDied and OutcomeTimeout are engine-level errors, not Stuck.
+//     Before any of this, SingleLLMProducer.Call probes shuttleengine's Attach seam for a still-live,
+//     never-terminated run matching the evaluated Spec -- on every call and regardless of mode, not
+//     only when spec.Interactive is set. Archiving renames the very files a live agent may be about
+//     to write, so the probe runs before archiving anything: a found run's Result is mapped through
+//     this identical outcome switch, and a not-found probe falls through to the unchanged
+//     archive-then-run path. The probe applies to the PlanWrite and generic SingleLLM rows too, not
+//     only DiscussionWrite.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
 //     (websterengine.SummaryPath) as the pointer's path.
 //     Webster's own "stuck" outcome, and a websterengine.ErrMasterAsking error, both map to Stuck
@@ -116,9 +123,9 @@
 //
 // # Limitations
 //
-// SingleLLMProducer never reattaches to a live shuttle session: on a stale output file it archives
-// the file and respawns a fresh shuttle run, because shuttleengine exposes no reattach entry point
-// for the adapter to call.
+// The Bouncer and BurlerProducer rows drive the same Shuttle seam but do not go through
+// SingleLLMProducer, so they keep the respawn-over-a-live-agent path deliberately: a scope call
+// rather than a safety claim.
 //
 // Neither SingleLLMProducer nor WebsterProducer installs a mid-run cancellation bridge, so a cancel
 // is observed only once the run reaches a terminal outcome or its own configured deadline elapses --

@@ -8,6 +8,7 @@
 package loomcli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -86,6 +87,31 @@ func seedPlanStencil(t *testing.T, hubPath string) {
 	}
 	cfgPath := filepath.Join(loomDir, "loom-template-plan.md")
 	if err := os.WriteFile(cfgPath, stencils.LoomTemplatePlan, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
+// seedLoomConfigWithInteractive overwrites <anchorPath>/_lyx/config/loom.yaml with a full seven-key
+// literal, identical to the embedded template's own values except discussion_interactive, which
+// takes the caller-chosen value. All seven keys are written explicitly, rather than
+// string-substituting the template, because configengine.Load is strict on missing keys -- an
+// explicit literal is what internal/loomengine/config_test.go already does.
+func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
+	t.Helper()
+	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+	}
+	cfgPath := filepath.Join(configDir, "loom.yaml")
+	contents := fmt.Sprintf(`discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: %v
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+`, discussionInteractive)
+	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
 }
@@ -350,47 +376,70 @@ func TestWire_DiscussionSeamsFilled(t *testing.T) {
 	}
 }
 
-// TestWire_DiscussionSpecEvaluatesToExpectedShape evaluates c.env.DiscussionSpec() once and asserts
-// on the returned shuttleengine.Spec's shape.
+// TestWire_DiscussionSpecEvaluatesToExpectedShape evaluates c.env.DiscussionSpec() for both
+// discussion_interactive values and asserts on the returned shuttleengine.Spec's shape. Interactive
+// and AwaitOperator must both be false when discussion_interactive is false, and both true when
+// discussion_interactive is true; every other assertion (Role, Timeout, Model, OutputFiles, Prompt)
+// must hold in both cases.
 func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
+	tests := []struct {
+		name                  string
+		discussionInteractive bool
+		wantInteractive       bool
+		wantAwaitOperator     bool
+	}{
+		{"Autonomous", false, false, false},
+		{"Interactive", true, true, true},
 	}
 
-	spec, err := c.env.DiscussionSpec()
-	if err != nil {
-		t.Fatalf("c.env.DiscussionSpec() = %v; want nil", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := hubLocation(t, "warp", ".")
+			if tt.discussionInteractive {
+				seedLoomConfigWithInteractive(t, loc.AnchorPath(), true)
+			}
 
-	if spec.Interactive {
-		t.Error("spec.Interactive = true; want false (autonomous-only)")
-	}
-	if spec.Role != "discussion" {
-		t.Errorf("spec.Role = %q; want %q", spec.Role, "discussion")
-	}
-	wantTimeout := time.Duration(c.cfg.DiscussionTimeoutMin) * time.Minute
-	if spec.Timeout != wantTimeout {
-		t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
-	}
-	if spec.Model == "" {
-		t.Error("spec.Model = \"\"; want non-empty")
-	}
+			c := &loomCLI{}
+			if err := c.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
 
-	wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
-	if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
-		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
-	}
+			spec, err := c.env.DiscussionSpec()
+			if err != nil {
+				t.Fatalf("c.env.DiscussionSpec() = %v; want nil", err)
+			}
 
-	if spec.Prompt == "" {
-		t.Error("spec.Prompt = \"\"; want non-empty")
-	}
-	if strings.Contains(spec.Prompt, "{{") {
-		t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
+			if spec.Interactive != tt.wantInteractive {
+				t.Errorf("spec.Interactive = %v; want %v", spec.Interactive, tt.wantInteractive)
+			}
+			if spec.AwaitOperator != tt.wantAwaitOperator {
+				t.Errorf("spec.AwaitOperator = %v; want %v", spec.AwaitOperator, tt.wantAwaitOperator)
+			}
+			if spec.Role != "discussion" {
+				t.Errorf("spec.Role = %q; want %q", spec.Role, "discussion")
+			}
+			wantTimeout := time.Duration(c.cfg.DiscussionTimeoutMin) * time.Minute
+			if spec.Timeout != wantTimeout {
+				t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
+			}
+			if spec.Model == "" {
+				t.Error("spec.Model = \"\"; want non-empty")
+			}
+
+			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
+			if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
+				t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
+			}
+
+			if spec.Prompt == "" {
+				t.Error("spec.Prompt = \"\"; want non-empty")
+			}
+			if strings.Contains(spec.Prompt, "{{") {
+				t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
+			}
+		})
 	}
 }
 

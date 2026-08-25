@@ -3,10 +3,13 @@ package loomrecipe
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -343,5 +346,145 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	}
 	if want := paths.MaxBounces + 1; stuckCount != want {
 		t.Errorf("Discussion-Validate Stuck count = %d; want %d (MaxBounces+1)", stuckCount, want)
+	}
+}
+
+// TestResume_DiscussionValidateBounceRespawnsDiscussionWrite is one half of the
+// manifest/designs/loom.md "interactive-mode trap" regression pair: a Discussion-Validate bounce
+// re-enters Discussion-Write with both discussion artifacts already present on disk -- the identical
+// on-disk shape a crash mid-interview leaves -- and the fake shuttle's Attach reports not-found (no
+// live agent matches), so Discussion-Write must respawn rather than report Done off bare file
+// existence. The decision record is deliberately missing one required section ("## Goal") rather
+// than absent entirely, so Discussion-Validate goes Stuck for the ordinary reason a bounce happens,
+// with both files genuinely present throughout -- unlike TestBounceRouting_StuckContinuesAtDeclaredTarget,
+// which drives the bounce by removing the file outright.
+//
+// current_producer is planted directly at Discussion-Validate via resetCurrentProducer, per the
+// resume tests above, rather than driven through the whole sequence from row 1 -- the point under
+// test is what Discussion-Write does when re-entered, not how the run got there.
+//
+// The fake's default writeOutputs=true means the respawned run rewrites both output files with valid
+// content, so Discussion-Validate passes on its very next call: this is what proves the run does not
+// ping-pong until the bounce budget (paths.MaxBounces, left at buildSequenceFixture's default) is
+// exhausted -- a genuine ping-pong would consume the whole budget and end shedengine.RunBlocked with
+// reason "bounce budget exhausted", which this test asserts against.
+func TestResume_DiscussionValidateBounceRespawnsDiscussionWrite(t *testing.T) {
+	_, env, paths := buildSequenceFixture(t)
+
+	incompleteDecisionRecord := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)
+	if incompleteDecisionRecord == validDecisionRecord {
+		t.Fatalf("incompleteDecisionRecord: \"## Goal\" section not found in validDecisionRecord; fixture drifted")
+	}
+	if err := os.WriteFile(env.DecisionRecordPath, []byte(incompleteDecisionRecord), 0o644); err != nil {
+		t.Fatalf("write incomplete decision record: %v", err)
+	}
+
+	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
+
+	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionValidate, false)
+
+	shed, err := New(env, paths)
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Reason == "bounce budget exhausted" {
+		t.Fatalf("Run() Reason = %q; want the bounce to resolve rather than ping-pong until the budget is exhausted", result.Reason)
+	}
+
+	stuckIdx := -1
+	for i, e := range result.History {
+		if e.Producer == loomshed.NameDiscussionValidate && e.Outcome == shedengine.Stuck {
+			stuckIdx = i
+			break
+		}
+	}
+	if stuckIdx == -1 {
+		t.Fatalf("Run() History has no %s Stuck entry: %+v", loomshed.NameDiscussionValidate, result.History)
+	}
+	if stuckIdx+1 >= len(result.History) {
+		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", loomshed.NameDiscussionWrite)
+	}
+	if got := result.History[stuckIdx+1].Producer; got != loomshed.NameDiscussionWrite {
+		t.Fatalf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, loomshed.NameDiscussionWrite)
+	}
+	if got := result.History[stuckIdx+1].Outcome; got != shedengine.Done {
+		t.Errorf("Discussion-Write outcome after the bounce = %q; want %q -- a bounce must respawn and the respawned run must itself report Done, never report Done off bare pre-existing file existence", got, shedengine.Done)
+	}
+
+	if loomShuttle.attachCalls == 0 {
+		t.Errorf("fakeLoomShuttle.attachCalls = 0; want > 0 -- the probe must run before any archive-and-respawn decision")
+	}
+	if loomShuttle.discussionRunCalls == 0 {
+		t.Errorf("fakeLoomShuttle.discussionRunCalls = 0; want > 0 -- with Attach reporting not-found, Discussion-Write must respawn a fresh agent")
+	}
+}
+
+// TestResume_LiveMatchingRunAttachesInsteadOfRespawning is the other half of the regression pair:
+// the identical on-disk shape as the bounce case above -- both discussion artifacts present -- but
+// this time the fake shuttle's Attach reports a still-live matching run (Outcome: OutcomeDone), the
+// crash-mid-interview case where the agent already finished before the driver noticed. Discussion-Write
+// must attach to that result rather than archive the artifacts and spawn a second agent on top of
+// one that (as far as this run's own state on disk is concerned) may still be working.
+//
+// current_producer is planted directly at Discussion-Write, since this test's whole point is what
+// that row does when re-entered with a live match, not how the run got there.
+func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
+	_, env, paths := buildSequenceFixture(t)
+
+	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
+	loomShuttle.attachFound = true
+	loomShuttle.attachRole = "discussion"
+	loomShuttle.attachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+
+	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
+
+	shed, err := New(env, paths)
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+
+	writeIdx := -1
+	for i, e := range result.History {
+		if e.Producer == loomshed.NameDiscussionWrite {
+			writeIdx = i
+			break
+		}
+	}
+	if writeIdx == -1 {
+		t.Fatalf("Run() History has no %s entry: %+v", loomshed.NameDiscussionWrite, result.History)
+	}
+	if got := result.History[writeIdx].Outcome; got != shedengine.Done {
+		t.Errorf("Discussion-Write outcome = %q; want %q -- attaching to a live matching run whose Outcome is OutcomeDone must report Done", got, shedengine.Done)
+	}
+
+	if loomShuttle.discussionRunCalls != 0 {
+		t.Errorf("fakeLoomShuttle.discussionRunCalls = %d; want 0 -- an attached run must not respawn a second agent", loomShuttle.discussionRunCalls)
+	}
+	if loomShuttle.attachCalls == 0 {
+		t.Errorf("fakeLoomShuttle.attachCalls = 0; want > 0 -- the probe must have run to find the live match")
+	}
+
+	if _, err := os.Stat(env.DecisionRecordPath); err != nil {
+		t.Errorf("os.Stat(decisionRecordPath) after attach = %v; want the original file untouched, never archived to a timestamped sibling", err)
+	}
+	if _, err := os.Stat(env.SupportLogPath); err != nil {
+		t.Errorf("os.Stat(supportLogPath) after attach = %v; want the original file untouched, never archived to a timestamped sibling", err)
+	}
+	siblings, err := filepath.Glob(filepath.Join(filepath.Dir(env.DecisionRecordPath), "decision-record-*"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v; want nil", err)
+	}
+	if len(siblings) != 0 {
+		t.Errorf("archived siblings of decision-record.md = %v; want none -- an attached run must not archive the live agent's own output files", siblings)
 	}
 }

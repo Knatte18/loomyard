@@ -27,7 +27,9 @@ See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-produc
 Its own contract is exactly this: **call it**, however it decides to do that internally is invisible to `Shed`;
 **get back an outcome**, exactly one of two values — `Done` or `Stuck`, nothing else;
 **get back an optional output pointer**, a path `Shed` can check for completeness on resume.
-A producer with no output pointer — a **gate producer**, pass/fail only, or a **terminal producer** with no downstream consumer — simply re-runs on resume, since the resume-on-output-files rule degrades gracefully: a cheap idempotent re-check for a gate, and the terminal producer's own recovery obligation, not designed here, if its effect was mid-flight.
+A producer with no output pointer — a **gate producer**, pass/fail only, or a **terminal producer** with no downstream consumer — simply re-runs on resume, since the resume-on-output-files-and-live-agent-evidence rule degrades gracefully: a cheap idempotent re-check for a gate, and the terminal producer's own recovery obligation, not designed here, if its effect was mid-flight.
+`Shed`'s own contract is unchanged by that rule's live-agent half — it still re-`Call`s `current_producer` unconditionally on every resume, exactly as before.
+What changed sits entirely inside the producer: a `SingleLLMProducer`-shaped producer may now answer that call by re-attaching to a still-live run instead of starting fresh, a distinction `Shed` itself neither makes nor needs to know about.
 That is the entire `ShedProducer` contract — see [Engine adapters](#engine-adapters--a-thin-shared-seam-not-one-per-producer) below.
 `Shed` never reads a producer's Input and never inspects the shape of its Output;
 it has no concept of a "format-contract file."

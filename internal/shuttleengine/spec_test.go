@@ -176,6 +176,27 @@ func TestSpec_Validate_VersionUntouched(t *testing.T) {
 	}
 }
 
+// TestSpec_Validate_AwaitOperatorUntouched proves validate neither defaults nor rejects
+// AwaitOperator in either state — it governs Run.Wait's loop only, and validate needs neither
+// defaulting nor rejection for it.
+func TestSpec_Validate_AwaitOperatorUntouched(t *testing.T) {
+	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, AwaitOperator: true}
+	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v", err)
+	}
+	if !s.AwaitOperator {
+		t.Errorf("AwaitOperator = %v, want unchanged true", s.AwaitOperator)
+	}
+
+	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, AwaitOperator: false}
+	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v", err)
+	}
+	if s2.AwaitOperator {
+		t.Errorf("AwaitOperator = %v, want unchanged false", s2.AwaitOperator)
+	}
+}
+
 func TestSpec_Validate_AnchorPassThroughWhenSet(t *testing.T) {
 	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorBelowParent}}
 	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {

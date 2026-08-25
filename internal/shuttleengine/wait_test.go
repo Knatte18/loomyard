@@ -336,6 +336,285 @@ func TestRun_Wait_Asking_CarriesMessageKeepsStrand(t *testing.T) {
 	}
 }
 
+// multiStepClock wraps a fakeClock and runs the next entry of steps, in order, once per Sleep call —
+// a generalization of scriptedClock's single-shot onSleep for tests that need to mutate on-disk
+// fixtures between several ticks, not just the first two.
+// Once steps is exhausted, further Sleep calls run no step.
+type multiStepClock struct {
+	*fakeClock
+	steps []func()
+	next  int
+}
+
+func (c *multiStepClock) Sleep(d time.Duration) {
+	c.fakeClock.Sleep(d)
+	if c.next < len(c.steps) {
+		step := c.steps[c.next]
+		c.next++
+		step()
+	}
+}
+
+var _ clock = (*multiStepClock)(nil)
+
+// TestRun_Wait_AwaitOperator_AskingNonTerminal is the defect-A coverage: an ask that is terminal
+// today must become non-terminal once Spec.AwaitOperator is set, while every other exit stays
+// exactly as it was.
+func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
+	t.Run("AwaitOperatorFalse_PinsTodaysAskingBehaviour", func(t *testing.T) {
+		runDir := t.TempDir()
+		eventsPath := filepath.Join(runDir, "events.jsonl")
+		outputFile := filepath.Join(runDir, "out.md") // never created
+
+		if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
+			t.Fatalf("seed events: %v", err)
+		}
+
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fc := newFakeClock(time.Now())
+		run := &Run{
+			runner:   runner,
+			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: false},
+			runDir:   runDir,
+			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+			clock:    fc,
+			deadline: fc.Now().Add(time.Minute),
+		}
+
+		result, err := run.Wait()
+		if err != nil {
+			t.Fatalf("Wait() error: %v", err)
+		}
+		if result.Outcome != OutcomeAsking {
+			t.Errorf("Outcome = %q, want %q (AwaitOperator false must keep an ask terminal)", result.Outcome, OutcomeAsking)
+		}
+	})
+
+	t.Run("AwaitOperatorTrue_DropsAskAndFinalizesOnceOutputFilesAppear", func(t *testing.T) {
+		runDir := t.TempDir()
+		eventsPath := filepath.Join(runDir, "events.jsonl")
+		outputFile := filepath.Join(runDir, "out.md")
+
+		if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
+			t.Fatalf("seed events: %v", err)
+		}
+
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+		fc := newFakeClock(time.Now())
+		mc := &multiStepClock{fakeClock: fc, steps: []func(){
+			func() {
+				// Fires between tick 1 (which observed the dropped ask) and tick 2: the agent
+				// finishes, writes its output file, and appends the terminating Stop event.
+				if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+					t.Fatalf("write output file: %v", err)
+				}
+				f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+				if err != nil {
+					t.Fatalf("open events file to append: %v", err)
+				}
+				defer f.Close()
+				if _, err := f.WriteString("STOP:done\n"); err != nil {
+					t.Fatalf("append done event: %v", err)
+				}
+			},
+		}}
+
+		run := &Run{
+			runner:   runner,
+			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			runDir:   runDir,
+			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+			clock:    mc,
+			deadline: mc.Now().Add(time.Minute),
+		}
+
+		result, err := run.Wait()
+		if err != nil {
+			t.Fatalf("Wait() error: %v", err)
+		}
+		if result.Outcome != OutcomeDone {
+			t.Errorf("Outcome = %q, want %q (the ask must be dropped and polling must continue to the later Done)", result.Outcome, OutcomeDone)
+		}
+	})
+
+	t.Run("AwaitOperatorTrue_SeveralAsksInARowThenDone", func(t *testing.T) {
+		runDir := t.TempDir()
+		eventsPath := filepath.Join(runDir, "events.jsonl")
+		outputFile := filepath.Join(runDir, "out.md")
+
+		if err := os.WriteFile(eventsPath, []byte("STOP:question batch one\n"), 0o644); err != nil {
+			t.Fatalf("seed events: %v", err)
+		}
+
+		appendEvent := func(line string) func() {
+			return func() {
+				f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+				if err != nil {
+					t.Fatalf("open events file to append: %v", err)
+				}
+				defer f.Close()
+				if _, err := f.WriteString(line); err != nil {
+					t.Fatalf("append event: %v", err)
+				}
+			}
+		}
+
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+		fc := newFakeClock(time.Now())
+		mc := &multiStepClock{fakeClock: fc, steps: []func(){
+			appendEvent("STOP:question batch two\n"),
+			appendEvent("STOP:question batch three\n"),
+			func() {
+				if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+					t.Fatalf("write output file: %v", err)
+				}
+				appendEvent("STOP:done\n")()
+			},
+		}}
+
+		run := &Run{
+			runner:   runner,
+			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			runDir:   runDir,
+			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+			clock:    mc,
+			deadline: mc.Now().Add(time.Minute),
+		}
+
+		result, err := run.Wait()
+		if err != nil {
+			t.Fatalf("Wait() error: %v", err)
+		}
+		if result.Outcome != OutcomeDone {
+			t.Errorf("Outcome = %q, want %q (a multi-batch interview must survive every ask and finalize on the eventual Done)", result.Outcome, OutcomeDone)
+		}
+	})
+
+	t.Run("AwaitOperatorTrue_StillTimesOutWithFilesAbsent", func(t *testing.T) {
+		runDir := t.TempDir()
+		eventsPath := filepath.Join(runDir, "events.jsonl")
+		outputFile := filepath.Join(runDir, "out.md") // never created
+
+		if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
+			t.Fatalf("seed events: %v", err)
+		}
+
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fc := newFakeClock(time.Now())
+		run := &Run{
+			runner:   runner,
+			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Second, AwaitOperator: true},
+			runDir:   runDir,
+			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+			clock:    fc,
+			deadline: fc.Now().Add(time.Second),
+		}
+
+		result, err := run.Wait()
+		if err != nil {
+			t.Fatalf("Wait() error: %v", err)
+		}
+		if result.Outcome != OutcomeTimeout {
+			t.Errorf("Outcome = %q, want %q (AwaitOperator does not extend the run deadline, only drops asks)", result.Outcome, OutcomeTimeout)
+		}
+	})
+
+	t.Run("AwaitOperatorTrue_StillDiesOnDeadPane", func(t *testing.T) {
+		runDir := t.TempDir()
+		eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+		outputFile := filepath.Join(runDir, "out.md")       // never created
+
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
+		engine := &fakeEngine{}
+		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fc := newFakeClock(time.Now())
+		run := &Run{
+			runner:   runner,
+			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			runDir:   runDir,
+			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+			clock:    fc,
+			deadline: fc.Now().Add(time.Minute),
+		}
+
+		result, err := run.Wait()
+		if err != nil {
+			t.Fatalf("Wait() error: %v", err)
+		}
+		if result.Outcome != OutcomeDied {
+			t.Errorf("Outcome = %q, want %q (a dead pane still terminates the wait under AwaitOperator)", result.Outcome, OutcomeDied)
+		}
+	})
+
+	t.Run("AwaitOperatorTrue_StillSurfacesUntrackedStrandMechanismFailure", func(t *testing.T) {
+		runDir := t.TempDir()
+		eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+		outputFile := filepath.Join(runDir, "out.md")       // never created
+
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}}}
+		runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fc := newFakeClock(time.Now())
+		run := &Run{
+			runner:   runner,
+			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			runDir:   runDir,
+			state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+			clock:    fc,
+			deadline: fc.Now().Add(time.Minute),
+		}
+
+		result, err := run.Wait()
+		if err == nil {
+			t.Fatalf("Wait() = (%+v, nil); want the untracked-strand mechanism error", result)
+		}
+		if !errors.Is(err, errStrandNotTracked) {
+			t.Errorf("Wait() error = %v; want one wrapping errStrandNotTracked", err)
+		}
+		if result.Outcome != "" {
+			t.Errorf("Outcome = %q; want empty — a mechanism failure reached no classification", result.Outcome)
+		}
+	})
+
+	t.Run("AwaitOperatorTrue_StillSurfacesClearedPaneBindingMechanismFailure", func(t *testing.T) {
+		runDir := t.TempDir()
+		eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+		outputFile := filepath.Join(runDir, "out.md")       // never created
+
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
+			Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
+		}}}
+		runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fc := newFakeClock(time.Now())
+		run := &Run{
+			runner:   runner,
+			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
+			runDir:   runDir,
+			state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+			clock:    fc,
+			deadline: fc.Now().Add(time.Minute),
+		}
+
+		result, err := run.Wait()
+		if err == nil {
+			t.Fatalf("Wait() = (%+v, nil); want the cleared-pane-binding mechanism error", result)
+		}
+		if !errors.Is(err, errStrandPaneBindingCleared) {
+			t.Errorf("Wait() error = %v; want one wrapping errStrandPaneBindingCleared", err)
+		}
+		if result.Outcome != "" {
+			t.Errorf("Outcome = %q; want empty — a mechanism failure reached no classification", result.Outcome)
+		}
+	})
+}
+
 // TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking verifies a live ask (an EventAsk with no output
 // files present) classifies OutcomeAsking carrying the question as the message, keeping the pane
 // and run dir just like the existing turn-end asking case — proving the unchanged pollEventsTick
@@ -1108,5 +1387,205 @@ func TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin(t *testing.T) {
 	}
 	if result.Outcome != OutcomeDone {
 		t.Errorf("Outcome = %q; want %q — the output files ARE the run's return value", result.Outcome, OutcomeDone)
+	}
+}
+
+// TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome pins that finalize overwrites the
+// persisted RunState.Outcome with the matching classification string for every terminal outcome, not
+// only OutcomeDone — the fact on disk a later Attach (batch 2) relies on.
+func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) {
+	tests := []struct {
+		name        string
+		seedEvents  string
+		seedOutput  bool
+		statusQueue []reedengine.StatusResult
+		startup     []StartupState
+		timeout     time.Duration
+		wantOutcome Outcome
+	}{
+		{
+			name:        "done",
+			seedEvents:  "STOP:done\n",
+			seedOutput:  true,
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+			startup:     []StartupState{StartupReady},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name:        "asking",
+			seedEvents:  "STOP:need operator input\n",
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+			startup:     []StartupState{StartupReady},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeAsking,
+		},
+		{
+			name:        "died",
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDied,
+		},
+		{
+			name:        "timeout",
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+			startup:     []StartupState{StartupReady},
+			timeout:     time.Second,
+			wantOutcome: OutcomeTimeout,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			outputFile := filepath.Join(runDir, "out.md")
+			if tt.seedEvents != "" {
+				if err := os.WriteFile(eventsPath, []byte(tt.seedEvents), 0o644); err != nil {
+					t.Fatalf("seed events: %v", err)
+				}
+			}
+			if tt.seedOutput {
+				if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+					t.Fatalf("seed output file: %v", err)
+				}
+			}
+
+			reed := &fakeReed{StatusQueue: tt.statusQueue}
+			engine := &fakeEngine{StartupScript: tt.startup}
+			pollMS := 1
+			if tt.name == "timeout" {
+				pollMS = 600
+			}
+			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: pollMS, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
+				clock:    fc,
+				deadline: fc.Now().Add(tt.timeout),
+			}
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Fatalf("Outcome = %q, want %q", result.Outcome, tt.wantOutcome)
+			}
+			if run.state.Outcome != string(tt.wantOutcome) {
+				t.Errorf("run.state.Outcome = %q, want %q", run.state.Outcome, tt.wantOutcome)
+			}
+
+			// The done outcome cleans the run dir up entirely, so there is no run.json left to read —
+			// the in-memory run.state assertion above is the only observable proof for that case.
+			if tt.wantOutcome == OutcomeDone {
+				return
+			}
+			rs, found, err := loadRunState(runDir)
+			if err != nil {
+				t.Fatalf("loadRunState: %v", err)
+			}
+			if !found {
+				t.Fatal("loadRunState: run.json not found")
+			}
+			if rs.Outcome != string(tt.wantOutcome) {
+				t.Errorf("persisted RunState.Outcome = %q, want %q", rs.Outcome, tt.wantOutcome)
+			}
+		})
+	}
+}
+
+// TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup pins that finalize's Outcome write happens before
+// the done-outcome cleanup, using KeepPane: true to observe it: the run dir survives cleanup either
+// way, so its persisted run.json must hold "done" rather than a stale "running" — proving the write
+// is not skipped or reordered after the block that would otherwise remove it.
+func TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+	}
+
+	rs, found, err := loadRunState(runDir)
+	if err != nil {
+		t.Fatalf("loadRunState: %v", err)
+	}
+	if !found {
+		t.Fatal("loadRunState: run.json not found")
+	}
+	if rs.Outcome != string(OutcomeDone) {
+		t.Errorf("persisted RunState.Outcome = %q, want %q (not a stale %q)", rs.Outcome, OutcomeDone, runOutcomeRunning)
+	}
+}
+
+// TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult pins the best-effort
+// disposition: a saveRunState failure inside finalize must not fail the run — the classified Result
+// is returned unchanged, per attach-only-a-run-that-never-terminated's failed-write disposition.
+// saveRunState is made to fail by replacing run.json's path with a directory before Wait finalizes,
+// following fakeEngine.PrepareHook's precedent for planting on-disk state that breaks a later
+// saveRunState call.
+func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	// run.json as a directory makes saveRunState's write fail without disturbing anything else
+	// finalize touches (the outcome is asking, so no cleanup runs regardless).
+	if err := os.MkdirAll(filepath.Join(runDir, runStateFileName), 0o755); err != nil {
+		t.Fatalf("plant run.json dir: %v", err)
+	}
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	buf := captureLoggerOutput(t)
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v, want the classified Result returned despite the failed Outcome write", err)
+	}
+	if result.Outcome != OutcomeAsking {
+		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
+	}
+	if !strings.Contains(buf.String(), "persist run outcome failed") {
+		t.Errorf("logger output = %q; want the best-effort write failure logged", buf.String())
 	}
 }
