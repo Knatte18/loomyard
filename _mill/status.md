@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-rubric-stencil
 slug: loom-discussion-review-producer
 branch: loom-discussion-review-producer
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r2  '2026-08-25T07:05:22Z'
 plan-review-r3  '2026-08-25T07:14:24Z'
 planned  '2026-08-25T07:14:42Z'
 implementing  '2026-08-25T07:15:23Z'
+approved-rubric-stencil  '2026-08-25T07:19:33Z'
 ```
 
 ## Batches
@@ -33,9 +34,10 @@ implementing  '2026-08-25T07:15:23Z'
 ```yaml
 batches:
   - name: rubric-stencil
-    state: running
+    state: approved
     implementer_session: 7be0d2b3-292e-418a-8af5-4d8c84f77c5f
     start_sha: 7f46b1186df1e5140bf78cfd421932377dce67dc
+    commit_sha: e9518ad2a0c883eb38f8111bd0cdf5740880a9c0
     verify_baseline_failures: []
   - name: shedrecipe-entries
     state: pending
