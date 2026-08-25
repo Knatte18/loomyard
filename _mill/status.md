@@ -5,7 +5,7 @@ phase: blocked
 slug: loom-discussion-burler-fix-scope
 branch: loom-discussion-burler-fix-scope
 plan: _mill/plan
-parent: loom-webster-review-producer
+parent: main
 task: 'loom: Discussion-Burler Fabric Git Invariant fix'
 task_description: |
   loom: Discussion-Burler Fabric Git Invariant fix
