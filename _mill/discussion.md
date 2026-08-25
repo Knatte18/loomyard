@@ -39,6 +39,11 @@ A caller (a Claude session using the `prowler` skill) has no way to tell that fr
 - Unit tests (stubbed transport) for every new path, plus a `//go:build integration` live test gated on real credentials.
 - `plugins/prowler/README.md` — document the new Reddit credentials prerequisite and the tier order.
 
+**Manual operator prerequisite (not automatable, must be scheduled by the plan):** no Reddit application exists yet, and none can be created by the implementing agent — registering one requires an authenticated Reddit account and a web form.
+The **operator** registers a Reddit "script"-type app at `https://www.reddit.com/prefs/apps` and exports the resulting client id and secret as `PROWLER_REDDIT_CLIENT_ID` and `PROWLER_REDDIT_CLIENT_SECRET` in the environment the live integration test runs in — the operator's own shell, not CI, since prowler is a locally-built CLI plugin and this repo runs no CI job for the nested `plugins/prowler` module.
+The plan must place this as an explicit prerequisite step gating the live credentialed smoke test, not as a footnote: every unit-testable part of the task can be completed and reviewed before it, but the task cannot reach "done" until the operator has provisioned the app and the live test has been run and observed to pass.
+The secrets are never committed, never written to a config file, and never echoed in test output or error messages — error messages name the variables only.
+
 **Out:**
 
 - Any stealth/anti-detection hardening of `browser.go` (masking `navigator.webdriver`, persistent profiles, fingerprint spoofing). Measured to fail *and* to actively harm — see the "no-browser-tier-for-Reddit" decision.
@@ -183,7 +188,7 @@ TDD candidates — write the test first for each:
 
 Scenarios that must be covered but are not unit-testable:
 
-- **Live credentialed smoke test**, `//go:build integration`, skipped when the credential env vars are absent. This is what closes the open risk in the `oauth-credential-shape` decision, and the task is not done until it has been run for real against a live Reddit app and observed to pass. A plan that only reasons about the grant working is insufficient.
+- **Live credentialed smoke test**, `//go:build integration`, skipped when the credential env vars are absent. This is what closes the open risk in the `oauth-credential-shape` decision, and the task is not done until it has been run for real against a live Reddit app and observed to pass. A plan that only reasons about the grant working is insufficient. It depends on the **manual operator prerequisite** in Scope — the operator registering the Reddit script app and exporting the two env vars — which the plan must schedule as its own gating step before this test can run.
 - The existing `//go:build integration` browser test must still pass unchanged — this task does not alter the browser tier for non-Reddit URLs.
 - `scripts/selftest.sh` must still pass; it is offline and build-focused and should be unaffected, but it is the module's existing harness and is cheap to re-run.
 

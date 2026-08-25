@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-25T06:16:43Z'
+discussion-fix-r1  '2026-08-25T06:33:33Z'
+discussed  '2026-08-25T06:33:33Z'
 ```
