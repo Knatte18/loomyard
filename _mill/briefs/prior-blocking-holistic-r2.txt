@@ -1,1 +1,0 @@
-- reddit-block-page.html fixture violates Card 1's own trim requirement: **Location:** `plugins/prowler/testdata/reddit-block-page.html:1-3`
