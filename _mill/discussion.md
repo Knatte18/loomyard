@@ -33,7 +33,10 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 - Every "sixteen"/16-row count in production source and comments moved to seventeen: `internal/loomshed/doc.go`, `internal/loomshed/loomshed.go`, `contracts/recipes/loom-recipe.yaml`'s header, `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`.
 - Test updates across `contracts/stencils/rubric_test.go`, `internal/loomrecipe/{coverage_guard,shape,sequence,fixture,recipe}_test.go`, and `internal/loomcli/smoke_test.go`.
 - `contracts/recipes/loom-recipe.yaml`'s header comment, beyond the row count: its "Both review segments follow the same shared-segment mutual-`on_stuck` shape" paragraph (lines 12–16) enumerates the Discussion and Plan pairs by name and becomes three segments.
-- Doc updates in the same commit per CLAUDE.md's task-completion rule: `manifest/designs/loom.md` (producer table row 13, the table/recipe divergence note, the "Webster-Review rubric" section gaining a "doc *about* the shipped stencil" framing paragraph matching the two sibling sections), `contracts/specs/loom-status-spec.md` (its mid-run example names the retired `Webster-Review` row — see the decision below), and `manifest/roadmap.md` (Planned item removed).
+- Doc updates in the same commit per CLAUDE.md's task-completion rule: `manifest/designs/loom.md` (producer table row 13;
+  the table/recipe divergence note at lines 16/17/51;
+  the "Webster-Review rubric" section gaining a "doc *about* the shipped stencil" framing paragraph matching the two sibling sections;
+  and **line 78**, whose per-producer task list must gain a `(shipped)` marker on `loom: Webster-Review producer`, the same convention it already applies to `loom: Plan-Review producer`), `contracts/specs/loom-status-spec.md` (its mid-run example names the retired `Webster-Review` row — see the decision below), and `manifest/roadmap.md` (Planned item removed).
 
 **Out:**
 
@@ -58,13 +61,18 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 
 - Decision: the round derives the diff range itself, at review time, from artifacts already on disk.
   `profile.target` carries **`instructions` only, no `paths`**, and `tool-use: true` lets the round run read-only git.
-  The instructions name one derivation and no guess-fallback: read `_lyx/loom/status.json`, take `product.parent`, and review `git diff $(git merge-base <parent> HEAD)..HEAD`.
+  **The rubric stencil is the single canonical home of the derivation**, under its own named heading;
+  `profile.target.instructions` does not restate it, and instead points at that heading as the definition of the review range.
+  The derivation itself: read `_lyx/loom/status.json`, take `product.parent`, and review `git diff $(git merge-base <parent> HEAD)..HEAD`.
   When `status.json` is unreadable or `product.parent` is empty, the round raises a BLOCKING finding stating it could not determine the review range, and reviews nothing — silently reviewing a guessed range is a worse failure than an honest block.
+  Single-home rather than stated in both places because both rows already read the rubric, nothing would pin a recipe copy against a stencil copy, and the Producer Pointer-Rule Invariant is exactly the rule against an instruction file duplicating content it could point at.
   `profile.fasit` is decided in the same breath: `paths: [_lyx/plan]` plus instructions naming the plan directory as the answer key and `manifest/designs/plan-card-format.md` as the Card model it implements.
 - Rationale: `burlerengine.Profile.validate` resolves and stats every `Target.Paths` entry, so a path entry must exist on disk — a diff has no such file.
   `validate` accepts a `FileSet` with `Instructions` and no `Paths`, which is exactly the escape this needs.
   It does **not** offer the same escape for `Fasit`: `internal/burlerengine/profile.go:77-79` hard-errors on a `Fasit` carrying neither, so leaving it unset would fail the row's first round — hence the explicit `fasit` above, matching both shipped Burler rows.
-  The merge-base is the right base because the parent branch is where the run started and nothing but Webster commits warp content during a loom run — the discussion and plan artifacts are weft commits reached through the `_lyx` junction, so the warp branch normally carries no commits at all until Webster's implementers begin.
+  The merge-base is the right base because the parent branch is where the run started, and the warp branch normally carries no commits until Webster's implementers begin — the discussion and plan artifacts are weft commits reached through the `_lyx` junction, not warp ones.
+  "Normally" is deliberate and not hedging: the shipped `Discussion-Burler` row runs `fix-scope: source`, whose prompt authorises working-tree commits (`internal/burlerengine/prompt.go:144-149`), so a pre-Webster warp commit is reachable in-system and not only by an operator hand-committing.
+  Either way the consequence is the same and is recorded as an open risk below.
   It is also the only candidate that survives recovery (see the rejected alternative below).
   Both the file read and the git calls are read-only, which the Fabric Git Invariant explicitly exempts ("read-only verbs … are exempt — only *mutating* warp git must dispatch through fabric").
 - Rejected: (a) **`_lyx/webster/state.json`'s lowest-numbered batch `startSha`** — the obvious source, and wrong.
@@ -77,7 +85,7 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 ### bouncer-artifact-paths-names-the-plan
 
 - Decision: `Webster-Bouncer`'s `artifact_paths` is the single entry `_lyx/plan`.
-  The rubric states outright that the subject under review is the diff, and carries the same derivation recipe the burler round's `target.instructions` carries.
+  The rubric states outright that the subject under review is the diff, and is the one place the derivation is written down — which is what makes it reach the judge as well as the fixer round, since both rows read it.
 - Rationale: `artifact_paths` is required and non-empty (`shedadapters.NewBouncer` errors on an empty list), every entry must be an absolute path under `Env.WorktreeRoot`, and the generic `bouncer-template-judge.md` renders them as "absolute paths to the artifacts under review.
   Read each one."
   A diff cannot be named there at all, so whichever value is chosen is a workaround;
@@ -199,9 +207,11 @@ The leading comment is stripped by `internal/stencil`'s `StripLeadingComment` be
 The file must contain no `{{.` substring anywhere.
 
 **Row-count knock-on.**
-`git grep -n sixteen` finds every site.
-The ones this task owns: `internal/loomshed/doc.go:1`, `internal/loomshed/loomshed.go:1,5,13`, `contracts/recipes/loom-recipe.yaml:2`, `manifest/designs/shed-recipe.md:9,88`, `manifest/designs/loom.md:16,17,51`.
-The ones it must **not** touch: `internal/planparser/validate.go`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-rubric-plan-review.md`, and `internal/fabricengine/doc.go` — those "sixteen"s count plan-validation checks and fabric destruction kinds, not producer rows.
+`git grep -n sixteen` is the sweep;
+the criterion, not the enumeration below, is authoritative — **a "sixteen" that counts producer rows moves, and every other "sixteen" stays.**
+The ones this task owns, as of this discussion: `internal/loomshed/doc.go:1`, `internal/loomshed/loomshed.go:1,5,13`, `contracts/recipes/loom-recipe.yaml:2`, `manifest/designs/shed-recipe.md:9,88`, `manifest/designs/loom.md:16,17,51`.
+The ones it must **not** touch: `internal/planparser/validate.go`, `internal/planparser/validate_test.go`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-rubric-plan-review.md:20,31`, `manifest/designs/plan-card-format.md:91`, and `manifest/designs/loom.md:155` — every one of those counts `planparser`'s sixteen validation check IDs, not rows — plus `internal/fabricengine/doc.go`, which counts fabric destruction kinds.
+Note that `manifest/designs/loom.md` appears in both lists: three of its "sixteen"s are row counts and one is a check-ID count, so the file cannot be swept with a blind replace.
 
 **`manifest/designs/loom.md`'s table-vs-recipe divergence note** (the paragraph beginning "**The table and the shipped recipe diverge deliberately.**") is arithmetic that changes with this task: the recipe goes to seventeen rows against the table's fifteen entries, and the collapsed-pair count goes from two to three.
 
@@ -300,7 +310,8 @@ Both the count and the stub claim become false, and the surrounding timing ratio
   Wants its own roadmap item.
 - **The merge-base is not identical to the run's start SHA when the branch already carried warp commits.**
   In a normal loom run the warp branch has no commits before Webster, so the two coincide.
-  If an operator hand-committed source on the branch before starting the run, those commits fall inside the review range.
+  Two things can break that: an operator hand-committing source on the branch before the run, and the shipped `Discussion-Burler` row's own `fix-scope: source` fixer, which is authorised to commit into the working tree during discussion review — the same row whose `fix-scope` is a known defect with its own roadmap item.
+  Either way those commits fall inside the review range.
   Judged acceptable, arguably correct: the gate then reviews everything the branch introduces rather than a subset.
 - **A recovered batch invalidates `state.json` as a diff base.**
   Not a risk this task carries — it is why `state.json` was rejected — but recorded here because the rejection is the non-obvious part and a future reader will otherwise re-propose it.
