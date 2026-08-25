@@ -88,7 +88,7 @@ Many producers share the same engine: every `*-Review` producer is a `Bouncer`+`
 
 **Both `blocked` causes carry an exact error string, and `Result.Reason` carries the identical text** — `"stuck with no OnStuck target"` when a `Stuck` producer has no bounce target, and `"bounce budget exhausted"` when the budget runs out — one string written to both the persisted `error` field and the in-memory `Result.Reason`, rather than two phrasings that could drift apart.
 
-**Bounce-budget: per-producer and episode-scoped, no run-wide cap.** `OnStuck` permits a cycle (`Plan-Review` → `Plan-Write` → `Plan-Review` → …), and every hop can be a full LLM session — an unbounded cycle is not a hypothetical, it is the default outcome whenever a bounced-back producer keeps failing the same way.
+**Bounce-budget: per-producer and episode-scoped, no run-wide cap.** `OnStuck` permits a cycle (`Plan-Bouncer` → `Plan-Burler` → `Plan-Bouncer` → …), and every hop can be a full LLM session — an unbounded cycle is not a hypothetical, it is the default outcome whenever a bounced-back producer keeps failing the same way.
 This is an inversion of an earlier design, stated explicitly rather than left to be inferred from the code: `Shed` used to decrement one run-wide counter on every bounce, regardless of which producer was involved, and the doc's own argument for that shape was that a per-producer budget would let an A↔B cycle run `2×budget` bounces before either individually trips — which, that argument said, does not actually bound the thing being guarded against (total wasted spend before a human is pulled in).
 That argument is now overturned, and answered rather than dropped: the aggregate is still bounded, just by a **sum rather than a single number**.
 Within one set of episodes the total is at most the sum of the participating producers' effective `MaxBounces`, so the A↔B cycle really does cost `2×budget` bounces — and that is now a deliberate price, not an oversight, because the two producers are tracked, and budgeted, independently.
@@ -145,7 +145,7 @@ type Shed struct {
 }
 ```
 
-`OnStuck` is what makes "`Plan-Review`'s stuck routes back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
+`OnStuck` is what makes "`Plan-Validate`'s stuck route bounces back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
 `OnDone` is the same idea applied to the happy path: the sole router for a `Done` verdict, with no positional fallback of any kind.
 `Segment` is a plain grouping label with exactly one mechanical effect — `validate()`'s rule that a non-empty `OnStuck` must name a target sharing this producer's own `Segment` — and no other effect anywhere else; it does not scope the bounce budget and does not constrain `OnDone`, because crossing *out* of a segment on approval is the point.
 `MaxBounces` inherits at two levels, and `0` never means "no bounces allowed" at either: a `ProducerDef`'s own `MaxBounces` of `0` inherits `Shed.MaxBounces`, which itself falls back to the internal default of ten when it too is `0`.

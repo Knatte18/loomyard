@@ -161,23 +161,28 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// decorator's archive subdirectory into git rather than leaving it as untracked dirt. A
 		// second Done over already-committed artifacts is a no-op rather than an error:
 		// CommitAnchoredPaths reports committed == false for an already-clean, already-tracked path,
-		// and this closure discards that result alongside the sha, returning only the error. This
-		// commit fires before Plan-Validate has judged the plan, and that is intentional and matches
-		// the discussion precedent: the commit keeps the artifact durable, it does not certify it.
-		// The pathspec is the whole plan directory via planparser.PlanDirRel(), never a hand-built
-		// filepath.Join naming the _lyx literal, which the Lyxdirs Single-Declarer Invariant forbids
-		// in production path-construction context.
+		// and this closure discards that result alongside the sha, returning only the error -- and
+		// this idempotence now covers two callers rather than one, since the Plan-Bouncer row's
+		// approved settle reaches this same closure through the row's commit_seam: plan config key.
+		// The commit message is deliberately shared between the two callers: it names the artifact
+		// set rather than the producer that last touched it, so a Plan-Write commit and a
+		// Plan-Bouncer commit read identically. This commit fires before Plan-Validate has judged
+		// the plan, and that is intentional and matches the discussion precedent: the commit keeps
+		// the artifact durable, it does not certify it. The pathspec is the whole plan directory via
+		// planparser.PlanDirRel(), never a hand-built filepath.Join naming the _lyx literal, which
+		// the Lyxdirs Single-Declarer Invariant forbids in production path-construction context.
 		CommitPlan: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{planparser.PlanDirRel()}, fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		// StencilsDir, RunRoot, Burler, and Now are now filled for the Discussion-Bouncer/
-		// Discussion-Burler segment. StencilsDir is websterGeom.StencilsDir -- the same value the
-		// DiscussionSpec and PlanSpec closures above already capture directly -- so this is one
-		// value read from one place, not a second copy that could drift from theirs. Now is filled
-		// explicitly with time.Now rather than left nil, even though nil defaults to time.Now inside
-		// the underlying constructors, because the Bouncer's archive-filename collision suffix is the
-		// one place a test wants to inject a clock.
+		// StencilsDir, RunRoot, Burler, and Now are filled for both review segments --
+		// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike. StencilsDir is
+		// websterGeom.StencilsDir -- the same value the DiscussionSpec and PlanSpec closures above
+		// already capture directly -- so this is one value read from one place, not a second copy
+		// that could drift from theirs. Now is filled explicitly with time.Now rather than left nil,
+		// even though nil defaults to time.Now inside the underlying constructors, because the
+		// Bouncer's archive-filename collision suffix is the one place a test wants to inject a
+		// clock.
 		StencilsDir: websterGeom.StencilsDir,
 		RunRoot:     loomengine.LoomReviewsDir(location),
 		Burler:      burlerEngine,
