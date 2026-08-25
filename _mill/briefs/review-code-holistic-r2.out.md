@@ -1,0 +1,28 @@
+MILL_REVIEW_BEGIN
+# Review: loom: Plan-Review producer — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-25
+```
+
+## Findings
+
+No findings.
+
+Cross-checked all four batches against their plan cards and the Shared Decisions:
+
+- Batch 1 (rubric stencil): `loom-rubric-plan-review.md` is byte-for-byte the specified content, marker-free, registered in `stencils.go` at the correct position, and `rubric_test.go` pins all eight required phrases plus the no-`{{.`-marker test, with the file header updated for both rubrics.
+- Batch 2 (commit seam): `BouncerConfig.Commit` is added exactly as specified (placed after `Shuttle`, before `Now`), called only on the approved branch, never routed through `degrade`, not gated on `cancelErr`. `testBouncerConfig` extraction is a faithful pure refactor. `bouncer_commit_test.go` covers all five specified behaviours, including the critical non-`Stuck` assertion on commit failure. `entries_bouncer.go`'s `commit_seam` resolution matches the three-state contract (absent/plan/discussion) with `requireSeam` guarding presence, and `entries_bouncer_test.go` covers all six specified cases plus the `configRejectUnknown` proof.
+- Batch 3 (segment rows): `loomshed.go`'s three new constants replace `NamePlanReview` in the correct position; `loom-recipe.yaml`'s `Plan-Bouncer`/`Plan-Burler`/`Plan-Revalidate` rows match the plan's verbatim block including routing (`Plan-Bouncer.on_done: Plan-Revalidate`, `Plan-Revalidate.on_stuck: Plan-Write`, `on_done: Batchifier`) and comments. All seven files in card 9 are internally consistent: `fixture_test.go`'s `corruptPlanOverview` field and `wantProducerTable`/`loomRowEngines`/`wantSequenceOrder` updates line up with the shipped 16-row list, and `TestSequence_FullRunBlocksAtPublish`'s `commitPlanCalls == 2` assertion is correctly justified (Plan-Write's own commit plus Plan-Bouncer's approval commit). `revalidate_test.go` correctly exercises the stale-verdict-adjacent regression path without asserting the known-filed defect's post-bounce behavior, per the Shared Decision. Card 10 and card 11 are correctly scoped and consistent with card 9's shipped shape.
+- Batch 4 (docs sweep): `loom.md`'s two count sentences, producer table (new `Plan-Revalidate` row 10, 15 entries total), diverge-deliberately paragraph, stuck-routing example, and the rewritten `### Plan-Review rubric` section all match the shipped stencil and the card's requirements; the "shipped" annotation is correctly added to the roadmap cross-reference. `shed.md`'s two `OnStuck` worked examples now cite `Plan-Validate`→`Plan-Write` and the real `Plan-Bouncer`↔`Plan-Burler` cycle, both of which genuinely exist in the shipped recipe. `review-finding-classification.md` item 2 correctly renames to the shipped stencil while preserving the open finding-class-dimension scope. `shed-recipe.md`'s two "fourteen-row" claims are now "sixteen-row", and the `commit_seam` documentation in "Live seams" matches the two-rule safety contract. `roadmap.md` removes the Plan-Review item, adds the new fix-scope/AnchorPath/stale-verdict follow-up item covering all three named defects, and its "all three items below" intro sentence is still numerically accurate (Webster-Review, interactive Discussion-Write, and the new item). `loomengine/config.go`'s `LoomReviewsDir` doc reword preserves the ephemeral conclusion while correcting the stale "no commit seam" premise. `loomcli/wiring.go`'s `CommitPlan`/StencilsDir-RunRoot-Burler-Now comments are widened to both segments as specified, and `smoke_test.go`'s driver-liveness note correctly reflects "sixteen rows" / "Webster-Review" alone.
+
+No out-of-plan files, no cross-batch contract mismatches, no constraint violations (Fabric Git Invariant, Told-Geometry, Config Strictness, Shed Recipe Registry counts all hold), and no duplicated global utilities. Test coverage spans happy/error paths for every new entry point across all four batches.
+
+## Verdict
+
+APPROVE
+Implementation matches the approved plan precisely across all four batches with no deviations found.
+MILL_REVIEW_END
