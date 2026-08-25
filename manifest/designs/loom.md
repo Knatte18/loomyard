@@ -13,7 +13,8 @@ the LLM owns the thinking.
 The orchestrator is the **`loom`** module (`lyx loom run`); the gate is a **review segment** in loom's own producer list — a generic `Bouncer` review-gate producer paired with a `Burler`-round producer, both in `internal/shedadapters` — the iterative review loop, hand-wired once per phase. The `Burler`-round producer composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary, `loom`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 `loom` = `Shed` (see [shed.md](shed.md), the generic outer phase-FSM: sequencing, resume, crash recovery, pause, the status-file contract) + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the thirteen rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
+That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the recipe's fourteen rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
+The recipe's fourteen rows and the table below's fourteen entries are the same count, but not the same set — see the note beneath the table for why.
 
 ## The phase machine — a flat producer list, no predefined slots
 
@@ -34,7 +35,7 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 2 | `Loom-Preflight` | simple | mechanical | loom's own status file → `loom-status-spec.md`'s check-4 validation checklist | pass/fail — no artifact, a gate signal only |
 | 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
 | 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail, also callable standalone as `lyx loom validate-discussion` |
-| 5 | `Discussion-Review` | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
+| 5 | `Discussion-Review` (`Discussion-Bouncer` + `Discussion-Burler`) | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
 | 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory, once `Plan-Sweep` is built for real — its absence today is the normal degraded state the stencil now names outright, not an error | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
 | 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail, also callable standalone as `lyx loom validate-plan` |
@@ -44,6 +45,13 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 12 | `Webster-Review` | bespoke | LLM/review segment | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
 | 13 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
 | 14 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+
+**The table and the shipped recipe diverge deliberately.**
+Both count fourteen, but not the same fourteen: the table carries `Plan-Sweep` (row 6) as its own row, which `contracts/recipes/loom-recipe.yaml` does not,
+and the recipe carries `Discussion-Bouncer` and `Discussion-Burler` as two rows, which this table shows as row 5's single `Discussion-Review` entry — the `Kind` column's own black-box framing, not an oversight;
+see [the gate](#the-gate) below for why the two rows stay collapsed to one here.
+`contracts/recipes/loom-recipe.yaml` is the shipped list, authoritative for row names and routing.
+This table is the human-readable design record, kept at fourteen entries by design, not required to track the recipe's row count row-for-row.
 
 `Preflight` and `Loom-Preflight` are **built**, together giving `loom` the two-row shape.
 Row 1, `Preflight`, is the generic, product-agnostic gate: built as `internal/preflightshed`'s general producer over `internal/preflight.Check`, it validates worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the worktree pair's cleanliness, and fabric readiness and sync — warp branch == weft branch, via `warp`'s drift detection.
@@ -73,7 +81,7 @@ The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machi
 ## Discussion producer detail — validation checks and review rubric
 
 `_lyx/discussion/` is produced by `Discussion-Write` (stencil: `contracts/stencils/loom/loom-template-discussion.md`, which pins `decision-record.md`'s and `support-log.md`'s section shape as the agent's own instructions).
-This section carries the detail that belongs to `Discussion-Validate` and `Discussion-Review` instead — two producers not yet built — rather than to the Discussion-Write stencil itself: a mechanical validator's checklist and a future review profile's rubric are not part of what the *writing* agent needs to read.
+This section carries the detail that belongs to `Discussion-Validate` and `Discussion-Review` instead, rather than to the Discussion-Write stencil itself: a mechanical validator's checklist and a review rubric are not part of what the *writing* agent needs to read.
 
 ### Validation checks (spec for `Discussion-Validate`)
 
@@ -96,7 +104,8 @@ This assertion has landed, as `TestPlanSpec_PromptNeverNamesSupportLog` in `inte
 
 ### Discussion-Review rubric — what not to flag
 
-This is the text the future `Bouncer` rubric for `Discussion-Review` must **point at**, per the Producer Pointer-Rule Invariant — never copy or paraphrase into the profile itself.
+The shipped stencil `contracts/stencils/loom/loom-rubric-discussion-review.md` is `Discussion-Review`'s own rubric — read by both `Discussion-Bouncer` and `Discussion-Burler`, the row's two-producer perch.
+This subsection is a doc *about* that stencil, per the Producer Pointer-Rule Invariant, not a second copy it must point at — it is the durable human-readable record the stencil was transcribed from, kept in step with the stencil rather than restated inside it.
 
 `Discussion-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer (which has only checks, never judgment) cannot exhibit.
 Do not flag any of the following as a finding:
@@ -111,7 +120,7 @@ Do not flag any of the following as a finding:
 
 ### Discussion-Review rubric — what to also flag (relocation and exclusion)
 
-This is the text the future `Bouncer` rubric for `Discussion-Review` must **point at**, per the Producer Pointer-Rule Invariant — never copy or paraphrase into the profile itself.
+This subsection is likewise a doc *about* the shipped stencil `contracts/stencils/loom/loom-rubric-discussion-review.md`, per the Producer Pointer-Rule Invariant — the durable human-readable record, not a second copy the stencil must point at.
 The writer-side half of this same principle now lives in `contracts/stencils/loom/loom-template-discussion.md` itself;
 this subsection remains the durable copy.
 
@@ -173,6 +182,10 @@ Each producing phase is guarded by a **review gate**, and from loom's view that 
 or the progress-judge inside.
 
 That black box is a **review segment** — a `Bouncer` review-gate producer paired with a `Burler`-round producer — hand-wired once per phase (discussion / plan / webster) out of the same two generic adapters. The whole point of the black-box boundary is that loom drives all phases **identically** because the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase. See the `internal/shedadapters` package documentation for the two producers and their round-artifact contract, and the `internal/burlerengine` package documentation for the combined handler/fixer round and the profile schema.
+
+**The review model's home is `loom.yaml`, not the recipe.**
+`loom.yaml`'s `review:` and `review_timeout_min:` keys are the review segments' model and timeout, validated at load time exactly like the existing `discussion:` and `plan:` keys.
+They thread through as run-wide `shedrecipe.Env.Review*` values, which a segment's two rows fall back to whenever their own recipe `config:` block omits a per-row model/effort/version/timeout key — the recipe is embedded in the binary, so a recipe-literal model would be untunable without a rebuild.
 
 ## Webster — a black box loom drives, the sibling of the review segment
 

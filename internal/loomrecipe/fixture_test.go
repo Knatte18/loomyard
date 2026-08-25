@@ -17,8 +17,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -28,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -61,6 +66,63 @@ func (fakeMergeShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
 // passes -- without ever dereferencing the handle at construction time.
 func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
+}
+
+// seedBouncerStencils writes the three stencils a live Discussion-Review segment reads at dir,
+// keyed by stencilstore.Path(dir, name): the two generic bouncer templates
+// (bouncer-template-seed, bouncer-template-judge) and the Discussion-Review rubric
+// (loom-rubric-discussion-review), each seeded from its real embedded contracts/stencils bytes
+// rather than dummy content. shedadapters.NewBouncer probes the rubric eagerly at construction, and
+// seedCall/judgeCall read the two templates at call time and degrade to Stuck when either is
+// unreadable, so dummy templates would make shedengine.Done unreachable and would also diverge from
+// the marker set internal/stencil's Fill requires in production.
+func seedBouncerStencils(t *testing.T, dir string) {
+	t.Helper()
+
+	seeds := map[string][]byte{
+		"bouncer-template-seed":         stencils.BouncerTemplateSeed,
+		"bouncer-template-judge":        stencils.BouncerTemplateJudge,
+		"loom-rubric-discussion-review": stencils.LoomRubricDiscussionReview,
+	}
+	for name, content := range seeds {
+		path := stencilstore.Path(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir stencil dir for %s: %v", name, err)
+		}
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			t.Fatalf("write stencil %s: %v", name, err)
+		}
+	}
+}
+
+// fakeLoomBurler implements shedadapters.BurlerRunner, mirroring internal/shedadapters/burler_test.go's
+// own fakeBurlerRunner in shape. Its Run writes the ReviewPath and FixerReportPath the handed
+// burlerengine.Profile names, each with short non-empty placeholder content, and returns a
+// burlerengine.Result whose Outcome is shuttleengine.OutcomeDone -- that pair-on-disk plus
+// OutcomeDone is what makes BurlerProducer.Call return Stuck with a real report rather than
+// erroring, which is what the Bouncer's next call then judges. calls records how many times Run was
+// invoked, so a later test can assert the segment ran exactly one round.
+type fakeLoomBurler struct {
+	calls int
+}
+
+var _ shedadapters.BurlerRunner = (*fakeLoomBurler)(nil)
+
+// Run implements shedadapters.BurlerRunner: it writes p.ReviewPath and p.FixerReportPath with
+// short placeholder content and reports shuttleengine.OutcomeDone.
+func (f *fakeLoomBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.Result, error) {
+	f.calls++
+	if err := os.WriteFile(p.ReviewPath, []byte("review"), 0o644); err != nil {
+		return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: write review %s: %w", p.ReviewPath, err)
+	}
+	if err := os.WriteFile(p.FixerReportPath, []byte("fixer report"), 0o644); err != nil {
+		return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: write fixer report %s: %w", p.FixerReportPath, err)
+	}
+	return burlerengine.Result{
+		Outcome:         shuttleengine.OutcomeDone,
+		ReviewPath:      p.ReviewPath,
+		FixerReportPath: p.FixerReportPath,
+	}, nil
 }
 
 // testLandingDeps returns a landingshed.Deps with every field the two producer constructors
@@ -200,19 +262,27 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 	return websterengine.RunResult{Outcome: "done"}, nil
 }
 
-// fakeLoomShuttle implements shedadapters.Shuttle for row 3 (Discussion-Write) and row 6
-// (Plan-Write) both: shedrecipe.Env carries one Shuttle field, not one per row, so this single fake
-// serves both real LLM rows, branching on the Spec's own Role. On spec.Role == "plan" it writes the
-// whole plan-directory fixture -- planFixtureCard and planFixtureOverview(true) via f.planDir --
-// rather than only spec.OutputFiles, because loomshed.NewPlanWrite's rotation archives every
-// top-level .md file in the plan directory (including the card file seedPlanValidateFixture
-// pre-wrote) before the shuttle runs, so writing only the overview would leave the Card Index
-// naming a card file that no longer exists and Plan-Validate would report Stuck and bounce.
-// Otherwise (row 3's branch) it keeps the discussion behaviour: when writeOutputs is true, it
-// writes both discussion output files from the received Spec.OutputFiles, creating any missing
-// parent directory. Both branches always report shuttleengine.OutcomeDone. commitDiscussionCalls
-// and commitPlanCalls record how many times the fixture's CommitDiscussion and CommitPlan closures
-// built over this fake were invoked, respectively.
+// fakeLoomShuttle implements shedadapters.Shuttle for row 3 (Discussion-Write), row 6 (Plan-Write),
+// and both of the Discussion-Bouncer row's spawn roles: shedrecipe.Env carries one Shuttle field,
+// not one per row, so this single fake serves all of them, branching on the Spec's own Role. On
+// spec.Role == "plan" it writes the whole plan-directory fixture -- planFixtureCard and
+// planFixtureOverview(true) via f.planDir -- rather than only spec.OutputFiles, because
+// loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory
+// (including the card file seedPlanValidateFixture pre-wrote) before the shuttle runs, so writing
+// only the overview would leave the Card Index naming a card file that no longer exists and
+// Plan-Validate would report Stuck and bounce. On spec.Role == "bouncer-judge" it writes the
+// verdict, ledger, and focus files named by spec.OutputFiles, in that fixed order -- see this
+// fake's Run for the shape each carries. There is no "bouncer-seed" branch: shedadapters.seedCall
+// calls ensureFocus(1) regardless of what the spawn reported, synthesizing an empty-but-parsing
+// focus file when none is on disk, so the default no-write-by-role branch below is already correct
+// for the seed pass. Otherwise (row 3's branch) it keeps the discussion behaviour: when
+// writeOutputs is true, it writes both discussion output files from the received
+// Spec.OutputFiles, creating any missing parent directory. Every branch always reports
+// shuttleengine.OutcomeDone. commitDiscussionCalls and commitPlanCalls record how many times the
+// fixture's CommitDiscussion and CommitPlan closures built over this fake were invoked,
+// respectively; bouncerSeedCalls and bouncerJudgeCalls record how many times Run was invoked with
+// each of the Bouncer's two spawn roles, so a later test can assert the segment's exact spawn
+// sequence.
 //
 // buildSequenceFixture's return signature stays fixed at exactly (anchorPath string, env
 // shedrecipe.Env, paths ShedPaths): seven call sites across sequence_test.go and resume_test.go
@@ -229,15 +299,24 @@ type fakeLoomShuttle struct {
 	decisionRecordContent string
 	supportLogContent     string
 	planDir               string
+	// bouncerVerdict is the verdict this fake's "bouncer-judge" branch writes into the round's
+	// verdict file. Empty defaults to "APPROVED", so a later test can script a "BLOCKING" round
+	// without a second fake.
+	bouncerVerdict    string
+	bouncerSeedCalls  int
+	bouncerJudgeCalls int
 }
 
 var _ shedadapters.Shuttle = (*fakeLoomShuttle)(nil)
 
 // Run implements shedadapters.Shuttle: on spec.Role == "plan" it rewrites the whole plan directory
-// and reports Done; otherwise it records the call and, when f.writeOutputs is true, writes every
-// entry of spec.OutputFiles with this fake's configured content before reporting
-// shuttleengine.OutcomeDone. See fakeLoomShuttle's own doc comment for why the "plan" branch writes
-// the whole directory rather than only spec.OutputFiles.
+// and reports Done; on spec.Role == "bouncer-judge" it writes the round's verdict, ledger, and
+// focus files (in that order, per spec.OutputFiles) and records the call; on spec.Role ==
+// "bouncer-seed" it only records the call, per fakeLoomShuttle's own doc comment; otherwise it
+// records the call and, when f.writeOutputs is true, writes every entry of spec.OutputFiles with
+// this fake's configured content before reporting shuttleengine.OutcomeDone. See fakeLoomShuttle's
+// own doc comment for why the "plan" branch writes the whole directory rather than only
+// spec.OutputFiles.
 func (f *fakeLoomShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	f.runCalls++
 
@@ -252,6 +331,20 @@ func (f *fakeLoomShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, er
 			return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write plan overview file: %w", err)
 		}
 		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+	}
+
+	if spec.Role == "bouncer-judge" {
+		f.bouncerJudgeCalls++
+		return f.runBouncerJudge(spec)
+	}
+
+	if spec.Role == "bouncer-seed" {
+		f.bouncerSeedCalls++
+		// No branch-specific write: shedadapters.Bouncer's seedCall calls ensureFocus(1) regardless
+		// of what the spawn reported, synthesizing an empty-but-parsing focus file whenever the one
+		// on disk is absent or unparseable, so whatever the default write-by-index block below does
+		// or does not write to spec.OutputFiles[0] (this role's lone entry, the round-1 focus path)
+		// is immaterial: a real focus template's content it happens to match is never required.
 	}
 
 	if f.writeOutputs {
@@ -269,6 +362,46 @@ func (f *fakeLoomShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, er
 			}
 		}
 	}
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+}
+
+// runBouncerJudge writes the three files spec.OutputFiles names, in shedadapters' own fixed
+// order -- the round's verdict path, its ledger path, and the next round's focus path -- each
+// satisfying its own package-private parser (parseVerdict, parseLedger, and parseFocus
+// respectively). The round number embedded in every file is spec.Round, which the Bouncer fills
+// with the round it is judging, never a hardcoded 1. The verdict written is f.bouncerVerdict,
+// defaulting to "APPROVED" when empty.
+func (f *fakeLoomShuttle) runBouncerJudge(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+	if len(spec.OutputFiles) != 3 {
+		return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: bouncer-judge spec.OutputFiles has %d entries; want 3 (verdict, ledger, focus)", len(spec.OutputFiles))
+	}
+	round, err := strconv.Atoi(spec.Round)
+	if err != nil {
+		return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: bouncer-judge spec.Round %q: %w", spec.Round, err)
+	}
+
+	verdict := f.bouncerVerdict
+	if verdict == "" {
+		verdict = "APPROVED"
+	}
+	verdictContent := fmt.Sprintf("---\nverdict: %s\nrationale: fixture rationale for round %d\n---\n", verdict, round)
+	if err := os.WriteFile(spec.OutputFiles[0], []byte(verdictContent), 0o644); err != nil {
+		return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write bouncer verdict %s: %w", spec.OutputFiles[0], err)
+	}
+
+	ledgerContent := fmt.Sprintf("---\nround: %d\nledger: []\n---\n", round)
+	if err := os.WriteFile(spec.OutputFiles[1], []byte(ledgerContent), 0o644); err != nil {
+		return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write bouncer ledger %s: %w", spec.OutputFiles[1], err)
+	}
+
+	// The focus file targets round+1, matching the path shedadapters.focusPath(runDir, round+1)
+	// names; Bouncer.settle on an APPROVED verdict never reads it, so this write only matters when
+	// f.bouncerVerdict scripts a BLOCKING round.
+	focusContent := fmt.Sprintf("---\nround: %d\nexclude_lenses: []\nfocus: []\n---\n", round+1)
+	if err := os.WriteFile(spec.OutputFiles[2], []byte(focusContent), 0o644); err != nil {
+		return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write bouncer focus %s: %w", spec.OutputFiles[2], err)
+	}
+
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 }
 
@@ -372,6 +505,13 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		planDir:               planDir,
 	}
 
+	runRoot := filepath.Join(dir, "reviews")
+	if err := os.MkdirAll(runRoot, 0o755); err != nil {
+		t.Fatalf("mkdir run root: %v", err)
+	}
+	stencilsDir := filepath.Join(dir, "stencils")
+	seedBouncerStencils(t, stencilsDir)
+
 	env = shedrecipe.Env{
 		Cwd:                cwd,
 		AnchorPath:         dir,
@@ -387,8 +527,12 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			Engine:     fakeShuttleEngine{},
 			RefMatcher: fakeRefMatcher{},
 		},
-		Landing: landing,
-		Shuttle: loomShuttle,
+		Landing:     landing,
+		Shuttle:     loomShuttle,
+		RunRoot:     runRoot,
+		StencilsDir: stencilsDir,
+		Burler:      &fakeLoomBurler{},
+		Now:         func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "discussion prompt",

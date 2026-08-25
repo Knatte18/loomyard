@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// loomRowEngines maps each of New's thirteen row names to the engine name backing it. The row-name
+// loomRowEngines maps each of New's fourteen row names to the engine name backing it. The row-name
 // side is keyed off loomshed's own Name* constants, per the row-name-authority-stays-with-the-go-
 // constants Shared Decision -- loomshed reads two of them for status-seed and resume purposes, so
 // those constants remain the authority even though this package now builds the list. The engine
@@ -24,7 +24,8 @@ var loomRowEngines = map[string]string{
 	loomshed.NameLoomPreflight:      "LoomPreflight",
 	loomshed.NameDiscussionWrite:    "DiscussionWrite",
 	loomshed.NameDiscussionValidate: "DiscussionValidate",
-	loomshed.NameDiscussionReview:   "Stub",
+	loomshed.NameDiscussionBouncer:  "Bouncer",
+	loomshed.NameDiscussionBurler:   "BurlerRound",
 	loomshed.NamePlanWrite:          "PlanWrite",
 	loomshed.NamePlanValidate:       "PlanValidate",
 	loomshed.NamePlanReview:         "Stub",
@@ -36,14 +37,14 @@ var loomRowEngines = map[string]string{
 }
 
 // coverageGuardAllowedUnreachableEngines names the registry engines this task's coverage guard
-// tolerates as unreferenced by any of the thirteen built rows: the remaining "loom: real LLM
-// producers" roadmap items (manifest/roadmap.md) still stub out Discussion-Review, Plan-Review, and
-// Webster-Review, and each will consume one of these three engines when it lands. Until then the
-// registry legitimately ships more entries than the recipe currently reaches.
+// tolerates as unreferenced by any of the fourteen built rows. This task landed Bouncer and
+// BurlerRound, wiring the Discussion-Bouncer/Discussion-Burler perch, so both engines are now
+// reached and drop out of this allowlist. Stub stays reachable via the still-stubbed Plan-Review
+// and Webster-Review rows, so it stays out of this map too. SingleLLM is the sole remaining
+// tolerated entry: the two other "loom: real LLM producers" roadmap items (manifest/roadmap.md)
+// have not yet landed a row that reaches it.
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
-	"SingleLLM":   true,
-	"Bouncer":     true,
-	"BurlerRound": true,
+	"SingleLLM": true,
 }
 
 // TestCoverageGuard_EveryLoomRowHasAnEngine asserts four things about loomRowEngines against New's

@@ -9,15 +9,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// wantSequenceOrder is the row 1-12 name sequence a clean Run over buildSequenceFixture must
-// produce. Asserted against this literal expected list rather than a computed one, so a reordering
-// in contracts/recipes/loom-recipe.yaml's row order is a test failure rather than a silently-agreeing
-// derivation.
+// wantSequenceEntry pairs one expected history-row name with its expected shedengine.Outcome.
+type wantSequenceEntry struct {
+	name    string
+	outcome shedengine.Outcome
+}
+
+// wantSequenceOrder is the row 1-through-Publish name/outcome sequence a clean Run over
+// buildSequenceFixture must produce. Asserted against this literal expected list rather than a
+// computed one, so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure
+// rather than a silently-agreeing derivation.
 //
-// The sequence stops at Publish (row 12) deliberately: Publish's OnStuck is "" (escalate), so a
-// Stuck verdict blocks the run and row 13 (Finalize) is never invoked. Driving both producers'
-// real merge logic through a Shed run needs a genuine two-worktree pair and therefore git, which
-// this batch's own decision keeps out of this package's untagged tier.
+// Every entry but the review segment and the trailing Publish carries a Done outcome by rule; the
+// segment itself does not, so its three entries are spelled out explicitly rather than derived. The
+// segment replaces the single stubbed Discussion-Review entry with exactly three: NameDiscussionBouncer
+// with Stuck (the seed call, which spawns a focus-setting pass and always reports Stuck, never
+// judging anything on its first call), NameDiscussionBurler with Stuck (one completed review round --
+// BurlerProducer reports every successful round as Stuck by contract, never Done, since its Stuck is
+// a routine hand-off to the Bouncer rather than a real stuck condition), and NameDiscussionBouncer
+// again with Done (the judge call, whose fixture-scripted APPROVED verdict is what advances the run
+// past the segment to Plan-Write). Two Stuck entries mid-run are therefore not a failure signal here;
+// they are the segment doing its job.
+//
+// The sequence stops at Publish deliberately: Publish's OnStuck is "" (escalate), so a Stuck verdict
+// blocks the run and Finalize is never invoked. Driving both producers' real merge logic through a
+// Shed run needs a genuine two-worktree pair and therefore git, which this batch's own decision keeps
+// out of this package's untagged tier.
 //
 // The real row 2 (Loom-Preflight) passes against this fixture rather than needing a substituted
 // fake because buildSequenceFixture seeds through the production Seed, which writes a coherent
@@ -34,24 +51,27 @@ import (
 // behind loomshed's rotate-and-commit decorator, and the fixture's fake shuttle rewrites the whole
 // plan directory on its "plan"-role branch, so Plan-Validate still finds a complete, approved,
 // zero-findings plan after the decorator's rotation archived the seeded one away.
-var wantSequenceOrder = []string{
-	loomshed.NamePreflight,
-	loomshed.NameLoomPreflight,
-	loomshed.NameDiscussionWrite,
-	loomshed.NameDiscussionValidate,
-	loomshed.NameDiscussionReview,
-	loomshed.NamePlanWrite,
-	loomshed.NamePlanValidate,
-	loomshed.NamePlanReview,
-	loomshed.NameBatchifier,
-	loomshed.NameWebster,
-	loomshed.NameWebsterReview,
-	loomshed.NamePublish,
+var wantSequenceOrder = []wantSequenceEntry{
+	{loomshed.NamePreflight, shedengine.Done},
+	{loomshed.NameLoomPreflight, shedengine.Done},
+	{loomshed.NameDiscussionWrite, shedengine.Done},
+	{loomshed.NameDiscussionValidate, shedengine.Done},
+	{loomshed.NameDiscussionBouncer, shedengine.Stuck},
+	{loomshed.NameDiscussionBurler, shedengine.Stuck},
+	{loomshed.NameDiscussionBouncer, shedengine.Done},
+	{loomshed.NamePlanWrite, shedengine.Done},
+	{loomshed.NamePlanValidate, shedengine.Done},
+	{loomshed.NamePlanReview, shedengine.Done},
+	{loomshed.NameBatchifier, shedengine.Done},
+	{loomshed.NameWebster, shedengine.Done},
+	{loomshed.NameWebsterReview, shedengine.Done},
+	{loomshed.NamePublish, shedengine.Stuck},
 }
 
-// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the 13-row list runs
-// rows 1 through 12 (Preflight through Publish) and blocks on Publish's Stuck verdict, never
-// reaching Finalize (row 13) -- see wantSequenceOrder's own doc comment for why.
+// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the fourteen-row list
+// runs Preflight through Publish and blocks on Publish's Stuck verdict, never reaching Finalize --
+// see wantSequenceOrder's own doc comment for why, including for the review segment's three-entry
+// shape.
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
@@ -75,17 +95,13 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	if len(result.History) != len(wantSequenceOrder) {
 		t.Fatalf("Run() History has %d entries; want %d: %+v", len(result.History), len(wantSequenceOrder), result.History)
 	}
-	for i, wantName := range wantSequenceOrder {
+	for i, want := range wantSequenceOrder {
 		entry := result.History[i]
-		if entry.Producer != wantName {
-			t.Errorf("History[%d].Producer = %q; want %q", i, entry.Producer, wantName)
+		if entry.Producer != want.name {
+			t.Errorf("History[%d].Producer = %q; want %q", i, entry.Producer, want.name)
 		}
-		wantOutcome := shedengine.Done
-		if wantName == loomshed.NamePublish {
-			wantOutcome = shedengine.Stuck
-		}
-		if entry.Outcome != wantOutcome {
-			t.Errorf("History[%d] (%s).Outcome = %q; want %q", i, entry.Producer, entry.Outcome, wantOutcome)
+		if entry.Outcome != want.outcome {
+			t.Errorf("History[%d] (%s).Outcome = %q; want %q", i, entry.Producer, entry.Outcome, want.outcome)
 		}
 	}
 
@@ -114,5 +130,17 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	// rather than the decorator being silently bypassed.
 	if loomShuttle.commitPlanCalls != 1 {
 		t.Errorf("fakeLoomShuttle.commitPlanCalls = %d; want exactly 1 after a clean run", loomShuttle.commitPlanCalls)
+	}
+
+	// The scenario checks that the review segment genuinely ran rather than being silently
+	// short-circuited: the fake burler ran exactly one round, and the fake shuttle recorded exactly
+	// one bouncer-judge spawn -- the judge call whose fixture-scripted APPROVED verdict is what
+	// advanced the run past the segment.
+	loomBurler := env.Burler.(*fakeLoomBurler)
+	if loomBurler.calls != 1 {
+		t.Errorf("fakeLoomBurler.calls = %d; want exactly 1 after a clean run", loomBurler.calls)
+	}
+	if loomShuttle.bouncerJudgeCalls != 1 {
+		t.Errorf("fakeLoomShuttle.bouncerJudgeCalls = %d; want exactly 1 after a clean run", loomShuttle.bouncerJudgeCalls)
 	}
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env,
@@ -43,15 +45,30 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, err
 	}
 
-	profile, err := burlerRoundProfile(profileCfg)
+	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir)
 	if err != nil {
 		return nil, err
+	}
+
+	// A row setting model/effort/timeout_s overrides the Env value; a row omitting it takes the Env
+	// value; both absent leaves the zero value. configInt with required false returns 0 for an
+	// absent key, so 0 is the absent sentinel here -- the same "no meaningful explicit zero"
+	// reasoning as configString's empty-string sentinel.
+	if model == "" {
+		model = env.ReviewModel
+	}
+	if effort == "" {
+		effort = env.ReviewEffort
+	}
+	timeout := time.Duration(timeoutS) * time.Second
+	if timeoutS == 0 {
+		timeout = env.ReviewTimeout
 	}
 
 	opts := burlerengine.RunOpts{
 		Model:   model,
 		Effort:  effort,
-		Timeout: time.Duration(timeoutS) * time.Second,
+		Timeout: timeout,
 	}
 
 	if err := requireAbsRoot("BurlerRound", "RunRoot", env.RunRoot); err != nil {
@@ -96,10 +113,12 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 	return burlerengine.FileSet{Paths: paths, Instructions: instructions}, nil
 }
 
-// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile, recognising exactly six
-// keys -- target, fasit, rubric, fix-scope, tool-use, and cluster-fan -- all optional at this level.
+// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile, recognising exactly seven
+// keys -- target, fasit, rubric, rubric_stencil, fix-scope, tool-use, and cluster-fan -- all
+// optional at this level individually, subject to the rubric/rubric_stencil mutual-exclusivity rule
+// below.
 //
-// These six key names are a hand-maintained duplicate of internal/burlercli's profileYAML
+// Six of these seven key names are a hand-maintained duplicate of internal/burlercli's profileYAML
 // kebab-case shape, kept identical deliberately so a human who has written a burler profile file
 // reads a recipe row without a second vocabulary. review-path, fixer-report-path, prior-reviews,
 // prior-fixer-reports, and cluster-exclude are deliberately absent because
@@ -107,10 +126,16 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 // burlerengine.RunOpts.Round are overwritten per round, so a recipe author setting one would be
 // setting a value the producer silently discards.
 //
-// This entry does not check profile's inner required-ness: burlerengine.Profile.validate already
-// rejects an empty Rubric and a Target/Fasit with neither Paths nor Instructions, and duplicating
-// that here would drift from it.
-func burlerRoundProfile(cfg Config) (burlerengine.Profile, error) {
+// rubric_stencil is the one key with no profileYAML counterpart: it names a stencilstore rubric
+// stencil, read via stencilstore and stripped of its leading stencil-store comment banner, to set
+// Profile.Rubric in place of a literal rubric string. Exactly one of rubric and rubric_stencil must
+// be non-empty -- both set, or both empty, is a construction error naming both keys, because neither
+// of Profile.validate's own checks can say which of the two the author meant.
+//
+// This entry does not check profile's inner required-ness beyond that one rule:
+// burlerengine.Profile.validate already rejects an empty Rubric and a Target/Fasit with neither
+// Paths nor Instructions, and duplicating that here would drift from it.
+func burlerRoundProfile(cfg Config, stencilsDir string) (burlerengine.Profile, error) {
 	targetCfg, err := configMap(cfg, "target", false)
 	if err != nil {
 		return burlerengine.Profile{}, err
@@ -120,6 +145,10 @@ func burlerRoundProfile(cfg Config) (burlerengine.Profile, error) {
 		return burlerengine.Profile{}, err
 	}
 	rubric, err := configString(cfg, "rubric", false)
+	if err != nil {
+		return burlerengine.Profile{}, err
+	}
+	rubricStencil, err := configString(cfg, "rubric_stencil", false)
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
@@ -135,8 +164,33 @@ func burlerRoundProfile(cfg Config) (burlerengine.Profile, error) {
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
-	if err := configRejectUnknown(cfg, "target", "fasit", "rubric", "fix-scope", "tool-use", "cluster-fan"); err != nil {
+	if err := configRejectUnknown(cfg, "target", "fasit", "rubric", "rubric_stencil", "fix-scope", "tool-use", "cluster-fan"); err != nil {
 		return burlerengine.Profile{}, err
+	}
+
+	// Exactly one of rubric and rubric_stencil must be non-empty. This is checked here, ahead of
+	// burlerengine.Profile.validate's own empty-Rubric rejection, because that error names neither
+	// key and cannot say which of the two the author meant.
+	switch {
+	case rubric != "" && rubricStencil != "":
+		return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: config keys \"rubric\" and \"rubric_stencil\" are mutually exclusive")
+	case rubric == "" && rubricStencil == "":
+		return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: exactly one of config keys \"rubric\" and \"rubric_stencil\" is required")
+	}
+
+	if rubricStencil != "" {
+		if err := requireAbsRoot("BurlerRound", "StencilsDir", stencilsDir); err != nil {
+			return burlerengine.Profile{}, err
+		}
+		raw, err := stencilstore.Read(stencilsDir, rubricStencil)
+		if err != nil {
+			return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: rubric_stencil %q: %w", rubricStencil, err)
+		}
+		// stencilstore stamps a "<!-- lyx-stencil: sha256=... -->" banner onto every seeded file, and
+		// stencil.Fill strips a banner from the template it parses but never from a marker value, so
+		// unstripped bytes would inject the banner into the middle of the round prompt. This mirrors
+		// what shedadapters' own Bouncer already does with its rubric.
+		rubric = stencil.StripLeadingComment(string(raw))
 	}
 
 	target, err := burlerRoundFileSet("BurlerRound", "target", targetCfg)

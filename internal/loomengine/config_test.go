@@ -10,6 +10,7 @@ package loomengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -51,6 +52,12 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.PlanTimeoutMin != 120 {
 		t.Errorf("cfg.PlanTimeoutMin = %d; want %d", cfg.PlanTimeoutMin, 120)
 	}
+	if cfg.Review != "opus[effort=high]" {
+		t.Errorf("cfg.Review = %q; want %q", cfg.Review, "opus[effort=high]")
+	}
+	if cfg.ReviewTimeoutMin != 240 {
+		t.Errorf("cfg.ReviewTimeoutMin = %d; want %d", cfg.ReviewTimeoutMin, 240)
+	}
 }
 
 // TestLoadConfig_MalformedDiscussionSpec verifies a hand-edited loom.yaml with an ungrammatical
@@ -62,6 +69,8 @@ func TestLoadConfig_MalformedDiscussionSpec(t *testing.T) {
 discussion_timeout_min: 480
 plan: opus[effort=high]
 plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -82,6 +91,8 @@ func TestLoadConfig_MalformedPlanSpec(t *testing.T) {
 discussion_timeout_min: 480
 plan: "opus[effort"
 plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -90,6 +101,28 @@ plan_timeout_min: 120
 	}
 	if !strings.Contains(err.Error(), "plan") {
 		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "plan")
+	}
+}
+
+// TestLoadConfig_MalformedReviewSpec verifies a hand-edited loom.yaml with well-formed discussion
+// and plan specs but an ungrammatical review model-spec fails loud at load time, naming the
+// "review" key, rather than being silently carried into the review producers' spawn site.
+func TestLoadConfig_MalformedReviewSpec(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: "opus[effort"
+review_timeout_min: 240
+`)
+
+	_, err := LoadConfig(baseDir, "loom")
+	if err == nil {
+		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed review spec")
+	}
+	if !strings.Contains(err.Error(), "review") {
+		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "review")
 	}
 }
 
@@ -195,4 +228,36 @@ func TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent(t *testing
 	if want := filepath.Dir(LoomBootstrapLock(l)); got != want {
 		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomBootstrapLock()))", got, want)
 	}
+}
+
+// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts
+// every yaml tag appears in the template text -- so a struct field added without a matching
+// template line is caught mechanically rather than relying on review to notice the gap.
+// The Config Strictness Invariant makes a struct field with no matching template key a silent hole
+// rather than a load error, which is exactly what this check guards against.
+func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
+	text := ConfigTemplate()
+
+	typ := reflect.TypeOf(Config{})
+	for i := 0; i < typ.NumField(); i++ {
+		tag := typ.Field(i).Tag.Get("yaml")
+		if tag == "" {
+			t.Fatalf("Config field %q has no yaml tag", typ.Field(i).Name)
+		}
+		if !containsConfigKey(text, tag) {
+			t.Errorf("ConfigTemplate() does not contain key %q for field %q", tag, typ.Field(i).Name)
+		}
+	}
+}
+
+// containsConfigKey reports whether text contains a "<key>:" line-start token, the shape every one
+// of this template's keys takes.
+func containsConfigKey(text, key string) bool {
+	needle := key + ":"
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), needle) {
+			return true
+		}
+	}
+	return false
 }

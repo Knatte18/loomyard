@@ -8,8 +8,10 @@ package loomcli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -51,6 +53,13 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	// burlerengine.LoadConfig takes one argument, not the (baseDir, module) shape every other
+	// loader above takes: it is an optional-file loader, so an absent burler.yaml yields a zero
+	// Config and a nil error rather than a load failure.
+	burlerCfg, err := burlerengine.LoadConfig(anchorPath)
+	if err != nil {
+		return err
+	}
 	registry, err := modelspec.LoadRegistry(anchorPath)
 	if err != nil {
 		return err
@@ -63,6 +72,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	reviewSettings, err := loomengine.ResolveReview(loomCfg, registry)
+	if err != nil {
+		return err
+	}
 
 	reedGeom := hubgeom.ReedGeometry(location)
 	reedEngine := reedengine.New(reedCfg, reedGeom)
@@ -70,6 +83,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	websterGeom := hubgeom.WebsterGeometry(location)
+
+	// BurlerGeometry, not WebsterGeometry: BurlerGeometry fills WorktreeRoot from
+	// location.WorktreePath(), while WebsterGeometry fills its own from location.AnchorPath() for a
+	// reason specific to webster's CLI call sites (see webstergeom.go's doc comment). That reasoning
+	// does not carry over to Burler, so the two geometries are not interchangeable here.
+	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
@@ -152,15 +171,25 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{planparser.PlanDirRel()}, fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		// StencilsDir, RunRoot, Burler, and Now are left zero -- only SingleLLM and Bouncer/
-		// BurlerRound read StencilsDir/RunRoot, and no row in loom's recipe uses those engines yet.
-		// StencilsDir in particular stays unfilled here even though DiscussionWrite and PlanWrite are
-		// now wired: the DiscussionSpec and PlanSpec closures above each capture
-		// websterGeom.StencilsDir directly rather than reading it back off Env. A nil Now is legal,
-		// defaulting to time.Now inside NewSingleLLMProducer.
-		//
-		// Landing is deliberately left unfilled here too, but for a different reason than the other
-		// four: Env.Landing is assembled in drive.go, immediately before loomrecipe.New, because
+		// StencilsDir, RunRoot, Burler, and Now are now filled for the Discussion-Bouncer/
+		// Discussion-Burler segment. StencilsDir is websterGeom.StencilsDir -- the same value the
+		// DiscussionSpec and PlanSpec closures above already capture directly -- so this is one
+		// value read from one place, not a second copy that could drift from theirs. Now is filled
+		// explicitly with time.Now rather than left nil, even though nil defaults to time.Now inside
+		// the underlying constructors, because the Bouncer's archive-filename collision suffix is the
+		// one place a test wants to inject a clock.
+		StencilsDir: websterGeom.StencilsDir,
+		RunRoot:     loomengine.LoomReviewsDir(location),
+		Burler:      burlerEngine,
+		Now:         time.Now,
+
+		ReviewModel:   reviewSettings.Model,
+		ReviewEffort:  reviewSettings.Effort,
+		ReviewVersion: reviewSettings.Version,
+		ReviewTimeout: reviewSettings.Timeout,
+
+		// Landing is deliberately left unfilled here, for a different reason than the four above:
+		// Env.Landing is assembled in drive.go, immediately before loomrecipe.New, because
 		// NewPublish/NewFinalize both open their fabric pair eagerly at construction, and wire()
 		// runs for every verb including "status"/"pause" -- the same OpenBisector hazard the
 		// comment above already guards against. See landingDeps (landingdeps.go) and the

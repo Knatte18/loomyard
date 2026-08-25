@@ -11,10 +11,7 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — all four items below are unblocked.
-
-1. **loom: Discussion-Review producer** — replace the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment (a "perch," see `CLAUDE.md`'s terminology note); the rubric it must point at is already written, in `designs/loom.md`'s Discussion-Review sections.
-   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — all three items below are unblocked.
 
 1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch as a `Plan-Bouncer`/`Plan-Burler` segment — no prior rubric exists for the new Card format; criteria now recorded in `designs/loom.md`'s Plan-Review rubric section.
    See [designs/loom.md](designs/loom.md#plan-review-rubric).
@@ -117,6 +114,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **loom: Discussion-Review producer** — replaced the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment.
+   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
 ## Maintenance
 

@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -409,6 +410,72 @@ func TestWire_PlanSeamsFilled(t *testing.T) {
 	}
 	if c.env.CommitPlan == nil {
 		t.Error("c.env.CommitPlan = nil; want a non-nil commit closure")
+	}
+}
+
+// TestWire_ReviewSegmentSeamsFilled asserts the four Env fields the Discussion-Bouncer/
+// Discussion-Burler segment reads (StencilsDir, RunRoot, Burler, Now) are filled after wire(),
+// following TestWire_PathFieldsMatchLoomengineAccessors' convention of asserting an Env path field
+// against its own loomengine/fabricengine accessor rather than a re-derived literal.
+func TestWire_ReviewSegmentSeamsFilled(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if want := fabricengine.StencilsDir(loc.HubPath); c.env.StencilsDir != want {
+		t.Errorf("c.env.StencilsDir = %q; want %q", c.env.StencilsDir, want)
+	}
+	if want := loomengine.LoomReviewsDir(loc); c.env.RunRoot != want {
+		t.Errorf("c.env.RunRoot = %q; want %q", c.env.RunRoot, want)
+	}
+	if c.env.Burler == nil {
+		t.Error("c.env.Burler = nil; want a non-nil shedadapters.BurlerRunner")
+	}
+	if c.env.Now == nil {
+		t.Error("c.env.Now = nil; want a non-nil clock")
+	}
+}
+
+// TestWire_ReviewTripleMatchesLoadedConfig asserts c.env.ReviewModel, c.env.ReviewEffort,
+// c.env.ReviewVersion, and c.env.ReviewTimeout equal what loomengine.ResolveReview returns for the
+// same loaded config and registry -- resolved in the test rather than hardcoded against the
+// template's literal spec, so a later template edit does not silently break this assertion's
+// meaning.
+func TestWire_ReviewTripleMatchesLoadedConfig(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	registry, err := modelspec.LoadRegistry(loc.AnchorPath())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(%q) = %v; want nil", loc.AnchorPath(), err)
+	}
+	want, err := loomengine.ResolveReview(c.cfg, registry)
+	if err != nil {
+		t.Fatalf("loomengine.ResolveReview(c.cfg, registry) = %v; want nil", err)
+	}
+
+	if c.env.ReviewModel != want.Model {
+		t.Errorf("c.env.ReviewModel = %q; want %q", c.env.ReviewModel, want.Model)
+	}
+	if c.env.ReviewEffort != want.Effort {
+		t.Errorf("c.env.ReviewEffort = %q; want %q", c.env.ReviewEffort, want.Effort)
+	}
+	if c.env.ReviewVersion != want.Version {
+		t.Errorf("c.env.ReviewVersion = %q; want %q", c.env.ReviewVersion, want.Version)
+	}
+	if c.env.ReviewTimeout != want.Timeout {
+		t.Errorf("c.env.ReviewTimeout = %s; want %s", c.env.ReviewTimeout, want.Timeout)
 	}
 }
 

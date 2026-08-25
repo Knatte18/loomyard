@@ -114,6 +114,161 @@ func TestBurlerRoundEntry_ProfileMapping(t *testing.T) {
 	}
 }
 
+// TestBurlerRoundEntry_RubricStencil covers the profile.rubric_stencil key: resolving a seeded
+// stencil's content into Profile.Rubric, stripping a leading stamp banner from it, the
+// rubric/rubric_stencil mutual-exclusivity rule, an unseeded stencil name, and the
+// empty-Env.StencilsDir construction error being scoped to the rubric_stencil path only.
+func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
+	t.Run("ResolvesSeededStencilContent", func(t *testing.T) {
+		env := newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "round-rubric", "BLOCKING: a round bug.\n")
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"rubric_stencil": "round-rubric"},
+		}
+
+		profile, _ := callAndCaptureProfile(t, "review-round", cfg, env)
+		if profile.Rubric != "BLOCKING: a round bug.\n" {
+			t.Errorf("profile.Rubric = %q; want %q", profile.Rubric, "BLOCKING: a round bug.\n")
+		}
+	})
+
+	t.Run("StripsLeadingStampBanner", func(t *testing.T) {
+		env := newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "round-rubric", "<!-- lyx-stencil: sha256=aaaa -->\nBLOCKING: a round bug.\n")
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"rubric_stencil": "round-rubric"},
+		}
+
+		profile, _ := callAndCaptureProfile(t, "review-round", cfg, env)
+		if profile.Rubric != "BLOCKING: a round bug.\n" {
+			t.Errorf("profile.Rubric = %q; want the banner stripped, got the raw stencil bytes", profile.Rubric)
+		}
+	})
+
+	t.Run("BothRubricAndRubricStencilFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "round-rubric", "a rubric\n")
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"rubric": "a literal rubric", "rubric_stencil": "round-rubric"},
+		}
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "rubric")
+		assertErrContains(t, err, "rubric_stencil")
+	})
+
+	t.Run("NeitherRubricNorRubricStencilFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"fix-scope": "source"},
+		}
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "rubric")
+		assertErrContains(t, err, "rubric_stencil")
+	})
+
+	t.Run("UnseededRubricStencilFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"rubric_stencil": "no-such-round-rubric"},
+		}
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "no-such-round-rubric")
+	})
+
+	t.Run("EmptyStencilsDirFailsOnRubricStencilPathOnly", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.StencilsDir = ""
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"rubric_stencil": "round-rubric"},
+		}
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "StencilsDir")
+	})
+
+	t.Run("EmptyStencilsDirConstructsCleanlyWithLiteralRubric", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.StencilsDir = ""
+		cfg := minimalBurlerConfig()
+
+		producer, err := burlerRoundEntry("review-round", cfg, env)
+		if err != nil {
+			t.Fatalf("burlerRoundEntry() error = %v; want nil", err)
+		}
+		if producer == nil {
+			t.Fatal("burlerRoundEntry() producer = nil; want non-nil")
+		}
+	})
+}
+
+// TestBurlerRoundEntry_EnvReviewFallback covers the three fallback outcomes for
+// burlerRoundEntry's model/effort/timeout_s resolution: a row omitting the keys takes
+// env.ReviewModel/ReviewEffort/ReviewTimeout; a row setting all three overrides the Env values;
+// both absent with an empty Env leaves the zero values.
+func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
+	t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ReviewModel = "env-model"
+		env.ReviewEffort = "env-effort"
+		env.ReviewTimeout = 45 * time.Second
+		cfg := minimalBurlerConfig()
+
+		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
+		if opts.Model != "env-model" {
+			t.Errorf("opts.Model = %q; want %q", opts.Model, "env-model")
+		}
+		if opts.Effort != "env-effort" {
+			t.Errorf("opts.Effort = %q; want %q", opts.Effort, "env-effort")
+		}
+		if opts.Timeout != 45*time.Second {
+			t.Errorf("opts.Timeout = %v; want %v", opts.Timeout, 45*time.Second)
+		}
+	})
+
+	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ReviewModel = "env-model"
+		env.ReviewEffort = "env-effort"
+		env.ReviewTimeout = 45 * time.Second
+		cfg := minimalBurlerConfig()
+		cfg["model"] = "row-model"
+		cfg["effort"] = "row-effort"
+		cfg["timeout_s"] = 30
+
+		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
+		if opts.Model != "row-model" {
+			t.Errorf("opts.Model = %q; want %q", opts.Model, "row-model")
+		}
+		if opts.Effort != "row-effort" {
+			t.Errorf("opts.Effort = %q; want %q", opts.Effort, "row-effort")
+		}
+		if opts.Timeout != 30*time.Second {
+			t.Errorf("opts.Timeout = %v; want %v", opts.Timeout, 30*time.Second)
+		}
+	})
+
+	t.Run("BothAbsentLeavesZeroValues", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBurlerConfig()
+
+		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
+		if opts.Model != "" {
+			t.Errorf("opts.Model = %q; want \"\"", opts.Model)
+		}
+		if opts.Effort != "" {
+			t.Errorf("opts.Effort = %q; want \"\"", opts.Effort)
+		}
+		if opts.Timeout != 0 {
+			t.Errorf("opts.Timeout = %v; want 0", opts.Timeout)
+		}
+	})
+}
+
 func TestBurlerRoundEntry_FractionalTimeoutRejected(t *testing.T) {
 	env := newTestEnv(t)
 	cfg := minimalBurlerConfig()
