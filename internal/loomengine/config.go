@@ -160,12 +160,13 @@ func LoomReviewsDir(l *lyxcwd.Location) string {
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
-	Discussion           string `yaml:"discussion"`
-	DiscussionTimeoutMin int    `yaml:"discussion_timeout_min"`
-	Plan                 string `yaml:"plan"`
-	PlanTimeoutMin       int    `yaml:"plan_timeout_min"`
-	Review               string `yaml:"review"`
-	ReviewTimeoutMin     int    `yaml:"review_timeout_min"`
+	Discussion            string `yaml:"discussion"`
+	DiscussionTimeoutMin  int    `yaml:"discussion_timeout_min"`
+	DiscussionInteractive bool   `yaml:"discussion_interactive"`
+	Plan                  string `yaml:"plan"`
+	PlanTimeoutMin        int    `yaml:"plan_timeout_min"`
+	Review                string `yaml:"review"`
+	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
