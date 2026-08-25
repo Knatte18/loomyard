@@ -68,14 +68,14 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
 }
 
-// seedBouncerStencils writes the three stencils a live Discussion-Review segment reads at dir,
-// keyed by stencilstore.Path(dir, name): the two generic bouncer templates
-// (bouncer-template-seed, bouncer-template-judge) and the Discussion-Review rubric
-// (loom-rubric-discussion-review), each seeded from its real embedded contracts/stencils bytes
-// rather than dummy content. shedadapters.NewBouncer probes the rubric eagerly at construction, and
-// seedCall/judgeCall read the two templates at call time and degrade to Stuck when either is
-// unreadable, so dummy templates would make shedengine.Done unreachable and would also diverge from
-// the marker set internal/stencil's Fill requires in production.
+// seedBouncerStencils writes the four stencils a live Discussion-Review or Plan-Review segment
+// reads at dir, keyed by stencilstore.Path(dir, name): the two generic bouncer templates
+// (bouncer-template-seed, bouncer-template-judge) and both segments' rubrics
+// (loom-rubric-discussion-review, loom-rubric-plan-review), each seeded from its real embedded
+// contracts/stencils bytes rather than dummy content. shedadapters.NewBouncer probes the rubric
+// eagerly at construction, and seedCall/judgeCall read the two templates at call time and degrade
+// to Stuck when either is unreadable, so dummy templates would make shedengine.Done unreachable and
+// would also diverge from the marker set internal/stencil's Fill requires in production.
 func seedBouncerStencils(t *testing.T, dir string) {
 	t.Helper()
 
@@ -83,6 +83,7 @@ func seedBouncerStencils(t *testing.T, dir string) {
 		"bouncer-template-seed":         stencils.BouncerTemplateSeed,
 		"bouncer-template-judge":        stencils.BouncerTemplateJudge,
 		"loom-rubric-discussion-review": stencils.LoomRubricDiscussionReview,
+		"loom-rubric-plan-review":       stencils.LoomRubricPlanReview,
 	}
 	for name, content := range seeds {
 		path := stencilstore.Path(dir, name)
@@ -101,15 +102,22 @@ func seedBouncerStencils(t *testing.T, dir string) {
 // burlerengine.Result whose Outcome is shuttleengine.OutcomeDone -- that pair-on-disk plus
 // OutcomeDone is what makes BurlerProducer.Call return Stuck with a real report rather than
 // erroring, which is what the Bouncer's next call then judges. calls records how many times Run was
-// invoked, so a later test can assert the segment ran exactly one round.
+// invoked, so a later test can assert the segment ran exactly two rounds. corruptPlanOverview, when
+// non-empty, names a plan overview path that Run rewrites with planFixtureOverview(false) after
+// writing its two report files, so a test can script a fixer round that leaves the plan failing
+// planparser's own plan-unapproved check; an empty value -- every existing caller -- changes
+// nothing.
 type fakeLoomBurler struct {
-	calls int
+	calls               int
+	corruptPlanOverview string
 }
 
 var _ shedadapters.BurlerRunner = (*fakeLoomBurler)(nil)
 
 // Run implements shedadapters.BurlerRunner: it writes p.ReviewPath and p.FixerReportPath with
-// short placeholder content and reports shuttleengine.OutcomeDone.
+// short placeholder content and reports shuttleengine.OutcomeDone. When f.corruptPlanOverview is
+// non-empty, it also rewrites that path with planFixtureOverview(false) after the two report
+// writes, per fakeLoomBurler's own doc comment.
 func (f *fakeLoomBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.Result, error) {
 	f.calls++
 	if err := os.WriteFile(p.ReviewPath, []byte("review"), 0o644); err != nil {
@@ -117,6 +125,11 @@ func (f *fakeLoomBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (bu
 	}
 	if err := os.WriteFile(p.FixerReportPath, []byte("fixer report"), 0o644); err != nil {
 		return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: write fixer report %s: %w", p.FixerReportPath, err)
+	}
+	if f.corruptPlanOverview != "" {
+		if err := os.WriteFile(f.corruptPlanOverview, []byte(planFixtureOverview(false)), 0o644); err != nil {
+			return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: corrupt plan overview %s: %w", f.corruptPlanOverview, err)
+		}
 	}
 	return burlerengine.Result{
 		Outcome:         shuttleengine.OutcomeDone,
@@ -263,8 +276,8 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 }
 
 // fakeLoomShuttle implements shedadapters.Shuttle for row 3 (Discussion-Write), row 6 (Plan-Write),
-// and both of the Discussion-Bouncer row's spawn roles: shedrecipe.Env carries one Shuttle field,
-// not one per row, so this single fake serves all of them, branching on the Spec's own Role. On
+// and both segments' Bouncer rows' spawn roles: shedrecipe.Env carries one Shuttle field, not one
+// per row, so this single fake serves all of them, branching on the Spec's own Role. On
 // spec.Role == "plan" it writes the whole plan-directory fixture -- planFixtureCard and
 // planFixtureOverview(true) via f.planDir -- rather than only spec.OutputFiles, because
 // loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory

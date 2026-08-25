@@ -51,6 +51,11 @@ type BouncerConfig struct {
 	Version string
 	// Shuttle is the seam this Bouncer drives its seed and judge calls through.
 	Shuttle Shuttle
+	// Commit is the injected closure the loop owner commits the reviewed artifacts through,
+	// called on the approved branch of settle before Done is returned. Nil is the absent value
+	// and means "commit nothing", which is what keeps a segment with no seam configured
+	// behaving exactly as before.
+	Commit func() error
 	// Now is the injected clock resolving only the archive filename's same-second collision
 	// suffix.
 	Now func() time.Time
@@ -260,11 +265,20 @@ func (b *Bouncer) ensureFocus(round int) {
 }
 
 // settle reads and parses round's verdict file, which judged(round) has already proved parses,
-// and maps it onto shedengine's contract. On verdictApproved it returns shedengine.Done with the
-// round's ledger as the pointer. On verdictBlocking it calls ensureFocus(round + 1) and returns
-// shedengine.Stuck with the same ledger pointer. Both returns survive cancellation: a genuinely
-// parsed verdict is the one exception cancelErr never applies to, exactly as SingleLLMProducer
-// treats a shuttle OutcomeDone.
+// and maps it onto shedengine's contract. On verdictApproved it calls b.cfg.Commit when non-nil
+// and returns shedengine.Done with the round's ledger as the pointer; a non-nil Commit error is
+// returned as settle's own error, never routed through degrade, because degrade only ever returns
+// shedengine.Stuck and none of its callers ever return shedengine.Done -- sending a commit failure
+// through it would bounce a judge-approved artifact into a findings-free fixer round that
+// re-approves and re-attempts the commit every pass until the bounce budget is spent, since
+// judged(n) stays true on re-entry. On verdictBlocking it calls ensureFocus(round + 1) and returns
+// shedengine.Stuck with the same ledger pointer, deliberately committing nothing: an unapproved
+// artifact must not be committed, and a blocked run has already escalated to a human who is the
+// right party to judge the partial fixes. Both returns survive cancellation: a genuinely parsed
+// verdict is the one exception cancelErr never applies to, exactly as SingleLLMProducer treats a
+// shuttle OutcomeDone -- that rule says a parsed verdict is never retracted because the context
+// was cancelled, not that the branch performs no side effects, so the approved branch's commit
+// attempt is made even under an already-cancelled context.
 func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	content, err := os.ReadFile(verdictPath(b.cfg.RunDir, round))
 	if err != nil {
@@ -282,6 +296,11 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 
 	switch verdict {
 	case verdictApproved:
+		if b.cfg.Commit != nil {
+			if err := b.cfg.Commit(); err != nil {
+				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): commit approved artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
+			}
+		}
 		return shedengine.Done, ptr, nil
 	case verdictBlocking:
 		b.ensureFocus(round + 1)

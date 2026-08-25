@@ -413,10 +413,11 @@ func TestWire_PlanSeamsFilled(t *testing.T) {
 	}
 }
 
-// TestWire_ReviewSegmentSeamsFilled asserts the four Env fields the Discussion-Bouncer/
-// Discussion-Burler segment reads (StencilsDir, RunRoot, Burler, Now) are filled after wire(),
-// following TestWire_PathFieldsMatchLoomengineAccessors' convention of asserting an Env path field
-// against its own loomengine/fabricengine accessor rather than a re-derived literal.
+// TestWire_ReviewSegmentSeamsFilled asserts the four Env fields both review segments read
+// (StencilsDir, RunRoot, Burler, Now) are filled after wire() -- shared by Discussion-Bouncer/
+// Discussion-Burler and Plan-Bouncer/Plan-Burler alike -- following
+// TestWire_PathFieldsMatchLoomengineAccessors' convention of asserting an Env path field against
+// its own loomengine/fabricengine accessor rather than a re-derived literal.
 func TestWire_ReviewSegmentSeamsFilled(t *testing.T) {
 	t.Parallel()
 
