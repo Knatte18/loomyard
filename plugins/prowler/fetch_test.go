@@ -29,9 +29,8 @@ func stubResponses(t *testing.T, responses map[string]*http.Response, browser fu
 		return resp, nil
 	}
 	return fetcher{
-		do:           respond,
-		doNoRedirect: respond,
-		browser:      browser,
+		do:      respond,
+		browser: browser,
 	}
 }
 
