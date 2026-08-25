@@ -147,7 +147,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// than left as untracked dirt. A second Done over already-committed artifacts is a
 		// no-op rather than an error: CommitAnchoredPaths reports committed == false for an
 		// already-clean, already-tracked path, and this closure discards that result alongside the
-		// sha, returning only the error.
+		// sha, returning only the error -- and this idempotence now covers two callers rather than
+		// one, since the Discussion-Bouncer row's approved settle reaches this same closure through
+		// the row's commit_seam: discussion config key.
 		CommitDiscussion: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDirRel()}, fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
