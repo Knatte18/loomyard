@@ -48,7 +48,9 @@ batches:
     commit_sha: 88b4a4147bf00785ef48ae6f8ade59492ca4c245
     verify_baseline_failures: []
   - name: rss-limiter-and-fetch
-    state: pending
+    state: running
+    implementer_session: d93a2c64-293a-4364-81b5-2aae473a8f90
+    start_sha: d2b0a91bfe96cfb3f3c7eae61b9b55f76a8456cd
     verify_baseline_failures: []
   - name: tier-rewiring-deletion-and-docs
     state: pending
