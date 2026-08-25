@@ -62,12 +62,16 @@ Escalating to the password grant is a scope change and must be raised with the o
 - **Context:**
   - `plugins/prowler/reddit_integration_test.go`
   - `plugins/prowler/README.md`
+  - `plugins/prowler/scripts/selftest.sh`
   - `_mill/discussion.md`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Run `go -C plugins/prowler test -tags integration -run 'TestRedditOAuthThread_Integration' .` from the worktree root and read its output rather than only its exit code, because a skip and a pass both exit 0.
+- **Requirements:** First re-run the module's whole offline suite with `go -C plugins/prowler test ./...` and the module's existing shell harness with `plugins/prowler/scripts/selftest.sh`, and report both outcomes;
+  neither is covered by any batch's `verify:` command, so nothing else in this plan schedules them.
+  `selftest.sh` is offline and build-focused and nothing in this task touches `run.sh`'s build/lock mechanic, so a failure there is a real regression rather than an expected consequence.
+  Then run `go -C plugins/prowler test -tags integration -run 'TestRedditOAuthThread_Integration' .` from the worktree root and read its output rather than only its exit code, because a skip and a pass both exit 0.
   If the test **ran and passed**, record that outcome — the `oauth-credential-shape` open risk is closed and the task is complete.
   If the test **ran and failed**, report the failure and stop: this is the case the batch exists to catch, and the in-scope remedy is the installed-client grant named in `## Batch Scope`, which is a change to the code, not to this card.
   If the test **skipped** because `PROWLER_REDDIT_CLIENT_ID` and `PROWLER_REDDIT_CLIENT_SECRET` are absent, report to the operator, verbatim and unhedged, that the task is **not complete**: the offline work is finished and reviewed, but the OAuth grant remains unverified, and completion requires the operator to register a "script"-type app at `https://www.reddit.com/prefs/apps`, export the two variables in their own shell, and re-run the command above.

@@ -63,6 +63,7 @@ Batch-local decision beyond `## Shared Decisions`: the detector takes a plain `s
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Write `plugins/prowler/blockdetect_test.go` first, then `plugins/prowler/blockdetect.go`, and commit both together so the tree is never left with a failing build.
+  Open each of the two new files with a descriptive header comment above the `package main` line, in the style every existing file in this module uses (see `plugins/prowler/htmltext.go`): what the file is for and why it exists, not a restatement of its identifiers.
   In `plugins/prowler/blockdetect.go`, package `main`, declare:
   a `blockSignature` struct with two string fields, `name` (a short human-readable reason such as `"bot challenge"`, `"network-security block"`, `"login wall"`) and `marker` (an already-lowercased substring);
   a package-level `var blockSignatures []blockSignature` holding the table;

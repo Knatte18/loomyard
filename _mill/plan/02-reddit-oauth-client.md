@@ -43,6 +43,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Write the tests in `plugins/prowler/redditoauth_test.go` first, then the implementation in `plugins/prowler/redditoauth.go`, and commit both together.
+  Open each of the two new files with a descriptive header comment above the `package main` line, in the style every existing file in this module uses (see `plugins/prowler/headers.go`): what the file is for and why it exists, not a restatement of its identifiers.
   In `plugins/prowler/redditoauth.go`, package `main`, declare the constants `redditClientIDEnv = "PROWLER_REDDIT_CLIENT_ID"`, `redditClientSecretEnv = "PROWLER_REDDIT_CLIENT_SECRET"`, `redditUserAgentEnv = "PROWLER_REDDIT_USER_AGENT"`, `defaultRedditAPIUserAgent = "prowler/1.0"`, `redditTokenURL = "https://www.reddit.com/api/v1/access_token"`, and `redditTokenSafetyMargin = 60 * time.Second`;
   plus `var timeNow = time.Now`.
   This file is the only place in the module that calls `os.Getenv` for the three `PROWLER_REDDIT_*` variables.
