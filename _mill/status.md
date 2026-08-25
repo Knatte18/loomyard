@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-verify-logic
+phase: approved-block-detection
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r5  '2026-08-25T07:28:27Z'
 planned  '2026-08-25T07:28:38Z'
 implementing  '2026-08-25T07:29:21Z'
 self-resolved-verify-logic  '2026-08-25T07:35:36Z'
+approved-block-detection  '2026-08-25T07:41:36Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ self-resolved-verify-logic  '2026-08-25T07:35:36Z'
 ```yaml
 batches:
   - name: block-detection
-    state: running
+    state: approved
     implementer_session: 2aa29b30-9256-472d-a617-c23bd0d9f5ec
     start_sha: 735382cb60da38ef28029c8aad93df27363c7e96
+    commit_sha: 2ecb4bc0b72c600cb751bd32169ab7150f4474f3
     verify_baseline_failures: []
   - name: reddit-oauth-client
     state: pending
