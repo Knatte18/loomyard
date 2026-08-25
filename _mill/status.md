@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-discussion-write-interactive
 branch: loom-discussion-write-interactive
 plan: _mill/plan
@@ -21,4 +21,21 @@ planning  '2026-08-25T15:11:12Z'
 plan-review-r1  '2026-08-25T15:22:21Z'
 plan-fix-r1  '2026-08-25T15:23:13Z'
 planned  '2026-08-25T15:23:37Z'
+implementing  '2026-08-25T15:24:47Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shuttle-await-operator-and-run-outcome
+    state: pending
+  - name: shuttle-attach
+    state: pending
+  - name: loom-mode-selector
+    state: pending
+  - name: shedadapters-probe-before-archive
+    state: pending
+  - name: loomrecipe-regression-and-docs
+    state: pending
 ```
