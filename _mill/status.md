@@ -1,11 +1,12 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-discussion-write-interactive
 branch: loom-discussion-write-interactive
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'loom: interactive Discussion-Write'
 task_description: |
   loom: interactive Discussion-Write
@@ -31,6 +32,7 @@ approved-loomrecipe-regression-and-docs  '2026-08-25T16:19:05Z'
 holistic-reviewing  '2026-08-25T16:19:33Z'
 holistic-approved  '2026-08-25T16:24:19Z'
 done  '2026-08-25T16:25:42Z'
+pr-pending  '2026-08-25T16:30:36Z'
 ```
 
 ## Batches
