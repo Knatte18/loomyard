@@ -128,12 +128,12 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NamePublish)
 	}
 
-	// This is the scenario check that a Done from row 3 genuinely reaches the Fabric-commit seam,
-	// rather than the decorator being silently bypassed. Only one segment (Discussion-Review)
-	// commits through this seam, so the count stays 1 even though the Plan-Review segment also ran.
+	// This is the scenario proof that the Discussion-Bouncer commit_seam is genuinely reached through
+	// a real Shed run: both the Discussion-Write row's own commit and the Discussion-Bouncer row's
+	// approval commit invoke CommitDiscussion, so the count is 2, not 1.
 	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
-	if loomShuttle.commitDiscussionCalls != 1 {
-		t.Errorf("fakeLoomShuttle.commitDiscussionCalls = %d; want exactly 1 after a clean run", loomShuttle.commitDiscussionCalls)
+	if loomShuttle.commitDiscussionCalls != 2 {
+		t.Errorf("fakeLoomShuttle.commitDiscussionCalls = %d; want exactly 2 after a clean run (Discussion-Write's commit plus Discussion-Bouncer's approval commit)", loomShuttle.commitDiscussionCalls)
 	}
 
 	// This is the scenario proof that the Plan-Bouncer commit_seam is genuinely reached through a
