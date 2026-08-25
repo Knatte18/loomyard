@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reddit-rss-tier
 branch: reddit-rss-tier
 plan: _mill/plan
@@ -26,4 +26,19 @@ plan-fix-r2  '2026-08-25T10:23:45Z'
 plan-review-r3  '2026-08-25T10:32:46Z'
 plan-fix-r3  '2026-08-25T10:33:19Z'
 planned  '2026-08-25T10:33:29Z'
+implementing  '2026-08-25T10:34:13Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: neutral-thread-representation
+    state: pending
+  - name: rss-parsing-foundation
+    state: pending
+  - name: rss-limiter-and-fetch
+    state: pending
+  - name: tier-rewiring-deletion-and-docs
+    state: pending
 ```
