@@ -1,0 +1,9 @@
+{"status":"success","commit_sha":"3a5d524406743541721ad3d80b26a44afcf32a9f","session_id":"5a868d51-3e35-4348-8b4c-b159b78a9d52","cards_done":[13,14,15]}
+
+Summary: 3 of 3 cards committed this turn — all complete.
+
+- Card 13 (`test(loomrecipe): pin that a bounce respawns and a live run attaches`, commit `2dffd209`): made `fakeLoomShuttle.Attach` scriptable in `/home/knatte/Code/loomyard/wts/loom-discussion-write-interactive/internal/loomrecipe/fixture_test.go` (found/result/error, attachCalls, attachSpec, role-scoped attachRole, and a discussionRunCalls counter needed to isolate Discussion-Write's own respawn behaviour from later rows sharing the same fake), and added the bounce/crash-resume regression pair to `/home/knatte/Code/loomyard/wts/loom-discussion-write-interactive/internal/loomrecipe/resume_test.go`.
+- Card 14 (`docs(loom): rewrite crash recovery as files-plus-live-agent-evidence`, commit `9ff8e81b`): rewrote the crash-recovery discipline in `/home/knatte/Code/loomyard/wts/loom-discussion-write-interactive/manifest/designs/loom.md` (two-part files+live-agent rule, narrowed ladder step 1, named where steps 2/3 now live, replaced the interactive-mode trap paragraph with its resolution and the accepted-residual note, pinned the heading) and updated the restatement in `/home/knatte/Code/loomyard/wts/loom-discussion-write-interactive/manifest/designs/shed.md`.
+- Card 15 (`docs: record discussion_interactive in overview and move the roadmap item to Done`, commit `3a5d5244`): updated `/home/knatte/Code/loomyard/wts/loom-discussion-write-interactive/docs/overview.md`'s key list/reconcile wording and moved the roadmap item in `/home/knatte/Code/loomyard/wts/loom-discussion-write-interactive/manifest/roadmap.md` from Planned to Done.
+
+Verify (`go test ./internal/loomrecipe/ ./internal/lyxcwd/`) passes, `go vet ./...` is clean, and the working tree has no uncommitted tracked changes.
