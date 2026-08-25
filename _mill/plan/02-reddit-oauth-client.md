@@ -73,10 +73,10 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Context:**
   - `plugins/prowler/hackernews.go`
   - `plugins/prowler/htmltext.go`
-  - `plugins/prowler/reddit.go`
 - **Edits:**
   - `plugins/prowler/redditoauth.go`
   - `plugins/prowler/redditoauth_test.go`
+  - `plugins/prowler/reddit.go`
 - **Creates:**
   - `plugins/prowler/testdata/reddit-thread.json`
 - **Deletes:** none
@@ -94,9 +94,10 @@ Batch-local decisions beyond `## Shared Decisions`:
   a `Source: <sourceURL>` line;
   the post's `Selftext` when non-empty, or a `Link: <url>` line when `Selftext` is empty and `URL` is non-empty;
   then, only when at least one comment is present, a `## Top Comments` heading followed by the comments.
-  Take comments from the second listing when `listings` has one, skipping every child whose `kind` is not `"t1"` (Reddit's pagination placeholders use `kind: "more"`), capping top-level comments at the existing `maxTopComments` constant, and rendering exactly one level of replies per top-level comment — a reply's own replies are not rendered — with that reply level also filtered to `kind: "t1"` and also capped at `maxTopComments` so a single heavily-replied comment cannot dominate the output.
+  Take comments from the second listing when `listings` has one, skipping every child whose `kind` is not `"t1"` (Reddit's pagination placeholders use `kind: "more"`), capping top-level comments at the existing `maxTopComments` constant declared in `plugins/prowler/reddit.go`, and rendering exactly one level of replies per top-level comment — a reply's own replies are not rendered — with that reply level also filtered to `kind: "t1"` and also capped at `maxTopComments` so a single heavily-replied comment cannot dominate the output.
   Render each top-level comment as `**u/<author>** (<score> points):` on its own line followed by its body, and each reply as a single-level markdown blockquote line beginning `> **u/<author>**: ` followed by its body.
   Comment and selftext bodies come from Reddit's `body`/`selftext` fields, which are markdown rather than HTML, so pass them through unchanged — do not run them through `htmlToText`, unlike the Hacker News adapter, whose Algolia source really is HTML.
+  Update that constant's doc comment in `plugins/prowler/reddit.go` — the only change this card makes to that file — since it currently reads "Used by the Hacker News adapter" and this card makes the Reddit adapter a second consumer, for both the top-level and the reply cap.
   Apply no minimum-length check anywhere in this function: a thread with a short title and zero comments is a legitimate, usable result, and judging it too short is the exact defect this task exists to remove.
   Create `plugins/prowler/testdata/reddit-thread.json` as a hand-authored but structurally faithful two-element JSON array matching Reddit's documented comments-endpoint Listing shape, containing one `t3` post with a non-empty `selftext`, at least 22 `t1` top-level comments so the `maxTopComments` cap is exercised, one `"kind": "more"` child that must be skipped, one comment carrying a nested `replies` listing of more than `maxTopComments` `t1` replies so the reply-level cap is exercised rather than merely specified, one further comment carrying a nested reply that itself has a non-empty `replies` listing so the "one level only" rule is exercised, and at least one comment whose `replies` field is the empty string.
   Note in a comment at the top of `plugins/prowler/redditoauth_test.go`'s formatting test that this fixture is hand-authored rather than captured, because `oauth.reddit.com` cannot be read without the credentials that do not exist yet;
@@ -147,5 +148,6 @@ Batch-local decisions beyond `## Shared Decisions`:
 The filter names every test function this batch adds and nothing else: `TestRedditToken` is a prefix covering `TestRedditTokenRequestShape`, `TestRedditTokenErrors`, and `TestRedditTokenCaching`.
 The batch adds no test that needs the network, Chrome, or real credentials — the token endpoint and the thread endpoint are both stubbed through `fetcher.do`, and both fixtures are read from disk.
 The concurrency assertion in `TestRedditTokenCaching` is the one that matters most here, because `runAll` in `plugins/prowler/main.go` fetches every URL in its own goroutine against one shared process-wide cache;
-run it under `-race` at least once by hand during implementation.
+run it under `-race` during implementation as well;
+batch 4's card 11 re-runs the whole module under `-race` as a gated final check, so an escaped race is caught there rather than left to production.
 Nothing in this batch changes existing behaviour, so no existing test is edited and the pre-existing suite is unaffected.

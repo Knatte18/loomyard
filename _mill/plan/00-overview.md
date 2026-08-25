@@ -3,7 +3,7 @@
 ```yaml
 task: 'Fix prowler: Reddit adapter blocked'
 slug: 'prowler-fix-reddit-block'
-approved: false
+approved: true
 started: '20260825-063810'
 parent: 'main'
 root: ""

@@ -141,4 +141,5 @@ Batch-local decisions beyond `## Shared Decisions`:
 the two that do not (`TestFormatRedditThread` and `TestFetchRedditOAuthThread`) are named explicitly in the filter, so the whole of batch 2's suite is re-run here as a regression guard against the signature and behaviour changes this batch makes.
 `TestFetchOldRedditHTML` and `TestFetchPage*` cover the two files this batch edits most heavily, and `TestRunAll` covers `runAll`, which this batch touches indirectly through `newFetcher`'s new field.
 The run is offline: no test in it makes a network call, spawns Chrome, or requires real credentials, and card 9 explicitly requires every Reddit-touching test to neutralise the credential environment with `t.Setenv` so a developer with real credentials exported gets the same result as one without.
-Run the batch once by hand with `-race` as well, because card 9's tier-1 path reaches the shared token cache introduced in batch 2.
+Run the batch with `-race` as well, because card 9's tier-1 path reaches the shared token cache introduced in batch 2;
+batch 4's card 11 repeats a whole-module `-race` run as a gated final check.

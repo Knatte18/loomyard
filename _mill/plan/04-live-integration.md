@@ -68,8 +68,10 @@ Escalating to the password grant is a scope change and must be raised with the o
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** First re-run the module's whole offline suite with `go -C plugins/prowler test ./...` and the module's existing shell harness with `plugins/prowler/scripts/selftest.sh`, and report both outcomes;
-  neither is covered by any batch's `verify:` command, so nothing else in this plan schedules them.
+- **Requirements:** First re-run the module's whole offline suite with `go -C plugins/prowler test ./...`, then re-run it under the race detector with `go -C plugins/prowler test -race ./...`, then run the module's existing shell harness with `plugins/prowler/scripts/selftest.sh`, and report all three outcomes;
+  none of the three is covered by any batch's `verify:` command, so nothing else in this plan schedules them.
+  The `-race` run is the only gated check of the process-wide token cache's mutex, which `runAll`'s concurrent per-URL goroutines all contend for;
+  a data race there is exactly the class of bug that passes a serial run and fails intermittently in production, so treat a race report as a hard failure of this card, not a warning.
   `selftest.sh` is offline and build-focused and nothing in this task touches `run.sh`'s build/lock mechanic, so a failure there is a real regression rather than an expected consequence.
   Then run `go -C plugins/prowler test -tags integration -run 'TestRedditOAuthThread_Integration' .` from the worktree root and read its output rather than only its exit code, because a skip and a pass both exit 0.
   If the test **ran and passed**, record that outcome — the `oauth-credential-shape` open risk is closed and the task is complete.
@@ -90,6 +92,6 @@ This `verify:` is a compile-and-skip check when credentials are absent and a rea
 it exits 0 in both cases, which is precisely why card 11 exists as a human-readable gate on top of it.
 A green batch 4 with no credentials means "the test compiles and correctly skips", never "the OAuth grant works".
 
-Also re-run the module's offline suite (`go -C plugins/prowler test ./...`) and `plugins/prowler/scripts/selftest.sh` once at the end of this batch.
+Card 11's own Requirements additionally schedule three checks that no `verify:` command covers: the module's offline suite (`go -C plugins/prowler test ./...`), the same suite under the race detector (`go -C plugins/prowler test -race ./...`), and `plugins/prowler/scripts/selftest.sh`.
 `selftest.sh` is offline and build-focused and nothing in this task touches `run.sh`'s build/lock mechanic, so it is expected to pass unchanged;
 it is the module's existing harness and is cheap to re-run.
