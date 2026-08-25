@@ -28,6 +28,12 @@ var LoomTemplateDiscussion []byte
 //go:embed loom/loom-template-plan.md
 var LoomTemplatePlan []byte
 
+// LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
+// Discussion-Review perch.
+//
+//go:embed loom/loom-rubric-discussion-review.md
+var LoomRubricDiscussionReview []byte
+
 // BurlerTemplateRoundOrchestrator is burler's shipped-default per-round orchestrator prompt.
 //
 //go:embed burler/burler-template-round-orchestrator.md
@@ -135,6 +141,7 @@ var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-plan", &LoomTemplatePlan},
+	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"burler-template-round-orchestrator", &BurlerTemplateRoundOrchestrator},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
