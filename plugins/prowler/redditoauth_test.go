@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -343,6 +344,190 @@ func TestFormatRedditThread(t *testing.T) {
 		}
 		if strings.Contains(out, "## Top Comments") {
 			t.Errorf("formatRedditThread() out contains a Top Comments heading with zero comments:\n%s", out)
+		}
+	})
+}
+
+func TestRedditOAuthURL(t *testing.T) {
+	const wantPath = "/r/golang/comments/abc123/some_title/"
+	const wantQuery = "raw_json=1&limit=100&depth=2"
+
+	tests := []struct {
+		name   string
+		rawURL string
+	}{
+		{"bare_host", "https://reddit.com" + wantPath},
+		{"www_host", "https://www.reddit.com" + wantPath},
+		{"old_host", "https://old.reddit.com" + wantPath},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := redditOAuthURL(tt.rawURL)
+			if err != nil {
+				t.Fatalf("redditOAuthURL(%q) error = %v; want nil", tt.rawURL, err)
+			}
+			u, parseErr := url.Parse(got)
+			if parseErr != nil {
+				t.Fatalf("url.Parse(%q) error = %v", got, parseErr)
+			}
+			if u.Host != redditOAuthHost {
+				t.Errorf("redditOAuthURL(%q) host = %q; want %q", tt.rawURL, u.Host, redditOAuthHost)
+			}
+			if u.Path != wantPath {
+				t.Errorf("redditOAuthURL(%q) path = %q; want %q", tt.rawURL, u.Path, wantPath)
+			}
+			if u.RawQuery != wantQuery {
+				t.Errorf("redditOAuthURL(%q) query = %q; want %q", tt.rawURL, u.RawQuery, wantQuery)
+			}
+		})
+	}
+
+	t.Run("incoming_query_discarded", func(t *testing.T) {
+		got, err := redditOAuthURL("https://www.reddit.com" + wantPath + "?sort=top&foo=bar")
+		if err != nil {
+			t.Fatalf("redditOAuthURL() error = %v; want nil", err)
+		}
+		if strings.Contains(got, "sort=top") || strings.Contains(got, "foo=bar") {
+			t.Errorf("redditOAuthURL() = %q; want the incoming query discarded", got)
+		}
+	})
+
+	t.Run("unparseable_input_yields_error", func(t *testing.T) {
+		if _, err := redditOAuthURL("http://[::1"); err == nil {
+			t.Fatal("redditOAuthURL() error = nil; want non-nil for an unparseable URL")
+		}
+	})
+
+	t.Run("empty_path_yields_error", func(t *testing.T) {
+		if _, err := redditOAuthURL("https://reddit.com"); err == nil {
+			t.Fatal("redditOAuthURL() error = nil; want non-nil for a URL with no path")
+		}
+	})
+}
+
+func TestFetchRedditOAuthThread(t *testing.T) {
+	const rawURL = "https://www.reddit.com/r/golang/comments/abc123/some_title/"
+
+	t.Run("happy_path", func(t *testing.T) {
+		t.Setenv(redditClientIDEnv, "id")
+		t.Setenv(redditClientSecretEnv, "secret")
+		redditTokens.reset()
+		t.Cleanup(redditTokens.reset)
+
+		threadJSON := readTestdataFile(t, "reddit-thread.json")
+		wantThreadURL, err := redditOAuthURL(rawURL)
+		if err != nil {
+			t.Fatalf("redditOAuthURL() error = %v", err)
+		}
+
+		var threadReq *http.Request
+		f := fetcher{do: func(req *http.Request) (*http.Response, error) {
+			switch req.URL.String() {
+			case redditTokenURL:
+				return tokenResponse(200, `{"access_token":"tok-happy","expires_in":3600}`), nil
+			case wantThreadURL:
+				threadReq = req
+				return htmlResponse(threadJSON), nil
+			default:
+				t.Fatalf("unexpected request URL: %s", req.URL.String())
+				return nil, nil
+			}
+		}}
+
+		out, err := fetchRedditOAuthThread(context.Background(), f, rawURL)
+		if err != nil {
+			t.Fatalf("fetchRedditOAuthThread() error = %v; want nil", err)
+		}
+		if threadReq == nil {
+			t.Fatal("thread request was never issued")
+		}
+		if got := threadReq.Header.Get("Authorization"); got != "bearer tok-happy" {
+			t.Errorf("thread request Authorization = %q; want %q", got, "bearer tok-happy")
+		}
+		if got := threadReq.Header.Get("User-Agent"); got == browserUA {
+			t.Errorf("thread request User-Agent = %q; must not be browserUA", got)
+		}
+		if !strings.Contains(out, "What is the idiomatic way to handle errors in Go?") {
+			t.Errorf("fetchRedditOAuthThread() out missing post title:\n%s", out)
+		}
+	})
+
+	t.Run("missing_credentials", func(t *testing.T) {
+		t.Setenv(redditClientIDEnv, "")
+		t.Setenv(redditClientSecretEnv, "")
+		redditTokens.reset()
+		t.Cleanup(redditTokens.reset)
+
+		f := fetcher{do: func(req *http.Request) (*http.Response, error) {
+			t.Fatal("transport must not be invoked when credentials are missing")
+			return nil, nil
+		}}
+
+		_, err := fetchRedditOAuthThread(context.Background(), f, rawURL)
+		if err == nil {
+			t.Fatal("fetchRedditOAuthThread() error = nil; want non-nil")
+		}
+		if !strings.Contains(err.Error(), redditClientIDEnv) || !strings.Contains(err.Error(), redditClientSecretEnv) {
+			t.Errorf("fetchRedditOAuthThread() error = %q; want it to name both %s and %s", err, redditClientIDEnv, redditClientSecretEnv)
+		}
+	})
+
+	t.Run("403_block_page", func(t *testing.T) {
+		t.Setenv(redditClientIDEnv, "id")
+		t.Setenv(redditClientSecretEnv, "secret")
+		redditTokens.reset()
+		t.Cleanup(redditTokens.reset)
+
+		blockHTML := readTestdataFile(t, "reddit-block-page.html")
+		wantReason, blocked := looksLikeBlockPage(blockHTML)
+		if !blocked {
+			t.Fatal("fixture reddit-block-page.html does not trip looksLikeBlockPage")
+		}
+
+		f := fetcher{do: func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() == redditTokenURL {
+				return tokenResponse(200, `{"access_token":"tok-403","expires_in":3600}`), nil
+			}
+			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(blockHTML))}, nil
+		}}
+
+		_, err := fetchRedditOAuthThread(context.Background(), f, rawURL)
+		if err == nil {
+			t.Fatal("fetchRedditOAuthThread() error = nil; want non-nil")
+		}
+		if !strings.Contains(err.Error(), wantReason) {
+			t.Errorf("fetchRedditOAuthThread() error = %q; want it to mention %q", err, wantReason)
+		}
+	})
+
+	t.Run("200_with_block_page_body", func(t *testing.T) {
+		t.Setenv(redditClientIDEnv, "id")
+		t.Setenv(redditClientSecretEnv, "secret")
+		redditTokens.reset()
+		t.Cleanup(redditTokens.reset)
+
+		blockHTML := readTestdataFile(t, "reddit-block-page.html")
+		wantReason, blocked := looksLikeBlockPage(blockHTML)
+		if !blocked {
+			t.Fatal("fixture reddit-block-page.html does not trip looksLikeBlockPage")
+		}
+
+		f := fetcher{do: func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() == redditTokenURL {
+				return tokenResponse(200, `{"access_token":"tok-200wall","expires_in":3600}`), nil
+			}
+			return htmlResponse(blockHTML), nil
+		}}
+
+		_, err := fetchRedditOAuthThread(context.Background(), f, rawURL)
+		if err == nil {
+			t.Fatal("fetchRedditOAuthThread() error = nil; want non-nil")
+		}
+		if !strings.Contains(err.Error(), wantReason) {
+			t.Errorf("fetchRedditOAuthThread() error = %q; want it to mention the wall reason %q rather than a JSON syntax error", err, wantReason)
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "invalid character") {
+			t.Errorf("fetchRedditOAuthThread() error = %q; want a wall reason, not a raw JSON decode error", err)
 		}
 	})
 }

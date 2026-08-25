@@ -10,7 +10,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -302,4 +304,99 @@ func formatRedditThread(listings []redditListing, sourceURL string) (string, err
 	}
 
 	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+// redditOAuthHost is the host oauth.reddit.com requests are sent to,
+// distinct from the www/old hosts the anonymous tiers use.
+const redditOAuthHost = "oauth.reddit.com"
+
+// redditOAuthURL rewrites rawURL into the equivalent oauth.reddit.com API
+// request: scheme forced to https, host replaced with redditOAuthHost,
+// path kept unchanged, and any incoming query or fragment discarded in
+// favor of a fixed query requesting raw JSON, a full comment page, and two
+// levels of reply depth. It returns an error when rawURL does not parse or
+// has an empty path.
+func redditOAuthURL(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse reddit URL %q: %w", rawURL, err)
+	}
+	if u.Path == "" {
+		return "", fmt.Errorf("reddit URL %q has no path", rawURL)
+	}
+
+	u.Scheme = "https"
+	u.Host = redditOAuthHost
+	u.Fragment = ""
+	u.RawQuery = "raw_json=1&limit=100&depth=2"
+	return u.String(), nil
+}
+
+// fetchRedditOAuthThread retrieves rawURL's Reddit thread through the
+// authenticated OAuth API and formats it into markdown. It resolves
+// credentials via redditCredentials, returning an error naming every
+// missing variable when any is absent, then obtains a token via
+// redditTokens.get and issues a GET to redditOAuthURL(rawURL) carrying a
+// bearer Authorization header, the API User-Agent, and Accept:
+// application/json.
+//
+// defaultHeaders is deliberately not used here and no Accept-Encoding
+// header is set at all: leaving it unset lets Go's transport handle
+// compression transparently, so unlike the static-fetch cascade this path
+// needs no decodeContentEncoding call. A non-2xx response and a JSON
+// decode failure are both run through looksLikeBlockPage before returning
+// an error, so an HTML wall served from this JSON endpoint -- whether as
+// an error status or, worse, a 200 -- reports as a wall rather than a
+// bare status code or a raw JSON syntax error.
+func fetchRedditOAuthThread(ctx context.Context, f fetcher, rawURL string) (string, error) {
+	clientID, clientSecret, missing := redditCredentials()
+	if len(missing) > 0 {
+		return "", fmt.Errorf("reddit oauth credentials missing: %s", strings.Join(missing, ", "))
+	}
+
+	token, err := redditTokens.get(ctx, f, clientID, clientSecret)
+	if err != nil {
+		return "", fmt.Errorf("acquire reddit oauth token: %w", err)
+	}
+
+	apiURL, err := redditOAuthURL(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("build reddit oauth URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("build reddit oauth thread request: %w", err)
+	}
+	req.Header.Set("Authorization", "bearer "+token)
+	req.Header.Set("User-Agent", redditAPIUserAgent())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := f.do(req)
+	if err != nil {
+		return "", fmt.Errorf("reddit oauth thread request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read reddit oauth thread response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if reason, blocked := looksLikeBlockPage(string(body)); blocked {
+			return "", fmt.Errorf("reddit oauth thread request returned status %d (%s)", resp.StatusCode, reason)
+		}
+		return "", fmt.Errorf("reddit oauth thread request returned status %d", resp.StatusCode)
+	}
+
+	var listings []redditListing
+	if err := json.Unmarshal(body, &listings); err != nil {
+		if reason, blocked := looksLikeBlockPage(string(body)); blocked {
+			return "", fmt.Errorf("reddit oauth thread response looked like a wall (%s) rather than json", reason)
+		}
+		return "", fmt.Errorf("decode reddit oauth thread response: %w", err)
+	}
+
+	return formatRedditThread(listings, rawURL)
 }
