@@ -1,0 +1,5 @@
+All 8 cards for batch `recipe-rows` are complete: 6 committed (cards 14-19) plus 2 verification-only `Commit: none` cards (20, 21) whose requirements I re-verified this turn (ran the full resume/bounce-routing test suite and confirmed each still holds for its stated reason; temporarily mutated `loom-recipe.yaml` three ways to confirm `TestNew_RoutingGraphIsClean`/`TestRecipe_StructuralCheckHasNoFindings` catch each mis-wiring, then reverted with no diff). The batch's `verify: go test ./internal/loomrecipe/... ./internal/loomshed/...` passes, and the module-wide `go build ./...` / `go vet ./...` are clean. Working tree is clean except the untracked brief file at `_mill/briefs/implement-recipe-rows-r1.md`, which is out of scope.
+
+Key files touched: `contracts/recipes/loom-recipe.yaml`, `internal/loomshed/{loomshed.go,doc.go,stub.go}`, `internal/loomrecipe/{fixture_test.go,shape_test.go,recipe_test.go,coverage_guard_test.go,sequence_test.go}`.
+
+{"status":"success","commit_sha":"ff85d58194bc5d6af7896b321d19c6eb6508b4a7","session_id":"d24aa5ca-8f51-4c96-8f65-2ef74caecbfa","cards_done":[14,15,16,17,18,19,20,21]}
