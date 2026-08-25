@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomrecipe-regression-and-docs
+phase: holistic-reviewing
 slug: loom-discussion-write-interactive
 branch: loom-discussion-write-interactive
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-shuttle-attach  '2026-08-25T16:00:40Z'
 approved-loom-mode-selector  '2026-08-25T16:04:19Z'
 approved-shedadapters-probe-before-archive  '2026-08-25T16:09:42Z'
 approved-loomrecipe-regression-and-docs  '2026-08-25T16:19:05Z'
+holistic-reviewing  '2026-08-25T16:19:33Z'
 ```
 
 ## Batches
