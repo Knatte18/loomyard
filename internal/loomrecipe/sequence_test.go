@@ -20,16 +20,19 @@ type wantSequenceEntry struct {
 // computed one, so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure
 // rather than a silently-agreeing derivation.
 //
-// Every entry but the review segment and the trailing Publish carries a Done outcome by rule; the
-// segment itself does not, so its three entries are spelled out explicitly rather than derived. The
-// segment replaces the single stubbed Discussion-Review entry with exactly three: NameDiscussionBouncer
-// with Stuck (the seed call, which spawns a focus-setting pass and always reports Stuck, never
-// judging anything on its first call), NameDiscussionBurler with Stuck (one completed review round --
-// BurlerProducer reports every successful round as Stuck by contract, never Done, since its Stuck is
-// a routine hand-off to the Bouncer rather than a real stuck condition), and NameDiscussionBouncer
-// again with Done (the judge call, whose fixture-scripted APPROVED verdict is what advances the run
-// past the segment to Plan-Write). Two Stuck entries mid-run are therefore not a failure signal here;
-// they are the segment doing its job.
+// Every entry but the two review segments and the trailing Publish carries a Done outcome by rule;
+// the segments themselves do not, so their entries are spelled out explicitly rather than derived.
+// Each segment contributes exactly three entries in the same shape: NameXBouncer with Stuck (the
+// seed call, which spawns a focus-setting pass and always reports Stuck, never judging anything on
+// its first call), NameXBurler with Stuck (one completed review round -- BurlerProducer reports
+// every successful round as Stuck by contract, never Done, since its Stuck is a routine hand-off to
+// the Bouncer rather than a real stuck condition), and NameXBouncer again with Done (the judge
+// call, whose fixture-scripted APPROVED verdict is what advances the run past the segment). The
+// Plan-Review segment carries a fourth, trailing entry the Discussion-Review segment has no
+// counterpart for: NamePlanRevalidate with Done, the post-segment mechanical re-check, which passes
+// here because the fixture's fake burler leaves the plan untouched (buildSequenceFixture never sets
+// fakeLoomBurler.corruptPlanOverview). Stuck entries mid-run are therefore not a failure signal
+// here; they are each segment doing its job. The list runs to seventeen entries total.
 //
 // The sequence stops at Publish deliberately: Publish's OnStuck is "" (escalate), so a Stuck verdict
 // blocks the run and Finalize is never invoked. Driving both producers' real merge logic through a
@@ -61,17 +64,19 @@ var wantSequenceOrder = []wantSequenceEntry{
 	{loomshed.NameDiscussionBouncer, shedengine.Done},
 	{loomshed.NamePlanWrite, shedengine.Done},
 	{loomshed.NamePlanValidate, shedengine.Done},
-	{loomshed.NamePlanReview, shedengine.Done},
+	{loomshed.NamePlanBouncer, shedengine.Stuck},
+	{loomshed.NamePlanBurler, shedengine.Stuck},
+	{loomshed.NamePlanBouncer, shedengine.Done},
+	{loomshed.NamePlanRevalidate, shedengine.Done},
 	{loomshed.NameBatchifier, shedengine.Done},
 	{loomshed.NameWebster, shedengine.Done},
 	{loomshed.NameWebsterReview, shedengine.Done},
 	{loomshed.NamePublish, shedengine.Stuck},
 }
 
-// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the fourteen-row list
+// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the sixteen-row list
 // runs Preflight through Publish and blocks on Publish's Stuck verdict, never reaching Finalize --
-// see wantSequenceOrder's own doc comment for why, including for the review segment's three-entry
-// shape.
+// see wantSequenceOrder's own doc comment for why, including for both review segments' entry shapes.
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
@@ -120,27 +125,29 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	}
 
 	// This is the scenario check that a Done from row 3 genuinely reaches the Fabric-commit seam,
-	// rather than the decorator being silently bypassed.
+	// rather than the decorator being silently bypassed. Only one segment (Discussion-Review)
+	// commits through this seam, so the count stays 1 even though the Plan-Review segment also ran.
 	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
 	if loomShuttle.commitDiscussionCalls != 1 {
 		t.Errorf("fakeLoomShuttle.commitDiscussionCalls = %d; want exactly 1 after a clean run", loomShuttle.commitDiscussionCalls)
 	}
 
-	// The equivalent check for row 6: a Done from Plan-Write must reach its own commit seam too,
-	// rather than the decorator being silently bypassed.
-	if loomShuttle.commitPlanCalls != 1 {
-		t.Errorf("fakeLoomShuttle.commitPlanCalls = %d; want exactly 1 after a clean run", loomShuttle.commitPlanCalls)
+	// This is the scenario proof that the Plan-Bouncer commit_seam is genuinely reached through a
+	// real Shed run: both the Plan-Write row's own commit and the Plan-Bouncer row's approval commit
+	// invoke CommitPlan, so the count is 2, not 1.
+	if loomShuttle.commitPlanCalls != 2 {
+		t.Errorf("fakeLoomShuttle.commitPlanCalls = %d; want exactly 2 after a clean run (Plan-Write's commit plus Plan-Bouncer's approval commit)", loomShuttle.commitPlanCalls)
 	}
 
-	// The scenario checks that the review segment genuinely ran rather than being silently
-	// short-circuited: the fake burler ran exactly one round, and the fake shuttle recorded exactly
-	// one bouncer-judge spawn -- the judge call whose fixture-scripted APPROVED verdict is what
-	// advanced the run past the segment.
+	// The scenario checks that both review segments genuinely ran rather than being silently
+	// short-circuited: the fake burler ran exactly two rounds (one per segment), and the fake
+	// shuttle recorded exactly two bouncer-judge spawns -- the judge calls whose fixture-scripted
+	// APPROVED verdicts are what advanced the run past each segment.
 	loomBurler := env.Burler.(*fakeLoomBurler)
-	if loomBurler.calls != 1 {
-		t.Errorf("fakeLoomBurler.calls = %d; want exactly 1 after a clean run", loomBurler.calls)
+	if loomBurler.calls != 2 {
+		t.Errorf("fakeLoomBurler.calls = %d; want exactly 2 after a clean run", loomBurler.calls)
 	}
-	if loomShuttle.bouncerJudgeCalls != 1 {
-		t.Errorf("fakeLoomShuttle.bouncerJudgeCalls = %d; want exactly 1 after a clean run", loomShuttle.bouncerJudgeCalls)
+	if loomShuttle.bouncerJudgeCalls != 2 {
+		t.Errorf("fakeLoomShuttle.bouncerJudgeCalls = %d; want exactly 2 after a clean run", loomShuttle.bouncerJudgeCalls)
 	}
 }

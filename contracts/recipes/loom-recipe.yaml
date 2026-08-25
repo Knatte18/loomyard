@@ -1,5 +1,5 @@
 # loom-recipe.yaml is loom's producer graph. It is embedded into the binary by the sibling
-# recipes.go rather than read from disk. The fourteen row names below are the durable on-disk
+# recipes.go rather than read from disk. The sixteen row names below are the durable on-disk
 # identities pinned against internal/loomshed's Name* constants by the coverage guard -- a rename
 # here without a matching constant rename breaks resume for any in-flight task.
 #
@@ -9,10 +9,11 @@
 # produces what each of them gates, so there is nothing to bounce to and a human is the only thing
 # that can fix any of the five.
 #
-# Discussion-Bouncer and Discussion-Burler both carry segment: Discussion-Review and route to each
-# other via a mutual on_stuck -- internal/shedengine's validator rejects an OnStuck naming a
-# producer in a different Segment, so both rows need the same non-empty label for that pair of
-# edges to build at all.
+# Both review segments follow the same shared-segment mutual-on_stuck shape: Discussion-Bouncer and
+# Discussion-Burler carry segment: Discussion-Review, and Plan-Bouncer and Plan-Burler carry
+# segment: Plan-Review, each pair routing to its partner via a mutual on_stuck --
+# internal/shedengine's validator rejects an OnStuck naming a producer in a different Segment, so
+# each pair needs its own non-empty, shared label for that pair of edges to build at all.
 
 version: 1
 entry: Preflight
@@ -88,10 +89,89 @@ producers:
   - name: Plan-Validate
     engine: PlanValidate
     on_stuck: Plan-Write
-    on_done: Plan-Review
+    on_done: Plan-Bouncer
 
-  - name: Plan-Review
-    engine: Stub
+  - name: Plan-Bouncer
+    engine: Bouncer
+    segment: Plan-Review
+    max_bounces: 5
+    on_stuck: Plan-Burler
+    # Deliberately NOT Batchifier: Plan-Revalidate re-runs the mechanical checks over whatever the
+    # fixer rounds left behind, because the judge is rubric-forbidden from re-deriving them and
+    # Batchifier never parses the plan at all.
+    on_done: Plan-Revalidate
+    config:
+      run_subdir: plan
+      # A plan is 00-overview.md plus a variable number of card files, so no enumeration written
+      # here stays correct across plans -- the single directory entry is what stays right. Both
+      # consumers accept a directory: shedadapters.NewBouncer stats nothing, and burlerengine's own
+      # path check documents that a file and a directory both satisfy it. This entry resolves
+      # against Env.WorktreeRoot, which is knowingly not the AnchorPath() root Env.CommitPlan
+      # anchors at; the two are identical while AnchorRel is "." (its default), the shipped
+      # Discussion pair carries the same shape, and the fix is filed as its own roadmap item rather
+      # than made here.
+      artifact_paths:
+        - _lyx/plan
+      rubric_stencil: loom-rubric-plan-review
+      # commit_seam is required rather than optional here: Plan-Burler runs fix-scope: overlay and
+      # an overlay round runs no git at all, and nothing else in this segment commits, so without
+      # the seam every approved fix would stay uncommitted in the weft working tree.
+      commit_seam: plan
+      # No model/effort/version key: the absence is what makes this row take the run-wide
+      # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
+      # rebuild model.
+
+  - name: Plan-Burler
+    engine: BurlerRound
+    segment: Plan-Review
+    max_bounces: 5
+    on_stuck: Plan-Bouncer
+    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
+    on_done: Plan-Bouncer
+    config:
+      # The same run_subdir value as Plan-Bouncer is what makes both rows write into one shared
+      # run directory.
+      run_subdir: plan
+      profile:
+        target:
+          paths:
+            - _lyx/plan
+        fasit:
+          paths:
+            - _lyx/discussion/decision-record.md
+          instructions: >
+            The decision record named above is the answer key: the plan's job is to implement the
+            decisions and constraints it settles. The format authority is
+            contracts/specs/loom-plan-spec.md, and the mechanical checks over that format are
+            already enforced upstream by Plan-Validate, so re-deriving them in this round is
+            duplicated work.
+        rubric_stencil: loom-rubric-plan-review
+        # fix-scope: overlay, deliberately NOT the shipped Discussion-Burler row's source. The plan
+        # directory is weft content reached through the junction, and the Fabric Git Invariant
+        # reserves committing that class of file to the loop owner, never an agent. The Discussion
+        # row's source value is the same violation, recorded and left to its own roadmap item, so
+        # this divergence is on purpose rather than a copy-paste slip.
+        fix-scope: overlay
+        # tool-use is required: the round walks the plan directory's card files (the set is
+        # variable and only the Card Index names it), resolves symbol-shaped target entries against
+        # the repo, and reads the decision record.
+        tool-use: true
+      # No model/effort/timeout_s key, for the same Env fallback reason as Plan-Bouncer.
+
+  - name: Plan-Revalidate
+    # The same PlanValidate engine Plan-Validate's own row uses: the registry maps engine names to
+    # constructors, and two rows may share one. This row re-runs planparser's checks AFTER the
+    # review segment, over whatever Plan-Burler's overlay rounds rewrote -- the judge is forbidden
+    # by its own rubric from re-deriving those checks, Batchifier's Call never parses the plan, and
+    # Webster carries no on_stuck at all, so without this row a fixer-introduced format regression
+    # lands on the one row in the list a human is the only recovery for.
+    engine: PlanValidate
+    # on_stuck is Plan-Write, not Plan-Bouncer: bouncing back into the segment live-locks, because
+    # judged(n) is still true for the already-APPROVED round, so settle returns Done immediately and
+    # the two rows ping-pong forever. Plan-Write is the same target Plan-Validate already bounces to,
+    # it terminates, and the bounce budget bounds it.
     on_stuck: Plan-Write
     on_done: Batchifier
 
