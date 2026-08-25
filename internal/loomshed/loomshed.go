@@ -1,8 +1,8 @@
-// loomshed.go declares loom's sixteen durable row names and nothing else.
+// loomshed.go declares loom's seventeen durable row names and nothing else.
 
 package loomshed
 
-// The sixteen producer names, verbatim per manifest/designs/loom.md's producer table. The name is
+// The seventeen producer names, verbatim per manifest/designs/loom.md's producer table. The name is
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //
@@ -10,7 +10,7 @@ package loomshed
 // shared by reference with Hardener's own list (see internal/landingshed's own package
 // documentation) -- but the name constants live here regardless, same as every other row, because
 // loom's own producer table names them, and the table is now the recipe's:
-// contracts/recipes/loom-recipe.yaml spells the same sixteen names as yaml strings, these
+// contracts/recipes/loom-recipe.yaml spells the same seventeen names as yaml strings, these
 // constants remain the authority, and internal/loomrecipe's coverage guard is what pins the two
 // declarations together by keying its row table off these symbols rather than off string literals.
 //
@@ -31,7 +31,8 @@ const (
 	NamePlanRevalidate     = "Plan-Revalidate"
 	NameBatchifier         = "Batchifier"
 	NameWebster            = "Webster"
-	NameWebsterReview      = "Webster-Review"
+	NameWebsterBouncer     = "Webster-Bouncer"
+	NameWebsterBurler      = "Webster-Burler"
 	NamePublish            = "Publish"
 	NameFinalize           = "Finalize"
 )
