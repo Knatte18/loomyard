@@ -6,6 +6,7 @@ slug: loom-discussion-review-producer
 branch: loom-discussion-review-producer
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'loom: Discussion-Review producer'
 task_description: |
   loom: Discussion-Review producer
@@ -32,15 +33,23 @@ implementing  '2026-08-25T07:15:23Z'
 ```yaml
 batches:
   - name: rubric-stencil
-    state: pending
+    state: running
+    implementer_session: 7be0d2b3-292e-418a-8af5-4d8c84f77c5f
+    start_sha: 7f46b1186df1e5140bf78cfd421932377dce67dc
+    verify_baseline_failures: []
   - name: shedrecipe-entries
     state: pending
+    verify_baseline_failures: []
   - name: loomengine-config-and-paths
     state: pending
+    verify_baseline_failures: []
   - name: loomcli-wiring
     state: pending
+    verify_baseline_failures: []
   - name: recipe-rows
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
