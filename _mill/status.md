@@ -41,7 +41,9 @@ batches:
     commit_sha: e1c302abd27beada27a0f290ecf5825295eb866f
     verify_baseline_failures: []
   - name: rss-parsing-foundation
-    state: pending
+    state: running
+    implementer_session: 345fd3d9-9551-439b-947e-918176ee6777
+    start_sha: 733b3b9300df20443107a89726625ca0528e5a69
     verify_baseline_failures: []
   - name: rss-limiter-and-fetch
     state: pending
