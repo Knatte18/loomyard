@@ -135,8 +135,9 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
   no match means archive the stale outputs and spawn fresh, exactly as today.
 - Rationale: this is `manifest/designs/loom.md`'s own crash-recovery ladder, applied where it was never actually implemented — step 2 ("is the agent's session still alive? → re-attach, just wait on its `Stop` hook; do **not** respawn — that would duplicate") followed by step 3 ("dead, no output → respawn a fresh agent").
   It is also the only signal that differs between the two states.
-  After a `Discussion-Validate` bounce the previous `Discussion-Write` run reached `OutcomeDone`, so `Run.finalize` removed its strand and deleted its run dir;
+  After a `Discussion-Validate` bounce the previous `Discussion-Write` run reached `OutcomeDone`, so `Run.finalize` ordinarily removed its strand and deleted its run dir;
   there is nothing live to find, and the row respawns.
+  "Ordinarily" is load-bearing: that cleanup is skipped entirely under `spec.KeepPane`, and both of its steps are best-effort (a failed `RemoveStrand` or `RemoveAll` is a `logger.Warn`, not an error), so the leftover-directory case is real and is given its own disposition in `leftover-run-dir-from-a-completed-run` below.
   After a crash mid-interview no cleanup ran, so the run dir and its `run.json` survive and — because the tmux server is detached and outlives the driver process — the pane usually does too.
   Ladder step 1 ("is there a complete output file?") is deliberately **not** implemented here: it is the exact shortcut the doc's trap warns about, and with steps 2 and 3 in place it buys nothing, since a run whose output files are complete has already reached `Done` and cleaned itself up.
 - Rejected: an "interview in progress" marker file written at spawn and cleared on `Done`.
@@ -156,6 +157,12 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
   It would have to learn the run-dir layout, the `run.json` schema, and reed's three-way liveness answer, none of which are exported.
 - Rejected: a dedicated `loomshed` producer or decorator for the attach behaviour.
   The behaviour belongs to every `SingleLLMProducer`, not to `Discussion-Write` alone, so putting it in the loom-specific package would leave `Plan-Write` and the generic `SingleLLM` row with the duplicate-agent bug.
+- **On widening the shared seam rather than adding an optional one.**
+  `shedadapters.Shuttle` is not `SingleLLMProducer`'s private seam: `shedrecipe.Env.Shuttle` feeds the `Bouncer` row (`entries_bouncer.go:101,141`) and the `PlanWrite`, `DiscussionWrite`, and generic `SingleLLM` rows, and the landing wiring supplies the same `*shuttleengine.Runner` to all of them.
+  Adding `Attach` puts a method on that seam which only `SingleLLMProducer` calls.
+  Widen it anyway: the sole production implementor is `*shuttleengine.Runner`, which gains the method for free, and every other implementor is a test fake in this repo — so the cost is a one-line addition to each fake, paid once.
+- Rejected: keeping `Shuttle` at one method and type-asserting an optional `Attacher` interface inside `Call`.
+  It makes the attach behaviour silently absent for any implementor that forgets it, which is exactly how the duplicate-agent bug would come back — and a compile error in a test fake is a better failure than a producer that quietly stops probing.
 
 ### attach-reconstructs-the-run-explicitly
 
@@ -181,6 +188,19 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   only the startup probe is skipped.
 - **`clock` is the runner's production clock**, injectable in tests exactly as `Start`'s is.
 - **`deadline` is `now + spec.Timeout`** — see `attach-restarts-the-deadline` below.
+- **`spec` is the caller's own normalized spec**, not one reconstructed from `run.json`.
+  `RunState` persists only `OutputFiles` out of the whole `Spec`, so reconstructing one is not even possible;
+  and it is not wanted, because `Attach` is only ever called with the same spec the row would otherwise have passed to `Run` (`SingleLLMProducer` sources both from one `SpecSource`).
+  Three of that spec's fields are read by machinery an attached run reaches, so each gets an explicit disposition rather than being inherited by accident:
+  - **`Display.Anchor`** — read by `checkLivenessTick`'s `errStrandPaneBindingCleared` carve-out (`run.spec.Display.Anchor != render.AnchorHidden`), where a hidden strand's empty pane id is normal rather than a cleared binding.
+    It must therefore carry `Spec.validate`'s `AnchorBelowParent` default (`spec.go:157-159`) — the *third* normalization, alongside the two in `attach-normalizes-the-spec-it-matches-on`.
+    An empty `Anchor` on the attach path would make every binding-cleared strand take the hidden-strand carve-out and classify `OutcomeDied` instead of surfacing the sentinel.
+  - **`KeepPane`** — honoured from the caller's spec, governing the attached run's own `Done` cleanup exactly as it governs a started run's.
+  - **`ForkSubagents`** — honoured from the caller's spec.
+    The post-`Done` `AuditForks` call it gates runs against `run.state.SessionID`, which comes from the persisted record, so the audit covers the whole session including the pre-crash portion.
+  `Timeout` is covered by `attach-restarts-the-deadline`, and `Prompt`/`Model`/`Effort`/`Version`/`Role`/`Round`/`Parent` are launch-time-only and unread by `Wait`, so they need no disposition.
+  A caller passing a spec whose `Display.Anchor` disagrees with how the live run was actually launched is a caller error, not something `Attach` reconciles;
+  no production caller can do it, since each row has exactly one `SpecSource`.
 
 ### ladder-step-1-survives-only-inside-attach
 
@@ -224,7 +244,7 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
 
 ### attach-normalizes-the-spec-it-matches-on
 
-- Decision: before scanning, `Attach` performs exactly two of `Spec.validate`'s normalizations on its own copy of the spec — resolving every relative `OutputFiles` entry against the runner's `worktreeRoot`, and replacing a zero `Timeout` with `cfg.RunTimeoutMin` minutes — and performs none of its checks.
+- Decision: before scanning, `Attach` performs two of `Spec.validate`'s three normalizations on its own copy of the spec — the third, `Display.Anchor`'s default, is covered in `attach-reconstructs-the-run-explicitly` above because it matters to the *attached run*, not to the match — resolving every relative `OutputFiles` entry against the runner's `worktreeRoot`, and replacing a zero `Timeout` with `cfg.RunTimeoutMin` minutes — and performs none of its checks.
   Matching is then **set** equality between the resolved absolute `OutputFiles` and the `run.json` record's `OutputFiles`, order-insensitive and duplicate-insensitive.
 - Rationale: `Attach` never calls `Start`, so it never reaches `Spec.validate`, which is today the only place either normalization happens (`spec.go:126-155`).
   Skipping the path resolution would fail to match a caller that passed relative entries against a `run.json` that always records absolute ones.
@@ -242,9 +262,17 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   - **No matching `run.json` at all** → `found == false`, nil error → archive and respawn.
     This is both the ordinary first-call case and the `Discussion-Validate` bounce case.
   - **Matched record, but reed does not track the strand (`errStrandNotTracked`) or tracks it with no pane binding (`errStrandPaneBindingCleared`)** → resolved by age, below.
-  - **reed's state file absent or unreadable** → error, never `found == false`.
+  - **reed's state file absent or unreadable** → error, never `found == false`, at any dir age.
     An absent strand table is not evidence that anything is dead, and respawning on it is precisely the duplicate-agent hazard;
     `sweepOrphansOpportunistic` already refuses to act on either answer for the same reason, and `Attach` mirrors that refusal.
+  - **A matched record whose output files all already exist**, reached only in the non-attachable branches → `found == false`, at any dir age.
+    See `leftover-run-dir-from-a-completed-run` below.
+- **Decision on how the absent case is observed, because it is not observable through the seam `Attach` would naturally reach for.**
+  `Attach` must read reed's state file **directly**, via `reedengine.LoadState(filepath.Join(anchorPath, lyxdirs.DotLyxDirName))` — the identical call `sweepOrphansOpportunistic` already makes in `run.go` — and must **not** try to derive the answer from `ReedOps.Status()`.
+  `ReedOps` (`internal/shuttleengine/reed.go:18-25`) exposes only `Status()`, and `reedengine`'s `loadOrInitStateLocked` (`spawn.go:187-196`) substitutes an empty `&ReedState{}` whenever `LoadState` returns "not found".
+  `Status()` therefore *succeeds with zero strands* for an absent state file, which is byte-for-byte indistinguishable from a healthy table that simply does not list this guid — so an absent-file disposition built on `Status()` could never fire, and the test for it could never pass.
+  Only the unreadable/corrupt case surfaces as an error through `Status()`, because `LoadState` returns `unreadableStateError` there (`state.go:130-133`).
+  `LoadState` returns `(nil, nil)` for absent and `(nil, err)` for unreadable, which is exactly the three-way answer this decision needs, and reaching for it costs nothing: `run.go` already imports `reedengine` and `lyxdirs` and already makes this call.
 - Decision on the age question, which is what stops this from deadlocking: a matched record whose strand is untracked or binding-cleared is treated as `found == false` (archive and respawn) **once its run directory is older than `2 * StartupTimeoutS`** — the identical `minAge` guard `sweepOrphans` already applies — and as an error while it is younger than that.
 - Rationale: erroring unconditionally on those two answers deadlocks resume permanently.
   The only thing that ever removes such a directory is `sweepOrphansOpportunistic`, which runs inside `Runner.Start` — which the error path never reaches — so a single stale `run.json` whose strand reed has forgotten would fail every subsequent `lyx loom run` forever, with no in-band recovery.
@@ -257,6 +285,23 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   It respawns over an agent that may still be working in a pane reed can no longer address, which is the hazard both sentinels were written to prevent.
 - Rejected: an unconditional error with a new CLI verb to clear stale run dirs.
   New surface for a state the existing sweep already handles.
+
+### leftover-run-dir-from-a-completed-run
+
+- Decision: in the **non-attachable** branches only (untracked strand, or binding-cleared strand), a matched record whose `OutputFiles` **all exist on disk** is treated as `found == false` at any directory age, ahead of the age rule — a leftover from a run that already finished, not an interrupted one.
+  The strand-liveness question is answered **first**, so a run that is tracked-and-live with all its output files written is *attached*, never treated as leftover;
+  its own first tick then classifies `OutcomeDone` off the existing `allOutputFilesExist` check, which is the correct outcome and archives nothing.
+- Rationale: `resume-discriminates-on-live-agent-evidence-only` claims that a bounce finds nothing live because the prior run reached `Done` and `finalize` cleaned it up.
+  That claim is weaker than it reads.
+  `Run.finalize` skips cleanup entirely when `spec.KeepPane` is set (reachable via `lyx shuttle run --keep-pane`), and when it does run, both `RemoveStrand` and `os.RemoveAll` are best-effort — each failure is a `logger.Warn`, not an error.
+  So a completed run can leave its directory behind with its strand already gone.
+  On a fast bounce that directory is untracked *and* younger than `2 * StartupTimeoutS`, so the bare age rule would **error** — blocking the bounce on a run that finished perfectly well.
+  Output-file completeness is the file contract's own definition of "that run finished", so it is the right tie-breaker, and it is safe precisely because it is consulted only after liveness has already been ruled out.
+- This does not reintroduce the doc's trap.
+  The trap is a producer-level "files exist → `Done`" shortcut, which fires on a bounce where no agent ran.
+  This rule fires only when a matching `run.json` exists — i.e. only when some agent demonstrably *did* run for this exact output-file set — and its verdict is "respawn", never "`Done`".
+- Rejected: making the age rule the sole arbiter.
+  It converts two ordinary best-effort cleanup failures, and every `KeepPane` run, into a hard resume refusal.
 
 ### one-live-match-or-none
 
@@ -313,6 +358,11 @@ if one turns out to be needed, the `Stencil Ownership Invariant` and the `Produc
 `internal/loomengine/configtemplate.go` embeds `template.yaml`, which currently has six keys.
 `configengine.Load` is strict about unknown and missing keys, so the new key must be added to `template.yaml` **and** the struct together.
 `loomengine` is on the strict side of the `Config Strictness Invariant`'s pinned sets and stays there.
+
+**Migration obligation for existing worktrees — not optional, and not automatic.**
+Adding a key to a strict-side template breaks every worktree whose `loom.yaml` was written before it.
+`configengine.Load` hard-errors with `config file <path>: missing keys: discussion_interactive; run "lyx config reconcile"` (`internal/configengine/config.go:113`), and nothing reconciles outside that explicit verb — so the very next `lyx loom run` in any already-initialized worktree fails until the operator runs `lyx config reconcile`.
+This is the existing, intended mechanism rather than a defect (the error text names the remedy), but the task must state it: the change note / commit message should carry the `lyx config reconcile` instruction, and it applies to every in-flight worktree, not only new ones.
 `config_test.go` is the existing home for key-coverage assertions.
 
 **The wait loop.**
@@ -452,6 +502,13 @@ Over a temp run-dir root with hand-written `run.json` files and a fake reed:
 - The same, dir **older** than `2 * StartupTimeoutS`: `found == false`, nil error, so the caller archives and respawns.
 - Both of the above again for a strand that is tracked but holds no pane id.
 - reed's state file absent, and separately unreadable: error in both cases, never `found == false`, at any dir age.
+  The absent case is only reachable because `Attach` reads `reedengine.LoadState` directly;
+  a test written against a fake `ReedOps.Status()` cannot express it, since an absent file surfaces there as a successful empty table.
+  Add a companion assertion that `Attach` does **not** consult `Status()` for this question.
+- A matched record in a non-attachable branch whose output files **all exist**: `found == false` at any dir age, including a dir younger than `2 * StartupTimeoutS` (the fast-bounce-after-failed-cleanup case) and a `KeepPane` leftover.
+- The same output files present but the strand **tracked and live**: attached, not treated as leftover, and the first tick classifies `OutcomeDone` — with the output files still on disk, unarchived.
+- `Display.Anchor` defaulting: a spec with an empty `Anchor` attaches to a binding-cleared strand and surfaces `errStrandPaneBindingCleared`, rather than taking the hidden-strand carve-out and classifying `OutcomeDied`.
+- `KeepPane` on an attached run suppresses the `Done` cleanup, and its absence performs it.
 - A matching run dir whose strand is tracked with a live pane: `found == true`, and `Wait` runs against the persisted `EventsPath`.
 - Two matching live run dirs: error, not a pick.
 - An unreadable or truncated `run.json` mid-scan does not abort the scan.
