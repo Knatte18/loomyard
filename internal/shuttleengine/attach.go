@@ -206,6 +206,15 @@ func collectAttachCandidates(root string, outputFiles []string) ([]attachCandida
 			continue
 		}
 		runDir := filepath.Join(root, entry.Name())
+		// The directory's mtime is captured BEFORE loadRunState, deliberately: loadRunState's
+		// underlying state.ReadJSON acquires a read lock, which creates (or touches) a lock file
+		// inside runDir — an entry-table mutation that bumps the DIRECTORY's own mtime to "now" on
+		// every scan. Reading entry.Info() after that call would silently erase the very age signal
+		// the leftover-then-age rule depends on.
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
 		rs, found, err := loadRunState(runDir)
 		if err != nil || !found {
 			// Skip: an unreadable or truncated run.json mid-scan must not abort the scan for every
@@ -213,10 +222,6 @@ func collectAttachCandidates(root string, outputFiles []string) ([]attachCandida
 			continue
 		}
 		if !outputFilesSetEqual(rs.OutputFiles, outputFiles) {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
 			continue
 		}
 		candidates = append(candidates, attachCandidate{runDir: runDir, dirMtime: info.ModTime(), state: rs})
