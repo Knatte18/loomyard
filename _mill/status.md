@@ -55,5 +55,7 @@ batches:
     start_sha: 2ab9d6c9079aa86d58d4a30fc42a665a29d425d8
     commit_sha: 9c047af909a88486b7890d530b87619767bc2f2a
   - name: loomrecipe-regression-and-docs
-    state: pending
+    state: running
+    implementer_session: 5a868d51-3e35-4348-8b4c-b159b78a9d52
+    start_sha: 1024c577e6066ade4877eddba4a12377eb479ca3
 ```
