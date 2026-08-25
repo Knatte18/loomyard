@@ -49,6 +49,8 @@ batches:
     commit_sha: 8bfe15710c7b351570a505c3c2a41618d31e3c19
     verify_baseline_failures: []
   - name: docs-and-stale-text-sweep
-    state: pending
+    state: running
+    implementer_session: 265c7f64-118b-449f-a7f7-95bbc820cfa6
+    start_sha: 8b71613f566590c4437b3ac65f7c4ba75ddaaeee
     verify_baseline_failures: []
 ```
