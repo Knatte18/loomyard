@@ -35,7 +35,9 @@ batches:
     commit_sha: 02569d360e79bd2032a9dccf4032ae6b30697f2b
     verify_baseline_failures: []
   - name: bouncer-commit-seam
-    state: pending
+    state: running
+    implementer_session: c3883707-dc78-40fa-898f-e7ccb5f9d9e5
+    start_sha: e14620bff57e485a411c72f3f1b8df37e65d0a7b
     verify_baseline_failures: []
   - name: plan-review-segment-rows
     state: pending
