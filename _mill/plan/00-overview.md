@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: Discussion-Burler Fabric Git Invariant fix'
 slug: 'loom-discussion-burler-fix-scope'
-approved: false
+approved: true
 started: '20260825-140240'
 parent: 'loom-webster-review-producer'
 root: ""

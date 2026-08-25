@@ -61,12 +61,14 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   If at least one is, apply both halves of the rule:
 
   - The row's `profile["fix-scope"]` must be the string `overlay`.
-    Report a missing key and a non-`overlay` value as distinct failures, each naming the row.
+    Report a missing key and a non-`overlay` value as two distinct `t.Errorf` calls, each naming the row.
+    Use `t.Errorf` rather than `t.Fatalf` here: step 2 below requires one run against the unmodified recipe to surface both this failure and the seam failure below it, which only holds if neither aborts the test.
   - Collect the second path segment of every overlay target path — the overlay subdirectory each lives under.
     If the row's overlay target paths do not all share one single such subdirectory, call `t.Errorf` naming the row and the differing subdirectories: a row straddling two overlay trees has no single correct seam and the guard must not guess one.
     Otherwise find the row in the same `Recipe` whose `Engine` is the `Bouncer` string and whose `Segment` equals this row's `Segment`.
     If no such row exists, `t.Errorf` naming the Burler row and its segment.
-    If it exists, read its `Config["commit_seam"]` as a string: a missing or empty key is a failure naming the row, and a present value that is not equal to the shared overlay subdirectory is a failure reporting both the value found and the value required.
+    If it exists, read its `Config["commit_seam"]` as a string: a missing or empty key is a `t.Errorf` naming the row, and a present value that is not equal to the shared overlay subdirectory is a `t.Errorf` reporting both the value found and the value required.
+    Both are `t.Errorf` rather than `t.Fatalf` for the same reason as the `fix-scope` half above.
 
   Add the shipped-recipe test, `TestShippedRecipe_OverlayBurlersCommitThroughSeam`: parse `recipes.LoomRecipe` with `shedbuild.Parse`, fail the test on a parse error, and pass the result to `assertOverlayBurlerCommitSeams`.
   This half is a straight read of the real embedded file and must never mutate a copy of it.
@@ -135,7 +137,8 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   In `internal/loomcli/wiring.go`, extend the doc comment on the `CommitDiscussion` closure.
   It already documents the closure's idempotence — `CommitAnchoredPaths` reports `committed == false` for an already-clean, already-tracked path and the closure discards that result, returning only the error.
   Add the note that this idempotence now covers two callers rather than one, since the `Discussion-Bouncer` row's approved settle reaches this same closure through the row's `commit_seam: discussion` config key.
-  Phrase it to match the equivalent sentence the `CommitPlan` closure's doc comment immediately below already carries for the identical reason, so the two read as one pattern.
+  Phrase it to match the equivalent sentence the `CommitPlan` closure's doc comment already carries for the identical reason, so the two read as one pattern.
+  `CommitPlan` sits further down in the same struct literal rather than immediately below — the `PlanSpec` closure and its own doc comment sit between the two.
   The closure body does not change: its pathspec, its `NewMutations("")` record, its commit message, and its `EnvSyncOptions()` all stay exactly as they are.
 - **Commit:** `docs(loom): retarget the two doc comments naming the old Discussion-Bouncer shape`
 
