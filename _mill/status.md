@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-mode-selector
+phase: approved-shedadapters-probe-before-archive
 slug: loom-discussion-write-interactive
 branch: loom-discussion-write-interactive
 plan: _mill/plan
@@ -26,6 +26,7 @@ blocked  '2026-08-25T15:34:02Z'
 approved-shuttle-await-operator-and-run-outcome  '2026-08-25T15:41:40Z'
 approved-shuttle-attach  '2026-08-25T16:00:40Z'
 approved-loom-mode-selector  '2026-08-25T16:04:19Z'
+approved-shedadapters-probe-before-archive  '2026-08-25T16:09:42Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     start_sha: 9e7fc34e8f2e9c9a7d20357e26a8b5d46d06e7cc
     commit_sha: 2d5156a606abf099381573a9b85d41c029204027
   - name: shedadapters-probe-before-archive
-    state: running
+    state: approved
     implementer_session: 9a165137-62ed-48c4-88e9-86ec4a7d6285
     start_sha: 2ab9d6c9079aa86d58d4a30fc42a665a29d425d8
+    commit_sha: 9c047af909a88486b7890d530b87619767bc2f2a
   - name: loomrecipe-regression-and-docs
     state: pending
 ```
