@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-discussion-review-producer
 branch: loom-discussion-review-producer
 plan: _mill/plan
@@ -24,4 +24,23 @@ plan-review-r2  '2026-08-25T07:04:09Z'
 plan-fix-r2  '2026-08-25T07:05:22Z'
 plan-review-r3  '2026-08-25T07:14:24Z'
 planned  '2026-08-25T07:14:42Z'
+implementing  '2026-08-25T07:15:23Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: rubric-stencil
+    state: pending
+  - name: shedrecipe-entries
+    state: pending
+  - name: loomengine-config-and-paths
+    state: pending
+  - name: loomcli-wiring
+    state: pending
+  - name: recipe-rows
+    state: pending
+  - name: docs
+    state: pending
 ```
