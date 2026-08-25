@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-perch-wiring
+phase: approved-docs-and-roadmap
 slug: loom-webster-review-producer
 branch: loom-webster-review-producer
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-08-25T12:36:17Z'
 implementing  '2026-08-25T12:36:44Z'
 approved-rubric-stencil  '2026-08-25T12:40:32Z'
 approved-perch-wiring  '2026-08-25T12:46:24Z'
+approved-docs-and-roadmap  '2026-08-25T12:50:32Z'
 ```
 
 ## Batches
@@ -44,8 +45,9 @@ batches:
     commit_sha: 18e414885b94c42b93e6ae94ccec540e80bec485
     verify_baseline_failures: []
   - name: docs-and-roadmap
-    state: running
+    state: approved
     implementer_session: b05eb27e-0cc5-43b9-9aad-608d0a32a1cf
     start_sha: 0e10831ccd432d024d4dd40b4ee48218b26adcbd
+    commit_sha: c711ee1998f659946cc1d85bc820c502691f2665
     verify_baseline_failures: []
 ```
