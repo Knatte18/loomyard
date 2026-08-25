@@ -44,6 +44,8 @@ batches:
     commit_sha: 18e414885b94c42b93e6ae94ccec540e80bec485
     verify_baseline_failures: []
   - name: docs-and-roadmap
-    state: pending
+    state: running
+    implementer_session: b05eb27e-0cc5-43b9-9aad-608d0a32a1cf
+    start_sha: 0e10831ccd432d024d4dd40b4ee48218b26adcbd
     verify_baseline_failures: []
 ```
