@@ -81,7 +81,7 @@ The live suite itself is run by a human, deliberately, with `go -C plugins/prowl
   - `plugins/prowler/headers.go`
   - `plugins/prowler/blockdetect.go`
   - `plugins/prowler/htmltext.go`
-  - `plugins/prowler/redditrss.go`
+  - `plugins/prowler/redditrss_test.go`
   - `plugins/prowler/testdata/reddit-block-page.html`
 - **Edits:**
   - `plugins/prowler/fetch.go`
@@ -89,6 +89,7 @@ The live suite itself is run by a human, deliberately, with `go -C plugins/prowl
   - `plugins/prowler/reddit_test.go`
   - `plugins/prowler/fetch_test.go`
   - `plugins/prowler/adapter.go`
+  - `plugins/prowler/redditrss.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
