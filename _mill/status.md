@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reddit-oauth-client
+phase: approved-tiered-adapter
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
@@ -34,6 +34,7 @@ implementing  '2026-08-25T07:29:21Z'
 self-resolved-verify-logic  '2026-08-25T07:35:36Z'
 approved-block-detection  '2026-08-25T07:41:36Z'
 approved-reddit-oauth-client  '2026-08-25T07:51:11Z'
+approved-tiered-adapter  '2026-08-25T07:58:42Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: 834fcc19bdca56afacf96bf2fd4ce57f43caa02c
     verify_baseline_failures: []
   - name: tiered-adapter
-    state: running
+    state: approved
     implementer_session: 3625e886-9141-4f66-8a87-a820a3f1c0d5
     start_sha: 0a096a23754001742cdf699ef5475b6823a37bb4
+    commit_sha: 6403ce74f387961caf9595f4bdd026d6eb1a7a09
     verify_baseline_failures: []
   - name: live-integration
     state: pending
