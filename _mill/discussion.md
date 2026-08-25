@@ -27,10 +27,10 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
 - A new `plugins/prowler/redditrss.go` implementing the RSS read tier: URL rewrite to `.rss`, HTTP fetch, Atom parse, and markdown rendering.
 - A process-wide rate limiter for the RSS tier, driven by Reddit's `x-ratelimit-reset` response header, with an injectable clock/sleep seam for tests.
 - Refactor of `formatRedditThread` in `plugins/prowler/redditoauth.go` onto a tier-neutral intermediate representation, so the OAuth JSON path and the RSS Atom path render through one formatter.
-- Rewiring `redditAdapter.Fetch` in `plugins/prowler/reddit.go`: OAuth (when credentials present) → RSS → definitive error. The `old.reddit.com` HTML tier is removed.
+- Rewiring `redditAdapter.Fetch` in `plugins/prowler/reddit.go`: OAuth (when credentials present) → RSS → definitive error. The `old.reddit.com` HTML tier is removed, and with it the now-orphaned no-redirect transport seam (`fetcher.doNoRedirect`, its `newFetcher` wiring, and `noRedirectHTTPClient`).
 - Support for non-thread Reddit URLs (subreddit and user feeds) through the same RSS tier, rendered as a link list.
 - Offline fixtures under `plugins/prowler/testdata/` plus unit tests, and one `//go:build integration` live test.
-- Doc updates: `plugins/prowler/README.md` and `plugins/prowler/skills/prowler/SKILL.md` (only if it describes the Reddit tiers).
+- Doc updates at the five sites named in the `docs` decision: `plugins/prowler/README.md`, `plugins/prowler/skills/prowler/SKILL.md`, and the file/declaration doc comments in `adapter.go` and `headers.go`.
 
 **Out:**
 
@@ -54,6 +54,8 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
 - Rationale: it is a measured-dead tier. Reddit login-gates `old.reddit.com` for anonymous readers, so it returns a redirect-to-login on every request; the prior `prowler-fix-reddit-block` task confirmed this. Keeping it means every uncredentialed Reddit fetch spends one guaranteed-failing request against an IP whose standing is the scarce resource the whole RSS tier is built around, and adds a permanently-useless line to the error output. RSS occupies the "anonymous fallback" slot it was holding.
 - Rejected: **keep it as a last tier** — costs a request per fetch and can never succeed; if Reddit ever un-gates it, re-adding it is a small, well-understood change. **Keep it but only when RSS fails** — same cost, same zero success rate.
 - Note for mill-plan: `redditHostReplace` exists solely for `toOldRedditURL` and goes with it. `redditHostPattern` (used by `Matches`) stays. `stripToBodyText`, `decodeContentEncoding`, and `minUsableTextLen` are used by the generic cascade too and must NOT be removed. `TestToOldRedditURL` and the `old.reddit.com` cases in `plugins/prowler/reddit_test.go` / `fetch_test.go` go away with the tier; check `fetch_test.go`'s two `testdata/reddit-block-page.html` uses individually — the block-page fixture and `looksLikeBlockPage` both stay.
+- **The no-redirect seam goes too.** `plugins/prowler/fetch.go:186` is the *only* production caller of `f.doNoRedirect` (verified by grep during this discussion — every other hit is a test wiring it up), so deleting `fetchOldRedditHTML` orphans the whole seam. Remove all of it in the same change: the `doNoRedirect` field and its doc comment in `plugins/prowler/fetcher.go:22-26`, the "do, doNoRedirect, and browser must all be set" sentence in that file's `fetcher` doc comment, the `doNoRedirect: noRedirectHTTPClient.Do` wiring and its mention in `newFetcher`'s doc comment (`plugins/prowler/main.go:17,22`), `noRedirectHTTPClient` itself (`plugins/prowler/headers.go:37-45`, whose doc comment cites old.reddit's login redirect as its only reason to exist), and the `httpClient` doc comment's closing "a fetch path that needs to observe a redirect instead of following it uses `noRedirectHTTPClient`" sentence (`plugins/prowler/headers.go:30-32`). Every test that constructs a `fetcher` literal with a `doNoRedirect` field drops it (`reddit_test.go`, `fetch_test.go`).
+- Rationale for removing rather than retaining: `fetcher`'s own doc comment states that none of its fields has a nil fallback, so an unset field is "a wiring bug that must fail loudly". Keeping a field no production path sets or reads inverts that contract, and leaves `noRedirectHTTPClient` documented as existing for a tier that no longer exists. Re-adding a redirect-observing client is a handful of lines if a future adapter needs one.
 
 ### neutral-thread-representation
 
@@ -79,6 +81,8 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
   ```
 
   `formatRedditThread` is re-signatured to take `(redditPost, sourceURL string)`. The OAuth path gains a mapping step from `[]redditListing` to `redditPost`; the RSS path maps from parsed Atom entries.
+
+  **`sourceURL` is always the caller's original URL, never the derived `.rss` URL.** The OAuth tier already does this — `fetchRedditOAuthThread` passes `rawURL`, not the rewritten `oauth.reddit.com` URL — so the rendered `Source:` line stays a URL a human can open. The RSS tier follows the same rule, with the one refinement that the integration test's "resolved URL" means the thread URL discovered from the subreddit feed, still in its non-`.rss` form. The listing-rendering branch does the same.
 - Rationale: the task brief requires the RSS output to match the OAuth output's markdown shape. One formatter guarantees that by construction; two formatters guarantee only that they matched on the day they were written. `*int` for `Score` is what lets the formatter tell "zero points" apart from "this source has no scores".
 - Rejected: **synthesize `[]redditListing` from the Atom feed and call `formatRedditThread` unchanged** — the JSON `Score` field is a plain `int`, so every RSS-sourced post and comment would render "0 points", which is not merely ugly but factually wrong output handed to Claude. **A separate `formatRedditRSSThread`** — duplicates the rendering rules and drifts.
 
@@ -98,19 +102,22 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
 
 - Decision: a process-wide limiter in `redditrss.go`, structurally mirroring the existing `redditTokenCache` (package-level singleton + `sync.Mutex` + a `reset()` method for tests):
 
-  - State: `nextAllowed time.Time`, guarded by the mutex.
-  - Before each RSS request: acquire the mutex, wait until `nextAllowed`, issue the request, record the new `nextAllowed`, release. Holding the lock across the request serialises every concurrent `runAll` goroutine onto one in-flight RSS request, which is exactly the required behaviour — Reddit's budget is per-IP, not per-URL.
-  - After every response, success or failure: `nextAllowed = now + max(x-ratelimit-reset seconds, redditRSSMinSpacing)`. `redditRSSMinSpacing` is the floor used when the header is missing or unparseable; set it to 60 s, the measured window.
-  - The wait is context-cancellable (`select` on a timer and `ctx.Done()`), never a bare `time.Sleep`.
-  - Both the clock and the wait are injectable, following the existing `var timeNow = time.Now` seam in `redditoauth.go`; add a matching `var redditRSSWait = func(ctx, d) error`. Unit tests must never wait in real time.
+  - **Serialisation is a 1-token buffered channel, not a held mutex** — `var redditRSSToken = make(chan struct{}, 1)`, pre-filled with one token. A caller acquires by `select`ing the token against `ctx.Done()` and the deadline timer, and returns the token in a `defer`. A `sync.Mutex` is deliberately *not* used for this: `Mutex.Lock()` is uncancellable and takes no deadline, so a goroutine queued behind others could observe neither `ctx` cancellation nor `redditRSSMaxWait` — the bounds in `rss-wait-bounds` would be unimplementable. Reddit's budget is per-IP, not per-URL, so one token for the whole process is exactly right.
+  - **State: `nextAllowed time.Time`, owned by the token holder.** Only the goroutine currently holding the token reads or writes it, so the channel already provides the mutual exclusion and no separate mutex is needed. `reset()` (tests only) is the one exception and is called between tests, never concurrently with a fetch.
+  - Once the token is held: wait until `nextAllowed`, issue the request, record the new `nextAllowed`, release.
+  - **Spacing rule, one rule only:** after every response — success or failure — `nextAllowed = now + d`, where `d` is the value parsed from `x-ratelimit-reset` when that header is present and parses as a non-negative number of seconds, and `redditRSSMinSpacing` = 60 s **only** when the header is absent, empty, or unparseable. The header value is used verbatim, including small values — a reset of 3 s was observed live and is legitimate, since it means the current window is nearly over. `redditRSSMinSpacing` is a missing-header fallback, never a floor applied on top of a parsed value: clamping with `max(reset, 60s)` would make the header dead code, because every reset ever observed was under 60 s, and would silently collapse this design into the fixed-delay alternative it rejects.
+  - Every wait — the pacing wait and the token acquisition alike — is a `select` on a timer, `ctx.Done()`, and the call's deadline, never a bare `time.Sleep`.
+  - Both the clock and the wait are injectable, following the existing `var timeNow = time.Now` seam in `redditoauth.go`; add a matching `var redditRSSWait = func(ctx context.Context, d time.Duration) error`. Unit tests must never wait in real time.
 - Rationale: the measured limit is a hard per-IP window with an exact remaining-seconds countdown in the response, so honouring the header is both simpler and more accurate than any fixed delay. `x-ratelimit-used` stayed at 1 across a 429 storm, so 429s do not consume budget — but they do nothing useful either, and pacing avoids them entirely.
-- Rejected: **a fixed sleep between requests, ignoring the headers** — the window is not actually constant (observed resets of 3 s, 45 s, 52 s, 53 s, 54 s, 59 s), so a fixed delay is either wasteful or ineffective. **No pacing, return an error carrying an expected-wait hint** — pushes the retry loop onto Claude, and the burst case the user actually has ("spin up, want several threads") degenerates into a 429 storm.
+- Rejected: **a fixed sleep between requests, ignoring the headers** — the window is not actually constant (observed resets of 3 s, 45 s, 52 s, 53 s, 54 s, 59 s), so a fixed delay is either wasteful or ineffective. **No pacing, return an error carrying an expected-wait hint** — pushes the retry loop onto Claude, and the burst case the user actually has ("spin up, want several threads") degenerates into a 429 storm. **A `sync.Mutex` held across the request** — uncancellable and deadline-free, see above.
 
 ### rss-wait-bounds
 
-- Decision: two independent bounds. (1) Queue wait: a URL blocks in the limiter for at most `redditRSSMaxWait` = 5 minutes before the tier fails with an error naming the wait. (2) 429 retry: after the limiter grants a turn, a 429 response is retried at most twice more (3 attempts total), re-honouring the header countdown each time; a third 429 is a tier failure.
-- Rationale: `main` builds the fetcher with `context.Background()` — no deadline — so an unbounded queue wait can hang the process indefinitely when many Reddit URLs are passed at once. At ~60 s per request, 5 minutes lets a realistic burst of ~5 threads through and fails the rest with a clear reason instead of hanging. The retry budget covers the genuine race where another process on the same IP consumed the window.
-- Rejected: **unbounded queue wait governed only by ctx** — with `context.Background()` that is "unbounded" full stop. **A single attempt, no 429 retry** — loses to any transient contention on the shared IP.
+- Decision: **one deadline, computed once, covering the whole tier call**, plus a separate retry count.
+  1. On entry to the RSS tier, compute `deadline = timeNow() + redditRSSMaxWait`, with `redditRSSMaxWait` = 5 minutes. That single deadline bounds **every** blocking step of the call: token acquisition, the pacing wait before the first request, and the pacing wait before each 429 retry. `redditRSSMaxWait` therefore measures queue time *and* turn time *and* retry time together — not queue time alone. Exceeding it fails the tier with an error naming how long the call waited and what it was waiting for.
+  2. Independently, a 429 response is retried at most twice more (3 attempts total), re-honouring the header countdown each time and still subject to the same deadline; a third 429 is a tier failure.
+- Rationale: `main` builds the fetcher with `context.Background()` — no deadline — so an unbounded wait can hang the process indefinitely when many Reddit URLs are passed at once. Making the deadline a single value computed on entry (rather than a per-step budget) is what makes the 5-minute promise honest: a per-step cap would let queue time and retry time stack to ~8 minutes while every individual step stayed "within bounds". At ~60 s per request, 5 minutes lets a realistic burst of ~5 threads through and fails the rest with a clear reason instead of hanging. The retry budget covers the genuine race where another process on the same IP consumed the window.
+- Rejected: **unbounded queue wait governed only by ctx** — with `context.Background()` that is "unbounded" full stop. **A single attempt, no 429 retry** — loses to any transient contention on the shared IP. **Separate per-step budgets** — the sum, not any single step, is what the operator experiences as a hang.
 
 ### rss-progress-visibility
 
@@ -126,7 +133,7 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
 
 ### rss-url-construction
 
-- Decision: a `redditRSSURL(rawURL string) (string, error)` built on `net/url`, mirroring `redditOAuthURL`'s structure: parse, force `https`, force host `www.reddit.com`, drop the query and fragment, ensure exactly one trailing `/` on the path, append `.rss`. Error on a parse failure, on an empty path, and when the path already ends in `.rss` is *not* an error (idempotent — normalise and reuse).
+- Decision: a `redditRSSURL(rawURL string) (string, error)` built on `net/url`, mirroring `redditOAuthURL`'s structure. Steps, **in this order**: parse; force scheme `https`; force host `www.reddit.com`; drop the query and fragment; **strip a trailing `.rss` from the path if present**; then ensure exactly one trailing `/`; then append `.rss`. Error on a parse failure and on an empty path. The strip step is what makes the function idempotent — `redditRSSURL(redditRSSURL(u)) == redditRSSURL(u)` — without it, normalising the slash first would turn an already-`.rss` path into `/.rss/.rss`.
 - Rationale: `Matches` accepts bare, `www.`, and `old.` hosts plus arbitrary query strings; all of those must land on one canonical feed URL. `old.reddit.com/…/.rss` also serves the feed, but normalising to `www` keeps one host in errors and fixtures.
 - Rejected: string concatenation — breaks on a missing trailing slash, on `?utm_source=…`, and on `#comment-anchor`.
 
@@ -174,8 +181,14 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
 
 ### docs
 
-- Decision: update `plugins/prowler/README.md` in the same commit — the "Runtime prerequisite: Reddit API credentials" section becomes optional-not-required, states that RSS is the zero-setup path, names the ~60 s per-IP pacing and the resulting burst latency, and the "Site adapters" paragraph is rewritten for the new two-tier order with `old.reddit.com` removed. Check `plugins/prowler/skills/prowler/SKILL.md` for Reddit-tier or credential claims and update any that exist.
-- Rationale: the README currently tells the reader that credentials are a prerequisite and that Reddit fetches fail without them. Both statements become false with this change.
+- Decision: five named sites, all updated in the same commit — no conditional "check whether it needs it" wording, every one of these is verified stale today:
+  1. `plugins/prowler/README.md` — the "Runtime prerequisite: Reddit API credentials" section becomes optional-not-required, states that RSS is the zero-setup path, and names the ~60 s per-IP pacing and the resulting burst latency; the "Site adapters" paragraph is rewritten for the new two-tier order with `old.reddit.com` removed.
+  2. `plugins/prowler/skills/prowler/SKILL.md:10` — "a fetched Reddit page especially mixes nav/sidebar chrome with the real content" describes the deleted HTML-scraping tier. Reddit output is now formatted markdown from a structured source, so this line's premise for the `distill-subagent` rule no longer holds for Reddit and must be rewritten (the rule itself stays — RSS output is still long).
+  3. `plugins/prowler/adapter.go:1-5` — the file doc comment names "Reddit's old.reddit.com HTML" as the example adapter strategy.
+  4. `plugins/prowler/headers.go:37-45` — `noRedirectHTTPClient`'s doc comment cites old.reddit's login redirect; the declaration is deleted outright per `drop-old-reddit-html-tier`.
+  5. `plugins/prowler/headers.go:30-32` — `httpClient`'s doc comment closes by pointing at `noRedirectHTTPClient`, which no longer exists.
+  Also re-check `plugins/prowler/reddit.go`'s and `fetch.go`'s file-level doc comments, both of which enumerate the tier list and change with it.
+- Rationale: the README currently tells the reader that credentials are a prerequisite and that Reddit fetches fail without them — both become false. The other four are file-level doc comments describing code being deleted, and this module's convention (see every file's opening comment) is that those describe the file as it actually is. Naming the sites explicitly beats a conditional instruction that an implementer can satisfy by looking and concluding "nothing to do".
 - Rejected: deferring the doc update (the repo's task-completion rule requires docs in the same commit).
 
 ## Technical context
@@ -187,7 +200,8 @@ This task adds that endpoint as a read tier so prowler reads Reddit again with z
 - `plugins/prowler/fetch.go` — `fetchOldRedditHTML` (to be deleted), plus `decodeContentEncoding`, `stripToBodyText`, `minUsableTextLen`, `errorResult`, `defaultHeaders` (all shared, all stay).
 - `plugins/prowler/blockdetect.go` — `looksLikeBlockPage`, called by the new tier.
 - `plugins/prowler/htmltext.go` — `htmlToText(fragment string) string`; strips script/style/noscript and normalises whitespace. The Hacker News adapter already uses it for HTML-bodied comments.
-- `plugins/prowler/fetcher.go` — the `fetcher` injection seam: `do`, `doNoRedirect`, `browser`, `adapters`.
+- `plugins/prowler/fetcher.go` — the `fetcher` injection seam: `do`, `doNoRedirect`, `browser`, `adapters`. Its doc comment states that no field has a nil fallback, so an unset field is a wiring bug — which is why `doNoRedirect` is deleted rather than left orphaned (see `drop-old-reddit-html-tier`). After this task the seam is `do`, `browser`, `adapters`.
+- `plugins/prowler/headers.go` — `httpClient`, `noRedirectHTTPClient` (deleted by this task), `defaultHeaders`, `browserUA`.
 - `plugins/prowler/main.go` — `runAll` fans out one goroutine per URL, so anything process-wide in the RSS tier must be concurrency-safe. `main` uses `context.Background()`.
 - `plugins/prowler/go.mod` — module `github.com/Knatte18/loomyard/plugins/prowler`, Go 1.26, its own module separate from the repo root. `encoding/xml` is stdlib; **no new dependency is needed or wanted.**
 
@@ -247,11 +261,18 @@ x-ratelimit-reset: <seconds until the window resets>
 
 TDD candidates — write the test first for each of these; they are pure functions or fully seam-injected:
 
-- **`redditRSSURL`** — table-driven over: bare/`www.`/`old.` hosts; `http` and `https` schemes; trailing slash present and absent; a query string and a fragment (both dropped); a path already ending in `.rss` (idempotent); a subreddit path; empty path (error); unparseable URL (error).
+- **`redditRSSURL`** — table-driven over: bare/`www.`/`old.` hosts; `http` and `https` schemes; trailing slash present and absent; a query string and a fragment (both dropped); a path already ending in `.rss`, both with and without a trailing slash, asserting the result is unchanged rather than `/.rss/.rss`; feeding the function's own output back into it (idempotence); a subreddit path; empty path (error); unparseable URL (error).
 - **The Atom parser** — against `testdata/reddit-thread.rss`: post title, subreddit, author with the `/u/` prefix stripped, selftext extracted from between the `SC_OFF`/`SC_ON` markers with the `submitted by … [link] … [comments]` trailer excluded, comment count, comment authors and bodies, `Score` nil throughout, `Replies` nil throughout. Against `testdata/reddit-listing.rss`: every entry `t3_`, titles and links present. Against `testdata/reddit-rss-notfound.rss`: zero entries → error.
 - **Wait logging** — a stubbed wait of `redditRSSLogWaitThreshold` exactly emits nothing to stderr; a wait one second longer emits exactly one line naming the seconds and the URL; nothing is ever written to stdout.
-- **The limiter** — with the clock and wait both stubbed: first request proceeds immediately; a second request waits until `nextAllowed`; the wait duration comes from `x-ratelimit-reset`; a missing or garbage header falls back to `redditRSSMinSpacing`; a cancelled context aborts the wait and returns `ctx.Err()`; the queue wait cap (`redditRSSMaxWait`) is enforced; concurrent callers serialise (drive N goroutines through a stubbed clock and assert exactly one in-flight request at a time). Must complete in milliseconds.
-- **429 retry budget** — a stubbed transport returning 429 twice then 200 succeeds; three 429s produce a tier failure whose message names the reset seconds.
+- **The limiter** — with the clock and wait both stubbed, completing in milliseconds:
+  - First request proceeds immediately; a second waits until `nextAllowed`.
+  - The wait duration equals the parsed `x-ratelimit-reset` **verbatim**, asserted with a value *below* `redditRSSMinSpacing` (e.g. `3`) — this is the case that fails if anyone reintroduces a `max(reset, 60s)` clamp.
+  - A missing header, an empty header, a non-numeric header, and a negative value each fall back to `redditRSSMinSpacing`.
+  - A cancelled context aborts both the token acquisition and the pacing wait, returning `ctx.Err()`.
+  - The `redditRSSMaxWait` deadline is enforced across the whole call, not per step: a caller that spends most of the budget acquiring the token and would then need a further pacing wait past the deadline fails at the deadline rather than after it.
+  - Concurrent callers serialise: drive N goroutines through a stubbed clock and assert exactly one in-flight request at a time.
+  - A caller that times out or is cancelled while waiting **returns the token** (or never took it), so a later caller is not deadlocked — assert by running a timing-out caller and then a successful one.
+- **429 retry budget** — a stubbed transport returning 429 twice then 200 succeeds; three 429s produce a tier failure whose message names the reset seconds; the retries observe the same single call deadline.
 
 Other required coverage:
 
@@ -261,7 +282,8 @@ Other required coverage:
 - **Block-page detection on the RSS path** — an HTML wall body (reuse `testdata/reddit-block-page.html`) returned with a 200 from the `.rss` URL reports as a wall, not as an XML parse error.
 - **Listing rendering** — a non-`/comments/` Reddit URL renders the link-list shape and not the thread shape.
 - **Integration (`//go:build integration`)** — the two-request self-discovering live test from the `rss-integration-test-target` decision. It must not require credentials (unlike the existing OAuth integration test, which skips without them).
-- **Deletions** — remove `TestToOldRedditURL` and the `old.reddit.com` subtests; confirm `go vet ./...` and `go build ./...` are clean in `plugins/prowler` and that no dangling reference to `fetchOldRedditHTML`/`toOldRedditURL`/`redditHostReplace` remains.
+- **`Source:` line provenance** — the RSS tier's rendered output carries the caller's original URL, not the `.rss` URL; assert on both the thread branch and the listing branch.
+- **Deletions** — remove `TestToOldRedditURL` and the `old.reddit.com` subtests, and drop the `doNoRedirect` field from every `fetcher` literal in `reddit_test.go` and `fetch_test.go`. Confirm `go vet ./...` and `go build ./...` are clean in `plugins/prowler` and that no dangling reference to `fetchOldRedditHTML`, `toOldRedditURL`, `redditHostReplace`, `doNoRedirect`, or `noRedirectHTTPClient` remains anywhere in the module — a grep for each of the five is the check.
 
 ## Q&A log
 
@@ -280,3 +302,6 @@ Other required coverage:
 - **Q:** Fixture source — capture live or hand-author? **A:** [auto-pick] Use the live captures already taken during this discussion, trimmed into `testdata/`. **Why:** real captures are the only proof the parser survives Reddit's actual escaping and `SC_OFF`/`SC_ON` wrappers, and re-capturing would burn scarce rate budget for nothing.
 - **Q:** What should the live integration test target? **A:** [auto-pick] Two paced requests — discover a thread from `r/golang/.rss`, then fetch it. **Why:** hard-coded threads rot (the existing OAuth test's thread already 404s over `.rss`), and the two-request form is the only test that exercises the limiter for real.
 - **Q:** Should the OAuth tier share the RSS limiter? **A:** [auto-pick] No, RSS-only. **Why:** the authenticated budget is ~100 QPM; throttling it to one-per-60 s would make the credentialed path far worse for no reason.
+- **Q:** (r2 gap) What primitive serialises RSS requests, given the stated 5-minute cap and ctx-cancellability? **A:** [auto-pick] A 1-token buffered channel `select`ed against `ctx.Done()` and a single call-wide deadline — not a held `sync.Mutex`. **Why:** `Mutex.Lock()` is uncancellable and deadline-free, so a queued goroutine could observe neither bound and the stated cap was unimplementable as originally written.
+- **Q:** (r2 gap) Does `redditRSSMaxWait` bound queue time only, or the whole call? **A:** [auto-pick] The whole call — one deadline computed on entry, covering token acquisition, the pacing wait, and every 429-retry wait. **Why:** per-step budgets would let the steps stack to ~8 minutes while each stayed individually "within bounds"; the sum is what the operator experiences as a hang.
+- **Q:** (r2) Is the no-redirect transport seam kept after the `old.reddit.com` tier is deleted? **A:** [auto-pick] Deleted with the tier — field, wiring, client, and doc comments. **Why:** `fetch.go:186` is its only production caller, and `fetcher`'s own contract says an unset field is a wiring bug that must fail loudly, which an orphaned field silently inverts.
