@@ -5,11 +5,18 @@
 package main
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"html"
+	"io"
+	"math"
+	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -311,4 +318,306 @@ func formatRedditListing(feed redditAtomFeed, sourceURL string) string {
 	}
 
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// Reddit's unauthenticated .rss endpoint allows roughly one request per 60 seconds per IP, and
+// reports the remaining window on every response -- 200, 404, and 429 alike -- in an
+// x-ratelimit-reset header. runAll fans out one goroutine per URL, so the limiter below must be
+// concurrency-safe, and main builds its fetcher with context.Background(), so it must also be
+// bounded independently of the caller's context.
+const (
+	// redditRSSMinSpacing is the fallback spacing used only when x-ratelimit-reset is absent,
+	// empty, or unparseable -- never a floor applied on top of a parsed value. It matches
+	// Reddit's documented per-IP budget for this endpoint, roughly one request per 60 seconds.
+	redditRSSMinSpacing = 60 * time.Second
+	// redditRSSMaxWait is the single deadline covering one whole tier call -- token
+	// acquisition, the pacing wait before the first request, and the pacing wait before each
+	// retry are all bounded by this one value, not by a fresh budget per step. A per-step
+	// budget would let queue time and retry time stack well past what any individual step's
+	// own bound suggests, and the sum is what an operator experiences as a hang.
+	redditRSSMaxWait = 5 * time.Minute
+	// redditRSSLogWaitThreshold is the wait duration at or below which pace logs nothing --
+	// short waits are the expected common case and would otherwise spam stderr on every call.
+	redditRSSLogWaitThreshold = 2 * time.Second
+	// redditRSSMaxAttempts bounds one tier call to one initial attempt plus at most two 429
+	// retries.
+	redditRSSMaxAttempts = 3
+)
+
+// redditRSSWait is the seam a test replaces to avoid a real sleep. The production
+// implementation blocks for d or until ctx is cancelled, whichever comes first, returning
+// ctx.Err() on cancellation and nil on elapse, and always stopping its timer.
+var redditRSSWait = func(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// redditRSSLogOut is where pace logs a wait that exceeds redditRSSLogWaitThreshold. It is
+// os.Stderr in production and must never be os.Stdout: main prints exactly one line to
+// stdout -- the output file path -- and the invoking skill wrapper captures that single line,
+// so stdout is off limits for this tier.
+var redditRSSLogOut io.Writer = os.Stderr
+
+// redditRSSLimiter enforces Reddit's per-IP .rss rate limit across the whole process: exactly
+// one caller holds token at a time, and nextAllowed records when the next request may be sent,
+// derived from the most recently observed x-ratelimit-reset header.
+//
+// nextAllowed is owned by whichever goroutine currently holds token -- the channel receive
+// that acquires token already establishes a happens-before edge with the previous holder's
+// release, so the channel alone provides the mutual exclusion nextAllowed needs; no separate
+// mutex is required.
+type redditRSSLimiter struct {
+	token       chan struct{}
+	nextAllowed time.Time
+}
+
+// newRedditRSSLimiter allocates a limiter with its single token pre-filled, so the first
+// caller to acquire it proceeds immediately.
+func newRedditRSSLimiter() *redditRSSLimiter {
+	l := &redditRSSLimiter{token: make(chan struct{}, 1)}
+	l.token <- struct{}{}
+	return l
+}
+
+// redditRSSLimit is the one limiter shared by every .rss fetch in this process. Reddit's
+// budget is per-IP, not per-URL, so a limiter scoped to a single call site would let sibling
+// runAll goroutines overrun the shared window.
+var redditRSSLimit = newRedditRSSLimiter()
+
+// reset drains and refills the token and zeroes nextAllowed, returning the limiter to its
+// just-constructed state. It exists for tests only, and must never be called concurrently with
+// a fetch already in flight.
+func (l *redditRSSLimiter) reset() {
+	select {
+	case <-l.token:
+	default:
+	}
+	l.token <- struct{}{}
+	l.nextAllowed = time.Time{}
+}
+
+// acquire blocks until the token becomes available, ctx is cancelled, or deadline passes,
+// whichever comes first, returning ctx.Err() on cancellation and an error naming how long the
+// call waited for the RSS request slot on a deadline timeout.
+//
+// A sync.Mutex is deliberately not used here: Mutex.Lock is uncancellable and takes no
+// deadline, so a goroutine queued behind others could observe neither ctx cancellation nor
+// deadline, and the bounds this tier promises would be unimplementable. A select over a
+// channel receive, ctx.Done(), and a deadline timer honours all three.
+func (l *redditRSSLimiter) acquire(ctx context.Context, deadline time.Time) error {
+	wait := deadline.Sub(timeNow())
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-l.token:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return fmt.Errorf("reddit rss rate limiter: waited %s for the request slot", wait)
+	}
+}
+
+// release returns the token to the limiter, non-blocking. It is always called from a defer in
+// the acquiring function, so a cancelled or timed-out caller can never deadlock a later one.
+func (l *redditRSSLimiter) release() {
+	select {
+	case l.token <- struct{}{}:
+	default:
+	}
+}
+
+// pace blocks the token holder -- the only caller entitled to call this method -- until
+// nextAllowed, when nextAllowed is still in the future and waiting for it would not cross
+// deadline. It returns nil immediately when no wait is needed, an error naming the wait it
+// would have needed and the deadline it would have crossed when waiting would exceed deadline
+// (without waiting), and otherwise the result of redditRSSWait unchanged.
+//
+// A wait longer than redditRSSLogWaitThreshold is logged to redditRSSLogOut before waiting, so
+// an operator watching stderr sees why a call is slow instead of it looking hung.
+func (l *redditRSSLimiter) pace(ctx context.Context, deadline time.Time, rawURL string) error {
+	d := l.nextAllowed.Sub(timeNow())
+	if d <= 0 {
+		return nil
+	}
+	if timeNow().Add(d).After(deadline) {
+		return fmt.Errorf("reddit rss rate limiter: pacing wait of %s for %s would cross deadline %s", d, rawURL, deadline.Format(time.RFC3339))
+	}
+
+	if d > redditRSSLogWaitThreshold {
+		fmt.Fprintf(redditRSSLogOut, "prowler: reddit rss rate limit, waiting %s before fetching %s\n", d, rawURL)
+	}
+	return redditRSSWait(ctx, d)
+}
+
+// record updates nextAllowed from h's x-ratelimit-reset header. It is called by the token
+// holder after every response, success or failure alike, so a failed request still re-arms the
+// pacing from the window Reddit actually reported.
+func (l *redditRSSLimiter) record(h http.Header) {
+	l.nextAllowed = timeNow().Add(redditRSSResetDelay(h))
+}
+
+// redditRSSResetDelay parses h's x-ratelimit-reset header with strconv.ParseFloat -- not
+// strconv.Atoi, since Reddit float-formats this header family (the captured
+// x-ratelimit-remaining: 0.0 proves it), so an integer-only parser would silently degrade to
+// the 60-second fallback the day Reddit starts emitting "53.0" -- and, on a successful parse of
+// a non-negative value, rounds it up to the nearest whole second.
+//
+// redditRSSMinSpacing is returned on an absent, empty, unparseable, or negative value: it is a
+// missing-header fallback, never a floor applied on top of a parsed value. A clamp such as
+// max(reset, redditRSSMinSpacing) would make the header dead code, because every reset value
+// ever observed from this endpoint was under 60 seconds.
+func redditRSSResetDelay(h http.Header) time.Duration {
+	raw := h.Get("x-ratelimit-reset")
+	if raw == "" {
+		return redditRSSMinSpacing
+	}
+
+	seconds, err := strconv.ParseFloat(raw, 64)
+	if err != nil || seconds < 0 {
+		return redditRSSMinSpacing
+	}
+	return time.Duration(math.Ceil(seconds)) * time.Second
+}
+
+// fetchRedditRSSFeed issues the one Reddit .rss request this tier makes: it computes the
+// call's deadline, acquires the process-wide limiter, paces, requests, retries a 429, records
+// the response window, and returns the parsed feed. It sits one level below markdown
+// rendering, which is what lets the live integration test in batch 4 read a discovered thread
+// link out of a subreddit feed.
+func fetchRedditRSSFeed(ctx context.Context, f fetcher, rawURL string) (redditAtomFeed, error) {
+	// deadline is computed once, on entry, and bounds every blocking step of this call --
+	// token acquisition, the pacing wait before the first request, and the pacing wait before
+	// each retry. A per-step budget would let queue time and retry time stack to roughly
+	// redditRSSMaxAttempts * redditRSSMaxWait while every individual step stayed "within
+	// bounds", and the sum is what an operator experiences as a hang.
+	deadline := timeNow().Add(redditRSSMaxWait)
+
+	feedURL, err := redditRSSURL(rawURL)
+	if err != nil {
+		return redditAtomFeed{}, fmt.Errorf("build reddit rss URL: %w", err)
+	}
+
+	if err := redditRSSLimit.acquire(ctx, deadline); err != nil {
+		return redditAtomFeed{}, err
+	}
+	// The token is held across the whole call, including its 429 retries, never released and
+	// re-acquired per attempt: releasing between attempts would let a sibling runAll goroutine
+	// overtake into a window that is still exhausted, earning another 429 and making the storm
+	// worse -- the exact outcome one process-wide token exists to prevent. Siblings queue
+	// behind a retrying call for up to its remaining deadline, which redditRSSMaxWait already
+	// bounds.
+	defer redditRSSLimit.release()
+
+	for attempt := 0; attempt < redditRSSMaxAttempts; attempt++ {
+		if err := redditRSSLimit.pace(ctx, deadline, rawURL); err != nil {
+			return redditAtomFeed{}, err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+		if err != nil {
+			return redditAtomFeed{}, fmt.Errorf("build reddit rss request: %w", err)
+		}
+		req.Header.Set("User-Agent", redditAPIUserAgent())
+		req.Header.Set("Accept", "application/atom+xml")
+
+		resp, err := f.do(req)
+		if err != nil {
+			return redditAtomFeed{}, fmt.Errorf("reddit rss request failed: %w", err)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return redditAtomFeed{}, fmt.Errorf("read reddit rss response: %w", err)
+		}
+		// record runs after every response, success or failure alike, so a failed attempt
+		// still re-arms the pacing from the window this response actually reported.
+		redditRSSLimit.record(resp.Header)
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			// A 429 body is empty (content-length: 0), so the status code is the only
+			// signal to key on.
+			resetSeconds := redditRSSResetDelay(resp.Header).Seconds()
+			if attempt < redditRSSMaxAttempts-1 {
+				// record has already re-armed the pacing from this response's own
+				// x-ratelimit-reset, so the next iteration's pace waits out the real
+				// window.
+				continue
+			}
+			return redditAtomFeed{}, fmt.Errorf("reddit rss request returned status 429, reset in %.0fs", resetSeconds)
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			if reason, blocked := looksLikeBlockPage(string(body)); blocked {
+				return redditAtomFeed{}, fmt.Errorf("reddit rss response looked like a wall (%s)", reason)
+			}
+			return redditAtomFeed{}, fmt.Errorf("reddit rss request returned status %d", resp.StatusCode)
+		}
+
+		feed, err := parseRedditFeed(body)
+		if err != nil {
+			// Run the body through looksLikeBlockPage first, mirroring
+			// fetchRedditOAuthThread's own handling: Reddit has a history of serving
+			// HTML walls with 200 statuses from non-HTML endpoints, and an HTML wall
+			// would otherwise report as an XML syntax error rather than as a wall.
+			if reason, blocked := looksLikeBlockPage(string(body)); blocked {
+				return redditAtomFeed{}, fmt.Errorf("reddit rss response looked like a wall (%s) rather than a feed", reason)
+			}
+			return redditAtomFeed{}, err
+		}
+		if len(feed.Entries) == 0 {
+			// Reddit's not-found response is a valid, entry-less Atom feed; it arrives
+			// with a 404 so the status rule above catches it too, but this check must
+			// stand on its own because a genuinely empty feed is a failed read either
+			// way.
+			return redditAtomFeed{}, fmt.Errorf("reddit rss feed %q has no entries", rawURL)
+		}
+
+		return feed, nil
+	}
+
+	// Unreachable: every branch inside the loop above returns before its final iteration
+	// completes. This satisfies the compiler, which cannot itself prove that.
+	return redditAtomFeed{}, fmt.Errorf("reddit rss request exhausted %d attempts", redditRSSMaxAttempts)
+}
+
+// fetchRedditRSS is the tier entry point redditAdapter.Fetch calls for its RSS tier: it fetches
+// and parses the feed via fetchRedditRSSFeed, then discriminates on the parsed feed -- never on
+// rawURL alone -- to choose between the thread branch and the listing branch.
+//
+// The listing branch is never a fall-through for a thread URL: a /comments/ URL whose feed
+// carries no post is a broken read -- most likely a removed thread or a wall -- and rendering
+// its comments as an anonymous link list would disguise that as a successful fetch.
+func fetchRedditRSS(ctx context.Context, f fetcher, rawURL string) (string, error) {
+	// Transport, status, decode, and zero-entry failures have already been reported by
+	// fetchRedditRSSFeed before any rendering decision is reached.
+	feed, err := fetchRedditRSSFeed(ctx, f, rawURL)
+	if err != nil {
+		return "", err
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse reddit URL %q: %w", rawURL, err)
+	}
+
+	if strings.Contains(u.Path, "/comments/") {
+		// sourceURL is rawURL -- the caller's original URL, never the derived .rss URL --
+		// on both branches, so the rendered Source: line stays a URL a human can open.
+		post, err := redditPostFromFeed(feed, rawURL)
+		if err != nil {
+			return "", err
+		}
+		return formatRedditThread(post, rawURL), nil
+	}
+
+	return formatRedditListing(feed, rawURL), nil
 }

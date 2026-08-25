@@ -5,11 +5,19 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"html"
+	"io"
+	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // TestRedditRSSURL covers redditRSSURL's host/scheme normalisation, query/fragment
@@ -470,4 +478,783 @@ func TestFormatRedditListing(t *testing.T) {
 			t.Errorf("formatRedditListing() out missing bullet %q\nfull output:\n%s", want, out)
 		}
 	}
+}
+
+// redditRSSLimiterStub is the handle stubRedditRSSLimiter hands back to a test: the wait
+// durations redditRSSWait was asked for, a fake clock the test can advance, and the log buffer
+// redditRSSLogOut was redirected to. All fields are read through its methods rather than
+// directly, since the limiter's own goroutines read the clock concurrently with a test driving
+// it.
+type redditRSSLimiterStub struct {
+	mu    sync.Mutex
+	waits []time.Duration
+	now   time.Time
+	log   *bytes.Buffer
+}
+
+// advance moves the fake clock forward by d.
+func (s *redditRSSLimiterStub) advance(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.now = s.now.Add(d)
+}
+
+// clock returns the fake clock's current time; it is installed as the timeNow seam.
+func (s *redditRSSLimiterStub) clock() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.now
+}
+
+// recordedWaits returns the durations redditRSSWait was asked to wait, in call order.
+func (s *redditRSSLimiterStub) recordedWaits() []time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]time.Duration, len(s.waits))
+	copy(out, s.waits)
+	return out
+}
+
+// stubRedditRSSLimiter replaces redditRSSWait with a no-op that records the durations it was
+// asked to wait and returns nil (or ctx.Err() when ctx is already cancelled), points timeNow at
+// a controllable fake clock the test can advance, redirects redditRSSLogOut at a bytes.Buffer
+// the test can read, calls redditRSSLimit.reset(), and registers a t.Cleanup restoring all
+// four so no test leaks state into another.
+//
+// Every untagged test reaching the RSS tier must call this as its first statement: the limiter
+// is a process-wide singleton, and stubResponses builds responses with no x-ratelimit-reset
+// header, so the second unstubbed RSS test in the process would sleep 60 real seconds under the
+// production redditRSSWait.
+func stubRedditRSSLimiter(t *testing.T) *redditRSSLimiterStub {
+	t.Helper()
+
+	stub := &redditRSSLimiterStub{
+		now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		log: &bytes.Buffer{},
+	}
+
+	realWait := redditRSSWait
+	realTimeNow := timeNow
+	realLogOut := redditRSSLogOut
+
+	redditRSSWait = func(ctx context.Context, d time.Duration) error {
+		stub.mu.Lock()
+		stub.waits = append(stub.waits, d)
+		stub.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	timeNow = stub.clock
+	redditRSSLogOut = stub.log
+
+	redditRSSLimit.reset()
+
+	t.Cleanup(func() {
+		redditRSSWait = realWait
+		timeNow = realTimeNow
+		redditRSSLogOut = realLogOut
+	})
+
+	return stub
+}
+
+// TestRedditRSSLogOutDefaultsToStderr guards that redditRSSLogOut is never routed to stdout in
+// production: main prints exactly one line to stdout (the output file path), and the invoking
+// skill wrapper captures that single line. It runs without stubRedditRSSLimiter deliberately,
+// so it observes the package's real, un-redirected default.
+func TestRedditRSSLogOutDefaultsToStderr(t *testing.T) {
+	if redditRSSLogOut != io.Writer(os.Stderr) {
+		t.Errorf("redditRSSLogOut = %v; want os.Stderr", redditRSSLogOut)
+	}
+	if redditRSSLogOut == io.Writer(os.Stdout) {
+		t.Error("redditRSSLogOut must never be os.Stdout")
+	}
+}
+
+// TestRedditRSSResetDelay covers redditRSSResetDelay's float parsing, its round-up-to-whole-
+// seconds rule, and every fallback case.
+func TestRedditRSSResetDelay(t *testing.T) {
+	tests := []struct {
+		name      string
+		setHeader bool
+		val       string
+		want      time.Duration
+	}{
+		// Below redditRSSMinSpacing: this is the row that fails if anyone reintroduces a
+		// max(reset, 60s) clamp.
+		{"below_min_spacing_parses_verbatim", true, "3", 3 * time.Second},
+		// Float-formatted: the row that fails if anyone reaches for strconv.Atoi.
+		{"float_formatted_value", true, "53.0", 53 * time.Second},
+		{"fractional_value_rounds_up", true, "12.3", 13 * time.Second},
+		{"missing_header_falls_back", false, "", redditRSSMinSpacing},
+		{"empty_header_falls_back", true, "", redditRSSMinSpacing},
+		{"non_numeric_header_falls_back", true, "not-a-number", redditRSSMinSpacing},
+		{"negative_value_falls_back", true, "-5", redditRSSMinSpacing},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := http.Header{}
+			if tt.setHeader {
+				h.Set("x-ratelimit-reset", tt.val)
+			}
+			got := redditRSSResetDelay(h)
+			if got != tt.want {
+				t.Errorf("redditRSSResetDelay(%q) = %s; want %s", tt.val, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRedditRSSLimiter covers acquire/pace/release/record's blocking, deadline, cancellation,
+// logging, and serialisation behaviour directly against redditRSSLimit -- all via the stubbed
+// clock and wait, so every case completes in milliseconds.
+func TestRedditRSSLimiter(t *testing.T) {
+	t.Run("first_acquisition_has_no_wait", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(redditRSSMaxWait)
+
+		if err := redditRSSLimit.acquire(ctx, deadline); err != nil {
+			t.Fatalf("acquire() error = %v; want nil", err)
+		}
+		if err := redditRSSLimit.pace(ctx, deadline, "https://example.com"); err != nil {
+			t.Fatalf("pace() error = %v; want nil", err)
+		}
+		redditRSSLimit.release()
+
+		if got := stub.recordedWaits(); len(got) != 0 {
+			t.Errorf("recordedWaits() = %v; want none for the first acquisition", got)
+		}
+	})
+
+	t.Run("second_acquisition_waits_until_nextAllowed", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(redditRSSMaxWait)
+
+		if err := redditRSSLimit.acquire(ctx, deadline); err != nil {
+			t.Fatalf("first acquire() error = %v; want nil", err)
+		}
+		redditRSSLimit.record(http.Header{}) // no header: falls back to redditRSSMinSpacing
+		redditRSSLimit.release()
+
+		if err := redditRSSLimit.acquire(ctx, deadline); err != nil {
+			t.Fatalf("second acquire() error = %v; want nil", err)
+		}
+		if err := redditRSSLimit.pace(ctx, deadline, "https://example.com"); err != nil {
+			t.Fatalf("second pace() error = %v; want nil", err)
+		}
+		redditRSSLimit.release()
+
+		waits := stub.recordedWaits()
+		if len(waits) != 1 {
+			t.Fatalf("recordedWaits() = %v; want exactly one wait for the second call", waits)
+		}
+		if waits[0] != redditRSSMinSpacing {
+			t.Errorf("recordedWaits()[0] = %s; want %s", waits[0], redditRSSMinSpacing)
+		}
+	})
+
+	t.Run("pace_wait_equals_parsed_header_verbatim", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(redditRSSMaxWait)
+
+		if err := redditRSSLimit.acquire(ctx, deadline); err != nil {
+			t.Fatalf("acquire() error = %v; want nil", err)
+		}
+		h := http.Header{}
+		h.Set("x-ratelimit-reset", "3")
+		redditRSSLimit.record(h)
+		redditRSSLimit.release()
+
+		if err := redditRSSLimit.acquire(ctx, deadline); err != nil {
+			t.Fatalf("acquire() error = %v; want nil", err)
+		}
+		if err := redditRSSLimit.pace(ctx, deadline, "https://example.com"); err != nil {
+			t.Fatalf("pace() error = %v; want nil", err)
+		}
+		redditRSSLimit.release()
+
+		waits := stub.recordedWaits()
+		if len(waits) != 1 || waits[0] != 3*time.Second {
+			t.Fatalf("recordedWaits() = %v; want exactly [3s] -- this is the case that fails if a max(reset, 60s) clamp is reintroduced", waits)
+		}
+	})
+
+	t.Run("cancelled_context_aborts_acquire_and_pace", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		deadline := stub.clock().Add(redditRSSMaxWait)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		// Drain the token so acquire has nothing to receive and must observe ctx.Done()
+		// instead.
+		<-redditRSSLimit.token
+		if err := redditRSSLimit.acquire(ctx, deadline); !errors.Is(err, context.Canceled) {
+			t.Errorf("acquire() error = %v; want context.Canceled", err)
+		}
+		redditRSSLimit.token <- struct{}{}
+
+		redditRSSLimit.nextAllowed = stub.clock().Add(time.Minute)
+		if err := redditRSSLimit.pace(ctx, deadline, "https://example.com"); !errors.Is(err, context.Canceled) {
+			t.Errorf("pace() error = %v; want context.Canceled", err)
+		}
+	})
+
+	t.Run("acquire_times_out_at_deadline", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(10 * time.Millisecond)
+
+		<-redditRSSLimit.token // drain so acquire has nothing to receive
+		t.Cleanup(func() { redditRSSLimit.token <- struct{}{} })
+
+		if err := redditRSSLimit.acquire(ctx, deadline); err == nil {
+			t.Fatal("acquire() error = nil; want non-nil once the token never arrives before deadline")
+		}
+	})
+
+	t.Run("pace_fails_at_deadline_without_waiting", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(redditRSSMaxWait)
+		redditRSSLimit.nextAllowed = deadline.Add(time.Minute)
+
+		if err := redditRSSLimit.pace(ctx, deadline, "https://example.com"); err == nil {
+			t.Fatal("pace() error = nil; want non-nil when the pacing wait would cross deadline")
+		}
+		if waits := stub.recordedWaits(); len(waits) != 0 {
+			t.Errorf("recordedWaits() = %v; want none -- pace must fail without waiting", waits)
+		}
+	})
+
+	t.Run("concurrent_callers_serialise", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(redditRSSMaxWait)
+
+		const goroutines = 10
+		var active int32
+		var maxActive int32
+		var wg sync.WaitGroup
+		errs := make(chan error, goroutines)
+		for i := 0; i < goroutines; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := redditRSSLimit.acquire(ctx, deadline); err != nil {
+					errs <- err
+					return
+				}
+				defer redditRSSLimit.release()
+
+				n := atomic.AddInt32(&active, 1)
+				for {
+					m := atomic.LoadInt32(&maxActive)
+					if n <= m || atomic.CompareAndSwapInt32(&maxActive, m, n) {
+						break
+					}
+				}
+				time.Sleep(time.Millisecond)
+				atomic.AddInt32(&active, -1)
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Error(err)
+		}
+		if got := atomic.LoadInt32(&maxActive); got != 1 {
+			t.Errorf("max concurrent token holders = %d; want exactly 1", got)
+		}
+	})
+
+	t.Run("timed_out_caller_returns_the_token_for_a_later_caller", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+
+		<-redditRSSLimit.token // simulate the token already held elsewhere
+		shortDeadline := stub.clock().Add(5 * time.Millisecond)
+		if err := redditRSSLimit.acquire(ctx, shortDeadline); err == nil {
+			t.Fatal("acquire() error = nil; want non-nil (no token available before the short deadline)")
+		}
+		redditRSSLimit.token <- struct{}{} // the "elsewhere" holder finishes and releases
+
+		longDeadline := stub.clock().Add(redditRSSMaxWait)
+		if err := redditRSSLimit.acquire(ctx, longDeadline); err != nil {
+			t.Fatalf("second acquire() error = %v; want nil -- a timed-out caller must not deadlock a later one", err)
+		}
+		redditRSSLimit.release()
+	})
+
+	t.Run("wait_at_threshold_logs_nothing", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(redditRSSMaxWait)
+
+		redditRSSLimit.nextAllowed = stub.clock().Add(redditRSSLogWaitThreshold)
+		if err := redditRSSLimit.pace(ctx, deadline, "https://example.com/at-threshold"); err != nil {
+			t.Fatalf("pace() error = %v; want nil", err)
+		}
+		if stub.log.Len() != 0 {
+			t.Errorf("log = %q; want empty for a wait at the threshold", stub.log.String())
+		}
+	})
+
+	t.Run("wait_one_second_over_threshold_logs_exactly_one_line_naming_seconds_and_url", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		ctx := context.Background()
+		deadline := stub.clock().Add(redditRSSMaxWait)
+
+		redditRSSLimit.nextAllowed = stub.clock().Add(redditRSSLogWaitThreshold + time.Second)
+		if err := redditRSSLimit.pace(ctx, deadline, "https://example.com/over-threshold"); err != nil {
+			t.Fatalf("pace() error = %v; want nil", err)
+		}
+		logged := stub.log.String()
+		if strings.Count(logged, "\n") != 1 {
+			t.Fatalf("log = %q; want exactly one line", logged)
+		}
+		if !strings.Contains(logged, "https://example.com/over-threshold") {
+			t.Errorf("log = %q; want it to name the URL", logged)
+		}
+		if !strings.Contains(logged, "3s") {
+			t.Errorf("log = %q; want it to name the seconds waited", logged)
+		}
+	})
+}
+
+// rssResponse builds a canned *http.Response for RSS-tier tests.
+func rssResponse(status int, header http.Header, body string) *http.Response {
+	if header == nil {
+		header = http.Header{}
+	}
+	return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(body))}
+}
+
+// TestFetchRedditRSSFeed covers fetchRedditRSSFeed's request shape, its failure detection
+// (transport error, non-2xx status, block-page walls, zero-entry feeds), its 429 retry budget,
+// the shared call deadline across retries, token-holding across a retry sequence, and context
+// cancellation.
+func TestFetchRedditRSSFeed(t *testing.T) {
+	const rawURL = "https://www.reddit.com/r/golang/comments/1vxc255/small_projects/"
+
+	t.Run("200_returns_parsed_feed_with_expected_request_shape", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		body := readTestdataFile(t, "reddit-thread.rss")
+		wantURL, err := redditRSSURL(rawURL)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+
+		var gotReq *http.Request
+		f := fetcher{do: func(req *http.Request) (*http.Response, error) {
+			gotReq = req
+			return rssResponse(200, nil, body), nil
+		}}
+
+		feed, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err != nil {
+			t.Fatalf("fetchRedditRSSFeed() error = %v; want nil", err)
+		}
+		if len(feed.Entries) != 5 {
+			t.Errorf("fetchRedditRSSFeed() len(Entries) = %d; want 5", len(feed.Entries))
+		}
+		if gotReq.URL.String() != wantURL {
+			t.Errorf("request URL = %q; want %q", gotReq.URL.String(), wantURL)
+		}
+		if got := gotReq.Header.Get("User-Agent"); got != defaultRedditAPIUserAgent {
+			t.Errorf("request User-Agent = %q; want %q", got, defaultRedditAPIUserAgent)
+		}
+		if got := gotReq.Header.Get("Accept"); got != "application/atom+xml" {
+			t.Errorf("request Accept = %q; want %q", got, "application/atom+xml")
+		}
+		if got := gotReq.Header.Get("Accept-Encoding"); got != "" {
+			t.Errorf("request Accept-Encoding = %q; want empty (unset)", got)
+		}
+	})
+
+	t.Run("transport_error_names_the_cause", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("connection refused")
+		}}
+		_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err == nil || !strings.Contains(err.Error(), "connection refused") {
+			t.Errorf("fetchRedditRSSFeed() error = %v; want it to name the transport failure", err)
+		}
+	})
+
+	t.Run("status_500_names_the_cause", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return rssResponse(500, nil, "boom"), nil
+		}}
+		_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err == nil || !strings.Contains(err.Error(), "500") {
+			t.Errorf("fetchRedditRSSFeed() error = %v; want it to name status 500", err)
+		}
+	})
+
+	t.Run("status_404_names_the_cause", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return rssResponse(404, nil, "not found"), nil
+		}}
+		_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err == nil || !strings.Contains(err.Error(), "404") {
+			t.Errorf("fetchRedditRSSFeed() error = %v; want it to name status 404", err)
+		}
+	})
+
+	t.Run("200_block_page_body_reports_wall_not_xml_error", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		blockHTML := readTestdataFile(t, "reddit-block-page.html")
+		wantReason, blocked := looksLikeBlockPage(blockHTML)
+		if !blocked {
+			t.Fatal("fixture reddit-block-page.html does not trip looksLikeBlockPage")
+		}
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return rssResponse(200, nil, blockHTML), nil
+		}}
+
+		_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err == nil {
+			t.Fatal("fetchRedditRSSFeed() error = nil; want non-nil")
+		}
+		if !strings.Contains(err.Error(), wantReason) {
+			t.Errorf("fetchRedditRSSFeed() error = %q; want it to mention %q", err, wantReason)
+		}
+		lowered := strings.ToLower(err.Error())
+		if strings.Contains(lowered, "eof") || strings.Contains(lowered, "syntax error") {
+			t.Errorf("fetchRedditRSSFeed() error = %q; want a wall reason, not an XML decode error", err)
+		}
+	})
+
+	t.Run("403_block_page_body_reports_wall_not_bare_status", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		blockHTML := readTestdataFile(t, "reddit-block-page.html")
+		wantReason, blocked := looksLikeBlockPage(blockHTML)
+		if !blocked {
+			t.Fatal("fixture reddit-block-page.html does not trip looksLikeBlockPage")
+		}
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return rssResponse(403, nil, blockHTML), nil
+		}}
+
+		_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err == nil {
+			t.Fatal("fetchRedditRSSFeed() error = nil; want non-nil")
+		}
+		if !strings.Contains(err.Error(), wantReason) {
+			t.Errorf("fetchRedditRSSFeed() error = %q; want it to mention %q rather than the bare status", err, wantReason)
+		}
+	})
+
+	t.Run("200_notfound_fixture_reports_zero_entries", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		body := readTestdataFile(t, "reddit-rss-notfound.rss")
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return rssResponse(200, nil, body), nil
+		}}
+
+		_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err == nil {
+			t.Fatal("fetchRedditRSSFeed() error = nil; want non-nil for a zero-entry feed")
+		}
+	})
+
+	t.Run("429_retry_budget", func(t *testing.T) {
+		t.Run("two_429s_then_200_succeeds_with_three_requests", func(t *testing.T) {
+			stubRedditRSSLimiter(t)
+			body := readTestdataFile(t, "reddit-thread.rss")
+			resetHeader := http.Header{}
+			resetHeader.Set("x-ratelimit-reset", "1")
+			var requestCount int
+			f := fetcher{do: func(*http.Request) (*http.Response, error) {
+				requestCount++
+				if requestCount <= 2 {
+					return rssResponse(429, resetHeader, ""), nil
+				}
+				return rssResponse(200, nil, body), nil
+			}}
+
+			feed, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+			if err != nil {
+				t.Fatalf("fetchRedditRSSFeed() error = %v; want nil", err)
+			}
+			if len(feed.Entries) != 5 {
+				t.Errorf("fetchRedditRSSFeed() len(Entries) = %d; want 5", len(feed.Entries))
+			}
+			if requestCount != 3 {
+				t.Errorf("request count = %d; want exactly 3", requestCount)
+			}
+		})
+
+		t.Run("three_429s_fails_naming_reset_seconds_with_three_requests", func(t *testing.T) {
+			stubRedditRSSLimiter(t)
+			resetHeader := http.Header{}
+			resetHeader.Set("x-ratelimit-reset", "7")
+			var requestCount int
+			f := fetcher{do: func(*http.Request) (*http.Response, error) {
+				requestCount++
+				return rssResponse(429, resetHeader, ""), nil
+			}}
+
+			_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+			if err == nil {
+				t.Fatal("fetchRedditRSSFeed() error = nil; want non-nil after exhausting the retry budget")
+			}
+			if !strings.Contains(err.Error(), "429") || !strings.Contains(err.Error(), "7") {
+				t.Errorf("fetchRedditRSSFeed() error = %q; want it to name status 429 and the reset seconds 7", err)
+			}
+			if requestCount != 3 {
+				t.Errorf("request count = %d; want exactly 3 (redditRSSMaxAttempts)", requestCount)
+			}
+		})
+	})
+
+	t.Run("deadline_enforced_across_retries_not_per_step", func(t *testing.T) {
+		stub := stubRedditRSSLimiter(t)
+		resetHeader := http.Header{}
+		resetHeader.Set("x-ratelimit-reset", "1")
+		var requestCount int
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			requestCount++
+			// Advance the clock past redditRSSMaxWait between attempts, so the second
+			// pace call must observe the deadline has already passed rather than
+			// waiting out the retry budget.
+			stub.advance(redditRSSMaxWait + time.Second)
+			return rssResponse(429, resetHeader, ""), nil
+		}}
+
+		_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+		if err == nil {
+			t.Fatal("fetchRedditRSSFeed() error = nil; want non-nil once the clock has passed the call deadline")
+		}
+		if requestCount != 1 {
+			t.Errorf("request count = %d; want exactly 1 -- the deadline must stop the retry before a second request is issued", requestCount)
+		}
+	})
+
+	t.Run("token_held_across_retries_blocks_a_concurrent_second_caller", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		resetHeader := http.Header{}
+		resetHeader.Set("x-ratelimit-reset", "1")
+		body := readTestdataFile(t, "reddit-thread.rss")
+
+		firstStarted := make(chan struct{})
+		releaseFirst := make(chan struct{})
+		var firstRequests int32
+		var secondRequests int32
+
+		firstDone := make(chan error, 1)
+		go func() {
+			f := fetcher{do: func(*http.Request) (*http.Response, error) {
+				n := atomic.AddInt32(&firstRequests, 1)
+				if n == 1 {
+					close(firstStarted)
+					<-releaseFirst
+					return rssResponse(429, resetHeader, ""), nil
+				}
+				return rssResponse(200, nil, body), nil
+			}}
+			_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+			firstDone <- err
+		}()
+
+		<-firstStarted
+		secondDone := make(chan error, 1)
+		go func() {
+			f := fetcher{do: func(*http.Request) (*http.Response, error) {
+				atomic.AddInt32(&secondRequests, 1)
+				return rssResponse(200, nil, body), nil
+			}}
+			_, err := fetchRedditRSSFeed(context.Background(), f, rawURL)
+			secondDone <- err
+		}()
+
+		// While the first caller sits inside its blocked retry, the second caller must
+		// not have issued any request yet.
+		time.Sleep(20 * time.Millisecond)
+		if got := atomic.LoadInt32(&secondRequests); got != 0 {
+			t.Errorf("second caller's request count = %d; want 0 while the first caller still holds the token", got)
+		}
+
+		close(releaseFirst)
+		if err := <-firstDone; err != nil {
+			t.Fatalf("first fetchRedditRSSFeed() error = %v; want nil", err)
+		}
+		if err := <-secondDone; err != nil {
+			t.Fatalf("second fetchRedditRSSFeed() error = %v; want nil", err)
+		}
+	})
+
+	t.Run("cancelled_context_returns_ctx_err_without_issuing_a_request", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			t.Fatal("transport must not be invoked once ctx is already cancelled")
+			return nil, nil
+		}}
+
+		_, err := fetchRedditRSSFeed(ctx, f, rawURL)
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("fetchRedditRSSFeed() error = %v; want context.Canceled", err)
+		}
+	})
+}
+
+// TestFetchRedditRSS covers the tier entry point's thread/listing branch selection, its fixed
+// evaluation order, and Source: provenance on both branches.
+func TestFetchRedditRSS(t *testing.T) {
+	t.Run("comments_url_renders_thread_shape", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		const rawURL = "https://www.reddit.com/r/golang/comments/1vxc255/small_projects/"
+		body := readTestdataFile(t, "reddit-thread.rss")
+		wantURL, err := redditRSSURL(rawURL)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+		f := stubResponses(t, map[string]*http.Response{wantURL: htmlResponse(body)}, nil)
+
+		out, err := fetchRedditRSS(context.Background(), f, rawURL)
+		if err != nil {
+			t.Fatalf("fetchRedditRSS() error = %v; want nil", err)
+		}
+		if !strings.HasPrefix(out, "# Small Projects") {
+			t.Errorf("fetchRedditRSS() out = %q; want it to start with the post title", out)
+		}
+		if strings.Contains(out, "points") {
+			t.Errorf("fetchRedditRSS() out = %q; want no points segment (the RSS tier reports no score)", out)
+		}
+		if !strings.Contains(out, "## Comments") {
+			t.Errorf("fetchRedditRSS() out = %q; want a \"## Comments\" heading", out)
+		}
+		for _, author := range []string{"cansofgrease", "realPanditJi", "SovereignZ3r0", "mrehanabbasi"} {
+			if !strings.Contains(out, author) {
+				t.Errorf("fetchRedditRSS() out missing comment author %q", author)
+			}
+		}
+	})
+
+	t.Run("non_comments_url_renders_listing_shape_not_thread_shape", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		const rawURL = "https://www.reddit.com/r/golang/"
+		body := readTestdataFile(t, "reddit-listing.rss")
+		wantURL, err := redditRSSURL(rawURL)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+		f := stubResponses(t, map[string]*http.Response{wantURL: htmlResponse(body)}, nil)
+
+		out, err := fetchRedditRSS(context.Background(), f, rawURL)
+		if err != nil {
+			t.Fatalf("fetchRedditRSS() error = %v; want nil", err)
+		}
+		if strings.Contains(out, "## Comments") {
+			t.Errorf("fetchRedditRSS() out = %q; want no \"## Comments\" heading for a listing", out)
+		}
+		feed := parseRedditFeedTestdata(t, "reddit-listing.rss")
+		if got, want := strings.Count(out, "\n- "), len(feed.Entries); got != want {
+			t.Errorf("fetchRedditRSS() out has %d bullets; want %d (one per entry)", got, want)
+		}
+	})
+
+	t.Run("evaluation_order", func(t *testing.T) {
+		// A feed whose first entry is t1_ (a comment, not a post) built directly, rather
+		// than relying on a fixture, so this test exercises exactly the evaluation-order
+		// rule under test.
+		const feedXML = `<?xml version="1.0" encoding="UTF-8"?>` +
+			`<feed xmlns="http://www.w3.org/2005/Atom">` +
+			`<category term="golang"/>` +
+			`<entry><id>t1_abc</id><title>a comment, not a post</title></entry>` +
+			`</feed>`
+
+		t.Run("comments_url_errors_rather_than_falling_through_to_listing", func(t *testing.T) {
+			stubRedditRSSLimiter(t)
+			const rawURL = "https://www.reddit.com/r/golang/comments/abc/some_title/"
+			wantURL, err := redditRSSURL(rawURL)
+			if err != nil {
+				t.Fatalf("redditRSSURL() error = %v", err)
+			}
+			f := stubResponses(t, map[string]*http.Response{wantURL: htmlResponse(feedXML)}, nil)
+
+			_, err = fetchRedditRSS(context.Background(), f, rawURL)
+			if err == nil {
+				t.Fatal("fetchRedditRSS() error = nil; want non-nil when the /comments/ feed's first entry is not a post")
+			}
+		})
+
+		t.Run("non_comments_url_renders_the_same_feed_as_a_listing", func(t *testing.T) {
+			stubRedditRSSLimiter(t)
+			const rawURL = "https://www.reddit.com/r/golang/"
+			wantURL, err := redditRSSURL(rawURL)
+			if err != nil {
+				t.Fatalf("redditRSSURL() error = %v", err)
+			}
+			f := stubResponses(t, map[string]*http.Response{wantURL: htmlResponse(feedXML)}, nil)
+
+			out, err := fetchRedditRSS(context.Background(), f, rawURL)
+			if err != nil {
+				t.Fatalf("fetchRedditRSS() error = %v; want nil (a non-/comments/ URL renders any feed as a listing)", err)
+			}
+			if !strings.Contains(out, "a comment, not a post") {
+				t.Errorf("fetchRedditRSS() out = %q; want the listing to include the entry", out)
+			}
+		})
+	})
+
+	t.Run("source_provenance", func(t *testing.T) {
+		t.Run("thread_branch_carries_the_original_url_no_rss_suffix", func(t *testing.T) {
+			stubRedditRSSLimiter(t)
+			const rawURL = "https://www.reddit.com/r/golang/comments/1vxc255/small_projects/"
+			body := readTestdataFile(t, "reddit-thread.rss")
+			wantURL, err := redditRSSURL(rawURL)
+			if err != nil {
+				t.Fatalf("redditRSSURL() error = %v", err)
+			}
+			f := stubResponses(t, map[string]*http.Response{wantURL: htmlResponse(body)}, nil)
+
+			out, err := fetchRedditRSS(context.Background(), f, rawURL)
+			if err != nil {
+				t.Fatalf("fetchRedditRSS() error = %v; want nil", err)
+			}
+			if !strings.Contains(out, "Source: "+rawURL) {
+				t.Errorf("fetchRedditRSS() out = %q; want a Source: line with the original URL %q", out, rawURL)
+			}
+			if strings.Contains(out, ".rss") {
+				t.Errorf("fetchRedditRSS() out = %q; want no \".rss\" suffix anywhere in the output", out)
+			}
+		})
+
+		t.Run("listing_branch_carries_the_original_url_no_rss_suffix", func(t *testing.T) {
+			stubRedditRSSLimiter(t)
+			const rawURL = "https://www.reddit.com/r/golang/"
+			body := readTestdataFile(t, "reddit-listing.rss")
+			wantURL, err := redditRSSURL(rawURL)
+			if err != nil {
+				t.Fatalf("redditRSSURL() error = %v", err)
+			}
+			f := stubResponses(t, map[string]*http.Response{wantURL: htmlResponse(body)}, nil)
+
+			out, err := fetchRedditRSS(context.Background(), f, rawURL)
+			if err != nil {
+				t.Fatalf("fetchRedditRSS() error = %v; want nil", err)
+			}
+			if !strings.Contains(out, "Source: "+rawURL) {
+				t.Errorf("fetchRedditRSS() out = %q; want a Source: line with the original URL %q", out, rawURL)
+			}
+			if strings.Contains(out, ".rss") {
+				t.Errorf("fetchRedditRSS() out = %q; want no \".rss\" suffix anywhere in the output", out)
+			}
+		})
+	})
 }
