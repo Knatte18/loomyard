@@ -81,7 +81,11 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `plugins/prowler/testdata/reddit-thread.json`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add to `plugins/prowler/redditoauth.go` the types `redditListing` (a struct whose `data` object holds a `children` slice), `redditChild` (`kind string` plus `data redditThing`), and `redditThing` with the fields `Title`, `Selftext`, `Author`, `Subreddit`, `Body`, and `URL` (all `string`), `Score int`, and `Replies json.RawMessage` — Reddit sends `replies` as either the empty string or a nested listing object, so it must be captured raw and decoded conditionally.
+- **Requirements:** Add to `plugins/prowler/redditoauth.go` the types `redditListing`, `redditChild`, and `redditThing`.
+  Every field on all three is an **exported** Go field carrying an explicit lowercase `json:"..."` tag, exactly as `hackerNewsItem` in `plugins/prowler/hackernews.go` already does — unexported fields are invisible to `encoding/json` and would decode to zero values with no error.
+  `redditListing` has one field, `Data`, tagged `json:"data"`, whose type is a struct with a single `Children []redditChild` field tagged `json:"children"`.
+  `redditChild` has `Kind string` tagged `json:"kind"` and `Data redditThing` tagged `json:"data"`.
+  `redditThing` has the fields `Title`, `Selftext`, `Author`, `Subreddit`, `Body`, and `URL` (all `string`), `Score int`, and `Replies json.RawMessage`, tagged `json:"title"`, `json:"selftext"`, `json:"author"`, `json:"subreddit"`, `json:"body"`, `json:"url"`, `json:"score"`, and `json:"replies"` respectively — Reddit sends `replies` as either the empty string or a nested listing object, so it must be captured raw and decoded conditionally.
   Add `func redditReplies(raw json.RawMessage) []redditChild`, which returns nil when `raw` is empty, is the JSON literal `""`, or fails to decode as a listing, and otherwise returns that listing's children.
   Add `func formatRedditThread(listings []redditListing, sourceURL string) (string, error)`, which returns a non-nil error when `listings` is empty or its first listing has no child whose `kind` is `"t3"` — a response that carries no post is a tier failure, not an empty document.
   On success it renders markdown in this order: an H1 line of the post title;

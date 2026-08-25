@@ -33,7 +33,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 ### Card 7: Redirect-suppressing transport seam
 
 - **Context:**
-  - `plugins/prowler/browser.go`
+  - `plugins/prowler/fetch.go`
 - **Edits:**
   - `plugins/prowler/fetcher.go`
   - `plugins/prowler/headers.go`
@@ -42,7 +42,9 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `plugins/prowler/fetcher.go`, add a third function field to the `fetcher` struct, `doNoRedirect func(*http.Request) (*http.Response, error)`, documented as the transport that returns a 3xx response to the caller instead of following it, so a fetch path can observe that it was redirected.
+- **Requirements:** Read `plugins/prowler/fetch.go` first for how the existing `f.do` field is used at its call sites — the new field parallels it exactly and card 8 is what switches one of those call sites over.
+  In `plugins/prowler/fetcher.go`, add a fourth field to the `fetcher` struct, `doNoRedirect func(*http.Request) (*http.Response, error)`, documented as the transport that returns a 3xx response to the caller instead of following it, so a fetch path can observe that it was redirected.
+  Update the `fetcher` struct's own doc comment in the same pass: it currently reads "bundles the two side-effecting operations" and "Both fields must be set before use", which is already stale at three fields and becomes more so at four, and this card's no-nil-fallback rule makes that must-be-set claim load-bearing rather than decorative.
   In `plugins/prowler/headers.go`, add `var noRedirectHTTPClient = &http.Client{...}` with the same 60-second timeout as the existing `httpClient` and a `CheckRedirect` function returning `http.ErrUseLastResponse`;
   leave `httpClient` itself untouched, because it also backs the generic cascade where following redirects is correct.
   In `plugins/prowler/main.go`, set `doNoRedirect: noRedirectHTTPClient.Do` in the `fetcher` literal returned by `newFetcher`.
