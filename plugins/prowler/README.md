@@ -1,6 +1,8 @@
 # prowler
 
-prowler is a Go-native replacement for Millhouse's `weblens` skill: it fetches pages the built-in `WebFetch` tool cannot read — bot-blocked sites, paywalls, JS-rendered content, and Reddit posts — by driving a real headless browser plus Mozilla-Readability-style extraction, and returns the result as readable markdown.
+prowler is a Go-native replacement for Millhouse's `weblens` skill: it fetches pages the built-in `WebFetch` tool cannot read — bot-blocked sites, paywalls, JS-rendered content, and Reddit posts — and returns the result as readable markdown.
+The generic cascade drives a real headless browser plus Mozilla-Readability-style extraction;
+Reddit is read from structured sources instead — see "Site adapters" below.
 It keeps the same any-repo/any-session reach as weblens because it ships as an installable Claude Code plugin, not a repo-scoped project skill.
 
 ## Install
@@ -29,20 +31,23 @@ The headless-browser fallback (used when a page is bot-blocked or JS-rendered an
 If no browser is found, the browser fallback is simply skipped — the run still returns whatever the static-extraction path produced, with a note;
 it is never a hard failure of the whole invocation.
 
-## Runtime prerequisite: Reddit API credentials
+## Reddit credentials: optional, upgrade the read
 
-Reddit content now comes from the official OAuth API rather than scraping HTML.
+Reddit needs no setup at all to read: with no credentials configured, prowler reads Reddit's unauthenticated `.rss` feed, which needs no app registration and works for every reader out of the box.
+That zero-setup path exists because Reddit's November 2025 Responsible Builder Policy puts new app registrations behind a manual review that routinely rejects small personal projects.
+The `.rss` feed is paced at roughly one request per 60 seconds per IP, so a burst of several Reddit URLs takes minutes rather than seconds.
+
+Configuring credentials upgrades Reddit reads to the richer, authenticated OAuth API instead — scores, one level of nested replies, a fuller comment page, and a 100-requests-per-minute budget instead of one per 60 seconds.
 To use it, register a "script"-type app at `https://www.reddit.com/prefs/apps` and export `PROWLER_REDDIT_CLIENT_ID` and `PROWLER_REDDIT_CLIENT_SECRET`.
 The credentials are read from the environment only and are never written to a config file.
 `PROWLER_REDDIT_USER_AGENT` optionally overrides the descriptive `prowler/1.0` API User-Agent prowler sends by default.
-Without credentials, prowler falls back to an `old.reddit.com` HTML fetch, which Reddit currently login-gates for anonymous readers — so Reddit fetches will report a definitive error rather than returning content until credentials are configured.
 
 ## Site adapters
 
 prowler routes each fetch through an ordered registry of site adapters before falling back to the generic static-fetch/Readability/browser cascade.
 Each adapter matches a URL family and provides a higher-fidelity strategy for that site, falling through to the generic cascade when it cannot handle the page.
 Two adapters are registered today.
-Reddit tries, in order, the authenticated OAuth API, then an anonymous `old.reddit.com` HTML fetch, then reports a definitive error naming why each tier failed — a Reddit URL never reaches the generic cascade's headless-browser fallback, since a second headless request against a solvable-looking Reddit challenge has been measured to escalate it into a hard IP-level block rather than recover it.
+Reddit tries, in order, the authenticated OAuth API when credentials are configured, then the unauthenticated `.rss` feed, then reports a definitive error naming why each attempted tier failed — a Reddit URL never reaches the generic cascade's headless-browser fallback, since a second headless request against a solvable-looking Reddit challenge has been measured to escalate it into a hard IP-level block rather than recover it.
 Hacker News matches `item?id=N` discussion pages and reads them from the community-run Algolia JSON API instead of scraping HN's own HTML.
 
 ## License

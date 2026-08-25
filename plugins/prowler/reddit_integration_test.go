@@ -16,8 +16,13 @@ import (
 
 // liveRedditThreadURL is one hard-coded public Reddit thread fetched
 // exactly once by TestRedditOAuthThread_Integration -- no loop, no retry,
-// no table of URLs -- because repeated live Reddit requests degrade this
-// IP's standing (see _mill/discussion.md).
+// no table of URLs -- because repeated, unpaced live Reddit requests
+// degrade this IP's standing (see _mill/discussion.md). The RSS tier's two
+// requests in redditrss_integration_test.go are consistent with that same
+// intent despite being a second live-Reddit test in this package: they are
+// correctly paced against Reddit's own reported rate-limit window by
+// redditRSSLimiter, rather than being an unpaced repeat of this test's
+// single request.
 const liveRedditThreadURL = "https://www.reddit.com/r/announcements/comments/5e19z2/every_time_you_write_reddit_in_all_caps_you_are/"
 
 // TestRedditOAuthThread_Integration proves the client_credentials grant

@@ -29,9 +29,8 @@ func stubResponses(t *testing.T, responses map[string]*http.Response, browser fu
 		return resp, nil
 	}
 	return fetcher{
-		do:           respond,
-		doNoRedirect: respond,
-		browser:      browser,
+		do:      respond,
+		browser: browser,
 	}
 }
 
@@ -199,38 +198,45 @@ func TestFetchPage_Non2xxDoesNotInvokeBrowser(t *testing.T) {
 	}
 }
 
-func TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter(t *testing.T) {
-	const url = "https://reddit.com/r/golang/comments/abc/some_post"
-	oldURL := toOldRedditURL(url)
+func TestFetchPage_RedditUrlRoutesThroughRedditAdapter(t *testing.T) {
+	const url = "https://reddit.com/r/golang/comments/1vxc255/small_projects/"
 
 	t.Run("success_path", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "")
 		t.Setenv(redditClientSecretEnv, "")
 		t.Cleanup(func() { redditTokens.reset() })
 
+		body := readTestdataFile(t, "reddit-thread.rss")
+		wantURL, err := redditRSSURL(url)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+
 		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(redditLikeHTMLWithComments),
+			wantURL: htmlResponse(body),
 		}, func(context.Context, string) (string, bool) {
 			t.Fatal("browser fallback should not be invoked for a handled Reddit fetch")
 			return "", false
 		})
 		// Without an adapters slice, no adapter matches and this URL would
-		// wrongly take the generic cascade instead of the old.reddit.com path.
+		// wrongly take the generic cascade instead of the Reddit adapter's path.
 		f.adapters = defaultAdapters()
 
 		got := fetchPage(context.Background(), f, url)
-		if !strings.HasPrefix(got, "# "+url) {
-			t.Errorf("fetchPage() = %q; want it to start with \"# %s\"", got, url)
+		if !strings.HasPrefix(got, "# Small Projects") {
+			t.Errorf("fetchPage() = %q; want it to start with the post title", got)
 		}
-		if !strings.Contains(got, "original self-post text") {
-			t.Errorf("fetchPage() = %q; want the old.reddit-derived post text", got)
+		if !strings.Contains(got, "This is the weekly thread for Small Projects.") {
+			t.Errorf("fetchPage() = %q; want the RSS-derived post text", got)
 		}
-		if !strings.Contains(got, "First commenter's opinion") {
-			t.Errorf("fetchPage() = %q; want the old.reddit-derived comment text", got)
+		if !strings.Contains(got, "Pingularity") {
+			t.Errorf("fetchPage() = %q; want the RSS-derived comment text", got)
 		}
 	})
 
 	t.Run("all_tiers_fail_still_never_invokes_browser", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "")
 		t.Setenv(redditClientSecretEnv, "")
 		t.Cleanup(func() { redditTokens.reset() })
@@ -239,8 +245,7 @@ func TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter(t *testing.T) {
 			return &http.Response{StatusCode: 500, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("boom"))}, nil
 		}
 		f := fetcher{
-			do:           respond,
-			doNoRedirect: respond,
+			do: respond,
 			browser: func(context.Context, string) (string, bool) {
 				t.Fatal("browser fallback must not be invoked even when every Reddit tier fails")
 				return "", false
@@ -266,161 +271,6 @@ const redditLikeHTMLWithComments = `<html><head><title>Ignored</title></head><bo
 </div>
 <footer>site footer — must not appear in output</footer>
 </body></html>`
-
-func TestFetchOldRedditHTML(t *testing.T) {
-	const url = "https://www.reddit.com/r/golang/comments/abc/some_post"
-	const oldURL = "https://old.reddit.com/r/golang/comments/abc/some_post"
-
-	t.Run("keeps_post_and_comments_strips_chrome", func(t *testing.T) {
-		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(redditLikeHTMLWithComments),
-		}, nil)
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err != nil {
-			t.Fatalf("fetchOldRedditHTML() err = %v; want nil", err)
-		}
-		if !strings.HasPrefix(out, "# "+url) {
-			t.Errorf("fetchOldRedditHTML() out = %q; want it to start with \"# %s\"", out, url)
-		}
-		if !strings.Contains(out, "original self-post text") {
-			t.Errorf("fetchOldRedditHTML() out = %q; want the post text", out)
-		}
-		if !strings.Contains(out, "First commenter's opinion") || !strings.Contains(out, "Second commenter disagrees") {
-			t.Errorf("fetchOldRedditHTML() out = %q; want both comments kept, not just the post", out)
-		}
-		if strings.Contains(out, "site nav") || strings.Contains(out, "site footer") {
-			t.Errorf("fetchOldRedditHTML() out = %q; want nav/footer stripped", out)
-		}
-	})
-
-	t.Run("no_article_long_body_falls_back_to_body_text", func(t *testing.T) {
-		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(noArticleButLongBodyHTML),
-		}, nil)
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err != nil {
-			t.Fatalf("fetchOldRedditHTML() err = %v; want nil", err)
-		}
-		if !strings.Contains(out, "long stretch of plain body text") {
-			t.Errorf("fetchOldRedditHTML() out = %q; want the body text", out)
-		}
-	})
-
-	t.Run("thin_content_fails", func(t *testing.T) {
-		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(noArticleShortBodyHTML),
-		}, nil)
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err == nil {
-			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
-		}
-	})
-
-	t.Run("non_2xx_fails", func(t *testing.T) {
-		respond := func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("blocked"))}, nil
-		}
-		f := fetcher{do: respond, doNoRedirect: respond}
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err == nil {
-			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
-		}
-	})
-
-	t.Run("transport_error_fails", func(t *testing.T) {
-		respond := func(*http.Request) (*http.Response, error) {
-			return nil, errors.New("boom")
-		}
-		f := fetcher{do: respond, doNoRedirect: respond}
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err == nil {
-			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
-		}
-	})
-
-	t.Run("unsupported_content_encoding_fails", func(t *testing.T) {
-		respond := func(*http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 200,
-				// "compress" has no decoder in this package or the standard
-				// library, unlike gzip/deflate/br.
-				Header: http.Header{"Content-Encoding": []string{"compress"}},
-				Body:   io.NopCloser(strings.NewReader("compressed-bytes-irrelevant")),
-			}, nil
-		}
-		f := fetcher{do: respond, doNoRedirect: respond}
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err == nil {
-			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
-		}
-	})
-
-	t.Run("login_redirect_fails_without_following_it", func(t *testing.T) {
-		const loginLocation = "https://old.reddit.com/login/?reason=lor2&dest=%2Fr%2Fgolang%2F"
-		requestCount := 0
-		f := fetcher{doNoRedirect: func(*http.Request) (*http.Response, error) {
-			requestCount++
-			return &http.Response{
-				StatusCode: 302,
-				Header:     http.Header{"Location": []string{loginLocation}},
-				Body:       io.NopCloser(strings.NewReader("")),
-			}, nil
-		}}
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err == nil {
-			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error", out)
-		}
-		if !strings.Contains(strings.ToLower(err.Error()), "login") {
-			t.Errorf("fetchOldRedditHTML() err = %q; want it to mention \"login\"", err.Error())
-		}
-		if requestCount != 1 {
-			t.Errorf("fetchOldRedditHTML() issued %d requests; want exactly 1 (the redirect must not be followed)", requestCount)
-		}
-	})
-
-	t.Run("block_page_fixture_fails", func(t *testing.T) {
-		blockPageBody, err := os.ReadFile("testdata/reddit-block-page.html")
-		if err != nil {
-			t.Fatalf("os.ReadFile(testdata/reddit-block-page.html) error = %v", err)
-		}
-		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(string(blockPageBody)),
-		}, nil)
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err == nil {
-			t.Fatalf("fetchOldRedditHTML() err = nil, out = %q; want a non-nil error naming the block reason", out)
-		}
-		wantReason, blocked := looksLikeBlockPage(string(blockPageBody))
-		if !blocked {
-			t.Fatalf("looksLikeBlockPage(fixture) blocked = false; want true (test setup invariant)")
-		}
-		if !strings.Contains(err.Error(), wantReason) {
-			t.Errorf("fetchOldRedditHTML() err = %q; want it to contain %q", err.Error(), wantReason)
-		}
-	})
-
-	t.Run("genuine_reddit_content_is_not_rejected", func(t *testing.T) {
-		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(redditLikeHTMLWithComments),
-		}, nil)
-
-		out, err := fetchOldRedditHTML(context.Background(), f, url)
-		if err != nil {
-			t.Fatalf("fetchOldRedditHTML() err = %v; want nil for genuine content", err)
-		}
-		if out == "" {
-			t.Errorf("fetchOldRedditHTML() out = %q; want non-empty content", out)
-		}
-	})
-}
 
 // gzipCompress compresses body for use as a stubbed gzip-encoded response.
 func gzipCompress(t *testing.T, body string) []byte {
