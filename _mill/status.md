@@ -53,7 +53,9 @@ batches:
     commit_sha: 834fcc19bdca56afacf96bf2fd4ce57f43caa02c
     verify_baseline_failures: []
   - name: tiered-adapter
-    state: pending
+    state: running
+    implementer_session: 3625e886-9141-4f66-8a87-a820a3f1c0d5
+    start_sha: 0a096a23754001742cdf699ef5475b6823a37bb4
     verify_baseline_failures: []
   - name: live-integration
     state: pending
