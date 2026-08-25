@@ -37,7 +37,9 @@ batches:
     commit_sha: 1e4ae0af8741059ea1e4e3cf237f1ace2a5a4e1f
     blocked_reason: parent diff unresolvable -- cannot determine in-scope drift
   - name: shuttle-attach
-    state: pending
+    state: running
+    implementer_session: b3786b8e-e532-4a3a-a140-84d0a135a3a4
+    start_sha: 719239bc248d414a80c93976ae34601e7e0e208f
   - name: loom-mode-selector
     state: pending
   - name: shedadapters-probe-before-archive
