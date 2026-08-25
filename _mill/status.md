@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-plan-review-producer
 branch: loom-plan-review-producer
 plan: _mill/plan
@@ -20,4 +20,19 @@ discussed  '2026-08-25T09:06:42Z'
 planning  '2026-08-25T09:15:37Z'
 plan-fix-r1  '2026-08-25T09:25:42Z'
 planned  '2026-08-25T09:27:30Z'
+implementing  '2026-08-25T09:27:11Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: plan-review-rubric-stencil
+    state: pending
+  - name: bouncer-commit-seam
+    state: pending
+  - name: plan-review-segment-rows
+    state: pending
+  - name: docs-and-stale-text-sweep
+    state: pending
 ```
