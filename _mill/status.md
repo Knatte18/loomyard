@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-08-25T06:16:43Z'
 discussion-fix-r1  '2026-08-25T06:33:33Z'
 discussed  '2026-08-25T06:33:33Z'
 planning  '2026-08-25T06:43:58Z'
+plan-review-r1  '2026-08-25T06:52:56Z'
 ```
