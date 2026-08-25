@@ -5,6 +5,7 @@
 package main
 
 import (
+	"encoding/xml"
 	"fmt"
 	"html"
 	"net/url"
@@ -125,4 +126,189 @@ func redditResolveHref(href string) string {
 		return href
 	}
 	return redditRSSBaseURL.ResolveReference(u).String()
+}
+
+// redditAtomCategory decodes an Atom <category> element's "term" attribute -- on the
+// feed-level element this is the subreddit name.
+type redditAtomCategory struct {
+	Term string `xml:"term,attr"`
+}
+
+// redditAtomAuthor decodes an Atom <author> element's <name> child, the only part of it this
+// tier reads.
+type redditAtomAuthor struct {
+	Name string `xml:"name"`
+}
+
+// redditAtomLink decodes an Atom <link> element's "href" attribute, the only part of it this
+// tier reads.
+type redditAtomLink struct {
+	Href string `xml:"href,attr"`
+}
+
+// redditAtomFeed decodes an unauthenticated Reddit .rss feed: its title, its feed-level
+// <category term=…> (the subreddit name), and every entry in document order.
+type redditAtomFeed struct {
+	Title    string             `xml:"title"`
+	Category redditAtomCategory `xml:"category"`
+	Entries  []redditAtomEntry  `xml:"entry"`
+}
+
+// redditAtomEntry decodes one Atom <entry>: its title, id, author, HTML content, and its own
+// link.
+//
+// <id> carries Reddit's fullname with its kind prefix -- "t3_" for a post, "t1_" for a
+// comment -- and is this tier's only kind discriminator, mirroring redditChild.Kind on the
+// OAuth side. Unmapped elements such as media:thumbnail, <updated>, and <published> are
+// ignored by encoding/xml and need no fields here.
+type redditAtomEntry struct {
+	Title   string           `xml:"title"`
+	ID      string           `xml:"id"`
+	Author  redditAtomAuthor `xml:"author"`
+	Content string           `xml:"content"`
+	Link    redditAtomLink   `xml:"link"`
+}
+
+// parseRedditFeed unmarshals an unauthenticated .rss response body into a redditAtomFeed,
+// wrapping any decode failure with the payload's own context.
+func parseRedditFeed(body []byte) (redditAtomFeed, error) {
+	var feed redditAtomFeed
+	if err := xml.Unmarshal(body, &feed); err != nil {
+		return redditAtomFeed{}, fmt.Errorf("decode reddit atom feed: %w", err)
+	}
+	return feed, nil
+}
+
+// redditRSSAuthor trims a leading "/u/" or "u/" from an Atom author name. The feed emits
+// "/u/username", while formatRedditThread's own rendering already prefixes "u/" itself; left
+// untrimmed, a rendered author would read "u//u/username".
+func redditRSSAuthor(name string) string {
+	name = strings.TrimPrefix(name, "/u/")
+	name = strings.TrimPrefix(name, "u/")
+	return name
+}
+
+// redditRSSSCOffMarker and redditRSSSCOnMarker bound the actual post/comment body within a
+// Reddit Atom <content> payload -- everything outside them is Reddit's own rendering
+// scaffolding (a thumbnail table, a "submitted by … [link] … [comments]" trailer), never the
+// author's own text.
+const (
+	redditRSSSCOffMarker = "<!-- SC_OFF -->"
+	redditRSSSCOnMarker  = "<!-- SC_ON -->"
+)
+
+// redditRSSBody returns redditHTMLToMarkdown applied to the span of content strictly between
+// redditRSSSCOffMarker and redditRSSSCOnMarker, and the empty string when either marker is
+// absent.
+//
+// It never falls back to the whole content: a link post carries no markers at all, and its
+// entire content is a thumbnail <table> plus a "submitted by … [link] … [comments]" trailer --
+// a whole-content fallback would render that scaffolding as the post's body. This is the
+// common case for link posts in this tier's fixtures, not a rare edge case.
+func redditRSSBody(content string) string {
+	start := strings.Index(content, redditRSSSCOffMarker)
+	if start == -1 {
+		return ""
+	}
+	start += len(redditRSSSCOffMarker)
+
+	end := strings.Index(content[start:], redditRSSSCOnMarker)
+	if end == -1 {
+		return ""
+	}
+
+	return redditHTMLToMarkdown(content[start : start+end])
+}
+
+// redditRSSLinkURL parses content with goquery and returns the href of the anchor whose
+// trimmed text is exactly "[link]", when that href differs from permalink -- otherwise the
+// empty string. The permalink comparison is what stops a self-post's "[comments]"-only
+// trailer from rendering as a Link: line pointing back at the page the reader is already on.
+func redditRSSLinkURL(content, permalink string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader("<div>" + content + "</div>"))
+	if err != nil {
+		return ""
+	}
+
+	var href string
+	doc.Find("a").EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		if strings.TrimSpace(s.Text()) != "[link]" {
+			return true
+		}
+		href, _ = s.Attr("href")
+		return false
+	})
+
+	if href == "" || href == permalink {
+		return ""
+	}
+	return href
+}
+
+// redditPostFromFeed maps feed onto the tier-neutral redditPost representation: the thread
+// mapping for this tier. It returns an error when feed.Entries is empty, and an error naming
+// the offending id when the first entry's <id> does not start with "t3_" -- a response
+// carrying no post is a tier failure rather than an empty document.
+//
+// Flat is set to true explicitly, never inferred: the feed carries every comment as a sibling
+// with no parent reference of any kind, so depth is genuinely unrecoverable and
+// "## Top Comments" would be a false claim about entries that are not necessarily top-level.
+//
+// It never truncates -- the maxTopComments cap lives in formatRedditThread alone, exactly as
+// on the OAuth side.
+func redditPostFromFeed(feed redditAtomFeed, sourceURL string) (redditPost, error) {
+	if len(feed.Entries) == 0 {
+		return redditPost{}, fmt.Errorf("reddit atom feed %q has no entries", sourceURL)
+	}
+
+	first := feed.Entries[0]
+	if !strings.HasPrefix(first.ID, "t3_") {
+		return redditPost{}, fmt.Errorf("reddit atom feed %q: first entry id %q is not a post (t3_)", sourceURL, first.ID)
+	}
+
+	post := redditPost{
+		Title:     first.Title,
+		Subreddit: feed.Category.Term,
+		Author:    redditRSSAuthor(first.Author.Name),
+		Score:     nil,
+		Selftext:  redditRSSBody(first.Content),
+		URL:       redditRSSLinkURL(first.Content, first.Link.Href),
+		Flat:      true,
+	}
+
+	for _, entry := range feed.Entries[1:] {
+		if !strings.HasPrefix(entry.ID, "t1_") {
+			continue
+		}
+		// An entry whose body comes back empty is skipped rather than rendered as a blank
+		// comment -- redditRSSBody returns "" when the SC_OFF/SC_ON markers are absent.
+		body := redditRSSBody(entry.Content)
+		if body == "" {
+			continue
+		}
+		post.Comments = append(post.Comments, redditComment{
+			Author: redditRSSAuthor(entry.Author.Name),
+			Score:  nil,
+			Body:   body,
+		})
+	}
+
+	return post, nil
+}
+
+// formatRedditListing renders feed as markdown for the non-thread case -- a subreddit or user
+// feed with no single post to anchor a redditPost mapping to. It renders an H1 from the feed
+// title, a "Source:" line pointing at sourceURL (the caller's original URL, never the derived
+// .rss URL, exactly as on the thread branch), and one bullet per entry giving its title,
+// author, and link.
+func formatRedditListing(feed redditAtomFeed, sourceURL string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n", feed.Title)
+	fmt.Fprintf(&b, "Source: %s\n\n", sourceURL)
+
+	for _, entry := range feed.Entries {
+		fmt.Fprintf(&b, "- %s by u/%s: %s\n", entry.Title, redditRSSAuthor(entry.Author.Name), entry.Link.Href)
+	}
+
+	return strings.TrimRight(b.String(), "\n")
 }
