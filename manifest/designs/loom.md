@@ -65,7 +65,7 @@ Review is never a property attached to the producer it reviews — it stays a se
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach the round loop used against a fake `burler`.
 Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`, already shipped) is built for real first, every `LLM`/review-segment row stays a stub until then.
 `Publish` and `Finalize` (rows 13–14) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubbed both, then swapped in the real, shared-by-reference producers once `landing: Publish + Finalize producers` landed, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
-The `landing: parent-fabric resolution chain` Done entry (see `manifest/roadmap.md`) completed their construction chain by filling `Env.Landing`, so `Publish`/`Finalize` are now genuinely constructible in a real `lyx loom drive` run, not merely implemented.
+The shipped `landing: parent-fabric resolution chain` item completed their construction chain by filling `Env.Landing`, so `Publish`/`Finalize` are now genuinely constructible in a real `lyx loom drive` run, not merely implemented.
 The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last per-producer prompt/rubric tasks (`loom: Discussion-Write producer`, `loom: Discussion-Review producer`, `loom: Plan-Write producer`, `loom: Plan-Review producer`, `loom: Webster-Review producer`), and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
 
 `Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 4) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
@@ -129,6 +129,15 @@ this subsection remains the durable copy.
 `lyx loom validate-plan` makes the same three `planparser` calls this row's `ShedProducer` makes, in the same order: `planparser.PlanDir`, `planparser.ParsePlan`, then `planparser.Validate`.
 The verb and the row call the identical `planparser` functions, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
 
+### Plan-Review rubric
+
+This is the text the future `Bouncer` rubric for `Plan-Review` must **point at**, per the Producer Pointer-Rule Invariant — never copy or paraphrase into the profile itself.
+No rubric exists yet for the Card format from [plan-card-format.md](plan-card-format.md) (`Targets`/`Uses`/`Intent`/`ImpactSummary`) — the prior `loom-plan-spec.md` rubric only covered the superseded file-op fields.
+
+- **Granularity.** Is each card scoped to one independently reviewable/testable unit.
+- **`ImpactSummary` carries a real conclusion.** A one-line safety conclusion, never a restatement of `Intent`.
+- **`Custom` is a last resort.** Used only where no other Card type genuinely fits, never as a shortcut around correct typing.
+
 ## Plan-Sweep detail — the quarry-inventory spec
 
 **Build order note:** `Plan-Sweep` is not built in `loom: phase-machine scaffolding` — it stays a stub there, alongside `Plan-Write`, its only consumer.
@@ -175,6 +184,14 @@ Webster's own internal design lives in the `internal/websterengine` package docu
 This doc's producer list above targets `internal/websterengine` (plan-format, in-session forks) as `loom`'s own Webster producer.
 
 Pause stays uniform across loom/review-segment/Webster (see [pause](#graceful-pause)) because every loop checks the same `pause_requested` flag at its own step boundary, regardless of which module holds the loop.
+
+## Webster-Review rubric
+
+This is the text the future `Bouncer` rubric for `Webster-Review` must **point at**, per the Producer Pointer-Rule Invariant — never copy or paraphrase into the profile itself.
+Two dimensions on top of ordinary diff review:
+
+- **Comment-convention compliance.** Any new/changed doc comment follows [code-comment-conventions.md](code-comment-conventions.md) — no unnecessary symbol cross-references.
+- **Per-card mechanical check.** Confirms the card's Type-specific mechanical check actually ran and passed (e.g. the AST-script-plus-grep for a Rename card, `assert-no-callers` for a Delete card), not only that the diff compiles and tests pass.
 
 ## `loom` — the autonomous driver
 
@@ -234,6 +251,8 @@ loom therefore **never depends on `claude --resume` for correctness** — an unf
 and a never-conversed session has nothing to resume). reed's pane-`--resume` is a *separate, non-critical* layer that restores the **visible** sessions for the operator (see the `internal/reedengine` package documentation on resume);
 loom's correctness rests on files.
 A dead claude with a finished output file is, to loom, a **done step** — not a problem.
+
+**The interactive-mode trap.** A resume-on-output-files check that reports `Done` whenever both discussion files exist cannot distinguish an interrupted interview (needs the interview to resume) from a `Discussion-Validate` bounce re-entering the row with both files already present — a naive fix ping-pongs the two cases until the bounce budget is exhausted. Solving this is the Planned `loom: interactive Discussion-Write` item's own problem to close, not resolved here.
 
 ## Graceful pause
 

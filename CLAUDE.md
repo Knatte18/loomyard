@@ -69,7 +69,7 @@ It is shorthand for talking about the session, not an instruction to rename anyt
 
 ## Terminology: "perch" means a Bouncer+Burler pair in a Shed producer list
 
-In conversation, "perch" (lowercase, folk usage — not the retired `internal/perchengine` module) names the pattern of wiring a `Bouncer` instance into a `Shed` producer list with a `Burler`-round producer as its offshoot: the `Bouncer` sits in the main line as the segment's entry/exit, its `OnStuck` points at the `Burler` row, and the `Burler` row's own `OnStuck` always points back at the `Bouncer` (`Stuck`, never `Done`) — see the shipped `Bouncer: the generic review-gate producer` and `shedadapters: Burler-round producer` items in `manifest/roadmap.md`.
+In conversation, "perch" (lowercase, folk usage — not the retired `internal/perchengine` module) names the pattern of wiring a `Bouncer` instance into a `Shed` producer list with a `Burler`-round producer as its offshoot: the `Bouncer` sits in the main line as the segment's entry/exit, its `OnStuck` points at the `Burler` row, and the `Burler` row's own `OnStuck` always points back at the `Bouncer` (`Stuck`, never `Done`) — see the shipped `internal/shedadapters` package (`Bouncer`, `shedadapters: Burler-round producer`) and `manifest/designs/loom.md`'s "The gate" section.
 It is shorthand for talking about this two-row wiring pattern, not an instruction to build a named module or type for it: each segment (`Discussion-Review`, `Plan-Review`, `Webster-Review`, and eventually `Tenter`) hand-wires its own `Bouncer`+`Burler`-shaped pair directly in its own producer list.
 Don't rename identifiers, files, config keys, or docs to "Perch" unless a separate, explicit instruction says so.
 

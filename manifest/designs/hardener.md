@@ -84,6 +84,12 @@ The prime suspect is the **finding-identity / recurrence ledger** (which finding
 So: **distill the prose, but keep the key-ledger lossless.**
 The migration persistent-thread → respawn is essentially this one audit — find what the live thread knew implicitly and make it explicit.
 
+### Reuse: only `Bouncer` carries over
+
+`Tenter`'s own review-loop is expected to land as a `Shed` segment: a round producer (this module's own equivalent of the shipped `shedadapters: Burler-round producer`, wrapping whatever `Tenter`'s round mechanism turns out to be — not `burlerengine`) paired with an instance of the shipped `Bouncer: the generic review-gate producer`, the same hand-wired shape `loom`'s own review producers use (folk name "perch," see `CLAUDE.md`'s terminology note — this segment is "a perch" in that same loose sense, same shape, different round producer inside it).
+Only `Bouncer` is literally reusable code here: `burlerengine`'s own round mechanism is inherently text/diff-specific (Target/Fasit/Rubric over a `shuttle` session editing text), so `Tenter`'s round producer needs its own from-scratch implementation of the same always-`Stuck`-until-approved contract, not a port of `burlerengine`.
+This is the second data point (after `loom`'s own review producers) for whether `internal/treadleengine` is ever fully retired — see the shipped `Retire perch` item's own note that its retirement is a separate call, made once `Tenter` lands.
+
 ## `Hardener` — the campaign
 
 The operator's role in the hand-run campaign was mostly **gating** — approve, ask for another round — not irreplaceable judgment.
