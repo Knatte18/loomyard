@@ -11,16 +11,17 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — all three items below are unblocked.
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — both producer items below are unblocked.
 
-1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch as a `Plan-Bouncer`/`Plan-Burler` segment — no prior rubric exists for the new Card format; criteria now recorded in `designs/loom.md`'s Plan-Review rubric section.
-   See [designs/loom.md](designs/loom.md#plan-review-rubric).
-
-1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch, same gap as `Plan-Review`, as a `Webster-Bouncer`/`Webster-Burler` segment judging the full diff rather than a single artifact; criteria now recorded in `designs/loom.md`'s Webster-Review rubric section.
+1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch, same gap as `Plan-Review` (shipped), as a `Webster-Bouncer`/`Webster-Burler` segment judging the full diff rather than a single artifact; criteria now recorded in `designs/loom.md`'s Webster-Review rubric section.
    See [designs/loom.md](designs/loom.md#webster-review-rubric).
 
 1. **loom: interactive Discussion-Write** — flip `internal/loomcli`'s `wire()` `autonomous` argument from hardcoded `true` to a real mode selector, and solve the resume defect that made autonomous-only the right call so far. `loomengine.DiscussionSpec`'s `autonomous` plumbing already exists; the trap a naive fix walks into is recorded in `designs/loom.md`'s crash-recovery section.
    See [designs/loom.md](designs/loom.md#crash-recovery--resume-on-output-files-not-live-processes).
+
+1. **loom: `Discussion-Burler`'s `fix-scope: source` violates the Fabric Git Invariant** — the shipped row instructs an agent to git-commit weft content, which the invariant forbids; the correction is now a two-line recipe change (flip to `overlay`, add `commit_seam: discussion`), workable now that this task shipped the `commit_seam` key and the `Bouncer` `Commit` closure — what makes it its own task is that flipping the row changes shipped behaviour and its tests.
+   Folds two more defects touching the same shared `Bouncer` code, since splitting them would have several tasks editing the same rows: both review segments resolve their `_lyx` paths against `Env.WorktreeRoot` while the matching commit closures anchor at `AnchorPath()` — latent while `AnchorRel` is `"."`, its default, but re-pointing the shared entry would silently change both segments at once; and neither segment clears its Bouncer run directory when a downstream row bounces past the writer and back through the segment, so a stale round's already-settled verdict and ledger can satisfy `judged(n)` again on re-entry — confirmed present in the shipped `Discussion-Validate` → `Discussion-Write` → `Discussion-Bouncer` path and shared by the new `Plan-Revalidate` → `Plan-Write` → `Plan-Bouncer` path.
+   See [designs/loom.md](designs/loom.md#the-gate).
 
 ## Someday
 
