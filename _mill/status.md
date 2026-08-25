@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-neutral-thread-representation
+phase: approved-rss-parsing-foundation
 slug: reddit-rss-tier
 branch: reddit-rss-tier
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r3  '2026-08-25T10:33:19Z'
 planned  '2026-08-25T10:33:29Z'
 implementing  '2026-08-25T10:34:13Z'
 approved-neutral-thread-representation  '2026-08-25T10:40:29Z'
+approved-rss-parsing-foundation  '2026-08-25T10:50:16Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     commit_sha: e1c302abd27beada27a0f290ecf5825295eb866f
     verify_baseline_failures: []
   - name: rss-parsing-foundation
-    state: running
+    state: approved
     implementer_session: 345fd3d9-9551-439b-947e-918176ee6777
     start_sha: 733b3b9300df20443107a89726625ca0528e5a69
+    commit_sha: 88b4a4147bf00785ef48ae6f8ade59492ca4c245
     verify_baseline_failures: []
   - name: rss-limiter-and-fetch
     state: pending
