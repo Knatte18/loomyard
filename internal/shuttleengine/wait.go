@@ -133,7 +133,15 @@ func (run *Run) Wait() (Result, error) {
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
-	started := false
+	// started seeds from run.attached rather than hard-coding false: an attached run has already
+	// been confirmed live via Attach's own reed reads — strictly stronger evidence than the capture
+	// heuristic below provides — so re-running the startup probe against a pane that is mid-turn
+	// would misclassify a live interview as OutcomeDied one startup_timeout_s after attach, or worse,
+	// play the trust-dismiss key sequence into a live agent's pane if its capture happens to trip a
+	// trust-dialog needle. The not-tracked and not-live branches of checkLivenessTick sit above this
+	// short-circuit, so an attached run keeps full liveness coverage — only the startup probe is
+	// skipped.
+	started := run.attached
 	eventsFailures := 0
 	statusFailures := 0
 

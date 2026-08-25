@@ -117,6 +117,8 @@ func saveRunState(runDir string, rs RunState) error {
 
 // loadRunState reads the RunState persisted at <runDir>/run.json.
 // Returns (zero, false, nil) if the file is absent.
+// Read by findRunByStrand's guid scan and by Attach's output-files scan (attach.go), both of which
+// skip an unreadable or absent record rather than aborting their scan for every other run.
 func loadRunState(runDir string) (RunState, bool, error) {
 	path := filepath.Join(runDir, runStateFileName)
 	lockPath := path + ".lock"
