@@ -1,7 +1,8 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: blocked
+blocked_reason: 'auto: discussion review gaps unresolved after 6 rounds'
 slug: loom-discussion-write-interactive
 branch: loom-discussion-write-interactive
 plan: null
@@ -15,4 +16,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-25T13:01:32Z'
+blocked  '2026-08-25T14:22:07Z'
 ```
