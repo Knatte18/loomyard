@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-discussion-burler-fix-scope
 branch: loom-discussion-burler-fix-scope
 plan: _mill/plan
@@ -21,4 +21,13 @@ planning  '2026-08-25T14:05:22Z'
 plan-review-r1  '2026-08-25T14:12:50Z'
 plan-fix-r1  '2026-08-25T14:13:24Z'
 planned  '2026-08-25T14:13:43Z'
+implementing  '2026-08-25T14:14:22Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fabric-git-invariant-fix
+    state: pending
 ```
