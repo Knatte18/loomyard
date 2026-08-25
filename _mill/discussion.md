@@ -31,7 +31,7 @@ The correction is now a two-line recipe change; what makes it its own task is th
 - `internal/shedadapters/bouncer_commit_test.go`: `TestBouncer_Commit_NilIsNotAnError`'s doc comment, which names `Discussion-Bouncer` as the shipped nil-`Commit` row it pins.
 - `internal/loomcli/wiring.go`: `CommitDiscussion`'s doc comment, which now has two callers rather than one.
 - A new regression-guard test in `internal/loomrecipe` over the parsed recipe (see Decisions).
-- Docs in the same commit: `manifest/designs/loom.md` (the gate section gains the per-segment fix-scope/commit-seam record), `manifest/roadmap.md` (this Planned item moves to Shipped).
+- Docs in the same commit: `manifest/designs/loom.md` (the gate section gains the per-segment fix-scope/commit-seam record **and** has its "only the review *profile* … differs per phase" sentence corrected), `manifest/roadmap.md` (this Planned item moves to Shipped).
 
 **Out:**
 
@@ -77,10 +77,12 @@ The correction is now a two-line recipe change; what makes it its own task is th
 
 ### add-a-parse-level-regression-guard-in-loomrecipe
 
-- Decision: Add a new test in `internal/loomrecipe` that parses the embedded recipe via `shedbuild.Parse(recipes.LoomRecipe)` and asserts, for every row whose `engine` is `BurlerRound`: if any entry in the row's `config.profile.target.paths` resolves under the lyx overlay directory, then that row's `config.profile.fix-scope` must be `overlay`, **and** the `Bouncer` row sharing its `segment` must carry a non-empty `commit_seam`.
+- Decision: Add a new test in `internal/loomrecipe` that parses the embedded recipe via `shedbuild.Parse(recipes.LoomRecipe)` and asserts, for every row whose `engine` is `BurlerRound`: if any entry in the row's `config.profile.target.paths` resolves under the lyx overlay directory, then that row's `config.profile.fix-scope` must be `overlay`, **and** the `Bouncer` row sharing its `segment` must carry a `commit_seam` whose value is the overlay subdirectory those target paths live under.
+  The seam half is a value check, not a presence check: `_lyx/discussion/…` targets require `commit_seam: discussion`, `_lyx/plan` targets require `commit_seam: plan`.
+  Three shapes fail loudly rather than being skipped: an overlay-targeting Burler whose `segment` has no `Bouncer` row at all; one whose partner `Bouncer` carries no `commit_seam`; and one whose target paths do not all share a single overlay subdirectory, since a row straddling two overlay trees has no single correct seam and the guard must not guess one.
 - Rationale: This task exists because a `fix-scope: source` row over `_lyx` content shipped and survived review; a comment recording the violation is what kept it from being forgotten, which is a review obligation doing a machine's job.
-  The rule is mechanically checkable straight off the parsed recipe with no new production code and no new machinery, and it catches both halves of the bug — the wrong fix-scope, and a correct fix-scope left without a seam to commit through (the silent, uncommitted-forever variant).
-  Pairing the two assertions in one test is deliberate: either alone is a half-guard.
+  The rule is mechanically checkable straight off the parsed recipe with no new production code and no new machinery, and it catches all three variants of the bug — the wrong fix-scope, a correct fix-scope left without a seam to commit through (the silent, uncommitted-forever variant), and a seam pointing at the wrong tree (which commits the other segment's directory and leaves this one's fixes behind).
+  Pairing the assertions in one test is deliberate: any one alone is a partial guard.
 - Rejected: Enforcing this inside `internal/shedrecipe`'s `burlerEntry` as a construction error — `shedrecipe` is generic `Shed` machinery shared by reference with a future product's producer list, and it has no business knowing that `_lyx` means "weft content the Fabric Git Invariant governs".
   The Shed Recipe Registry Invariant's told-geometry half also forbids that package deriving anything about the overlay tree.
   Also rejected: no guard at all, relying on the recipe comments — that is the status quo that produced this task.
@@ -113,9 +115,11 @@ The correction is now a two-line recipe change; what makes it its own task is th
 ### docs-land-in-the-same-commit
 
 - Decision: Update `manifest/designs/loom.md`'s "The gate" section with a short, explicit record of which review segment fixes what and commits how — Discussion and Plan fix overlay content and commit through the loop owner's `commit_seam`, Webster fixes warp source and commits per fix itself — citing the Fabric Git Invariant as the reason the split exists.
+  That section also carries a sentence that must be **rewritten**, not merely supplemented: "only the review *profile* (rubric + fasit) differs per phase" (`manifest/designs/loom.md`, in the black-box paragraph of "The gate").
+  It is already inaccurate today — fix-scope and `commit_seam` differ per phase too — and the flip makes the divergence sharper, so the sentence must be corrected to name fix-scope and the commit seam as the other per-phase axes rather than having the new record appended beside a false claim.
   Move this item in `manifest/roadmap.md` from Planned to Shipped.
 - Rationale: The project's task-completion rule requires the module doc to move with a change to observable behaviour, and this changes what the Discussion review segment does at runtime.
-  "The gate" is the section that describes the review-segment black box and currently says nothing about the commit split, which is precisely the fact a future row author needs and the fact whose absence let this bug ship.
+  "The gate" is the section that describes the review-segment black box, and it does not merely omit the commit split — it currently asserts the profile is the *only* per-phase difference, which is precisely the claim a future row author would rely on and precisely the gap that let this bug ship.
   The roadmap moves because this completes a Planned item (not a bugfix or polish pass, despite its size).
 - Rejected: Adding the record as a new `CONSTRAINTS.md` invariant — the governing invariant already exists (Fabric Git); a second one restating it per-segment would be a duplicate to keep in step.
 - Rejected: Recipe comments alone — they are the right place for the per-row rationale but not for the cross-segment picture, and `loom.md` is where a reader looks for the segment model.
@@ -148,13 +152,15 @@ There is no runtime write-surface enforcement in either case — the switch is t
 `internal/shedrecipe/entries_burler.go` reads the recipe's `fix-scope` string straight into `burlerengine.FixScope`; `Profile.validate` rejects any value other than the two legal ones.
 
 **Tests that encode the current value.** Only one asserts loom's shipped behaviour: `internal/loomrecipe/sequence_test.go`'s `commitDiscussionCalls != 1`, backed by `fixture_test.go`'s `fakeLoomShuttle` counters and the `Env.CommitDiscussion`/`Env.CommitPlan` counting closures in `buildSequenceFixture`.
-Every other `fix-scope: source` / `FixScopeSource` occurrence in the tree is a `burlerengine` or `burlercli` fixture exercising the engine's own two values and is unrelated to loom's recipe.
+Every other `fix-scope: source` / `FixScopeSource` occurrence in the tree is either a synthetic test fixture or a warp-source round, and none of them is loom's recipe: `internal/burlerengine`'s own tests (`prompt_test.go`, `profile_test.go`, `engine_test.go`, `template_test.go`) and `internal/burlercli` (`run.go`'s usage example and `cli_test.go`) exercise the engine's two values directly, `internal/shedrecipe/entries_burler_test.go` carries it in synthetic recipe-config maps, and `manifest/designs/hardener.md` names `fix-scope: source` for the future Tenter round agent — correct there, since that round fixes warp source and commits per fix.
+None of those change.
 `internal/loomrecipe/shape_test.go` fills both commit closures non-nil, so the new `requireSeam("Bouncer", "CommitDiscussion", …)` path it now reaches is already satisfied there.
 
 **Guard-test mechanics.** `internal/loomrecipe/seam_enforcement_test.go`'s import allowlist binds **production** files only (it skips `*_test.go`), so a new test file may import `contracts/recipes`, `internal/shedbuild`, and `internal/lyxdirs` freely.
 Use `lyxdirs.LyxDirName` for the overlay-directory prefix rather than the `_lyx` string literal — the Lyxdirs Single-Declarer Invariant governs production path construction, and matching the existing test convention (`fixture_test.go` already uses `lyxdirs.LyxDirName`) keeps the guard from being the one place the literal is written down.
 The guard is a pure in-memory parse with no process spawn, so it stays untagged under the Test Tier Purity Invariant.
-Reading `config.profile.target.paths` and `config.profile.fix-scope` out of a parsed `Row` means walking `map[string]any` by hand; failing loudly on an unexpected shape is better than silently skipping a row, since a silently-skipped row is a guard that does not guard.
+Reading `config.profile.target.paths`, `config.profile.fix-scope`, and the partner `Bouncer`'s `config.commit_seam` out of a parsed `Row` means walking `map[string]any` by hand; failing loudly on an unexpected shape is better than silently skipping a row, since a silently-skipped row is a guard that does not guard.
+Factor the rule as a function over a parsed `shedbuild.Recipe` so the shipped-recipe assertions and the negative cases both call it: the negative cases feed it small synthetic recipe YAML through the same `shedbuild.Parse`, never a mutated copy of the shipped bytes, which keeps the shipped-recipe half a straight read of the real file.
 
 ## Constraints
 
@@ -182,8 +188,11 @@ Write it first, against the unmodified recipe, and watch it fail on `Discussion-
 Scenarios it must cover:
 
 - `Discussion-Burler` (overlay target paths) requires `fix-scope: overlay` — fails before the flip, passes after.
-- `Discussion-Bouncer`, as the segment partner of an overlay Burler, requires a non-empty `commit_seam` — fails before the key is added, passes after.
+- `Discussion-Bouncer`, as the segment partner of an overlay Burler whose targets live under `_lyx/discussion/`, requires `commit_seam: discussion` — fails before the key is added, passes after.
 - `Plan-Burler`/`Plan-Bouncer` pass unchanged, both before and after — proof the guard describes a general rule and is not a one-row assertion in disguise.
+- The seam half rejects a wrong *value*, not only a missing key: a `Bouncer` partnered with `_lyx/discussion/` targets but carrying `commit_seam: plan` must fail.
+  Cover this with a synthetic recipe rather than by mutating the shipped one, so the shipped-recipe assertions stay a straight read of the real file.
+- The three loud-failure shapes each fail rather than being skipped: an overlay-targeting Burler whose `segment` names no `Bouncer` row, one whose partner `Bouncer` omits `commit_seam` entirely, and one whose `target.paths` straddle two overlay subdirectories.
 - `Webster-Burler` passes unchanged with `fix-scope: source` and `Webster-Bouncer` passes with no `commit_seam`, purely because the row declares no `target.paths` — proof the exemption is structural rather than an allowlist entry.
 
 **`internal/loomrecipe/sequence_test.go` — the behaviour change.**
