@@ -16,8 +16,10 @@ var redditHostPattern = regexp.MustCompile(`^https?://(www\.|old\.)?reddit\.com`
 // redditHostReplace captures scheme and host for rewriting to old.reddit.com.
 var redditHostReplace = regexp.MustCompile(`^(https?://)(www\.|old\.)?reddit\.com`)
 
-// maxTopComments bounds top-level comments included when formatting threads.
-// Used by the Hacker News adapter.
+// maxTopComments bounds top-level comments included when formatting
+// threads, and (in redditoauth.go's formatRedditThread) also bounds the
+// replies rendered under each top-level comment. Used by the Hacker News
+// adapter and the Reddit OAuth adapter.
 const maxTopComments = 20
 
 // toOldRedditURL rewrites a Reddit URL to its old.reddit.com equivalent.

@@ -168,3 +168,138 @@ func requestRedditToken(ctx context.Context, f fetcher, clientID, clientSecret s
 
 	return payload.AccessToken, time.Duration(payload.ExpiresIn) * time.Second, nil
 }
+
+// redditListing models one Reddit API "Listing" object: a page of items --
+// a post, or a page of comments -- wrapped in a "kind"/"data" envelope.
+type redditListing struct {
+	Data struct {
+		Children []redditChild `json:"children"`
+	} `json:"data"`
+}
+
+// redditChild models one item inside a redditListing's Children: its
+// Reddit "kind" ("t3" for a post, "t1" for a comment, "more" for a
+// pagination placeholder Reddit uses to mark truncated comment pages) and
+// the item's own data.
+type redditChild struct {
+	Kind string      `json:"kind"`
+	Data redditThing `json:"data"`
+}
+
+// redditThing models the fields this module reads from a Reddit post
+// (kind "t3") or comment (kind "t1"). Replies is captured raw because
+// Reddit sends it as either the JSON literal "" (no replies) or a nested
+// Listing object; decode it via redditReplies rather than unmarshalling it
+// directly.
+type redditThing struct {
+	Title     string          `json:"title"`
+	Selftext  string          `json:"selftext"`
+	Author    string          `json:"author"`
+	Subreddit string          `json:"subreddit"`
+	Body      string          `json:"body"`
+	URL       string          `json:"url"`
+	Score     int             `json:"score"`
+	Replies   json.RawMessage `json:"replies"`
+}
+
+// redditReplies decodes a redditThing's raw Replies field into its child
+// comments. It returns nil when raw is empty, is the JSON literal "" (no
+// replies), or fails to decode as a Listing.
+func redditReplies(raw json.RawMessage) []redditChild {
+	if len(raw) == 0 || string(raw) == `""` {
+		return nil
+	}
+	var listing redditListing
+	if err := json.Unmarshal(raw, &listing); err != nil {
+		return nil
+	}
+	return listing.Data.Children
+}
+
+// formatRedditThread renders a decoded Reddit thread response -- listings,
+// in the order oauth.reddit.com's comments endpoint returns them: the post
+// listing, then the comments listing -- into markdown. It returns a
+// non-nil error when listings is empty or its first listing has no "t3"
+// child, since a response carrying no post is a tier failure rather than
+// an empty document.
+//
+// On success it renders, in order: an H1 post title; a metadata line; a
+// "Source:" line; the post's selftext, or a link line when there is no
+// selftext but there is a URL; and, only when at least one comment is
+// present, a "## Top Comments" heading followed by up to maxTopComments
+// top-level comments, each with up to maxTopComments of its own replies
+// rendered one level deep as blockquotes. Comment and selftext bodies are
+// Reddit markdown, not HTML, so they are emitted unchanged -- unlike the
+// Hacker News adapter's Algolia-sourced HTML, nothing here needs
+// htmlToText.
+func formatRedditThread(listings []redditListing, sourceURL string) (string, error) {
+	if len(listings) == 0 {
+		return "", fmt.Errorf("reddit thread response had no listings")
+	}
+
+	var post redditThing
+	var foundPost bool
+	for _, child := range listings[0].Data.Children {
+		if child.Kind == "t3" {
+			post = child.Data
+			foundPost = true
+			break
+		}
+	}
+	if !foundPost {
+		return "", fmt.Errorf("reddit thread response's first listing had no post (t3) child")
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n", post.Title)
+	fmt.Fprintf(&b, "Reddit | r/%s | %d points | by u/%s\n\n", post.Subreddit, post.Score, post.Author)
+	fmt.Fprintf(&b, "Source: %s\n\n", sourceURL)
+
+	if post.Selftext != "" {
+		b.WriteString(post.Selftext)
+		b.WriteString("\n\n")
+	} else if post.URL != "" {
+		fmt.Fprintf(&b, "Link: %s\n\n", post.URL)
+	}
+
+	var topComments []redditChild
+	if len(listings) > 1 {
+		for _, child := range listings[1].Data.Children {
+			if child.Kind != "t1" {
+				// Skips "more" pagination placeholders and anything else
+				// that is not a rendered comment.
+				continue
+			}
+			topComments = append(topComments, child)
+			if len(topComments) >= maxTopComments {
+				break
+			}
+		}
+	}
+
+	if len(topComments) > 0 {
+		b.WriteString("## Top Comments\n\n")
+		for _, c := range topComments {
+			fmt.Fprintf(&b, "**u/%s** (%d points):\n%s\n\n", c.Data.Author, c.Data.Score, c.Data.Body)
+
+			var rendered int
+			for _, reply := range redditReplies(c.Data.Replies) {
+				if reply.Kind != "t1" {
+					continue
+				}
+				// Only one level of replies is rendered: reply.Data.Replies
+				// (a reply's own replies) is deliberately never consulted.
+				fmt.Fprintf(&b, "> **u/%s**: %s\n", reply.Data.Author, reply.Data.Body)
+				rendered++
+				if rendered >= maxTopComments {
+					break
+				}
+			}
+			if rendered > 0 {
+				b.WriteString("\n")
+			}
+		}
+	}
+
+	return strings.TrimRight(b.String(), "\n"), nil
+}
