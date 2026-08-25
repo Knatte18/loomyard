@@ -27,20 +27,7 @@ func defaultHeaders() http.Header {
 
 // httpClient is the shared transport for static fetches, with a ~60s timeout
 // to prevent stalling on unresponsive hosts. It follows redirects, which is
-// correct for the generic cascade -- do not change that behaviour here; a
-// fetch path that needs to observe a redirect instead of following it uses
-// noRedirectHTTPClient.
+// correct for the generic cascade -- do not change that behaviour here.
 var httpClient = &http.Client{
 	Timeout: 60 * time.Second,
-}
-
-// noRedirectHTTPClient is the shared transport for fetches that must observe
-// a 3xx response instead of following it, such as old.reddit.com's login
-// redirect. Its CheckRedirect returns http.ErrUseLastResponse so Do returns
-// the 3xx response itself rather than the page the redirect points at.
-var noRedirectHTTPClient = &http.Client{
-	Timeout: 60 * time.Second,
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	},
 }

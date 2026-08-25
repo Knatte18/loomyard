@@ -1,5 +1,5 @@
-// reddit_test.go exercises Reddit URL matching, the old.reddit.com host rewrite, and
-// redditAdapter.Fetch's success/failure branches via a stubbed fetcher.do.
+// reddit_test.go exercises Reddit URL matching and redditAdapter.Fetch's success/failure
+// branches via a stubbed fetcher.do.
 // No network.
 
 package main
@@ -34,29 +34,8 @@ func TestRedditAdapterMatches(t *testing.T) {
 	}
 }
 
-func TestToOldRedditURL(t *testing.T) {
-	tests := []struct {
-		name string
-		url  string
-		want string
-	}{
-		{"bare_reddit", "https://reddit.com/r/golang/comments/abc/post", "https://old.reddit.com/r/golang/comments/abc/post"},
-		{"www_reddit", "https://www.reddit.com/r/golang/comments/abc/post", "https://old.reddit.com/r/golang/comments/abc/post"},
-		{"already_old_reddit", "https://old.reddit.com/r/golang/comments/abc/post", "https://old.reddit.com/r/golang/comments/abc/post"},
-		{"http_scheme", "http://reddit.com/r/golang", "http://old.reddit.com/r/golang"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := toOldRedditURL(tt.url); got != tt.want {
-				t.Errorf("toOldRedditURL(%q) = %q; want %q", tt.url, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestRedditAdapterFetch(t *testing.T) {
-	const url = "https://www.reddit.com/r/golang/comments/abc/some_post"
-	const oldURL = "https://old.reddit.com/r/golang/comments/abc/some_post"
+	const url = "https://www.reddit.com/r/golang/comments/1vxc255/small_projects/"
 
 	// fatalBrowser fails the test the moment f.browser is invoked, proving
 	// redditAdapter.Fetch never falls through to the generic
@@ -69,27 +48,35 @@ func TestRedditAdapterFetch(t *testing.T) {
 	}
 
 	t.Run("credentials_absent_tier2_succeeds", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "")
 		t.Setenv(redditClientSecretEnv, "")
 		t.Cleanup(func() { redditTokens.reset() })
 
+		body := readTestdataFile(t, "reddit-thread.rss")
+		wantURL, err := redditRSSURL(url)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+
 		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(redditLikeHTMLWithComments),
+			wantURL: htmlResponse(body),
 		}, fatalBrowser(t))
 
 		out, handled := (redditAdapter{}).Fetch(context.Background(), f, url)
 		if !handled {
 			t.Fatalf("redditAdapter{}.Fetch() handled = false; want true")
 		}
-		if !strings.Contains(out, "original self-post text") {
+		if !strings.Contains(out, "This is the weekly thread for Small Projects.") {
 			t.Errorf("redditAdapter{}.Fetch() out = %q; want the post text", out)
 		}
-		if !strings.Contains(out, "First commenter's opinion") {
+		if !strings.Contains(out, "Pingularity") {
 			t.Errorf("redditAdapter{}.Fetch() out = %q; want the comment text", out)
 		}
 	})
 
 	t.Run("both_tiers_fail_reports_handled_true_naming_both_tiers", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "id")
 		t.Setenv(redditClientSecretEnv, "secret")
 		t.Cleanup(func() { redditTokens.reset() })
@@ -99,11 +86,11 @@ func TestRedditAdapterFetch(t *testing.T) {
 			if req.URL.String() == redditTokenURL {
 				return tokenResponse(200, `{"access_token":"tok-both-fail","expires_in":3600}`), nil
 			}
-			// Both the OAuth thread request (oauth.reddit.com) and the
-			// old.reddit.com request land on this same non-2xx branch.
+			// Both the OAuth thread request (oauth.reddit.com) and the .rss
+			// request land on this same non-2xx branch.
 			return &http.Response{StatusCode: 500, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("boom"))}, nil
 		}
-		f := fetcher{do: respond, doNoRedirect: respond, browser: fatalBrowser(t)}
+		f := fetcher{do: respond, browser: fatalBrowser(t)}
 
 		out, handled := (redditAdapter{}).Fetch(context.Background(), f, url)
 		if !handled {
@@ -121,6 +108,7 @@ func TestRedditAdapterFetch(t *testing.T) {
 	})
 
 	t.Run("credentials_absent_tier2_also_fails", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "")
 		t.Setenv(redditClientSecretEnv, "")
 		t.Cleanup(func() { redditTokens.reset() })
@@ -132,7 +120,7 @@ func TestRedditAdapterFetch(t *testing.T) {
 			}
 			return &http.Response{StatusCode: 500, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("boom"))}, nil
 		}
-		f := fetcher{do: respond, doNoRedirect: respond, browser: fatalBrowser(t)}
+		f := fetcher{do: respond, browser: fatalBrowser(t)}
 
 		out, handled := (redditAdapter{}).Fetch(context.Background(), f, url)
 		if !handled {
@@ -147,6 +135,7 @@ func TestRedditAdapterFetch(t *testing.T) {
 	})
 
 	t.Run("credentials_present_oauth_tier_succeeds_tier2_never_requested", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "id")
 		t.Setenv(redditClientSecretEnv, "secret")
 		t.Cleanup(func() { redditTokens.reset() })
@@ -166,13 +155,9 @@ func TestRedditAdapterFetch(t *testing.T) {
 				case wantThreadURL:
 					return htmlResponse(threadJSON), nil
 				default:
-					t.Fatalf("unexpected request URL: %s", req.URL.String())
+					t.Fatalf("unexpected request URL: %s (tier 2 must not be requested when tier 1 succeeds)", req.URL.String())
 					return nil, nil
 				}
-			},
-			doNoRedirect: func(*http.Request) (*http.Response, error) {
-				t.Fatal("tier 2 (old.reddit.com) must not be requested when tier 1 succeeds")
-				return nil, nil
 			},
 			browser: fatalBrowser(t),
 		}
@@ -187,23 +172,28 @@ func TestRedditAdapterFetch(t *testing.T) {
 	})
 
 	t.Run("credentials_present_oauth_tier_fails_tier2_succeeds", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "id")
 		t.Setenv(redditClientSecretEnv, "secret")
 		t.Cleanup(func() { redditTokens.reset() })
 		redditTokens.reset()
 
+		body := readTestdataFile(t, "reddit-thread.rss")
+		wantURL, err := redditRSSURL(url)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+
 		f := fetcher{
 			do: func(req *http.Request) (*http.Response, error) {
-				if req.URL.String() == redditTokenURL {
+				switch req.URL.String() {
+				case redditTokenURL:
 					return tokenResponse(200, `{"access_token":"tok-oauth-fails","expires_in":3600}`), nil
+				case wantURL:
+					return htmlResponse(body), nil
+				default:
+					return &http.Response{StatusCode: 500, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("boom"))}, nil
 				}
-				return &http.Response{StatusCode: 500, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("boom"))}, nil
-			},
-			doNoRedirect: func(req *http.Request) (*http.Response, error) {
-				if req.URL.String() != oldURL {
-					t.Fatalf("unexpected doNoRedirect request URL: %s", req.URL.String())
-				}
-				return htmlResponse(redditLikeHTMLWithComments), nil
 			},
 			browser: fatalBrowser(t),
 		}
@@ -212,11 +202,39 @@ func TestRedditAdapterFetch(t *testing.T) {
 		if !handled {
 			t.Fatalf("redditAdapter{}.Fetch() handled = false; want true")
 		}
-		if !strings.Contains(out, "original self-post text") {
+		if !strings.Contains(out, "This is the weekly thread for Small Projects.") {
 			t.Errorf("redditAdapter{}.Fetch() out = %q; want the tier-2 post text", out)
 		}
-		if !strings.Contains(out, "First commenter's opinion") {
+		if !strings.Contains(out, "Pingularity") {
 			t.Errorf("redditAdapter{}.Fetch() out = %q; want the tier-2 comment text", out)
+		}
+	})
+
+	t.Run("no_request_ever_goes_to_an_old_reddit_host", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
+		t.Setenv(redditClientIDEnv, "")
+		t.Setenv(redditClientSecretEnv, "")
+		t.Cleanup(func() { redditTokens.reset() })
+
+		body := readTestdataFile(t, "reddit-thread.rss")
+		wantURL, err := redditRSSURL(url)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+
+		respond := func(req *http.Request) (*http.Response, error) {
+			if strings.Contains(req.URL.Host, "old.reddit.com") {
+				t.Fatalf("unexpected request to an old.reddit.com host: %s", req.URL.String())
+			}
+			if req.URL.String() == wantURL {
+				return htmlResponse(body), nil
+			}
+			return &http.Response{StatusCode: 500, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("boom"))}, nil
+		}
+		f := fetcher{do: respond, browser: fatalBrowser(t)}
+
+		if _, handled := (redditAdapter{}).Fetch(context.Background(), f, url); !handled {
+			t.Fatalf("redditAdapter{}.Fetch() handled = false; want true")
 		}
 	})
 }
