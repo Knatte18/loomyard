@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
@@ -29,4 +29,19 @@ plan-fix-r4  '2026-08-25T07:19:20Z'
 plan-review-r5  '2026-08-25T07:27:15Z'
 plan-fix-r5  '2026-08-25T07:28:27Z'
 planned  '2026-08-25T07:28:38Z'
+implementing  '2026-08-25T07:29:21Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: block-detection
+    state: pending
+  - name: reddit-oauth-client
+    state: pending
+  - name: tiered-adapter
+    state: pending
+  - name: live-integration
+    state: pending
 ```
