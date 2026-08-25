@@ -55,6 +55,8 @@ batches:
     commit_sha: fd44e31294509567868a6cb029f8b368cd4e49ee
     verify_baseline_failures: []
   - name: tier-rewiring-deletion-and-docs
-    state: pending
+    state: running
+    implementer_session: 8d7c01fc-5954-4d8a-a196-4242409178b2
+    start_sha: e40c187d973ac019d2a5b108724a00cf80a66e81
     verify_baseline_failures: []
 ```
