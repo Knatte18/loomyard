@@ -324,6 +324,13 @@ type fakeLoomShuttle struct {
 
 var _ shedadapters.Shuttle = (*fakeLoomShuttle)(nil)
 
+// Attach implements shedadapters.Shuttle's probe method by always reporting not-found: this is the
+// regression guard that every existing sequence and resume test in this package still drives the
+// unchanged archive-then-spawn path through Run. Batch 5 makes this scriptable.
+func (f *fakeLoomShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	return shuttleengine.Result{}, false, nil
+}
+
 // Run implements shedadapters.Shuttle: on spec.Role == "plan" it rewrites the whole plan directory
 // and reports Done; on spec.Role == "bouncer-judge" it writes the round's verdict, ledger, and
 // focus files (in that order, per spec.OutputFiles) and records the call; on spec.Role ==

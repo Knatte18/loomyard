@@ -16,12 +16,20 @@ import (
 // fakeShuttle records the Spec it was handed and returns a caller-configured Result/error.
 // An optional duringRun hook lets a test cancel the context (or otherwise act) as if it happened
 // mid-run, before Run returns its configured result.
+// attachResult, attachFound, and attachErr script Attach's return; attachCalled and gotAttachSpec
+// record whether Attach ran and with what Spec, so a test can assert the probe ran and with what.
 type fakeShuttle struct {
 	result    shuttleengine.Result
 	err       error
 	called    bool
 	gotSpec   shuttleengine.Spec
 	duringRun func()
+
+	attachResult  shuttleengine.Result
+	attachFound   bool
+	attachErr     error
+	attachCalled  bool
+	gotAttachSpec shuttleengine.Spec
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -31,6 +39,14 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 		f.duringRun()
 	}
 	return f.result, f.err
+}
+
+// Attach implements shedadapters.Shuttle's probe method, recording spec and returning f's
+// caller-configured attachResult/attachFound/attachErr.
+func (f *fakeShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	f.attachCalled = true
+	f.gotAttachSpec = spec
+	return f.attachResult, f.attachFound, f.attachErr
 }
 
 func specSource(spec shuttleengine.Spec, err error) SpecSource {

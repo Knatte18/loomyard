@@ -18,10 +18,25 @@ import (
 // singleLLMEngineLabel is the short engine label SingleLLMProducer's log lines and error text carry.
 const singleLLMEngineLabel = "shuttle"
 
-// Shuttle is the narrow seam SingleLLMProducer drives, matching burlerengine's own identically-shaped
-// seam over shuttleengine.Runner.
+// Shuttle is the seam SingleLLMProducer drives.
+// Run starts a fresh agent and waits on it, matching burlerengine's own identically-shaped seam over
+// shuttleengine.Runner.
+// Attach probes for a still-live, never-terminated run matching the given Spec before a caller
+// archives and respawns over it: a false bool comes back with a zero Result and a nil error, meaning
+// "nothing to attach to, start one"; a true bool means a run was found and waited on, whose own
+// Result and error (if any) are returned alongside.
+// Shuttle is not SingleLLMProducer's private seam -- shedrecipe.Env.Shuttle feeds the Bouncer row
+// and the PlanWrite, DiscussionWrite, and generic SingleLLM rows alike -- so Attach is a method only
+// SingleLLMProducer calls, and it is added to the shared seam anyway because the sole production
+// implementor is *shuttleengine.Runner, which gains it for free, and every other implementor is a
+// test fake in this repo (per attach-lives-in-shuttleengine).
+// The rejected alternative was keeping Shuttle at one method and type-asserting an optional
+// Attacher interface inside Call: that would make the attach behaviour silently absent for any
+// implementor that forgets it, whereas a compile error in a test fake is a better failure than a
+// producer that quietly stops probing.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
+	Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error)
 }
 
 var _ Shuttle = (*shuttleengine.Runner)(nil)
