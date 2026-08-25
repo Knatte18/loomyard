@@ -199,38 +199,45 @@ func TestFetchPage_Non2xxDoesNotInvokeBrowser(t *testing.T) {
 	}
 }
 
-func TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter(t *testing.T) {
-	const url = "https://reddit.com/r/golang/comments/abc/some_post"
-	oldURL := toOldRedditURL(url)
+func TestFetchPage_RedditUrlRoutesThroughRedditAdapter(t *testing.T) {
+	const url = "https://reddit.com/r/golang/comments/1vxc255/small_projects/"
 
 	t.Run("success_path", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "")
 		t.Setenv(redditClientSecretEnv, "")
 		t.Cleanup(func() { redditTokens.reset() })
 
+		body := readTestdataFile(t, "reddit-thread.rss")
+		wantURL, err := redditRSSURL(url)
+		if err != nil {
+			t.Fatalf("redditRSSURL() error = %v", err)
+		}
+
 		f := stubResponses(t, map[string]*http.Response{
-			oldURL: htmlResponse(redditLikeHTMLWithComments),
+			wantURL: htmlResponse(body),
 		}, func(context.Context, string) (string, bool) {
 			t.Fatal("browser fallback should not be invoked for a handled Reddit fetch")
 			return "", false
 		})
 		// Without an adapters slice, no adapter matches and this URL would
-		// wrongly take the generic cascade instead of the old.reddit.com path.
+		// wrongly take the generic cascade instead of the Reddit adapter's path.
 		f.adapters = defaultAdapters()
 
 		got := fetchPage(context.Background(), f, url)
-		if !strings.HasPrefix(got, "# "+url) {
-			t.Errorf("fetchPage() = %q; want it to start with \"# %s\"", got, url)
+		if !strings.HasPrefix(got, "# Small Projects") {
+			t.Errorf("fetchPage() = %q; want it to start with the post title", got)
 		}
-		if !strings.Contains(got, "original self-post text") {
-			t.Errorf("fetchPage() = %q; want the old.reddit-derived post text", got)
+		if !strings.Contains(got, "This is the weekly thread for Small Projects.") {
+			t.Errorf("fetchPage() = %q; want the RSS-derived post text", got)
 		}
-		if !strings.Contains(got, "First commenter's opinion") {
-			t.Errorf("fetchPage() = %q; want the old.reddit-derived comment text", got)
+		if !strings.Contains(got, "Pingularity") {
+			t.Errorf("fetchPage() = %q; want the RSS-derived comment text", got)
 		}
 	})
 
 	t.Run("all_tiers_fail_still_never_invokes_browser", func(t *testing.T) {
+		stubRedditRSSLimiter(t)
 		t.Setenv(redditClientIDEnv, "")
 		t.Setenv(redditClientSecretEnv, "")
 		t.Cleanup(func() { redditTokens.reset() })
@@ -239,8 +246,7 @@ func TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter(t *testing.T) {
 			return &http.Response{StatusCode: 500, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("boom"))}, nil
 		}
 		f := fetcher{
-			do:           respond,
-			doNoRedirect: respond,
+			do: respond,
 			browser: func(context.Context, string) (string, bool) {
 				t.Fatal("browser fallback must not be invoked even when every Reddit tier fails")
 				return "", false
