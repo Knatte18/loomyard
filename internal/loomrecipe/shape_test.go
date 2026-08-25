@@ -229,8 +229,8 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 
 // TestNew_ProducerTableOrderUnchangedByWiring re-asserts TestNew_ProducerTable's own table-order and
 // name coverage, now that the list's order is the recipe's own list order rather than a Go literal's:
-// the thirteen rows stay in their existing table order with their existing names, regardless of what
-// backs rows 12 and 13.
+// the fourteen rows stay in their existing table order with their existing names, regardless of what
+// backs rows 13 and 14.
 func TestNew_ProducerTableOrderUnchangedByWiring(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
