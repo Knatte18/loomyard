@@ -32,7 +32,7 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 - Two new durable row-name constants in `internal/loomshed/loomshed.go` (`NameWebsterBouncer`, `NameWebsterBurler`), replacing `NameWebsterReview`.
 - Every "sixteen"/16-row count in production source and comments moved to seventeen: `internal/loomshed/doc.go`, `internal/loomshed/loomshed.go`, `contracts/recipes/loom-recipe.yaml`'s header, `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`.
 - Test updates across `contracts/stencils/rubric_test.go`, `internal/loomrecipe/{coverage_guard,shape,sequence,fixture,recipe}_test.go`, and `internal/loomcli/smoke_test.go`.
-- One new `internal/shedrecipe/entries_burler_test.go` case covering the `cluster-fan` profile key, which no shipped recipe row exercises today.
+- `contracts/recipes/loom-recipe.yaml`'s header comment, beyond the row count: its "Both review segments follow the same shared-segment mutual-`on_stuck` shape" paragraph (lines 12–16) enumerates the Discussion and Plan pairs by name and becomes three segments.
 - Doc updates in the same commit per CLAUDE.md's task-completion rule: `manifest/designs/loom.md` (producer table row 13, the table/recipe divergence note, the "Webster-Review rubric" section gaining a "doc *about* the shipped stencil" framing paragraph matching the two sibling sections), `contracts/specs/loom-status-spec.md` (its mid-run example names the retired `Webster-Review` row — see the decision below), and `manifest/roadmap.md` (Planned item removed).
 
 **Out:**
@@ -103,21 +103,22 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 - Rejected: `fix-scope: overlay` — it would forbid the round from running git at all and restrict its write surface to `Target.Paths`, which this profile deliberately leaves empty;
   a fixer that cannot write source cannot fix a diff.
 
-### the-round-runs-a-cluster-fan
+### the-round-is-single-reviewer-no-cluster-fan
 
-- Decision: `Webster-Burler`'s profile sets `cluster-fan: standard`.
-- Rationale: a whole-diff code review over everything Webster built is the archetypal multi-lens case, and it is the one gate in the list with no mechanical validator ahead of it narrowing what is left to judge.
-  `standard` is the shipped fan (`generic`, `generic`, `correctness`, `error-handling`, `test-gaps` — `internal/burlerengine/template.yaml`), i.e. five forks per round, and `internal/burlerengine`'s own doc records that clustering is never on unless a profile names a fan.
-  This is the first recipe row in the repo to name one.
-- Rejected: no fan (single reviewer), matching the two shipped segments — cheaper, but a single generic reviewer is a weak terminal gate over an entire task's output;
-  `full` (eight lenses) — more coverage than a converge loop needs per round, and the loop already re-reviews across rounds.
-- Recorded as an open risk: `burler.yaml` is operator-owned and seed-only, so an operator who deletes the `standard` fan breaks this row — **at run time, not at construction.**
-  `burlerRoundEntry` passes `cluster-fan` through unvalidated (`internal/shedrecipe/entries_burler.go:163-167,219`);
-  `ResolveFan` runs only inside `Profile.validate`, which `burlerengine.Engine.Run` calls at the top of each round (`internal/burlerengine/engine.go:98`, `profile.go:107-113`).
-  So the failure surfaces when the `Webster-Burler` round first runs — at the very end of a whole loom run, after Webster has already built everything.
-  This is explicitly **not** the same failure class as a mistyped `rubric_stencil`, which `NewBouncer` probes eagerly at construction.
-  Adding an equivalent eager fan probe was considered and rejected for this task: `bouncerEntry`'s rubric probe works because `stencilstore.Read` needs only the told `StencilsDir`, whereas `ResolveFan` needs a `burlerengine.Config`, which `shedrecipe.Env` does not carry — it holds only the `Burler` engine interface.
-  Closing this properly means a new `Env` field or a new engine method, i.e. a `shedrecipe`/`burlerengine` surface change, both listed Out.
+- Decision: `Webster-Burler`'s profile sets **no** `cluster-fan` key.
+  The round is a single reviewer, matching both shipped segments.
+- Rationale: this reverses an earlier call in this same discussion, and the reversal is the load-bearing part — a future reader will reach for lenses here, so the blocker is recorded rather than the choice alone.
+  Clustering looked right: a whole-diff review over everything Webster built is the archetypal multi-lens case, and this is the one gate with no mechanical validator ahead of it narrowing what is left to judge.
+  It does not work, because **a fork may never run git.**
+  The fork boilerplate `burlerengine` composes into every fork prompt states forks are read-only — "never Write/Edit/delete any file, never run any git command" (`internal/burlerengine/prompt.go:226-229`), restated in `doc.go:175-179`, and a git Bash call from a fork is a hard, round-failing audit error enforced by `auditClusterRound` plus a session-level `PreToolUse(Agent)` hook.
+  The diff is reachable *only* through git, so under a fan the five forks cannot see the round's subject at all;
+  only the handler can.
+  The two workarounds both fail: seeding the diff through inherited fork context makes every fork's access to the subject context-size-dependent and silently degrading on a large diff, and there is no graceful run-time fallback because `auditClusterRound` hard-requires exactly `len(clusterLenses)` fork transcripts (`ErrClusterForksMissing`), so the handler cannot decide to skip forks;
+  materialising the diff to a file for forks to read means the handler writing a scratch file into the working tree during job A, which dirties the tree the job-B fixer then commits from.
+  A mechanism whose reviewers cannot reach the subject is worse than one honest reviewer that can.
+- Rejected: `cluster-fan: standard` or `full` — blocked by the fork/git rule above, not by cost.
+- Follow-up, not scope: clustering becomes available here the moment the diff can be materialised somewhere forks may read it — that is the prerequisite, and it wants its own item rather than a widening of this one.
+- Consequence: nothing in this task depends on `burler.yaml`'s content, so the operator-owned-fan-deletion risk recorded in the previous revision of this discussion no longer applies and has been dropped.
 
 ### perch-row-names-and-routing
 
@@ -134,7 +135,7 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 
 ### the-rubric-carries-both-design-named-dimensions-plus-a-do-not-flag-list
 
-- Decision: the rubric opens by stating that **ordinary diff review is the base** — the round reviews the committed diff as code, and the cluster fan's lenses supply the emphasis vocabulary — then adds the two dimensions `manifest/designs/loom.md` names on top of it:
+- Decision: the rubric opens by stating that **ordinary diff review is the base** — the round reviews the committed diff as code, with no checklist supplied — then adds the two dimensions `manifest/designs/loom.md` names on top of it:
   1. **Comment-convention compliance** — any new or changed doc comment follows `manifest/designs/code-comment-conventions.md`, pointed at and never restated.
   2. **Per-card mechanical check** — confirms the card's Type-specific mechanical check actually ran and passed (the AST-script-plus-grep for a `Rename` card, `assert-no-callers` for a `Delete` card, per the per-type table in `manifest/designs/plan-card-format.md`), not merely that the diff compiles and tests pass.
   It then carries a **Do not flag** list, matching both shipped rubrics' shape:
@@ -145,7 +146,7 @@ Deciding how a diff is expressed through those two seams is the substance of thi
   - Findings about overlay artifacts — the discussion pair and the plan directory under `_lyx`, and this segment's own round artifacts under `.lyx/loom/reviews/webster/`, are not the diff.
   - A missing `ImpactSummary` on any card, and incomplete `DependsOn`/`Produces` — both belong to `Plan-Review`, already passed.
 - Rationale: the design section names only the two "also flag" dimensions, but a rubric with no do-not-flag list contradicts the framing both shipped rubrics carry ("over-flagging is a judgment failure mode a mechanical producer … cannot exhibit"), and this gate sits downstream of three separate upstream gates whose findings it would otherwise re-derive.
-  Enumerating a full code-review checklist instead was rejected: `burler.yaml`'s lens library already carries that vocabulary, and duplicating it in the rubric would drift from it.
+  Enumerating a full code-review checklist instead was rejected: the rubric's job is to say what is distinctive about *this* gate, and a generic checklist would both bloat it and compete with the reviewer's own judgment — the same reasoning `burler.yaml` records for its `generic` lens, which "deliberately narrows to nothing, so the widest possible read is the point."
 - Rejected: two "also flag" items and nothing else.
 
 ### the-status-spec-example-moves-to-webster
@@ -243,8 +244,7 @@ From `CONSTRAINTS.md`, the ones this task actually engages:
   Machine-checked over `contracts/stencils/**/*.md`, so the new rubric is inside the enforcement walk: no `host`-sense phrases, no bare `weft`/`warp` outside the owner set.
 - **Review Round Invariant.**
   A-before-B, every recorded finding fixed in B at all severities, no self-grading, commit-per-fix on warp source, never push.
-  In a cluster round, fork reports plus the handler's holistic review plus the consolidation are all part of A, and fork reviewers are read-only — mechanically enforced by the fork audit.
-  This binds the `cluster-fan` decision directly.
+  Its cluster clause — fork reviewers are read-only, mechanically enforced by the fork audit — is what forced the single-reviewer decision above, so this invariant shapes the round's structure rather than merely constraining it.
 - **Shed Recipe Registry Invariant.**
   Registry coverage is enforced from two homes: `internal/loomrecipe/coverage_guard_test.go` and `internal/shedrecipe/registry_test.go`.
   This task touches the first and deliberately leaves the second alone.
@@ -276,13 +276,14 @@ Update the file's own header comment, which currently enumerates the two rubrics
   That seeding is the single most likely source of a first-run failure;
   check how `6f66fff1` did it for `loom-rubric-plan-review` and follow it.
 
-**`internal/shedrecipe/entries_burler_test.go`** — one new case for `cluster-fan`, which no shipped recipe row exercises: assert the key maps through onto `burlerengine.Profile.ClusterFan`, and nothing more.
-Deliberately **no** "unknown fan name fails construction" assertion — `burlerRoundProfile` never resolves the name, so no such error exists at construction to assert;
-that failure belongs to `Profile.validate` and is `burlerengine`'s own to cover.
-This mapping case is the only genuinely new coverage in `shedrecipe`;
-every other key the perch uses is already covered by the two shipped segments' tests.
+**`internal/shedrecipe`** — no new tests.
+Every config key this perch uses (`run_subdir`, `artifact_paths`, `rubric_stencil`, `profile.target`/`fasit`/`rubric_stencil`/`fix-scope`/`tool-use`) is already covered by the two shipped segments' cases in `entries_bouncer_test.go` and `entries_burler_test.go`.
+The `cluster-fan` case an earlier revision of this discussion planned is dropped along with the key itself.
 
-**`internal/loomcli/smoke_test.go`** — row-count assertion update only.
+**`internal/loomcli/smoke_test.go`** — a header-comment rewrite, not an assertion change.
+The file carries no row-count assertion at all;
+its affected content is the package-doc paragraph at lines 20–21, which says loom's table "backs one of its sixteen rows -- Webster-Review -- with a stub producer that reports Done unconditionally" and then reasons about driver-liveness timing from it.
+Both the count and the stub claim become false, and the surrounding timing rationale needs re-reading against a list where every row is real.
 
 **Not tested mechanically, recorded as review obligations:** the rubric's fidelity to `manifest/designs/loom.md`'s section beyond the phrase pins, and the diff-derivation instructions' correctness against a real `state.json` (no fixture in this repo produces one, and building one would be a `websterengine` integration test, out of scope).
 
@@ -307,35 +308,31 @@ every other key the perch uses is already covered by the two shipped segments' t
   `artifact_paths` is required, absolute, path-shaped, and rendered into the generic judge prompt as "read each one".
   `Webster-Review` is the first row whose subject is not a file, and it works around this by naming the plan.
   If a second such gate appears (`Tenter` is the likely candidate), a generic `subject_instructions` key on `Bouncer` becomes the right fix.
-- **Naming `cluster-fan: standard` couples the round to an operator-owned config file, and fails late.**
-  `burler.yaml` is seed-only and never re-seeded;
-  deleting the `standard` fan is a supported operator choice.
-  The resulting failure lands when the `Webster-Burler` round first runs — at the end of a whole loom run, after Webster has built everything — not at construction, because `cluster-fan` is passed through unvalidated by `shedrecipe` and resolved only inside `Profile.validate`.
-  Loud and named when it fires, but expensively late.
-  No recipe row depended on `burler.yaml` content before this one.
-  The eager-probe fix is out of scope (it needs an `Env`/engine surface change) and is the obvious follow-up if this ever bites.
-- **Five forks per round is a real cost step.**
-  This is the first clustered round in loom, over the largest artifact in the list, at the end of the run when the most work has accumulated.
-  If it proves too expensive in practice, the cheap dial is `cluster-fan` — dropping the key reverts to a single reviewer with no other change.
+- **One reviewer carries the whole terminal gate.**
+  The single-reviewer decision is forced by the fork/git rule, not chosen for coverage, so the coverage cost is real: the largest artifact in the list, at the end of the run, gets one pair of eyes per round rather than five.
+  The converge loop's repeated rounds are the only compensation.
+  This is the clearest candidate for a follow-up once a fork-readable diff exists.
 - **The `Webster` row loses its only inbound stuck edge.**
   Nothing bounces back to `Webster` after this change, and `Webster` itself carries no `on_stuck`.
   A diff the segment cannot fix within its bounce budget escalates to a human, which is the intended behaviour, but it means a genuinely mis-built batch has no automatic re-run path.
 
 ## Q&A log
 
-- **Q:** How does the round obtain the diff under review, given `Target.Paths` entries must exist on disk? **A:** [auto-pick] Instructions-only `profile.target` plus `tool-use: true`, deriving `<lowest batch startSha>..HEAD` from `_lyx/webster/state.json`, falling back to the merge-base against `product.parent`. **Why:** `Profile.validate` accepts an instructions-only `FileSet`, `BatchState.StartSHA` is already documented as the durable base-commit record, and both alternatives (a `Webster-Diff` row, or stamping `start_sha` for real) add production plumbing to a task scoped as a rubric plus a perch.
+- **Q:** How does the round obtain the diff under review, given `Target.Paths` entries must exist on disk? **A:** [auto-pick, revised in review r2] Instructions-only `profile.target` plus `tool-use: true`, reviewing `git merge-base <product.parent> HEAD`..`HEAD`, with no guess-fallback, and an explicit `profile.fasit` of `paths: [_lyx/plan]`. **Why:** `Profile.validate` accepts an instructions-only `FileSet` for `Target` but hard-errors on an empty `Fasit`;
+  the merge-base is the only recovery-immune base (see the r2-gap entry below);
+  and both alternatives (a `Webster-Diff` row, or stamping `start_sha` for real) add production plumbing to a task scoped as a rubric plus a perch.
 - **Q:** What does `Webster-Bouncer`'s required `artifact_paths` name, when the subject is a diff? **A:** [auto-pick] The single entry `_lyx/plan`. **Why:** the key cannot express a diff at all, so the choice is only which value gives the judge the most useful reading — the card contract the diff is measured against — and `Plan-Bouncer` already proves a bare directory entry works there.
 - **Q:** `fix-scope: source` or `overlay`, and does the Bouncer need a `commit_seam`? **A:** [auto-pick] `source`, no `commit_seam`. **Why:** the target is warp code, which the Fabric Git Invariant names as the one permitted agent commit;
   `overlay` would forbid git entirely and restrict writes to an empty `Target.Paths`, and with the fixer committing its own work there is no artifact left for a loop-owner seam to commit.
-- **Q:** Does the round run a cluster fan? **A:** [auto-pick] Yes, `cluster-fan: standard`. **Why:** a whole-diff review is the archetypal multi-lens case and this is the only gate with no mechanical validator ahead of it;
-  the burler.yaml-deletability hazard is recorded as an open risk and the failure is loud at construction.
+- **Q:** Does the round run a cluster fan? **A:** [auto-pick, reversed in review r3] No — no `cluster-fan` key, single reviewer. **Why:** the initial "yes, `standard`" answer was wrong on a mechanism fact: fork reviewers are read-only and may never run git (`internal/burlerengine/prompt.go:226-229`, audit-enforced), so under a fan the forks cannot reach a subject that exists only through git, and `auditClusterRound` hard-requires exactly `len(clusterLenses)` fork transcripts so there is no run-time fallback to fewer.
 - **Q:** Row names, routing, and what happens to the `on_stuck: Webster` edge? **A:** [auto-pick] `Webster-Bouncer`/`Webster-Burler` under `segment: Webster-Review`, mutual `on_stuck`, `on_done: Publish` from the Bouncer, and the bounce-to-`Webster` edge is dropped. **Why:** `shedengine`'s validator requires a shared segment label for the mutual edges to build, and the segment resolves findings by fixing them rather than by re-running Webster, exactly like both shipped perches.
 - **Q:** Does the rubric carry only the two dimensions `loom.md` names, or also a do-not-flag list? **A:** [auto-pick] Both dimensions plus a do-not-flag list, over an explicit "ordinary diff review is the base" framing. **Why:** this gate sits downstream of three upstream gates whose findings it would otherwise re-derive, and both shipped rubrics carry the same over-flagging framing;
-  a full code-review checklist was rejected because `burler.yaml`'s lens library already carries that vocabulary.
+  a full code-review checklist was rejected because the rubric's job is to name what is distinctive about this gate, not to re-teach code review.
 - **Q:** Is `Stub` deleted now that no loom row uses it? **A:** [auto-pick] No — kept, and moved into `coverageGuardAllowedUnreachableEngines`. **Why:** `shedrecipe`'s registry is generic machinery shared by reference with `Hardener`'s future list, so removing an engine is a decision about that registry's surface rather than a consequence of loom finishing its own list.
 - **Q:** Does this task need a `Webster-Revalidate` row, mirroring `Plan-Revalidate`? **A:** [auto-pick] No. **Why:** `Plan-Revalidate` exists because a mechanical validator sits over the plan and the fixer rounds rewrite it after that validator already ran;
   there is no mechanical validator over a diff.
 - **Q:** (review r1 gap) `state.json`'s lowest-numbered batch `startSha` is overwritten by `recoverSpawn` — what is the recovery-safe diff base? **A:** [auto-pick] The merge-base against `product.parent` from `_lyx/loom/status.json`, with no guess-fallback: an undeterminable range raises a BLOCKING finding instead. **Why:** every `state.json` batch slot is individually overwritable, so no min-across-batches rescues it;
   the merge-base is recovery-immune, and on a normal loom run it coincides with the run's start SHA because only Webster commits warp content.
-- **Q:** (review r1 gap) The `cluster-fan` risk was written as a construction failure, which the code contradicts — restate it, and decide whether an eager fan check is in scope. **A:** [auto-pick] Restate as a run-time failure at the `Webster-Burler` round;
-  no eager check in this task. **Why:** `ResolveFan` runs only inside `Profile.validate` at `Engine.Run` time, and an eager probe would need a `burlerengine.Config` that `shedrecipe.Env` does not carry — a `shedrecipe`/`burlerengine` surface change, both listed Out.
+- **Q:** (review r2 gap) The `cluster-fan` risk was written as a construction failure, which the code contradicts — restate it, and decide whether an eager fan check is in scope. **A:** [auto-pick] Moot as of r3: the fan is dropped entirely, so nothing in this task reads `burler.yaml` and there is no fan-resolution failure to place. **Why:** `ResolveFan` runs only inside `Profile.validate` at `Engine.Run` time, never at construction — the finding was accurate, and the r3 fork/git blocker then removed the key that made it matter.
+- **Q:** (review r3 gap) Under a fan, how would each read-only fork obtain a diff it may not run git for? **A:** [auto-pick] It cannot, so the fan is dropped rather than worked around. **Why:** seeding the diff through inherited fork context makes every fork's access to the subject context-size-dependent and silently degrading, and materialising it to a file means the handler dirtying the working tree during job A that the job-B fixer then commits from;
+  a mechanism whose reviewers cannot reach the subject is worse than one honest reviewer that can.
