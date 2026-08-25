@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-rubric-stencil
 slug: loom-webster-review-producer
 branch: loom-webster-review-producer
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-review-r1  '2026-08-25T12:35:36Z'
 plan-fix-r1  '2026-08-25T12:36:05Z'
 planned  '2026-08-25T12:36:17Z'
 implementing  '2026-08-25T12:36:44Z'
+approved-rubric-stencil  '2026-08-25T12:40:32Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-08-25T12:36:44Z'
 ```yaml
 batches:
   - name: rubric-stencil
-    state: running
+    state: approved
     implementer_session: 2cccc025-759c-4b6b-a62a-d7bc8cf9f09a
     start_sha: e1030344b0a4351d1cd2d3975919f2303e0b15e8
+    commit_sha: 69f4db4d26390a2301622fc6e3f4d94b2a550195
     verify_baseline_failures: []
   - name: perch-wiring
     state: pending
