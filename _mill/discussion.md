@@ -28,14 +28,16 @@ This task writes them from scratch.
 
 - A new stencil `contracts/stencils/loom/loom-rubric-plan-review.md`, registered in `contracts/stencils/stencils.go` (embedded var + `entries` row).
 - `contracts/recipes/loom-recipe.yaml`: replace the single `Plan-Review` `Stub` row with a `Plan-Bouncer` + `Plan-Burler` pair carrying `segment: Plan-Review`; repoint `Plan-Validate`'s `on_done`.
-- `internal/loomshed/loomshed.go`: drop `NamePlanReview`, add `NamePlanBouncer` and `NamePlanBurler`; fourteen rows become fifteen.
+- `internal/loomshed/loomshed.go`: drop `NamePlanReview`, add `NamePlanBouncer`, `NamePlanBurler`, and `NamePlanRevalidate`; fourteen rows become **sixteen**.
 - `internal/loomshed/stub.go`: doc comment retargeted — `stubProducer` now backs one row, `Webster-Review`, not two.
 - `internal/shedadapters/bouncer.go`: `BouncerConfig` gains an optional `Commit func() error`, called on `settle`'s `verdictApproved` branch before it returns `shedengine.Done`.
   Nil is the absent value and means "commit nothing", which is what keeps `Discussion-Bouncer`'s behaviour byte-identical.
 - `internal/shedrecipe/entries_bouncer.go`: a new optional `commit_seam` config key, added to `configRejectUnknown`'s recognised set, resolving `plan` → `env.CommitPlan` and `discussion` → `env.CommitDiscussion`; absent leaves `BouncerConfig.Commit` nil.
   A **present** `commit_seam` naming a closure `Env` does not carry is a construction error, via the existing `requireSeam` — see the decision below.
 - Tests: `contracts/stencils/rubric_test.go`, `contracts/stencils/registry_test.go` (whatever its on-disk-tree assertion needs), `internal/loomrecipe`'s `coverage_guard_test.go` / `recipe_test.go` / `shape_test.go` / `sequence_test.go` / `fixture_test.go`, `internal/shedadapters`' Bouncer settle tests, `internal/shedrecipe/entries_bouncer_test.go`, `internal/loomcli/wiring_test.go`.
-- Docs: `manifest/designs/loom.md` (producer-table row 9, the `### Plan-Review rubric` section, and the stale text the sweep below finds), `manifest/designs/shed-recipe.md` (the `commit_seam` key), `manifest/roadmap.md` (this Planned item removed, and one new Planned item added — see the `fix-scope` decision below).
+- Docs: **the stale-text scan's output is the doc inventory** — the list below is illustrative, not exhaustive, and a plan writer builds the doc cards from the scan, not from this bullet.
+  Known members: `manifest/designs/loom.md` (producer-table row 9, the new `Plan-Revalidate` row, the row-count paragraph, the `### Plan-Review rubric` section), `manifest/designs/shed.md` (lines 91 and 148, both carrying the now-stale "`Plan-Review`'s stuck routes back to `Plan-Write`" routing example), `manifest/designs/review-finding-classification.md` (line 47, "Plan-Review's own future rubric" — no longer future), `manifest/designs/shed-recipe.md` (the `commit_seam` key, and its own row-count claim), `contracts/recipes/loom-recipe.yaml`'s header comment, `internal/loomshed/loomshed.go` and `doc.go`, `internal/loomcli/smoke_test.go`, `internal/loomengine/config.go`'s `LoomReviewsDir` doc, and comment text across `internal/loomrecipe`'s test files.
+  `manifest/roadmap.md` moves too: this Planned item removed, one new Planned item added (see the `fix-scope` decision below).
 
 **Out:**
 
@@ -50,6 +52,8 @@ This task writes them from scratch.
 - `contracts/specs/loom-plan-spec.md`. It is the format contract and stays the authority; the rubric **points at** it and never restates it.
 - Any change to `planparser`'s sixteen validation checks, or to what `Plan-Validate` does.
 - `docs/overview.md` — the module table and execution stack are unchanged.
+  It carries one pattern-1 scan hit, at line 399 ("its Plan-Review segment's `Bouncer`"), and that hit needs **no edit**: it already describes the segment shape this task ships, so it goes from aspirational to accurate on landing.
+  Classified here so a plan writer does not have to re-derive it.
 - `loom.yaml`'s `review:`/`review_timeout_min:` keys and their `Config` validation — already shipped, already run-wide.
 
 ## Decisions
@@ -210,12 +214,37 @@ This task writes them from scratch.
 
 - Decision:
   - `Plan-Validate`: `on_stuck: Plan-Write` (unchanged), `on_done: Plan-Bouncer`.
-  - `Plan-Bouncer`: `engine: Bouncer`, `segment: Plan-Review`, `max_bounces: 5`, `on_stuck: Plan-Burler`, `on_done: Batchifier`.
+  - `Plan-Bouncer`: `engine: Bouncer`, `segment: Plan-Review`, `max_bounces: 5`, `on_stuck: Plan-Burler`, `on_done: Plan-Revalidate` (see the `Plan-Revalidate` decision below — this is deliberately **not** `Batchifier`).
   - `Plan-Burler`: `engine: BurlerRound`, `segment: Plan-Review`, `max_bounces: 5`, `on_stuck: Plan-Bouncer`, `on_done: Plan-Bouncer`.
 - Rationale: structurally identical to the shipped Discussion pair.
   The Burler's `on_done` is unreachable — `BurlerProducer` never returns `Done` — but an empty `on_done` is load-bearing and ends the whole run silently, which is the worse failure; the shipped Discussion row carries the same explicit-but-unreachable edge with a comment saying so, and this one should carry the same comment.
 - Rejected: keeping an `on_stuck: Plan-Write` edge on the Bouncer.
   In the perch pattern the Bouncer's `on_stuck` is the Burler; exhausting the bounce budget escalates to a human rather than re-routing to the writer.
+
+### A `Plan-Revalidate` row re-runs the mechanical checks after the segment
+
+- Decision: add a sixteenth row, `Plan-Revalidate` (constant `NamePlanRevalidate`), `engine: PlanValidate` — the same registry engine `Plan-Validate` already uses, since the registry maps engine names to constructors and two rows may share one.
+  Routing becomes `Plan-Bouncer.on_done: Plan-Revalidate`, and `Plan-Revalidate` carries `on_stuck: Plan-Write`, `on_done: Batchifier`.
+  `Plan-Validate`'s own row is unchanged.
+- Rationale: `Plan-Burler` is `fix-scope: overlay` with `_lyx/plan` as its write surface, so a fixer round rewrites card files — and the rubric's "Do not flag" item 1 deliberately forbids the judge from checking the sixteen `planparser` checks, precisely because a deterministic validator already owns them.
+  But that validator runs **before** the segment, never after it.
+  `Batchifier` does not close the gap: `internal/loomshed/batchifier.go`'s `Call` only calls `batcher.Active(b.anchorPath)` and never parses the plan.
+  So a fixer-introduced format regression — a broken card number, a dropped `Intent:`, a malformed target path — passes the judge (forbidden from looking), passes `Batchifier` (not looking), and reaches `Webster`, whose recipe row carries **no `on_stuck` at all**, blocking the run with a human as the only recovery.
+  Re-running the same three `planparser` calls after the segment is cheap, deterministic, and closes it.
+- `on_stuck: Plan-Write`, not `Plan-Bouncer`: bouncing a format regression back into the segment live-locks.
+  `Plan-Bouncer.Call` finds `judged(n)` still true for the already-`APPROVED` round, `settle` returns `Done` again immediately, and the pair ping-pongs `Plan-Revalidate` → `Plan-Bouncer` → `Plan-Revalidate` with both rows reporting `Done`/`Stuck` forever.
+  `Plan-Write` is the same target `Plan-Validate` already bounces to, it terminates, and the bounce budget bounds it.
+- Rejected: leaving `Plan-Bouncer.on_done: Batchifier` and accepting the gap (the failure lands on the one row with no `on_stuck`, which is the worst place in the list for it to land).
+  Rejected: `Plan-Bouncer.on_done: Plan-Validate`, reusing the existing row (same live-lock — `Plan-Validate.on_done` is `Plan-Bouncer`, so approval would ping-pong between the two rows, both returning `Done`).
+  Rejected: relaxing "Do not flag" item 1 so the judge checks format too (an LLM re-deriving sixteen deterministic checks is the wrong instrument, and divergence from the parser is the predictable outcome).
+  Rejected as a *substitute*, kept as a complement: telling the fixer, in `Plan-Burler`'s `fasit.instructions`, to re-run `lyx loom validate-plan` after editing.
+  The verb makes the identical three `planparser` calls in the identical order (the Gate Self-Check Parity Invariant), so it is a genuinely useful instruction — but it is a self-check by the party that made the edit, not a gate in the list, and it must not be relied on as one.
+- **Known hazard, pre-existing and shared, that the plan writer must confirm rather than assume:** when `Plan-Revalidate` bounces to `Plan-Write`, the plan is rewritten, but `Plan-Bouncer`'s run directory still holds round *n*'s `APPROVED` verdict.
+  On the next pass through the segment, `judged(n)` may be satisfied by that stale verdict and settle `Done` over a plan the judge never saw.
+  The shipped `Discussion-Validate` → `Discussion-Write` → `Discussion-Bouncer` path has the identical shape, so this is not introduced here — but this task adds a second bounce edge into the same pattern, and the plan must verify what `archiveStaleOutputs` and `Plan-Write`'s own rotate-and-commit decorator actually do to the run directory before assuming it is handled.
+  If it is not handled, say so and file it rather than fixing it inline; it is a `shedadapters` defect affecting both segments.
+- Row-count consequence: loom's recipe goes from fourteen rows to **sixteen**, not fifteen — the Bouncer/Burler pair replacing `Plan-Review` is net +1, and `Plan-Revalidate` is +1 more.
+  `manifest/designs/loom.md`'s design table gains a genuine new row for it (unlike the segment pair, which the table collapses by design), so that table's "kept at fourteen entries by design" paragraph needs rewriting on both counts.
 
 ### Stale text is found by a scan, not by a hand-written list
 
@@ -229,14 +258,14 @@ This task writes them from scratch.
      The claim is stale, but the **conclusion is not**: the reviews tree stays ephemeral, because the seam this task adds commits `_lyx/plan`, never `.lyx/loom/reviews/`.
      Reword the justification; do not move the directory.
   4. The fourteen-row count claim — `fourteen`, plus `14` in a row-count context.
-     Each hit is classified against which fourteen it counts: loom's **recipe rows** (becomes fifteen), `manifest/designs/loom.md`'s **design table** (deliberately kept at fourteen and NOT changed — the table collapses each review segment's two rows into one entry by design, see its own "The table and the shipped recipe diverge deliberately" paragraph), `internal/shedrecipe`'s **engine registry** (stays fourteen — `TestRegistry_ShipsFourteenEntries` must not change), and `landingshed.Deps`' **fourteen fields** (unrelated).
+     Each hit is classified against which fourteen it counts: loom's **recipe rows** (becomes sixteen), `manifest/designs/loom.md`'s **design table** (becomes fifteen — the table collapses each review segment's two rows into one entry by design, so the Plan pair adds no row, but the new `Plan-Revalidate` row is a genuine table row; see its own "The table and the shipped recipe diverge deliberately" paragraph), `internal/shedrecipe`'s **engine registry** (stays fourteen — `TestRegistry_ShipsFourteenEntries` must not change), and `landingshed.Deps`' **fourteen fields** (unrelated).
 - Rationale: the first draft of this discussion hand-listed the doc set and named one stale site.
   A scan run while writing this decision found, beyond that one: `manifest/designs/loom.md:16` and its lines 49–54, `manifest/designs/shed.md:91` and `:148` (both carrying the same `Plan-Review` → `Plan-Write` routing example), `manifest/designs/review-finding-classification.md:47` ("Plan-Review's own future rubric"), `manifest/designs/shed-recipe.md:9`, `contracts/recipes/loom-recipe.yaml:2`, `internal/loomshed/loomshed.go:1`/`:5`/`:13`, `internal/loomshed/doc.go:1`, `internal/loomcli/smoke_test.go:21` ("two of its fourteen rows -- Plan-Review and Webster-Review -- with stub producers"), and comment text in `internal/loomrecipe`'s `coverage_guard_test.go:16`/`:40`, `sequence_test.go:71`, `shape_test.go:2`/`:232`, and `recipe_test.go:21`.
   A hand-written list is the wrong instrument at this count.
 - Note on classification, not a mechanical rule: `manifest/designs/loom.md`'s design table is the one place where "fourteen" stays correct after this change.
   The table already collapses `Discussion-Review`'s two recipe rows into one entry and states that it is "kept at fourteen entries by design, not required to track the recipe's row count row-for-row".
   Row 9 keeps its single `Plan-Review` entry for the same reason; only its `Input`/`Output` cells and the parenthetical naming its two rows change, exactly as row 5's did.
-  The "Both count fourteen, but not the same fourteen" paragraph must be updated to say the recipe now carries fifteen and to name the second collapsed pair.
+  The "Both count fourteen, but not the same fourteen" paragraph must be rewritten on both counts: the recipe now carries sixteen rows, the table fifteen, and the table now collapses two segment pairs rather than one.
 
 ### `run_subdir` and the model/effort/timeout omission
 
@@ -249,7 +278,7 @@ This task writes them from scratch.
 
 ### `stubProducer` stays
 
-- Decision: `internal/loomshed/stub.go` keeps `stubProducer` and `NewStub`; only the doc comments change — it now backs one row of a fifteen-row list, `Webster-Review`, not two of fourteen.
+- Decision: `internal/loomshed/stub.go` keeps `stubProducer` and `NewStub`; only the doc comments change — it now backs one row of a sixteen-row list, `Webster-Review`, not two of fourteen.
 - Rationale: `Webster-Review` is still a `Stub` in the recipe and has its own roadmap item.
 - Rejected: deleting it (would leave `Webster-Review` with no engine and break the coverage guard).
 
@@ -313,7 +342,7 @@ From `CONSTRAINTS.md`:
   The rubric is read at call time from the told absolute stencils directory via `stencilstore.Read`.
   Nothing in this task may read `stencils.LoomRubricPlanReview` from production code; only `cmd/lyx`'s root pre-run and `internal/stencilcli` touch the registry.
 - **Shed Recipe Registry Invariant** — no new registry entry.
-  `Bouncer` and `BurlerRound` are already registered, and `internal/shedrecipe/registry_test.go`'s `TestRegistry_ShipsFourteenEntries` pins the engine-registry count at fourteen and must **not** change: fifteen *rows* in loom's list, still fourteen *engines* in the registry.
+  `Bouncer` and `BurlerRound` are already registered, and `internal/shedrecipe/registry_test.go`'s `TestRegistry_ShipsFourteenEntries` pins the engine-registry count at fourteen and must **not** change: sixteen *rows* in loom's list, still fourteen *engines* in the registry. `Plan-Revalidate` reuses the already-registered `PlanValidate` engine and `Plan-Bouncer`/`Plan-Burler` reuse `Bouncer`/`BurlerRound`, so this task registers no engine at all.
   Confusing the two counts is the likeliest mistake in this task.
 - **Fabric Git Invariant** — the governing constraint on this task, and the reason `Plan-Burler` is `overlay` rather than `source`.
   An LLM agent never commits weft content; Go commits it in-process through `internal/fabricengine`, at a boundary the loop owner controls.
@@ -353,12 +382,11 @@ Check both before assuming.
 **`internal/loomrecipe`** — the row-count and row-name surface:
 
 - `coverage_guard_test.go`'s `TestCoverageGuard_EveryLoomRowHasAnEngine` — its row table keys off the `loomshed.Name*` symbols, so it needs the `NamePlanReview` row replaced by two rows mapping to `Bouncer` and `BurlerRound`.
-- `recipe_test.go`'s `TestNew_ShapeMatchesRecipe` and `TestRecipe_SeedAndResumeRowNamesExist` — fifteen rows.
+- `recipe_test.go`'s `TestNew_ShapeMatchesRecipe` and `TestRecipe_SeedAndResumeRowNamesExist` — sixteen rows.
 - `shape_test.go`'s `TestNew_ProducerTable`, `TestNew_ProducerTableOrderUnchangedByWiring`, `TestNew_PassesShedValidation`, `TestNew_RoutingGraphIsClean` — the last is the one that proves the new mutual-bounce edges and the `segment` labels are consistent, and is the most valuable assertion in this task.
 - `sequence_test.go`'s `TestSequence_FullRunBlocksAtPublish` — the numbers, exactly:
-  `wantSequenceOrder` is **14** entries today and becomes **16**.
-  The single `{NamePlanReview, Done}` entry is replaced by the same three-entry segment shape the Discussion pair already contributes — `{NamePlanBouncer, Stuck}`, `{NamePlanBurler, Stuck}`, `{NamePlanBouncer, Done}` — so it is minus one, plus three.
-  (The round-2 review stated 17; that adds the three without removing the one.)
+  `wantSequenceOrder` is **14** entries today and becomes **17**.
+  The single `{NamePlanReview, Done}` entry is replaced by the same three-entry segment shape the Discussion pair already contributes — `{NamePlanBouncer, Stuck}`, `{NamePlanBurler, Stuck}`, `{NamePlanBouncer, Done}` — and `{NamePlanRevalidate, Done}` follows it, so it is minus one, plus four.
   Two counters increment with the second segment: `loomBurler.calls` from 1 to 2, and `loomShuttle.bouncerJudgeCalls` from 1 to 2.
   Check `bouncerSeedCalls` the same way — if the fixture asserts it anywhere, it goes 1 to 2 as well.
   The run must still block on `Publish`, with `commitDiscussionCalls` and `commitPlanCalls` unchanged at 1 each **unless** the new `commit_seam` fires in this fixture, which it will: `Plan-Bouncer`'s approved settle calls `Env.CommitPlan`, so `commitPlanCalls` becomes 2.
@@ -392,7 +420,8 @@ Verify rather than assume; if `wiring_test.go` names the Discussion segment spec
 
 - A recipe whose two new rows carry mismatched `segment` labels fails `shedengine` validation — covered by `TestNew_PassesShedValidation` / `TestNew_RoutingGraphIsClean` continuing to pass with the correct labels.
 - The rubric is a marker value, not a template — `TestLoomRubricPlanReview_CarriesNoStencilMarkers`.
-- The engine registry stays at fourteen while the row list goes to fifteen — `TestRegistry_ShipsFourteenEntries` must be left untouched and must still pass.
+- The engine registry stays at fourteen while the row list goes to sixteen — `TestRegistry_ShipsFourteenEntries` must be left untouched and must still pass.
+- A fixer-introduced format regression is caught before `Batchifier` — a `sequence_test.go`-style scenario where the fake burler writes a malformed card and `Plan-Revalidate` reports `Stuck`, rather than the run reaching `Webster`.
 - An approved plan is committed exactly once by the loop owner and a blocked one is not committed at all — the `shedadapters` settle tests plus the `sequence_test.go` `commitPlanCalls == 2` assertion.
 - A `commit_seam`-less Bouncer behaves exactly as before — the nil-`Commit` test, which is what keeps `Discussion-Bouncer` unchanged.
 
@@ -414,7 +443,7 @@ Build gate: `go build ./... && go test ./...` from the worktree root.
 - **Q:** [round 2, BLOCKING] The judge reads only `{{.artifacts}}`, the round report, and the prior ledger — how does it reach the `decision-record.md` that rubric item 4 measures against? **A:** [auto-pick] name the path in the rubric text under item 4, stating it is the measuring stick and never the subject. **Why:** one stencil feeds both rows so one edit reaches both; the judge already reads files by contract; and `artifact_paths` keeps meaning what its own doc says it means. Listing the fasit as an artifact would invite findings raised against the decision record itself.
 - **Q:** [round 2] What are `Plan-Burler`'s `fix-scope` and `tool-use`? **A:** [auto-pick] `fix-scope: overlay`, `tool-use: true`, plus a new `commit_seam: plan` on `Plan-Bouncer` and a `Commit` closure called on `settle`'s approved branch. **Why:** `burlerengine/doc.go` names plan/discussion/review artifacts as exactly the overlay class, and the Fabric Git Invariant states an agent never commits weft content. An overlay round runs no git, and nothing else in the segment commits, so the seam is required rather than optional. This expands scope into `internal/shedadapters` and `internal/shedrecipe/entries_bouncer.go`, which the first draft listed as Out.
 - **Q:** [round 2] The shipped `Discussion-Burler` uses `fix-scope: source` over `_lyx/discussion/*` — is that fixed here? **A:** [auto-pick] no. Record it as the same violation, add the `Commit` seam that makes the correction a two-line recipe change, and file a Planned roadmap item. **Why:** flipping it changes shipped behaviour and its tests; the divergence ships on purpose and the recipe comment says so, so it does not read as a copy-paste slip.
-- **Q:** [round 2] How is stale text enumerated? **A:** [auto-pick] state the scan method — `Plan-Review`, `NamePlanReview`, and the fourteen-row count claim — and let scope follow from it. **Why:** a hand-written list missed a dozen sites; the count claim in particular needs per-hit classification, because `designs/loom.md`'s design table and `shedrecipe`'s engine registry both stay at fourteen while the recipe goes to fifteen.
+- **Q:** [round 2] How is stale text enumerated? **A:** [auto-pick] state the scan method — `Plan-Review`, `NamePlanReview`, and the fourteen-row count claim — and let scope follow from it. **Why:** a hand-written list missed a dozen sites; the count claim in particular needs per-hit classification, because `shedrecipe`'s engine registry stays at fourteen and `designs/loom.md`'s design table moves to fifteen while the recipe goes to sixteen.
 - **Q:** [round 3, BLOCKING] What happens when the injected `Commit` returns an error? **A:** [auto-pick] `settle` returns the error, halting the run; never `degrade`, never `Done`-with-warning. The commit runs even under a cancelled context. **Why:** `degrade` returns `Stuck` and its own doc says none of its callers return `Done` — using it would bounce an APPROVED plan into a findings-free fixer round and, because `judged(n)` stays true, re-approve and re-commit every bounce until `max_bounces` is spent. A weft-commit failure is infrastructure, not a verdict. The verdict file is durable and the commit is idempotent, so the error return is retryable on resume and loses nothing.
 - **Q:** [round 3] `artifact_paths` resolves against `Env.WorktreeRoot` but `CommitPlan` anchors at `AnchorPath()` — which root wins? **A:** [auto-pick] record the divergence, accept it unchanged, fold the fix into the same follow-up item as the `Discussion-Burler` `fix-scope` correction. **Why:** the two are identical while `AnchorRel` is `"."` (its default), the shipped Discussion pair has the identical shape, and re-pointing `entries_bouncer.go`'s resolution root would silently change an already-shipped segment.
 - **Q:** [round 3] What working directory does the judge resolve the rubric's relative decision-record path from? **A:** [auto-pick] the anchor — the rubric writes the anchor-relative form and says so. **Why:** `shuttleengine.NewRunner`'s validation doc states "anchorPath sites the run directory … while worktreeRoot only resolves relative output files", and `wiring.go` passes `reedGeom.AnchorPath` as that argument. A stencil cannot know the absolute path and no marker carries it.
@@ -422,4 +451,7 @@ Build gate: `go build ./... && go test ./...` from the worktree root.
 - **Q:** [round 3] The post-approval commit reuses `Plan-Write`'s commit message — accepted? **A:** [auto-pick] accepted, on purpose. **Why:** the message names the artifact set rather than the producer, and an approved round that changed nothing produces no commit at all, since `CommitAnchoredPaths` reports `committed == false` for a clean tree.
 - **Q:** [round 4, BLOCKING] What happens when `commit_seam` names a closure `Env` does not carry? **A:** [auto-pick] construction error via the existing `requireSeam`, checked only when the key is present. **Why:** a nil closure would assign a nil `Commit`, which this design defines as "commit nothing" — silently recreating the no-seam condition the `overlay` decision exists to eliminate. `entries_planwrite.go` and `entries_discussionwrite.go` already guard the same two closures this way, and `requireSeam` catches typed nils via its `reflect.Func` case.
 - **Q:** [round 4] What happens to the round's edits when the segment blocks instead of approving? **A:** [auto-pick] they stay uncommitted in the weft working tree, on purpose, and the discussion says so. **Why:** an unapproved plan must not be committed, and a blocked run has already escalated to a human who is the right party to judge the partial fixes. The note exists so a plan writer does not read it as a gap and add a commit site on the blocking branch.
+- **Q:** [round 5, BLOCKING] Nothing re-runs the mechanical checks after the fixer rewrites `_lyx/plan` — what closes that? **A:** [auto-pick] a sixteenth row, `Plan-Revalidate` (`engine: PlanValidate`, `on_stuck: Plan-Write`, `on_done: Batchifier`), with `Plan-Bouncer.on_done` pointing at it instead of `Batchifier`. **Why:** the judge is forbidden from checking format by design, `batchifier.Call` only calls `batcher.Active` and never parses the plan, and `Webster` carries no `on_stuck` — so a fixer-introduced format regression currently lands on the worst row in the list. `on_stuck` is `Plan-Write` rather than `Plan-Bouncer` because bouncing back into the segment live-locks on the already-approved verdict.
+- **Q:** [round 5] Does the Docs scope bullet match the discussion's own scan? **A:** [auto-pick] no — make the scan output the doc inventory and the bullet explicitly illustrative, naming `designs/shed.md` and `designs/review-finding-classification.md` among the known members. **Why:** the bullet listed three files while the scan decision named a dozen; a plan writer building cards from the bullet would have left `shed.md`'s two stale routing examples untouched.
+- **Q:** [round 5] `docs/overview.md` is Out but matches the scan — is that a no-op? **A:** [auto-pick] yes, classified in the Out list. **Why:** line 399 already describes the segment shape this task ships, so it becomes accurate on landing rather than stale.
 - **Q:** Which docs land in the same commit? **A:** [auto-pick] `designs/loom.md` (table row 9, the rubric section reworded as a doc *about* the shipped stencil, and every site the stale-text scan finds), `designs/shed-recipe.md` (the new `commit_seam` key), and `manifest/roadmap.md` (this Planned item removed, the `Discussion-Burler` `fix-scope` item added). **Why:** the Documentation Lifecycle requires it, and this both completes a Planned item and adds one. `docs/overview.md` is untouched — no module-table or execution-stack change.
