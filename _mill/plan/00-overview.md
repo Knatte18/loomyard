@@ -3,7 +3,7 @@
 ```yaml
 task: "Add RSS-based Reddit read tier"
 slug: "reddit-rss-tier"
-approved: false
+approved: true
 started: "20260825-100100"
 parent: "main"
 root: ""

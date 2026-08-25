@@ -166,6 +166,7 @@ A `select` over a channel receive, `ctx.Done()`, and a deadline timer honours al
   - A stubbed 200 carrying `plugins/prowler/testdata/reddit-thread.rss` returns a feed with 5 entries, and the request the stub observed carried `User-Agent: prowler/1.0`, `Accept: application/atom+xml`, no `Accept-Encoding` header, and a URL equal to `redditRSSURL(rawURL)`.
   - A transport error, a 500, and a 404 each return an error naming the cause.
   - A 200 whose body is `plugins/prowler/testdata/reddit-block-page.html` returns an error naming the wall reason, not an XML syntax error.
+  - A 403 whose body is `plugins/prowler/testdata/reddit-block-page.html` returns an error naming the wall reason rather than the bare status code, matching `redditoauth_test.go`'s existing `403_block_page` precedent for the OAuth tier.
   - A 200 whose body is `plugins/prowler/testdata/reddit-rss-notfound.rss` returns an error for zero entries.
   - 429 retry budget: a stub returning 429 twice then 200 succeeds and issued exactly three requests;
     a stub returning 429 three times returns an error whose message names the reset seconds and issued exactly three requests.
