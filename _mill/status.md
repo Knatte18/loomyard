@@ -42,7 +42,9 @@ batches:
     commit_sha: 99a0355ab003bbdd5ae182542bd71faa1b06eb24
     verify_baseline_failures: []
   - name: plan-review-segment-rows
-    state: pending
+    state: running
+    implementer_session: 4f8077f2-d219-4df6-b809-faa9ea999b1d
+    start_sha: 4570898123eebf7982a49724dd1648b16c90332d
     verify_baseline_failures: []
   - name: docs-and-stale-text-sweep
     state: pending
