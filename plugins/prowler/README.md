@@ -29,11 +29,20 @@ The headless-browser fallback (used when a page is bot-blocked or JS-rendered an
 If no browser is found, the browser fallback is simply skipped — the run still returns whatever the static-extraction path produced, with a note;
 it is never a hard failure of the whole invocation.
 
+## Runtime prerequisite: Reddit API credentials
+
+Reddit content now comes from the official OAuth API rather than scraping HTML.
+To use it, register a "script"-type app at `https://www.reddit.com/prefs/apps` and export `PROWLER_REDDIT_CLIENT_ID` and `PROWLER_REDDIT_CLIENT_SECRET`.
+The credentials are read from the environment only and are never written to a config file.
+`PROWLER_REDDIT_USER_AGENT` optionally overrides the descriptive `prowler/1.0` API User-Agent prowler sends by default.
+Without credentials, prowler falls back to an `old.reddit.com` HTML fetch, which Reddit currently login-gates for anonymous readers — so Reddit fetches will report a definitive error rather than returning content until credentials are configured.
+
 ## Site adapters
 
 prowler routes each fetch through an ordered registry of site adapters before falling back to the generic static-fetch/Readability/browser cascade.
 Each adapter matches a URL family and provides a higher-fidelity strategy for that site, falling through to the generic cascade when it cannot handle the page.
-Two adapters are registered today: Reddit rewrites the URL to its `old.reddit.com` equivalent and extracts the body text, keeping comments intact.
+Two adapters are registered today.
+Reddit tries, in order, the authenticated OAuth API, then an anonymous `old.reddit.com` HTML fetch, then reports a definitive error naming why each tier failed — a Reddit URL never reaches the generic cascade's headless-browser fallback, since a second headless request against a solvable-looking Reddit challenge has been measured to escalate it into a hard IP-level block rather than recover it.
 Hacker News matches `item?id=N` discussion pages and reads them from the community-run Algolia JSON API instead of scraping HN's own HTML.
 
 ## License
