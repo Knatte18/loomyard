@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-rubric-stencil
+phase: approved-shedrecipe-entries
 slug: loom-discussion-review-producer
 branch: loom-discussion-review-producer
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-review-r3  '2026-08-25T07:14:24Z'
 planned  '2026-08-25T07:14:42Z'
 implementing  '2026-08-25T07:15:23Z'
 approved-rubric-stencil  '2026-08-25T07:19:33Z'
+approved-shedrecipe-entries  '2026-08-25T07:24:18Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: e9518ad2a0c883eb38f8111bd0cdf5740880a9c0
     verify_baseline_failures: []
   - name: shedrecipe-entries
-    state: running
+    state: approved
     implementer_session: 5d684d4f-df51-44d2-9678-8eb63a3a387c
     start_sha: ed40fe0499656a0e07663061b69f4d3d039054d5
+    commit_sha: 4ca6ae672aa1791b6903f937d49d1110ebe85244
     verify_baseline_failures: []
   - name: loomengine-config-and-paths
     state: pending
