@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: loom-plan-review-producer
 branch: loom-plan-review-producer
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-bouncer-commit-seam  '2026-08-25T09:37:20Z'
 approved-plan-review-segment-rows  '2026-08-25T09:44:05Z'
 approved-docs-and-stale-text-sweep  '2026-08-25T09:52:36Z'
 holistic-reviewing  '2026-08-25T09:53:17Z'
+holistic-fixing  '2026-08-25T09:57:55Z'
 ```
 
 ## Batches
