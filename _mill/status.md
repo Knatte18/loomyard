@@ -34,11 +34,17 @@ implementing  '2026-08-25T10:34:13Z'
 ```yaml
 batches:
   - name: neutral-thread-representation
-    state: pending
+    state: running
+    implementer_session: 6faf9e0e-9b65-40ae-a376-513fe1a369ef
+    start_sha: 9d47c28c74886427b6154046d6eccd162a3570d0
+    verify_baseline_failures: []
   - name: rss-parsing-foundation
     state: pending
+    verify_baseline_failures: []
   - name: rss-limiter-and-fetch
     state: pending
+    verify_baseline_failures: []
   - name: tier-rewiring-deletion-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
