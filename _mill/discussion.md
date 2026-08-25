@@ -170,7 +170,8 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 
 - Decision: `internal/loomshed/stub.go`, `stubEntry` in `internal/shedrecipe/entries_simple.go`, the `"Stub"` registry entry, and `TestRegistry_ShipsFourteenEntries` are all left untouched.
   `"Stub"` moves into `internal/loomrecipe/coverage_guard_test.go`'s `coverageGuardAllowedUnreachableEngines` alongside `"SingleLLM"`.
-  `stubProducer`'s doc comment is reworded — it no longer backs any loom row.
+  Both of `internal/loomshed/stub.go`'s comment sites are reworded — the file-header comment at line 2 and `stubProducer`'s own doc at line 12, each of which currently says the type backs "one row of loom's 16-row producer list that no task has built for real yet."
+  After this task it backs no loom row at all, so the rewording is a change of claim, not just of count.
 - Rationale: `shedrecipe`'s registry is generic `Shed` machinery shared by reference with `Hardener`'s future producer list, not loom's private property, and `Hardener` is a committed Someday item that will stub rows exactly the way loom did.
   Deleting the engine is a decision about `shedrecipe`'s registry surface, not a consequence of loom finishing its own list.
 - Rejected: deleting `stub.go` and its registry entry — would also force a `TestRegistry_ShipsFourteenEntries` rename and rewrite for no present benefit.
@@ -207,9 +208,10 @@ The leading comment is stripped by `internal/stencil`'s `StripLeadingComment` be
 The file must contain no `{{.` substring anywhere.
 
 **Row-count knock-on.**
-`git grep -n sixteen` is the sweep;
-the criterion, not the enumeration below, is authoritative — **a "sixteen" that counts producer rows moves, and every other "sixteen" stays.**
-The ones this task owns, as of this discussion: `internal/loomshed/doc.go:1`, `internal/loomshed/loomshed.go:1,5,13`, `contracts/recipes/loom-recipe.yaml:2`, `manifest/designs/shed-recipe.md:9,88`, `manifest/designs/loom.md:16,17,51`.
+The sweep is `git grep -n sixteen` **plus the digit spellings** (`16-row`, `16 rows`, `sixteen-row`) — the criterion is row-counting prose, not one token, and `internal/loomshed/stub.go` spells it numerically.
+The criterion, not the enumeration below, is authoritative: **a count of producer rows moves;
+every other count stays.**
+The ones this task owns, as of this discussion: `internal/loomshed/doc.go:1`, `internal/loomshed/loomshed.go:1,5,13`, `internal/loomshed/stub.go:2` **and** `:12` (both spell "16-row" — the file-header comment and `stubProducer`'s own doc, two sites not one), `internal/loomrecipe/shape_test.go:2`, `internal/loomrecipe/sequence_test.go:77`, `contracts/recipes/loom-recipe.yaml:2`, `manifest/designs/shed-recipe.md:9,88`, `manifest/designs/loom.md:16,17,51`.
 The ones it must **not** touch: `internal/planparser/validate.go`, `internal/planparser/validate_test.go`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-rubric-plan-review.md:20,31`, `manifest/designs/plan-card-format.md:91`, and `manifest/designs/loom.md:155` — every one of those counts `planparser`'s sixteen validation check IDs, not rows — plus `internal/fabricengine/doc.go`, which counts fabric destruction kinds.
 Note that `manifest/designs/loom.md` appears in both lists: three of its "sixteen"s are row counts and one is a check-ID count, so the file cannot be swept with a blind replace.
 
@@ -282,7 +284,8 @@ Update the file's own header comment, which currently enumerates the two rubrics
 - `shape_test.go`: `wantProducerTable` loses its `NewStub` row and gains two — `{NameWebsterBouncer, NameWebsterBurler, NamePublish, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})}` and `{NameWebsterBurler, NameWebsterBouncer, NameWebsterBouncer, "Webster-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})}`.
   The routing-graph guard in the same file then proves the new edges resolve.
 - `sequence_test.go`, `fixture_test.go`, `recipe_test.go`: row-count and walk-order updates.
-  `testEnv` already fills `StencilsDir`, `RunRoot`, `Burler`, and `Now`, so the new perch needs no new `Env` seam — but the fixture must seed `loom-rubric-webster-review` into its stencils dir, or `NewBouncer`'s eager rubric probe fails construction.
+  `testEnv` already fills `StencilsDir`, `RunRoot`, `Burler`, and `Now`, so the new perch needs no new `Env` seam — but `fixture_test.go`'s `seedBouncerStencils` helper must gain a `loom-rubric-webster-review` entry in its `seeds` map, or `NewBouncer`'s eager rubric probe (`internal/shedadapters/bouncer.go:136`) fails construction.
+  Its **own doc comment** moves with it: lines 71–78 currently say the helper "writes the four stencils a live Discussion-Review or Plan-Review segment reads" and enumerate both rubrics by name, which becomes five stencils across three segments.
   That seeding is the single most likely source of a first-run failure;
   check how `6f66fff1` did it for `loom-rubric-plan-review` and follow it.
 
@@ -323,6 +326,10 @@ Both the count and the stub claim become false, and the surrounding timing ratio
   The single-reviewer decision is forced by the fork/git rule, not chosen for coverage, so the coverage cost is real: the largest artifact in the list, at the end of the run, gets one pair of eyes per round rather than five.
   The converge loop's repeated rounds are the only compensation.
   This is the clearest candidate for a follow-up once a fork-readable diff exists.
+- **Retiring the `Webster-Review` row name breaks resume for a task parked on it.**
+  `contracts/recipes/loom-recipe.yaml:2-4` states outright that the row names are durable on-disk identities and that a rename here "breaks resume for any in-flight task" — a `status.json` whose `current_producer` is `Webster-Review` names a row the new list has no entry for.
+  Accepted, with precedent: both shipped perches retired a single row name the same way (`Discussion-Review` and `Plan-Review` each became a Bouncer/Burler pair), and neither carried a migration.
+  The blast radius is one in-flight run at exactly that row, whose remedy is to re-seed.
 - **The `Webster` row loses its only inbound stuck edge.**
   Nothing bounces back to `Webster` after this change, and `Webster` itself carries no `on_stuck`.
   A diff the segment cannot fix within its bounce budget escalates to a human, which is the intended behaviour, but it means a genuinely mis-built batch has no automatic re-run path.

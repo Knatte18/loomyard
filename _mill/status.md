@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: loom-webster-review-producer
 branch: loom-webster-review-producer
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-25T11:12:08Z'
 discussion-fix-r4  '2026-08-25T11:57:51Z'
+discussion-fix-r5  '2026-08-25T12:03:03Z'
+discussed  '2026-08-25T12:03:03Z'
 ```
