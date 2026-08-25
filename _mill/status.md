@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomengine-config-and-paths
+phase: approved-loomcli-wiring
 slug: loom-discussion-review-producer
 branch: loom-discussion-review-producer
 plan: _mill/plan
@@ -29,6 +29,7 @@ implementing  '2026-08-25T07:15:23Z'
 approved-rubric-stencil  '2026-08-25T07:19:33Z'
 approved-shedrecipe-entries  '2026-08-25T07:24:18Z'
 approved-loomengine-config-and-paths  '2026-08-25T07:28:21Z'
+approved-loomcli-wiring  '2026-08-25T07:31:20Z'
 ```
 
 ## Batches
@@ -54,9 +55,10 @@ batches:
     commit_sha: ab9ba4f98b012757b5b18111bf82524a0697fcb2
     verify_baseline_failures: []
   - name: loomcli-wiring
-    state: running
+    state: approved
     implementer_session: b9c4b972-1908-4d7c-a5a5-ee0fb3b8195f
     start_sha: ea9aea338cf85ce5c36d3b7f65d1d5e4fb97944c
+    commit_sha: 06700391da0d4b44a8c4591320c29042438c2c03
     verify_baseline_failures: []
   - name: recipe-rows
     state: pending
