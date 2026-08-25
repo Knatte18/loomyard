@@ -40,6 +40,19 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
+	// A row setting model/effort/version overrides the Env value; a row omitting it takes the Env
+	// value; both absent leaves the provider default. An empty Config value and an absent key are
+	// the same thing here -- configString with required false returns "" for both -- and that is
+	// deliberate: there is no meaningful "explicitly empty" model.
+	if model == "" {
+		model = env.ReviewModel
+	}
+	if effort == "" {
+		effort = env.ReviewEffort
+	}
+	if version == "" {
+		version = env.ReviewVersion
+	}
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
 	// than silently ignored.

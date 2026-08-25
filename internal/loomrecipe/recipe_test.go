@@ -18,9 +18,9 @@ import (
 // TestNew_ShapeMatchesRecipe is internal/shedbuild/equivalence_test.go's assertion loop with its
 // loomshed.New side replaced by wantProducerTable, the package's single authoritative row table
 // (declared in shape_test.go, extended there with a reflect.Type column for exactly this test): it
-// builds the embedded recipe through New from testEnv(t), asserts exactly thirteen rows, and for
-// each row asserts Name, OnDone, OnStuck, an empty Segment, a zero MaxBounces, and the expected
-// concrete Producer type.
+// builds the embedded recipe through New from testEnv(t), asserts exactly fourteen rows, and for
+// each row asserts Name, OnDone, OnStuck, Segment, MaxBounces, and the expected concrete Producer
+// type.
 func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -28,11 +28,11 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	if len(shed.Producers) != 13 {
-		t.Fatalf("New() produced %d rows; want 13", len(shed.Producers))
+	if len(shed.Producers) != 14 {
+		t.Fatalf("New() produced %d rows; want 14", len(shed.Producers))
 	}
-	if len(wantProducerTable) != 13 {
-		t.Fatalf("wantProducerTable has %d rows; want 13", len(wantProducerTable))
+	if len(wantProducerTable) != 14 {
+		t.Fatalf("wantProducerTable has %d rows; want 14", len(wantProducerTable))
 	}
 
 	for i, want := range wantProducerTable {
@@ -46,11 +46,11 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 		if got.OnStuck != want.onStuck {
 			t.Errorf("row %d (%s) OnStuck = %q; want %q", i, got.Name, got.OnStuck, want.onStuck)
 		}
-		if got.Segment != "" {
-			t.Errorf("row %d (%s) Segment = %q; want \"\"", i, got.Name, got.Segment)
+		if got.Segment != want.segment {
+			t.Errorf("row %d (%s) Segment = %q; want %q", i, got.Name, got.Segment, want.segment)
 		}
-		if got.MaxBounces != 0 {
-			t.Errorf("row %d (%s) MaxBounces = %d; want 0", i, got.Name, got.MaxBounces)
+		if got.MaxBounces != want.maxBounces {
+			t.Errorf("row %d (%s) MaxBounces = %d; want %d", i, got.Name, got.MaxBounces, want.maxBounces)
 		}
 		if gotType := reflect.TypeOf(got.Producer); gotType != want.producerType {
 			t.Errorf("row %d (%s) Producer concrete type = %v; want %v", i, got.Name, gotType, want.producerType)

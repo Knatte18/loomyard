@@ -1,5 +1,5 @@
 # loom-recipe.yaml is loom's producer graph. It is embedded into the binary by the sibling
-# recipes.go rather than read from disk. The thirteen row names below are the durable on-disk
+# recipes.go rather than read from disk. The fourteen row names below are the durable on-disk
 # identities pinned against internal/loomshed's Name* constants by the coverage guard -- a rename
 # here without a matching constant rename breaks resume for any in-flight task.
 #
@@ -8,6 +8,11 @@
 # Batchifier, Publish, and Finalize carry no on_stuck for exactly that reason: nothing in the list
 # produces what each of them gates, so there is nothing to bounce to and a human is the only thing
 # that can fix any of the five.
+#
+# Discussion-Bouncer and Discussion-Burler both carry segment: Discussion-Review and route to each
+# other via a mutual on_stuck -- internal/shedengine's validator rejects an OnStuck naming a
+# producer in a different Segment, so both rows need the same non-empty label for that pair of
+# edges to build at all.
 
 version: 1
 entry: Preflight
@@ -30,12 +35,51 @@ producers:
   - name: Discussion-Validate
     engine: DiscussionValidate
     on_stuck: Discussion-Write
-    on_done: Discussion-Review
+    on_done: Discussion-Bouncer
 
-  - name: Discussion-Review
-    engine: Stub
-    on_stuck: Discussion-Write
+  - name: Discussion-Bouncer
+    engine: Bouncer
+    segment: Discussion-Review
+    max_bounces: 5
+    on_stuck: Discussion-Burler
     on_done: Plan-Write
+    config:
+      run_subdir: discussion
+      artifact_paths:
+        - _lyx/discussion/decision-record.md
+        - _lyx/discussion/support-log.md
+      rubric_stencil: loom-rubric-discussion-review
+      # No model/effort/version key: the absence is what makes this row take the run-wide
+      # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
+      # rebuild model.
+
+  - name: Discussion-Burler
+    engine: BurlerRound
+    segment: Discussion-Review
+    max_bounces: 5
+    on_stuck: Discussion-Bouncer
+    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
+    on_done: Discussion-Bouncer
+    config:
+      # The same run_subdir value as Discussion-Bouncer is what makes both rows write into one
+      # shared run directory.
+      run_subdir: discussion
+      profile:
+        target:
+          paths:
+            - _lyx/discussion/decision-record.md
+            - _lyx/discussion/support-log.md
+        fasit:
+          instructions: >
+            The authority for this round is the rubric supplied in the prompt. The mechanical
+            section contract over the discussion artifact pair is already enforced upstream by
+            Discussion-Validate and is not this round's subject.
+        rubric_stencil: loom-rubric-discussion-review
+        fix-scope: source
+        tool-use: true
+      # No model/effort/timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
 
   - name: Plan-Write
     engine: PlanWrite

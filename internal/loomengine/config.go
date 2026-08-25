@@ -2,9 +2,9 @@
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses
 // internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config
-// file, then validates the discussion and plan role model-specs' grammar via modelspec.Parse so a
-// typo'd spec fails loud at load time rather than hours into a run when the discussion or plan
-// producer first spawns.
+// file, then validates the discussion, plan, and review role model-specs' grammar via
+// modelspec.Parse so a typo'd spec fails loud at load time rather than hours into a run when the
+// discussion, plan, or review producer first spawns.
 
 package loomengine
 
@@ -34,6 +34,11 @@ const loomDirName = "loom"
 // loomStatusFileName is the filename of loom's phase-machine status sidecar within loomDirName.
 // loomengine is this segment's sole declarer.
 const loomStatusFileName = "status.json"
+
+// reviewsDirName is the relative-path segment loomengine joins onto LoomScratchDir to form the
+// review segments' ephemeral scratch root.
+// loomengine is this segment's sole declarer.
+const reviewsDirName = "reviews"
 
 // DiscussionDirRel returns the worktree-anchor-relative form of DiscussionDir's path: the join of
 // lyxdirs.LyxDirName and discussionDirName.
@@ -138,12 +143,28 @@ func LoomScratchDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
 }
 
+// LoomReviewsDir returns the path to the root every review segment's `run_subdir` resolves
+// against for this worktree -- the value shedrecipe.Env.RunRoot takes.
+// It is built on LoomScratchDir rather than re-joining l.AnchorPath(), lyxdirs.DotLyxDirName, and
+// loomDirName a second time: the Lyxdirs Single-Declarer Invariant forbids a hand-built join naming
+// the .lyx literal a second time in production path construction, and LoomScratchDir is already the
+// accessor that names it once.
+// It is ephemeral, not durable: there is no commit seam for a Bouncer row, so the round reports,
+// verdicts, ledgers, focus files, and their archive siblings that land here would be untracked dirt
+// if they lived under the durable tree instead.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomReviewsDir(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), reviewsDirName)
+}
+
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
 	Discussion           string `yaml:"discussion"`
 	DiscussionTimeoutMin int    `yaml:"discussion_timeout_min"`
 	Plan                 string `yaml:"plan"`
 	PlanTimeoutMin       int    `yaml:"plan_timeout_min"`
+	Review               string `yaml:"review"`
+	ReviewTimeoutMin     int    `yaml:"review_timeout_min"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
@@ -168,6 +189,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Plan); err != nil {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "plan", err)
+	}
+
+	if _, err := modelspec.Parse(cfg.Review); err != nil {
+		return Config{}, fmt.Errorf("loom config key %q: %w", "review", err)
 	}
 
 	return cfg, nil
