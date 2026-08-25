@@ -35,6 +35,11 @@ type Runner struct {
 	// once and returned by every public entry point. It is held rather than returned from
 	// NewRunner because a constructor that cannot fail is what every caller already writes.
 	toldErr error
+	// clock is the time seam Start and Attach both read to build a Run's clock field, in place of
+	// each constructing its own realClock{} inline — the only way a test can control an ATTACHED
+	// run's reconstructed deadline, since Attach returns a Result rather than a *Run for a test to
+	// patch run.clock on afterwards.
+	clock clock
 }
 
 // NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
@@ -51,6 +56,7 @@ func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg
 		worktreeRoot: worktreeRoot,
 		cfg:          cfg,
 		toldErr:      validateToldPaths(anchorPath, worktreeRoot),
+		clock:        realClock{},
 	}
 }
 
@@ -119,6 +125,11 @@ type Run struct {
 	deadline time.Time
 	// clock is the time seam for tests.
 	clock clock
+	// attached is set only by Attach, never by Start, and read only by Wait's started seed: a run
+	// reconstructed over an already-confirmed-live pane must skip the startup probe entirely, since
+	// re-running it against a mid-turn pane would misclassify a live interview as OutcomeDied (or
+	// play the trust-dismiss sequence into it).
+	attached bool
 }
 
 // The run directory's fixed artifact file names. Every Engine.Prepare
@@ -185,6 +196,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		SettingsPath: filepath.Join(runDir, settingsFileName),
 		EventsPath:   filepath.Join(runDir, eventsFileName),
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+		Outcome:      runOutcomeRunning,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but
@@ -204,7 +216,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 
 	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents)
 
-	clk := clock(realClock{})
+	clk := r.clock
 	return &Run{
 		runner:   r,
 		spec:     spec,

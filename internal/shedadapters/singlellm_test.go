@@ -16,12 +16,20 @@ import (
 // fakeShuttle records the Spec it was handed and returns a caller-configured Result/error.
 // An optional duringRun hook lets a test cancel the context (or otherwise act) as if it happened
 // mid-run, before Run returns its configured result.
+// attachResult, attachFound, and attachErr script Attach's return; attachCalled and gotAttachSpec
+// record whether Attach ran and with what Spec, so a test can assert the probe ran and with what.
 type fakeShuttle struct {
 	result    shuttleengine.Result
 	err       error
 	called    bool
 	gotSpec   shuttleengine.Spec
 	duringRun func()
+
+	attachResult  shuttleengine.Result
+	attachFound   bool
+	attachErr     error
+	attachCalled  bool
+	gotAttachSpec shuttleengine.Spec
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -31,6 +39,14 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 		f.duringRun()
 	}
 	return f.result, f.err
+}
+
+// Attach implements shedadapters.Shuttle's probe method, recording spec and returning f's
+// caller-configured attachResult/attachFound/attachErr.
+func (f *fakeShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	f.attachCalled = true
+	f.gotAttachSpec = spec
+	return f.attachResult, f.attachFound, f.attachErr
 }
 
 func specSource(spec shuttleengine.Spec, err error) SpecSource {
@@ -368,4 +384,247 @@ func TestSingleLLMProducer_NoBridgeInstalled(t *testing.T) {
 	if len(shuttle.gotSpec.OutputFiles) != 1 || shuttle.gotSpec.OutputFiles[0] != spec.OutputFiles[0] {
 		t.Errorf("recorded spec.OutputFiles = %v; want %v", shuttle.gotSpec.OutputFiles, spec.OutputFiles)
 	}
+}
+
+func TestSingleLLMProducer_ProbeNotFound_ArchivesAndRuns(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	if err := os.WriteFile(outPath, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	instant := time.Date(2026, 8, 16, 15, 13, 26, 0, time.UTC)
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	shuttle := &fakeShuttle{
+		attachFound: false,
+		result:      shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(instant))
+
+	if _, _, err := p.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if !shuttle.attachCalled {
+		t.Error("Call() did not probe Attach")
+	}
+	if !shuttle.called {
+		t.Error("Call() did not call Run after a not-found probe")
+	}
+	want := filepath.Join(dir, "out-20260816T151326Z.md")
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("expected archived file %s to exist: %v", want, err)
+	}
+}
+
+func TestSingleLLMProducer_ProbeFound_NoArchiveNoRun(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	content := []byte("live agent has not finished yet")
+	if err := os.WriteFile(outPath, content, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	shuttle := &fakeShuttle{
+		attachFound:  true,
+		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()))
+
+	if _, _, err := p.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if !shuttle.attachCalled {
+		t.Error("Call() did not probe Attach")
+	}
+	if shuttle.called {
+		t.Error("Call() called Run after a found probe; want no respawn")
+	}
+	// Prove no archive happened by asserting the original path still holds its original content --
+	// not merely that no archive sibling appeared, which would also be true if the file were simply
+	// deleted.
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("original output file %s no longer exists: %v", outPath, err)
+	}
+	if string(got) != string(content) {
+		t.Errorf("original output file content = %q; want %q (unarchived)", got, content)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("expected exactly one entry in %s (no archive sibling), got %d", dir, len(entries))
+	}
+}
+
+func TestSingleLLMProducer_AttachedOutcomeDone(t *testing.T) {
+	dir := t.TempDir()
+	outputs := []string{filepath.Join(dir, "primary.md"), filepath.Join(dir, "secondary.md")}
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: outputs}
+	shuttle := &fakeShuttle{
+		attachFound:  true,
+		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()))
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+	}
+	if ptr.Path != outputs[0] {
+		t.Errorf("Call() pointer = %q; want %q (first entry)", ptr.Path, outputs[0])
+	}
+	if shuttle.called {
+		t.Error("Call() called Run after an attached OutcomeDone")
+	}
+}
+
+func TestSingleLLMProducer_AttachedOutcomeAsking(t *testing.T) {
+	dir := t.TempDir()
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
+	shuttle := &fakeShuttle{
+		attachFound:  true,
+		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"},
+	}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()))
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	}
+}
+
+func TestSingleLLMProducer_AttachedOutcomeDiedAndTimeout(t *testing.T) {
+	tests := []struct {
+		name    string
+		outcome shuttleengine.Outcome
+	}{
+		{"Died", shuttleengine.OutcomeDied},
+		{"Timeout", shuttleengine.OutcomeTimeout},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
+			shuttle := &fakeShuttle{
+				attachFound:  true,
+				attachResult: shuttleengine.Result{Outcome: tt.outcome},
+			}
+			p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()))
+
+			_, _, err := p.Call(context.Background())
+			if err == nil {
+				t.Fatal("Call() error = nil; want non-nil")
+			}
+			if !strings.Contains(err.Error(), string(tt.outcome)) {
+				t.Errorf("Call() error %q does not contain outcome %q", err.Error(), tt.outcome)
+			}
+			if shuttle.called {
+				t.Error("Call() called Run after an attached outcome")
+			}
+		})
+	}
+}
+
+func TestSingleLLMProducer_ProbeErrorPropagates(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	if err := os.WriteFile(outPath, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	attachErr := errors.New("probe exploded")
+	shuttle := &fakeShuttle{attachErr: attachErr}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()))
+
+	_, _, err := p.Call(context.Background())
+	if err == nil {
+		t.Fatal("Call() error = nil; want non-nil")
+	}
+	if !errors.Is(err, attachErr) {
+		t.Errorf("Call() error = %v; want it to wrap %v", err, attachErr)
+	}
+	if shuttle.called {
+		t.Error("Call() called Run after a probe error")
+	}
+	got, err2 := os.ReadFile(outPath)
+	if err2 != nil {
+		t.Fatalf("original output file %s no longer exists: %v", outPath, err2)
+	}
+	if string(got) != "stale" {
+		t.Errorf("original output file was archived despite a probe error: content = %q", got)
+	}
+}
+
+func TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted(t *testing.T) {
+	dir := t.TempDir()
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := p.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want non-nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
+	}
+	if shuttle.attachCalled {
+		t.Error("Call() probed Attach with an already-cancelled context")
+	}
+}
+
+func TestSingleLLMProducer_CancelledDuringProbe_YieldsContextError(t *testing.T) {
+	dir := t.TempDir()
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
+	attachErr := errors.New("probe exploded")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	shuttle := &fakeShuttleWithAttachHook{
+		fakeShuttle:  fakeShuttle{attachErr: attachErr},
+		duringAttach: cancel,
+	}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()))
+
+	_, _, err := p.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want non-nil context error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
+	}
+	if shuttle.called {
+		t.Error("Call() called Run after a cancelled probe")
+	}
+}
+
+// fakeShuttleWithAttachHook embeds fakeShuttle and runs an optional duringAttach hook mid-Attach, so
+// a test can cancel the context (or otherwise act) as if it happened during the probe, before Attach
+// returns its configured result.
+type fakeShuttleWithAttachHook struct {
+	fakeShuttle
+	duringAttach func()
+}
+
+// Attach overrides fakeShuttle's Attach to run duringAttach (if set) before returning the embedded
+// fakeShuttle's configured attach result.
+func (f *fakeShuttleWithAttachHook) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	result, found, err := f.fakeShuttle.Attach(spec)
+	if f.duringAttach != nil {
+		f.duringAttach()
+	}
+	return result, found, err
 }

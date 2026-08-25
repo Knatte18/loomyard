@@ -11,10 +11,7 @@ Committed to, in this order, next — grouped into sub-categories below for read
 
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — both items below are unblocked.
-
-1. **loom: interactive Discussion-Write** — flip `internal/loomcli`'s `wire()` `autonomous` argument from hardcoded `true` to a real mode selector, and solve the resume defect that made autonomous-only the right call so far. `loomengine.DiscussionSpec`'s `autonomous` plumbing already exists; the trap a naive fix walks into is recorded in `designs/loom.md`'s crash-recovery section.
-   See [designs/loom.md](designs/loom.md#crash-recovery--resume-on-output-files-not-live-processes).
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — the item below is unblocked.
 
 1. **loom: review segments resolve `_lyx` paths against the wrong root and don't clear their Bouncer run directory on re-entry** — Folds two more defects touching the same shared `Bouncer` code, since splitting them would have several tasks editing the same rows: both review segments resolve their `_lyx` paths against `Env.WorktreeRoot` while the matching commit closures anchor at `AnchorPath()` — latent while `AnchorRel` is `"."`, its default, but re-pointing the shared entry would silently change both segments at once; and neither segment clears its Bouncer run directory when a downstream row bounces past the writer and back through the segment, so a stale round's already-settled verdict and ledger can satisfy `judged(n)` again on re-entry — confirmed present in the shipped `Discussion-Validate` → `Discussion-Write` → `Discussion-Bouncer` path and shared by the new `Plan-Revalidate` → `Plan-Write` → `Plan-Bouncer` path.
    See [designs/loom.md](designs/loom.md#the-gate).
@@ -117,6 +114,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **loom: Webster-Review producer** — replaced the `Webster-Review` stub row with a `Webster-Bouncer`/`Webster-Burler` segment gating the committed diff.
    See [designs/loom.md](designs/loom.md#webster-review-rubric).
+
+1. **loom: interactive Discussion-Write** — flipped `internal/loomcli`'s `wire()` `autonomous` argument from hardcoded `true` to the `discussion_interactive` config key, and solved the resume defect that made autonomous-only the right call so far by giving `shuttleengine` a live-agent-aware `Attach`.
+   See [designs/loom.md](designs/loom.md#crash-recovery--resume-on-output-files-not-live-processes).
 
 1. **loom: `Discussion-Burler` fix-scope corrected to `overlay`** — the `Discussion-Burler` row now runs `fix-scope: overlay` and `Discussion-Bouncer` commits its approved settle through `commit_seam: discussion`, restoring compliance with the Fabric Git Invariant, with a parse-level guard added so the class of violation cannot ship again.
    See [designs/loom.md](designs/loom.md#the-gate).

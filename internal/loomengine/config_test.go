@@ -46,6 +46,9 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.DiscussionTimeoutMin != 480 {
 		t.Errorf("cfg.DiscussionTimeoutMin = %d; want %d", cfg.DiscussionTimeoutMin, 480)
 	}
+	if cfg.DiscussionInteractive != false {
+		t.Errorf("cfg.DiscussionInteractive = %v; want %v", cfg.DiscussionInteractive, false)
+	}
 	if cfg.Plan != "opus[effort=high]" {
 		t.Errorf("cfg.Plan = %q; want %q", cfg.Plan, "opus[effort=high]")
 	}
@@ -60,6 +63,29 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_DiscussionInteractiveTrue verifies a hand-edited loom.yaml with
+// discussion_interactive: true round-trips to Config.DiscussionInteractive == true, distinct from
+// the template's own false default.
+func TestLoadConfig_DiscussionInteractiveTrue(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: true
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+`)
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+	}
+	if cfg.DiscussionInteractive != true {
+		t.Errorf("cfg.DiscussionInteractive = %v; want %v", cfg.DiscussionInteractive, true)
+	}
+}
+
 // TestLoadConfig_MalformedDiscussionSpec verifies a hand-edited loom.yaml with an ungrammatical
 // discussion model-spec fails loud at load time, naming the "discussion" key, rather than being
 // silently carried into the discussion producer's spawn site.
@@ -67,6 +93,7 @@ func TestLoadConfig_MalformedDiscussionSpec(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, `discussion: "opus[effort"
 discussion_timeout_min: 480
+discussion_interactive: false
 plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
@@ -89,6 +116,7 @@ func TestLoadConfig_MalformedPlanSpec(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
 discussion_timeout_min: 480
+discussion_interactive: false
 plan: "opus[effort"
 plan_timeout_min: 120
 review: opus[effort=high]
@@ -111,6 +139,7 @@ func TestLoadConfig_MalformedReviewSpec(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
 discussion_timeout_min: 480
+discussion_interactive: false
 plan: opus[effort=high]
 plan_timeout_min: 120
 review: "opus[effort"

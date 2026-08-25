@@ -32,6 +32,12 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 	return f.result, f.err
 }
 
+// Attach implements shedadapters.Shuttle's probe method by always reporting not-found, so every
+// existing sequence in this package still drives the unchanged archive-then-run path through Run.
+func (f *fakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	return shuttleengine.Result{}, false, nil
+}
+
 // fakeBurlerRunner implements shedadapters.BurlerRunner by returning a zero burlerengine.Result and
 // a nil error, recording every burlerengine.Profile and burlerengine.RunOpts it was handed.
 type fakeBurlerRunner struct {

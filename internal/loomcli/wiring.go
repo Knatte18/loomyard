@@ -133,10 +133,13 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// shedadapters.Shuttle, and row 3 (Discussion-Write) reads it now.
 		Shuttle: runner,
 		// DiscussionSpec is evaluated per Call, not resolved here, so the stencil is read at call
-		// time -- what the Stencil Ownership Invariant requires. autonomous is the literal true,
-		// unconditionally, per the autonomous-only Shared Decision.
+		// time -- what the Stencil Ownership Invariant requires. autonomous is now
+		// !loomCfg.DiscussionInteractive, read fresh on every wire() call. Nothing compares it
+		// against the mode a live run was started with: the resume decision is made purely on
+		// live-agent evidence, so flipping the key between a crash and a resume is permitted and
+		// benign -- it means only that the next spawn is interviewed differently.
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName), true)
+			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
 		// CommitDiscussion mirrors the seed commit run.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion

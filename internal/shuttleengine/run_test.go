@@ -157,6 +157,34 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	}
 }
 
+// TestRunner_Start_PersistsRunningOutcome pins that a freshly started run's persisted run.json
+// carries the runOutcomeRunning sentinel, before any classification has happened — the fact on disk
+// that a later Attach (batch 2) relies on to tell a live run from an ended one.
+func TestRunner_Start_PersistsRunningOutcome(t *testing.T) {
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-1"}}
+	runner, _, _ := newTestRunner(t, reed, engine)
+
+	run, err := runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}})
+	if err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	rs, found, err := loadRunState(run.runDir)
+	if err != nil {
+		t.Fatalf("loadRunState: %v", err)
+	}
+	if !found {
+		t.Fatal("loadRunState: run.json not found")
+	}
+	if rs.Outcome != runOutcomeRunning {
+		t.Errorf("RunState.Outcome = %q, want %q", rs.Outcome, runOutcomeRunning)
+	}
+	if run.state.Outcome != runOutcomeRunning {
+		t.Errorf("run.state.Outcome = %q, want %q", run.state.Outcome, runOutcomeRunning)
+	}
+}
+
 func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T) {
 	reed := &fakeReed{}
 	engine := &fakeEngine{}
