@@ -61,7 +61,9 @@ batches:
     commit_sha: 06700391da0d4b44a8c4591320c29042438c2c03
     verify_baseline_failures: []
   - name: recipe-rows
-    state: pending
+    state: running
+    implementer_session: d24aa5ca-8f51-4c96-8f65-2ef74caecbfa
+    start_sha: dd0dc31d9f821cdf4f94a00932fe29eb0d54e41a
     verify_baseline_failures: []
   - name: docs
     state: pending
