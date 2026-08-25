@@ -307,8 +307,14 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 // env.Shuttle.(*fakeLoomShuttle) -- buildSequenceFixture is the only thing that ever fills
 // that field, so the assertion is total.
 type fakeLoomShuttle struct {
-	writeOutputs          bool
-	runCalls              int
+	writeOutputs bool
+	runCalls     int
+	// discussionRunCalls counts only the Run calls carrying spec.Role == "discussion" -- a
+	// row-scoped view of runCalls, needed because runCalls itself is shared across every row a full
+	// sequence drives through this one fake (discussion, plan, and both Bouncer roles), so a test
+	// isolating Discussion-Write's own respawn-vs-attach behaviour cannot read that off runCalls once
+	// the run has proceeded past Discussion-Write into later rows that legitimately call Run too.
+	discussionRunCalls    int
 	commitDiscussionCalls int
 	commitPlanCalls       int
 	decisionRecordContent string
@@ -320,15 +326,47 @@ type fakeLoomShuttle struct {
 	bouncerVerdict    string
 	bouncerSeedCalls  int
 	bouncerJudgeCalls int
+	// attachFound, attachRole, attachResult, and attachErr script Attach's return value: the zero
+	// value keeps every existing test driving the unchanged not-found (archive-then-spawn) path.
+	// attachRole scopes the scripted found response to one spec.Role -- this single fake serves
+	// every row a buildSequenceFixture run drives through Shuttle (discussion, plan, and both
+	// Bouncer roles), so an unscoped found response would also intercept every other row's own
+	// Attach probe and skip its Run, starving it of the output files only Run writes. Setting
+	// attachFound true, attachRole to the row's own spec.Role (e.g. "discussion"), and
+	// attachResult.Outcome to shuttleengine.OutcomeDone lets a test drive the found (crash-resume)
+	// path for that one row only. attachErr, when non-nil, is returned as Attach's own error
+	// regardless of attachFound, for every role.
+	attachFound  bool
+	attachRole   string
+	attachResult shuttleengine.Result
+	attachErr    error
+	// attachCalls counts every Attach invocation (every role, unscoped), and attachSpec records the
+	// last Spec it was called with -- together these let a test assert the probe ran (and with what
+	// spec) even when it reported not-found.
+	attachCalls int
+	attachSpec  shuttleengine.Spec
 }
 
 var _ shedadapters.Shuttle = (*fakeLoomShuttle)(nil)
 
-// Attach implements shedadapters.Shuttle's probe method by always reporting not-found: this is the
-// regression guard that every existing sequence and resume test in this package still drives the
-// unchanged archive-then-spawn path through Run. Batch 5 makes this scriptable.
-func (f *fakeLoomShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	return shuttleengine.Result{}, false, nil
+// Attach implements shedadapters.Shuttle's probe method, scripted by f.attachFound/attachRole/
+// attachResult/attachErr: the zero value reports not-found, which is the regression guard that
+// every existing sequence and resume test in this package still drives the unchanged
+// archive-then-spawn path through Run. Setting attachFound and attachRole scripts the found
+// (crash-resume) path for the one row whose spec.Role matches attachRole; every other role still
+// reports not-found, since this fake's Attach is shared across every row a sequence drives through
+// Shuttle. Every call increments attachCalls and records spec into attachSpec, so a test can assert
+// the probe ran -- and with what spec -- even when it reported not-found.
+func (f *fakeLoomShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	f.attachCalls++
+	f.attachSpec = spec
+	if f.attachErr != nil {
+		return shuttleengine.Result{}, false, f.attachErr
+	}
+	if !f.attachFound || spec.Role != f.attachRole {
+		return shuttleengine.Result{}, false, nil
+	}
+	return f.attachResult, true, nil
 }
 
 // Run implements shedadapters.Shuttle: on spec.Role == "plan" it rewrites the whole plan directory
@@ -341,6 +379,9 @@ func (f *fakeLoomShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool
 // spec.OutputFiles.
 func (f *fakeLoomShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	f.runCalls++
+	if spec.Role == "discussion" {
+		f.discussionRunCalls++
+	}
 
 	if spec.Role == "plan" {
 		if err := os.MkdirAll(f.planDir, 0o755); err != nil {
