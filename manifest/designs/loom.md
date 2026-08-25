@@ -211,7 +211,16 @@ order carries no meaning `Plan-Write` should read into it.
 Each producing phase is guarded by a **review gate**, and from loom's view that gate is a **black box with two exits — `APPROVED` or `stuck`.** loom calls it, advances on `APPROVED`, and on `stuck` routes to the same stuck handler described above. loom does not see the rounds, the handler/fixer, the cluster reviewers,
 or the progress-judge inside.
 
-That black box is a **review segment** — a `Bouncer` review-gate producer paired with a `Burler`-round producer — hand-wired once per phase (discussion / plan / webster) out of the same two generic adapters. The whole point of the black-box boundary is that loom drives all phases **identically** because the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase. See the `internal/shedadapters` package documentation for the two producers and their round-artifact contract, and the `internal/burlerengine` package documentation for the combined handler/fixer round and the profile schema.
+That black box is a **review segment** — a `Bouncer` review-gate producer paired with a `Burler`-round producer — hand-wired once per phase (discussion / plan / webster) out of the same two generic adapters.
+The whole point of the black-box boundary is that loom drives all phases **identically** because the verdict contract is invariant;
+only the review *profile* (rubric + fasit), the fixer round's *fix-scope*, and the segment's *commit seam* differ per phase.
+See the `internal/shedadapters` package documentation for the two producers and their round-artifact contract,
+and the `internal/burlerengine` package documentation for the combined handler/fixer round and the profile schema.
+
+**Which segment fixes what, and commits how.**
+The Discussion and Plan segments fix overlay content and commit it through the loop owner's commit seam, while the Webster segment fixes warp source and commits each fix itself.
+The Fabric Git Invariant is the reason the split exists: it reserves every weft commit to the loop owner in Go,
+and it names the agent's own commit-per-fix to the warp repo as the one exception.
 
 **The review model's home is `loom.yaml`, not the recipe.**
 `loom.yaml`'s `review:` and `review_timeout_min:` keys are the review segments' model and timeout, validated at load time exactly like the existing `discussion:` and `plan:` keys.

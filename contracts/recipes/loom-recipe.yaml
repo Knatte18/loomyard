@@ -51,6 +51,10 @@ producers:
         - _lyx/discussion/decision-record.md
         - _lyx/discussion/support-log.md
       rubric_stencil: loom-rubric-discussion-review
+      # commit_seam is required rather than optional here: Discussion-Burler runs fix-scope: overlay
+      # and an overlay round runs no git at all, and nothing else in this segment commits, so without
+      # the seam every approved fix would stay uncommitted in the weft working tree.
+      commit_seam: discussion
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.
@@ -79,7 +83,11 @@ producers:
             section contract over the discussion artifact pair is already enforced upstream by
             Discussion-Validate and is not this round's subject.
         rubric_stencil: loom-rubric-discussion-review
-        fix-scope: source
+        # fix-scope: overlay, not source: the target paths above are weft content reached through the
+        # junction, and the Fabric Git Invariant reserves committing that class of file to the loop
+        # owner, never an agent. Discussion-Bouncer's commit_seam: discussion key is what actually
+        # commits this round's approved settle.
+        fix-scope: overlay
         tool-use: true
       # No model/effort/timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
 
@@ -149,11 +157,9 @@ producers:
             already enforced upstream by Plan-Validate, so re-deriving them in this round is
             duplicated work.
         rubric_stencil: loom-rubric-plan-review
-        # fix-scope: overlay, deliberately NOT the shipped Discussion-Burler row's source. The plan
-        # directory is weft content reached through the junction, and the Fabric Git Invariant
-        # reserves committing that class of file to the loop owner, never an agent. The Discussion
-        # row's source value is the same violation, recorded and left to its own roadmap item, so
-        # this divergence is on purpose rather than a copy-paste slip.
+        # fix-scope: overlay, matching the Discussion-Burler row above. The plan directory is weft
+        # content reached through the junction, and the Fabric Git Invariant reserves committing that
+        # class of file to the loop owner, never an agent.
         fix-scope: overlay
         # tool-use is required: the round walks the plan directory's card files (the set is
         # variable and only the Card Index names it), resolves symbol-shaped target entries against
@@ -204,11 +210,12 @@ producers:
       artifact_paths:
         - _lyx/plan
       rubric_stencil: loom-rubric-webster-review
-      # No commit_seam key, deliberately unlike Plan-Bouncer: Webster-Burler runs fix-scope:
-      # source and commits each fix itself, so there is no artifact left for a loop-owner seam to
-      # commit. bouncerEntry documents the resulting nil Commit as a legitimate configuration and
-      # never an error. The segment's own round artifacts are uncommitted by construction --
-      # Env.RunRoot lands under the ephemeral .lyx tree, not the durable _lyx one.
+      # No commit_seam key, deliberately unlike both Discussion-Bouncer and Plan-Bouncer:
+      # Webster-Burler runs fix-scope: source and commits each fix itself, so there is no artifact
+      # left for a loop-owner seam to commit. bouncerEntry documents the resulting nil Commit as a
+      # legitimate configuration and never an error. The segment's own round artifacts are
+      # uncommitted by construction -- Env.RunRoot lands under the ephemeral .lyx tree, not the
+      # durable _lyx one.
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.
@@ -247,12 +254,12 @@ producers:
             are already enforced upstream by Plan-Validate and Plan-Revalidate, so re-deriving
             them in this round is duplicated work.
         rubric_stencil: loom-rubric-webster-review
-        # fix-scope: source, matching the shipped Discussion-Burler row rather than Plan-Burler's
-        # overlay. The target is the repo's own source files, which the Fabric Git Invariant names
-        # as the one explicitly permitted agent commit (commit-per-fix, never a push), whereas the
-        # plan Plan-Burler fixes is overlay content the loop owner commits. An overlay round runs
-        # no git at all and restricts writes to Target.Paths, which this profile deliberately
-        # leaves empty -- a fixer that cannot write source cannot fix a diff.
+        # fix-scope: source, the only row in the recipe still carrying this value now that
+        # Discussion-Burler and Plan-Burler both run overlay. The target is the repo's own source
+        # files, which the Fabric Git Invariant names as the one explicitly permitted agent commit
+        # (commit-per-fix, never a push) -- the one legitimate reason a Burler row still runs source
+        # here. An overlay round runs no git at all and restricts writes to Target.Paths, which this
+        # profile deliberately leaves empty -- a fixer that cannot write source cannot fix a diff.
         fix-scope: source
         # tool-use is required: the round reads _lyx/loom/status.json and runs read-only git to
         # obtain the diff, which is its entire subject.
