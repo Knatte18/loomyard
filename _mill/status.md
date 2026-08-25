@@ -60,6 +60,8 @@ batches:
     commit_sha: 6403ce74f387961caf9595f4bdd026d6eb1a7a09
     verify_baseline_failures: []
   - name: live-integration
-    state: pending
+    state: running
+    implementer_session: c9b35ae2-f128-4a8c-a665-794b8caa4a40
+    start_sha: a8396934bd580646ea620b6ad2008470daabc2dc
     verify_baseline_failures: []
 ```
