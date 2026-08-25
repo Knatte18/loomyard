@@ -93,13 +93,13 @@ Batch-local decisions beyond `## Shared Decisions`:
   Render each top-level comment as `**u/<author>** (<score> points):` on its own line followed by its body, and each reply as a single-level markdown blockquote line beginning `> **u/<author>**: ` followed by its body.
   Comment and selftext bodies come from Reddit's `body`/`selftext` fields, which are markdown rather than HTML, so pass them through unchanged — do not run them through `htmlToText`, unlike the Hacker News adapter, whose Algolia source really is HTML.
   Apply no minimum-length check anywhere in this function: a thread with a short title and zero comments is a legitimate, usable result, and judging it too short is the exact defect this task exists to remove.
-  Create `plugins/prowler/testdata/reddit-thread.json` as a hand-authored but structurally faithful two-element JSON array matching Reddit's documented comments-endpoint Listing shape, containing one `t3` post with a non-empty `selftext`, at least 22 `t1` top-level comments so the `maxTopComments` cap is exercised, one `"kind": "more"` child that must be skipped, at least one comment with a nested one-level `replies` listing, and at least one comment whose `replies` field is the empty string.
+  Create `plugins/prowler/testdata/reddit-thread.json` as a hand-authored but structurally faithful two-element JSON array matching Reddit's documented comments-endpoint Listing shape, containing one `t3` post with a non-empty `selftext`, at least 22 `t1` top-level comments so the `maxTopComments` cap is exercised, one `"kind": "more"` child that must be skipped, one comment carrying a nested `replies` listing of more than `maxTopComments` `t1` replies so the reply-level cap is exercised rather than merely specified, one further comment carrying a nested reply that itself has a non-empty `replies` listing so the "one level only" rule is exercised, and at least one comment whose `replies` field is the empty string.
   Note in a comment at the top of `plugins/prowler/redditoauth_test.go`'s formatting test that this fixture is hand-authored rather than captured, because `oauth.reddit.com` cannot be read without the credentials that do not exist yet;
   batch 4's live integration test is what validates the real response shape.
   Add `TestFormatRedditThread` to `plugins/prowler/redditoauth_test.go`, reading that fixture and asserting: the title and selftext are present;
   exactly `maxTopComments` top-level comment author lines are rendered;
   the `more` child contributes nothing;
-  the nested reply is rendered exactly once as a blockquote;
+  the nested replies are rendered as blockquotes and exactly `maxTopComments` of them appear for the over-capped comment;
   a reply's own nested reply is absent;
   and a separately constructed zero-comment thread still returns a non-empty result with no `## Top Comments` heading and no error.
 - **Commit:** `feat(prowler): format Reddit OAuth thread JSON into markdown`

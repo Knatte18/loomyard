@@ -22,7 +22,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 
 - `fetchOldRedditHTML` changes its signature from `(string, bool)` to `(string, error)`.
   The discussion records that its bare `return "", false` gives the caller no reason for the failure, and tier 3's error message is required to name why each tier failed, so an `error` is the minimum useful return.
-  This is a package-internal function with no external callers, so the change is contained.
+  It has exactly one caller outside `plugins/prowler/fetch.go` — `redditAdapter.Fetch` in `plugins/prowler/reddit.go`, which today is a direct pass-through of its result — so card 8 carries a one-line interim adaptation of that call site to keep every commit compiling, and card 9 then replaces it with the real tier logic.
 - Redirect suppression is a *new transport field* on `fetcher` rather than a change to the shared `httpClient`'s `CheckRedirect`.
   `httpClient` also backs the generic cascade, where following redirects is correct behaviour for ordinary sites;
   changing it globally would silently alter every non-Reddit fetch.
@@ -60,6 +60,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `plugins/prowler/testdata/reddit-login-page.html`
 - **Edits:**
   - `plugins/prowler/fetch.go`
+  - `plugins/prowler/reddit.go`
   - `plugins/prowler/fetch_test.go`
   - `plugins/prowler/reddit_test.go`
 - **Creates:** none
@@ -76,7 +77,12 @@ Batch-local decisions beyond `## Shared Decisions`:
   Update `TestFetchOldRedditHTML` in `plugins/prowler/fetch_test.go` to the new two-value form throughout, and add three sub-tests: a `302` whose `Location` is `https://old.reddit.com/login/?reason=lor2&dest=%2Fr%2Fgolang%2F`, asserting a non-nil error whose message contains `login` and that no second request was issued to follow it;
   a `200` whose body is the contents of `plugins/prowler/testdata/reddit-login-page.html`, asserting a non-nil error carrying the detector's login-wall reason rather than a successful result;
   and a `200` whose body is the existing `redditLikeHTMLWithComments` constant, asserting success and a nil error, which is the guard that the new checks do not reject genuine Reddit content.
-  Update the `handled_false_when_fetchOldRedditHTML_fails` sub-test in `plugins/prowler/reddit_test.go` only as far as keeping it compiling and passing against the current adapter behaviour;
+  `redditAdapter.Fetch` in `plugins/prowler/reddit.go` is this function's only caller outside `plugins/prowler/fetch.go` and today returns its result directly, so the signature change stops that file compiling unless it is adapted in this same card.
+  Adapt it minimally — assign both results and return `out, err == nil` — and change nothing else in `plugins/prowler/reddit.go`;
+  card 9 replaces this one line with the real tier logic.
+  Three sub-tests of `TestFetchOldRedditHTML` in `plugins/prowler/fetch_test.go` — `non_2xx_fails`, `transport_error_fails`, and `unsupported_content_encoding_fails` — build raw `fetcher{do: ...}` literals rather than going through the `stubResponses` helper card 7 updated, so they would nil-panic the moment this function starts calling `f.doNoRedirect`.
+  Set `doNoRedirect` to the same closure as `do` in each of those three literals.
+  Update the `handled_false_when_fetchOldRedditHTML_fails` sub-test in `plugins/prowler/reddit_test.go` only as far as keeping it compiling and passing against the interim adapter behaviour, setting `doNoRedirect` on its raw `fetcher` literal for the same reason;
   card 9 rewrites that test's expectations when the adapter itself changes.
   Change no other existing assertion in either test file.
 - **Commit:** `fix(prowler): detect old.reddit.com's login redirect instead of following it`
