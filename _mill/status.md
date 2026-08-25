@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-live-integration
+phase: holistic-reviewing
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-block-detection  '2026-08-25T07:41:36Z'
 approved-reddit-oauth-client  '2026-08-25T07:51:11Z'
 approved-tiered-adapter  '2026-08-25T07:58:42Z'
 approved-live-integration  '2026-08-25T08:01:25Z'
+holistic-reviewing  '2026-08-25T08:02:03Z'
 ```
 
 ## Batches
