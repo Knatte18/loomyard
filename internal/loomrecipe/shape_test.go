@@ -1,5 +1,5 @@
 // shape_test.go carries the shape-and-identity assertions over New's built list: the literal
-// sixteen-row producer table, the real Publish/Finalize swap, order stability, told-field
+// seventeen-row producer table, the real Publish/Finalize swap, order stability, told-field
 // threading, a missing-Landing-closure construction failure, and the routing-graph guard. It does
 // not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 
@@ -51,8 +51,9 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBurler, loomshed.NamePlanBouncer, loomshed.NamePlanBouncer, "Plan-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NamePlanRevalidate, loomshed.NamePlanWrite, loomshed.NameBatchifier, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
 	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
-	{loomshed.NameWebster, "", loomshed.NameWebsterReview, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
-	{loomshed.NameWebsterReview, loomshed.NameWebster, loomshed.NamePublish, "", 0, reflect.TypeOf(loomshed.NewStub(""))},
+	{loomshed.NameWebster, "", loomshed.NameWebsterBouncer, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
+	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NamePublish, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
+	{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer, loomshed.NameWebsterBouncer, "Webster-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NamePublish, "", loomshed.NameFinalize, "", 0, reflect.TypeOf(&landingshed.Publish{})},
 	{loomshed.NameFinalize, "", "", "", 0, reflect.TypeOf(&landingshed.Finalize{})},
 }
@@ -231,8 +232,8 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 
 // TestNew_ProducerTableOrderUnchangedByWiring re-asserts TestNew_ProducerTable's own table-order and
 // name coverage, now that the list's order is the recipe's own list order rather than a Go literal's:
-// the sixteen rows stay in their existing table order with their existing names, regardless of what
-// backs rows 15 and 16.
+// the seventeen rows stay in their existing table order with their existing names, regardless of
+// what backs rows 16 and 17.
 func TestNew_ProducerTableOrderUnchangedByWiring(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)

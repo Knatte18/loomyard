@@ -1,8 +1,9 @@
-// rubric_test.go pins loom-rubric-discussion-review.md's and loom-rubric-plan-review.md's required
-// content: the six items manifest/designs/loom.md's two "Discussion-Review rubric" subsections
-// require, the eight items its "Plan-Review rubric" subsections require, and the
+// rubric_test.go pins loom-rubric-discussion-review.md's, loom-rubric-plan-review.md's, and
+// loom-rubric-webster-review.md's required content: the six items manifest/designs/loom.md's two
+// "Discussion-Review rubric" subsections require, the eight items its "Plan-Review rubric"
+// subsections require, the nine items loom-rubric-webster-review.md's own sections require, and the
 // marker-value-not-template constraint the two Bouncer stencils' {{.rubric}} interpolation depends
-// on for both rubrics.
+// on for all three rubrics.
 
 package stencils
 
@@ -94,5 +95,50 @@ func TestLoomRubricPlanReview_CarriesNoStencilMarkers(t *testing.T) {
 
 	if strings.Contains(text, "{{.") {
 		t.Errorf("LoomRubricPlanReview contains a stencil marker (\"{{.\"); want none")
+	}
+}
+
+// TestLoomRubricWebsterReview_NamesEveryRequiredItem asserts LoomRubricWebsterReview's bytes contain
+// a distinctive phrase for each of the nine items required: the diff-review base statement, the two
+// review-range derivation steps, the four "Do not flag" items, and the two "Also flag" items.
+// Following TestLoomRubricDiscussionReview_NamesEveryRequiredItem as precedent, each assertion is a
+// short, distinctive substring rather than a whole paragraph, so ordinary prose edits do not break
+// this test.
+func TestLoomRubricWebsterReview_NamesEveryRequiredItem(t *testing.T) {
+	text := string(LoomRubricWebsterReview)
+
+	tests := []struct {
+		name   string
+		phrase string
+	}{
+		{"ordinary diff review is the base", "Ordinary diff review is the base"},
+		{"the review range is derived via git merge-base", "git merge-base"},
+		{"an undeterminable review range raises a BLOCKING finding", "could not be determined"},
+		{"anything Plan-Validate or Plan-Revalidate already checks", "Plan-Revalidate"},
+		{"the plan is the measuring stick and never the subject", "measuring stick and never the subject"},
+		{"a missing ImpactSummary belongs to Plan-Review", "Both belong to "},
+		{"this segment's own round artifacts are never the subject", ".lyx/loom/reviews/webster/"},
+		{"comment-convention compliance points at code-comment-conventions.md", "code-comment-conventions.md"},
+		{"per-card mechanical check names assert-no-callers for a Delete card", "assert-no-callers"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !strings.Contains(text, tt.phrase) {
+				t.Errorf("LoomRubricWebsterReview does not contain %q", tt.phrase)
+			}
+		})
+	}
+}
+
+// TestLoomRubricWebsterReview_CarriesNoStencilMarkers asserts LoomRubricWebsterReview's bytes contain
+// no "{{." substring: the rubric is interpolated as a marker value into the Bouncer and Burler
+// prompts, and a marker inside it would either render literally into the judge prompt or, worse, be
+// silently swallowed.
+func TestLoomRubricWebsterReview_CarriesNoStencilMarkers(t *testing.T) {
+	text := string(LoomRubricWebsterReview)
+
+	if strings.Contains(text, "{{.") {
+		t.Errorf("LoomRubricWebsterReview contains a stencil marker (\"{{.\"); want none")
 	}
 }

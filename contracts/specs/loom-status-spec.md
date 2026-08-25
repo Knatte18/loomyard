@@ -111,19 +111,19 @@ A realistic **seed** — written by `lyx loom run`'s own first invocation, befor
 }
 ```
 
-A realistic **mid-run** instance of the same file, later in the same task's life — Preflight and Discussion-Write done, Webster-Review now blocked pending a human:
+A realistic **mid-run** instance of the same file, later in the same task's life — Preflight and Discussion-Write done, Webster now blocked pending a human:
 
 ```jsonc
 {
-  "current_producer": "Webster-Review",
+  "current_producer": "Webster",
   "state": "blocked",
   "error": "stuck with no OnStuck target",
   "pause_requested": false,
-  "activity": {"now": "Webster-Review", "last": "Webster-Review → stuck", "wait": "stuck with no OnStuck target"},
+  "activity": {"now": "Webster", "last": "Webster → stuck", "wait": "stuck with no OnStuck target"},
   "history": [
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"},
     {"producer": "Discussion-Write", "outcome": "done", "output": "_lyx/discussion/decision-record.md", "at": "2026-07-17T10:22:14Z"},
-    {"producer": "Webster-Review", "outcome": "stuck", "output": "", "at": "2026-07-17T11:14:02Z"}
+    {"producer": "Webster", "outcome": "stuck", "output": "", "at": "2026-07-17T11:14:02Z"}
   ],
   "product": {
     "slug": "loom-contracts",

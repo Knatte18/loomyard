@@ -1,4 +1,4 @@
-// Package loomshed owns loom's own eight producer constructors, its sixteen durable row names, its
+// Package loomshed owns loom's own eight producer constructors, its seventeen durable row names, its
 // status seeder, and its own cancellation helpers. Loom's ordered producer list itself moved to
 // contracts/recipes/loom-recipe.yaml; internal/loomrecipe is what assembles a *shedengine.Shed from
 // it. It takes told absolute paths and has no direct production import of internal/lyxcwd -- see
