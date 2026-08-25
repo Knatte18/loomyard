@@ -384,3 +384,151 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		}
 	})
 }
+
+// layoutSettledBouncerRound1 writes round 1's review, verdict, and ledger files directly into
+// env.RunRoot/review-segment, so a bouncerEntry-built producer's first Call settles an
+// already-judged APPROVED round with no shuttle spawn -- the replay path, following
+// shedadapters.TestBouncer_Replay_Approved's precedent. The verdict and ledger file names and
+// frontmatter shapes mirror shedadapters/bouncerfiles.go's own parser expectations, and the report
+// file name mirrors bouncerEntry's own pinned ReportName convention.
+func layoutSettledBouncerRound1(t *testing.T, env Env) {
+	t.Helper()
+	runDir := filepath.Join(env.RunRoot, "review-segment")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", runDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("a review\n"), 0o644); err != nil {
+		t.Fatalf("write round-1-review.md: %v", err)
+	}
+	verdict := "---\nverdict: APPROVED\nrationale: \"because reasons\"\n---\n"
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-bouncer-verdict.md"), []byte(verdict), 0o644); err != nil {
+		t.Fatalf("write round-1-bouncer-verdict.md: %v", err)
+	}
+	ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-bouncer-ledger.md"), []byte(ledger), 0o644); err != nil {
+		t.Fatalf("write round-1-bouncer-ledger.md: %v", err)
+	}
+}
+
+// TestBouncerEntry_CommitSeam covers the two-value resolution of commit_seam, the presence guard
+// requireSeam enforces on a configured-but-missing Env closure, and the recognised-set edit to
+// configRejectUnknown.
+func TestBouncerEntry_CommitSeam(t *testing.T) {
+	t.Run("PlanResolvesToCommitPlan", func(t *testing.T) {
+		// This subtest also demonstrates commit_seam is accepted by configRejectUnknown rather
+		// than rejected as unknown: bouncerEntry returning a nil error below means the key was
+		// recognised.
+		env := newTestEnv(t)
+		planCalls := 0
+		env.CommitPlan = func() error { planCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["commit_seam"] = "plan"
+		layoutSettledBouncerRound1(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if planCalls != 1 {
+			t.Errorf("CommitPlan call count = %d; want 1", planCalls)
+		}
+	})
+
+	t.Run("DiscussionResolvesToCommitDiscussion", func(t *testing.T) {
+		env := newTestEnv(t)
+		planCalls := 0
+		discussionCalls := 0
+		env.CommitPlan = func() error { planCalls++; return nil }
+		env.CommitDiscussion = func() error { discussionCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["commit_seam"] = "discussion"
+		layoutSettledBouncerRound1(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if discussionCalls != 1 {
+			t.Errorf("CommitDiscussion call count = %d; want 1", discussionCalls)
+		}
+		if planCalls != 0 {
+			t.Errorf("CommitPlan call count = %d; want 0 (the two seams must not be interchangeable)", planCalls)
+		}
+	})
+
+	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
+		env := newTestEnv(t)
+		planCalls := 0
+		discussionCalls := 0
+		env.CommitPlan = func() error { planCalls++; return nil }
+		env.CommitDiscussion = func() error { discussionCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		layoutSettledBouncerRound1(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if planCalls != 0 {
+			t.Errorf("CommitPlan call count = %d; want 0", planCalls)
+		}
+		if discussionCalls != 0 {
+			t.Errorf("CommitDiscussion call count = %d; want 0", discussionCalls)
+		}
+	})
+
+	t.Run("UnrecognisedValueIsConstructionError", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["commit_seam"] = "bogus"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "commit_seam")
+	})
+
+	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
+		t.Run("Plan", func(t *testing.T) {
+			env := newTestEnv(t)
+			env.CommitPlan = nil
+			cfg := minimalBouncerConfig(t, env)
+			cfg["commit_seam"] = "plan"
+
+			_, err := bouncerEntry("review-bounce", cfg, env)
+			assertErrContains(t, err, "CommitPlan")
+		})
+
+		t.Run("Discussion", func(t *testing.T) {
+			env := newTestEnv(t)
+			env.CommitDiscussion = nil
+			cfg := minimalBouncerConfig(t, env)
+			cfg["commit_seam"] = "discussion"
+
+			_, err := bouncerEntry("review-bounce", cfg, env)
+			assertErrContains(t, err, "CommitDiscussion")
+		})
+	})
+
+	t.Run("AbsentWithBothEnvClosuresNilConstructsSuccessfully", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.CommitPlan = nil
+		env.CommitDiscussion = nil
+		cfg := minimalBouncerConfig(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil (the guard is on the key's presence, not on the Env field)", err)
+		}
+		if producer == nil {
+			t.Fatal("bouncerEntry() producer = nil; want non-nil")
+		}
+	})
+}
