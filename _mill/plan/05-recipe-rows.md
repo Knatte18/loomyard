@@ -40,7 +40,8 @@ batch 6 consumes only the row names and counts it establishes.
 - **Requirements:**
   In `internal/loomshed/loomshed.go`, delete the `NameDiscussionReview` constant and add `NameDiscussionBouncer = "Discussion-Bouncer"` and `NameDiscussionBurler = "Discussion-Burler"` in its place, keeping the const block in recipe-row order.
   Update this file's own header comment and the const block's doc comment from "thirteen" to "fourteen" row names throughout, and update `internal/loomshed/doc.go`'s package comment the same way.
-  In `internal/loomshed/stub.go`, update the comment listing the rows no task has built for real yet: `Discussion-Review` is now built, so only `Plan-Review` and `Webster-Review` remain stubbed.
+  In `internal/loomshed/stub.go`, three separate claims go stale and all three move together: the file's own header comment says "13-row producer list", `stubProducer`'s doc comment says "backs three rows of loom's 13-row producer list", and that same doc comment lists `Discussion-Review`, `Plan-Review`, and `Webster-Review` as the stubbed rows.
+  After this card the list is fourteen rows and exactly two of them are stubbed, so both "13-row" occurrences become "14-row", "three rows" becomes "two rows", and `Discussion-Review` drops out of the list.
   In `contracts/recipes/loom-recipe.yaml`, replace the single `Discussion-Review` row with two rows in its place, keeping every other row byte-identical.
   Re-point the preceding `Discussion-Validate` row's `on_done` from `Discussion-Review` to `Discussion-Bouncer`, leaving its `on_stuck: Discussion-Write` unchanged — a mechanical validation failure is a writing failure, not a judgment one.
   The first new row is `name: Discussion-Bouncer`, `engine: Bouncer`, `segment: Discussion-Review`, `max_bounces: 5`, `on_stuck: Discussion-Burler`, `on_done: Plan-Write`, with a `config:` map carrying `run_subdir: discussion`, `artifact_paths` listing the two worktree-relative discussion files (`_lyx/discussion/decision-record.md` and `_lyx/discussion/support-log.md`), and `rubric_stencil: loom-rubric-discussion-review`.
@@ -152,7 +153,9 @@ batch 6 consumes only the row names and counts it establishes.
   In `recipe_test.go`, `TestNew_ShapeMatchesRecipe` currently asserts `len(shed.Producers) == 13`, `len(wantProducerTable) == 13`, and — for every row unconditionally — `Segment == ""` and `MaxBounces == 0`.
   Change both counts to 14 and replace the two unconditional assertions with per-row comparisons against the new `want.segment` and `want.maxBounces` fields.
   Update that test's doc comment, which names thirteen rows and describes the two assertions as unconditional.
-  Leave `TestNew_ProducerTable` in `shape_test.go` reading `wantProducerTable` as it already does — it iterates the table and needs no count edit.
+  `TestNew_ProducerTable` in `shape_test.go` carries the same two unconditional assertions in its own body — `Segment == ""` and `MaxBounces == 0`, each with an error message claiming no row in the migration gains a non-empty or non-zero value — and both become false the moment card 14 lands.
+  Convert them to per-row comparisons against `want.segment` and `want.maxBounces` exactly as in `recipe_test.go`, and rewrite the two error messages, which state the now-obsolete claim as their reason.
+  That test's length check needs no edit: it compares against `len(wantProducerTable)` rather than a literal.
   Do not weaken `TestNew_RoutingGraphIsClean`: it is the whole-graph guard that fires when a perch is mis-wired, and its own doc comment already states exactly what it does and does not catch.
 - **Commit:** `test(loomrecipe): extend the producer table to fourteen rows with segment and max-bounces`
 

@@ -67,6 +67,7 @@ Nothing here reads or writes a recipe row, so this batch is independent of batch
   - `internal/loomengine/discussionpath_test.go`
   - `internal/loomengine/config_test.go`
   - `internal/modelspec/modelspec.go`
+  - `internal/websterengine/config_test.go`
 - **Edits:**
   - `internal/loomengine/config_test.go`
 - **Creates:**
@@ -81,8 +82,11 @@ Nothing here reads or writes a recipe row, so this batch is independent of batch
   It returns the four values rather than a `shuttleengine.Spec` because there is no prompt to compose: the review segment's prompts are the Bouncer's own stencils, composed inside `internal/shedadapters` at call time, and the caller threads these four onto `shedrecipe.Env` instead.
   Create `internal/loomengine/review_test.go` with two tests: one asserting `ResolveReview` returns the expected triple and timeout for the embedded template's own values, and one asserting an ungrammatical `Review` spec returns an error naming the role.
   Add a third test in the same new file for `LoomReviewsDir`, following `discussionpath_test.go`'s shape: assert the returned path is anchored at `AnchorPath()`, sits under the ephemeral `.lyx` tree rather than the durable one, and mirrors the loom subdirectory that `LoomScratchDir` already names.
-  Extend `internal/loomengine/config_test.go` for the two new keys: a valid `review:` spec loads; an ungrammatical one fails at load with a message naming the key; the template and the `Config` struct agree on the full key set.
-  Follow whatever mechanism that file already uses to assert template/struct agreement rather than inventing a second one.
+  Extend `internal/loomengine/config_test.go` for the two new keys: a valid `review:` spec loads, and an ungrammatical one fails at load with a message naming the key.
+  Follow the file's own existing shapes — `TestLoadConfig_WellFormed` for the round-trip and `TestLoadConfig_MalformedPlanSpec` for the error, which is the exact analog of the new `review:` case.
+  Add one further test to that file asserting the template and the `Config` struct agree on the full key set.
+  This file has no such assertion today (its coverage is per-field literal round-trips only), so this is a new test, not an existing mechanism to reuse: copy the shape of `internal/websterengine/config_test.go`'s `TestConfigTemplate_ContainsEveryConfigYAMLTag`, which is the repo's precedent for a key-set agreement check.
+  The check earns its place here specifically because the Config Strictness Invariant makes a struct field with no matching template key a silent hole rather than a load error.
 - **Commit:** `feat(loomengine): add ResolveReview and cover the new config and path surface`
 
 ## Batch Tests

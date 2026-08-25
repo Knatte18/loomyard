@@ -74,6 +74,7 @@ It ships no interface and changes no behaviour.
 - **Context:**
   - `contracts/recipes/loom-recipe.yaml`
   - `internal/loomshed/stub.go`
+  - `internal/loomrecipe/coverage_guard_test.go`
 - **Edits:**
   - `internal/loomcli/smoke_test.go`
 - **Creates:** none
@@ -81,8 +82,11 @@ It ships no interface and changes no behaviour.
 - **Moves:** none
 - **Requirements:**
   The file's package-level comment claims loom's producer table "backs five of its thirteen rows with stub producers that report Done unconditionally".
-  Both numbers are wrong after batch 5: the recipe has fourteen rows, and exactly two of them (`Plan-Review` and `Webster-Review`) are still `Stub`.
-  Correct both, and check the sentence's surrounding claim about the driver's typical lifecycle still follows from the corrected numbers rather than from the old ones.
+  Correct both numbers: the recipe has fourteen rows, and exactly two of them (`Plan-Review` and `Webster-Review`) are still `Stub`.
+  Note that only "thirteen" is a regression this task introduces — "five" was already wrong before it started, since only three rows (`Discussion-Review`, `Plan-Review`, `Webster-Review`) have ever used the `Stub` engine, as `internal/loomrecipe/coverage_guard_test.go`'s own row table shows.
+  Fix both regardless;
+  the corrected end-state text is the same either way.
+  Check the sentence's surrounding claim about the driver's typical lifecycle still follows from the corrected numbers rather than from the old ones.
   Change no code and no assertion in this file — this is a comment-only edit to a `//go:build smoke` file, and the smoke suite's own behaviour is out of this task's scope.
 - **Commit:** `docs(loomcli): correct the stale row-count prose in the smoke suite`
 
