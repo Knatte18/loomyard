@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -70,6 +71,13 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 	supportLogPath := filepath.Join(dir, "discussion", "support-log.md")
 	planOverviewPath := filepath.Join(dir, "plan", "00-overview.md")
 
+	runRoot := filepath.Join(dir, "reviews")
+	if err := os.MkdirAll(runRoot, 0o755); err != nil {
+		t.Fatalf("mkdir run root: %v", err)
+	}
+	stencilsDir := filepath.Join(dir, "stencils")
+	seedBouncerStencils(t, stencilsDir)
+
 	env := shedrecipe.Env{
 		Cwd:                cwd,
 		AnchorPath:         dir,
@@ -85,8 +93,12 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 			Engine:     fakeShuttleEngine{},
 			RefMatcher: fakeRefMatcher{},
 		},
-		Landing: testLandingDeps(dir),
-		Shuttle: &fakeLoomShuttle{writeOutputs: false},
+		Landing:     testLandingDeps(dir),
+		Shuttle:     &fakeLoomShuttle{writeOutputs: false},
+		RunRoot:     runRoot,
+		StencilsDir: stencilsDir,
+		Burler:      &fakeLoomBurler{},
+		Now:         func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "discussion prompt",

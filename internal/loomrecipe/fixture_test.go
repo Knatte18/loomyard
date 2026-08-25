@@ -18,7 +18,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -28,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -61,6 +65,63 @@ func (fakeMergeShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
 // passes -- without ever dereferencing the handle at construction time.
 func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
+}
+
+// seedBouncerStencils writes the three stencils a live Discussion-Review segment reads at dir,
+// keyed by stencilstore.Path(dir, name): the two generic bouncer templates
+// (bouncer-template-seed, bouncer-template-judge) and the Discussion-Review rubric
+// (loom-rubric-discussion-review), each seeded from its real embedded contracts/stencils bytes
+// rather than dummy content. shedadapters.NewBouncer probes the rubric eagerly at construction, and
+// seedCall/judgeCall read the two templates at call time and degrade to Stuck when either is
+// unreadable, so dummy templates would make shedengine.Done unreachable and would also diverge from
+// the marker set internal/stencil's Fill requires in production.
+func seedBouncerStencils(t *testing.T, dir string) {
+	t.Helper()
+
+	seeds := map[string][]byte{
+		"bouncer-template-seed":         stencils.BouncerTemplateSeed,
+		"bouncer-template-judge":        stencils.BouncerTemplateJudge,
+		"loom-rubric-discussion-review": stencils.LoomRubricDiscussionReview,
+	}
+	for name, content := range seeds {
+		path := stencilstore.Path(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir stencil dir for %s: %v", name, err)
+		}
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			t.Fatalf("write stencil %s: %v", name, err)
+		}
+	}
+}
+
+// fakeLoomBurler implements shedadapters.BurlerRunner, mirroring internal/shedadapters/burler_test.go's
+// own fakeBurlerRunner in shape. Its Run writes the ReviewPath and FixerReportPath the handed
+// burlerengine.Profile names, each with short non-empty placeholder content, and returns a
+// burlerengine.Result whose Outcome is shuttleengine.OutcomeDone -- that pair-on-disk plus
+// OutcomeDone is what makes BurlerProducer.Call return Stuck with a real report rather than
+// erroring, which is what the Bouncer's next call then judges. calls records how many times Run was
+// invoked, so a later test can assert the segment ran exactly one round.
+type fakeLoomBurler struct {
+	calls int
+}
+
+var _ shedadapters.BurlerRunner = (*fakeLoomBurler)(nil)
+
+// Run implements shedadapters.BurlerRunner: it writes p.ReviewPath and p.FixerReportPath with
+// short placeholder content and reports shuttleengine.OutcomeDone.
+func (f *fakeLoomBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.Result, error) {
+	f.calls++
+	if err := os.WriteFile(p.ReviewPath, []byte("review"), 0o644); err != nil {
+		return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: write review %s: %w", p.ReviewPath, err)
+	}
+	if err := os.WriteFile(p.FixerReportPath, []byte("fixer report"), 0o644); err != nil {
+		return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: write fixer report %s: %w", p.FixerReportPath, err)
+	}
+	return burlerengine.Result{
+		Outcome:         shuttleengine.OutcomeDone,
+		ReviewPath:      p.ReviewPath,
+		FixerReportPath: p.FixerReportPath,
+	}, nil
 }
 
 // testLandingDeps returns a landingshed.Deps with every field the two producer constructors
@@ -372,6 +433,13 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		planDir:               planDir,
 	}
 
+	runRoot := filepath.Join(dir, "reviews")
+	if err := os.MkdirAll(runRoot, 0o755); err != nil {
+		t.Fatalf("mkdir run root: %v", err)
+	}
+	stencilsDir := filepath.Join(dir, "stencils")
+	seedBouncerStencils(t, stencilsDir)
+
 	env = shedrecipe.Env{
 		Cwd:                cwd,
 		AnchorPath:         dir,
@@ -387,8 +455,12 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			Engine:     fakeShuttleEngine{},
 			RefMatcher: fakeRefMatcher{},
 		},
-		Landing: landing,
-		Shuttle: loomShuttle,
+		Landing:     landing,
+		Shuttle:     loomShuttle,
+		RunRoot:     runRoot,
+		StencilsDir: stencilsDir,
+		Burler:      &fakeLoomBurler{},
+		Now:         func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "discussion prompt",
