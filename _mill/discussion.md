@@ -38,8 +38,9 @@ This task writes them from scratch.
 
 **Out:**
 
-- `internal/burlerengine`, `internal/shedrecipe/entries_burler.go`, `internal/loomengine/review.go`, `internal/loomengine/config.go`, and `internal/loomcli/wiring.go` **production code**.
-  All of it is already generic and already shipped; this task changes none of it.
+- `internal/burlerengine`, `internal/shedrecipe/entries_burler.go`, `internal/loomengine/review.go`, `internal/loomengine/config.go`, and `internal/loomcli/wiring.go` **production behaviour**.
+  All of it is already generic and already shipped; this task changes none of its behaviour.
+  **"Out" here means behaviour, never doc comments** — a doc comment in one of these files that this change falsifies is in scope to reword, and `internal/loomengine/config.go`'s `LoomReviewsDir` doc is a known instance (see the stale-text scan's pattern 3).
   `wiring.go` in particular already fills `StencilsDir`, `RunRoot`, `Burler`, `Now`, the four `Review*` fields, **and `CommitPlan`** — the commit seam this task adds reuses that existing closure rather than adding an `Env` field.
 - **Changing `Discussion-Burler`'s `fix-scope`, or adding a `commit_seam` to `Discussion-Bouncer`.**
   The shipped Discussion row's `fix-scope: source` over `_lyx/discussion/*` contradicts the Fabric Git Invariant (see the `fix-scope` decision below), but correcting it changes shipped behaviour and its tests, and belongs to its own task.
@@ -101,12 +102,49 @@ This task writes them from scratch.
   Rejected: `overlay` with no commit seam and the gap filed as a follow-up (leaves approved plan fixes as uncommitted weft dirt that the next `CommitAnchoredPaths` caller sweeps up under an unrelated commit message, or that a crash loses outright).
   Rejected: a new `Env` field for the commit closure (`Env.CommitPlan` already exists, is already wired, and already has the exact pathspec — `planparser.PlanDirRel()`).
   Rejected: making `commit_seam` accept an arbitrary closure name (a two-value enum matching the two closures `Env` actually carries is the whole vocabulary that exists).
+- Commit message, accepted as-is: `Env.CommitPlan` hard-codes `"loom: plan artifacts for <slug>"`, so a post-approval commit is indistinguishable in `git log` from `Plan-Write`'s own.
+  That is fine and deliberate — the message names the artifact set, not the producer that last touched it, and in the common case there is no second commit at all, because `CommitAnchoredPaths` reports `committed == false` for an already-clean tree and an approved round that changed nothing produces nothing to commit.
+  A distinct message would require either a second closure or a parameter on `Env.CommitPlan`, both of which cost more than the history clarity is worth here.
 - Consequence, recorded and deliberately not fixed here: **the shipped `Discussion-Burler` row's `fix-scope: source` is the same violation.**
   This task adds the `Commit` seam that makes the correction a two-line recipe change, and adds a Planned roadmap item — "loom: `Discussion-Burler`'s `fix-scope: source` violates the Fabric Git Invariant" — pointing at this decision.
   It does not flip the Discussion row, because that changes shipped behaviour and its tests.
   The two segments therefore ship divergent `fix-scope` values on purpose, and the recipe comment on `Plan-Burler` must say so, so the divergence does not read as a copy-paste slip.
 - `tool-use: true` rationale: the round must walk `_lyx/plan`'s card files (the set is variable and only the Card Index names it), resolve symbol-shaped target entries against the repo, and read `decision-record.md`.
   None of that is possible without tool use.
+
+### A failing `Commit` is an error, never `degrade`
+
+- Decision: on `settle`'s `verdictApproved` branch, `Commit` is called after the verdict parses and before the `Done` return.
+  A non-nil error from `Commit` is **returned as `settle`'s error**, halting the run through `Shed`'s own error path.
+  It is never routed through `degrade`, and never swallowed into a `Done`-with-warning.
+  The commit is attempted regardless of whether `ctx` is already cancelled.
+- Rationale: `degrade` is the wrong exit and would be actively harmful here.
+  Its own doc states it "consults `cancelErr` first … otherwise logs args via `logger.Warn` and returns `shedengine.Stuck` with an empty pointer", and that "None of `degrade`'s callers ever return `shedengine.Done`."
+  Routing a commit failure through it takes a plan the judge **approved** and hands it to `on_stuck: Plan-Burler` for a fixer round that has no BLOCKING findings to fix, without the `ensureFocus(round + 1)` call the real `verdictBlocking` branch makes.
+  Worse, it does not converge: on re-entry `judged(n)` is still true, so `settle` re-approves and re-attempts the commit every bounce until `max_bounces` is spent.
+  A weft-commit failure is an infrastructure failure, not a review verdict, and `Shed`'s error path is where infrastructure failures belong — a human sees a blocked run naming the real cause instead of a bogus review round.
+- Ordering against the cancellation guarantee: `settle`'s contract is that "a genuinely parsed verdict is the one exception `cancelErr` never applies to."
+  That rule says a parsed verdict is never *retracted because the context was cancelled*; it does not say the branch performs no side effects.
+  Committing under a cancelled context is the correct behaviour here — leaving approved work uncommitted because an operator pressed Ctrl-C is exactly the weft dirt this seam exists to prevent, and `CommitAnchoredPaths` is idempotent, so a redundant attempt costs nothing.
+- Resume behaviour, and why returning an error is safe: the verdict file is already durable on disk before `Commit` is reached, so a resumed run re-enters `settle` through `judged(n)`, re-parses the same `APPROVED` verdict, and re-attempts the commit.
+  An idempotent commit plus a durable verdict means the error return loses no work — it converts a silent bad state into a visible, retryable one.
+- Rejected: `degrade`/`Stuck` (the failure mode above — the round-2 draft of this discussion pointed at `degrade` and was wrong).
+  Rejected: `Done`-with-warning, logging and proceeding (leaves the plan uncommitted, which is the precise condition the seam was added to eliminate; the next unrelated `CommitAnchoredPaths` caller would sweep it up under someone else's commit message).
+  Rejected: deferring the choice to the plan writer, which is what the round-2 draft did.
+
+### The plan directory resolves under two different roots, and that is accepted
+
+- Decision: record the divergence explicitly and accept it, unchanged, for this task.
+  `Plan-Bouncer`'s `artifact_paths` and `Plan-Burler`'s `profile.target.paths` resolve `_lyx/plan` against **`Env.WorktreeRoot`** (`internal/shedrecipe/entries_bouncer.go`'s `resolveUnderRoot(..., env.WorktreeRoot, p)`, and `burlerengine.Profile.validate`'s own told worktree root), while `Env.CommitPlan` commits `planparser.PlanDirRel()` anchored at **`AnchorPath()`**, which is the root the Planparser Sole-Parser Invariant requires.
+  `internal/loomcli/wiring.go` fills `WorktreeRoot: location.WorktreePath()`, and `lyxcwd.Location.AnchorPath()` is `filepath.Join(l.WorktreePath(), l.AnchorRel)`.
+- Rationale: the two roots are identical whenever `AnchorRel` is `"."`, which is its default.
+  With a non-`"."` `AnchorRel` the row would judge `<worktreeRoot>/_lyx/plan` while `CommitPlan` commits `<anchorPath>/_lyx/plan` — and the judge session's own cwd is `anchorPath`, not `worktreeRoot` (`shuttleengine.NewRunner`'s validation doc: "anchorPath sites the run directory … while worktreeRoot only resolves relative output files"), so the two would disagree three ways.
+  This is **pre-existing and shared**: the shipped `Discussion-Bouncer`/`Discussion-Burler` pair carries the identical shape against `_lyx/discussion/*`.
+  Changing `entries_bouncer.go`'s resolution root to `Env.AnchorPath` would change the shipped Discussion segment's behaviour too, which this task is deliberately not doing.
+- Rejected: switching the resolution root to `Env.AnchorPath` in this task (correct, but it silently re-points an already-shipped segment; it belongs with the `Discussion-Burler` follow-up, not here).
+  Rejected: leaving it unstated, which is what the round-2 draft did.
+- The plan must state, in the card that adds the two rows, that both resolve at `Env.WorktreeRoot` and that this is knowingly not `AnchorPath()`.
+  Fold the fix into the same follow-up roadmap item as the `Discussion-Burler` `fix-scope` correction — both are "the Discussion segment shipped a shape that needs revisiting", and splitting them into two items would have one task touching the same two rows twice.
 
 ### `support-log.md` is excluded from Plan-Review entirely
 
@@ -148,6 +186,9 @@ This task writes them from scratch.
   Naming the path in the shared rubric reaches both rows with one edit, and the judge already reads files by contract, so it can act on it.
   A `_lyx/...` literal inside a stencil is precedented — `contracts/stencils/webster/webster-body-implementer.md`, `webster-template-master.md`, and `webster-prefix-recovery.md` all name `_lyx/plan`.
   The Lyxdirs Single-Declarer Invariant binds production path-construction Go, not stencil prose.
+- Path form: the rubric writes the **worktree-anchor-relative** form, `_lyx/discussion/decision-record.md`, not an absolute path — a stencil cannot know the absolute path, and no marker carries it.
+  The relative form resolves because the judge session's working directory **is** the anchor: `internal/loomcli/wiring.go` builds the runner as `shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)`, and `NewRunner`'s own validation doc states "anchorPath sites the run directory, reed's state lookup, and the fork audit's workdir, while worktreeRoot only resolves relative output files."
+  The rubric must say the path is anchor-relative, so a reader does not mistake it for the absolute form `{{.artifacts}}` uses (`bouncer-template-judge.md` calls those "absolute paths" explicitly) and try to make the two match.
 - Rejected: adding `_lyx/discussion/decision-record.md` as a second `artifact_paths` entry.
   `BouncerConfig.ArtifactPaths`' own doc defines the field as "the subject under review — what the rubric is applied *to*", so listing the fasit there mislabels it, and invites the judge to raise findings against the decision record — the wrong artifact to be fixing at this stage, and the exact relocation-finding confusion `Discussion-Review`'s rubric already had to fence off.
 - Rejected: scoping item 4 to the Burler round only.
@@ -172,7 +213,11 @@ This task writes them from scratch.
      A mention describing it as a `Stub`, or using its `on_stuck: Plan-Write` edge as a routing example, is stale; a mention naming the *segment* is still correct.
   2. `NamePlanReview` — every Go reference, production and test.
      All of them break at compile time, so this pattern is a completeness check on the first, not an independent risk.
-  3. The fourteen-row count claim — `fourteen`, plus `14` in a row-count context.
+  3. **Commit-seam claims** — `commit seam`, and `Bouncer` within a sentence about committing.
+     This change makes at least one shipped doc comment literally false: `internal/loomengine/config.go`'s `LoomReviewsDir` doc justifies the reviews tree being ephemeral with "there is no commit seam for a Bouncer row", which stops being true the moment `BouncerConfig.Commit` exists.
+     The claim is stale, but the **conclusion is not**: the reviews tree stays ephemeral, because the seam this task adds commits `_lyx/plan`, never `.lyx/loom/reviews/`.
+     Reword the justification; do not move the directory.
+  4. The fourteen-row count claim — `fourteen`, plus `14` in a row-count context.
      Each hit is classified against which fourteen it counts: loom's **recipe rows** (becomes fifteen), `manifest/designs/loom.md`'s **design table** (deliberately kept at fourteen and NOT changed — the table collapses each review segment's two rows into one entry by design, see its own "The table and the shipped recipe diverge deliberately" paragraph), `internal/shedrecipe`'s **engine registry** (stays fourteen — `TestRegistry_ShipsFourteenEntries` must not change), and `landingshed.Deps`' **fourteen fields** (unrelated).
 - Rationale: the first draft of this discussion hand-listed the doc set and named one stale site.
   A scan run while writing this decision found, beyond that one: `manifest/designs/loom.md:16` and its lines 49–54, `manifest/designs/shed.md:91` and `:148` (both carrying the same `Plan-Review` → `Plan-Write` routing example), `manifest/designs/review-finding-classification.md:47` ("Plan-Review's own future rubric"), `manifest/designs/shed-recipe.md:9`, `contracts/recipes/loom-recipe.yaml:2`, `internal/loomshed/loomshed.go:1`/`:5`/`:13`, `internal/loomshed/doc.go:1`, `internal/loomcli/smoke_test.go:21` ("two of its fourteen rows -- Plan-Review and Webster-Review -- with stub producers"), and comment text in `internal/loomrecipe`'s `coverage_guard_test.go:16`/`:40`, `sequence_test.go:71`, `shape_test.go:2`/`:232`, and `recipe_test.go:21`.
@@ -214,8 +259,8 @@ This task writes them from scratch.
   `Env.CommitPlan` is already filled too, which is why `commit_seam` reuses it instead of adding a field.
 - `internal/shedadapters/bouncer.go` — `settle` (around line 268) is the one function this task edits.
   Its `case verdictApproved: return shedengine.Done, ptr, nil` is a single branch and the segment's only success exit, so the `Commit` call has exactly one correct home.
-  `degrade` is the existing error path to route a failing `Commit` through.
-  Note the surrounding contract: both `settle` returns "survive cancellation — a genuinely parsed verdict is the one exception `cancelErr` never applies to", so think about whether a commit belongs before or after that guarantee, and say so in the plan.
+  `degrade` is the existing exit for judge-call infrastructure failures and is explicitly **not** the path for a failing `Commit` — see "A failing `Commit` is an error, never `degrade`" above for why.
+  The surrounding contract — "a genuinely parsed verdict is the one exception `cancelErr` never applies to" — is resolved in its own decision above: the commit runs regardless of cancellation, and its error is returned rather than degraded.
 - `internal/loomengine/review.go` — `ResolveReview` / `ReviewSettings`, already shipped, already called from `wire`.
   No new config key, no `loom.yaml` change.
 
@@ -317,8 +362,10 @@ TDD candidate, and the highest-value new test in this task:
 - A `settle` reaching `verdictApproved` with a non-nil `Commit` calls it exactly once, before returning `Done`.
 - A `settle` reaching `verdictBlocking` never calls it — an unapproved plan must not be committed.
 - A nil `Commit` is not an error and commits nothing, which is what pins `Discussion-Bouncer`'s unchanged behaviour.
-- Decide and test the failure mode: a `Commit` returning an error must not silently swallow into `Done`.
-  Route it through the existing `degrade` path rather than inventing a fourth outcome.
+- A `Commit` returning an error makes `settle` return that error — not `Stuck`, not `Done`.
+  Assert the outcome and pointer are the zero values and the error wraps the closure's own.
+  Explicitly assert it does **not** go through `degrade`: a regression there is silent, and its consequence (an approved plan bounced into a findings-free fixer round, re-approving every bounce until the budget is spent) is exactly the kind of failure a test has to pin rather than a reader catch.
+- A `Commit` called under an already-cancelled context still runs, and its result still governs the return.
 
 **`internal/shedrecipe/entries_bouncer_test.go`** — `commit_seam` resolution:
 `plan` resolves to `env.CommitPlan`, `discussion` to `env.CommitDiscussion`, absent leaves `Commit` nil, and an unrecognised value is a construction error naming the key.
@@ -356,4 +403,9 @@ Build gate: `go build ./... && go test ./...` from the worktree root.
 - **Q:** [round 2] What are `Plan-Burler`'s `fix-scope` and `tool-use`? **A:** [auto-pick] `fix-scope: overlay`, `tool-use: true`, plus a new `commit_seam: plan` on `Plan-Bouncer` and a `Commit` closure called on `settle`'s approved branch. **Why:** `burlerengine/doc.go` names plan/discussion/review artifacts as exactly the overlay class, and the Fabric Git Invariant states an agent never commits weft content. An overlay round runs no git, and nothing else in the segment commits, so the seam is required rather than optional. This expands scope into `internal/shedadapters` and `internal/shedrecipe/entries_bouncer.go`, which the first draft listed as Out.
 - **Q:** [round 2] The shipped `Discussion-Burler` uses `fix-scope: source` over `_lyx/discussion/*` — is that fixed here? **A:** [auto-pick] no. Record it as the same violation, add the `Commit` seam that makes the correction a two-line recipe change, and file a Planned roadmap item. **Why:** flipping it changes shipped behaviour and its tests; the divergence ships on purpose and the recipe comment says so, so it does not read as a copy-paste slip.
 - **Q:** [round 2] How is stale text enumerated? **A:** [auto-pick] state the scan method — `Plan-Review`, `NamePlanReview`, and the fourteen-row count claim — and let scope follow from it. **Why:** a hand-written list missed a dozen sites; the count claim in particular needs per-hit classification, because `designs/loom.md`'s design table and `shedrecipe`'s engine registry both stay at fourteen while the recipe goes to fifteen.
+- **Q:** [round 3, BLOCKING] What happens when the injected `Commit` returns an error? **A:** [auto-pick] `settle` returns the error, halting the run; never `degrade`, never `Done`-with-warning. The commit runs even under a cancelled context. **Why:** `degrade` returns `Stuck` and its own doc says none of its callers return `Done` — using it would bounce an APPROVED plan into a findings-free fixer round and, because `judged(n)` stays true, re-approve and re-commit every bounce until `max_bounces` is spent. A weft-commit failure is infrastructure, not a verdict. The verdict file is durable and the commit is idempotent, so the error return is retryable on resume and loses nothing.
+- **Q:** [round 3] `artifact_paths` resolves against `Env.WorktreeRoot` but `CommitPlan` anchors at `AnchorPath()` — which root wins? **A:** [auto-pick] record the divergence, accept it unchanged, fold the fix into the same follow-up item as the `Discussion-Burler` `fix-scope` correction. **Why:** the two are identical while `AnchorRel` is `"."` (its default), the shipped Discussion pair has the identical shape, and re-pointing `entries_bouncer.go`'s resolution root would silently change an already-shipped segment.
+- **Q:** [round 3] What working directory does the judge resolve the rubric's relative decision-record path from? **A:** [auto-pick] the anchor — the rubric writes the anchor-relative form and says so. **Why:** `shuttleengine.NewRunner`'s validation doc states "anchorPath sites the run directory … while worktreeRoot only resolves relative output files", and `wiring.go` passes `reedGeom.AnchorPath` as that argument. A stencil cannot know the absolute path and no marker carries it.
+- **Q:** [round 3] Does the stale-text scan catch the doc comments this change falsifies? **A:** [auto-pick] no — add a fourth pattern for commit-seam claims, and state that "Out" means production behaviour, not doc comments. **Why:** `internal/loomengine/config.go`'s `LoomReviewsDir` doc justifies the reviews tree being ephemeral with "there is no commit seam for a Bouncer row", which this change makes false; the file was listed Out, so a plan writer would have skipped it. The conclusion survives — the seam commits `_lyx/plan`, not the reviews tree — only the justification needs rewording.
+- **Q:** [round 3] The post-approval commit reuses `Plan-Write`'s commit message — accepted? **A:** [auto-pick] accepted, on purpose. **Why:** the message names the artifact set rather than the producer, and an approved round that changed nothing produces no commit at all, since `CommitAnchoredPaths` reports `committed == false` for a clean tree.
 - **Q:** Which docs land in the same commit? **A:** [auto-pick] `designs/loom.md` (table row 9, the rubric section reworded as a doc *about* the shipped stencil, and every site the stale-text scan finds), `designs/shed-recipe.md` (the new `commit_seam` key), and `manifest/roadmap.md` (this Planned item removed, the `Discussion-Burler` `fix-scope` item added). **Why:** the Documentation Lifecycle requires it, and this both completes a Planned item and adds one. `docs/overview.md` is untouched — no module-table or execution-stack change.
