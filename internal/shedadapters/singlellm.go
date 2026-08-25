@@ -1,6 +1,7 @@
 // singlellm.go implements SingleLLMProducer, the shedadapters adapter that wraps one shuttle run
 // behind the shedengine.ShedProducer seam -- the single-LLM-turn producer shape loom's discussion
-// step and its siblings all reduce to.
+// step and its siblings all reduce to. Call probes for a still-live matching run before archiving
+// anything and only archives-then-spawns a fresh run when the probe finds nothing.
 
 package shedadapters
 
@@ -45,8 +46,9 @@ var _ Shuttle = (*shuttleengine.Runner)(nil)
 // loomengine.DiscussionSpec already returns this shape once its own arguments are bound.
 type SpecSource func() (shuttleengine.Spec, error)
 
-// SingleLLMProducer is the shedadapters adapter over one shuttle run: it archives stale output
-// files, runs the seam once, and maps its outcome onto the shedengine.ShedProducer contract.
+// SingleLLMProducer is the shedadapters adapter over one shuttle run: it probes for a still-live
+// matching run, archives stale output files and runs the seam once when the probe finds nothing,
+// and maps whichever run's outcome onto the shedengine.ShedProducer contract.
 type SingleLLMProducer struct {
 	name    string
 	specs   SpecSource
@@ -68,8 +70,10 @@ func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now fu
 	return &SingleLLMProducer{name: name, specs: specs, shuttle: shuttle, now: now}
 }
 
-// Call runs one SingleLLMProducer iteration: entry-check the context, build the Spec, archive any
-// stale output files, run the shuttle seam once, and map its outcome onto shedengine's contract.
+// Call runs one SingleLLMProducer iteration: entry-check the context, build the Spec, probe for a
+// still-live matching run, and either map that run's outcome onto shedengine's contract directly or
+// -- when nothing is found -- archive any stale output files, run the shuttle seam once, and map its
+// outcome the same way.
 func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, singleLLMEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -89,6 +93,24 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 	}
 
+	// Probe before archive, unconditionally -- gated on neither spec.Interactive nor
+	// spec.AwaitOperator. Archiving is a rename of the very files a live agent may be about to
+	// write, and Wait polls for bare existence at the spec's paths, so archiving before the probe
+	// would make an attached run unable to ever classify Done, in exactly the case the probe exists
+	// to protect. Respawning over a still-live agent is a correctness bug in autonomous mode too --
+	// gating on interactive would knowingly ship the duplicate-agent path for Plan-Write and every
+	// other generic SingleLLM row.
+	attachResult, found, err := p.shuttle.Attach(spec)
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle attach: %w", p.name, singleLLMEngineLabel, err)
+	}
+	if found {
+		return p.mapOutcome(ctx, spec, attachResult)
+	}
+
 	if err := archiveStaleOutputs(spec.OutputFiles, p.now); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): archive stale outputs: %w", p.name, singleLLMEngineLabel, err)
 	}
@@ -100,7 +122,12 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run: %w", p.name, singleLLMEngineLabel, err)
 	}
+	return p.mapOutcome(ctx, spec, result)
+}
 
+// mapOutcome maps result.Outcome onto shedengine's contract: shared by the attach path and the spawn
+// path so the mapping is never duplicated.
+func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.Spec, result shuttleengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
 		if len(spec.OutputFiles) == 0 {
