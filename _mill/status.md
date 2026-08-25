@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-bouncer-commit-seam
+phase: approved-plan-review-segment-rows
 slug: loom-plan-review-producer
 branch: loom-plan-review-producer
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-08-25T09:27:30Z'
 implementing  '2026-08-25T09:27:11Z'
 approved-plan-review-rubric-stencil  '2026-08-25T09:30:54Z'
 approved-bouncer-commit-seam  '2026-08-25T09:37:20Z'
+approved-plan-review-segment-rows  '2026-08-25T09:44:05Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     commit_sha: 99a0355ab003bbdd5ae182542bd71faa1b06eb24
     verify_baseline_failures: []
   - name: plan-review-segment-rows
-    state: running
+    state: approved
     implementer_session: 4f8077f2-d219-4df6-b809-faa9ea999b1d
     start_sha: 4570898123eebf7982a49724dd1648b16c90332d
+    commit_sha: 8bfe15710c7b351570a505c3c2a41618d31e3c19
     verify_baseline_failures: []
   - name: docs-and-stale-text-sweep
     state: pending
