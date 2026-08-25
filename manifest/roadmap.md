@@ -9,56 +9,33 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
 
-### loom: rewrite for the new Plan Card format
-
-A 2026-08-23 discussion redesigned loom's own Discussion/Plan pipeline around symbol-level Cards and Quarry as the mechanical backing (degraded/LLM-manual mode first, Quarry as a pure speed upgrade later, never a hard dependency) — see [designs/plan-card-format.md](designs/plan-card-format.md), already written. Supersedes `contracts/specs/loom-plan-spec.md`'s Card fields and `loom-template-plan.md`. `manifest/designs/scout-plan-symbol-fields.md` and `webster-parallel-execution.md` predate this and are stale, to be reconciled or deleted once this group ships. Three waves, in order — each wave depends on the previous one landing.
-
-**Wave 1:** complete — both items shipped, see Done below (**loom: redesign the Discussion format**, **loom: code-writing skills — comments, build, testing**).
-
-**Wave 2:** complete — both items shipped, see Done below (**planparser: Card-format migration to `Edits`/`Uses`**, **loom: Discussion-Write producer**).
-
-**Wave 3** (depends on Wave 2's planparser migration landing): complete — its sole remaining item shipped, see Done below (**loom: Plan-Write producer**).
-
 ### loom: real LLM producers
 
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The only items in this initiative touching LLM-prompt content — the "Shed flattening" group (`shedadapters: Burler-round producer`, `Bouncer`) this used to wait on has shipped, see Done below. Sequenced after the "loom: rewrite for the new Plan Card format" group above, since `Discussion-Write`/`Plan-Write` moved there — the three review-producer tasks below depend on the shipped `Bouncer`/`shedadapters: Burler-round producer` items and, for the format their rubric judges, on the format the group above lands.
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — all four items below are unblocked.
 
-1. **loom: Discussion-Review producer** — write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists) as the rubric for a new `Discussion-Bouncer` instance, instantiating the shipped `Bouncer` producer with it. The rubric must also cover the Bouncer's seed-call focus-setting pass (see the shipped `Bouncer` item's own rubric-coverage note), not only post-round judgment.
-   The rubric judges against the redesigned Discussion approach from the group above, not the old millhouse-derived expectations: does `decision-record.md` stay lean and Plan-facing, does anything belonging to `support-log.md` (rejected alternatives, question ledger) actually live there instead, and does either file correctly *exclude* mechanically-verifiable technical claims (exact signatures, file:line citations, existing-pattern research) — that content is Quarry's/manual grep's job now, computed fresh at Plan time. The rubric must implement the relocation-and-exclusion principle recorded at [designs/loom.md](designs/loom.md#discussion-review-rubric--what-to-also-flag-relocation-and-exclusion).
-   Replace the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment: `Discussion-Bouncer` (an instance of the shipped `Bouncer: the generic review-gate producer`) is the segment's entry point — its seed call sets initial focus, then every later call judges a round. `Discussion-Burler` (an instance of the shipped `shedadapters: Burler-round producer`) runs one A-review→B-fix round and always hands back to `Discussion-Bouncer` (`Stuck`, `OnStuck: Discussion-Bouncer`), never advancing on its own. `Discussion-Bouncer`'s `OnStuck: Discussion-Burler` covers both the seed call and a rejection; its `OnDone` (approved) exits the segment. Both rows share `Segment: "Discussion-Review"` — the segment's shared name is what the rest of loom's docs/status-display keep referring to as "Discussion-Review," unchanged from today's outward framing even though it is now two rows, not one opaque stub row — and physical list position no longer implies anything about this flow (see `shedengine: per-producer bounce budget + explicit OnDone routing` above). This `Bouncer`+`Burler` wiring is hand-rolled directly in this task, same as `Plan-Review`/`Webster-Review` below each hand-roll their own — no shared module or abstraction wraps the pair (see the `CLAUDE.md` terminology note on "perch," the folk name for this wiring shape).
-   Depends on the shipped `shedadapters: Burler-round producer` and `Bouncer` producers — both landed, this item is unblocked.
+1. **loom: Discussion-Review producer** — replace the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment (a "perch," see `CLAUDE.md`'s terminology note); the rubric it must point at is already written, in `designs/loom.md`'s Discussion-Review sections.
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
-1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch (does not exist today; the old `loom-plan-spec.md` is a structural format spec for the superseded file-op Card format, not review judgment criteria for the new one) as the rubric for a new `Plan-Bouncer` instance (same hand-wiring pattern as `Discussion-Review producer` above), covering the seed-call focus pass too.
-   The rubric judges the new Card fields from `designs/plan-card-format.md` (`Targets`/`Uses`/`Intent`/`ImpactSummary`), not the old file-op fields: is each card scoped to one independently reviewable/testable unit per the granularity rule, does `ImpactSummary` carry a real one-line safety conclusion rather than a restatement of `Intent`, and is `Custom` used only where no other type genuinely fits rather than as a shortcut around correct Card typing.
-   Replace the `Plan-Review` stub with a `Plan-Bouncer`/`Plan-Burler` segment, same shape as `Discussion-Review producer` above: `Plan-Bouncer` is the entry point, `Segment: "Plan-Review"`, `OnStuck: Plan-Burler` from both the seed call and on rejection, `OnDone` exits the segment.
-   Depends on the shipped `shedadapters: Burler-round producer` and `Bouncer` producers — both landed, this item is unblocked.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch as a `Plan-Bouncer`/`Plan-Burler` segment — no prior rubric exists for the new Card format; criteria now recorded in `designs/loom.md`'s Plan-Review rubric section.
+   See [designs/loom.md](designs/loom.md#plan-review-rubric).
 
-1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch (same gap, same reason as `Plan-Review`) as the rubric for a new `Webster-Bouncer` instance (same hand-wiring pattern), covering the seed-call focus pass too.
-   Two rubric dimensions this task must add on top of the pre-redesign scope: compliance with `designs/code-comment-conventions.md` in any new/changed doc comment (no unnecessary symbol cross-references), and, per card, whether its Type-specific mechanical check actually ran and passed (the AST-script-plus-grep for a Rename card, `assert-no-callers` for a Delete card) rather than only checking that the diff compiles and tests pass.
-   Replace the `Webster-Review` stub with a `Webster-Bouncer`/`Webster-Burler` segment: `Webster-Bouncer` is the entry point, `Segment: "Webster-Review"`, `OnStuck: Webster-Burler` from both the seed call and on rejection, `OnDone` exits the segment — same shape as the other two review-producer items above, against the full diff rather than a single artifact.
-   Depends on the shipped `shedadapters: Burler-round producer` and `Bouncer` producers — both landed, this item is unblocked.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch, same gap as `Plan-Review`, as a `Webster-Bouncer`/`Webster-Burler` segment judging the full diff rather than a single artifact; criteria now recorded in `designs/loom.md`'s Webster-Review rubric section.
+   See [designs/loom.md](designs/loom.md#webster-review-rubric).
 
-1. **loom: interactive Discussion-Write** — flip the `autonomous` argument at `internal/loomcli`'s `wire()` from `true` to whatever a real mode selector resolves, and solve the resume defect that made autonomous-only the right call.
-   `shuttleengine`'s `Wait` classifies a turn ending without all output files present as `OutcomeAsking`, `SingleLLMProducer` maps that to `Stuck`, and on resume it archives both freshly-written files and spawns an agent that knows nothing of the interview.
-   A naive fix walks into a trap: a resume-on-output-files pre-check reporting `Done` when both files exist cannot distinguish an interrupted interview from a `Discussion-Validate` bounce, which also re-enters the row with both files present, and would ping-pong until the bounce budget is exhausted.
-   `loomengine.DiscussionSpec` already keeps its `autonomous` parameter and `prompt.go`'s `modeRules` already keeps both branches with their tests, so the prose half is done.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+1. **loom: interactive Discussion-Write** — flip `internal/loomcli`'s `wire()` `autonomous` argument from hardcoded `true` to a real mode selector, and solve the resume defect that made autonomous-only the right call so far. `loomengine.DiscussionSpec`'s `autonomous` plumbing already exists; the trap a naive fix walks into is recorded in `designs/loom.md`'s crash-recovery section.
+   See [designs/loom.md](designs/loom.md#crash-recovery--resume-on-output-files-not-live-processes).
 
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
 
-1. **webster: worktree-per-card parallel execution** — teach `internal/websterengine` to spawn independently-executable cards/batches into their own `git worktree` (via `internal/fabricengine`) rather than forking in-session in the one shared worktree, and gate a batch's completion on `go build ./... && go test ./...` against the merged result (see `plan-card-format.md`'s Concurrency section). Batches are not a static partition computed once — a card newly eligible after one wave lands is picked up recomputing the ready set for the next wave, not precomputed upfront. Depends on `webster: DAG-derived card sequencing` (Done, above) for the dependency graph the ready-set computation reads. Deliberately Someday, not Planned: a pure speed optimization over an already-correct sequential system, not a prerequisite for loom running at all — advanced infrastructure (real worktree lifecycle, merge-back, a genuinely new failure surface) that should wait until the sequential path has real mileage.
+1. **webster: worktree-per-card parallel execution** — spawn independently-executable cards/batches into their own `git worktree` (via `internal/fabricengine`) instead of forking in one shared worktree, gating a batch's completion on a build+test of the merged result; the ready set recomputes wave to wave, never precomputed upfront. Depends on the shipped `webster: DAG-derived card sequencing` for the dependency graph. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, not a prerequisite — wait for the sequential path to get real mileage first.
    See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (stale, reconcile in this task — its prior rejection was about concurrent forks sharing one checkout's git index, a different model than worktree-per-card, which does not share that race).
 
-1. **worktree spawn/teardown as Shed producers** — today, starting a task means three independent, manually-sequenced steps: (1) call `lyx fabric` to create the worktree (warp+weft paired), (2) inside it, run `lyx loom run` (or `lyx run`), (3) once loom finishes and branches are merged into the parent, independently call `lyx fabric` again to tear the worktree down safely. Worktree creation and teardown could instead be their own `ShedProducer` rows (e.g. bookending `loom`'s own producer list, or a small wrapper list around it), so the whole task lifecycle — create, run, merge, destroy — is one driven `Shed` run instead of a human manually bridging three separate CLI invocations.
-   A 2026-08-21 discussion also raised that `fabric`'s worktree creation currently stays deliberately outside `_launchers`/`_board` wiring (a decision made to protect the Fabric illusion); revisiting that wiring is a likely prerequisite here and needs its own look before this item is scoped further.
+1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the whole task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first (deliberately kept out today to protect the Fabric illusion) — needs its own look before this is scoped further.
 
-1. **VS Code as opt-in per worktree, not spun up by default** — the long-term direction is for `loom`/Loomyard to be mostly CLI/tmux-based, since a VS Code instance per worktree costs real resources and is rarely needed — a 2026-08-21 discussion noted the common case is reviewing the final PR, not watching an agent edit live. The existing anchor-aware `lyx ide` launcher (`internal/ideengine`, see the Done `worktree + ide` item) already solves opening VS Code at the right anchor subdirectory — something the generic "Git Worktree Manager" VS Code extension cannot do, since it only ever opens a worktree's root. The idea is a fourth per-worktree launcher variant (alongside the existing `ide`/`fabric-checkout`/`run<ext>` set — see `internal/fabricengine/launchers.go`) that, instead of opening VS Code as a full editor window, opens VS Code just far enough to run a task that spawns a tmux terminal and `lyx reed attach`es into the `reed` server the worktree's own `run<ext>` launcher already started — VS Code as a terminal-launcher convenience, not a standing editor per worktree.
+1. **VS Code as opt-in per worktree, not spun up by default** — `loom`/Loomyard should default to CLI/tmux, spinning up VS Code only on request, since the common case is reviewing the final PR rather than watching an agent edit live. Likely shape: a fourth per-worktree launcher variant (alongside `ide`/`fabric-checkout`/`run<ext>`, see `internal/fabricengine/launchers.go`) that opens VS Code just far enough to `lyx reed attach` into the worktree's already-running `reed` server — a terminal-launcher convenience, not a standing editor.
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
@@ -82,37 +59,21 @@ No build order is implied between these items.
    folds into `Finalize`'s own contract rather than a separate producer — `Shed` has no slots for it to occupy.
    See [designs/raddle.md](designs/raddle.md).
 
-1. **webster: parallel card/batch execution** — earlier concurrent-forking-in-one-tree shape rejected twice for git-index-race and mid-flight-visibility hazards (forks sharing one working tree/index).
-   A 2026-08-20 discussion landed on a structurally different shape that may dodge both: DAG-independent groups (a batch, possibly one card) each get their own `fabric`-spawned worktree, running the existing `Preflight → Webster → Finalize` row set unchanged, with `Webster`'s `Geometry.PlanDir` (already told, not derived — see the Told-Geometry Invariant) pointed at the source plan and a new batch-filter selecting the one group to run; merge-back reuses `fabric`'s existing merge machinery, not new infrastructure.
-   Genuinely own worktree per lane (own git index/HEAD) is what the old shape lacked — grouping granularity (one card vs. several) is orthogonal and does not by itself determine safety.
-   Not yet a plan: needs the DAG source (see `scout-backed plan symbol fields` below) and a design writeup reconciling this with `designs/webster-parallel-execution.md`'s still-open questions (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
-   See [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (status banner there is now stale — written for the rejected shape, not this one).
+1. **webster: parallel card/batch execution** — a possible unblocking shape exists (own `fabric` worktree per DAG-independent group, avoiding the git-index race the earlier rejected shape hit) but isn't yet a plan — needs the DAG source and more design work.
+   See [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (status banner there is stale — written for the earlier, rejected shape, not this one).
 
-1. **Tenter + Hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving real tmux), on-demand and post-loom, off the `shuttle → burler → shed → loom` spine.
-   `Hardener` is the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe-merge-back).
-   `Tenter`'s review-loop is expected to land as a `Shed` segment — a round producer (behavior-review's own equivalent of `shedadapters: Burler-round producer` being shipped in this task, wrapping whatever Tenter's own round mechanism turns out to be, not `burlerengine`) plus an instance of the shipped `Bouncer: the generic review-gate producer` — the same hand-wired shape `loom`'s own review producers use (folk name "perch," see the `CLAUDE.md` terminology note — `Tenter`'s own segment is "a perch" in that same loose sense, same shape, different round producer inside it), not `Treadle`. Only `Bouncer` is literally reusable code here: `burlerengine`'s own round mechanism is inherently text/diff-specific (Target/Fasit/Rubric over a shuttle session editing text), so `Tenter`'s round producer needs its own from-scratch implementation of the same always-`Stuck`-until-approved contract, not a port of `burlerengine`. This is the second data point (after `loom`) for the `treadleengine` retirement question the Done `Retire perch` item leaves open.
+1. **Tenter + Hardener** — behavior-based hardening of a live-substrate module (archetype: `reed` driving real tmux), on-demand and post-`loom`, off the `shuttle → burler → shed → loom` spine; `Hardener` is the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe merge-back).
    See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
 
-1. **warp-visibility: CLAUDE.local.md invisible in the Fabric repo's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in the Fabric repo's own git history.
-   The `CONSTRAINTS.md`-equivalent half is **superseded by the Planned `PATTERN.md`** — it lives in `weft`, already invisible to the Fabric repo, so no junction-to-hide-a-constraints-dir is needed;
-   only `CLAUDE.local.md` remains.
+1. **warp-visibility: `CLAUDE.local.md` invisible in the Fabric repo's git history** — expose `CLAUDE.local.md` via symlink (Windows-Developer-Mode note + copy fallback) so nothing lyx-related shows up in the Fabric repo's own git history; the `CONSTRAINTS.md`-equivalent half is already covered by the shipped `PATTERN.md`, which lives in `weft` and is already invisible there.
    See [designs/warp-visibility.md](designs/warp-visibility.md).
 
-1. **reed daemon: foreign-pane self-heal** — extends the **reed: daemon → Slack relay** item.
-   Today reed is one-shot, so an operator-split or stray "faux" pane is only reaped on the *next* reed verb;
-   the daemon could reconcile on its own.
-   Prefer event-driven tmux hooks (`after-split-window`/`window-layout-changed`) over polling;
-   gate behind a policy that distinguishes a bug-induced faux pane from an operator's intentional scratch pane.
-   Prerequisite: make the reap probe cheaper first (it currently spawns a fresh pwsh + full `Win32_Process` WMI enumeration per poll).
+1. **reed daemon: foreign-pane self-heal** — extends the `reed: daemon → Slack relay` item above; reap a stray/operator-split pane automatically instead of only on reed's next invocation, preferring event-driven tmux hooks over polling, gated by a policy that distinguishes a bug-induced pane from an intentional scratch pane. Prerequisite: cheapen the reap probe first (today it spawns a fresh pwsh + full `Win32_Process` WMI enumeration per poll).
 
 1. **shuttle `Spec`: generic tools-restriction** — meaningless for today's single-session A→B agent;
    cluster reviewers turned out to be fork subagents inside the handler's own session (`useExactTools`), not separate sessions needing their own `settings.json`, so this stays unmotivated rather than blocked on anything.
 
-1. **shuttle `Spec`: per-round provider selector** — today "provider" means whichever engine is wired into the `Runner`;
-   a selector field is only needed once a second engine lands (non-Claude engines are not a current priority, per `CLAUDE.md`).
-   Scope, if picked up: almost everything lyx spawns (Discussion, Planner, Webster, Burler rounds, the progress-judge) is markdown-instruction + file-contract driven — no skill/slash-command/plugin dependency baked into task content, unlike Millhouse's Claude-Code-specific skill layer — which is what makes a second engine a real swap: it only has to solve spawn/completion-detection/resume, not rewrite prompts.
-   The one real trade-off: Burler's cluster-review fan-out (N reviewers as cheap, context-sharing forks via Claude Code's own Agent tool) is a genuine strength, including token cost — a non-Claude engine has no equivalent to fork into, so cluster mode there would mean N full separate sessions instead, costlier by construction.
-   Only Burler's default single-reviewer round (no clustering) is unaffected either way.
+1. **shuttle `Spec`: per-round provider selector** — meaningless until a second engine lands (non-Claude engines are not a current priority, per `CLAUDE.md`); today "provider" just means whichever engine is wired into the `Runner`. The main cost if picked up: `burler`'s cluster-review fan-out (N reviewers as cheap, context-sharing forks) has no non-Claude equivalent — a non-Claude engine would need N full separate sessions instead, costlier by construction.
 
 1. **Bulk-mode clusters + provider-side context caching** — a `burler` cluster round can run *tool-use* or *bulk* (Go concatenates target + fasit + rubric into one blob).
    Bulk is what makes provider-side context caching (e.g. Gemini's explicit cache) pay off, and only if modelled as one shared prefix + N distinct suffixes, never N full prompts.
@@ -128,270 +89,34 @@ No build order is implied between these items.
    See [designs/curation-triage.md](designs/curation-triage.md).
 
 1. **scout-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified code-intelligence lookup tool; that tool (now `quarry`, an external Go module dependency) and the loom Planner have since shipped, unblocking but not yet scoping this.
-   Named prerequisite for `webster: parallel card execution`'s parked DAG scheduler.
+   Named prerequisite for `webster: parallel card/batch execution`'s parked DAG scheduler.
    See [designs/scout-plan-symbol-fields.md](designs/scout-plan-symbol-fields.md).
 
-1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config today resolves only from `<cwd>/_lyx/config/<module>.yaml` (per-worktree, no shared default;
-   `fabric.yaml` is the sole exception, anchored at `_board`/weft:main — see the Done `fabric: unified-repo view — slices 7-10` item).
-   Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses.
-   Generalizes `fabric.yaml`'s existing `_board` anchor to every module's config, not just fabric's. Not yet designed.
+1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config today resolves only from `<cwd>/_lyx/config/<module>.yaml` (per-worktree, no shared default; `fabric.yaml` is the sole exception, anchored at `_board`/weft:main). Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses. Not yet designed.
 
 1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on review findings, and scope each review stage to what its downstream stage cannot catch better.
    See [designs/review-finding-classification.md](designs/review-finding-classification.md).
 
 1. **fabric: ordinary-monorepo verb surface** — against plain git, `fabric` is still missing `log`, `show`, `branch` (create/list/delete), `tag`, `stash`, `reset` (non-hard), `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick`, and `blame`.
    None blocks `Finalize`/`Hardener` today; scope by actual need when a consumer needs one, never by completing the list for its own sake.
-   See the `fabric: merge-conflict primitive` item's audit findings.
 
 1. **fabric: two-sided reset-to-SHA verb** — the post-conclude undo the merge surface deliberately does not ship: `MergeAbort` covers only the uncommitted merge-attempt window, so a landed merge is final at the Fabric layer until a `Fabric`-level reset to a visible (warp) SHA exists, resolving the paired weft SHA through the correspondence index and routing both resets through the destruction gate.
    See the `internal/fabricengine` package documentation's merge section.
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
 
-1. **loom: build `Plan-Sweep` for real** — stays a stub past the shipped Done **loom: Plan-Write producer** item; deferred because quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry — see the Someday `scout-backed plan symbol fields` item below.
-   Mechanical quarry inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec`.
-   Partial building blocks: quarry's reference-lookup and symbol-lookup APIs exist as an external dependency, but no ready-made "inventory" function — needs new composition, not a new engine.
+1. **loom: build `Plan-Sweep` for real** — stays a stub past the shipped `loom: Plan-Write producer`; deferred because quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry. Full spec already written.
+   See [designs/loom.md](designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec).
 
 1. **finalize: the discrepancy-document conflict shape** — `finalize.md` originally sketched a second Fabric-to-Finalize conflict artifact, a precomputed "discrepancy document" for a divergence Fabric cannot express as a git conflict.
    Only the ordinary-git-conflict shape shipped; the document shape is not built.
-   The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
+   The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, whenever picked up (`Shed`/`loom` now exist to consume it).
 
-1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a new producer access to a new capability today means adding a passthrough field to `shedrecipe.Env` and threading it by hand through three layers (`shedrecipe` → `loomrecipe` → `loomcli`), since `shedrecipe` can't import the capability's owning package directly (Shed Recipe Registry Invariant). The Done **loom: Discussion-Write producer** entry below is a concrete data point: its two new `Env` fields (`DiscussionSpec`, `CommitDiscussion`) each required an edit in all three layers, for what was otherwise one small producer. The Done **loom: Plan-Write producer** entry below is a second data point: its own two new `Env` fields (`PlanSpec`, `CommitPlan`) repeated the identical three-layer threading verbatim one task later, which strengthens the case that motivates this item. The idea — not yet designed — is for a producer to declare what it needs and have the registry wire it automatically, closer to how a VS Code extension declares its own capabilities than to hand-editing a host per extension. Genuinely deep: likely touches the Shed Recipe Registry Invariant itself and all fourteen existing registry entries already wired the old way. Not scoped, just recorded.
+1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability today means hand-threading a passthrough `Env` field through three layers (`shedrecipe` → `loomrecipe` → `loomcli`), since `shedrecipe` can't import the capability's owning package directly (Shed Recipe Registry Invariant); both shipped `loom: Discussion-Write producer` and `loom: Plan-Write producer` repeated this identical three-layer edit for their own two `Env` fields. The idea — not yet designed — is for a producer to declare what it needs and have the registry wire it automatically, closer to how a VS Code extension declares its own capabilities than to hand-editing a host per extension. Genuinely deep: likely touches the Shed Recipe Registry Invariant itself and all fourteen existing registry entries already wired the old way.
 
 ## Done
 
-1. **webster: DAG-derived card sequencing** — sequencing lives in `internal/websterengine/sequence.go`'s `SequenceBatches`, operating over `[]batcher.Batch`, not in a new package and not as a batchifier.
-   Edges derive from `Uses` ∩ `Targets` across cards, plus a lower-number-wins edge between two cards sharing a target, with path-shaped and symbol-shaped refs treated alike.
-   Cycles are condensed via strongly-connected components, reported, and never fatal.
-   Ordering is Kahn's algorithm with a lowest-member-batch-number tie-break, so an already dependency-correct plan sequences to exactly its declared order.
-   Sequencing is unconditional, with no config key.
-   Batch identity, numbering, report filenames, and `state.json` keys are unchanged.
-   The previous-digest lookup in `begin-batch`/`recover-batch` was corrected from `batchNumber-1` arithmetic to a true execution-predecessor lookup, which is the one existing site the reordering would otherwise have silently broken.
-   `internal/planparser` and `internal/batcher` were not modified — the shipped `planparser.Card` field driving this is `Targets`, not the `Edits` the Planned entry's wording used.
-   See [designs/plan-card-format.md](designs/plan-card-format.md).
-
-1. **planparser: Card-format migration to `Edits`/`Uses`** — replaced `planparser.Card`'s format-3 typed file-op fields (`ContextFiles`/`EditsFiles`/`CreatesFiles`/`DeletesFiles`/`Moves`/`DependsOn`) with format 4's type-label target list, `Uses`, `Intent`, and `ImpactSummary`, per `designs/plan-card-format.md`. No non-test code in `internal/websterengine` actually read a card file-op field — the Wave 2 entry's prediction that rendering, report parsing, and deviation-checking would all need updating did not hold; the only non-test consumer change was one field read in the Card Index renderer. The validator's check set moved from a 14-row list (bundling two IDs in row 1) to sixteen distinct `Check:` IDs. The plan format version is now 4, with no dual-reader for format 3 — a format-3 plan fails loud on `format-unrecognized`. Webster's execution order was unchanged at the time this item shipped: cards still ran strictly in declared plan order, and the `HasSymbolFields()` DAG seam stayed dead until the **webster: DAG-derived card sequencing** entry above activated it.
-   See `internal/planparser`'s package documentation and the pinned [contracts/specs/loom-plan-spec.md](../contracts/specs/loom-plan-spec.md).
-
-1. **loom: redesign the Discussion format** — a companion design doc to `plan-card-format.md`, bounding `Discussion-Write`'s exploration scope (no deep architecture/interface/dependency gathering — that class of fact is Quarry's or manual grep's job at Plan time), plus a relocation-and-exclusion rubric principle recorded in `designs/loom.md` for the future `Discussion-Review` producer to point at.
-   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric), where the folded-in content now lives, alongside `contracts/stencils/loom/loom-template-discussion.md` itself.
-
-1. **loom: Discussion-Write producer** — replaced the `Discussion-Write` stub with a real `SingleLLMProducer` behind a new `loomshed` commit decorator, reached through a new `DiscussionWrite` registry entry over two injected `shedrecipe.Env` closures (`DiscussionSpec`, `CommitDiscussion`).
-   The stencil was rewritten with the folded-in exploration bound, a bounded coarse-level architecture interview category, a `scribe:prose`/`scribe:conversation` load step, and a closing `lyx loom validate-discussion` self-check.
-   The producer is autonomous-only.
-   `manifest/designs/loom-format-discussion.md` is deleted per its own Lifecycle section, its durable content folded into the stencil and into `designs/loom.md`'s own copy of the relocation-and-exclusion rubric.
-   Two manual operator prerequisites remain outside what this task automates: `/plugin install scribe@loomyard`, which nothing in the tree performs or verifies, so a missing plugin degrades prose quality rather than breaking a run;
-   and `lyx stencil sync`, because `stencilstore`'s `ModeDev` reconcile warns instead of writing for an untouched stencil, so an already-seeded hub on a `-dev` binary keeps the old stencil text until the sync forces a refresh.
-   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
-
-1. **loom: Plan-Write producer** — replaced the `Plan-Write` stub with a real `SingleLLMProducer` behind a new `loomshed` rotate-and-commit decorator, reached through a new `PlanWrite` registry entry over two injected `shedrecipe.Env` closures (`PlanSpec`, `CommitPlan`).
-   The decorator archives every top-level `.md` file of `_lyx/plan/` into an `archive-<stamp>/` subdirectory before delegating, which is what keeps a `Plan-Validate` or `Plan-Review` bounce from ping-ponging on `index-file-mismatch`.
-   `internal/planparser` gained one pure string helper, `ArchiveDirName`, as the sole declarer of that subdirectory's name.
-   The registry grew to fourteen entries.
-   The stencil gained a `scribe:prose`/`scribe:testing` load step, a degraded-mode section for the absent quarry inventory, a Verify-authoring rule, and a closing `lyx loom validate-plan` self-check.
-   The producer is autonomous-only.
-   Two manual operator prerequisites remain outside what this task automates, both inherited for the same reason the Discussion-Write entry above records them: `/plugin install scribe@loomyard`, which nothing in the tree performs or verifies, so a missing plugin degrades the plan agent's prose quality rather than breaking a run — the plan stencil's Step 0 gives `Plan-Write` the identical skill load that prerequisite exists for;
-   and `lyx stencil sync`, because `stencilstore`'s `ModeDev` reconcile warns instead of writing for an untouched stencil, so an already-seeded hub keeps the old stencil text until the sync forces a refresh.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-
-1. **Shed recipe: engine registry** — shipped `internal/shedrecipe`, the name → constructor mapping the future recipe loader resolves each row's `Engine` field against, registering all twelve engine names: `Batchifier`, `Bouncer`, `BurlerRound`, `DiscussionValidate`, `Finalize`, `LoomPreflight`, `PlanValidate`, `Preflight`, `Publish`, `SingleLLM`, `Stub`, `Webster`.
-   Every registry value has the fixed `Constructor` signature `func(name string, cfg Config, env Env) (shedengine.ShedProducer, error)`, with the `Config`/`Env` split this task settled: `Config` is the recipe row's portable, already-decoded configuration, and `Env` is the caller-filled bundle of absolute roots and injected seams, never a value that differs between two rows.
-   `internal/loomshed` exported six of its own producer constructors (`NewLoomPreflight`, `NewBatchifier`, `NewDiscussionValidate`, `NewPlanValidate`, `NewStub`, `NewWebsterProducer`) so the registry could reach them, widening only their declared return type to `shedengine.ShedProducer` and keeping every concrete type unexported.
-   A coverage guard pinned the registry against loom's real row list, both directions, at the time this piece shipped;
-   that guard has since moved to `internal/loomrecipe/coverage_guard_test.go` (the loom-driving half) and `internal/shedrecipe/registry_test.go` (the exact-names pin) when `loom: convert to a Shed recipe` landed — see that entry below.
-   This piece deliberately did not build the recipe file format, the loader, or the loom conversion — the `loom: convert to a Shed recipe` entry below shipped that; the Shed-setup validity checker piece has since shipped too, see its own entry below.
-   See [designs/shed-recipe.md](designs/shed-recipe.md) and the `internal/shedrecipe` package documentation.
-
-1. **Shed recipe: loader/builder** — shipped `internal/shedbuild`, the package that decodes a recipe document and assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` already consumes unchanged, exporting four functions: `Parse` decodes a byte slice into a `Recipe` and runs every shape check; `Load` reads a told absolute path and delegates to `Parse`; `Build` resolves each row's `Engine` name against the `internal/shedrecipe` registry and calls the returned constructor with a caller-supplied `shedrecipe.Env`; `Check` forwards an assembled producer list plus a `Recipe`'s own `Entry` and `Terminals` into `shedcheck.Check`, for a caller's own authoring-time test suite.
-   The document shape decodes straight into `Recipe` with no intermediate struct: a told `version`, a told `entry`, a told `terminals` list, and a `producers` list whose rows carry `name`, `engine`, `config`, `on_done`, `on_stuck`, `segment`, and `max_bounces`.
-   Decoding is strict — unknown keys and duplicate keys are errors at both document level and row level, and every message keeps the decoder's own yaml line number.
-   The package owns file shape and engine-name resolution alone: it runs no reachability, cycle, blind-gate, dangling-target, or segment analysis of its own, since `shedengine`'s own validation and `internal/shedcheck` already own routing, cycles, and reachability.
-   Building inherits construction-time filesystem effects from three registry constructors reaching disk of their own accord, producing four distinct effects; `Build` is a pass-through for those effects, neither suppressing nor wrapping them.
-   A loom-equivalence test proved the format's correctness at the time this piece shipped, by hand-authoring loom's then-current thirteen-row producer list as a recipe fixture and asserting the two thirteen-row `[]shedengine.ProducerDef` lists agreed field by field and type by type;
-   that test and its fixture were retired once the fixture became `contracts/recipes/loom-recipe.yaml` itself, when `loom: convert to a Shed recipe` landed (see that entry below).
-   This task shipped no production recipe file of its own — the only recipe documents it added were its own test fixtures — and it added no exported surface to the engine registry and touched no existing production file.
-   See [designs/shed-recipe.md](designs/shed-recipe.md) and the `internal/shedbuild` package documentation.
-
-1. **Shed-setup validity checker** — shipped `internal/shedcheck`, an authoring-time analysis that walks an assembled `OnDone`/`OnStuck` producer graph and reports every structural defect it finds, in eight fixed finding kinds.
-   Its enforcement point is a `go test` invariant over loom's own producer list, not a call from any production constructor.
-   See the `internal/shedcheck` package documentation and [designs/shed.md](designs/shed.md#checking-an-assembled-producer-list).
-
-1. **loom: convert to a Shed recipe** — replaced `internal/loomshed`'s hardcoded `[]shedengine.ProducerDef` Go literal with `contracts/recipes/loom-recipe.yaml`, an embedded-default recipe file, and a new package, `internal/loomrecipe`, that parses and builds it via `internal/shedbuild` against a caller-supplied `shedrecipe.Env`.
-   `internal/loomrecipe` sits above `internal/loomshed` (avoiding the production import cycle `internal/shedrecipe`'s registry would otherwise close) and is the recipe's sole production consumer; `internal/loomcli` wires to it in place of `loomshed.New`.
-   `internal/loomshed` shed its own `New`/`Deps`/`ShedPaths` entirely, keeping only the thirteen row-name constants, its six exported producer constructors the registry reaches for, and its status-seed/preflight helpers; its assembled-graph tests (coverage guard, sequencing, cancellation, resume) moved to `internal/loomrecipe` along with duplicated fixture helpers, per the row-name-authority-stays-with-the-go-constants and duplicate-test-helpers-rather-than-share-them decisions.
-   Landed the Recipe-Format Sole-Parser Invariant in `CONSTRAINTS.md`, alongside repointed Shed Recipe Registry Invariant and Told-Geometry Invariant enforcement lines.
-   `Env.Landing` was deliberately left unfilled by `internal/loomcli` at the time this entry shipped, and the `landing: parent-fabric resolution chain` Done entry closed that gap.
-   See [designs/shed-recipe.md](designs/shed-recipe.md), [designs/loom.md](designs/loom.md), and the `internal/loomrecipe` package documentation.
-
-1. **Retire perch** — deleted `internal/perchengine`, `internal/perchcli`, and the `lyx perch run|pause` CLI verb outright, together with every perch-only surface they anchored: `hubgeom.PerchGeometry`, `standalonegeom.PerchGeometry`, `configreg`'s `perch` config module, `shedadapters.PerchProducer`, and the `perch-suite` sandbox scheme.
-   `loom` never called the module (only stubs), so nothing active depended on it; the replacement is the hand-wired `Bouncer`+`Burler` pair each review-producer task builds directly (see the `CLAUDE.md` terminology note on "perch," the folk name for that pair).
-   `internal/treadleengine` deliberately stays, reserved for a possible future `Tenter` consumer — its own retirement is a separate call made once `Tenter` lands.
-
-1. **Bouncer: the generic review-gate producer** — shipped the generic `Bouncer` producer in `internal/shedadapters`: its four `Call` modes (seed, re-bounce, judge, replay) told apart by on-disk artifacts alone, its three own file contracts, the exported `ResolveRound` helper both halves of a segment share, and the two generic stencil templates.
-   See the `internal/shedadapters` package documentation and [designs/shed.md](designs/shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer).
-
-1. **preflight: split into two Shed rows — a generic one, and loom's own** — `loomengine.Preflight`'s single function bundling the orchestrator-agnostic tier-1/tier-2 checks with loom's own check-4 seed coherence split into two `ShedProducer` rows.
-   Row 1, `Preflight`, now lives in `internal/preflightshed` as a told-name `ShedProducer` over `internal/preflight.Check`, reusable verbatim by a second product's producer list.
-   Row 2, loom's own, is `internal/loomengine.CheckSeed` over told paths, driven as a second row named `Loom-Preflight`.
-   The `check3BlocksSeed` short-circuit is gone: `Shed`'s own sequencing already provides what it hand-rolled, since a `Stuck` row 1 bounces or blocks and `Shed` never advances to row 2 at all.
-   Seed-check coverage moved from Tier 2 to Tier 1.
-   See the `internal/preflightshed` and `internal/loomengine` package documentation.
-
-1. **shedengine: per-producer bounce budget + explicit `OnDone` routing** — replaces `Run`'s single run-wide `bouncesRemaining` counter with a per-producer, episode-scoped budget derived from `Status.History`, and replaces `Done`'s implicit sequential-next routing with an explicit `OnDone` field with no positional fallback — the producer list is now pure storage plus display order, with zero routing meaning of its own.
-   See the `internal/shedengine` package documentation and [designs/shed.md](designs/shed.md#the-shed-loop--exact-mechanics).
-
-1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine actually reachable, shipped with all four verbs: `run` (the bootstrap), `drive` (the no-tmux foreground escape hatch), `status` (one-shot and `--watch`), and `pause`.
-   `run` seeds the status file and commits it weft-side before the driver ever spawns — the ordering that makes loom's own first Preflight precondition row pass immediately rather than blocking on the seed's own dirt — then spawns the detached driver and waits on a handshake for it to take the run lock, so a re-entrant invocation ensures substrate and attaches rather than double-spawning.
-   The pair-creating fabric verb now writes and commits a parent-branch provenance record (`_lyx/fabric/origin.json`) at pair-creation time, which `run` reads rather than infers, and the per-worktree launcher set gained a third script, `run<ext>`, alongside the existing `ide`/`fabric-checkout` scripts.
-   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap) and the `internal/loomcli` package documentation.
-
-1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. `Publish` opens a pull request when the parent branch requires one and returns `stuck` (never `done`) while it awaits review, so `Shed` cannot advance past it and merge seconds later; `Finalize` always syncs against the parent through the shared `internal/mergeresolve` engine, then merges the task branch back, with Raddle regeneration folded into that same merge critical section rather than a separate step.
-   See the `internal/landingshed` and `internal/mergeresolve` package documentation.
-
-1. **fabric: merge-conflict primitive** — Fabric's merge/conflict lifecycle: `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` on `Fabric`, surfaced as `lyx fabric merge-in`/`lyx fabric merge [--squash] [--continue|--abort]`, with git-mirroring exit codes and conflicts reported as unified, worktree-relative paths, never exposing which internal side (warp/weft) produced them.
-   See the `internal/fabricengine` package documentation for the merge surface's own mechanism.
-
-1. **producers standalone: invariants and docs** — landed the cross-cutting Told-Geometry Invariant in `CONSTRAINTS.md` (the three-tier producer/orchestrator split), reworded the Cwd Resolution Invariant to state what `Resolve` actually validates, and closed out the design doc per the documentation lifecycle.
-   The final consolidation task for this line of work.
-   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
-
-1. **producers standalone: told-geometry foundations** — `planparser` took over the plan-directory path from `loomengine`, `configengine` gained a template fallback so the producer config loaders (shuttle, reed, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
-   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
-
-1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
-   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) and the `internal/preflight` package documentation.
-
-1. **producers standalone: producer engines** — `burlerengine`+`perchengine` and `websterengine`+`webstercli` convert to told geometry; Webster also gains its own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`).
-   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) and the `internal/hubgeom` and `internal/standalonegeom` package documentation.
-
-1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository; the optional quarry uniformity pass landed alongside it.
-   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
-
-1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning (`internal/gitkit`/`internal/hubforge`), never hand-assembled.
-   See the `internal/gitkit` and `internal/hubforge` package documentation.
-
-1. **fabric** — unified warp↔weft git-coordination module replacing warp/weft; cut over and old modules deleted.
-
-1. **fabric: unified-repo view — slices 7-10** — the `internal/hubgeometry`-shrink follow-up campaign (GitHub issue #127).
-   See [designs/fabric-unified-view.md](designs/fabric-unified-view.md) — the doc survives this task because a later orchestration-layer slice is still open.
-
-1. **fabric: crucible follow-ups — slices 12-15** — closed out the v2 crucible campaign's eight data-loss defects: a single destructive-operation gate (`internal/fabricengine/destroy.go`), a mutation-record envelope on every mutating verb result, and a read-modify-write race fix in the correspondence index.
-   Landed with the Fabric Destruction Chokepoint Invariant and the Mutation Record Invariant in `CONSTRAINTS.md`.
-   See the `internal/fabricengine` package documentation.
-
-1. **git-native-library: feasibility spike** — evaluated `go-git` as a replacement for `internal/gitexec`'s shell-out plumbing.
-   Recommendation: ADOPT-PARTIAL, narrowed further by the `native clients` migration below.
-   See the `internal/gitrepo` package documentation.
-
-1. **native clients: migrate `gitrepo` to `go-git` + `selfreportengine`'s `gh`-CLI transport to `go-github`** — `gitrepo`'s read surface migrated to go-git; write/rebase paths stay CLI-bound on measured Windows evidence.
-   `selfreportengine`'s `CreateIssue` migrated to `go-github` via the new `internal/githubclient` leaf.
-   Landed the GitHub Auth Invariant and the gitrepo Client Boundary Invariant in `CONSTRAINTS.md`.
-   See the `internal/gitrepo` and `internal/githubclient` package documentation.
-
-1. **board** — task tracker (storage model superseded by the `board: move storage to weft:main` item below).
-
-1. **board: use `gitrepo` as its git operator** — board's detached sync talks to git exclusively through `gitrepo.Repo`, replacing hand-rolled `gitexec` calls.
-
-1. **board: move storage to `weft:main`** — replaces board's separate remote repo with a reserved `weft:main` branch, a second weft worktree at `<hub>/_board`.
-   See the `internal/boardengine` package documentation.
-
-1. **shared infra** — `internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/state`.
-
-1. **gitrepo** — generic, repo-agnostic git primitives, split across two backends — go-git for local object/ref reads, `internal/gitexec` for anything remote-authenticating or working-tree-mutating.
-   Consumed by `fabric`.
-
-1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by `warp`).
-
-1. **weft** — companion weft repo, paired warp+weft spawn/teardown (superseded by the `fabric` module).
-
-1. **config TUI** — `lyx config` interactive menu + `reconcile`.
-
-1. **warp** — warp↔weft-coordinated git topology (clone, add/remove, checkout, reconcile, cleanup) (superseded by the `fabric` module).
-
-1. **proc** — cross-OS process spawn.
-
-1. **reed** — tmux overlay + strand bookkeeping + render (renamed from `mux`, no behavior change).
-
-1. **shuttle** — run one LLM agent as an interactive tmux strand over a swappable engine.
-
-1. **burler** — one review+fix round (A-review → B-fix).
-
-1. **perch** — the gate loop: run `burler` rounds until `APPROVED`/`STUCK`.
-
-1. **webster: rewrite for flat card list** — fork-per-card, consumes the flat card-list plan format via `internal/planparser` (sole parser) and `internal/batcher`.
-   See the `internal/websterengine` package documentation.
-
-1. **plan-format: flat card list** — a card carries `What:`, five typed file-op fields, and `Depends-on:`; symbol fields wait for quarry.
-   See [contracts/specs/loom-plan-spec.md](../contracts/specs/loom-plan-spec.md).
-
-1. **built-in CLI help** — self-documenting `lyx`/`lyx <module>`/`lyx <module> <cmd> --help`.
-
-1. **selfreport** — file Loomyard bugs as GitHub issues (`lyx selfreport create`).
-
-1. **loom: contracts, Preflight, Discussion producer** — the three loom pieces shipped so far (loom as a whole is not done — see the Planned `loom` item).
-
-1. **loom: Planner producer** — reads the discussion decision-record and writes a plan-format flat-card plan; a prompt/profile fed to `shuttle.Run`, not a module.
-   No review logic of its own.
-
-1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target (`deploy-dev`/`deploy-dev.cmd`) so review/sandbox tooling never overwrites the stable production binary with an in-progress test build.
-   See CONSTRAINTS.md's Dev/Prod Binary Separation invariant.
-
-1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalized `perch`'s round loop into `internal/treadleengine`, a shared engine with a pluggable `RoundRunner` seam; `perch` rewritten onto it in the same task, behavior/CLI unchanged from the outside.
-   See the `internal/treadleengine` package documentation.
-
-1. **gitexec: checked entry point + call-site migration** — `internal/gitexec`/`internal/gitrepo` each gained a checked, must-succeed entry point (`Run`/`runChecked`) alongside the original raw form; every call site now uses whichever is correct.
-   Landed the gitexec Checked-Call Invariant in `CONSTRAINTS.md`.
-   See the `internal/gitexec` package documentation.
-
-1. **`PATTERN.md` — loomyard's own invariants mechanism, wired into every code-touching agent** — a from-scratch equivalent of Millhouse's `CONSTRAINTS.md` (present in this repo only because mill develops loomyard), owned by loomyard instead.
-   Supersedes the constraints-hiding half of Someday's `warp-visibility`.
-   See the `internal/pattern` package documentation.
-
-1. **Shed: shared outer phase-FSM, no predefined slots** — shipped the skeleton: `internal/shedengine`'s loop, status file, `ShedProducer` interface, and producer-list validation, which `loom` and the eventual `Hardener` are each `Shed` plus their own producer list on top of.
-   This is the skeleton only — the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) shipped as their own later task, below.
-   Landed the Shed Producer-Seam Invariant in `CONSTRAINTS.md`.
-   See the `internal/shedengine` package documentation and [designs/shed.md](designs/shed.md), whose retention past this landing is justified in its own status banner rather than restated here.
-
-1. **Shed's engine adapters — `SingleLLMProducer`, the `perch` adapter, the `Webster` adapter** — shipped three reusable `ShedProducer` implementations in one new package, `internal/shedadapters`, each a thin wrapper over an already-shipped engine.
-   See [designs/shed.md](designs/shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer).
-
-1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings now live as real, directly-editable stencil files instead of Go source, read at call time through `stencilstore.Read`, same as every other producer prompt.
-   See the `internal/pattern` package documentation.
-
-1. **loom: phase-machine scaffolding** — shipped loom's full 13-row producer list: `Preflight`, `Loom-Preflight`, `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Webster` wired in as-is, `Publish` and `Finalize` since built for real by the `landing: Publish + Finalize producers` item above, and the remaining five rows (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stubbed. (`Plan-Sweep` is not a row — see the Someday `loom: build Plan-Sweep for real` item.)
-   After `loom: convert to a Shed recipe` (see Done below), `internal/loomshed` carries the thirteen row-name constants and six producer constructors this scaffolding built, while the list itself is `contracts/recipes/loom-recipe.yaml`'s.
-   loom's status file migrated onto `shedengine.Status`, with `loomshed.Seed` as its production seeder.
-   See the `internal/loomshed` package documentation and the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
-
-1. **shedadapters: Burler-round producer** — shipped `BurlerProducer`, a new reusable `ShedProducer` in `internal/shedadapters` wrapping one `burlerengine` A-review/B-fix round as a single Shed row.
-   It always returns `Stuck` to its segment's `Bouncer`, never `Done`, and resolves its round from disk over the review/fixer-report pair predicate rather than holding an attempt number in memory.
-   `burlerengine.Profile.ClusterExclude` shipped alongside it as the per-call cluster-fan trimming knob.
-   See the `internal/shedadapters` package documentation.
-
-1. **landing: parent-fabric resolution chain** — filled `landingshed.Deps`' `OpenFabric`/`OpenParentFabric`/`PushBranch` closures for loom with `fabricengine.OpenParent`, a four-step resolution chain inside `internal/fabricengine`: list the current hub's worktrees, match the entry whose branch equals the task's recorded parent branch, resolve that worktree's path, and open its fabric.
-   A `Prunable` field on `WorktreeEntry` lets a stale worktree entry be skipped rather than matched, and two vocabulary-neutral methods, `Fabric.OriginURL`/`Fabric.PushBranch`, give `internal/loomcli` a way to reach fabric's push primitive without a bare `warp`/`weft` token.
-   `internal/loomengine.LoomScratchDir` and `internal/loomcli/drive.go` filling `shedrecipe.Env.Landing` in full, immediately before `loomrecipe.New`, close the gap that made `lyx loom drive` fail construction on every invocation.
-   The worktree-listing helper this used, `fabricengine.List`, already existed before this task — what this task added was the matcher, the resolver, and the opener on top of it.
-   See [internal/fabricengine](../internal/fabricengine/doc.go) and [designs/loom.md](designs/loom.md).
-
-1. **loom: self-checkable mechanical gates** — `Discussion-Validate`'s two checks (both `_lyx/discussion/` files exist, the decision record carries all seven required headings) moved out of `internal/loomshed` into a new stdlib-only leaf, `internal/discussionparser`, returning `[]Finding` rather than a bare bool — mirroring `internal/planparser`'s existing split from `loomshed.planValidate`.
-   `loomshed.discussionValidate.Call` became a thin wrap over `discussionparser.Validate`, its outward `Done`/`Stuck`/returned-error contract deliberately unchanged; the short-circuit order pinned in the new package (stat the support log first, then read the decision record, then check headings, an error always winning over a finding a later check would have produced) is what makes that unchanged-contract claim checkable rather than an aspiration.
-   `lyx loom validate-discussion` and `lyx loom validate-plan` shipped as zero-argument verbs on the existing `loom` subtree, each calling the exact function its `ShedProducer` row calls (`discussionparser.Validate`, `planparser.Validate` respectively), exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope under a `findings` key.
-   A three-way parity test per gate now asserts the verb and the row agree across `Done`, `Stuck`, and returned-error.
-   Two invariants were recorded in `CONSTRAINTS.md`: the Discussionparser Sole-Parser Invariant and the Gate Self-Check Parity Invariant.
-   No stencil under `contracts/stencils/loom/` was touched — instructing the writer agent to call these verbs belongs to the Done `loom: Discussion-Write producer` item and the Planned `loom: Plan-Write producer` item, which this item was sequenced ahead of precisely so the verbs would exist first.
-   See the `internal/discussionparser` package documentation and [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
-
-1. **loom: code-writing skills — comments, build, testing** — shipped `scribe`, a new Claude Code plugin with eight skills at `plugins/scribe/skills/`.
-   `prose` and `conversation` are always-active writing-style discipline for every piece of text an agent writes, not only chat replies — tone, user-choice, and file/shell conventions.
-   `code-quality` covers naming, abstraction, error handling, file organization, and comment content in one skill, since comment content is one craft with the rest of the code, not a separate skill.
-   `testing` holds language-agnostic testing principles; `golang-comments`, `golang-build`, and `golang-testing` cover Go-specific mechanics, each with a "this repo's configuration" section filled in with loomyard's own real toolchain and two-tier test scheme.
-   `handoff` is an eighth, explicit-invocation-only skill added after the review rounds closed: it writes a session handoff document to `.scratch/handoff.md` (or an argument-given path), opening with an instruction for the receiving session to load `scribe:conversation`/`scribe:prose` before reading the rest.
-   The plugin is registered in loomyard's own marketplace (`.claude-plugin/marketplace.json`, the same mechanism `prowler` already uses) and synced via `update-plugins.sh`; a `SessionStart` hook in `plugins/scribe/hooks/hooks.json` nudges `prose` and `conversation` to load at the start of any session with the plugin installed.
-   `code-comment-conventions.md`'s doc-comment rule now lives in `code-quality` as the canonical text; the design doc is kept, not deleted, holding only rationale and pointing at the skill — an exception to the usual module-doc lifecycle, since a skill has no Go package header to carry that rationale instead.
-   A `golang-quality` skill (Go-idiom content: accept-interfaces/return-structs, error-as-value mechanics, package design) was considered and explicitly not built — no concrete observed problem motivated it, unlike every other skill here.
-   Installing the plugin (`/plugin install scribe@loomyard`) is a manual step, not yet done.
-   See [designs/code-comment-conventions.md](designs/code-comment-conventions.md).
+Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
 
 ## Maintenance
 
@@ -406,7 +131,7 @@ No build order is implied between these items.
   Delete that doc once the module ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — a Done entry instead points at the module's own package documentation, which is where its durable detail lives from then on.
   If an entry keeps growing past a couple of sentences, that is a signal to move the growth into the doc it points to, not to let the entry itself grow.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout-backed plan symbol fields`, `raddle`, `webster: parallel card execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
+- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout-backed plan symbol fields`, `raddle`, `webster: parallel card/batch execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`warp-visibility`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
   Add new speculative ideas directly to Someday.

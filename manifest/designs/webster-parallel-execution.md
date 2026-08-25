@@ -14,6 +14,14 @@ quarry would also see other forks' uncommitted, potentially syntactically-broken
 Even this requires *strictly enforced* file-disjointness (not just DAG-edge-absence) to be safe.
 Not built.
 
+## A possible unblocking shape (2026-08-20)
+
+A structural alternative to the rejected concurrent-forks-in-one-tree shape above: each DAG-independent group (a batch, possibly one card) gets its own `fabric`-spawned worktree — genuinely its own git index/HEAD, which is what the rejected shape lacked — running the existing `Preflight → Webster → Finalize` row set unchanged, with `Webster`'s `Geometry.PlanDir` (already told, not derived) pointed at the source plan and a new batch-filter selecting the one group to run.
+Merge-back reuses `fabric`'s existing merge machinery, not new infrastructure.
+
+Grouping granularity (one card vs. several) is orthogonal to safety — the original rejection above conflated it with the working-tree-sharing hazard, but genuine worktree-per-lane isolation is what actually matters.
+Not yet a plan: needs the DAG source (the Someday `scout-backed plan symbol fields` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
+
 ## The case study (from an earlier, more detailed design draft, `websterv2.md`, now retired)
 
 A card-level dependency analysis of the 42-card plan that built webster v1 overturned the naive "linear chain" assumption:

@@ -2,7 +2,7 @@
 
 > **All four pieces — the engine registry, the recipe loader/builder, the validity checker, and loom's own conversion to a recipe file — are built and shipped, as `internal/shedrecipe`, `internal/shedbuild`, `internal/shedcheck`, and `internal/loomrecipe` respectively.**
 >
-> **Status: all four pieces of this group are Done.** See `manifest/roadmap.md`'s Done entries for each.
+> **Status: all four pieces of this group are Done.** See each package's own documentation for as-built detail — `manifest/roadmap.md`'s Done section is cleared regularly, not a durable record.
 
 ## The idea
 
