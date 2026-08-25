@@ -35,6 +35,11 @@ const loomDirName = "loom"
 // loomengine is this segment's sole declarer.
 const loomStatusFileName = "status.json"
 
+// reviewsDirName is the relative-path segment loomengine joins onto LoomScratchDir to form the
+// review segments' ephemeral scratch root.
+// loomengine is this segment's sole declarer.
+const reviewsDirName = "reviews"
+
 // DiscussionDirRel returns the worktree-anchor-relative form of DiscussionDir's path: the join of
 // lyxdirs.LyxDirName and discussionDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a directory segment
@@ -136,6 +141,20 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 // loomengine exposes beside its durable LoomStatusFile.
 func LoomScratchDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
+}
+
+// LoomReviewsDir returns the path to the root every review segment's `run_subdir` resolves
+// against for this worktree -- the value shedrecipe.Env.RunRoot takes.
+// It is built on LoomScratchDir rather than re-joining l.AnchorPath(), lyxdirs.DotLyxDirName, and
+// loomDirName a second time: the Lyxdirs Single-Declarer Invariant forbids a hand-built join naming
+// the .lyx literal a second time in production path construction, and LoomScratchDir is already the
+// accessor that names it once.
+// It is ephemeral, not durable: there is no commit seam for a Bouncer row, so the round reports,
+// verdicts, ledgers, focus files, and their archive siblings that land here would be untracked dirt
+// if they lived under the durable tree instead.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomReviewsDir(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), reviewsDirName)
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
