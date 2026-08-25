@@ -33,7 +33,7 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 - Every "sixteen"/16-row count in production source and comments moved to seventeen: `internal/loomshed/doc.go`, `internal/loomshed/loomshed.go`, `contracts/recipes/loom-recipe.yaml`'s header, `manifest/designs/shed-recipe.md`, `manifest/designs/loom.md`.
 - Test updates across `contracts/stencils/rubric_test.go`, `internal/loomrecipe/{coverage_guard,shape,sequence,fixture,recipe}_test.go`, and `internal/loomcli/smoke_test.go`.
 - One new `internal/shedrecipe/entries_burler_test.go` case covering the `cluster-fan` profile key, which no shipped recipe row exercises today.
-- Doc updates in the same commit per CLAUDE.md's task-completion rule: `manifest/designs/loom.md` (producer table row 13, the table/recipe divergence note, the "Webster-Review rubric" section gaining a "doc *about* the shipped stencil" framing paragraph matching the two sibling sections) and `manifest/roadmap.md` (Planned item removed).
+- Doc updates in the same commit per CLAUDE.md's task-completion rule: `manifest/designs/loom.md` (producer table row 13, the table/recipe divergence note, the "Webster-Review rubric" section gaining a "doc *about* the shipped stencil" framing paragraph matching the two sibling sections), `contracts/specs/loom-status-spec.md` (its mid-run example names the retired `Webster-Review` row — see the decision below), and `manifest/roadmap.md` (Planned item removed).
 
 **Out:**
 
@@ -58,14 +58,21 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 
 - Decision: the round derives the diff range itself, at review time, from artifacts already on disk.
   `profile.target` carries **`instructions` only, no `paths`**, and `tool-use: true` lets the round run read-only git.
-  The instructions name the derivation in order: read `_lyx/webster/state.json`, take the **lowest-numbered** entry in its `batches` map, use that entry's `startSha` as the base, and diff `<base>..HEAD`.
-  When `state.json` is unreadable or carries no batches, fall back to the merge-base against the parent branch named in `_lyx/loom/status.json`'s `product.parent`.
+  The instructions name one derivation and no guess-fallback: read `_lyx/loom/status.json`, take `product.parent`, and review `git diff $(git merge-base <parent> HEAD)..HEAD`.
+  When `status.json` is unreadable or `product.parent` is empty, the round raises a BLOCKING finding stating it could not determine the review range, and reviews nothing — silently reviewing a guessed range is a worse failure than an honest block.
+  `profile.fasit` is decided in the same breath: `paths: [_lyx/plan]` plus instructions naming the plan directory as the answer key and `manifest/designs/plan-card-format.md` as the Card model it implements.
 - Rationale: `burlerengine.Profile.validate` resolves and stats every `Target.Paths` entry, so a path entry must exist on disk — a diff has no such file.
   `validate` accepts a `FileSet` with `Instructions` and no `Paths`, which is exactly the escape this needs.
-  `_lyx/webster/state.json` is a durable, fabric-committed artifact (`internal/websterengine/state.go`), and `BatchState.StartSHA` is documented as "the durable base-commit record a resume or an operator diagnosis reads" — it is already the right source, it just was never wired to this consumer.
-  Both the primary and the fallback are file reads plus read-only git, which the Fabric Git Invariant explicitly exempts ("read-only verbs … are exempt — only *mutating* warp git must dispatch through fabric").
-- Rejected: (a) a new mechanical `Webster-Diff` row materializing the diff to a file for `target.paths` to point at — adds a production row and an artifact-lifecycle question to a task whose scope is a rubric and a perch;
-  (b) stamping `product.start_sha` for real and threading it through `shedrecipe.Env` — the right long-term fix, but it is a `Webster`-row change, a spec change, and a coherence-check change, i.e. its own task.
+  It does **not** offer the same escape for `Fasit`: `internal/burlerengine/profile.go:77-79` hard-errors on a `Fasit` carrying neither, so leaving it unset would fail the row's first round — hence the explicit `fasit` above, matching both shipped Burler rows.
+  The merge-base is the right base because the parent branch is where the run started and nothing but Webster commits warp content during a loom run — the discussion and plan artifacts are weft commits reached through the `_lyx` junction, so the warp branch normally carries no commits at all until Webster's implementers begin.
+  It is also the only candidate that survives recovery (see the rejected alternative below).
+  Both the file read and the git calls are read-only, which the Fabric Git Invariant explicitly exempts ("read-only verbs … are exempt — only *mutating* warp git must dispatch through fabric").
+- Rejected: (a) **`_lyx/webster/state.json`'s lowest-numbered batch `startSha`** — the obvious source, and wrong.
+  `recoverSpawn` writes a fresh `BatchState` with `StartSHA` set to the current HEAD into the *same* `State.Batches[batchNumber]` slot (`internal/websterengine/recoverbatch.go:185-225`, pinned by `recoverbatch_test.go:372`), so a recovered batch 1 yields a base that already contains its own committed work and the diff silently under-scopes.
+  A minimum across all batches is no safer: every slot is individually overwritable the same way.
+  Silent under-scoping in the terminal quality gate is the exact failure mode a gate must not have.
+  (b) a new mechanical `Webster-Diff` row materializing the diff to a file for `target.paths` to point at — adds a production row and an artifact-lifecycle question to a task whose scope is a rubric and a perch;
+  (c) stamping `product.start_sha` for real and threading it through `shedrecipe.Env` — the right long-term fix, but it is a `Webster`-row change, a spec change, and a coherence-check change, i.e. its own task.
 
 ### bouncer-artifact-paths-names-the-plan
 
@@ -76,7 +83,7 @@ Deciding how a diff is expressed through those two seams is the substance of thi
   A diff cannot be named there at all, so whichever value is chosen is a workaround;
   the question is only which one gives the judge the most useful reading.
   `_lyx/plan` is the card contract the diff is measured against — the judge needs it to evaluate the round's report at all, and both `Plan-Bouncer` and `Plan-Burler` already prove a bare directory entry works there (`NewBouncer` stats nothing).
-- Rejected: (a) adding `_lyx/webster/state.json` as a second entry — it is not under review, and the rubric already tells the judge where the base SHA lives;
+- Rejected: (a) adding `_lyx/loom/status.json` as a second entry — it is not under review, and the rubric already tells the judge where the parent branch is recorded;
   (b) `.`, the worktree root — technically legal, but "read each one" over a whole repo is meaningless instruction.
 - Recorded as an open risk: `BouncerConfig` has no way to express a non-file subject.
 
@@ -84,13 +91,15 @@ Deciding how a diff is expressed through those two seams is the substance of thi
 
 - Decision: `Webster-Burler` runs `fix-scope: source`.
   `Webster-Bouncer` sets **no** `commit_seam` key.
+  Both rows share `run_subdir: webster`, so the segment's round artifacts land at `<anchor>/.lyx/loom/reviews/webster/`.
 - Rationale: `FixScopeSource` is defined as "the target is the repo's own files.
   B's write surface is the working tree;
   it commits each fix individually once green … and never pushes."
   That is precisely this round's job, and the Fabric Git Invariant names it as the one permitted agent commit: "An agent does commit its own code to the **warp** repo (commit-per-fix) — the weft, never."
   This is deliberately *not* the same call as `Plan-Burler`'s `overlay`: the plan is weft content reached through the `_lyx` junction, whereas a code diff is warp content.
   With the fixer committing its own work there is no artifact left for the loop owner to commit, and `Commit` stays nil — the shipped no-seam configuration, which `bouncerEntry` documents as "a legitimate configuration and never an error".
-  The segment's own round artifacts under `_lyx/loom/reviews/webster/` are uncommitted, exactly as the two shipped segments' round artifacts are.
+  The segment's own round artifacts are uncommitted by construction, not by omission: `Env.RunRoot` is `loomengine.LoomReviewsDir`, which builds on `LoomScratchDir` and therefore lands under the **ephemeral `.lyx` tree**, not the durable `_lyx` one (`internal/loomengine/config.go:140-160`), per the Durable-vs-Ephemeral State Invariant.
+  Both shipped segments' round artifacts live there for the same reason.
 - Rejected: `fix-scope: overlay` — it would forbid the round from running git at all and restrict its write surface to `Target.Paths`, which this profile deliberately leaves empty;
   a fixer that cannot write source cannot fix a diff.
 
@@ -102,13 +111,19 @@ Deciding how a diff is expressed through those two seams is the substance of thi
   This is the first recipe row in the repo to name one.
 - Rejected: no fan (single reviewer), matching the two shipped segments — cheaper, but a single generic reviewer is a weak terminal gate over an entire task's output;
   `full` (eight lenses) — more coverage than a converge loop needs per round, and the loop already re-reviews across rounds.
-- Recorded as an open risk: `burler.yaml` is operator-owned and seed-only, so an operator who deletes the `standard` fan makes `loomrecipe.New` fail.
-  The failure is loud and named, at construction on the `drive` path only (not in `wire()`, so `status`/`pause` stay reachable) — the same failure class as a mistyped `rubric_stencil`, which `NewBouncer` already probes eagerly for.
+- Recorded as an open risk: `burler.yaml` is operator-owned and seed-only, so an operator who deletes the `standard` fan breaks this row — **at run time, not at construction.**
+  `burlerRoundEntry` passes `cluster-fan` through unvalidated (`internal/shedrecipe/entries_burler.go:163-167,219`);
+  `ResolveFan` runs only inside `Profile.validate`, which `burlerengine.Engine.Run` calls at the top of each round (`internal/burlerengine/engine.go:98`, `profile.go:107-113`).
+  So the failure surfaces when the `Webster-Burler` round first runs — at the very end of a whole loom run, after Webster has already built everything.
+  This is explicitly **not** the same failure class as a mistyped `rubric_stencil`, which `NewBouncer` probes eagerly at construction.
+  Adding an equivalent eager fan probe was considered and rejected for this task: `bouncerEntry`'s rubric probe works because `stencilstore.Read` needs only the told `StencilsDir`, whereas `ResolveFan` needs a `burlerengine.Config`, which `shedrecipe.Env` does not carry — it holds only the `Burler` engine interface.
+  Closing this properly means a new `Env` field or a new engine method, i.e. a `shedrecipe`/`burlerengine` surface change, both listed Out.
 
 ### perch-row-names-and-routing
 
 - Decision: the row pair is `Webster-Bouncer` and `Webster-Burler`, both carrying `segment: Webster-Review` and `max_bounces: 5`, mirroring both shipped perches exactly.
-  Routing: `Webster-Bouncer` → `on_stuck: Webster-Burler`, `on_done: Publish`.
+  Routing, all four edges: the upstream `Webster` row's `on_done` changes from `Webster-Review` to **`Webster-Bouncer`** (`contracts/recipes/loom-recipe.yaml:182-184`), which is the segment's inbound edge.
+  `Webster-Bouncer` → `on_stuck: Webster-Burler`, `on_done: Publish`.
   `Webster-Burler` → `on_stuck: Webster-Bouncer`, `on_done: Webster-Bouncer`.
   The current `Webster-Review` row's `on_stuck: Webster` edge disappears.
   Neither row sets `model`, `effort`, `version`, or `timeout_s`, so both fall back to the run-wide `Env.Review*` values `loom.yaml` supplies.
@@ -127,11 +142,20 @@ Deciding how a diff is expressed through those two seams is the substance of thi
   - Findings raised against the plan itself.
     The plan is the measuring stick and never the subject, exactly as the decision record is for `Plan-Review`;
     a plan-authoring finding cannot be satisfied by changing the diff.
-  - Findings about `_lyx` overlay artifacts — the discussion pair, the plan directory, and this segment's own round artifacts are not the diff.
+  - Findings about overlay artifacts — the discussion pair and the plan directory under `_lyx`, and this segment's own round artifacts under `.lyx/loom/reviews/webster/`, are not the diff.
   - A missing `ImpactSummary` on any card, and incomplete `DependsOn`/`Produces` — both belong to `Plan-Review`, already passed.
 - Rationale: the design section names only the two "also flag" dimensions, but a rubric with no do-not-flag list contradicts the framing both shipped rubrics carry ("over-flagging is a judgment failure mode a mechanical producer … cannot exhibit"), and this gate sits downstream of three separate upstream gates whose findings it would otherwise re-derive.
   Enumerating a full code-review checklist instead was rejected: `burler.yaml`'s lens library already carries that vocabulary, and duplicating it in the rubric would drift from it.
 - Rejected: two "also flag" items and nothing else.
+
+### the-status-spec-example-moves-to-webster
+
+- Decision: `contracts/specs/loom-status-spec.md`'s mid-run example (lines 112–132) currently uses `Webster-Review` as its `current_producer`, `activity`, and `history` value, with `error: "stuck with no OnStuck target"`.
+  Retarget the example at the **`Webster`** row rather than at `Webster-Bouncer`.
+- Rationale: the example's whole point is a row that escalates because it has no `on_stuck` target.
+  `Webster-Bouncer` has one (`Webster-Burler`), so pointing the example at it would make the example's own `error` string false.
+  `Webster` genuinely carries no `on_stuck` in the recipe, both before and after this change, so it keeps the example true with a one-token edit.
+- Rejected: leaving the example naming a row that no longer exists — a spec example naming a retired row is the kind of stale reference the Documentation Lifecycle exists to prevent.
 
 ### stub-stays
 
@@ -181,9 +205,24 @@ The ones it must **not** touch: `internal/planparser/validate.go`, `contracts/sp
 **`manifest/designs/loom.md`'s table-vs-recipe divergence note** (the paragraph beginning "**The table and the shipped recipe diverge deliberately.**") is arithmetic that changes with this task: the recipe goes to seventeen rows against the table's fifteen entries, and the collapsed-pair count goes from two to three.
 
 **Diff-base source, verbatim from the code.**
-`internal/websterengine/state.go`: `State.Batches map[int]*BatchState`, and `BatchState.StartSHA` is "the repo HEAD immediately before this batch's implementer first forked (or, for a recovery batch, first spawned)".
-The file lives at `<websterDir>/state.json`, i.e. `_lyx/webster/state.json`.
-`internal/loomengine/status.go`: `Status.StartSha *string` with json tag `start_sha`, and `Status.Parent` carries the parent branch.
+`internal/loomengine/status.go`: loom's `product` payload is `Status{Slug, Parent, StartSha *string}`, json-tagged `slug`/`parent`/`start_sha`, persisted at `_lyx/loom/status.json`.
+`Parent` is the field the derivation reads;
+`StartSha` is the one that is never written.
+
+**Why `state.json` is not the base**, since it is the first thing a reader will reach for: `internal/websterengine/state.go` declares `State.Batches map[int]*BatchState` with `BatchState.StartSHA` documented as "the durable base-commit record a resume or an operator diagnosis reads", which reads like exactly the right source.
+It is not, because `recoverSpawn` (`internal/websterengine/recoverbatch.go:185-199`) builds a fresh `BatchState` whose `StartSHA` is the *current* HEAD, and `RecoverSpawnOrAttach` assigns it back into `deps.State.Batches[batchNumber]`, overwriting the original.
+`recoverbatch_test.go:372` pins that behaviour.
+Every batch slot is individually overwritable this way, so neither the lowest-numbered slot nor a minimum across all slots is safe.
+
+**Where `run_subdir` resolves.**
+`Env.RunRoot` is `loomengine.LoomReviewsDir` = `LoomScratchDir(l)/reviews` = `<anchor>/.lyx/loom/reviews` (`internal/loomengine/config.go:140-160`).
+Its own doc states the tree is ephemeral by design and that a commit seam, where configured, commits the artifact under review and never this tree.
+Note the `.lyx`/`_lyx` distinction is load-bearing throughout this task: durable overlay content is `_lyx`, machine-local ephemera is `.lyx`, per the Durable-vs-Ephemeral State Invariant.
+
+**Where `cluster-fan` is validated.**
+Not in `shedrecipe`: `burlerRoundProfile` reads the key with `configString(cfg, "cluster-fan", false)` and passes it straight onto `Profile.ClusterFan` (`internal/shedrecipe/entries_burler.go:163-167,219`).
+`ResolveFan` is called only from `Profile.validate` (`internal/burlerengine/profile.go:107-113`), which `Engine.Run` calls per round (`internal/burlerengine/engine.go:98`).
+An unknown fan name therefore fails the round, not the build.
 
 ## Constraints
 
@@ -237,8 +276,10 @@ Update the file's own header comment, which currently enumerates the two rubrics
   That seeding is the single most likely source of a first-run failure;
   check how `6f66fff1` did it for `loom-rubric-plan-review` and follow it.
 
-**`internal/shedrecipe/entries_burler_test.go`** — one new case for `cluster-fan`, which no shipped recipe row exercises: assert the key maps onto `burlerengine.Profile.ClusterFan`, and assert an unknown fan name fails construction with a named error.
-This is the only genuinely new coverage in `shedrecipe`;
+**`internal/shedrecipe/entries_burler_test.go`** — one new case for `cluster-fan`, which no shipped recipe row exercises: assert the key maps through onto `burlerengine.Profile.ClusterFan`, and nothing more.
+Deliberately **no** "unknown fan name fails construction" assertion — `burlerRoundProfile` never resolves the name, so no such error exists at construction to assert;
+that failure belongs to `Profile.validate` and is `burlerengine`'s own to cover.
+This mapping case is the only genuinely new coverage in `shedrecipe`;
 every other key the perch uses is already covered by the two shipped segments' tests.
 
 **`internal/loomcli/smoke_test.go`** — row-count assertion update only.
@@ -252,18 +293,27 @@ every other key the perch uses is already covered by the two shipped segments' t
 
 - **`product.start_sha` is dead.**
   `contracts/specs/loom-status-spec.md` documents it as the diff base;
-  nothing writes it.
-  This task routes around it via `_lyx/webster/state.json`.
+  nothing writes it (`internal/loomshed/seed.go` seeds it `nil`, and no assignment exists anywhere).
+  This task routes around it with a merge-base against `product.parent`.
   If `start_sha` is later filled for real, the rubric's derivation instructions become the second, redundant source and should collapse onto it.
   Wants its own roadmap item.
+- **The merge-base is not identical to the run's start SHA when the branch already carried warp commits.**
+  In a normal loom run the warp branch has no commits before Webster, so the two coincide.
+  If an operator hand-committed source on the branch before starting the run, those commits fall inside the review range.
+  Judged acceptable, arguably correct: the gate then reviews everything the branch introduces rather than a subset.
+- **A recovered batch invalidates `state.json` as a diff base.**
+  Not a risk this task carries — it is why `state.json` was rejected — but recorded here because the rejection is the non-obvious part and a future reader will otherwise re-propose it.
 - **`BouncerConfig` cannot express a non-file subject.**
   `artifact_paths` is required, absolute, path-shaped, and rendered into the generic judge prompt as "read each one".
   `Webster-Review` is the first row whose subject is not a file, and it works around this by naming the plan.
   If a second such gate appears (`Tenter` is the likely candidate), a generic `subject_instructions` key on `Bouncer` becomes the right fix.
-- **Naming `cluster-fan: standard` couples recipe construction to an operator-owned config file.**
+- **Naming `cluster-fan: standard` couples the round to an operator-owned config file, and fails late.**
   `burler.yaml` is seed-only and never re-seeded;
-  deleting the `standard` fan is a supported operator choice that would make `loomrecipe.New` fail on the `drive` path.
-  Loud and named, not silent, but new — no recipe row depended on `burler.yaml` content before this one.
+  deleting the `standard` fan is a supported operator choice.
+  The resulting failure lands when the `Webster-Burler` round first runs — at the end of a whole loom run, after Webster has built everything — not at construction, because `cluster-fan` is passed through unvalidated by `shedrecipe` and resolved only inside `Profile.validate`.
+  Loud and named when it fires, but expensively late.
+  No recipe row depended on `burler.yaml` content before this one.
+  The eager-probe fix is out of scope (it needs an `Env`/engine surface change) and is the obvious follow-up if this ever bites.
 - **Five forks per round is a real cost step.**
   This is the first clustered round in loom, over the largest artifact in the list, at the end of the run when the most work has accumulated.
   If it proves too expensive in practice, the cheap dial is `cluster-fan` — dropping the key reverts to a single reviewer with no other change.
@@ -285,3 +335,7 @@ every other key the perch uses is already covered by the two shipped segments' t
 - **Q:** Is `Stub` deleted now that no loom row uses it? **A:** [auto-pick] No — kept, and moved into `coverageGuardAllowedUnreachableEngines`. **Why:** `shedrecipe`'s registry is generic machinery shared by reference with `Hardener`'s future list, so removing an engine is a decision about that registry's surface rather than a consequence of loom finishing its own list.
 - **Q:** Does this task need a `Webster-Revalidate` row, mirroring `Plan-Revalidate`? **A:** [auto-pick] No. **Why:** `Plan-Revalidate` exists because a mechanical validator sits over the plan and the fixer rounds rewrite it after that validator already ran;
   there is no mechanical validator over a diff.
+- **Q:** (review r1 gap) `state.json`'s lowest-numbered batch `startSha` is overwritten by `recoverSpawn` — what is the recovery-safe diff base? **A:** [auto-pick] The merge-base against `product.parent` from `_lyx/loom/status.json`, with no guess-fallback: an undeterminable range raises a BLOCKING finding instead. **Why:** every `state.json` batch slot is individually overwritable, so no min-across-batches rescues it;
+  the merge-base is recovery-immune, and on a normal loom run it coincides with the run's start SHA because only Webster commits warp content.
+- **Q:** (review r1 gap) The `cluster-fan` risk was written as a construction failure, which the code contradicts — restate it, and decide whether an eager fan check is in scope. **A:** [auto-pick] Restate as a run-time failure at the `Webster-Burler` round;
+  no eager check in this task. **Why:** `ResolveFan` runs only inside `Profile.validate` at `Engine.Run` time, and an eager probe would need a `burlerengine.Config` that `shedrecipe.Env` does not carry — a `shedrecipe`/`burlerengine` surface change, both listed Out.
