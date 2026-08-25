@@ -59,7 +59,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `plugins/prowler/blockdetect.go`
   - `plugins/prowler/htmltext.go`
   - `plugins/prowler/fetcher.go`
-  - `plugins/prowler/testdata/reddit-login-page.html`
+  - `plugins/prowler/testdata/reddit-block-page.html`
 - **Edits:**
   - `plugins/prowler/fetch.go`
   - `plugins/prowler/reddit.go`
@@ -79,7 +79,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   Rewrite the function's own doc comment, which currently claims old.reddit.com "avoids gating" and "Reports false if request fails or yields too little content";
   both halves become false in this card, so it must instead state that anonymous old.reddit.com access is now login-gated, that the function reports the specific reason as an `error`, and that it deliberately skips Readability to preserve comments (the one clause of the existing comment that stays true).
   Update `TestFetchOldRedditHTML` in `plugins/prowler/fetch_test.go` to the new two-value form throughout, and add three sub-tests: a `302` whose `Location` is `https://old.reddit.com/login/?reason=lor2&dest=%2Fr%2Fgolang%2F`, asserting a non-nil error whose message contains `login` and that no second request was issued to follow it;
-  a `200` whose body is the contents of `plugins/prowler/testdata/reddit-login-page.html`, asserting a non-nil error carrying the detector's login-wall reason rather than a successful result;
+  a `200` whose body is the contents of `plugins/prowler/testdata/reddit-block-page.html`, asserting a non-nil error carrying the reason `looksLikeBlockPage` reports for that page rather than a successful result — old.reddit.com's login page is no longer distinguishable from this fixture by body content (see `## Prior failure` in `01-block-detection.md`), so this sub-test exercises `fetchOldRedditHTML`'s post-decode `looksLikeBlockPage` check with the fixture that is actually reachable;
   and a `200` whose body is the existing `redditLikeHTMLWithComments` constant, asserting success and a nil error, which is the guard that the new checks do not reject genuine Reddit content.
   `redditAdapter.Fetch` in `plugins/prowler/reddit.go` is this function's only caller outside `plugins/prowler/fetch.go` and today returns its result directly, so the signature change stops that file compiling unless it is adapted in this same card.
   Adapt it minimally — assign both results and return `out, err == nil` — and change nothing else in `plugins/prowler/reddit.go`;

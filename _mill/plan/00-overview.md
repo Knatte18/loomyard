@@ -134,6 +134,5 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `plugins/prowler/redditoauth_test.go`
 - `plugins/prowler/testdata/good-article.html`
 - `plugins/prowler/testdata/reddit-block-page.html`
-- `plugins/prowler/testdata/reddit-login-page.html`
 - `plugins/prowler/testdata/reddit-thread.json`
 - `plugins/prowler/testdata/reddit-www-interstitial.html`

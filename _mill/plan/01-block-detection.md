@@ -9,6 +9,10 @@ verify: go -C plugins/prowler test -run 'TestLooksLikeBlockPage|TestFetchPage|Te
 depends-on: []
 ```
 
+## Prior failure
+
+- Round 1: implementer stopped per card 1's own escape hatch — `curl -sL https://old.reddit.com/r/golang/` no longer returns the discussion-recorded 200 "Welcome to Reddit" login form; it now returns the same 403 "blocked by network security" body as `curl -s https://www.reddit.com/r/golang/.json` (confirmed reproducible: identical 189908-byte body across three independent Builder-side re-checks, including a direct fetch of the redirect's `Location` header target). Reason reported: "Card 1's live curl capture of old.reddit.com's login page returned the same 403 'blocked by network security' block page instead of the discussion-recorded 200 login form, so no genuine login-wall fixture exists to derive card 2's marker from; brief requires stopping and reporting rather than hand-writing a substitute." Self-resolved by dropping the separate login-wall fixture/signature (see revised Card 1/Card 2 below and Card 8 in `03-tiered-adapter.md`) — old.reddit.com's login page is no longer distinguishable by body content from the network-security block page, so the existing `"blocked by network security"` signature already covers it; the still-functioning 302-redirect-to-`/login/` mechanism (Card 8) remains the correct login-gate signal.
+
 ## Batch Scope
 
 This batch delivers the shared block/challenge-page detector and fixes the generic fetch cascade's silent-garbage defect, independently of anything Reddit-specific.
@@ -27,21 +31,21 @@ Batch-local decision beyond `## Shared Decisions`: the detector takes a plain `s
 - **Edits:** none
 - **Creates:**
   - `plugins/prowler/testdata/reddit-block-page.html`
-  - `plugins/prowler/testdata/reddit-login-page.html`
   - `plugins/prowler/testdata/reddit-www-interstitial.html`
   - `plugins/prowler/testdata/good-article.html`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Capture four fixture files under a new `plugins/prowler/testdata/` directory, using exactly one live request per fixture — never a loop, never a retry loop, and never a headless browser (the discussion records that repeated headless attempts escalate this IP's standing).
+- **Requirements:** Capture three fixture files under a new `plugins/prowler/testdata/` directory, using exactly one live request per fixture — never a loop, never a retry loop, and never a headless browser (the discussion records that repeated headless attempts escalate this IP's standing).
   Capture with `curl` only.
   Sources, one request each:
   (a) `plugins/prowler/testdata/reddit-block-page.html` from `curl -s https://www.reddit.com/r/golang/.json` — the 403 body containing the "blocked by network security" string;
-  (b) `plugins/prowler/testdata/reddit-login-page.html` from `curl -sL https://old.reddit.com/r/golang/` — the followed-redirect login page whose title is "Welcome to Reddit";
-  (c) `plugins/prowler/testdata/reddit-www-interstitial.html` from `curl -s https://www.reddit.com/r/golang/` — the ~8KB JavaScript challenge interstitial;
-  (d) `plugins/prowler/testdata/good-article.html` from `curl -s https://example.com/` — a known-good page that must never be flagged.
-  Trim (a) and (b) to at most 8KB each by keeping the document's opening `<html>`/`<head>`/`<title>` region plus the contiguous region containing the distinguishing marker text, and inserting a single HTML comment line reading `<!-- trimmed for fixture use -->` at each elision point;
+  (b) `plugins/prowler/testdata/reddit-www-interstitial.html` from `curl -s https://www.reddit.com/r/golang/` — the ~8KB JavaScript challenge interstitial;
+  (c) `plugins/prowler/testdata/good-article.html` from `curl -s https://example.com/` — a known-good page that must never be flagged.
+  Do **not** capture a separate login-page fixture: per `## Prior failure` above, `curl -sL https://old.reddit.com/r/golang/` (the followed-redirect target the discussion's reproduction table recorded as a distinct 200 "Welcome to Reddit" login form) now returns the identical 403 "blocked by network security" body as (a), so there is no distinguishable login-wall content left to capture — the existing network-security marker already covers this page.
+  The still-functioning login-gate signal is the un-followed 302 redirect itself (`Location: https://old.reddit.com/login/?reason=lor2&dest=...`), which Card 8 in `03-tiered-adapter.md` detects directly from the response status and header, not from body content.
+  Trim (a) to at most 8KB by keeping the document's opening `<html>`/`<head>`/`<title>` region plus the contiguous region containing the distinguishing marker text, and inserting a single HTML comment line reading `<!-- trimmed for fixture use -->` at each elision point;
   do not otherwise rewrite, reformat, or normalise the captured bytes, because the fixtures' whole value is that they are the genuine articles.
-  Leave (c) and (d) untrimmed — both are already small.
+  Leave (b) and (c) untrimmed — both are already small.
   If a capture returns something materially different from what the discussion's reproduction table records (for example, if Reddit has changed again and no marker string is present), stop and report it rather than hand-writing a substitute: a hand-written approximation would make the detector's tests prove nothing.
   Add no `.gitignore` entry and run no `git add -f` — these are ordinary tracked files.
 - **Commit:** `test(prowler): capture real Reddit block, login, and challenge page fixtures`
@@ -54,7 +58,6 @@ Batch-local decision beyond `## Shared Decisions`: the detector takes a plain `s
   - `plugins/prowler/fetch.go`
   - `plugins/prowler/fetch_test.go`
   - `plugins/prowler/testdata/reddit-block-page.html`
-  - `plugins/prowler/testdata/reddit-login-page.html`
   - `plugins/prowler/testdata/reddit-www-interstitial.html`
   - `plugins/prowler/testdata/good-article.html`
 - **Edits:** none
@@ -66,20 +69,20 @@ Batch-local decision beyond `## Shared Decisions`: the detector takes a plain `s
 - **Requirements:** Write `plugins/prowler/blockdetect_test.go` first, then `plugins/prowler/blockdetect.go`, and commit both together so the tree is never left with a failing build.
   Open each of the two new files with a descriptive header comment above the `package main` line, in the style every existing file in this module uses (see `plugins/prowler/htmltext.go`): what the file is for and why it exists, not a restatement of its identifiers.
   In `plugins/prowler/blockdetect.go`, package `main`, declare:
-  a `blockSignature` struct with two string fields, `name` (a short human-readable reason such as `"bot challenge"`, `"network-security block"`, `"login wall"`) and `marker` (an already-lowercased substring);
+  a `blockSignature` struct with two string fields, `name` (a short human-readable reason such as `"bot challenge"`, `"network-security block"`) and `marker` (an already-lowercased substring);
   a package-level `var blockSignatures []blockSignature` holding the table;
   and `func looksLikeBlockPage(text string) (reason string, blocked bool)`, which lowercases `text` once, returns the `name` of the first matching signature together with `true`, and returns `"", false` when nothing matches.
   Seed `blockSignatures` with these markers, all lowercase, exactly as written: `"blocked by network security"`, `"prove your humanity"`, `"complete the challenge below"`, `"checking your browser before accessing"`, `"verifying you are human"`, `"enable javascript and cookies to continue"`, `"attention required! | cloudflare"`, `"verifying your browser"`.
-  Then add two further signatures whose markers are *discovered from the captured fixtures* rather than assumed, because neither page's distinguishing text is known in advance:
-  a `login wall` signature whose `marker` is a distinctive substring of `plugins/prowler/testdata/reddit-login-page.html`;
-  and a `bot challenge` signature whose `marker` is a distinctive substring of the *static* bytes of `plugins/prowler/testdata/reddit-www-interstitial.html`.
+  Then add one further signature whose marker is *discovered from the captured fixture* rather than assumed, because its distinguishing text is not known in advance:
+  a `bot challenge` signature whose `marker` is a distinctive substring of the *static* bytes of `plugins/prowler/testdata/reddit-www-interstitial.html`.
+  (Per `## Prior failure` above, there is no separate `login wall` signature to discover: old.reddit.com's login page is no longer distinguishable by body content from the network-security block page, so the already-seeded `"blocked by network security"` marker covers it — the login-gate case is instead detected from the un-followed 302 redirect status/`Location` header in Card 8, `03-tiered-adapter.md`, not from body content here.)
   The interstitial needs its own discovered marker because `_mill/discussion.md`'s Gotchas record that its "Prove your humanity" text appears only after JavaScript runs, so none of the eight seeded markers above can be assumed present in the bytes `curl` captured;
   read the fixture and pick something the static document actually contains, such as the auto-submitting challenge form's `action` value or one of its hidden field names.
-  Both discovered markers must be absent from `plugins/prowler/testdata/good-article.html`, from `redditLikeHTMLWithComments`, and from `readableArticleHTML`;
-  the test named below is what proves each choice is discriminating.
-  If either fixture turns out to contain nothing distinctive enough to key on, stop and report it rather than weakening the marker into something a real article could contain — a false positive here silently discards genuine content.
-  Do not add a size threshold, a status-code check, or a title-only heuristic: the discussion records that the block page is ~190KB and the login page ~320KB, so size is not a usable signal, and the `www` interstitial's challenge text appears only after JavaScript runs, so the static title is not one either.
-  In `plugins/prowler/blockdetect_test.go`, package `main`, write `TestLooksLikeBlockPage` as a table-driven test reading each of the four fixtures with `os.ReadFile`, asserting `blocked` is `true` for the three wall fixtures and `false` for `plugins/prowler/testdata/good-article.html`, and additionally asserting `blocked` is `false` for the existing `redditLikeHTMLWithComments` and `readableArticleHTML` constants, both already declared in `plugins/prowler/fetch_test.go` and usable directly because every test file in this module is in package `main`, so a signature that would swallow real Reddit or article content fails the test.
+  The discovered marker must be absent from `plugins/prowler/testdata/good-article.html`, from `redditLikeHTMLWithComments`, and from `readableArticleHTML`;
+  the test named below is what proves the choice is discriminating.
+  If the fixture turns out to contain nothing distinctive enough to key on, stop and report it rather than weakening the marker into something a real article could contain — a false positive here silently discards genuine content.
+  Do not add a size threshold, a status-code check, or a title-only heuristic: the discussion records that the block page is ~190KB, so size is not a usable signal, and the `www` interstitial's challenge text appears only after JavaScript runs, so the static title is not one either.
+  In `plugins/prowler/blockdetect_test.go`, package `main`, write `TestLooksLikeBlockPage` as a table-driven test reading each of the three fixtures with `os.ReadFile`, asserting `blocked` is `true` for the two wall fixtures (`reddit-block-page.html`, `reddit-www-interstitial.html`) and `false` for `plugins/prowler/testdata/good-article.html`, and additionally asserting `blocked` is `false` for the existing `redditLikeHTMLWithComments` and `readableArticleHTML` constants, both already declared in `plugins/prowler/fetch_test.go` and usable directly because every test file in this module is in package `main`, so a signature that would swallow real Reddit or article content fails the test.
   The test makes no network call and spawns no process.
 - **Commit:** `feat(prowler): add shared block/challenge-page detector`
 

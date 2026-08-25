@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: self-resolved-verify-logic
 slug: prowler-fix-reddit-block
 branch: prowler-fix-reddit-block
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-review-r5  '2026-08-25T07:27:15Z'
 plan-fix-r5  '2026-08-25T07:28:27Z'
 planned  '2026-08-25T07:28:38Z'
 implementing  '2026-08-25T07:29:21Z'
+self-resolved-verify-logic  '2026-08-25T07:35:36Z'
 ```
 
 ## Batches
