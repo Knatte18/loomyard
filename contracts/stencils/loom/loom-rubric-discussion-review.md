@@ -1,8 +1,8 @@
 <!-- This is the Discussion-Review rubric. It is read by both rows of the Discussion-Review perch:
      the Discussion-Bouncer row interpolates it as bouncer-template-seed.md's and
-     bouncer-template-judge.md's {{.rubric}} marker value, and the Discussion-Burler row interpolates
-     it the same way into internal/burlerengine's own round prompt.
-     It is a marker VALUE, never a template -- it carries no {{.X}} markers of its own, and
+     bouncer-template-judge.md's rubric marker value, and the Discussion-Burler row interpolates it
+     the same way into internal/burlerengine's own round prompt.
+     It is a marker VALUE, never a template -- it carries no top-level stencil markers of its own, and
      internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
      sees it. -->
 
