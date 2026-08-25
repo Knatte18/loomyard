@@ -14,7 +14,8 @@ import (
 
 // bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins
 // and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves
-// artifact_paths against env.WorktreeRoot, and returns shedadapters.NewBouncer(cfg).
+// artifact_paths against env.WorktreeRoot, resolves the optional commit_seam key to one of
+// env.CommitPlan or env.CommitDiscussion, and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -40,6 +41,10 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
+	commitSeam, err := configString(cfg, "commit_seam", false)
+	if err != nil {
+		return nil, err
+	}
 	// A row setting model/effort/version overrides the Env value; a row omitting it takes the Env
 	// value; both absent leaves the provider default. An empty Config value and an absent key are
 	// the same thing here -- configString with required false returns "" for both -- and that is
@@ -56,8 +61,32 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
 	// than silently ignored.
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam"); err != nil {
 		return nil, err
+	}
+
+	// commit_seam names which of Env's two commit closures fills BouncerConfig.Commit. Absent
+	// leaves the resolved closure nil -- "no seam configured" is a legitimate configuration and
+	// never an error, which is what keeps every existing Bouncer row valid unchanged. A present
+	// key is guarded by requireSeam on the named Env field rather than assigned directly: without
+	// that guard a nil Env closure would silently assign a nil Commit, reproducing the exact
+	// no-seam condition this key exists to eliminate, with no error anywhere.
+	var commit func() error
+	switch commitSeam {
+	case "":
+		// No seam configured; commit stays nil.
+	case "plan":
+		if err := requireSeam("Bouncer", "CommitPlan", env.CommitPlan); err != nil {
+			return nil, err
+		}
+		commit = env.CommitPlan
+	case "discussion":
+		if err := requireSeam("Bouncer", "CommitDiscussion", env.CommitDiscussion); err != nil {
+			return nil, err
+		}
+		commit = env.CommitDiscussion
+	default:
+		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "commit_seam", "plan", "discussion", commitSeam)
 	}
 
 	if err := requireAbsRoot("Bouncer", "RunRoot", env.RunRoot); err != nil {
@@ -110,6 +139,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Effort:        effort,
 		Version:       version,
 		Shuttle:       env.Shuttle,
+		Commit:        commit,
 		Now:           env.Now,
 	}
 
