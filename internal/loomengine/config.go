@@ -2,9 +2,9 @@
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses
 // internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config
-// file, then validates the discussion and plan role model-specs' grammar via modelspec.Parse so a
-// typo'd spec fails loud at load time rather than hours into a run when the discussion or plan
-// producer first spawns.
+// file, then validates the discussion, plan, and review role model-specs' grammar via
+// modelspec.Parse so a typo'd spec fails loud at load time rather than hours into a run when the
+// discussion, plan, or review producer first spawns.
 
 package loomengine
 
@@ -144,6 +144,8 @@ type Config struct {
 	DiscussionTimeoutMin int    `yaml:"discussion_timeout_min"`
 	Plan                 string `yaml:"plan"`
 	PlanTimeoutMin       int    `yaml:"plan_timeout_min"`
+	Review               string `yaml:"review"`
+	ReviewTimeoutMin     int    `yaml:"review_timeout_min"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
@@ -168,6 +170,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Plan); err != nil {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "plan", err)
+	}
+
+	if _, err := modelspec.Parse(cfg.Review); err != nil {
+		return Config{}, fmt.Errorf("loom config key %q: %w", "review", err)
 	}
 
 	return cfg, nil
