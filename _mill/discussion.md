@@ -46,7 +46,8 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
 
 - A mode selector in `loom.yaml` (`discussion_interactive`, default `false`) carried through `loomengine.Config` into `internal/loomcli`'s `wire()`, replacing the hardcoded `true` at `internal/loomcli/wiring.go:139`.
 - A new `shuttleengine.Spec` field, `AwaitOperator bool`, that makes `Run.Wait` treat an `Asking` classification as non-terminal and keep polling.
-- A new `shuttleengine.Runner.Attach(Spec) (Result, bool, error)` that finds a still-live run matching the spec's output files and waits on it instead of starting a new one.
+- A new `shuttleengine.Runner.Attach(Spec) (Result, bool, error)` that finds a still-live, never-terminated run matching the spec's output files and waits on it instead of starting a new one.
+- One new persisted field, `RunState.Outcome`, written by `Run.finalize` on every terminal classification — see `attach-only-a-run-that-never-terminated`.
 - Widening the `shedadapters.Shuttle` seam by that one `Attach` method, and re-ordering `SingleLLMProducer.Call` to probe-then-archive-then-run.
 - Test coverage at every seam touched, plus a `loomrecipe` resume test pinning that the `Discussion-Validate` bounce path still respawns.
 - Docs in the same commit, at every site the reversal reaches — this design changes the *discipline* `manifest/designs/loom.md` states, not merely the one paragraph that flagged the trap:
@@ -77,6 +78,9 @@ Why now: the roadmap's first Planned item, and the last thing keeping loom's dis
 - Fixing `Discussion-Validate`'s discarded findings, or feeding a bounced-into `Discussion-Write` its prior artifacts or the validator's complaints.
   A bounce still re-interviews from scratch;
   that is a known wart recorded below, not this task's subject.
+- `internal/mergeresolve`'s own `Shuttle` seam (`deps.go:41-43`), a second one-method interface over the same `*shuttleengine.Runner` used by the landing rows' conflict-resolution spawn.
+  It is deliberately left with the respawn-over-a-live-agent path, for the same reason as the `Bouncer`/`Burler` carve-out below: it does not go through `SingleLLMProducer`, so widening that producer does not reach it, and giving it attach semantics is a separate change to a separate seam.
+  Naming it here so a plan writer does not have to guess whether the omission was considered.
 - Any change to `AskUserQuestion` handling.
   The stencil already forbids the tool in both modes and the interactive settings hook that records it stays exactly as it is.
 - The `lyx shuttle run --interactive` CLI's own outcome contract.
@@ -284,14 +288,27 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
 
 ### mechanism-failures-do-not-attach-and-do-not-blindly-respawn
 
-- Decision (promoted from what was previously left open in Technical context): reed's three answers about a matched record's strand are given three distinct dispositions, and the disposition is stated here rather than deferred to the plan.
-  - **Tracked, with a live pane** → attach.
+**Precedence, stated before the enumeration because it governs it.**
+The reed reads happen **only after the run-dir scan has produced a candidate `run.json` whose `OutputFiles` match**.
+A scan that finds no candidate — no run-dir root at all, an empty root, or no matching record — returns `found == false` with a nil error **immediately, without reading reed state at all**.
+Without this precedence the reed-state gate would break the ordinary path: `reedengine.LoadState` returns `(nil, nil)` for an absent `reed.json`, and with `Attach` probed on *every* `SingleLLMProducer.Call`, a worktree that has not yet had a reed session would hard-error on its very first `Discussion-Write` or `Plan-Write` call — with nothing to attach to and nothing wrong.
+The reed answers below are therefore about *how to dispose of a candidate that already matched*, never a precondition for scanning.
+
+- Decision (promoted from what was previously left open in Technical context): a matched candidate's strand is given a disposition for **every** answer reed can produce, enumerated exhaustively below.
+  - **Tracked, with a live pane, and the record carries no terminal outcome** → attach.
+    The second clause is load-bearing — see `attach-only-a-run-that-never-terminated` below.
+  - **Tracked, with a live pane, but the record carries a terminal outcome** → `found == false`, respawn, at any dir age.
   - **No matching `run.json` at all** → `found == false`, nil error → archive and respawn.
     This is both the ordinary first-call case and the `Discussion-Validate` bounce case.
+  - **Tracked, but `strand.Live == false`** (and not the hidden-anchor binding-cleared carve-out) → `found == false`, respawn, at any dir age.
+    This is `checkLivenessTick`'s `OutcomeDied` state (`wait.go:297-317`), and it is a *common* leftover rather than an exotic one: `finalize` cleans up only on `OutcomeDone`, so every run that ended `OutcomeDied` or `OutcomeTimeout` leaves exactly this record behind — tracked, with a dead pane.
+    A dead pane is unambiguous evidence that the agent is gone, which is precisely what the untracked and binding-cleared answers are *not*, so this one needs neither the age rule nor the output-files tie-breaker.
   - **Matched record, but reed does not track the strand (`errStrandNotTracked`) or tracks it with no pane binding (`errStrandPaneBindingCleared`)** → resolved by age, below.
   - **reed's state file absent or unreadable** → error, never `found == false`, at any dir age.
-    An absent strand table is not evidence that anything is dead, and respawning on it is precisely the duplicate-agent hazard;
-    `sweepOrphansOpportunistic` already refuses to act on either answer for the same reason, and `Attach` mirrors that refusal.
+    An absent strand table is not evidence that anything is dead, and respawning on it is precisely the duplicate-agent hazard.
+    `sweepOrphansOpportunistic` reaches the same *judgement* about those two answers — neither is evidence of an orphan — but takes a weaker *action*: it logs a warning, skips the sweep, and lets the new run proceed (`run.go:260-267`).
+    `Attach` is deliberately stronger, and the asymmetry is owned rather than borrowed: the sweep is a cleanup optimization whose worst case is leaving a stale directory around, while `Attach`'s answer decides whether a second agent is put on a worktree that may already have one.
+    A wrong "proceed" costs nothing in the sweep's case and duplicates an agent in this one, so the same evidence justifies a harder refusal here.
     **On the asymmetry with the untracked answer**, which does get an age escape: the escape exists there because erroring would deadlock with no in-band recovery — the only thing that clears such a directory runs inside `Start`, which the error path never reaches.
     That is not the situation here.
     An absent or unreadable `reed.json` is repaired in-band by `lyx reed up` — or simply by `lyx loom run`, which calls `reed.Up()` itself before spawning the driver — after which the table is present and the untracked answer's age rule governs normally.
@@ -330,6 +347,25 @@ Getting any of them wrong destroys the interview that `Attach` exists to save.
   It respawns over an agent that may still be working in a pane reed can no longer address, which is the hazard both sentinels were written to prevent.
 - Rejected: an unconditional error with a new CLI verb to clear stale run dirs.
   New surface for a state the existing sweep already handles.
+
+### attach-only-a-run-that-never-terminated
+
+- Decision: `RunState` gains one field — `Outcome string` — written by `Run.finalize` at the moment it classifies, for **every** terminal outcome, not only `Done`.
+  `Attach` treats any matched record carrying a non-empty `Outcome` as `found == false` (respawn), regardless of strand liveness or directory age.
+  An empty `Outcome` means the run never reached a classification, which is the only state `Attach` may attach to.
+- Rationale: without it, `attach-is-unconditional-not-interactive-only` introduces a **regression on the autonomous path it was meant to protect**.
+  `finalize` runs its cleanup only on `OutcomeDone` (`wait.go:405`), so a run that classified `OutcomeAsking` leaves its pane live, its strand tracked, and its run dir on disk.
+  In autonomous mode `SingleLLMProducer` maps that `Asking` to `Stuck`, and neither `Discussion-Write` nor `Plan-Write` carries an `on_stuck` edge, so the run blocks and the operator resumes with `lyx loom run`.
+  Under the unqualified "tracked, with a live pane → attach" rule, that resume would attach to an agent that has finished its turn and is sitting idle — and nothing in loom ever sends a stopped agent new input — so it would wait out a freshly restarted `run_timeout_min` (480 minutes for the discussion role) and then report `OutcomeTimeout`, where today it respawns and makes progress.
+  The same holds for a prior `OutcomeTimeout`, whose pane also survives.
+- The field has a useful property that falls out for free: it is written only when `finalize` actually ran, so a genuine crash mid-run leaves it empty — which is exactly the state that *should* attach.
+  "Has this run already ended?" becomes a fact on disk rather than an inference from pane liveness, which is the same resume-on-files discipline the rest of this design rests on.
+- Note that this makes `Attach`'s liveness reads a second line of defence rather than the primary signal.
+  Both are kept: the record answers "did this run end", reed answers "is the process there", and they fail in different directions.
+- Rejected: having `SingleLLMProducer` delete the run directory whenever it maps an outcome to `Stuck` or an error.
+  It works, and it is local to `shedadapters` — but it destroys `events.jsonl` and `run.json`, which are the only diagnostic evidence a blocked run leaves behind, and which `shuttleengine` deliberately keeps on every non-`Done` outcome for exactly that reason.
+- Rejected: widening `finalize`'s cleanup to every terminal outcome.
+  Same loss of diagnostic evidence, and it changes shuttle's contract for direct `lyx shuttle run` callers who are not involved in this problem.
 
 ### leftover-run-dir-from-a-completed-run
 
@@ -545,7 +581,10 @@ This is the defect-A test and should be written first, red, against the existing
 **`internal/shuttleengine` — `Attach`. TDD candidate.**
 Over a temp run-dir root with hand-written `run.json` files and a fake reed:
 
-- No run dirs at all, and a root that does not exist: `found == false`, nil error.
+- No run dirs at all, and a root that does not exist: `found == false`, nil error — **asserted with reed state absent**, proving the scan short-circuits before any reed read and that the ordinary first call is not blocked by the reed gate.
+- A matched record whose persisted `Outcome` is non-empty (`asking`, `timeout`, `died`, `done`), with the strand **tracked and live**: `found == false`, respawn — the live-but-idle regression guard.
+- The same record with an **empty** `Outcome` and a live strand: attached.
+- A matched record whose strand is tracked with `Live == false`: `found == false`, respawn, at both dir ages.
 - A run dir whose `OutputFiles` do not match the spec's: not selected.
 - A matching run dir whose strand is absent from reed's table, dir **younger** than `2 * StartupTimeoutS`: error, not a respawn.
 - The same, dir **older** than `2 * StartupTimeoutS`: `found == false`, nil error, so the caller archives and respawns.
