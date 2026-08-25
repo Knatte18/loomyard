@@ -4,7 +4,7 @@
 task: 'loom: Discussion-Review producer'
 batch: 'docs'
 number: 6
-cards: 3
+cards: 4
 verify: go vet -tags smoke ./internal/loomcli/...
 depends-on: [5]
 ```
@@ -93,6 +93,22 @@ It ships no interface and changes no behaviour.
   Check the sentence's surrounding claim about the driver's typical lifecycle still follows from the corrected numbers rather than from the old ones.
   Change no code and no assertion in this file — this is a comment-only edit to a `//go:build smoke` file, and the smoke suite's own behaviour is out of this task's scope.
 - **Commit:** `docs(loomcli): correct the stale row-count prose in the smoke suite`
+
+### Card 25: correct the stale "thirteen-row" prose in shed-recipe.md
+
+- **Context:**
+  - `manifest/designs/loom.md`
+- **Edits:**
+  - `manifest/designs/shed-recipe.md`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  Two lines describe `internal/loomrecipe.New()`'s output, or the tests that build it, as "thirteen-row": the opening "The idea" paragraph and the "Test ownership" bullet under "Decisions this piece settled".
+  loom's recipe and `internal/loomrecipe` list are now fourteen rows, as card 22 and card 24 already record elsewhere.
+  Update both occurrences to "fourteen-row".
+  Change no other prose in this file.
+- **Commit:** `docs(shed-recipe): correct the stale thirteen-row prose`
 
 ## Batch Tests
 
