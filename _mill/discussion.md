@@ -48,9 +48,16 @@ F12 did not create this conflict surface, but it widened it, and it is now the r
   Known hits: `manifest/designs/fabric-unified-view.md:68`, whose as-built anchoring table places `LoomStatusFile` in "the durable, weft-synced, git-tracked `_lyx` group" alongside `PlanDir`, `DiscussionDir`, `WebsterDir`, and `PatternDir` — `LoomStatusFile` moves out of that group and into the `.lyx` one;
   `internal/loomengine/config.go`'s own comments at lines 88–90, 97–100, 119–120, 129–130, and 141–142, each of which describes `LoomStatusFile` as the durable counterpart the `.lyx`-side accessors mirror, an "analogy" that inverts once the status file is itself on the `.lyx` side;
   `internal/loomengine/config.go:29–31`, where `loomDirName`'s own doc comment says it "joins onto lyxdirs.LyxDirName or lyxdirs.DotLyxDirName" — after the move nothing joins it onto `LyxDirName`, and the comment carries neither identifier nor durability wording, so it is reachable by neither stated grep and is listed explicitly for that reason;
-  plus `internal/shedengine/shed.go:13` and `internal/loomshed/seed.go:2`, already named above and listed here so the pass's own hit list is complete rather than split across two bullets.
+  `internal/fabricengine/commitweftpaths.go:92`, whose doc comment says `relPaths` are "the same shape `OriginRecordRel` and `LoomStatusRel` already return" — reachable by the identifier grep, doc-comment drift only;
+  plus `internal/shedengine/shed.go:13` and `internal/loomshed/seed.go:2`, already named above and listed here rather than split across two bullets.
+  Treat every hit list in this document as what the greps found at discussion time, not as a closed set — re-run the passes at implementation time and update whatever they turn up.
   One consequence worth stating so a plan reader does not mistake it for a violation: after the move `_lyx/loom/` ceases to exist entirely, leaving `.lyx/loom/` with no `_lyx` counterpart.
   The Durable-vs-Ephemeral State Invariant's mirrored-subpath rule constrains where a never-tracked file lives, not whether tracked content must exist beside it, so it is satisfied vacuously here rather than broken — and `loomengine` still exposes a durable `_lyx` path in `DiscussionDir`, so the module is not leaving the `_lyx` tree, only its `loom/` subdirectory is.
+- **Run a fourth enumeration pass for prose that names the file's home as bare `_lyx/`**, without the `loom/status.json` tail, without either identifier, and without durability wording — a class all three passes above miss.
+  Practical form: grep `_lyx` in `manifest/designs/loom.md`, `manifest/designs/shed.md`, and `internal/shedengine/*.go`, and read the hits for status-file co-occurrence.
+  Known hits: `manifest/designs/loom.md:269` ("reads loom's **status file** in `_lyx/`"), `:318` ("cold-starts from the `_lyx/` status file"), `:449` ("loom writes the `_lyx/` status file"), and `:303`, whose product-scoping rationale argues against "a bare `_lyx/status.json`" — none of these sit in the three `loom.md` sections named above, so the earlier scope bullet would have left all four standing.
+  Also `internal/shedengine/doc.go:44`, which states the caller-side obligation as "the status file durable, both locks never-tracked transients" — a claim this change falsifies for loom specifically.
+  That paragraph needs care rather than a find-and-replace: `Shed` is generic and told its paths, so the obligation it states is the *caller's*, and the fix is to stop asserting which side of the durable/ephemeral line a caller's status file must land on, not to flip the assertion to "ephemeral" and mislead the next product the same way in the other direction.
 - Update `tools/sandbox/SANDBOX-CORE-SUITE.md`'s scenario S8 ("Loom status and pause over a seeded fixture", tagged `**Covers:** loom`), whose fixture note tells the operator to hand-write the status file at the old path.
   The scenario is the black-box coverage `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant requires for the `loom` module, so a stale fixture path makes it fail at the first step.
 - Add regression coverage that a full task landing no longer carries loom's status file into the parent (see [Testing](#testing)).
@@ -133,6 +140,11 @@ F12 did not create this conflict surface, but it widened it, and it is now the r
   Making the operator finish or abandon first is the honest gate.
 - **Rejected:** a one-shot migration in `lyx loom run` that detects a tracked `_lyx/loom/status.json`, copies it to `.lyx/loom/status.json`, and commits its removal.
   It is more code than the manual step, it is exercised once, and it would need its own tests and its own removal task later.
+- **The sanctioned mechanism, which the note must carry verbatim rather than leave to the reader.**
+  The weft repo is not operator-facing, and the naive spelling — `git rm` inside the weft sibling worktree — is exactly the shape this repo's model discourages: `CONSTRAINTS.md`'s Fabric Git Invariant exempts only "ordinary git in their warp worktree", never the weft side.
+  The sanctioned sequence, performed from each affected worktree (the parent's included), is: delete the file through the worktree's own `_lyx` junction with an ordinary `rm _lyx/loom/status.json`, then run `lyx fabric commit`, whose staging pathspec already covers `_lyx` structurally (code-injected, never listed in fabric config — see `internal/fabriccli/weft_verbs.go:136-169`).
+  `lyx fabric commit` stages and commits weft-side with the fixed `weft sync` message and records the warp-SHA correspondence trailer, so the removal lands the same way every other overlay change does.
+  Note the invariant's own carve-out that makes this legitimate: the Fabric Git Invariant's ban on "shelling `lyx fabric`" binds *LYX's own code* at a loop-owner boundary, not a human running the shipped CLI by hand — which is precisely why this is an operator step and not something loom does for itself.
 - **Where the step is documented:** as a short note in `manifest/designs/loom.md` alongside the rewritten status-file section.
   mill-plan should treat "which doc carries the operator note" as settled here, not reopen it.
 
@@ -176,7 +188,8 @@ It is recorded here so a plan reader does not rediscover it and reopen the rejec
 
 **Docs that make claims this change falsifies.**
 `contracts/specs/loom-status-spec.md` — "What it is" (durable fabric-overlay state under `_lyx/`, git-synced via fabric, "which is what makes resume work across machines"), and "The seed / handover" ("commits the seed weft-side before it spawns the detached driver").
-`manifest/designs/loom.md` — the resume-across-machines paragraph, the `Publish`/`Finalize` checkpoint section, and the `State & contracts` bullet.
+`manifest/designs/loom.md` — the resume-across-machines paragraph, the `Publish`/`Finalize` checkpoint section, the `State & contracts` bullet, and the four bare-`_lyx/` mentions at lines 269, 303, 318, and 449 found by the fourth enumeration pass.
+`internal/shedengine/doc.go:44` — the told-never-derived paragraph's caller obligation ("the status file durable, both locks never-tracked transients").
 Both are durable, kept docs, so they are edited in place, not deleted.
 `manifest/designs/fabric-unified-view.md:68` — its as-built anchoring table groups `LoomStatusFile` with the durable, weft-synced, git-tracked `_lyx` accessors; the entry moves to the `.lyx` group.
 Note this doc's own status banner: it is deleted once slice 6's open half lands, so it is edited in place now and simply goes away later — its scheduled deletion is not a reason to leave a false claim standing in the meantime.
@@ -202,6 +215,9 @@ From `CONSTRAINTS.md`:
 - **CLI/Cobra Invariant** — no command surface changes here, but `lyx loom run`'s and `lyx loom status`'s help text must not end up describing a git-committed status file.
 - **Markdown Link Integrity** — `loom.md`'s `#crash-recovery--resume-on-output-files-not-live-processes` heading is linked from `manifest/roadmap.md` and from within `loom.md` itself; the doc edits must not change that heading's text.
 - **Documentation Lifecycle** — `contracts/specs/loom-status-spec.md` and `manifest/designs/loom.md` are durable docs, edited in the same commit as the code per `CLAUDE.md`'s task-completion rule.
+- **Fabric Git Invariant (warp + weft)** — every git operation LYX's own code performs, on either repo, goes through `internal/fabricengine` in Go, in-process, never raw git and never an LLM agent; the exemption for ordinary human git covers the warp worktree only, never the weft side.
+  This is what dictates the operator migration step's spelling (`rm` through the `_lyx` junction, then `lyx fabric commit`) rather than a raw `git rm` in the weft sibling worktree.
+  It is unaffected by the code changes themselves, which only remove fabric calls.
 - **Sandbox Suite Coverage Invariant** — every registered lyx module is exercised by the black-box sandbox suite or explicitly excluded; `loom`'s coverage is scenario S8 in `tools/sandbox/SANDBOX-CORE-SUITE.md`, tagged `**Covers:** loom`, and its fixture note names the status-file path.
   Enforced by `cmd/lyx/sandbox_coverage_test.go`, which checks tagging rather than fixture correctness — so a stale path there fails the operator, not the test suite.
 - **Test Tier Purity Invariant** — `cmd/lyx/notransients_test.go` and `constructoranchoring_test.go` are Tier 1 (pure `filepath.Join` arithmetic over hand-built `*lyxcwd.Location` fixtures, no process spawned, no fixture tree copied).
