@@ -132,6 +132,13 @@ producers:
       # an overlay round runs no git at all, and nothing else in this segment commits, so without
       # the seam every approved fix would stay uncommitted in the weft working tree.
       commit_seam: plan
+      # approve_seam: plan is set on this row and no other -- it is the only row in the whole list
+      # that knows the plan passed review. The approved settle writes the approval flag through
+      # this seam immediately before commit_seam fires, so the flag lands inside the commit rather
+      # than as working-tree dirt afterwards. Neither Discussion-Bouncer nor Webster-Bouncer gets
+      # this key: neither of their artifacts carries an approval flag, and an absent key leaves the
+      # seam nil exactly as an omitted commit_seam already does.
+      approve_seam: plan
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.
@@ -160,8 +167,12 @@ producers:
             The decision record named above is the answer key: the plan's job is to implement the
             decisions and constraints it settles. The format authority is
             contracts/specs/loom-plan-spec.md, and the mechanical checks over that format are
-            already enforced upstream by Plan-Validate, so re-deriving them in this round is
-            duplicated work.
+            already enforced upstream by Plan-Validate for every check except plan-unapproved,
+            which now moves downstream to Plan-Revalidate, so re-deriving the other fifteen in
+            this round is duplicated work. This round may never write the approved: key in the
+            plan's overview file: a fixer that set the flag would be approving the very artifact
+            the review round is judging, and this row already has write access to the overview
+            because it runs fix-scope: overlay with the plan directory in its target paths.
         rubric_stencil: loom-rubric-plan-review
         # fix-scope: overlay, matching the Discussion-Burler row above. The plan directory is weft
         # content reached through the junction, and the Fabric Git Invariant reserves committing that
