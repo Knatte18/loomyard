@@ -57,7 +57,6 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 		{"planparser.PlanDir", planparser.PlanDir(l.AnchorPath())},
 		{"planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath())},
 		{"loomengine.DiscussionDir", loomengine.DiscussionDir(l)},
-		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
 		{"websterengine.Dir", websterengine.Dir(l.AnchorPath())},
 		{"websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath())},
 		{"websterengine.ReportsDir/blk", filepath.Join(websterengine.ReportsDir(l.AnchorPath()), "blk")},
@@ -69,6 +68,7 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
 		{"websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath())},
 		{"websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath())},
+		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
 		{"loomengine.LoomStatusLock", loomengine.LoomStatusLock(l)},
 		{"loomengine.LoomRunLock", loomengine.LoomRunLock(l)},
 		{"loomengine.LoomDriverLog", loomengine.LoomDriverLog(l)},
