@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-anchor-root
+phase: approved-rundir-clear
 slug: loom-bouncer-anchor-rundir-fix
 branch: loom-bouncer-anchor-rundir-fix
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r4  '2026-08-26T07:16:00Z'
 planned  '2026-08-26T07:16:10Z'
 implementing  '2026-08-26T07:16:37Z'
 approved-anchor-root  '2026-08-26T07:22:42Z'
+approved-rundir-clear  '2026-08-26T07:39:54Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: 812ad9e97e6ffcb03115853c38b1c734b2de569a
     verify_baseline_failures: []
   - name: rundir-clear
-    state: running
+    state: approved
     implementer_session: f42648da-82c7-4d9d-be87-ed7097e3ef0e
     start_sha: fe8b8f1d8876a66c6d65ad4ffba6aa8278c389a3
+    commit_sha: ef2a18ab0e501d1e4bdf5bc43a2b745b9c9a4733
     verify_baseline_failures: []
   - name: docs
     state: pending
