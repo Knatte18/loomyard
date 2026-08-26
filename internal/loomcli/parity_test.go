@@ -194,7 +194,7 @@ func TestGateParity_PlanValidate(t *testing.T) {
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
 
-			producer := loomshed.NewPlanValidate("Plan-Validate", c.env.AnchorPath, c.env.WorktreeRoot)
+			producer := loomshed.NewPlanValidate("Plan-Validate", c.env.AnchorPath, c.env.WorktreeRoot, true)
 			outcome, _, err := producer.Call(context.Background())
 			pv := producerVerdict(outcome, err)
 
