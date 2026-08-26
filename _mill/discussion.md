@@ -47,7 +47,10 @@ F12 did not create this conflict surface, but it widened it, and it is now the r
   The pass is two greps: one over the identifiers `LoomStatusFile` and `LoomStatusRel`, and one for `durable`/`tracked`/`weft-synced` wording in the vicinity of loom's status file.
   Known hits: `manifest/designs/fabric-unified-view.md:68`, whose as-built anchoring table places `LoomStatusFile` in "the durable, weft-synced, git-tracked `_lyx` group" alongside `PlanDir`, `DiscussionDir`, `WebsterDir`, and `PatternDir` — `LoomStatusFile` moves out of that group and into the `.lyx` one;
   `internal/loomengine/config.go`'s own comments at lines 88–90, 97–100, 119–120, 129–130, and 141–142, each of which describes `LoomStatusFile` as the durable counterpart the `.lyx`-side accessors mirror, an "analogy" that inverts once the status file is itself on the `.lyx` side;
+  `internal/loomengine/config.go:29–31`, where `loomDirName`'s own doc comment says it "joins onto lyxdirs.LyxDirName or lyxdirs.DotLyxDirName" — after the move nothing joins it onto `LyxDirName`, and the comment carries neither identifier nor durability wording, so it is reachable by neither stated grep and is listed explicitly for that reason;
   plus `internal/shedengine/shed.go:13` and `internal/loomshed/seed.go:2`, already named above and listed here so the pass's own hit list is complete rather than split across two bullets.
+  One consequence worth stating so a plan reader does not mistake it for a violation: after the move `_lyx/loom/` ceases to exist entirely, leaving `.lyx/loom/` with no `_lyx` counterpart.
+  The Durable-vs-Ephemeral State Invariant's mirrored-subpath rule constrains where a never-tracked file lives, not whether tracked content must exist beside it, so it is satisfied vacuously here rather than broken — and `loomengine` still exposes a durable `_lyx` path in `DiscussionDir`, so the module is not leaving the `_lyx` tree, only its `loom/` subdirectory is.
 - Update `tools/sandbox/SANDBOX-CORE-SUITE.md`'s scenario S8 ("Loom status and pause over a seeded fixture", tagged `**Covers:** loom`), whose fixture note tells the operator to hand-write the status file at the old path.
   The scenario is the black-box coverage `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant requires for the `loom` module, so a stale fixture path makes it fail at the first step.
 - Add regression coverage that a full task landing no longer carries loom's status file into the parent (see [Testing](#testing)).
@@ -121,7 +124,9 @@ F12 did not create this conflict surface, but it widened it, and it is now the r
 - **Decision:** ship no self-healing removal path.
   The change is accompanied by a documented one-time operator step: finish or abandon any in-flight `loom` run before upgrading, then delete the now-orphaned `_lyx/loom/status.json` from the weft branches that carry it (the parent's and any live task's).
 - **Rationale:**
-  A stale tracked `_lyx/loom/status.json` left behind on both a task's and the parent's weft branch would keep conflicting on the landing merge exactly as it does today, so the removal genuinely has to happen — but it has to happen once, per hub, by a human who knows which runs are in flight.
+  A stale tracked `_lyx/loom/status.json` left behind on the parent's weft branch is inert, not a live bug: once no code writes that path, no branch rewrites it, so every future task's weft branch and its parent stay byte-identical to their merge base there and git has nothing to conflict over.
+  What it is instead is dead tracked junk on the parent — a file nothing reads, writes, or maintains — and removing it is worth one deliberate operator act rather than either permanent code or indefinite neglect.
+  The in-flight gate is the half that genuinely matters and is sound on its own terms: a task branch that already diverged *before* the upgrade carries a real divergence, and its landing merge would still conflict exactly as today.
   Encoding a one-time cleanup as permanent production code in `lyx loom run`'s seed path means a branch that is dead the moment it has run, with no way to ever delete it confidently.
   Loomyard is pre-release with a single operator and a single hub; a documented step is proportionate.
   An in-flight run cannot be migrated automatically in any case: after the move, `lyx loom run` finds no file at the new path and seeds a fresh one, discarding the old run's `history` — which is budget-bearing (per-producer bounce budgets are derived by counting `stuck` entries), so silently starting over is materially wrong, not merely lossy.
@@ -142,7 +147,7 @@ Weft branches are non-orphan and fork from the parent's weft branch, sharing a m
 `internal/loomengine/config.go` is the sole declarer: `loomDirName = "loom"`, `loomStatusFileName = "status.json"`, `LoomStatusRel()`, `LoomStatusFile(l)`, plus the `.lyx`-side siblings `LoomStatusLock`, `LoomRunLock`, `LoomDriverLog`, `LoomBootstrapLock`, `LoomScratchDir`.
 Every consumer reaches the file through `shedPaths.StatusPath`, wired once in `internal/loomcli/wiring.go` (`wireStatusPathsOnly` at line 49 and the full `wire` at line 140) from `loomengine.LoomStatusFile(location)`.
 Readers: `internal/shedengine/run.go` (step-1 read gate and every persist, via `internal/state`), `internal/loomcli/status.go`, `internal/loomcli/pause.go`, `internal/loomcli/drive.go`, `internal/loomengine.CheckSeed` (row 2, `Loom-Preflight`).
-None of them build the path themselves, so every Go *call site* is covered by moving the one constructor and its two guard tests.
+None of them build the path themselves, so every Go *call site* is covered by moving the one constructor and the three guard files that pin it (`cmd/lyx/constructoranchoring_test.go`, `cmd/lyx/notransients_test.go`, and `internal/loomengine/loomstatus_test.go`, with `internal/loomengine/config_test.go` carrying two more cases — see [Testing](#testing)).
 
 **That constructor trace is not the whole consumer set, and must not be mistaken for it.**
 A second class of consumer names the path as text rather than resolving it, and is invisible to any search over Go call sites: agent prompt stencils, recipe comments, doc comments, and sandbox fixture instructions.
@@ -213,6 +218,12 @@ Discovered during exploration:
 `cmd/lyx/notransients_test.go`: `loomengine.LoomStatusFile` moves out of `durableSet` and into the transient set, where it must resolve under `.lyx` at the mirrored subpath, for both `AnchorRel == "."` and `AnchorRel == "backend"` fixtures.
 `cmd/lyx/constructoranchoring_test.go`: the four existing assertions (lines ~84, ~93, ~140, ~149) currently pin `LoomStatusFile` under `lyxBase` and `LoomStatusLock` under `dotLyxBase`; `LoomStatusFile` moves to `dotLyxBase/loom/status.json`, sitting beside its own lock.
 These two are the TDD candidates — write the moved assertions first, watch them fail, then move the constructor.
+
+**Tier 1 — `loomengine`'s own path tests, which fail at runtime rather than compile time.**
+`internal/loomengine/loomstatus_test.go`: `TestLoomStatusFile` (line 17) pins the result under `lyxdirs.LyxDirName` at line 26, and `TestLoomStatusFile_UnanchoredEqualsWorktreePath` (line 58) repeats it at line 65.
+Both assertions move to `lyxdirs.DotLyxDirName`, and the file-header comment (lines 1–4) describing the "durable vs scratch-dir split" — `LoomStatusFile` durable under `LyxDirName`, `LoomStatusLock` never-tracked under `DotLyxDirName` "at the same mirrored subpath" — is rewritten, since after the move both resolve under `DotLyxDirName` and the split the file is named for no longer exists.
+`internal/loomengine/config_test.go`: `TestLoomStatusRel` (line 196) is deleted with the function it covers, and `TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel` (line 206) goes with it — its whole subject is the `LoomStatusFile == AnchorPath + LoomStatusRel` identity, which has no meaning once `LoomStatusRel` is gone.
+These are the runtime half of the guard set: unlike the `LoomStatusRel` call sites, a stale `LyxDirName` assertion still compiles.
 
 **Tier 1 — dead-code removal is proven by compilation.**
 Deleting `LoomStatusRel()` and `landingshed.Deps.CommitStatus` breaks every remaining caller at build time; the existing `internal/landingshed/commitstatus_test.go` is deleted along with the seam, and `internal/loomcli/landingdeps_test.go`'s drift guard is updated to match the reduced `Deps` shape.
