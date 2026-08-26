@@ -83,7 +83,7 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 		}
 	}{
 		{NameDiscussionValidate, NewDiscussionValidate(NameDiscussionValidate, fx.DecisionRecordPath, fx.SupportLogPath)},
-		{NamePlanValidate, NewPlanValidate(NamePlanValidate, fx.AnchorPath, fx.WorktreeRoot)},
+		{NamePlanValidate, NewPlanValidate(NamePlanValidate, fx.AnchorPath, fx.WorktreeRoot, true)},
 		{NameBatchifier, NewBatchifier(NameBatchifier, fx.AnchorPath)},
 		{NameWebster, NewWebsterProducer(NameWebster, fx.AnchorPath, (&fakeWebsterRun{}).run, websterengine.RunDeps{})},
 		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, fx.StatusPath, fx.StatusLockPath)},

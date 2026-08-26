@@ -15,7 +15,8 @@ import (
 // bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins
 // and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves
 // artifact_paths against env.AnchorPath, resolves the optional commit_seam key to one of
-// env.CommitPlan or env.CommitDiscussion, and returns shedadapters.NewBouncer(cfg).
+// env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to
+// env.ApprovePlan and nothing else, and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -45,6 +46,10 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
+	approveSeam, err := configString(cfg, "approve_seam", false)
+	if err != nil {
+		return nil, err
+	}
 	// A row setting model/effort/version overrides the Env value; a row omitting it takes the Env
 	// value; both absent leaves the provider default. An empty Config value and an absent key are
 	// the same thing here -- configString with required false returns "" for both -- and that is
@@ -61,11 +66,13 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
 	// than silently ignored.
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam", "approve_seam"); err != nil {
 		return nil, err
 	}
 
-	// commit_seam names which of Env's two commit closures fills BouncerConfig.Commit. Absent
+	// commit_seam and approve_seam are two independent optional config keys: commit_seam names
+	// which of Env's two commit closures fills BouncerConfig.Commit, and approve_seam (below)
+	// resolves to env.ApprovePlan and nothing else, filling BouncerConfig.Approve. Absent
 	// leaves the resolved closure nil -- "no seam configured" is a legitimate configuration and
 	// never an error, which is what keeps every existing Bouncer row valid unchanged. A present
 	// key is guarded by requireSeam on the named Env field rather than assigned directly: without
@@ -87,6 +94,25 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		commit = env.CommitDiscussion
 	default:
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "commit_seam", "plan", "discussion", commitSeam)
+	}
+
+	// approve_seam names env.ApprovePlan and nothing else -- there is no discussion-side or
+	// webster-side approval flag, so a second accepted value would be a hypothetical. It mirrors
+	// commit_seam's switch one-for-one: absent leaves the resolved closure nil, which keeps every
+	// existing Bouncer row valid unchanged, and a present key is guarded by requireSeam for the
+	// same reason commit_seam's guard exists -- without it a nil Env closure would silently assign
+	// a nil Approve, reproducing the exact no-seam condition this key exists to eliminate.
+	var approve func() error
+	switch approveSeam {
+	case "":
+		// No seam configured; approve stays nil.
+	case "plan":
+		if err := requireSeam("Bouncer", "ApprovePlan", env.ApprovePlan); err != nil {
+			return nil, err
+		}
+		approve = env.ApprovePlan
+	default:
+		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q, got %q", "approve_seam", "plan", approveSeam)
 	}
 
 	if err := requireAbsRoot("Bouncer", "RunRoot", env.RunRoot); err != nil {
@@ -139,6 +165,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Effort:        effort,
 		Version:       version,
 		Shuttle:       env.Shuttle,
+		Approve:       approve,
 		Commit:        commit,
 		Now:           env.Now,
 	}

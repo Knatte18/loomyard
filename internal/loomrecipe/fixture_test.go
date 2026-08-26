@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -98,28 +99,38 @@ func seedBouncerStencils(t *testing.T, dir string) {
 	}
 }
 
+// orphanCardFileName is the extra, unindexed card file fakeLoomBurler.Run writes into
+// injectOrphanCardDir when that field is non-empty. No Card Index entry ever names it, so
+// planparser.ParsePlan still succeeds -- it only opens files the Card Index names -- and
+// checkIndexFileConsistency then reports index-file-mismatch for the file no card claims.
+const orphanCardFileName = "99-orphan.md"
+
 // fakeLoomBurler implements shedadapters.BurlerRunner, mirroring internal/shedadapters/burler_test.go's
 // own fakeBurlerRunner in shape. Its Run writes the ReviewPath and FixerReportPath the handed
 // burlerengine.Profile names, each with short non-empty placeholder content, and returns a
 // burlerengine.Result whose Outcome is shuttleengine.OutcomeDone -- that pair-on-disk plus
 // OutcomeDone is what makes BurlerProducer.Call return Stuck with a real report rather than
 // erroring, which is what the Bouncer's next call then judges. calls records how many times Run was
-// invoked, so a later test can assert the segment ran exactly two rounds. corruptPlanOverview, when
-// non-empty, names a plan overview path that Run rewrites with planFixtureOverview(false) after
-// writing its two report files, so a test can script a fixer round that leaves the plan failing
-// planparser's own plan-unapproved check; an empty value -- every existing caller -- changes
-// nothing.
+// invoked, so a later test can assert the segment ran exactly two rounds. injectOrphanCardDir, when
+// non-empty, names the plan directory Run writes orphanCardFileName into after its two report
+// writes, so a test can script a fixer round that leaves the plan format-invalid; an empty value --
+// every existing caller -- changes nothing. The corruption is deliberately an unindexed extra card
+// file rather than a cleared approval flag: the approval flag is now rewritten by Plan-Bouncer's own
+// approve_seam moments before the corruption would ever be observed, which would silently undo a
+// plan-unapproved-shaped regression, and it is deliberately not an unparseable corruption either --
+// planvalidate.Call maps a ParsePlan failure to a returned error, never to Stuck, so an unparseable
+// corruption would abort the run before any bounce assertion is reached.
 type fakeLoomBurler struct {
 	calls               int
-	corruptPlanOverview string
+	injectOrphanCardDir string
 }
 
 var _ shedadapters.BurlerRunner = (*fakeLoomBurler)(nil)
 
 // Run implements shedadapters.BurlerRunner: it writes p.ReviewPath and p.FixerReportPath with
-// short placeholder content and reports shuttleengine.OutcomeDone. When f.corruptPlanOverview is
-// non-empty, it also rewrites that path with planFixtureOverview(false) after the two report
-// writes, per fakeLoomBurler's own doc comment.
+// short placeholder content and reports shuttleengine.OutcomeDone. When f.injectOrphanCardDir is
+// non-empty, it also writes orphanCardFileName into that directory after the two report writes, per
+// fakeLoomBurler's own doc comment.
 func (f *fakeLoomBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.Result, error) {
 	f.calls++
 	if err := os.WriteFile(p.ReviewPath, []byte("review"), 0o644); err != nil {
@@ -128,9 +139,10 @@ func (f *fakeLoomBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (bu
 	if err := os.WriteFile(p.FixerReportPath, []byte("fixer report"), 0o644); err != nil {
 		return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: write fixer report %s: %w", p.FixerReportPath, err)
 	}
-	if f.corruptPlanOverview != "" {
-		if err := os.WriteFile(f.corruptPlanOverview, []byte(planFixtureOverview(false)), 0o644); err != nil {
-			return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: corrupt plan overview %s: %w", f.corruptPlanOverview, err)
+	if f.injectOrphanCardDir != "" {
+		orphanPath := filepath.Join(f.injectOrphanCardDir, orphanCardFileName)
+		if err := os.WriteFile(orphanPath, []byte("# Card 99 — orphan\n\n**Prosa:**\n\nUnindexed card file.\n"), 0o644); err != nil {
+			return burlerengine.Result{}, fmt.Errorf("fakeLoomBurler: write orphan card file %s: %w", orphanPath, err)
 		}
 	}
 	return burlerengine.Result{
@@ -281,11 +293,15 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 // and all three segments' Bouncer rows' spawn roles: shedrecipe.Env carries one Shuttle field, not
 // one per row, so this single fake serves all of them, branching on the Spec's own Role. On
 // spec.Role == "plan" it writes the whole plan-directory fixture -- planFixtureCard and
-// planFixtureOverview(true) via f.planDir -- rather than only spec.OutputFiles, because
+// planFixtureOverview(false) via f.planDir -- rather than only spec.OutputFiles, because
 // loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory
 // (including the card file seedPlanValidateFixture pre-wrote) before the shuttle runs, so writing
 // only the overview would leave the Card Index naming a card file that no longer exists and
-// Plan-Validate would report Stuck and bounce. On spec.Role == "bouncer-judge" it writes the
+// Plan-Validate would report Stuck and bounce. The overview it writes is unapproved, mirroring the
+// plan stencil's own "you never self-approve" rule: the real Plan-Write producer can never emit an
+// approved plan, and a fake writer that did would hand the review gate a plan the production writer
+// can never produce -- Plan-Bouncer's approve_seam is what flips the flag, not this row. On
+// spec.Role == "bouncer-judge" it writes the
 // verdict, ledger, and focus files named by spec.OutputFiles, in that fixed order -- see this
 // fake's Run for the shape each carries. There is no "bouncer-seed" branch: shedadapters.seedCall
 // calls ensureFocus(1) regardless of what the spawn reported, synthesizing an empty-but-parsing
@@ -390,7 +406,7 @@ func (f *fakeLoomShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, er
 		if err := os.WriteFile(filepath.Join(f.planDir, "01-first-card.md"), []byte(planFixtureCard), 0o644); err != nil {
 			return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write plan card file: %w", err)
 		}
-		if err := os.WriteFile(filepath.Join(f.planDir, "00-overview.md"), []byte(planFixtureOverview(true)), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(f.planDir, "00-overview.md"), []byte(planFixtureOverview(false)), 0o644); err != nil {
 			return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write plan overview file: %w", err)
 		}
 		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
@@ -487,11 +503,13 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 //
 // Discussion-Validate: both discussion files are written, the decision record carrying all seven
 // required H2 sections (writeDiscussionFixture, duplicated above from discussionvalidate_test.go).
-// Plan-Validate: a syntactically complete, approved, one-card plan directory that satisfies every
-// planparser.Validate check, including the ones that stat paths against the worktree root
+// Plan-Validate: a syntactically complete, unapproved, one-card plan directory that satisfies every
+// planparser.ValidateFormat check, including the ones that stat paths against the worktree root
 // (seedPlanValidateFixture, duplicated above from planvalidate_test.go) -- the same self-authored,
 // single-card, zero-findings shape internal/planparser/testdata/goodplan/00-overview.md and
-// 01-json-flag.md model.
+// 01-json-flag.md model. Seeded unapproved rather than approved: Plan-Validate's own row runs
+// before the review segment and its absent require_approved key never demands the flag, and an
+// approved seed would misrepresent what the real Plan-Write producer is ever allowed to write.
 // Batchifier: no batcher.yaml is written at all, so batcher.Active resolves the embedded template,
 // which is a Done.
 //
@@ -529,8 +547,12 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // closure returning a Spec naming Role: "plan" and OutputFiles holding the single overview path,
 // and env.CommitPlan is a closure recording its invocation count on that same fake. The fake's
 // "plan"-role branch rewrites the whole plan directory (see fakeLoomShuttle's own doc comment for
-// why) rather than only the overview, so Plan-Validate still finds a complete, approved,
-// zero-findings plan after the decorator's rotation archived the seeded one away.
+// why) rather than only the overview, so Plan-Validate still finds a complete, unapproved,
+// zero-findings plan after the decorator's rotation archived the seeded one away -- the real
+// Plan-Write producer can never write it approved, and neither does this fake. env.ApprovePlan is
+// a closure running the real planparser.SetApproved over the same plan directory, wired to
+// Plan-Bouncer's approve_seam key -- the flag is only ever set once the review segment's approved
+// settle fires.
 func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths ShedPaths) {
 	t.Helper()
 
@@ -542,7 +564,12 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 	decisionRecordPath, supportLogPath := writeDiscussionFixture(t, discussionDir, validDecisionRecord, "support log")
 
-	seedPlanValidateFixture(t, dir, true)
+	// Seeded unapproved, matching what the real Plan-Write producer must write: it is inert at the
+	// gate -- loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan
+	// directory before the shuttle runs, so fakeLoomShuttle's "plan"-role branch rewrites the whole
+	// directory rather than only its declared output file -- but leaving it approved here would be
+	// dishonest about what the fixture models.
+	seedPlanValidateFixture(t, dir, false)
 
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
@@ -619,6 +646,12 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		CommitPlan: func() error {
 			loomShuttle.commitPlanCalls++
 			return nil
+		},
+		// ApprovePlan is a closure running the real planparser.SetApproved over this fixture's own
+		// plan directory, not a fake that merely records the call: the seam under test is the write
+		// itself, and a fake that only recorded invocation would let a broken writer pass.
+		ApprovePlan: func() error {
+			return planparser.SetApproved(planDir)
 		},
 	}
 

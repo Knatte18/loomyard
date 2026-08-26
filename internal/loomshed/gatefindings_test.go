@@ -70,10 +70,12 @@ func TestDiscussionValidate_StuckSurfacesItsFindings(t *testing.T) {
 
 func TestPlanValidate_StuckSurfacesItsFindings(t *testing.T) {
 	anchorPath, planDir := setupPlanDir(t)
-	// A minimal plan that PARSES cleanly and fails validation on one determined check: approved is
-	// false, which planparser reports as plan-unapproved. A plan that failed to parse instead would
-	// take Call's hard-error branch and never reach the Stuck this test is about.
-	overview := "---\nformat: 4\napproved: false\n---\n\n" +
+	// A minimal plan that PARSES cleanly, is approved, and fails validation on exactly one
+	// determined check: an extra .md file on disk that no Card Index entry names, which planparser
+	// reports as index-file-mismatch. This test's subject is that exactly one finding reaches the
+	// warn line -- plumbing, not mode behaviour -- so the fixture is kept mode-independent rather
+	// than keyed on the plan-unapproved check the mode table in planvalidate_test.go now owns.
+	overview := "---\nformat: 4\napproved: true\n---\n\n" +
 		"# Plan: add a helper\n\n" +
 		"## Card Index\n\n" +
 		"1 — add-helper — Add the helper\n\n" +
@@ -88,9 +90,16 @@ func TestPlanValidate_StuckSurfacesItsFindings(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(planDir, "01-add-helper.md"), []byte(card), 0o644); err != nil {
 		t.Fatalf("WriteFile(01-add-helper.md): %v", err)
 	}
+	// The one file the Card Index does not name -- this is what makes index-file-mismatch the
+	// plan's single finding.
+	if err := os.WriteFile(filepath.Join(planDir, "99-unindexed.md"), []byte("stray"), 0o644); err != nil {
+		t.Fatalf("WriteFile(99-unindexed.md): %v", err)
+	}
 
 	buf := captureGateWarnings(t)
-	p := NewPlanValidate(NamePlanValidate, anchorPath, anchorPath)
+	// false: the default mode. The mode table in planvalidate_test.go is where requireApproved
+	// belongs, and this test must not become the one place it is covered.
+	p := NewPlanValidate(NamePlanValidate, anchorPath, anchorPath, false)
 
 	outcome, _, err := p.Call(context.Background())
 	if err != nil {
@@ -104,7 +113,7 @@ func TestPlanValidate_StuckSurfacesItsFindings(t *testing.T) {
 	if !strings.Contains(logged, "plan failed validation") {
 		t.Errorf("log = %q; want it to report the validation refusal", logged)
 	}
-	if !strings.Contains(logged, "plan-unapproved") {
+	if !strings.Contains(logged, "index-file-mismatch") {
 		t.Errorf("log = %q; want it to name the check that fired", logged)
 	}
 	if !strings.Contains(logged, NamePlanValidate) {

@@ -8,8 +8,8 @@
 // per card plus `00-overview.md`, written LAST as the run's done-sentinel (see
 // contracts/specs/loom-plan-spec.md).
 // The producer always writes `approved: false` in `00-overview.md`'s frontmatter — it has no review
-// logic of its own (that is the Bouncer+Burler segment's separate job); flipping `approved` to
-// `true` after that segment returns APPROVED is the future loom orchestrator's job, not built here.
+// logic of its own (that is the Bouncer+Burler segment's separate job); `Plan-Bouncer`'s approved
+// settle is what flips `approved` to `true`, immediately before its commit seam fires.
 //
 // PlanSpec is a pure composer, exactly like DiscussionSpec: it does not stat the decision record,
 // does not stat or create `_lyx/plan/`, and does not spawn anything.

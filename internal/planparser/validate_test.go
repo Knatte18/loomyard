@@ -107,6 +107,44 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	}
 }
 
+// TestValidateFormat_NeverReportsApproval drives ValidateFormat and asserts format-unrecognized
+// still fires on an unrecognized format: value while plan-unapproved never appears, regardless of
+// whether the fixture's approved: is true, false, or (Go's zero value) absent.
+func TestValidateFormat_NeverReportsApproval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		format          int
+		approved        bool
+		wantFormatUnrec int
+	}{
+		{name: "clean, approved true", format: 4, approved: true, wantFormatUnrec: 0},
+		{name: "clean, approved false", format: 4, approved: false, wantFormatUnrec: 0},
+		{name: "unrecognized format, approved true", format: 3, approved: true, wantFormatUnrec: 1},
+		{name: "unrecognized format, approved false", format: 3, approved: false, wantFormatUnrec: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			plan := &planparser.Plan{
+				Format:   tt.format,
+				Approved: tt.approved,
+				Cards:    []planparser.Card{validCard(1, "only")},
+			}
+			findings := planparser.ValidateFormat(plan, t.TempDir())
+
+			if got := countFor(findings, "format-unrecognized"); got != tt.wantFormatUnrec {
+				t.Errorf("countFor(findings, format-unrecognized) = %d; want %d", got, tt.wantFormatUnrec)
+			}
+			if got := countFor(findings, "plan-unapproved"); got != 0 {
+				t.Errorf("countFor(findings, plan-unapproved) = %d; want 0 (ValidateFormat never reports approval)", got)
+			}
+		})
+	}
+}
+
 // TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since
 // both stem from the same overview frontmatter and manifest/designs/plan-card-format.md checks
 // them as a pair.
@@ -146,6 +184,38 @@ func TestValidate_FormatAndApproval(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestValidate_FormatAndApprovalOrder asserts Validate's finding order still matches
+// contracts/specs/loom-plan-spec.md's fixed order when a plan trips both format-unrecognized and
+// plan-unapproved at once: format-unrecognized first, plan-unapproved second, any remaining
+// findings after them.
+func TestValidate_FormatAndApprovalOrder(t *testing.T) {
+	t.Parallel()
+
+	plan := &planparser.Plan{
+		Format:   3,
+		Approved: false,
+		// A card with no type label at all also trips card-type-missing, giving this test a third
+		// finding to confirm lands after the first two rather than reordering them.
+		Cards: []planparser.Card{{Number: 1, Slug: "only"}},
+	}
+	findings := planparser.Validate(plan, t.TempDir())
+
+	if len(findings) < 3 {
+		t.Fatalf("Validate(plan, tempDir) = %+v; want at least 3 findings", findings)
+	}
+	if got := findings[0].Check; got != "format-unrecognized" {
+		t.Errorf("findings[0].Check = %q; want %q", got, "format-unrecognized")
+	}
+	if got := findings[1].Check; got != "plan-unapproved" {
+		t.Errorf("findings[1].Check = %q; want %q", got, "plan-unapproved")
+	}
+	for _, f := range findings[2:] {
+		if f.Check == "format-unrecognized" || f.Check == "plan-unapproved" {
+			t.Errorf("findings after position two unexpectedly repeats %q", f.Check)
+		}
 	}
 }
 

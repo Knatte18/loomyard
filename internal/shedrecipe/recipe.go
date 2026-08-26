@@ -103,4 +103,8 @@ type Env struct {
 	// CommitPlan is the injected closure that commits the plan output directory, invoked by the
 	// PlanWrite entry's commit decorator on a Done outcome.
 	CommitPlan func() error
+	// ApprovePlan is the injected closure marking the reviewed plan approved, read by the Bouncer
+	// entry. It is invoked on the approved branch of that producer's settle, before the commit
+	// seam.
+	ApprovePlan func() error
 }

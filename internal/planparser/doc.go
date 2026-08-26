@@ -1,9 +1,11 @@
-// Package planparser is the SOLE parser of the on-disk plan format written under
-// `_lyx/plan/` (see contracts/specs/loom-plan-spec.md, the pinned spec this package
-// implements). No other package may read `_lyx/plan/` directly — every consumer
+// Package planparser is the SOLE parser AND SOLE writer of the on-disk plan format written
+// under `_lyx/plan/` (see contracts/specs/loom-plan-spec.md, the pinned spec this package
+// implements). No other package may read or write `_lyx/plan/` directly — every consumer
 // (the batcher, webster's master, and fork prompt rendering) goes through
-// planparser.ParsePlan and the Plan/Card model it returns, so the on-disk grammar has
-// exactly one reader and the rest of webster never re-derives it.
+// planparser.ParsePlan and the Plan/Card model it returns, and the package's one write
+// path, SetApproved, is the only place any `_lyx/plan/` byte is ever rewritten — so the
+// on-disk grammar has exactly one reader and one writer, and the rest of webster never
+// re-derives it.
 //
 // # Path ownership
 //

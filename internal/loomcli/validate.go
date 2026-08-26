@@ -67,19 +67,26 @@ Example:
 	}
 }
 
-// validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the Plan-Validate
-// mechanical gate, callable by the writer agent before handoff.
+// validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the Plan-Validate/
+// Plan-Revalidate mechanical gate, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
-	return &cobra.Command{
+	var requireApproved bool
+
+	cmd := &cobra.Command{
 		Use:   "validate-plan",
 		Short: "run the Plan-Validate gate's checks standalone against the current plan",
-		Long: `validate-plan parses the current worktree's plan and runs
-planparser.Validate against it -- the identical checks the Plan-Validate
-mechanical gate runs -- and reports the result as one JSON envelope. It
-takes no arguments and no flags; it always checks the worktree's own plan.
+		Long: `validate-plan parses the current worktree's plan and checks it in one of
+two modes. With no flags, it runs planparser.ValidateFormat -- the same
+format-only check set the Plan-Validate mechanical gate runs before review,
+and the mode the plan writer calls before handoff. With --require-approved,
+it runs planparser.Validate -- the same full check set, including the
+plan-unapproved approval gate, that the Plan-Revalidate mechanical gate runs
+after review settles. Either way it reports the result as one JSON
+envelope. It takes no arguments.
 
 Example:
-  lyx loom validate-plan`,
+  lyx loom validate-plan
+  lyx loom validate-plan --require-approved`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -94,7 +101,12 @@ Example:
 				return nil
 			}
 
-			findings := planparser.Validate(plan, c.env.WorktreeRoot)
+			var findings []planparser.ValidationError
+			if requireApproved {
+				findings = planparser.Validate(plan, c.env.WorktreeRoot)
+			} else {
+				findings = planparser.ValidateFormat(plan, c.env.WorktreeRoot)
+			}
 			if len(findings) > 0 {
 				clihelp.SetExit(cmd.Context(), output.ErrFields(out, "loom: plan is not yet valid", map[string]any{
 					"findings": renderFindings(findings),
@@ -108,4 +120,8 @@ Example:
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval gate, matching the Plan-Revalidate row")
+
+	return cmd
 }

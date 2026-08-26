@@ -14,7 +14,7 @@ they are out of scope, and a finding raised against one is never legitimate.
 
 The format contract is `contracts/specs/loom-plan-spec.md`, and the Card model it implements is described in `manifest/designs/plan-card-format.md`.
 This rubric points at both and restates neither.
-The mechanical checks over that contract are already enforced upstream by `Plan-Validate`.
+The mechanical checks over that contract are already enforced — fifteen of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
 Sitting directly downstream of a sixteen-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
@@ -27,9 +27,9 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 
 Do not flag any of the following as a finding:
 
-- **Anything `Plan-Validate` already checks.**
-  The sixteen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically upstream.
-  Re-deriving them here is duplicated work whose only possible outcome is disagreement with the parser.
+- **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
+  The sixteen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — fifteen of the sixteen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+  Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
   Plan-time completeness of that intersection is explicitly not provable;

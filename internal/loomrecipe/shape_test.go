@@ -46,10 +46,10 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurler, loomshed.NamePlanWrite, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NameDiscussionBurler, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBouncer, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, "", 0, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
-	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanBouncer, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
+	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanBouncer, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", "", false))},
 	{loomshed.NamePlanBouncer, loomshed.NamePlanBurler, loomshed.NamePlanRevalidate, "Plan-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NamePlanBurler, loomshed.NamePlanBouncer, loomshed.NamePlanBouncer, "Plan-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
-	{loomshed.NamePlanRevalidate, loomshed.NamePlanWrite, loomshed.NameBatchifier, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", ""))},
+	{loomshed.NamePlanRevalidate, loomshed.NamePlanWrite, loomshed.NameBatchifier, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", "", false))},
 	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
 	{loomshed.NameWebster, "", loomshed.NameWebsterBouncer, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
 	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NamePublish, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
@@ -124,6 +124,11 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 			}, nil
 		},
 		CommitPlan: func() error { return nil },
+		// ApprovePlan is a non-nil no-op closure, not a real planparser.SetApproved call: this
+		// file's subject is the constructed producer table and its routing graph, never a driven
+		// run, so nothing here reads the plan's approval flag -- card 25's dynamic negative case is
+		// where a deliberately non-writing closure is the thing under test.
+		ApprovePlan: func() error { return nil },
 	}
 
 	paths := ShedPaths{

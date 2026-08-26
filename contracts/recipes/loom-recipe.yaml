@@ -106,6 +106,9 @@ producers:
     engine: PlanValidate
     on_stuck: Plan-Write
     on_done: Plan-Bouncer
+    # No config block, deliberately: this row runs before the review segment, and its absent
+    # require_approved key is what puts it in format-only mode -- it must not demand the
+    # plan-unapproved flag only Plan-Bouncer's approved settle can produce.
 
   - name: Plan-Bouncer
     engine: Bouncer
@@ -129,6 +132,13 @@ producers:
       # an overlay round runs no git at all, and nothing else in this segment commits, so without
       # the seam every approved fix would stay uncommitted in the weft working tree.
       commit_seam: plan
+      # approve_seam: plan is set on this row and no other -- it is the only row in the whole list
+      # that knows the plan passed review. The approved settle writes the approval flag through
+      # this seam immediately before commit_seam fires, so the flag lands inside the commit rather
+      # than as working-tree dirt afterwards. Neither Discussion-Bouncer nor Webster-Bouncer gets
+      # this key: neither of their artifacts carries an approval flag, and an absent key leaves the
+      # seam nil exactly as an omitted commit_seam already does.
+      approve_seam: plan
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.
@@ -157,8 +167,12 @@ producers:
             The decision record named above is the answer key: the plan's job is to implement the
             decisions and constraints it settles. The format authority is
             contracts/specs/loom-plan-spec.md, and the mechanical checks over that format are
-            already enforced upstream by Plan-Validate, so re-deriving them in this round is
-            duplicated work.
+            already enforced upstream by Plan-Validate for every check except plan-unapproved,
+            which now moves downstream to Plan-Revalidate, so re-deriving the other fifteen in
+            this round is duplicated work. This round may never write the approved: key in the
+            plan's overview file: a fixer that set the flag would be approving the very artifact
+            the review round is judging, and this row already has write access to the overview
+            because it runs fix-scope: overlay with the plan directory in its target paths.
         rubric_stencil: loom-rubric-plan-review
         # fix-scope: overlay, matching the Discussion-Burler row above. The plan directory is weft
         # content reached through the junction, and the Fabric Git Invariant reserves committing that
@@ -176,7 +190,10 @@ producers:
     # review segment, over whatever Plan-Burler's overlay rounds rewrote -- the judge is forbidden
     # by its own rubric from re-deriving those checks, Batchifier's Call never parses the plan, and
     # Webster carries no on_stuck at all, so without this row a fixer-introduced format regression
-    # lands on the one row in the list a human is the only recovery for.
+    # lands on the one row in the list a human is the only recovery for. The recipe now distinguishes
+    # the two rows sharing this engine by two things: their differing on_done targets, and this row's
+    # require_approved: true config key below, which puts it in the approval-enforcing mode
+    # Plan-Validate's absent key does not carry.
     engine: PlanValidate
     # on_stuck is Plan-Write, not Plan-Bouncer: this row reports mechanical format findings, and the
     # fixer round is rubric-forbidden from re-deriving those, so the row that can actually repair
@@ -188,6 +205,11 @@ producers:
     # by the Burler row's leftover budget.
     on_stuck: Plan-Write
     on_done: Batchifier
+    config:
+      # This row runs after the review segment settles, so it is the row that confirms the
+      # plan-unapproved flag is present -- catching both a fixer-introduced regression that clears
+      # it and a failed approval write.
+      require_approved: true
 
   - name: Batchifier
     engine: Batchifier

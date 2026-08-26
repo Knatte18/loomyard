@@ -518,14 +518,15 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
 
 ## Planparser Sole-Parser Invariant
 
-`internal/planparser` is the SOLE parser of the on-disk plan format (`_lyx/plan/`).
+`internal/planparser` is the SOLE parser and the SOLE writer of the on-disk plan format (`_lyx/plan/`).
 
-- No other package parses `00-overview.md`/`NN-<card-slug>.md`;
+- No other package parses or writes `00-overview.md`/`NN-<card-slug>.md`;
   consumers read plan-level sections only from the `planparser.Plan` model a caller hands in.
 - `planparser` is the sole declarer of the plan directory's path.
   `PlanDirName`/`PlanDirRel()` declare the worktree-relative token, and `PlanDir`/`PlanOverview` declare the absolute form.
   The package never resolves cwd and never imports `internal/lyxcwd`;
   the caller supplies the anchor path — `AnchorPath()`, never `WorktreePath()`.
+- `SetApproved` is the one write path: leaving the sole-writer property as an unwritten reading of what was once a parse-only invariant is how the next task grows a second writer somewhere else, so it is stated outright.
 - **Enforced by** review obligation today (candidate future import/grep guard).
 
 ## Discussionparser Sole-Parser Invariant
@@ -538,10 +539,10 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
 
 ## Gate Self-Check Parity Invariant
 
-A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function, and neither re-implements the other's check.
+A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode the row set uses, and neither re-implements the other's check.
 
 - Today's two instances: Discussion-Validate's `ShedProducer` row and the `validate-discussion` verb both call `discussionparser.Validate`;
-  Plan-Validate's `ShedProducer` row and the `validate-plan` verb both call `planparser.Validate`.
+  the plan gate is one engine in two modes across two rows — Plan-Validate's row and `validate-plan`'s default (no `--require-approved`) both call `planparser.ValidateFormat`, and Plan-Revalidate's row and `validate-plan --require-approved` both call `planparser.Validate`.
 - The verb's envelope distinguishes a findings failure from an I/O fault **structurally**, by the presence of the `findings` key, never by message wording, because that is what the three-way comparison keys off.
 - Adding a mechanical gate means adding its verb and its parity test in the same task.
 - **Enforced by** `internal/loomcli/parity_test.go` (`TestGateParity_DiscussionValidate`, `TestGateParity_PlanValidate`).

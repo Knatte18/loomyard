@@ -205,6 +205,14 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{planparser.PlanDirRel()}, fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
+		// ApprovePlan is what flips approved: true on the Plan-Bouncer row's approved settle. It runs
+		// before that row's commit seam (CommitPlan above), so the flag lands inside the commit rather
+		// than as working-tree dirt afterwards. It is idempotent -- a second run over an
+		// already-approved plan is a successful no-op -- which is what makes the failed-settle resume
+		// path converge.
+		ApprovePlan: func() error {
+			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
+		},
 		// StencilsDir, RunRoot, Burler, and Now are filled for both review segments --
 		// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike. StencilsDir is
 		// websterGeom.StencilsDir -- the same value the DiscussionSpec and PlanSpec closures above
