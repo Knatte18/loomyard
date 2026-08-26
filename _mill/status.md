@@ -30,11 +30,17 @@ implementing  '2026-08-26T12:44:24Z'
 ```yaml
 batches:
   - name: engine-live-geometry
-    state: pending
+    state: running
+    implementer_session: ca7e0937-8233-4dbb-bb01-5d888c2a0500
+    start_sha: 3735ad281e2b0ef7601646a489650ff9d7d7330d
+    verify_baseline_failures: []
   - name: engine-attach-argv
     state: pending
+    verify_baseline_failures: []
   - name: cli-convergence
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-live-proof
     state: pending
+    verify_baseline_failures: []
 ```
