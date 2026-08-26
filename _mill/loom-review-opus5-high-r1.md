@@ -472,6 +472,124 @@ about whether a dead substrate is recoverable.
 Fix: `drive` should ensure the substrate (`c.reed.Up()`, as `run` does) or refuse on the envelope naming `lyx reed up`, before the first producer
 call. And the help text must stop claiming "no tmux" for a verb that cannot function without it.
 
+### F12 — LOW (operator-observed; visual half needs a real TTY) — attaching a loom session leaves the operator's pre-attach terminal content on screen
+
+Reported by the operator, with a screenshot, after `lyx reed attach` into the session this review drove:
+
+> "the terminal bit of the first thing I had in the terminal stays hanging around. That's not the point, is it?"
+
+It is not. `manifest/designs/loom.md`'s "Entry point" step 4 is "attach the current terminal to the tmux session (reed takes the foreground)",
+and the section's promise is that "**loom goes to the background and the tmux session takes the window**".
+
+The mechanism, from the code: reed creates the session with a **fixed, config-pinned** size and never reconciles it against the attaching client.
+
+```go
+// internal/reedengine/lifecycle.go:310-314
+"new-session", "-d", "-s", session,
+"-c", e.geom.PaneCwd,
+"-x", strconv.Itoa(e.cfg.Width),      // reed.yaml width: 220
+"-y", strconv.Itoa(e.cfg.Height),     // reed.yaml height: 50
+```
+
+and the whole layout is computed against that same fixed box:
+
+```go
+// internal/reedengine/apply.go:75
+return render.Rules(strands, render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, ...)
+```
+
+At boot reed sets exactly two tmux options — `remain-on-exit` and `mouse` (`lifecycle.go:399,408`) — and **never** `window-size`.
+Both attach paths are a bare `attach-session` with no size reconciliation and no screen clear:
+
+```go
+// internal/reedcli/attach.go:21-23 and internal/loomcli/bootstrap.go:95-97 (identical)
+return []string{"-L", socket, "attach-session", "-t", "=" + session}
+```
+
+So the rendered geometry is entirely independent of the operator's real terminal, and whatever region of the physical terminal the session does not
+cover is never painted — leaving the pre-attach shell content visible around it, exactly as reported.
+
+Fix direction: reconcile on attach — set `window-size` at boot and/or resize the window to the attaching client, and recompute the layout against
+the client's size rather than the pinned box; at minimum clear the screen before handing stdio over.
+
+Disposition: like F9, the pinned geometry and the attach argv live in `internal/reedengine`/`internal/reedcli`, outside this campaign's module.
+`internal/loomcli/bootstrap.go`'s `attachArgv` is loom's own duplicate of the same bare argv and would need the same treatment.
+Recorded for the orchestrator rather than fixed in a loom hardening round.
+
+This is the one finding whose confirmation genuinely required a human's eyes — I have no TTY, so `attach` cannot be observed from here.
+The operator supplied that half; the code half above is mine.
+
+### F13 — NIT (CONFIRMED) — the recipe header enumerates five `on_stuck`-less rows when there are eight
+
+`contracts/recipes/loom-recipe.yaml:6-10`:
+
+> "Preflight, Loom-Preflight, Batchifier, Publish, and Finalize carry no on_stuck for exactly that reason"
+
+Eight rows carry no `on_stuck`: those five plus **`Discussion-Write`, `Plan-Write`, and `Webster`**.
+The sentence's framing is about *gates*, and the three missing rows are producers — but the list reads as an enumeration of the file's
+escalate-to-a-human set, and it is not one.
+The omission is material: a `Stuck` from any of those three also blocks the whole run with no bounce, and for `Discussion-Write` that is a
+*reachable* state (`SingleLLMProducer` maps `shuttleengine.OutcomeAsking` to `shedengine.Stuck`), not a theoretical one.
+A reader auditing the routing from this header would not know that.
+
+Fix: name all eight, or reword so the sentence is clearly about gates only and add the producer rows' own escalation as a separate note.
+
+### F14 — NIT (CONFIRMED) — `loomengine.LoadConfig` validates the three model-specs at load time but not the three timeouts
+
+`internal/loomengine/config.go:174-201`.
+
+The function's own header states its purpose: it validates the role model-specs "so a typo'd spec fails loud at load time rather than hours into a
+run when the discussion, plan, or review producer first spawns."
+The same file's `Config` carries `DiscussionTimeoutMin`, `PlanTimeoutMin`, and `ReviewTimeoutMin`, and none is checked.
+
+A negative value flows into `time.Duration(cfg.DiscussionTimeoutMin) * time.Minute` (`discussion.go:59`, `plan.go:88`, `review.go:47`) and is caught
+only much later, by `Spec.validate` at spawn time or `normalizeAttachSpec` at resume time — precisely the "hours into a run" failure the
+model-spec check exists to prevent, for the keys sitting immediately beside it.
+
+Fix: reject a negative timeout in `LoadConfig`, beside the three `modelspec.Parse` calls.
+
+### F15 — NIT (CONFIRMED) — `BurlerProducer.Call`'s pre-attempt archive failure skips the package's shared cancellation rule
+
+`internal/shedadapters/burler.go:318-320`.
+
+```go
+if err := archiveStaleOutputs([]string{reviewPath, fixerReportPath}, p.now); err != nil {
+    return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: archive stale outputs before attempt %d: %w", ...)
+}
+```
+
+Every other non-success exit in this function routes through `failureExit`, which consults `cancelErr` first.
+This one returns bare. `internal/shedadapters/doc.go`'s "Shared cancellation rule" says "On exit, a cancelled context replaces every result except
+a genuine success verdict", and an archive failure is not a success verdict.
+Consequence is small (the wrong error text is reported for a run an operator was cancelling anyway) but it is an unstated exception to a
+stated package-wide rule.
+
+Fix: route it through `failureExit`, or consult `cancelErr` inline as the neighbouring paths do.
+
+### F16 — NIT (CONFIRMED) — the `AwaitOperator` design claims the driver log records each observed ask; it does not
+
+`internal/shuttleengine/wait.go:157-161` logs the ask with `logger.Info`.
+
+The `5e923e10` design discussion justifies accepting a wedged interactive run's silence with:
+"the human sees the wedge directly, and `Wait` **logs each observed ask so the driver log records it too**."
+
+`internal/loomcli/run.go:208-210` spawns the driver as `exec.Command(exe, "loom", "drive")` with no `-v`, and `internal/logger` defaults `levelVar`
+to `slog.LevelWarn`, so `Info` never reaches stderr — and `LoomDriverLog` captures only stderr.
+
+Verified live: after a real interactive ask, `.lyx/loom/driver.log` was **0 lines**, while the observation was present in the durable trace sink:
+
+```
+$ grep -ho 'msg="shuttle: awaiting operator[^"]*"' .lyx/logs/trace-*.log
+msg="shuttle: awaiting operator, ask observed"
+```
+
+So the observability itself is fine — `logger`'s `durableHandler` is unconditionally enabled at `Info` (`internal/logger/logger.go:293-299`) — and only the
+claim about *which* file records it is wrong. Same for `attach.go:131`'s "run attached" line, which the Live-Substrate Spawn Observability invariant
+requires and which likewise lands in the trace sink, not `driver.log`.
+
+Fix: correct the wording where it is asserted (`internal/shuttleengine/wait.go`'s file header and `manifest/designs/loom.md` if it repeats the claim)
+to name the durable trace sink, so an operator looks in the right place.
+
 ### Live driving — the real hub
 
 A fresh, real fabric hub was built for this review (nothing in the operator's own repos was touched):
@@ -589,6 +707,72 @@ Three independent live confirmations that the anchor fix holds where it matters:
 **F1 reproduced on this second, independent hub** as well: `lyx loom run` reported
 `{"error":"loom: driver did not take the run lock; ...","ok":false}` while `driver.log` recorded a clean
 `{"halted_producer":"Preflight","outcome":"blocked"}`. So F1 is not an artifact of the first hub's state.
+
+### Live driving — interactive `Discussion-Write`, all three prompt-named checks
+
+`discussion_interactive: true` on the subpath hub's pair, driven for real with `tmux send-keys`.
+All three checks the campaign prompt names were exercised against live substrate.
+
+**The interview itself works.** The agent asked as plain numbered-list text in the pane with its recommendation as option 1, exactly as
+`modeRules(autonomous=false)` specifies, and never called `AskUserQuestion`:
+
+```
+1. What should Goodbye(name) return? I recommend mirroring Hello's style exactly ...
+2. Should I add a test file (greet_test.go) covering both Hello and Goodbye, or just Goodbye? ...
+```
+
+**(b) `OutcomeAsking` is genuinely non-terminal.** The agent ended its turn on that ask — a `Stop` hook event is in `events.jsonl` — and:
+
+```
+driver pid 1081469 still alive
+status: Discussion-Write running | history []
+run.json: "outcome": "running"
+```
+
+Under the old rules that ask would have mapped to `shedengine.Stuck`, and `Discussion-Write` carries no `on_stuck`, so the whole run would have
+blocked before the operator typed a character. It did not. `AwaitOperator` holds the loop open.
+(The observation is logged, but to the durable trace sink rather than `driver.log` — see F16.)
+
+Answering via `tmux send-keys` drove the interview to completion, and the operator's typed requirement landed in the artifact:
+
+```
+decision-record.md:19  - **Output format**: `Goodbye("Ada")` must return exactly `"Goodbye, Ada!"` ...
+decision-record.md:20    Rationale: explicit operator requirement (referred to as the CRUCIBLE-MARKER requirement) ...
+```
+
+**(a) Kill mid-interview → re-attach, not respawn.** The interview was restarted, a distinctive requirement was typed in
+(`"Farvel, " + name + " -- CRUCIBLE-MARKER-2"`, deliberately conveyed *only* through the pane), and the driver was `kill`ed four seconds later
+while the agent was still working. State immediately after the kill was exactly what `Attach` is built for — `run.json` `outcome: "running"`,
+strand `8e6298bf…` still tracked live on pane `%7`.
+
+The resumed `lyx loom drive` then logged:
+
+```
+msg="shuttle: run attached" runDir=.../shuttle/4845a8ff273c15377722424f47e34f2a
+                            strandGUID=8e6298bf9b1d019f605baa51fc73a99d
+                            sessionID=cfe73c94-cad4-425c-b756-40355d429763
+```
+
+— the **same** run dir and the **same** strand GUID. `lyx reed status` showed no second `discussion::` strand at any point, so no duplicate agent
+was created, and the attached run classified `Done` off the agent's completion. The operator's answers survived intact:
+
+```
+decision-record.md:17  - `Goodbye(name string) string` returns `"Farvel, " + name + " -- CRUCIBLE-MARKER-2"`.
+decision-record.md:35  - The literal suffix `" -- CRUCIBLE-MARKER-2"` is unusual ... intentional per operator instruction
+```
+
+A respawn would have re-interviewed from scratch and lost that requirement entirely. It did not.
+
+**(c) Two live matching runs are refused, never picked.** Two run directories were written carrying the same resolved `OutputFiles` as
+`Discussion-Write`'s spec, both `"outcome": "running"`, both bound to strand GUIDs that the **real** reed table listed as live.
+`lyx loom drive` refused rather than choosing:
+
+```
+{"error":"shedadapters: Discussion-Write (shuttle): shuttle attach: shuttle: attach: 2 live runs match the
+ same output files, refusing to pick one: .../shuttle/aaaa1111…, .../shuttle/bbbb2222…","ok":false}
+```
+
+Both run directories are named; nothing was spawned.
 
 **Operator watch commands for this session** (both take no flags — they resolve from cwd):
 
