@@ -72,6 +72,8 @@ batches:
     commit_sha: 7e303f68a5e2225eb953b0481e330fb8e4577124
     verify_baseline_failures: []
   - name: docs-and-constraints
-    state: pending
+    state: running
+    implementer_session: fdbd0da5-7c4a-4556-b4dc-0ea4246f78a0
+    start_sha: dbbc7ad904b7b6c169f75aad9aef8b8ebae68ccc
     verify_baseline_failures: []
 ```
