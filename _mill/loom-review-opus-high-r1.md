@@ -919,6 +919,71 @@ The boundary landed at 17:37:31, and every clause of the documented contract hel
           $ ps -eo args | grep 'loom drive'   -> nothing; the driver exited cleanly
 ```
 
+### Live scenario 6 — Webster driven from a real `Plan-Write` output — PASS (never proven before)
+
+Round 1 named this as blocked and "owed to a later round": Webster's own smoke tests drive its
+fork machinery against an isolated fixture plan, never a plan `Plan-Write` itself produced.
+
+```
+17:40:53 | Webster running history=14        (Plan-Bouncer done, Plan-Revalidate done, Batchifier done)
+$ lyx reed status
+ strands: loom-status (%0), master::41d7a4af (%11, live)     <-- a real Webster Master session
+
+$ lyx webster status
+{"batches":[{"number":1,"slug":"greet-trim","kind":"fork","status":"done","terminal":true,
+             "has_digest":true}],
+ "current_batch":0,"paused":false,
+ "plan_fingerprint":"1aeb8dcf80d9663affc679eb4ba4eddf4ec57f8b831fe0bf858aebd3ae13512e", ...}
+
+$ ls _lyx/webster/reports/
+01-greet-trim.yaml    integration.yaml
+
+17:42:18 | Webster-Bouncer running history=15   (Webster returned done)
+```
+
+The batching matched `manifest/designs/webster-parallel-execution.md`'s documented strictly
+sequential shape: the default identity batchifier produced exactly one batch for the one card,
+and Master drove it as a single `kind: fork` batch — no parallelism attempted, none implied.
+
+The implementation is real and correct, committed to the **warp** repo by the fork itself
+(commit-per-card, the Fabric Git Invariant's one sanctioned agent commit):
+
+```
+$ git log --oneline -2
+4f1bf6a 1: greet-trim
+3e259ef tinytool: initial commit
+$ cat cmd/tinytool/greet.go
+package main
+
+import "strings"
+
+// Greet returns the greeting line tinytool prints for name, with surrounding
+// whitespace trimmed before it is composed into the line. A whitespace-only
+// name trims to empty, yielding "Hello, !".
+func Greet(name string) string {
+	return "Hello, " + strings.TrimSpace(name) + "!"
+}
+$ ls cmd/tinytool/
+greet.go   greet_test.go   main.go
+```
+
+The card's own bundled test file landed with it, and the integration report ran. The commit
+subject `1: greet-trim` matches the plan's `**Commit:**` contract.
+
+**Not staged: a crash mid-Webster BATCH.** The single batch went from spawn to `done` in about
+fifty seconds against a six-line function, and by the time I read `lyx webster status` it was
+already terminal — there was no mid-batch window left to kill the driver inside. I state that
+as a miss rather than a pass: the mission named it and I did not drive it. What I did instead
+is the sibling half the same mission bullet names — a crash mid **`Webster-Burler` round** (see
+scenario 7). For the batch half, what I can report is read, not driven:
+`websterengine.reclaimEntryTimeStrands` (`runlevel.go:260`, called at `:393` before anything
+acts on the loaded state) stops a leftover live Master before a new one is started, which is a
+different mechanism from `SingleLLMProducer`'s attach but has the same no-duplicate property.
+A round with a larger fixture task (enough cards that a batch runs for minutes) could stage
+this properly.
+
+### Live scenario 5 details
+
 Four separate documented properties, all confirmed in one observation:
 1. The pause is honoured at a **producer boundary**, never mid-operation — the in-flight
    `Burler` round completed and its artifacts landed.
