@@ -27,6 +27,7 @@ batch 3 consumes only the fact that these three commits can no longer fail on an
 
 - **Context:**
   - `internal/gitkit/gitkit.go`
+  - `internal/fabriccli/clone.go`
   - `internal/hubforge/hub.go`
   - `internal/hubforge/doc.go`
   - `internal/fabriccli/pushbypass_integration_test.go`
@@ -52,7 +53,7 @@ batch 3 consumes only the fact that these three commits can no longer fail on an
   In `internal/preflightshed/preflight_integration_test.go`, apply the identical change and the identical comment extension to its own `setupPreflightWrapperFixture`, whose comment already states that it mirrors `internal/preflight`'s fixture.
 
   Do not touch `internal/fabriccli/pushbypass_integration_test.go` — it writes a placeholder file under the durable lyx directory immediately before its `git add .`, so it always has something to stage and is not a member of this class.
-- **Commit:** `test(hubforge,preflight): allow an empty stage at the weft-prime fixture commits`
+- **Commit:** `test(hubforge,preflight,preflightshed): allow an empty stage at the weft-prime fixture commits`
 
 ## Batch Tests
 
