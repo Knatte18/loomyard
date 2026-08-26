@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: approved-regression-coverage
 slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
 plan: _mill/plan
@@ -32,6 +32,7 @@ implementing  '2026-08-26T18:44:53Z'
 approved-untrack-status-file  '2026-08-26T18:55:56Z'
 approved-text-references  '2026-08-26T19:00:32Z'
 approved-docs  '2026-08-26T19:07:15Z'
+approved-regression-coverage  '2026-08-26T19:13:07Z'
 ```
 
 ## Batches
@@ -57,8 +58,9 @@ batches:
     commit_sha: d6c31536c953a9db653ce7979686ee14a025f18d
     verify_baseline_failures: []
   - name: regression-coverage
-    state: running
+    state: approved
     implementer_session: e3d93f92-bbea-44ba-a11a-88102b1c5a45
     start_sha: c058d2b4d155af3da0f275d6d64847ace4682396
+    commit_sha: 43bf864db52df58523fb1122b33cd8af9154d568
     verify_baseline_failures: []
 ```

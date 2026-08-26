@@ -1,0 +1,5 @@
+1 of 1 cards committed — all complete.
+
+Summary: 1 of 1 cards committed (Card 17). Created /home/knatte/Code/loomyard/wts/loom-status-file-merge-conflict/internal/loomcli/landing_integration_test.go implementing TestFinalize_TwoSequentialLandingsNeverConflictOnTheStatusFile, which builds a parent pair and two task pairs via hubforge, seeds and diverges each task's .lyx/loom/status.json via loomshed.Seed + state.ReadJSONStrict/state.UpdateJSON, lands both tasks in sequence through landingshed.Finalize with a strict shuttle fake that fails the test if any conflict-resolution session is spawned, and asserts via git ls-files in the parent pair's weft sibling worktree that no loom/status.json is tracked afterward. Commit 43bf864db52df58523fb1122b33cd8af9154d568 was pushed to origin/loom-status-file-merge-conflict. go vet -tags integration ./internal/loomcli/... and go test -tags integration ./internal/loomcli/... both pass; gofmt/goimports report no drift.
+
+{"status":"success","commit_sha":"43bf864db52df58523fb1122b33cd8af9154d568","session_id":"e3d93f92-bbea-44ba-a11a-88102b1c5a45","cards_done":[17]}
