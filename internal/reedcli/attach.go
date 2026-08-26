@@ -4,6 +4,12 @@
 // pre-flight on the envelope,
 // but the terminal-handover tail (once stdio is inherited by the child tmux process) emits no JSON
 // on success.
+// The handover argv itself comes from reedengine.Engine.AttachArgv, not a package-level builder here:
+// this file's only remaining pre-flight addition is reading the operator's own terminal size via
+// golang.org/x/term and handing it to the engine's builder. That size read and the builder call are
+// both pre-flight steps that nonetheless never write to the envelope — each degrades to today's bare
+// argv and logs a warning instead, so c.eng.Status() remains the only pre-flight step that can abort
+// with an envelope error.
 
 package reedcli
 
@@ -13,14 +19,11 @@ import (
 	"os/exec"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
-
-// attachArgv reports the tmux argv for an in-place attach.
-func attachArgv(socket, session string) []string {
-	return []string{"-L", socket, "attach-session", "-t", "=" + session}
-}
 
 // attachCmd builds the `attach` subcommand, handing the operator's terminal to tmux attach-session.
 func (c *reedCLI) attachCmd() *cobra.Command {
@@ -32,6 +35,10 @@ child, in place — no new window is spawned (never wt.exe). Every fallible
 step (checking that the server/session is up) runs pre-flight and reports
 through the normal JSON envelope; once the terminal handover begins, stdio
 belongs to tmux and nothing further is written to it, even on success.
+The handover also asks tmux to apply a layout computed for this terminal's
+own size, chained onto the attach; when no terminal size is readable (a
+piped stdout, no controlling terminal), the attach proceeds exactly as
+before, with no chained layout.
 
 Example:
   lyx reed attach`,
@@ -50,7 +57,18 @@ Example:
 				return nil
 			}
 
-			attach := exec.Command(c.eng.TmuxPath(), attachArgv(c.eng.Socket(), c.eng.SessionName())...)
+			// Read the operator's own terminal size against stdout. On error (piped
+			// output, no controlling terminal) this does not report on the envelope
+			// and does not abort: AttachArgv answers a non-positive cols/rows with
+			// the bare argv, exactly today's behaviour, so nothing regresses on a
+			// non-TTY.
+			cols, rows, err := term.GetSize(int(os.Stdout.Fd()))
+			if err != nil {
+				logger.Warn("reed: no terminal size available, attaching without a chained layout", "err", err)
+				cols, rows = 0, 0
+			}
+
+			attach := exec.Command(c.eng.TmuxPath(), c.eng.AttachArgv(cols, rows)...)
 			attach.Stdin = os.Stdin
 			attach.Stdout = os.Stdout
 			attach.Stderr = os.Stderr
