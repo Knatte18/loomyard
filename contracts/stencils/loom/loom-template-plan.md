@@ -83,11 +83,17 @@ Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <ca
 ### Each `NN-<card-slug>.md`
 
 In this exact order: `# Card N — <name>`;
-exactly one bold type label from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`, whose own indented backtick-wrapped sub-bullets are the card's targets;
+one or more bold type labels from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`, each label's own indented backtick-wrapped sub-bullets are the card's targets for that label;
 optionally `**Uses:**`, in the same bullet shape, for what the card reads but does not change;
 a required, multi-line `**Intent:**` (prose — what, and why);
 `**ImpactSummary:**` on `Edit`/`Delete` cards only, taking its value inline on the label line;
 optionally `**Commit:**` (must start `N: `) and `**Verify:**`.
+
+An implementation card that bundles its own new test file writes `**Edit:**` for the implementation and `**Create:**` for the new test file, in that order — this is the normal shape for such a card, not an exception.
+
+`**Custom:**` is a last resort, used only where none of the other six genuinely fits.
+A card whose targets can be expressed as a multi-label combination of the other six is not `Custom`.
+A `**Custom:**` group may not be combined with a group of a different type.
 
 A field with no content is omitted entirely — never write a `none` sentinel on any field.
 
