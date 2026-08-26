@@ -311,7 +311,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe`; `lyx loom run|drive|status|pause|validate-discussion|validate-plan`, plus the `run` verb registered a second time as the bare root alias `lyx run`).
   `run` is the session bootstrap, performing four steps in order: resolve the recorded parent branch and seed+commit the status file weft-side when it is absent; ensure the worktree's tmux session is up and its status strand exists; spawn the detached loom driver unless one is already alive; and hand the terminal to the tmux session.
   `drive` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
-  `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it one line per poll.
+  `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll.
   `pause` requests a pause at the next producer boundary.
   `validate-discussion` runs the Discussion-Validate gate's checks standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `validate-plan` runs the Plan-Validate gate's checks standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
