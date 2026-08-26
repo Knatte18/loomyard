@@ -51,7 +51,9 @@ batches:
     commit_sha: 7491d7fbf561bca1057f8c033a1a17b6699083f8
     verify_baseline_failures: []
   - name: shedrecipe-approve-seam
-    state: pending
+    state: running
+    implementer_session: 3546ca75-750e-4e75-8427-48022f9b3bb6
+    start_sha: 9f6cfcf593331b5cbe418da4645de68afe0b8aeb
     verify_baseline_failures: []
   - name: loomcli-wiring-and-flag
     state: pending
