@@ -242,7 +242,7 @@ This scenario is deliberately read-only: `promote` and `sync` both mutate the op
 
 **Covers:** loom
 
-**Fixture note:** This scenario hand-writes `_lyx/loom/status.json` as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom run`'s tmux bootstrap handover, and `lyx loom pause` on an absent status file is specified to error.
+**Fixture note:** This scenario hand-writes `.lyx/loom/status.json` as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom run`'s tmux bootstrap handover, and `lyx loom pause` on an absent status file is specified to error.
 Write the fixture with a realistic `current_producer`/`state`/`activity`/`history` shell and a `product` carrying a `slug` and `parent` of your choosing, following the shape in `contracts/specs/loom-status-spec.md`'s worked example.
 
 **Watch:** Does `lyx loom status` round-trip the fixture's own `slug`/`parent`/`current_producer`/`state`/`activity`/`history` values back out through its JSON envelope unchanged -- this also pins that envelope against the status contract?
