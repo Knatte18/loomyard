@@ -35,9 +35,14 @@ implementing  '2026-08-26T12:08:10Z'
 ```yaml
 batches:
   - name: configfilerel-accessor
-    state: pending
+    state: running
+    implementer_session: 84a92ee6-3e1c-4477-bd84-6018d9bb45b8
+    start_sha: 0de7dd8bdbc0ac5de28a2550f39d474db686b24b
+    verify_baseline_failures: []
   - name: fixture-empty-stage-tolerance
     state: pending
+    verify_baseline_failures: []
   - name: clone-commits-module-configs
     state: pending
+    verify_baseline_failures: []
 ```
