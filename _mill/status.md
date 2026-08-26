@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-bouncer-anchor-rundir-fix
 branch: loom-bouncer-anchor-rundir-fix
 plan: _mill/plan
@@ -29,4 +29,17 @@ plan-fix-r3  '2026-08-26T07:08:16Z'
 plan-review-r4  '2026-08-26T07:15:16Z'
 plan-fix-r4  '2026-08-26T07:16:00Z'
 planned  '2026-08-26T07:16:10Z'
+implementing  '2026-08-26T07:16:37Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: anchor-root
+    state: pending
+  - name: rundir-clear
+    state: pending
+  - name: docs
+    state: pending
 ```
