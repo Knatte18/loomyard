@@ -150,6 +150,33 @@ sibling.
 The run could not proceed correctly without manual intervention: the orphan had to be removed
 by hand before the segment could settle.
 
+**Counted, not asserted.** I enumerated every site in loom's producer list that starts a real
+provider session, and classified each by what it does on a resume, rather than reporting only
+the row I happened to crash. Method:
+
+```
+grep -rn "\.Run(spec\|Shuttle.Run\|runner.Run\|StartMaster\|Attach(" --include=*.go \
+  internal/shedadapters internal/mergeresolve internal/burlerengine internal/websterengine \
+  | grep -v _test
+```
+
+| Spawn site | Rows it serves | Resume behaviour |
+|---|---|---|
+| `shedadapters/singlellm.go:118,143` | `Discussion-Write`, `Plan-Write`, generic `SingleLLM` | **probe** — `Attach` before archive, attaches to a live run |
+| `shedadapters/bouncer.go:436` (`runSeedSpawn`) | all three Bouncers' seed call | **nothing** — archives, then `Run` |
+| `shedadapters/bouncer.go:532` (`judgeCall`) | all three Bouncers' judge call | **nothing** — archives, then `Run` |
+| `shedadapters/burler.go:341` | all three Burlers' round | **nothing** — archives, then `runner.Run` |
+| `shedadapters/webster.go:74` → `websterengine/runlevel.go:523` | `Webster` | **reclaim** — `reclaimEntryTimeStrands` (`runlevel.go:260`, called at `:393` before anything acts on the loaded state) stops a leftover live Master first |
+| `mergeresolve/mergeresolve.go:90` | `Publish`, `Finalize` conflict resolver | **nothing**, but out of loom's scope and reached only on a merge conflict |
+
+So the picture is sharp: of loom's own five spawn sites, **two solve this (by two different
+mechanisms — attach, and reclaim) and three do not**, and the three that do not are exactly the
+review segments' own — the rows a run spends most of its wall-clock inside.
+
+What this enumeration cannot see: a spawn reached through a seam whose method is not named
+`Run`/`StartMaster`/`Attach` (there is none in this tree today), and burlerengine's own
+internal fork spawns under `cluster-fan`, which loom's recipe never configures on any row.
+
 Fix landed this round: give `BurlerProducer` and the `Bouncer`'s two spawn paths the same
 live-agent probe `SingleLLMProducer` already has, so a resume attaches to a still-live round
 instead of respawning over it. See the fixer report.
