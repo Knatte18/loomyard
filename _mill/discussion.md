@@ -60,7 +60,8 @@ Every hub minted since the config-materialisation step landed carries the defect
 
 - Decision: build `relPaths` from exactly the `configsync.Result` entries whose `Applied` field is `true` — the same predicate the existing `KindFileWritten` recording loop already uses.
 - Rationale: a commit pathspec should name what this call wrote and nothing else.
-  On the re-clone path, `suffixWeftPrimaryBranch` adopts an existing `origin/<branch>-weft` that may already carry committed configs; `ReconcileAll` then reports `Applied: false` for every module, `relPaths` comes out empty, and `CommitWeftPaths`'s own `len(relPaths) == 0` guard returns `("", false, nil)` with no lock taken and nothing recorded.
+  On the re-clone path, `suffixWeftPrimaryBranch` adopts an existing `origin/<branch>-weft` that may already carry committed configs; `ReconcileAll` then reports `Applied: false` for every module *whose committed config already matches its template*, so when that holds for all of them `relPaths` comes out empty and `CommitWeftPaths`'s own `len(relPaths) == 0` guard returns `("", false, nil)` with no lock taken and nothing recorded.
+  A config that has drifted from its template still reports `Applied: true` (the `hasChanges` branch in `configsync.ReconcileAll`) and is committed, which is also correct — the empty-`relPaths` no-op is a possible outcome on this path, not a guaranteed one, and both outcomes are right.
   Seed-only modules (`burler`, `models`) with a present file are likewise `Applied: false` and correctly left alone.
 - Rejected: naming all nine registered non-fabric modules unconditionally — would stage files this call did not write, and on the adopt path would take the weft write lock to produce a guaranteed no-op commit.
 
@@ -91,6 +92,7 @@ Every hub minted since the config-materialisation step landed carries the defect
 - Decision: a commit failure returns `fabricengine.CloneResult{}, err`, exactly like every other post-recorder failure site in `CloneAndWire`.
 - Rationale: the named-result plus `defer func() { res.Mutations = rec.Snapshot() }()` idiom this function documents is what carries the accumulated record through a zero return; the CLI handler then routes it through `errWithRecord`.
   The clone is left intact on error, per `CloneAndWire`'s own contract, and the operator completes wiring with `reconcile`.
+- Verification: **no new test.** The path is covered by the shared named-result + `defer` idiom, which every other post-recorder failure site in `CloneAndWire` already exercises under test; reaching this specific site would need a seam for making `CommitWeftPaths` fail, and adding one to production code to test a two-line error return is a worse trade than the coverage is worth. A plan writer should not invent an injection point here.
 - Rejected: swallowing the error and logging a warning — a hub whose pairs cannot boot is not a warning-level outcome.
   Rolling the hub back — the function's documented contract is explicitly "on error, the clone is left intact".
 
@@ -144,7 +146,14 @@ Every hub minted since the config-materialisation step landed carries the defect
 
 ### docs-in-the-same-commit
 
-- Decision: update `CloneAndWire`'s doc comment (its enumerated wiring sequence gains the commit step), `internal/hubforge`'s `hub.go` / `doc.go` post-clone-state description, and `docs/shared-libs/configengine.md`'s `## Exported functions` section, which gains a `### ConfigFileRel(module string) string` entry beside the existing `ConfigDir` / `ConfigFile` entries. No `CONSTRAINTS.md` change, no `docs/overview.md` change, no `manifest/roadmap.md` move.
+- Decision: update, all in the same commit —
+  - `CloneAndWire`'s doc comment, whose enumerated wiring sequence gains the commit step;
+  - `internal/fabriccli/clone.go`'s file-header comment (lines 1-6), which enumerates that same sequence and would otherwise go stale;
+  - `internal/hubforge`'s `hub.go` / `doc.go` post-clone-state description;
+  - `internal/hubforge/seed.go`'s `SeedConfig` doc comment, which already explains where its commit runs and why, and must now also say why the commit is `--allow-empty`;
+  - `docs/shared-libs/configengine.md`'s `## Exported functions` section, which gains a `### ConfigFileRel(module string) string` entry beside the existing `ConfigDir` / `ConfigFile` entries.
+
+  No `CONSTRAINTS.md` change, no `docs/overview.md` change, no `manifest/roadmap.md` move.
 - Rationale: the Documentation Lifecycle rule requires the touched module's doc to land in the same commit.
   There is no `manifest/designs/fabric.md`; fabric's module doc is `internal/fabricengine/doc.go` plus the CLI-layer package comments, and the changed behaviour is in `fabriccli`.
   `docs/shared-libs/configengine.md` is in because it enumerates `configengine`'s exported surface function by function, and `ConfigFileRel` is a new exported function on exactly that surface — omitting it would leave the doc silently incomplete the day it lands.
