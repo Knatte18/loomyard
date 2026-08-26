@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // captureGateWarnings redirects logger output into a buffer for the duration of one test, restoring
@@ -153,5 +154,54 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	}
 	if !strings.Contains(logged, "failures=") {
 		t.Errorf("log = %q; want it to carry a failures field -- this row has no OnStuck, so a human reads this line or nothing", logged)
+	}
+}
+
+// TestBatchifier_StuckSurfacesTheBatcherError and its Webster twin close the last two rows in this
+// package that mapped a fault onto Stuck while discarding the reason. Both carry no OnStuck, so
+// their Stuck halts the run for a human, and batcher.Active conflates unknown-name, malformed YAML,
+// and I/O failure into one bare error with no sentinel -- so the error text is the only thing that
+// can tell an operator which of the three happened.
+func TestBatchifier_StuckSurfacesTheBatcherError(t *testing.T) {
+	anchorPath := t.TempDir()
+	writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
+
+	buf := captureGateWarnings(t)
+	producer := NewBatchifier("Batchifier", anchorPath)
+
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	got := buf.String()
+	for _, want := range []string{"Batchifier", "no-such-batcher"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("warning log = %q; want it to contain %q", got, want)
+		}
+	}
+}
+
+func TestWebsterProducer_StuckSurfacesTheBatcherError(t *testing.T) {
+	anchorPath := t.TempDir()
+	writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
+
+	buf := captureGateWarnings(t)
+	producer := NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{})
+
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	got := buf.String()
+	for _, want := range []string{"Webster", "no-such-batcher"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("warning log = %q; want it to contain %q", got, want)
+		}
 	}
 }

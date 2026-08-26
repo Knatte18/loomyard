@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -45,6 +46,12 @@ func (b *batchifier) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 		if cerr := cancelErr(ctx, b.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
+		// Surfaced rather than discarded, for the same reason Loom-Preflight and the two validators
+		// surface theirs: this row carries no OnStuck, so its Stuck halts the run for a human who
+		// would otherwise be told only Shed's generic "stuck with no OnStuck target". The
+		// conflation of unknown-name, malformed-YAML, and I/O failure into one bare error is exactly
+		// why the error text itself is the only thing that can tell them apart.
+		logger.Warn("loomshed: active batchifier did not resolve", "producer", b.name, "anchorPath", b.anchorPath, "cause", err)
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	}
 
