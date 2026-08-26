@@ -36,7 +36,7 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 - A new `approve_seam` recipe config key on the `Bouncer` registry row in `internal/shedrecipe`, plus a new `require_approved` key on the `PlanValidate` registry row.
 - A new `Env.ApprovePlan` closure field in `internal/shedrecipe`, filled in `internal/loomcli`'s `wire()`.
 - A mode parameter on `internal/loomshed`'s `NewPlanValidate` so the two rows sharing the one engine differ.
-- `contracts/recipes/loom-recipe.yaml`: `approve_seam: plan` on `Plan-Bouncer`, `require_approved: true` on `Plan-Revalidate`.
+- `contracts/recipes/loom-recipe.yaml`: `approve_seam: plan` on `Plan-Bouncer`, `require_approved: true` on `Plan-Revalidate`, and the `Plan-Burler` row's `fasit.instructions` prose corrected — see the Technical context entry for that string.
 - A `--require-approved` flag on `lyx loom validate-plan`, and the parity test extended to cover both rows.
 - `internal/loomrecipe/fixture_test.go`'s fake `Plan-Write` corrected to write the unapproved plan the real writer is required to write, and `fakeLoomBurler`'s injected regression re-pointed to a format fault the new seam cannot mask — see the Testing section's keystone paragraph;
   the first of those is the regression test for F7 itself.
@@ -78,7 +78,10 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 - **Decision:** `internal/planparser` exposes two entry points.
   `ValidateFormat(plan, worktreeRoot) []ValidationError` runs the fourteen checks `checkIndexFileConsistency` through `checkCommitSubjectMismatch` plus `format-unrecognized` — fifteen IDs in all.
   `Validate(plan, worktreeRoot) []ValidationError` keeps its current signature and current meaning: `ValidateFormat`'s fifteen findings plus the `plan-unapproved` check, sixteen IDs in all.
-  The `plan-unapproved` check is extracted from `checkFormatAndApproval` so that `format-unrecognized` stays in the format set and `plan-unapproved` moves to the wrapper.
+  `checkFormatAndApproval` splits into two helpers, `checkFormatRecognized` and `checkApproved`.
+  **`Validate` splices the approval finding at position two, preserving `contracts/specs/loom-plan-spec.md:200-220`'s fixed sixteen-row order byte-for-byte — it does not append it last, and that ordered list is not renumbered.**
+  The two exported functions are thin wrappers over one unexported `validate(plan, worktreeRoot string, requireApproved bool)` that emits `checkFormatRecognized`, then `checkApproved` when `requireApproved`, then the remaining fourteen in their existing order.
+  The unexported bool is an implementation detail of ordering and does not contradict the two-named-functions choice, which is about the package's exported seam.
 - **Rationale:** two named functions read better than a boolean and, decisively, no `planparser.Validate` call site needs a signature change.
   There are three production call sites outside `internal/loomshed`: `internal/websterengine/runlevel.go:332` and `internal/webstercli/validate.go:74` keep both their call and their behaviour unchanged, and `internal/loomcli/validate.go:97` keeps its call shape but switches which of the two functions it names, per the verb-mode decision below.
   `contracts/specs/loom-plan-spec.md` already frames `plan-unapproved` as "`approved: true`; else refuse to **run**", a consumer guard, which is exactly the split this makes explicit.
@@ -92,7 +95,9 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 - **Decision:** `loomshed.NewPlanValidate` gains a fourth parameter, `requireApproved bool`, giving the signature `NewPlanValidate(name, anchorPath, worktreeRoot string, requireApproved bool) shedengine.ShedProducer`.
   A plain `bool`, not a named mode type: the producer has exactly two modes and no third is foreseeable, and the field is stored as `requireApproved bool` on the unexported `planValidate` struct.
   `shedrecipe`'s `planValidateEntry` reads a new optional `require_approved` bool config key (absent ⇒ `false`) to supply it.
-  The signature change touches four in-repo call sites, all in tests: `internal/loomrecipe/shape_test.go:49` (`NewPlanValidate("", "", "")` inside a `reflect.TypeOf`), `internal/loomshed/cancellation_test.go:86`, `internal/loomshed/gatefindings_test.go:93`, and the four constructions in `internal/loomshed/planvalidate_test.go`.
+  The signature change touches **every `loomshed.NewPlanValidate` construction in the repo** — all of them in tests;
+  let the build enumerate them rather than trusting a written count.
+  The ones found during exploration are `internal/loomrecipe/shape_test.go` (two constructions, `:49` and `:52`, inside `reflect.TypeOf`), `internal/loomcli/parity_test.go:197`, `internal/loomshed/cancellation_test.go:86`, `internal/loomshed/gatefindings_test.go:93`, and four in `internal/loomshed/planvalidate_test.go`.
   `contracts/recipes/loom-recipe.yaml` sets `require_approved: true` on the `Plan-Revalidate` row and leaves the key absent on the `Plan-Validate` row.
 - **Rationale:** the two rows deliberately share one engine, and the recipe is where their difference already lives (their `on_done` targets already differ there).
   `Plan-Validate` runs before review and must not demand a flag only the review can produce;
@@ -200,8 +205,19 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 **`contracts/stencils/loom/loom-rubric-plan-review.md`.**
 The Plan-Review rubric tells the judge not to re-derive "the sixteen check IDs … enforced deterministically upstream" (`:20`, `:31`), naming `format-unrecognized` through `commit-subject-mismatch`.
 After the split only **fifteen** are enforced upstream of the judge — `plan-unapproved` moves downstream to `Plan-Revalidate`, which runs *after* the segment.
-Disposition: reword the count and the upstream claim;
-the don't-re-derive instruction itself stays exactly as it is, since the judge must still not re-derive the approval flag either — it is not the judge's business in either direction.
+The contiguous-range phrasing is what makes a bare count edit impossible: `plan-unapproved` sits at position two *inside* "`format-unrecognized` through `commit-subject-mismatch`", so "fifteen … through `commit-subject-mismatch`" would be self-contradictory.
+Disposition: keep the range and carve out the exception — "the sixteen check IDs `format-unrecognized` through `commit-subject-mismatch` are enforced deterministically outside this round: fifteen of them upstream by `Plan-Validate`, and `plan-unapproved` downstream by `Plan-Revalidate`".
+The don't-re-derive instruction itself stays exactly as it is, since the judge must not re-derive the approval flag either — it is not the judge's business in either direction, upstream or downstream.
+
+**`contracts/recipes/loom-recipe.yaml`'s `Plan-Burler` `fasit.instructions` (`:158-161`).**
+That string tells the overlay fixer round "the mechanical checks over that format are already enforced upstream by `Plan-Validate`, so re-deriving them in this round is duplicated work", which stops being true for `plan-unapproved` alone.
+Disposition: carve out the same exception the rubric gets, and **add the self-approval prohibition explicitly** — the fixer round may never write `approved:` in `00-overview.md`.
+The "never self-approve" rule binds `Plan-Burler` exactly as it binds `Plan-Write`, and for a sharper reason: the fixer runs *inside* the review segment, so a fixer that set the flag would be approving the very artifact the round is judging.
+This is not a hypothetical the recipe can leave unsaid — `Plan-Burler` runs `fix-scope: overlay` with `_lyx/plan` in `target.paths`, so `00-overview.md` is a file it is already permitted to write.
+The prohibition is prose in the row's instructions, not a mechanical guard;
+the mechanical backstop is `Plan-Bouncer`'s own clear-and-re-seed plus `Plan-Revalidate`, and a fixer that flipped the flag early would gain nothing, since `Approve` writes it moments later anyway.
+
+Note the neighbouring `Webster-Burler` `fasit.instructions` needs **no** change: it names "`Plan-Validate` and `Plan-Revalidate`" together, and together those two rows do still enforce all sixteen.
 
 **`internal/planparser`.**
 Read-only today — the package has no writer of any kind (`parse.go`, `validate.go`, `sections.go`, `normalize.go`, `classify.go` contain no `os.WriteFile`).
@@ -253,7 +269,10 @@ The existing `logger.Warn("loomshed: plan failed validation", ...)` line at `:76
 
 - `internal/loomshed/planvalidate_test.go` — `seedPlanValidateFixture(t, anchorPath, approved bool)` at `:19`, and the case at `:65` that seeds unapproved and expects the `plan-unapproved` stuck.
 - `internal/loomshed/gatefindings_test.go:73-107` — builds a plan whose *only* validation failure is `approved: false` and asserts the warn line contains `plan-unapproved`.
-  It needs a genuinely format-invalid plan for the non-approval mode, or to run in `require_approved` mode.
+  Disposition: **re-point the fixture, keep the default mode.**
+  Seed a format-clean, approved plan plus one unindexed orphan `.md` file, so the single finding is `index-file-mismatch`, and assert the warn line on that ID instead.
+  The test's subject is that exactly one finding reaches the log line — that is plumbing, not mode behaviour — so it should not become the one test that depends on `require_approved`, which `planvalidate_test.go`'s mode table already covers properly.
+  It also reuses the same orphan-file corruption the `revalidate_test.go` disposition below settles on, so one verified idea covers both.
 - `internal/planparser/validate_test.go:110-140` — `TestValidate_FormatAndApproval`, the direct test of the check being split.
 - `internal/loomcli/validate_test.go:166-175` — `planFixture`'s own `approved` parameter.
 - `internal/loomcli/parity_test.go:176` — `Stuck_Unapproved`.
@@ -370,7 +389,7 @@ Extend `entries_simple_test.go` for `require_approved`: absent, `true`, `false`,
 
 **`internal/loomshed`.**
 `planvalidate_test.go` grows a mode dimension: for each of the two modes, an unapproved-but-format-clean plan (stuck only in `require_approved` mode), a format-invalid plan (stuck in both), a clean approved plan (done in both), and an unparseable plan (returned error in both, never stuck).
-`gatefindings_test.go`'s single-finding fixture must be re-pointed — build its one determined finding from a format check rather than from `approved: false`, or run it in `require_approved` mode, so the test still proves exactly one finding reaches the log line.
+`gatefindings_test.go`'s single-finding fixture is re-pointed to an approved, format-clean plan plus one unindexed orphan `.md` file, asserting the warn line carries `index-file-mismatch`, and stays in the default mode — see its entry in Technical context for why the mode table, not this test, is where `require_approved` belongs.
 
 **`internal/loomcli`.**
 `TestGateParity_PlanValidate` becomes a two-dimensional table: {clean approved, clean unapproved, format-invalid, absent plan directory} × {flag absent, `--require-approved`}, each cell asserting the verb's mapped verdict equals the matching row's.

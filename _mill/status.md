@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-26T10:58:41Z'
+discussion-fix-r5  '2026-08-26T11:40:30Z'
+discussed  '2026-08-26T11:40:30Z'
 ```
