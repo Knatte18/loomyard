@@ -50,7 +50,9 @@ batches:
     commit_sha: d7b9a6d81aeb88003c5e65462eef0324cd5ae448
     verify_baseline_failures: []
   - name: docs
-    state: pending
+    state: running
+    implementer_session: afa080c9-df71-438b-90b5-fad98a103fe3
+    start_sha: fd41dac244959d2aa4f00d8409621d21baba7216
     verify_baseline_failures: []
   - name: regression-coverage
     state: pending
