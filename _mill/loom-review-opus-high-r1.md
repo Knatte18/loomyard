@@ -199,9 +199,43 @@ What this enumeration cannot see: a spawn reached through a seam whose method is
 `Run`/`StartMaster`/`Attach` (there is none in this tree today), and burlerengine's own
 internal fork spawns under `cluster-fan`, which loom's recipe never configures on any row.
 
+**Reported honestly: this is a KNOWN limitation, named in the package doc — and it should
+still be closed.** `internal/shedadapters/doc.go:143-147` says so outright:
+
+> \# Limitations
+>
+> The Bouncer and BurlerProducer rows drive the same Shuttle seam but do not go through
+> SingleLLMProducer, so they keep the respawn-over-a-live-agent path deliberately: a scope call
+> rather than a safety claim.
+
+I found that only after reproducing the defect twice, and it does not retract the finding — it
+sharpens it into three separate problems:
+
+1. **The design doc contradicts the package doc, and the design doc is the one an operator
+   reads.** `manifest/designs/loom.md`'s crash-recovery section states the ladder as loom's own
+   invariant, unqualified — "loom resumes on output files AND on live-agent evidence" and "do
+   not respawn — that would duplicate" — with no mention that it holds for one of loom's four
+   LLM-spawning producers. A scope call recorded only in a package's Limitations section, while
+   the module's design doc asserts the opposite as an invariant, is not a documented
+   limitation; it is a documentation defect on top of a behavioural one.
+2. **The scope call was made without the consequence being observed.** It reads as a deferral
+   of an unproven risk ("a scope call rather than a safety claim"). This round measured the
+   actual consequence twice: two concurrent agents on the same artifacts, and on the
+   `Webster-Burler` row two agents holding commit authority over the same git branch. That is
+   not a soft spot to accept — and the run could not get past it without a human deleting a
+   pane by hand.
+3. **The cost of closing it turned out to be small**, which is the practical argument the
+   original scope call could not have had: `Bouncer` already holds the full `Shuttle` seam
+   (`Run` + `Attach`), and `burlerengine`'s round already declares exactly
+   `[ReviewPath, FixerReportPath]` as its shuttle `OutputFiles` (`burlerengine/engine.go:140`)
+   — the very set `shuttleengine.Attach` matches on (`attach.go:224`, `outputFilesSetEqual`).
+   So the probe is reachable from `shedadapters` with no change to `burlerengine` at all.
+
 Fix landed this round: give `BurlerProducer` and the `Bouncer`'s two spawn paths the same
 live-agent probe `SingleLLMProducer` already has, so a resume attaches to a still-live round
-instead of respawning over it. See the fixer report.
+instead of respawning over it; retire the Limitations paragraph that recorded the gap; and
+correct `loom.md`'s crash-recovery section so it describes the ladder that actually ships. See
+the fixer report.
 
 ### F10 — a resumed run reports `paused`/`blocked`/`failed` for the whole first producer call, while a real LLM session is already spawning — MEDIUM — CONFIRMED (reproduced live)
 
@@ -470,7 +504,20 @@ re-running. But the comment is the load-bearing justification for the pair predi
 at all, and a future reader who trusts it will conclude the Bouncer is protected when it is
 not.
 
-Fix: state what each side actually tests and why the asymmetry is safe today.
+**The same false claim appears a second time, in the package doc**, where it is stated as the
+binding two-sided contract rather than as a passing remark —
+`internal/shedadapters/doc.go:94-96`:
+
+> The presence of both files means, and only means, that round N completed and produced a
+> usable review; the round producer uses exactly that pair predicate to decide whether to
+> advance, and the Bouncer uses exactly that pair predicate to tell its seed call from its
+> judge call.
+
+The Bouncer does not. `ResolveRound` stats `round-N-review.md` and nothing else. Two
+independent statements of a two-sided contract, both wrong in the same direction, in the two
+places a reader would go to check it.
+
+Fix: state what each side actually tests, in both places, and why the asymmetry is safe today.
 
 ### F4 — `Batchifier` and the `Webster` row swallow `batcher.Active`'s error with no log line — LOW — CONFIRMED (by trace)
 
