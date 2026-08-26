@@ -69,9 +69,19 @@ func simpleBurlerProfile() burlerengine.Profile {
 
 // newTestBurlerProducer builds a BurlerProducer over runDir with runner, failing the test on
 // constructor error.
+// The attach seam defaults to a fakeShuttle finding nothing live, which is the ordinary
+// no-live-round condition every pre-existing case in this file assumes; a case that wants the probe
+// to find something uses newTestBurlerProducerWithAttach instead.
 func newTestBurlerProducer(t *testing.T, runDir string, profile burlerengine.Profile, opts burlerengine.RunOpts, runner *fakeBurlerRunner, now func() time.Time) *BurlerProducer {
 	t.Helper()
-	p, err := NewBurlerProducer("burler", runner, profile, opts, runDir, now)
+	return newTestBurlerProducerWithAttach(t, runDir, profile, opts, runner, &fakeShuttle{}, now)
+}
+
+// newTestBurlerProducerWithAttach is newTestBurlerProducer with the attach seam supplied, for the
+// cases that script what the live-round probe finds.
+func newTestBurlerProducerWithAttach(t *testing.T, runDir string, profile burlerengine.Profile, opts burlerengine.RunOpts, runner *fakeBurlerRunner, attach Shuttle, now func() time.Time) *BurlerProducer {
+	t.Helper()
+	p, err := NewBurlerProducer("burler", runner, attach, profile, opts, runDir, now)
 	if err != nil {
 		t.Fatalf("NewBurlerProducer() error = %v; want nil", err)
 	}
@@ -105,17 +115,19 @@ func TestNewBurlerProducer_Validation(t *testing.T) {
 	tests := []struct {
 		name   string
 		runner BurlerRunner
+		attach Shuttle
 		pname  string
 		runDir string
 	}{
-		{"NilRunner", nil, "burler", filepath.Join(dir, "runs")},
-		{"EmptyName", &fakeBurlerRunner{}, "", filepath.Join(dir, "runs")},
-		{"EmptyRunDir", &fakeBurlerRunner{}, "burler", ""},
-		{"RelativeRunDir", &fakeBurlerRunner{}, "burler", "relative/runs"},
+		{"NilRunner", nil, &fakeShuttle{}, "burler", filepath.Join(dir, "runs")},
+		{"NilAttachSeam", &fakeBurlerRunner{}, nil, "burler", filepath.Join(dir, "runs")},
+		{"EmptyName", &fakeBurlerRunner{}, &fakeShuttle{}, "", filepath.Join(dir, "runs")},
+		{"EmptyRunDir", &fakeBurlerRunner{}, &fakeShuttle{}, "burler", ""},
+		{"RelativeRunDir", &fakeBurlerRunner{}, &fakeShuttle{}, "burler", "relative/runs"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewBurlerProducer(tt.pname, tt.runner, profile, burlerengine.RunOpts{}, tt.runDir, nil)
+			_, err := NewBurlerProducer(tt.pname, tt.runner, tt.attach, profile, burlerengine.RunOpts{}, tt.runDir, nil)
 			if err == nil {
 				t.Fatal("NewBurlerProducer() error = nil; want non-nil")
 			}
@@ -125,7 +137,7 @@ func TestNewBurlerProducer_Validation(t *testing.T) {
 
 func TestNewBurlerProducer_ValidCallSucceedsWithNoError(t *testing.T) {
 	dir := t.TempDir()
-	p, err := NewBurlerProducer("burler", &fakeBurlerRunner{}, simpleBurlerProfile(), burlerengine.RunOpts{}, filepath.Join(dir, "runs"), nil)
+	p, err := NewBurlerProducer("burler", &fakeBurlerRunner{}, &fakeShuttle{}, simpleBurlerProfile(), burlerengine.RunOpts{}, filepath.Join(dir, "runs"), nil)
 	if err != nil {
 		t.Fatalf("NewBurlerProducer() error = %v; want nil", err)
 	}

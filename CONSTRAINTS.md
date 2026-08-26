@@ -586,6 +586,12 @@ An instruction file — a producer's own prompt or skill — must never duplicat
   `internal/burlerengine` (`burler.yaml`, absent file returns a zero `Config`, bypassing `Load` because `MissingKeys` would misfire on its open-ended lenses/fans key set) and `internal/modelspec` (`models.yaml`, absent file returns `builtins()`;
   it cannot call a logging `Load` at all, being capped by the Modelspec Leaf Invariant) already have the degrading behaviour and are deliberately not repointed.
   A set-equality grep over the two entry-point tokens is structurally blind to them — without this clause the invariant would read as though the two pinned sets enumerate every module config in the repo, which they do not.
+- **A template list is a default, not a minimum length.**
+  `yamlengine.MissingKeys` requires a list-valued key to be PRESENT, never to be at least as long as the template's own list, so shortening or emptying a list is a legal configuration rather than a load failure.
+  The rule is stated here because the opposite behaviour was silent and self-defeating: `landing.yaml`'s `require_pr_to_base: []` — the only general way to say "never require a pull request", and the correct setting for any hub whose remote is not GitHub — refused to load with `missing keys: require_pr_to_base[0]`, and the refusal named `lyx config reconcile` as the remedy, which re-adds the template's own element and undoes the edit.
+  The reconcile MERGE keeps its own element-wise model and is not covered by this bullet;
+  see the known gap below.
+- **Known gap, recorded rather than fixed:** `configengine`'s reconcile merge overrides list values element by element and cannot resize the template's sequence, so `lyx config reconcile --apply` truncates a user list longer than the template's and reports the dropped entries under `removed` as though they were stale keys.
 - **Absence is typed, not textual.** `FindBaseDir` wraps the exported `configengine.ErrNotInitialized` sentinel on its absent-`_lyx/` branch and deliberately does not wrap it on a stat failure, so a degrading caller falls back only on `errors.Is(err, ErrNotInitialized)`.
   The four strict callers still use the older `strings.Contains(err.Error(), "not initialized")` rewrap;
   the sentinel makes migrating them possible, but the migration is available rather than done.

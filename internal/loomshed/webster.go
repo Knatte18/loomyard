@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -63,6 +64,12 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		if cerr := cancelErr(ctx, w.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
+		// Surfaced rather than discarded, exactly as the Batchifier gate surfaces the identical
+		// failure. This row carries no OnStuck either, so its Stuck halts the run for a human, and
+		// the resolved-batchifier fault is the sort that reaches this row only when the config
+		// changed after the gate already passed -- which is precisely the case an operator will not
+		// guess without being told.
+		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.anchorPath, "cause", err)
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	}
 

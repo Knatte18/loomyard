@@ -302,6 +302,108 @@ func TestRun_ResumeAfterHalt(t *testing.T) {
 	}
 }
 
+// TestRun_ResumeWritesRunningBeforeCallingTheProducer pins the resume write: a run resumed from any
+// non-running state must record that it IS running before it spends minutes inside a producer call,
+// and must clear the halt's stale error with it. The producer observes the file mid-call, which is
+// the only moment the property is observable -- afterwards the verdict's own persist has overwritten
+// it either way, which is exactly why the defect was invisible until a live run was watched.
+func TestRun_ResumeWritesRunningBeforeCallingTheProducer(t *testing.T) {
+	tests := []struct {
+		name  string
+		state State
+	}{
+		{"StatePaused", StatePaused},
+		{"StateBlocked", StateBlocked},
+		{"StateFailed", StateFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+
+			var duringCall Status
+			producer := &callbackProducer{
+				outcome: Done,
+				before: func() {
+					duringCall = readStatus(t, statusPath, statusLockPath)
+				},
+			}
+			shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
+
+			seed := commonSeed("A")
+			seed.State = tt.state
+			seed.Error = "seeded halt for resume test"
+			seedStatus(t, statusPath, statusLockPath, seed)
+
+			if _, err := shed.Run(context.Background()); err != nil {
+				t.Fatalf("Run(...) = _, %v; want nil error", err)
+			}
+
+			if duringCall.State != StateRunning {
+				t.Errorf("State observed during the producer call = %q; want %q -- a resumed run must not keep describing itself as %s while it is already spawning", duringCall.State, StateRunning, tt.state)
+			}
+			if duringCall.Error != "" {
+				t.Errorf("Error observed during the producer call = %q; want empty -- the halt's reason is stale the moment the loop retries past it", duringCall.Error)
+			}
+			if duringCall.Activity.Wait != "" {
+				t.Errorf("Activity.Wait observed during the producer call = %q; want empty -- the status strand composes its wait field from Error", duringCall.Activity.Wait)
+			}
+			if duringCall.CurrentProducer != "A" {
+				t.Errorf("CurrentProducer observed during the producer call = %q; want %q -- the resume write must not move the pointer", duringCall.CurrentProducer, "A")
+			}
+			if len(duringCall.History) != len(seed.History) {
+				t.Errorf("History length observed during the producer call = %d; want %d -- the resume write records no verdict", len(duringCall.History), len(seed.History))
+			}
+		})
+	}
+}
+
+// TestRun_AlreadyRunningStateWritesNothingExtra pins the resume write's conditionality: on the
+// ordinary running-to-running path it must not fire, so the loop keeps its one-persist-per-iteration
+// shape for every step after a resume.
+func TestRun_AlreadyRunningStateWritesNothingExtra(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	var duringCall Status
+	producer := &callbackProducer{
+		outcome: Done,
+		before: func() {
+			duringCall = readStatus(t, statusPath, statusLockPath)
+		},
+	}
+	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
+
+	seed := commonSeed("A")
+	seed.State = StateRunning
+	seed.Error = ""
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	if _, err := shed.Run(context.Background()); err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	// The seeded activity is whatever seedStatus wrote; an unconditional resume write would have
+	// recomposed it, so an unchanged value is the observable proof no extra write happened.
+	if duringCall.Activity != seed.Activity {
+		t.Errorf("Activity observed during the producer call = %+v; want the seeded %+v unchanged -- an already-running run needs no resume write", duringCall.Activity, seed.Activity)
+	}
+}
+
+// callbackProducer returns a fixed outcome and invokes before (when non-nil) at the start of every
+// Call, so a test can observe on-disk state from inside a producer call -- the one window in which
+// the loop's own mid-call state is visible.
+type callbackProducer struct {
+	outcome Outcome
+	before  func()
+	calls   int
+}
+
+func (p *callbackProducer) Call(_ context.Context) (Outcome, OutputPointer, error) {
+	p.calls++
+	if p.before != nil {
+		p.before()
+	}
+	return p.outcome, OutputPointer{}, nil
+}
+
 func TestRun_RerunIdempotence(t *testing.T) {
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 

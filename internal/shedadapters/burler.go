@@ -62,6 +62,7 @@ var _ BurlerRunner = (*burlerengine.Engine)(nil)
 type BurlerProducer struct {
 	name    string
 	runner  BurlerRunner
+	attach  Shuttle
 	profile burlerengine.Profile
 	opts    burlerengine.RunOpts
 	runDir  string
@@ -75,12 +76,25 @@ type BurlerProducer struct {
 // opts is a template whose Round field is overwritten per attempt.
 // A nil now defaults to time.Now, and the injected clock resolves only the archive filename's
 // same-second collision suffix.
-// It returns a distinct error for each of: a nil runner, an empty name, an empty runDir, and a
-// runDir that is not absolute per filepath.IsAbs.
+// It returns a distinct error for each of: a nil runner, a nil attach seam, an empty name, an empty
+// runDir, and a runDir that is not absolute per filepath.IsAbs.
 // NewBurlerProducer never stats, creates, or otherwise touches runDir -- creating it is Call's job.
-func NewBurlerProducer(name string, runner BurlerRunner, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerProducer, error) {
+//
+// attach is the live-round probe, and it is required rather than optional. A round this producer
+// respawns over a still-live agent produces two concurrent sessions writing the same review and
+// fixer-report files -- and, on a fix-scope: source row, two sessions holding commit authority over
+// the same branch. Accepting a nil seam would make that outcome reachable again through a wiring
+// slip, silently, which is exactly how it shipped the first time.
+// It is deliberately the same Shuttle seam the Bouncer row already holds rather than a new method on
+// BurlerRunner: burlerengine declares exactly [ReviewPath, FixerReportPath] as its shuttle run's
+// OutputFiles, which is the set shuttleengine.Attach matches on, so the probe is reachable from here
+// with no change to burlerengine at all.
+func NewBurlerProducer(name string, runner BurlerRunner, attach Shuttle, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerProducer, error) {
 	if runner == nil {
 		return nil, fmt.Errorf("shedadapters: %s (%s): runner must not be nil", name, burlerEngineLabel)
+	}
+	if attach == nil {
+		return nil, fmt.Errorf("shedadapters: %s (%s): attach seam must not be nil", name, burlerEngineLabel)
 	}
 	if name == "" {
 		return nil, fmt.Errorf("shedadapters: %s (%s): name must not be empty", name, burlerEngineLabel)
@@ -97,6 +111,7 @@ func NewBurlerProducer(name string, runner BurlerRunner, profile burlerengine.Pr
 	return &BurlerProducer{
 		name:    name,
 		runner:  runner,
+		attach:  attach,
 		profile: profile,
 		opts:    opts,
 		runDir:  runDir,
@@ -174,8 +189,12 @@ func parseRoundReviewName(name string) (int, bool) {
 // advance and hydrate a fixer report that burlerengine's requireExistingPaths rejects fail-loud,
 // wedging the segment permanently, whereas under the pair predicate the orphan simply means the
 // round is incomplete and is re-run.
-// The same pair predicate is what the segment's Bouncer uses to tell its seed call from its judge
-// call, so the two sides run the same test.
+// The segment's Bouncer does NOT run the same test, and saying so matters: it resolves its round
+// through ResolveRound, which stats the review file alone. The asymmetry is safe today only because
+// of where an orphan can appear -- a process killed in that window leaves current_producer naming
+// this row, so this producer re-resolves the same round and archives the orphan before the Bouncer
+// is ever routed to. It is not safe by construction, and a future change that lets the Bouncer be
+// entered with an orphaned review present would have it judge a review no fixer round stands behind.
 func highestCompleteRound(runDir string) (int, error) {
 	entries, err := os.ReadDir(runDir)
 	if err != nil {
@@ -301,6 +320,19 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		return "", shedengine.OutputPointer{}, primaryErr
 	}
 
+	// Probe before archive, exactly as SingleLLMProducer.Call does and for the identical reason:
+	// archiving renames the very two files a live round is about to write, and shuttle's Wait polls
+	// for bare existence at those paths, so archiving ahead of the probe would make an attached
+	// round unable to ever classify done -- in precisely the case the probe exists to protect.
+	//
+	// The spec carries only what Attach reads: the OutputFiles it set-matches a persisted run.json
+	// against, and the round's own timeout so an attached run's deadline is the round's, not the
+	// shuttle config's shorter default. Role and Round are identity fields Attach never matches on;
+	// they are filled anyway so a logged attach is attributable.
+	if attachedOutcome, attachedPtr, attachedErr, handled := p.probeLiveRound(ctx, round, reviewPath, fixerReportPath, failureExit); handled {
+		return attachedOutcome, attachedPtr, attachedErr
+	}
+
 	var priorResult burlerengine.Result
 	var priorToken string
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -373,4 +405,68 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 	// Unreachable: every path through the loop above returns.
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerEngineLabel, round)
+}
+
+// probeLiveRound asks the attach seam whether a still-live round is already writing this round's own
+// two artifacts, and maps a found run's outcome onto Call's contract.
+//
+// It reports handled=false in exactly two cases -- no live run was found, or one was found but had
+// already died or timed out -- and in both the caller proceeds to its ordinary archive-then-spawn
+// path, since the agent is gone either way. Every other case reports handled=true along with the
+// three values Call must return.
+//
+// An attach error is returned bare rather than through failureExit: failureExit archives the round's
+// two paths, and an attach that could not determine whether a run is live is the one situation where
+// archiving is most dangerous -- a live agent may still be mid-write on them.
+func (p *BurlerProducer) probeLiveRound(
+	ctx context.Context,
+	round int,
+	reviewPath, fixerReportPath string,
+	failureExit func(error) (shedengine.Outcome, shedengine.OutputPointer, error),
+) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	spec := shuttleengine.Spec{
+		OutputFiles: []string{reviewPath, fixerReportPath},
+		Timeout:     p.opts.Timeout,
+		Role:        burlerEngineLabel,
+		Round:       strconv.Itoa(round),
+	}
+
+	result, found, err := p.attach.Attach(spec)
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr, true
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attach probe: %w", p.name, burlerEngineLabel, round, err), true
+	}
+	if !found {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+
+	logger.Info("shedadapters: attached to a live burler round instead of respawning", "producer", p.name, "engine", burlerEngineLabel, "round", round, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
+
+	switch result.Outcome {
+	case shuttleengine.OutcomeDone:
+		// Identical to the spawn path's own success return, including the cancellation rule: a
+		// completed round's artifacts survive, but a cancelled context still errors.
+		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr, true
+		}
+		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath}, nil, true
+
+	case shuttleengine.OutcomeAsking:
+		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attached run is asking: %s", p.name, burlerEngineLabel, round, result.LastAssistantMessage))
+		return outcome, ptr, exitErr, true
+
+	case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
+		// The attached agent is gone, so a fresh spawn is both safe and correct. The bounded retry
+		// below then applies to that spawn from its own attempt 1, deliberately: the attached run
+		// was not this producer's attempt, and counting it would silently halve the retry budget of
+		// every resumed round.
+		logger.Warn("shedadapters: attached burler round had already died or timed out; respawning", "producer", p.name, "engine", burlerEngineLabel, "round", round, "outcome", result.Outcome, "sessionID", result.SessionID)
+		return "", shedengine.OutputPointer{}, nil, false
+
+	default:
+		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attached run reported unrecognized outcome %q", p.name, burlerEngineLabel, round, result.Outcome))
+		return outcome, ptr, exitErr, true
+	}
 }

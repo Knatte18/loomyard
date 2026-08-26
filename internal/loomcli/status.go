@@ -82,10 +82,13 @@ Without --watch, it reads the status file once and emits a single JSON
 envelope carrying the current producer, state, error text, pause flag,
 composed activity, history length, and the task's slug/parent.
 
-With --watch, it performs the same read once as a pre-flight, then prints
-one line per poll to the terminal and never exits -- this is the one
-documented interactive-handoff exception on this verb, taken narrowly on
-the tail only, after every fallible step has already run pre-flight.
+With --watch, it performs the same read once as a pre-flight, then tails
+the file and never exits, printing a line only when the composed activity
+actually CHANGES rather than once per poll -- so a quiet pane means the
+current producer is still working, not that the tail has stopped. This is
+the one documented interactive-handoff exception on this verb, taken
+narrowly on the tail only, after every fallible step has already run
+pre-flight.
 
 Example:
   lyx loom status
@@ -144,7 +147,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().BoolVar(&watch, "watch", false, "tail the status file one line per poll instead of emitting a single JSON envelope")
+	cmd.Flags().BoolVar(&watch, "watch", false, "tail the status file, printing a line only when the activity changes, instead of emitting a single JSON envelope")
 	cmd.Flags().DurationVar(&interval, "interval", time.Second, "poll interval for --watch; exists so a test can drive the poll fast without a real wall-clock wait")
 
 	return cmd

@@ -77,6 +77,25 @@ type Deps struct {
 	OpenFabric       func() (*fabricengine.Fabric, error)
 	OpenParentFabric func() (*fabricengine.Fabric, error)
 
+	// CommitStatus is the injected loop-owner closure both producers commit the product's own
+	// orchestration status file through, immediately before they merge. It exists because a Shed
+	// product rewrites that file on every producer transition while committing it only once, at
+	// bootstrap, so by the time these two rows run it is a tracked, uncommitted modification --
+	// and fabricengine's merge guard refuses any tracked modification on either side of the pair.
+	// Without this seam the last row of a loom run refuses on the run's own bookkeeping, every
+	// time, with no OnStuck target and therefore no recovery but a human.
+	//
+	// It is a told closure rather than a path this package commits itself for the same reason
+	// ScratchDir is told: naming the status file here would make this package declare a location it
+	// may not declare, and both the pathspec and the commit message belong to the product whose
+	// status file it is.
+	//
+	// Nil means "no status file to commit", matching the nil-is-absent convention
+	// shedadapters.BouncerConfig.Commit already sets for an injected loop-owner commit seam. A
+	// product that has one fills it; internal/loomcli's landingDeps does, and its own
+	// every-field-populated drift guard is what keeps it filled.
+	CommitStatus func() error
+
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for
 	// it, so without this field neither producer could build a resolver at all, and the conflict

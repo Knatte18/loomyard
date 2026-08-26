@@ -19,7 +19,7 @@ import (
 // burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env,
 // maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this
 // row's segment shares with its Bouncer row, and returns
-// shedadapters.NewBurlerProducer(name, env.Burler, profile, opts, runDir, env.Now).
+// shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now).
 func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -77,6 +77,13 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err := requireSeam("BurlerRound", "Burler", env.Burler); err != nil {
 		return nil, err
 	}
+	// The same Shuttle seam the segment's Bouncer row already reads, threaded here as the round's
+	// live-agent probe. Required rather than optional: without it a resumed run respawns over a
+	// still-live round, producing two agents writing one review -- and on a fix-scope: source row,
+	// two agents committing to one branch.
+	if err := requireSeam("BurlerRound", "Shuttle", env.Shuttle); err != nil {
+		return nil, err
+	}
 
 	runDir, err := resolveUnderRoot("BurlerRound", "run_subdir", env.RunRoot, runSubdir)
 	if err != nil {
@@ -89,7 +96,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: create run dir %q: %w", runDir, err)
 	}
 
-	producer, err := shedadapters.NewBurlerProducer(name, env.Burler, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: %w", err)
 	}
@@ -98,17 +105,28 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 
 // burlerRoundFileSet maps profile's target or fasit sub-map onto a burlerengine.FileSet, recognising
 // exactly paths and instructions and rejecting any other key.
+//
+// entry and field qualify every error it returns. Without them the two call sites are
+// indistinguishable: the accessors below render only the leaf key, so a bad profile.target.paths and
+// a bad profile.fasit.paths both read `config key "paths" must be a string list, got ...`, and a
+// stray key under either reads `unrecognized config key "X"` with no path at all. A recipe author
+// with a typo in one of two sibling maps was told which key and never which map. This is the same
+// entry/field qualification resolveUnderRoot already applies one file over.
 func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, error) {
+	qualify := func(err error) error {
+		return fmt.Errorf("shedrecipe: %s: config key %q: %w", entry, field, err)
+	}
+
 	paths, err := configStringSlice(cfg, "paths", false)
 	if err != nil {
-		return burlerengine.FileSet{}, err
+		return burlerengine.FileSet{}, qualify(err)
 	}
 	instructions, err := configString(cfg, "instructions", false)
 	if err != nil {
-		return burlerengine.FileSet{}, err
+		return burlerengine.FileSet{}, qualify(err)
 	}
 	if err := configRejectUnknown(cfg, "paths", "instructions"); err != nil {
-		return burlerengine.FileSet{}, err
+		return burlerengine.FileSet{}, qualify(err)
 	}
 	return burlerengine.FileSet{Paths: paths, Instructions: instructions}, nil
 }

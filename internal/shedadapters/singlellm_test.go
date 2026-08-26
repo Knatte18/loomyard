@@ -30,6 +30,10 @@ type fakeShuttle struct {
 	attachErr     error
 	attachCalled  bool
 	gotAttachSpec shuttleengine.Spec
+	// duringAttach is Attach's twin of duringRun: it runs before Attach returns, so a test can
+	// write the files an attached-and-waited-on run would have produced, exactly as duringRun does
+	// for a spawned one.
+	duringAttach func()
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -46,6 +50,9 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 func (f *fakeShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
 	f.attachCalled = true
 	f.gotAttachSpec = spec
+	if f.duringAttach != nil {
+		f.duringAttach()
+	}
 	return f.attachResult, f.attachFound, f.attachErr
 }
 
