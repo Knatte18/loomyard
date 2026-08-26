@@ -45,12 +45,16 @@ A non-nil error from `Approve` is returned as `settle`'s own error rather than r
 
 - **Context:**
   - `internal/shedadapters/bouncer.go`
+  - `internal/shedadapters/bouncer_seed_test.go`
+  - `internal/shedadapters/bouncer_judge_test.go`
 - **Edits:**
   - `internal/shedadapters/bouncer_commit_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Extend the existing `Commit`-seam test file rather than inventing a new harness — every case below builds on the same `testBouncerConfig`, `judgeFakeShuttle`, `layoutBouncerRun`, `bouncerVerdictContent`, `bouncerLedgerContent`, and `bouncerReport` helpers the file's existing cases already use.
+  Those six helpers are declared in two sibling files in the same package rather than in the file being edited: `testBouncerConfig` in `internal/shedadapters/bouncer_seed_test.go`, and the other five in `internal/shedadapters/bouncer_judge_test.go`.
+  Both files are read-only context for this card — reuse them as they are and change neither.
   Widen the file-level comment so it names both seams rather than `Commit` alone.
   Add four cases.
   First: an APPROVED settle with a non-nil `Approve` calls it exactly once and calls it strictly before `Commit` — assert the ordering with one shared call-log slice both closures append a marker string to, never with two independent booleans, since two booleans cannot distinguish the two orderings.

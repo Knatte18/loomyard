@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r5  '2026-08-26T11:40:30Z'
 discussed  '2026-08-26T11:40:30Z'
 planning  '2026-08-26T11:50:29Z'
 plan-review-r1  '2026-08-26T11:59:02Z'
+plan-fix-r1  '2026-08-26T12:01:02Z'
 ```

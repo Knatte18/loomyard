@@ -22,7 +22,7 @@ Batch-local decision: the rubric and the fixer instructions keep their contiguou
 
 ## Cards
 
-### Card 26: Update the loom design doc
+### Card 27: Update the loom design doc
 
 - **Context:**
   - `contracts/recipes/loom-recipe.yaml`
@@ -38,9 +38,9 @@ Batch-local decision: the rubric and the fixer instructions keep their contiguou
   In the `Plan-Review rubric` subsection's do-not-flag list, apply the same carve-out the rubric stencil itself gets: keep the contiguous range and say fifteen of the sixteen are enforced upstream by `Plan-Validate` while `plan-unapproved` is enforced downstream by `Plan-Revalidate`.
   Add a short statement, wherever the row 9 segment is described, that the approval flag is written by that segment's `Bouncer` on its approved settle, before its commit seam fires, so the flag lands inside the commit.
   Keep every existing markdown link resolvable and add no link whose target or anchor does not exist.
-- **Commit:** `26: docs: loom design doc for the two-mode plan gate`
+- **Commit:** `27: docs: loom design doc for the two-mode plan gate`
 
-### Card 27: Update the pinned plan-format spec
+### Card 28: Update the pinned plan-format spec
 
 - **Context:**
   - `internal/planparser/validate.go`
@@ -53,9 +53,9 @@ Batch-local decision: the rubric and the fixer instructions keep their contiguou
   Reframe the section's own preamble so it states that the sixteen IDs are split across two entry points: fifteen of them are the format-only set, and `plan-unapproved` is additionally checked by the full entry point, with the two named as `ValidateFormat` and `Validate`.
   Reframe the `plan-unapproved` row itself so its existing "else refuse to run" consumer-guard framing is made explicit: it names which callers enforce it — the post-segment `Plan-Revalidate` row and every standalone plan consumer — and states that the pre-review gate deliberately does not, because the writer is forbidden from setting the flag and the review segment is what writes it.
   Keep the section's opening count sentence accurate: it still describes sixteen distinct IDs.
-- **Commit:** `27: docs: spec the ValidateFormat/Validate split`
+- **Commit:** `28: docs: spec the ValidateFormat/Validate split`
 
-### Card 28: Correct the two loom stencils
+### Card 29: Correct the two loom stencils
 
 - **Context:**
   - `contracts/recipes/loom-recipe.yaml`
@@ -72,9 +72,9 @@ Batch-local decision: the rubric and the fixer instructions keep their contiguou
   Do not add the new flag to this stencil: doing so would re-impose the deadlock on the one agent that must never satisfy it.
   In the plan-review rubric stencil, apply the carve-out to both places that name the check set — the sentence describing the gate as sitting downstream of a sixteen-check mechanical validator, and the do-not-flag entry naming the contiguous range: keep the range and say fifteen of the sixteen are enforced upstream by `Plan-Validate` while `plan-unapproved` is enforced downstream by `Plan-Revalidate`.
   Leave the don't-re-derive instruction itself exactly as it is — the judge must not re-derive the approval flag in either direction, upstream or downstream.
-- **Commit:** `28: docs: correct the plan stencil and review rubric`
+- **Commit:** `29: docs: correct the plan stencil and review rubric`
 
-### Card 29: Correct the plan producer's package doc
+### Card 30: Correct the plan producer's package doc
 
 - **Context:**
   - `contracts/recipes/loom-recipe.yaml`
@@ -88,9 +88,9 @@ Batch-local decision: the rubric and the fixer instructions keep their contiguou
   Keep the first half — the producer still always writes `approved: false` and still has no review logic of its own — and correct the second: name `Plan-Bouncer`'s approved settle as the row that writes the flag, dropping the future tense and the "not built here" clause.
   Change no code in the file;
   this card is the doc comment alone.
-- **Commit:** `29: docs: correct loomengine plan producer package doc`
+- **Commit:** `30: docs: correct loomengine plan producer package doc`
 
-### Card 30: Record the two invariants
+### Card 31: Record the two invariants
 
 - **Context:**
   - `internal/planparser/approve.go`
@@ -108,12 +108,12 @@ Batch-local decision: the rubric and the fixer instructions keep their contiguou
   Update the Gate Self-Check Parity Invariant to say the verb reaches every mode its row set uses, not merely that the row and the verb call the same function: the plan gate is now one engine in two modes across two rows, and its today's-two-instances bullet must name both modes and both `planparser` entry points.
   Keep its structural `findings`-key discrimination bullet and its enforcement pointer at the parity test unchanged.
   Change no other entry in the file.
-- **Commit:** `30: constraints: sole-writer and two-mode gate parity`
+- **Commit:** `31: constraints: sole-writer and two-mode gate parity`
 
 ## Batch Tests
 
 `verify: go test ./internal/lyxcwd/...` is the one mechanical check that reaches this batch's edits.
-That package holds the Markdown Link Integrity enforcement test, which scans every `.md` file under `manifest/` and `docs/` and resolves both the file part and the `#anchor` of every inline link — so card 26's edits to the loom design doc, and any link into `CONSTRAINTS.md` whose anchor card 30's heading edits could invalidate, are covered there and nowhere else.
+That package holds the Markdown Link Integrity enforcement test, which scans every `.md` file under `manifest/` and `docs/` and resolves both the file part and the `#anchor` of every inline link — so card 27's edits to the loom design doc, and any link into `CONSTRAINTS.md` whose anchor card 31's heading edits could invalidate, are covered there and nowhere else.
 
-The remaining four cards have no mechanical gate by design: `contracts/specs/`, `contracts/stencils/`, and `CONSTRAINTS.md` are review obligations, and card 29 edits a Go doc comment with no behavioural surface.
-The repo-wide compile-and-test sweep that proves card 29 did not disturb `internal/loomengine` is already `pipeline.done_gate`'s job at the end of the run, so it is deliberately not duplicated here.
+The remaining four cards have no mechanical gate by design: `contracts/specs/`, `contracts/stencils/`, and `CONSTRAINTS.md` are review obligations, and card 30 edits a Go doc comment with no behavioural surface.
+The repo-wide compile-and-test sweep that proves card 30 did not disturb `internal/loomengine` is already `pipeline.done_gate`'s job at the end of the run, so it is deliberately not duplicated here.

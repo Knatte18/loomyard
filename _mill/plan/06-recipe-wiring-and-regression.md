@@ -4,7 +4,7 @@
 task: 'loom: Plan-Write/Plan-Validate approval deadlock (F7)'
 batch: 'recipe-wiring-and-regression'
 number: 6
-cards: 5
+cards: 6
 verify: go test ./internal/loomrecipe/...
 depends-on: [5]
 ```
@@ -17,6 +17,7 @@ Every card here has to move together.
 Adding `approve_seam: plan` to the `Plan-Bouncer` row makes `loomrecipe.New` fail at `requireSeam` against a nil `Env.ApprovePlan`, so the fixture's own `env.ApprovePlan` must be filled in the same batch or every test in the package fails at construction.
 Flipping the fake `Plan-Write` to stop self-approving is what makes the nineteen-row sequence test genuinely exercise the deadlock, and it passes only once the seam is on.
 And the existing `Plan-Revalidate` regression test injects its regression by clearing the approval flag, which the seam now undoes by construction, so that test's corruption has to be re-pointed in the same commit range that introduces the masking.
+The same holds for the package's second `Env` builder: turning the key on makes the registry entry guard `Env.ApprovePlan` against nil, so both builders have to be filled here, in this batch, and not one batch earlier.
 
 Batch-local decision: the replacement corruption is an **orphan card file**, and the constraint behind that choice is sharp.
 `planValidate.Call` maps a `ParsePlan` failure to a returned error, never to `Stuck`, so an unparseable corruption aborts the run before the bounce assertion is ever reached.
@@ -126,11 +127,31 @@ Two corruptions that look plausible and do not work are recorded here so nobody 
   Keep the file untagged and offline — no git spawn, no process spawn — per the Test Tier Purity Invariant.
 - **Commit:** `25: loomrecipe: negative cases for the approval seam wiring`
 
+### Card 26: Fill ApprovePlan in the second Env builder this package carries
+
+- **Context:**
+  - `internal/shedrecipe/entries_bouncer.go`
+  - `internal/shedrecipe/recipe.go`
+  - `internal/loomrecipe/fixture_test.go`
+- **Edits:**
+  - `internal/loomrecipe/shape_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** This package builds two full `shedrecipe.Env` literals, not one: `buildSequenceFixture` in `fixture_test.go`, which card 22 fills, and `testEnv` in `shape_test.go`, which nothing else in this plan touches.
+  Card 21 turns `approve_seam: plan` on for the `Plan-Bouncer` row, and that row's registry entry then guards `Env.ApprovePlan` against nil at construction — so without this card `New` fails at row 9 for every test in `shape_test.go` that expects a successful build, and the missing-seam test in that same file that asserts the surfaced error names the `Publish` row fails too, because the error now names the approval seam instead.
+  Fill `ApprovePlan` in `testEnv`'s `Env` literal with a non-nil no-op closure returning nil, placed immediately after the existing `CommitPlan` field.
+  A no-op is correct here and a real `planparser.SetApproved` closure would be wrong: `shape_test.go`'s subject is the constructed producer table and its routing graph, never a driven run, so nothing in the file reads the plan's approval flag — and card 25's dynamic negative case is where a deliberately non-writing closure is the thing under test.
+  Change nothing else in the file;
+  its expected-producer table already moved in card 13.
+- **Commit:** `26: loomrecipe: fill ApprovePlan in the shape-test env`
+
 ## Batch Tests
 
 `verify: go test ./internal/loomrecipe/...` runs the whole package suite, which is where every assertion in this batch lives and where card 21's recipe edit is observed.
 
-The package-wide scope is the right one and narrower would be wrong: card 21 turns a seam on in the embedded recipe every test in the package builds from, so `sequence_test.go`, `revalidate_test.go`, `resume_test.go`, `shape_test.go`, `recipe_test.go`, `coverage_guard_test.go`, `overlay_seam_guard_test.go`, and `seam_enforcement_test.go` are all regression surface for it, not just the three files the batch edits.
+The package-wide scope is the right one and narrower would be wrong: card 21 turns a seam on in the embedded recipe every test in the package builds from, so `sequence_test.go`, `revalidate_test.go`, `resume_test.go`, `shape_test.go`, `recipe_test.go`, `coverage_guard_test.go`, `overlay_seam_guard_test.go`, and `seam_enforcement_test.go` are all regression surface for it, not just the four files the batch edits.
+Card 26 is the one place that surface turned out to need a real edit rather than a passing run — `shape_test.go` builds its own `Env` and would otherwise fail construction at the very row the batch wires up.
 `resume_test.go` in particular drives the fixture six separate times and is the most likely place for card 22's fixture changes to surface an unintended consequence.
 
 The whole package is untagged tier 1 — offline, no git, no process spawn — so running all of it is fast.
