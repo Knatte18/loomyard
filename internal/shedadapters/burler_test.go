@@ -375,21 +375,38 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		}
 	})
 
-	t.Run("FocusFileSurvivingHydrateEntriesAppendedToPriorReviews", func(t *testing.T) {
+	t.Run("FocusFileWithADirectiveIsHydratedAfterDerivedEntries", func(t *testing.T) {
 		runDir := t.TempDir()
 		writeRoundPair(t, runDir, 1)
-		hydrateEntry := filepath.Join(runDir, "extra-context.md")
-		writeRoundFile(t, hydrateEntry)
-		writeFocusFile(t, runDir, 2, `{"hydrate":["`+hydrateEntry+`"]}`)
+		writeFocusFile(t, runDir, 2, focusFile{Round: 2, Focus: []string{"look at the relocation candidate"}})
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
 
 		if _, _, err := p.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
-		wantReviews := []string{roundReviewPath(runDir, 1), hydrateEntry}
+		// The hydrated entry is the focus file itself: that is how the judge's directive reaches the
+		// fixer round, and it is the delivery that was silently absent while the reader looked for a
+		// round-<N>-focus.json the writer never produced.
+		wantReviews := []string{roundReviewPath(runDir, 1), focusPath(runDir, 2)}
 		if !stringSlicesEqual(runner.gotProfiles[0].PriorReviews, wantReviews) {
-			t.Errorf("PriorReviews = %v; want %v (focus hydrate appended after derived entries)", runner.gotProfiles[0].PriorReviews, wantReviews)
+			t.Errorf("PriorReviews = %v; want %v (focus file appended after derived entries)", runner.gotProfiles[0].PriorReviews, wantReviews)
+		}
+	})
+
+	t.Run("FocusFileWithNoDirectiveIsNotHydrated", func(t *testing.T) {
+		runDir := t.TempDir()
+		writeRoundPair(t, runDir, 1)
+		writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{}, Focus: []string{}})
+		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		wantReviews := []string{roundReviewPath(runDir, 1)}
+		if !stringSlicesEqual(runner.gotProfiles[0].PriorReviews, wantReviews) {
+			t.Errorf("PriorReviews = %v; want %v (an APPROVED judge's empty focus file asserts nothing and is not handed to the round)", runner.gotProfiles[0].PriorReviews, wantReviews)
 		}
 	})
 }
@@ -457,7 +474,7 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	runDir := t.TempDir()
 	writeRoundPair(t, runDir, 1)
-	writeFocusFile(t, runDir, 2, `{"exclude_lenses":["lensA"]}`)
+	writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{"lensA"}})
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
 	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
@@ -601,7 +618,7 @@ func TestBurlerProducer_Call_RunnerErrorWrapped(t *testing.T) {
 
 func TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile(t *testing.T) {
 	runDir := t.TempDir()
-	writeFocusFile(t, runDir, 1, `{"exclude_lenses":["not-in-fan"]}`)
+	writeFocusFile(t, runDir, 1, focusFile{Round: 1, ExcludeLenses: []string{"not-in-fan"}})
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
 	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
