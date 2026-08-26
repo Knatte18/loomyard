@@ -34,18 +34,19 @@ The second segment landing is what turned a single latent defect into a duplicat
 
 **In:**
 
-- `internal/shedrecipe/entries_bouncer.go` — resolve `artifact_paths` against `env.AnchorPath` instead of `env.WorktreeRoot`; swap the corresponding `requireAbsRoot` guard.
+- `internal/shedrecipe/entries_bouncer.go` — resolve `artifact_paths` against `env.AnchorPath` instead of `env.WorktreeRoot`; swap the corresponding `requireAbsRoot` guard; update `bouncerEntry`'s own doc comment, which names the old root at line 17.
 - `internal/hubgeom/hubgeom.go` — `BurlerGeometry` fills `WorktreeRoot` from `l.AnchorPath()`, with a doc comment explaining the choice, mirroring the shipped `hubgeom.WebsterGeometry` precedent.
 - `internal/burlerengine/geometry.go` — doc-only update to `Geometry.WorktreeRoot`'s field comment, recording that hub mode now tells it the anchor path while standalone still tells it the reviewed target directory.
-- `internal/shedadapters/bouncer.go` — a durable settled-marker written on an APPROVED settle, and a clear-and-re-seed step at `Call` entry when that marker is found.
-- `internal/shedadapters/round.go` (or a sibling in the same package) — the marker's path helper and the run-directory archive helper.
-- `contracts/recipes/loom-recipe.yaml` — comment-only edits: delete the two comments that document the wrong-root defect as deferred, and rewrite `Plan-Revalidate`'s `on_stuck` comment so its rationale no longer rests on a defect that has been fixed.
+- `internal/shedadapters/bouncer.go` — a clear-and-re-seed step at `Call` entry, triggered by an already-APPROVED verdict for the resolved round.
+- `internal/shedadapters/round.go` (or a sibling in the same package) — the run-directory archive helper.
+- `internal/burlercli/cli.go` and `internal/burlercli/wiring.go` — operator-facing text that asserts the superseded root (see the stale-assertion inventory below).
+- `contracts/recipes/loom-recipe.yaml` — comment-only edits at the sites the inventory names.
 - Tests in `internal/shedadapters`, `internal/shedrecipe`, and `internal/hubgeom`.
 - Docs: `manifest/designs/loom.md` ("The gate"), `internal/shedadapters/doc.go` (the round-artifact convention), `manifest/roadmap.md` (Planned → Done).
 
 **Out:**
 
-- `shedrecipe.Env.WorktreeRoot` itself is **not** re-pointed or removed. It stays filled from `location.WorktreePath()` and stays read by `planValidateEntry` and `singleLLMEntry`.
+- `shedrecipe.Env.WorktreeRoot` itself is **not** re-pointed or removed. It stays filled from `location.WorktreePath()` and stays read by `planValidateEntry` and `singleLLMEntry`. Its field doc is corrected (see the inventory), but its value is not.
 - `internal/planparser`'s `Validate(plan, worktreeRoot)` root, and the `Plan-Validate`/`Plan-Revalidate` rows that feed it. A plan card's `paths:` entries name repo source, not `_lyx` content; whether that root is right is a separate question this task does not open.
 - `singleLLMEntry`'s `output_files` root and its `worktree_root` fill token. No loom recipe row uses the `SingleLLM` engine directly (`Discussion-Write`/`Plan-Write` have their own entries), so nothing in the shipped recipe is affected.
 - `burlerengine`'s own resolution logic and `standalonegeom.BurlerGeometry`. Standalone deliberately diverges (`WorktreeRoot` = reviewed target dir, `AnchorPath` = derived state dir) and must keep diverging.
@@ -53,6 +54,26 @@ The second segment landing is what turned a single latent defect into a duplicat
 - Re-pointing `Plan-Revalidate`'s `on_stuck` to `Plan-Bouncer`.
 - Any new `CONSTRAINTS.md` invariant.
 - The stale `round-<N>-focus.json` spelling in `internal/shedadapters/doc.go:90` (the code writes `round-<N>-focus.md`). Pre-existing, unrelated, left alone.
+
+### Stale-assertion inventory
+
+The enumeration method, so the set is reproducible rather than asserted: run `grep -rn "WorktreeRoot" --include=*.go --include=*.yaml internal/ contracts/` excluding `_test.go`, plus `grep -rn "worktree is already the target\|worktree itself is structurally the target" internal/`,
+then keep only the hits that make a *claim about which root a review segment resolves against* — a bare `WorktreeRoot:` struct fill or a `shuttleengine.NewRunner(...)` argument asserts nothing and is left alone.
+Every surviving hit gets an explicit disposition:
+
+| Site | Claim today | Disposition |
+| --- | --- | --- |
+| `contracts/recipes/loom-recipe.yaml:118-121` (`Plan-Bouncer`) | `artifact_paths` "resolves against `Env.WorktreeRoot`, which is knowingly not the `AnchorPath()` root `Env.CommitPlan` anchors at … the fix is filed as its own roadmap item rather than made here" | **Delete.** The deferral it records is what this task closes; nothing in it survives the fix. |
+| `contracts/recipes/loom-recipe.yaml:201-203` (`Webster-Bouncer`) | "every entry resolves to an absolute path under `Env.WorktreeRoot`" | **Reword**, `Env.WorktreeRoot` → `Env.AnchorPath`. The surrounding rationale (why a directory entry is the least-bad `artifact_paths` value for a diff) is unrelated and must survive. |
+| `internal/loomcli/wiring.go:87-91` | "`BurlerGeometry`, not `WebsterGeometry`: `BurlerGeometry` fills `WorktreeRoot` from `location.WorktreePath()`, while `WebsterGeometry` fills its own from `location.AnchorPath()` … the two geometries are not interchangeable here" | **Rewrite.** Both builders now fill the field from the anchor, so the stated reason the two are not interchangeable evaporates. The line stays `hubgeom.BurlerGeometry(location)`; the comment must say why that is still the right builder (it is burler's geometry, carrying burler's `AnchorPath` semantics) rather than citing a divergence that no longer exists. |
+| `internal/shedrecipe/recipe.go:37-42` | `AnchorPath` is "read by `Batchifier`, `PlanValidate`, `Webster`, and `SingleLLM`'s `anchor_path` token"; `WorktreeRoot` is "read by `PlanValidate` and the root every worktree-relative Config path resolves against" | **Reword both field docs.** `AnchorPath` gains `Bouncer` as a reader; `WorktreeRoot` loses the "every worktree-relative Config path" universal (only `SingleLLM`'s `output_files` still resolves there) and names its two remaining readers. |
+| `internal/shedrecipe/entries_bouncer.go:17` | "resolves `artifact_paths` against `env.WorktreeRoot`" | **Reword** to `env.AnchorPath`. |
+| `internal/burlercli/wiring.go:67` | `--target-dir` refusal: "the worktree is already the target" | **Reword** to name the anchor path. Once `AnchorRel` is not `"."`, the worktree root is not what burler reviews. |
+| `internal/burlercli/wiring.go:71` | "Both configs anchor at `loc.AnchorPath()` … never `WorktreeRoot` or any fabric sibling" | **Leave.** It was already correct and is now also true of the geometry beside it; optionally extend to say so. |
+| `internal/burlercli/cli.go:107` | `Long` text: `--target-dir` is "refused in hub mode, where the worktree itself is structurally the target" | **Reword** to the anchor path. |
+| `internal/burlercli/cli.go:124` | `--target-dir` flag usage: "refused in hub mode, where the worktree is already the target" | **Reword** to the anchor path. |
+
+`internal/shedrecipe/entries_singlellm.go` and `internal/shedrecipe/entries_simple.go` survive the grep but keep their assertions unchanged: both genuinely still resolve against `env.WorktreeRoot`, and both are explicitly Out.
 
 ## Decisions
 
@@ -74,9 +95,12 @@ The second segment landing is what turned a single latent defect into a duplicat
 ### burlercli-hub-mode-changes-too
 
 - Decision: `lyx burler`'s hub mode changes with it, because it shares `hubgeom.BurlerGeometry` (`internal/burlercli/wiring.go:99`).
+  Because that is an observable behaviour change, the CLI's own operator-facing text changes in the same commit: the `--target-dir` refusal message (`wiring.go:67`), the `Long` description (`cli.go:107`), and the flag usage string (`cli.go:124`) all currently tell the operator that "the worktree" is the target, and all three are reworded to name the anchor path.
 - Rationale: `wireHub`'s own comment already states the intent — "Both configs anchor at `loc.AnchorPath()` — the worktree the operator is actually standing in, never `WorktreeRoot` or any fabric sibling."
   The geometry builder was the one line that did not follow it. A hub-mode operator standing at the anchor expects a profile's relative paths to resolve there.
+  The CLI/Cobra Invariant makes help-text accuracy a review obligation on any observable-behaviour change, so leaving the three strings asserting the old root would ship a help tree that contradicts the code.
 - Rejected: giving loom its own geometry builder — duplicating a two-field struct to preserve the same defect in a second caller.
+  Changing the behaviour but leaving the strings — the operator's only description of where `--target-dir` is refused, and why, would be wrong.
 
 ### burlerengine-geometry-field-keeps-its-name
 
@@ -86,37 +110,50 @@ The second segment landing is what turned a single latent defect into a duplicat
 - Rejected: renaming to `ProfileRoot` — clearer, but a cross-package rename well past this task's brief.
   Dropping the field and resolving profile paths against `AnchorPath` — breaks standalone outright.
 
-### clearing-trigger-is-a-durable-settled-marker
+### clearing-trigger-is-the-approved-verdict-already-on-disk
 
-- Decision: on an APPROVED settle, after `Commit` (when configured) returns successfully and before returning `Done`, the Bouncer writes a durable marker file into its run directory.
-  At `Call` entry — before `ResolveRound` — a Bouncer that finds the marker archives the run directory, recreates it empty, and proceeds, which makes the very next `ResolveRound` return 0 and the call a seed call.
-- Rationale: the marker fires exactly on segment-exit-followed-by-re-entry.
-  It does not fire on in-segment bouncing (`Bouncer` ↔ `Burler` never settles APPROVED mid-loop), it does not fire on a mid-segment resume, and it does not fire when the bounce budget is exhausted and a human resumes a BLOCKING segment — all three of which must continue the existing round sequence, not restart it.
-  Durability is what makes it work across a process boundary: the `Plan-Revalidate` → `Plan-Write` → `Plan-Bouncer` bounce can be interrupted and resumed in a fresh process.
-- Rejected: an in-memory `settled` flag on the `Bouncer` value — free, but lost on resume, so it fixes only the same-process half of the bug.
-  A digest-keyed marker recording the artifact content at approval and clearing only when the digest differs — more precise, and it would avoid one redundant review round in the narrow crash window between `Commit` returning and `shedengine`'s `persist`, but it adds a content-hashing helper (with a directory walk for `_lyx/plan`) plus its own failure modes for an unreadable or absent path.
-  The accepted cost is that a crash in that window re-reviews an already-approved artifact from round 1;
-  `shedengine`'s own `run.go` documents at-least-once producer calls as the accepted semantics for exactly this window.
+- Decision: the trigger is state the Bouncer already writes. At `Call` entry, after `ResolveRound` returns `n > 0`, a Bouncer whose round `n` is `judged(n)` **and** whose round-`n` verdict parses as `verdictApproved` archives the run directory, recreates it empty, and falls through with the round re-resolved to 0 — which makes the same call a seed call.
+  No new file, no new write, no new failure mode.
+  `settle(n, spawned: false)` is thereby reachable only with a BLOCKING verdict; the APPROVED replay path disappears, which is the defect.
+  The harvest path is untouched: `judgeCall` calls `settle(n, spawned: true)` within the same `Call` that produced the verdict, so an approval still returns `Done` normally on the call that earns it.
+- Rationale: `judged(n)` already requires round `n`'s verdict *and* ledger to exist and parse, and `settle` already parses the verdict to decide `Done` versus `Stuck`.
+  An APPROVED verdict sitting on disk at `Call` entry *is* the durable record that a previous `Call` settled the segment — it is written before `Done` is returned, it survives a process boundary, and it is exactly the file the buggy replay reads.
+  A separate marker would encode the identical fact a second time, and its fire/non-fire set is identical: it does not fire during in-segment BLOCKING bouncing (the latest verdict is BLOCKING), nor on a mid-segment resume with an unjudged round (`judged(n)` is false), nor on a re-bounce with round-1 focus seeded and no report (`n == 0`), nor on a human-resumed budget-exhausted BLOCKING segment (verdict is BLOCKING).
+- Rejected: a durable `settled.md` marker written on an APPROVED settle. Two reasons, either sufficient.
+  It duplicates state the verdict file already carries, so it adds a write step and a filename that becomes a durable on-disk contract for no new information.
+  And it needs a failure posture that has no good answer: hard-erroring a marker write would retract a verdict whose artifact is already committed, while swallowing it (the posture that mirrors `ensureFocus`) leaves a `Done`-returning segment with no marker — silently restoring the exact replay defect this task exists to fix, with a `logger.Warn` as the only evidence.
+  The verdict-based trigger has no such hole because it writes nothing.
+  Also rejected: an in-memory `settled` flag on the `Bouncer` value — free, but lost on resume, so it fixes only the same-process half of the bug.
+  A digest-keyed marker recording the artifact content at approval and clearing only when the digest differs — more precise, and it would close the crash window described below, but it adds a content-hashing helper (with a directory walk for `_lyx/plan`) plus its own failure modes for an unreadable or absent path.
+
+### the-accepted-crash-window-cost
+
+- Decision: accept that a crash in the window between `settle`'s `Commit` returning and `shedengine`'s `persist` writing the next producer causes the segment to be re-reviewed from round 1, and that the re-review is a *fresh, non-deterministic judgement* which may return BLOCKING on an artifact that was already approved and already committed.
+- Rationale: `shedengine`'s `run.go` documents at-least-once producer calls as the accepted semantics for exactly this window, and the window is narrow.
+  The cost is stated plainly rather than minimised: today that window replays a settled APPROVED verdict and returns `Done` deterministically, so this is a real behaviour change, not merely a wasted round.
+  A BLOCKING outcome there is not a corruption — it routes to the fixer round and, if unresolved, to a human — but it is a strictly worse outcome than today's replay, and it is the price of removing the replay that lets a *rewritten* artifact through unjudged.
+  The same cost attaches to every rejected alternative except the digest-keyed marker, which was rejected on machinery grounds.
+- Rejected: preserving a replay path for "the same artifact, unchanged" — that is the digest-keyed marker under another name, and it carries the same directory-walk machinery.
 
 ### clearing-archives-by-renaming-the-run-directory-aside
 
 - Decision: clearing is `os.Rename(runDir, <runDir>-<UTC-stamp>)` followed by `os.MkdirAll(runDir, 0o755)`, with the archive target chosen through the package's existing `firstFreeArchivePath` same-second collision helper and the existing `archiveTimestampFormat` stamp.
-- Rationale: one rename moves every round artifact, every focus file, every prior archive sibling, and the marker itself, atomically, with no per-entry failure mode.
+- Rationale: one rename moves every round artifact, every focus file, and every prior archive sibling, atomically, with no per-entry failure mode.
   Archive rather than delete matches the package's established archive-never-refuse posture (`archiveStaleOutputs`, `ensureFocus`, `seedCall`) — the archived generation is the only record of why a round was re-run.
   The archived directory lands beside its live sibling under `Env.RunRoot`, which holds one directory per segment (`discussion`, `plan`, `webster`), so a `plan-20260826T120000Z` sibling collides with nothing.
   The whole tree is already ephemeral (`LoomReviewsDir` is `.lyx`-anchored), so nothing archived here is ever committed.
 - Rejected: moving each `round-*` entry into a nested `<runDir>/archive-<stamp>/` — tidier `RunRoot`, but a per-entry loop with per-entry failure modes and a name-matching predicate to maintain.
   `os.RemoveAll(runDir)` — cheapest, but destroys the audit trail.
 
-### failure-posture-splits-marker-write-from-clear
+### clear-failure-degrades-to-stuck
 
-- Decision: a marker-write failure is logged via `logger.Warn` and swallowed — `settle` still returns `Done`.
-  A clear failure (the rename or the recreate) goes through `b.degrade`, yielding `Stuck` with an empty pointer and a nil error.
-- Rationale: these mirror the two postures the package already establishes.
-  `ensureFocus` swallows its own write failures because "a failure to write the next round's targeting hint must not retract a verdict `Call` has already committed to returning" — the same reasoning applies to a marker written after a commit has already happened.
-  `seedCall` already degrades on a stale-focus archive failure, and a run directory that could not be cleared is the same class of problem: the segment cannot proceed correctly, and `Stuck` routes it to the fixer row and ultimately to a human.
-- Rejected: hard-erroring the marker write — a cosmetic write failure would fail a run whose artifact is already committed.
-  Swallowing the clear failure — the Bouncer would then replay the stale verdict, which is the exact bug.
+- Decision: a clear failure — either the rename or the recreate — goes through `b.degrade`, yielding `Stuck` with an empty pointer and a nil error.
+- Rationale: `seedCall` already degrades on a stale-focus archive failure, and a run directory that could not be cleared is the same class of problem.
+  Proceeding instead would replay the stale verdict, which is the bug;
+  hard-erroring would fail the whole run for a condition the fixer row and ultimately a human can act on.
+  This is the only failure posture the decision needs, because the verdict-based trigger writes nothing.
+- Rejected: swallowing the failure and continuing — the Bouncer would then replay the stale verdict.
+  Returning a hard error — `Stuck` is the routing this producer already uses for every recoverable failure.
 
 ### plan-revalidate-on-stuck-stays-plan-write
 
@@ -128,7 +165,7 @@ The second segment landing is what turned a single latent defect into a duplicat
 ### no-new-constraints-invariant
 
 - Decision: record nothing new in `CONSTRAINTS.md`.
-- Rationale: the settled-marker lifecycle is one adapter's internal round-artifact contract, whose durable home is already `internal/shedadapters/doc.go`'s "round-artifact convention" section — a section that exists precisely so this contract survives the roadmap entry's deletion.
+- Rationale: the segment re-entry rule is one adapter's internal round-artifact contract, whose durable home is already `internal/shedadapters/doc.go`'s "round-artifact convention" section — a section that exists precisely so this contract survives the roadmap entry's deletion.
   The anchor fix is an application of the existing Cwd Resolution Invariant, not a new rule.
 - Rejected: adding a segment-run-directory-lifecycle invariant — premature for a contract with one implementation.
 
@@ -151,12 +188,20 @@ A review segment is a `Bouncer` row plus a `BurlerRound` row sharing one `run_su
 **Bouncer control flow (`internal/shedadapters/bouncer.go`).**
 `Call` entry-checks the context, then `ResolveRound(RunDir, ReportName)` scans upward from 1 for `round-<N>-review.md`, returning the highest N present (0 when round 1 is absent).
 Four modes follow: `n == 0` and round-1 focus not seeded → `seedCall`; `n == 0` and focus seeded → re-bounce (`Stuck`, spawn nothing);
-`judged(n)` → `settle(n, spawned=false)`; otherwise → `judgeCall(n)`.
+`judged(n)` → `settle(n, spawned: false)`; otherwise → `judgeCall(n)`.
 `judged(n)` requires round N's verdict *and* ledger files to both exist and parse.
 `settle` maps APPROVED → call `Commit` if non-nil, return `Done` with the ledger pointer;
 BLOCKING → `ensureFocus(n+1)`, return `Stuck` with the ledger pointer, committing nothing.
-The clear step belongs at the very top of `Call`, after `entryErr` and before `ResolveRound`, so the whole four-mode branch sees a fresh directory.
+
+The clear step slots between `ResolveRound` and the four-mode branch, so the branch sees a fresh directory and re-resolves to the seed path.
 Note `ResolveRound` hard-errors if `RunDir` is absent — the recreate is not optional.
+
+**Reading the verdict without reading it twice.**
+`judged(n)` today reads and parses both files and discards the parsed values, returning only a `bool`;
+`settle` then re-reads and re-parses the verdict, and its own comment notes the second read can only fail if the file vanished in between.
+The clear trigger needs the parsed verdict at `Call` entry, so the natural shape is to have `judged` (or a sibling built beside it) return the parsed `bouncerVerdict` alongside its boolean, letting `Call` branch on `verdictApproved` directly.
+Whether `settle` then takes the already-parsed verdict as a parameter or keeps its defensive re-read is an implementation choice;
+keeping the re-read preserves `settle`'s documented "vanished between judged and settle" degrade path and is the smaller change.
 
 **The Burler side of the shared directory.**
 `BurlerProducer.Call` `MkdirAll`s the run dir, then `highestCompleteRound` reads the directory and takes the highest N for which both `round-<N>-review.md` and `round-<N>-fixer-report.md` exist, writing round `highest+1`;
@@ -168,12 +213,8 @@ This is also why clearing must remove *both* rows' artifacts, not just the Bounc
 
 - `archiveTimestampFormat` (`"20060102T150405Z"`) and `firstFreeArchivePath(candidate func(suffix string) string)` in `internal/shedadapters/archive.go`. `firstFreeArchivePath` is name-agnostic — it takes a candidate-builder closure — so it composes with a directory name as readily as with a file name.
 - `b.cfg.Now` is the injectable clock already on `BouncerConfig`, filled explicitly with `time.Now` in `loomcli.wire` specifically so a test can inject a fixed clock for archive naming.
-- `b.degrade(ctx, msg, args...)` for the `Stuck`-with-warning posture; `logger.Warn` for the swallow posture.
-- `verdictPath`/`ledgerPath`/`focusPath` in `round.go` are the package's single place a round number becomes a path. The marker path helper belongs there too, beside them.
-
-**Naming caution.**
-The marker file must not collide with the `round-<N>-*` namespace `parseRoundReviewName` and `ResolveRound` scan, and it must not be mistaken for a round artifact by `highestCompleteRound`'s directory walk.
-A `settled.md`-style name at the run-directory root satisfies both.
+- `b.degrade(ctx, msg, args...)` for the `Stuck`-with-warning posture.
+- `verdictPath`/`ledgerPath`/`focusPath` in `round.go` are the package's single place a round number becomes a path. The archive-target helper belongs there or in `archive.go`, not inline at the call site.
 
 **Precedent for the geometry doc comment.**
 `internal/hubgeom/webstergeom.go`'s doc comment is the model: it states plainly that `WorktreeRoot` is `l.AnchorPath()` and not `l.WorktreePath()`, names the call sites that make it correct, and warns that converging the two would silently change behaviour.
@@ -189,6 +230,8 @@ From `CONSTRAINTS.md`:
 - **Told-Geometry Invariant.** `internal/shedadapters`, `internal/shedrecipe`, `internal/loomrecipe`, and `internal/loomshed` take their absolute paths from their caller and must not gain a direct production import of `internal/lyxcwd`;
   `shedrecipe`, `loomrecipe`, and `loomshed` are machine-enforced by `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`.
   `internal/hubgeom` is the adapter that legitimately imports `lyxcwd` — the anchor fix therefore lands there, never inside `burlerengine` or `shedadapters`.
+- **CLI/Cobra Invariant.** Every command carries a `Short`, and the help tree is test-guarded.
+  An observable-behaviour change carries a review obligation on the affected `Long`/flag-usage text, which is why the three `burlercli` strings are In rather than left to drift.
 - **Lyxdirs Single-Declarer Invariant.** No production file outside `internal/lyxdirs` may name the `_lyx` or `.lyx` literal in path-construction context. Enforced by `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_GeometryLiterals`.
   Recipe-yaml `_lyx/...` strings are recipe data, not Go path construction, and are unaffected.
 - **Durable-vs-Ephemeral State Invariant.** The run tree is `.lyx`-anchored and never tracked; the archived generation directory inherits that and must stay under the same root.
@@ -197,9 +240,9 @@ From `CONSTRAINTS.md`:
 
 Discovered during exploration:
 
-- `shedengine.ProducerDef.Segment` is a validation-only label with no runtime effect, and producers are handed no run history, so a producer cannot ask the engine whether it is being re-entered. The marker has to be the Bouncer's own durable state.
+- `shedengine.ProducerDef.Segment` is a validation-only label with no runtime effect, and producers are handed no run history, so a producer cannot ask the engine whether it is being re-entered. The trigger has to be the Bouncer's own on-disk state — which the verdict file already is.
 - Producers are constructed once, at `loomrecipe.New`, so `RunDir` is fixed for the whole run. A generation-numbered run directory resolved at construction time cannot work; the clearing has to happen at `Call` time against a fixed path.
-- `shedengine.run.go` persists the next producer *after* `Call` returns, and documents that a crash before that persist re-calls the producer. That is the window the accepted at-least-once cost lives in.
+- `shedengine.run.go` persists the next producer *after* `Call` returns, and documents that a crash before that persist re-calls the producer. That is the window the accepted cost lives in.
 
 ## Testing
 
@@ -207,14 +250,12 @@ TDD candidates — write the test first for each of these:
 
 **`internal/shedadapters` (the substance of the task).**
 
-- APPROVED settle writes the marker into the run directory, and still returns `Done` with the round's ledger pointer.
-- APPROVED settle with a configured `Commit` writes the marker only after `Commit` succeeds; a `Commit` returning an error leaves no marker and surfaces as `settle`'s own error (not `degrade`).
-- A marker-write failure (run directory made unwritable, or an equivalent seam) logs and still returns `Done` — the verdict is not retracted.
-- BLOCKING settle writes no marker.
-- `Call` on a run directory carrying the marker plus a full generation of artifacts renames the directory aside, recreates it empty, and takes the seed path — asserting the archived sibling exists, carries the old artifacts and the marker, and that the fresh directory is empty.
+- `Call` on a run directory whose highest round is judged APPROVED renames the directory aside, recreates it empty, and takes the seed path in the same call — asserting the archived sibling exists and carries the old artifacts, the fresh directory contains only what `seedCall` writes, and the outcome is the seed `Stuck` with an empty pointer.
+- The full generation is moved, not just the Bouncer's files: the archived sibling carries `round-<N>-review.md` and `round-<N>-fixer-report.md` (the Burler's pair) as well as the verdict, ledger, and focus files.
 - Archive naming: with an injected fixed `Now`, the sibling is `<runDir>-<stamp>`; a second clear in the same second lands on the `-1` suffix via `firstFreeArchivePath`.
-- Non-triggering cases, each asserting the run directory is byte-for-byte untouched: an in-segment BLOCKING replay, a mid-segment resume with an unjudged round N, and a re-bounce with round-1 focus seeded but no report.
-- A rename failure degrades to `Stuck` with an empty pointer and a nil error.
+- Non-triggering cases, each asserting the run directory is byte-for-byte untouched and the existing outcome is unchanged: an in-segment BLOCKING replay (`settle` returns `Stuck` with the ledger pointer and logs the no-new-spawn warning), a mid-segment resume with an unjudged round N (routes to `judgeCall`), a re-bounce with round-1 focus seeded and no report (`n == 0`), and a run directory whose round N has a verdict but no parsable ledger (`judged(n)` false).
+- The harvest path is unaffected: a `judgeCall` whose spawn produces an APPROVED verdict and ledger returns `Done` with the round's ledger pointer in that same call, and does **not** clear the directory.
+- A rename failure degrades to `Stuck` with an empty pointer and a nil error; a recreate failure does the same.
 - End-to-end within the package: seed → judge BLOCKING → judge APPROVED → `Done` → re-enter → the next `Call` is a seed call writing `round-1-focus.md` into a fresh directory, with the prior generation preserved beside it.
 
 **`internal/shedrecipe`.**
@@ -231,7 +272,7 @@ TDD candidates — write the test first for each of these:
 
 - `go test ./...`. Expect fallout in `internal/shedrecipe`'s existing `entries_bouncer_test.go` (its fixture `Env` likely fills both roots), `internal/hubgeom`'s existing `BurlerGeometry` assertions, and any `loomrecipe`/`loomshed` fixture asserting a resolved artifact path.
 - `internal/loomrecipe`'s `coverage_guard_test.go` and `shape_test.go` pin the recipe's row names and shape; comment-only yaml edits must not disturb them, and the guard is the check that they haven't.
-- `internal/burlercli` — confirm its hub-mode tests still pass under the changed geometry, and that no test asserted the old `WorktreePath()` fill.
+- `internal/burlercli` — confirm its hub-mode tests still pass under the changed geometry, that no test asserted the old `WorktreePath()` fill, and that the CLI/Cobra help-tree tests accept the three reworded strings.
 
 Not doing: a new LLM-driven or fake-shuttle end-to-end run at the `loomrecipe` level.
 The package-level tests above cover every branch, and a recipe-level run would duplicate them at far higher cost.
@@ -240,12 +281,15 @@ The package-level tests above cover every branch, and a recipe-level run would d
 
 - **Q:** Where does the artifact-path anchor fix land? **A:** [auto-pick] `bouncerEntry` resolves `artifact_paths` against `env.AnchorPath`, and `hubgeom.BurlerGeometry` fills `WorktreeRoot` from `l.AnchorPath()`. **Why:** two precise sites covering both halves of the divergence, with `hubgeom.WebsterGeometry` as shipped precedent; re-pointing `Env.WorktreeRoot` wholesale would silently change `PlanValidate`'s root too.
 - **Q:** Does the fix extend to `Webster-Bouncer`/`Webster-Burler`? **A:** [auto-pick] Yes, unavoidably. **Why:** same `bouncerEntry` and same `BurlerGeometry`; there is no per-row seam to carve out on, and the Webster rows name `_lyx/plan` just as the others name their own `_lyx` content.
-- **Q:** Does `burlercli` hub mode change with it? **A:** [auto-pick] Yes. **Why:** it shares `hubgeom.BurlerGeometry`, and its own `wireHub` comment already declares that configs anchor at `AnchorPath()`, never `WorktreeRoot` — the geometry builder was the line that didn't follow it.
+- **Q:** Does `burlercli` hub mode change with it? **A:** [auto-pick] Yes, and its operator-facing text changes with it. **Why:** it shares `hubgeom.BurlerGeometry`, and its own `wireHub` comment already declares that configs anchor at `AnchorPath()`; leaving the `--target-dir` refusal message and the two help strings asserting "the worktree is the target" would ship a help tree contradicting the code, which the CLI/Cobra Invariant does not permit.
 - **Q:** Rename `burlerengine.Geometry.WorktreeRoot`? **A:** [auto-pick] No — keep the field, update its doc. **Why:** standalone genuinely fills it with the reviewed target directory, distinct from `AnchorPath` (the derived state dir); collapsing or renaming reaches well past this task.
-- **Q:** What triggers the run-directory clear? **A:** [auto-pick] A durable settled marker written on an APPROVED settle and checked at `Call` entry. **Why:** it fires exactly on segment exit followed by re-entry, and never on in-segment bouncing, a mid-segment resume, or a human-resumed BLOCKING segment; durability is what carries it across a process boundary.
-- **Q:** Digest-keyed marker instead, to avoid a redundant round in the crash window? **A:** [auto-pick] No. **Why:** it would add a content-hashing helper with a directory walk and its own failure modes to close a window `shedengine` already documents as accepted at-least-once semantics.
-- **Q:** What does "clear" do? **A:** [auto-pick] Rename the run directory aside to a timestamped sibling, then recreate it empty. **Why:** one atomic rename moves every artifact from both rows plus the marker, with no per-entry failure mode, and it preserves the audit trail the package's archive-never-refuse posture expects.
-- **Q:** Failure posture? **A:** [auto-pick] Swallow-and-warn on a marker-write failure; `degrade` to `Stuck` on a clear failure. **Why:** mirrors `ensureFocus` (never retract a committed verdict) and `seedCall` (a directory that cannot be prepared is a genuine `Stuck`) respectively.
+- **Q:** What triggers the run-directory clear? **A:** [auto-pick] The already-APPROVED verdict for the resolved round, read at `Call` entry. **Why:** `judged(n)` plus a parsed `verdictApproved` is durable, already-written evidence that a previous `Call` settled the segment, with the identical fire/non-fire set a marker would have and no write step to fail.
+- **Q:** Why not a durable `settled.md` marker written on an APPROVED settle? **A:** [auto-pick] Rejected. **Why:** it duplicates state the verdict file already carries, and its failure posture has no good answer — hard-erroring retracts a verdict whose artifact is already committed, while swallowing the write failure leaves a `Done`-returning segment unmarked and silently restores the replay defect this task exists to fix.
+- **Q:** Digest-keyed marker instead, to avoid re-reviewing in the crash window? **A:** [auto-pick] No. **Why:** it would add a content-hashing helper with a directory walk and its own failure modes to close a window `shedengine` already documents as accepted at-least-once semantics.
+- **Q:** What exactly is that accepted cost? **A:** [auto-pick] A fresh, non-deterministic re-review from round 1, which may return BLOCKING on an already-approved, already-committed artifact. **Why:** stating it as "a wasted round" would understate it — today the same window replays a settled APPROVED verdict and returns `Done` deterministically, so this is a real behaviour change, not just a cost.
+- **Q:** What does "clear" do? **A:** [auto-pick] Rename the run directory aside to a timestamped sibling, then recreate it empty. **Why:** one atomic rename moves every artifact from both rows, with no per-entry failure mode, and it preserves the audit trail the package's archive-never-refuse posture expects.
+- **Q:** Failure posture on a clear failure? **A:** [auto-pick] `degrade` to `Stuck`. **Why:** mirrors `seedCall`'s stale-focus archive failure; proceeding would replay the stale verdict, and hard-erroring would fail a run for a condition the fixer row can act on. The verdict-based trigger writes nothing, so this is the only posture the decision needs.
 - **Q:** Re-point `Plan-Revalidate`'s `on_stuck` to `Plan-Bouncer` now the live-lock is gone? **A:** [auto-pick] No — keep `Plan-Write`, rewrite the comment. **Why:** the routing is still right for an unchanged reason (the fixer round is rubric-forbidden from re-deriving mechanical findings), but its stated rationale would otherwise cite a defect that no longer exists.
+- **Q:** Which comments become false, and what happens to each? **A:** [auto-pick] Enumerated in the Scope section's stale-assertion inventory, with a stated grep-based enumeration method and a reword-vs-delete-vs-leave disposition per site. **Why:** "the two comments" named no identifiable pair, and two of the nine sites (`loomcli/wiring.go:87-91`, `shedrecipe/recipe.go:37-42`) were outside Scope entirely.
 - **Q:** Test approach? **A:** [auto-pick] Package-level unit tests in `shedadapters`, `shedrecipe`, and `hubgeom`, with the divergent-roots case made explicit. **Why:** every branch is reachable at package level, and an assertion made with `AnchorRel` at its `"."` default would prove nothing.
-- **Q:** New `CONSTRAINTS.md` invariant? **A:** [auto-pick] No. **Why:** the marker lifecycle is one adapter's internal round-artifact contract, whose durable home is already `internal/shedadapters/doc.go`; the anchor fix applies an existing invariant rather than adding one.
+- **Q:** New `CONSTRAINTS.md` invariant? **A:** [auto-pick] No. **Why:** the segment re-entry rule is one adapter's internal round-artifact contract, whose durable home is already `internal/shedadapters/doc.go`; the anchor fix applies an existing invariant rather than adding one.
