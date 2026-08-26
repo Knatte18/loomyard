@@ -101,7 +101,8 @@ Batch-local decisions:
   - `internal/reedengine/contract_integration_test.go`
   - `internal/reedengine/mouse_boot_integration_test.go`
   - `internal/reedengine/render/types.go`
-- **Edits:** none
+- **Edits:**
+  - `cmd/lyx/hermeticenv_test.go`
 - **Creates:**
   - `internal/reedengine/attachgeometry_integration_test.go`
 - **Deletes:** none
@@ -131,6 +132,9 @@ Batch-local decisions:
   Detach or kill the client at the end of each case so the next case starts clean, and let `newIntegrationEngine`'s cleanup reap the server.
   Give every assertion a failure message naming the expected and actual values, in the style the existing integration tests use.
   Do not weaken case 1 to a substring or prefix comparison: the byte-for-byte `window_layout` equality is the whole point of the test.
+
+  This file's pty helper calls `exec.Command` to start the child under the pty — a real non-git process (the configured multiplexer binary), not a git spawn — so it trips `cmd/lyx/hermeticenv_test.go`'s `TestHermeticGitEnv_GitSpawningPackagesHaveTestMain` grep guard, which cannot distinguish `exec.Command`'s target.
+  Add a file-level `allowedNonHermetic` entry for `internal/reedengine/attachgeometry_integration_test.go` stating the token is a tmux/pty child spawn, not git, so the guard's package-level determination for `internal/reedengine` is unaffected by this file.
 - **Commit:** `test(reedengine): prove the attach handover lands the client-sized layout verbatim`
 
 ## Batch Tests
