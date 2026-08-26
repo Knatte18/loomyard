@@ -36,6 +36,6 @@ func discussionWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProd
 	if err := requireSeam("DiscussionWrite", "Shuttle", env.Shuttle); err != nil {
 		return nil, err
 	}
-	inner := shedadapters.NewSingleLLMProducer(name, env.DiscussionSpec, env.Shuttle, env.Now)
+	inner := shedadapters.NewSingleLLMProducer(name, env.DiscussionSpec, env.Shuttle, env.Now, nil)
 	return loomshed.NewDiscussionWrite(name, inner, env.CommitDiscussion), nil
 }

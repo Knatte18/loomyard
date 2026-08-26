@@ -29,7 +29,7 @@ var singleLLMReservedTokens = map[string]bool{
 // singleLLMEntry is the Constructor for the "SingleLLM" registry row: it validates cfg and env,
 // resolves output_files against env.WorktreeRoot, composes a shedadapters.SpecSource closure over a
 // stencilstore-named template and the union of the four reserved geometry tokens with Config.tokens,
-// and returns shedadapters.NewSingleLLMProducer(name, specSource, env.Shuttle, env.Now).
+// and returns shedadapters.NewSingleLLMProducer(name, specSource, env.Shuttle, env.Now, nil).
 func singleLLMEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	stencilName, err := configString(cfg, "stencil", true)
 	if err != nil {
@@ -160,5 +160,5 @@ func singleLLMEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 		}, nil
 	}
 
-	return shedadapters.NewSingleLLMProducer(name, specSource, env.Shuttle, env.Now), nil
+	return shedadapters.NewSingleLLMProducer(name, specSource, env.Shuttle, env.Now, nil), nil
 }

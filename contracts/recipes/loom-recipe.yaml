@@ -9,6 +9,13 @@
 # produces what each of them gates, so there is nothing to bounce to and a human is the only thing
 # that can fix any of the five.
 #
+# Those five are not the whole escalate-to-a-human set, and the difference matters when auditing
+# routing from this header. Three PRODUCER rows also carry no on_stuck -- Discussion-Write,
+# Plan-Write, and Webster -- so eight rows in total escalate rather than bounce. They are omitted
+# from the sentence above because its subject is gates, not because their Stuck is any softer: it
+# halts the whole run identically. Discussion-Write's is a reachable state rather than a theoretical
+# one, since shedadapters.SingleLLMProducer maps a shuttleengine.OutcomeAsking onto shedengine.Stuck.
+#
 # All three review segments follow the same shared-segment mutual-on_stuck shape: Discussion-Bouncer
 # and Discussion-Burler carry segment: Discussion-Review, Plan-Bouncer and Plan-Burler carry
 # segment: Plan-Review, and Webster-Bouncer and Webster-Burler carry segment: Webster-Review, each

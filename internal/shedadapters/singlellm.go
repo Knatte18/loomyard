@@ -50,10 +50,11 @@ type SpecSource func() (shuttleengine.Spec, error)
 // matching run, archives stale output files and runs the seam once when the probe finds nothing,
 // and maps whichever run's outcome onto the shedengine.ShedProducer contract.
 type SingleLLMProducer struct {
-	name    string
-	specs   SpecSource
-	shuttle Shuttle
-	now     func() time.Time
+	name              string
+	specs             SpecSource
+	shuttle           Shuttle
+	now               func() time.Time
+	prepareFreshSpawn func() error
 }
 
 var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)
@@ -63,11 +64,25 @@ var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)
 // A nil now defaults to time.Now -- the archive filename's same-second collision suffix is the only
 // thing under test at this seam, since manifest/designs/shed.md's no-injectable-clock rule governs
 // Shed's own history[].at field, not this one.
-func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now func() time.Time) *SingleLLMProducer {
+//
+// prepareFreshSpawn is the caller's own destructive preparation for a NEW agent -- rotating a stale
+// output directory aside, say. It runs on the respawn branch only, after the attach probe has proved
+// there is no live agent and before this producer archives anything, and never on the attach branch.
+// Nil is the absent value and means "nothing to prepare", which is what every row but Plan-Write
+// passes.
+//
+// The seam exists rather than leaving such preparation to a decorator wrapping this producer,
+// because a decorator necessarily runs BEFORE Call and therefore before the probe -- which is
+// exactly the probe-before-archive hazard Call's own ordering was built to close, reintroduced one
+// layer up. Plan-Write's decorator did precisely that: it archived _lyx/plan's top-level .md files
+// (including 00-overview.md, the spec's sole declared output file) on every Call, so a resume that
+// then attached to a live plan agent left that agent's completion unobservable -- Wait polls for
+// bare existence at the spec's paths -- and the finished plan timed out into a hard run failure.
+func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now func() time.Time, prepareFreshSpawn func() error) *SingleLLMProducer {
 	if now == nil {
 		now = time.Now
 	}
-	return &SingleLLMProducer{name: name, specs: specs, shuttle: shuttle, now: now}
+	return &SingleLLMProducer{name: name, specs: specs, shuttle: shuttle, now: now, prepareFreshSpawn: prepareFreshSpawn}
 }
 
 // Call runs one SingleLLMProducer iteration: entry-check the context, build the Spec, probe for a
@@ -109,6 +124,16 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	}
 	if found {
 		return p.mapOutcome(ctx, spec, attachResult)
+	}
+
+	// Past this point the probe has proved there is no live agent, so the caller's own destructive
+	// preparation is safe to run. It is deliberately here and not before the probe: everything it
+	// does is the same class of act as the archive below, and doing it earlier would break a live
+	// agent's file contract exactly as archiving early would.
+	if p.prepareFreshSpawn != nil {
+		if err := p.prepareFreshSpawn(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): prepare fresh spawn: %w", p.name, singleLLMEngineLabel, err)
+		}
 	}
 
 	if err := archiveStaleOutputs(spec.OutputFiles, p.now); err != nil {

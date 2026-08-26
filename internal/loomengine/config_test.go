@@ -31,6 +31,27 @@ func seedLoomConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
+// writeLoomConfigWithKey seeds a loom.yaml built from the shipped template with exactly one key's
+// value replaced, so a test can vary a single knob without restating the whole file and drifting
+// from the template's key set (which configengine.Load is strict about).
+func writeLoomConfigWithKey(t *testing.T, baseDir, key, value string) {
+	t.Helper()
+	var b strings.Builder
+	replaced := false
+	for _, line := range strings.Split(ConfigTemplate(), "\n") {
+		if strings.HasPrefix(line, key+":") {
+			b.WriteString(key + ": " + value + "\n")
+			replaced = true
+			continue
+		}
+		b.WriteString(line + "\n")
+	}
+	if !replaced {
+		t.Fatalf("key %q not present in ConfigTemplate(); the fixture would silently test nothing", key)
+	}
+	seedLoomConfig(t, baseDir, b.String())
+}
+
 // TestLoadConfig_WellFormed verifies the template's default values round-trip.
 func TestLoadConfig_WellFormed(t *testing.T) {
 	baseDir := t.TempDir()
@@ -289,4 +310,53 @@ func containsConfigKey(text, key string) bool {
 		}
 	}
 	return false
+}
+
+// TestLoadConfig_RejectsNegativeTimeouts pins the load-time guard on the three timeout knobs.
+// Without it a negative minute count flowed into a shuttleengine.Spec's Timeout and was caught only
+// when the producer it governs first spawned -- which is exactly the deferred failure LoadConfig's
+// own header says the model-spec checks beside it exist to prevent.
+func TestLoadConfig_RejectsNegativeTimeouts(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{"DiscussionTimeout", "discussion_timeout_min"},
+		{"PlanTimeout", "plan_timeout_min"},
+		{"ReviewTimeout", "review_timeout_min"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeLoomConfigWithKey(t, dir, tt.key, "-1")
+
+			_, err := LoadConfig(dir, "loom")
+			if err == nil {
+				t.Fatalf("LoadConfig() error = nil; want a refusal for a negative %s", tt.key)
+			}
+			if !strings.Contains(err.Error(), tt.key) {
+				t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), tt.key)
+			}
+			if !strings.Contains(err.Error(), "must not be negative") {
+				t.Errorf("LoadConfig() error = %q; want it to state the rule", err.Error())
+			}
+		})
+	}
+}
+
+// TestLoadConfig_AcceptsZeroTimeouts pins the deliberate carve-out: shuttleengine.Spec treats a zero
+// Timeout as "defer to shuttle's own run_timeout_min", so zero is a legitimate configuration and must
+// not be swept up by the negative guard.
+func TestLoadConfig_AcceptsZeroTimeouts(t *testing.T) {
+	for _, key := range []string{"discussion_timeout_min", "plan_timeout_min", "review_timeout_min"} {
+		t.Run(key, func(t *testing.T) {
+			dir := t.TempDir()
+			writeLoomConfigWithKey(t, dir, key, "0")
+
+			if _, err := LoadConfig(dir, "loom"); err != nil {
+				t.Errorf("LoadConfig() error = %v; want nil (zero defers to shuttle's run_timeout_min)", err)
+			}
+		})
+	}
 }

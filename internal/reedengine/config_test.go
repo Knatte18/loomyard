@@ -70,8 +70,12 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.DebugLog != "0" {
 		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
 	}
-	if cfg.Mouse != "off" {
-		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "off")
+	// Mouse defaults ON: with it off tmux never claims the wheel, so the terminal's own
+	// alternate-screen translation delivers arrow keys into the live agent's input instead of
+	// scrolling anything -- which for an interactive producer means an operator's scroll gesture
+	// types into the interview.
+	if cfg.Mouse != "on" {
+		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "on")
 	}
 }
 

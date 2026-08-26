@@ -6,7 +6,7 @@ collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a des
 min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pane
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""
 debug_log: ${env:LYX_REED_DEBUG:-0}  # opt-in tmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key
-mouse: ${env:LYX_REED_MOUSE:-off}  # tmux mouse-mode default (on/off; off preserves native terminal text selection/copy; set on for click-to-switch-pane; takes effect on a fresh reed server boot only — a live toggle needs a server restart)
+mouse: ${env:LYX_REED_MOUSE:-on}  # tmux mouse-mode default (on/off; on is the default so the wheel scrolls the pane's scrollback and a click selects a pane — with mouse off tmux never claims the wheel, so the terminal's own alternate-screen translation delivers arrow keys straight into the live agent's input instead of scrolling anything; the cost of on is that native terminal text selection needs the terminal's shift-bypass (hold Shift while dragging), and tmux copy-mode is the in-band alternative; takes effect on a fresh reed server boot only — a live toggle needs a server restart, and an already-materialized reed.yaml keeps whatever value it holds, since reconcile is key-based and never rewrites a value)
 header:  # the always-on operator console pane's rendered text
   template: ""  # empty means "use the embedded default template"; set to override
   height_rows: 1  # fixed row count the header pane occupies

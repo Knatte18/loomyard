@@ -1,8 +1,7 @@
-// planwrite.go implements the PlanWrite rotate-then-delegate-then-commit decorator: a thin
-// shedengine.ShedProducer that archives the stale plan directory, delegates to a wrapped producer,
-// and, on a Done outcome with a nil error, invokes an injected commit closure -- mirroring
-// discussionwrite.go's own file shape, per this task's mirror-the-Discussion-Write-commit Shared
-// Decision.
+// planwrite.go implements the Plan-Write row's two halves: NewPlanWrite, the post-Done commit
+// decorator it shares with Discussion-Write, and NewPlanDirRotator, the stale-plan-directory rotation
+// that runs as the wrapped SingleLLMProducer's fresh-spawn preparation rather than as a step ahead of
+// it.
 
 package loomshed
 
@@ -17,58 +16,52 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// archiveTimestampFormat is the compact UTC stamp layout planWrite's rotation step formats its
+// archiveTimestampFormat is the compact UTC stamp layout the plan-directory rotation formats its
 // archive directory names from. It duplicates internal/shedadapters' identically-named unexported
 // constant deliberately, the same way this package's entryErr/cancelErr already duplicate that
 // package's own unexported helpers -- see doc.go for why the duplication is deliberate.
 const archiveTimestampFormat = "20060102T150405Z"
 
-// planWrite decorates inner with a rotate-then-delegate-then-commit sequence: it archives the plan
-// directory's stale top-level .md files, calls inner.Call, and, once inner reports Done with a nil
-// error, invokes commit before returning that same verdict to the caller.
+// planWrite decorates inner with a post-Done commit step: once inner.Call reports Done with a nil
+// error, planWrite invokes commit before returning that same verdict to the caller.
 //
-// planWrite does not consult entryErr or cancelErr itself. inner (a *shedadapters.SingleLLMProducer
-// in practice) entry-checks the context as its first act and owns the whole cancellation
-// obligation; rotation running before that entry check means a run cancelled between the two
-// leaves an archive directory behind and no new plan, which is acceptable because the archive is
-// committed content rather than dirt and the next entry rotates an already-empty directory as a
-// no-op.
+// It carries no rotation of its own, deliberately. Rotating the plan directory is destructive to the
+// very files a live plan agent may be mid-write on, so it belongs after the wrapped
+// SingleLLMProducer's attach probe, never before its Call -- see NewPlanDirRotator.
+//
+// planWrite does not consult entryErr or cancelErr itself. inner (a
+// *shedadapters.SingleLLMProducer in practice) already entry-checks the context as its first act, so
+// a second check here would be duplicate work at the same seam; the wrapped producer owns the whole
+// cancellation obligation.
+//
+// It is deliberately a distinct type from discussionWrite rather than a shared one, even though the
+// two now carry identical logic: internal/loomrecipe's shape_test asserts the concrete producer type
+// built for each recipe row, so collapsing them would retire a guard that currently tells the
+// Plan-Write row's producer from the Discussion-Write row's.
 type planWrite struct {
-	name       string
-	inner      shedengine.ShedProducer
-	commit     func() error
-	anchorPath string
-	now        func() time.Time
+	name   string
+	inner  shedengine.ShedProducer
+	commit func() error
 }
 
 var _ shedengine.ShedProducer = (*planWrite)(nil)
 
-// NewPlanWrite returns a planWrite identified as name, delegating to inner and invoking commit
-// once inner reports Done with a nil error. anchorPath is the absolute directory lyx is anchored
-// at; planWrite resolves the plan directory from it via planparser.PlanDir. A nil now defaults to
-// time.Now. The return type is shedengine.ShedProducer, the seam interface, so internal/shedrecipe
-// can construct this producer from outside this package while planWrite itself stays unexported.
-func NewPlanWrite(name string, inner shedengine.ShedProducer, commit func() error, anchorPath string, now func() time.Time) shedengine.ShedProducer {
-	if now == nil {
-		now = time.Now
-	}
-	return &planWrite{name: name, inner: inner, commit: commit, anchorPath: anchorPath, now: now}
+// NewPlanWrite returns a planWrite identified as name, delegating to inner and invoking commit once
+// inner reports Done with a nil error. The return type is shedengine.ShedProducer, the seam
+// interface, so internal/shedrecipe can construct this producer from outside this package while
+// planWrite itself stays unexported.
+func NewPlanWrite(name string, inner shedengine.ShedProducer, commit func() error) shedengine.ShedProducer {
+	return &planWrite{name: name, inner: inner, commit: commit}
 }
 
-// Call implements shedengine.ShedProducer. It rotates the stale plan directory first, returning a
-// wrapped error without ever touching p.inner on rotation failure. It then calls p.inner.Call(ctx)
-// exactly once and returns its three results verbatim whenever the error is non-nil or the outcome
-// is anything other than shedengine.Done. Only a Done outcome with a nil error invokes p.commit
-// before returning.
+// Call implements shedengine.ShedProducer: it calls p.inner.Call(ctx) exactly once and returns its
+// three results verbatim whenever the error is non-nil or the outcome is anything other than
+// shedengine.Done. Only a Done outcome with a nil error invokes p.commit before returning.
 //
-// Neither a rotation failure nor a commit failure maps to shedengine.Stuck: a filesystem or git
-// fault is infrastructure, not plan quality, and a returned error persists failed and aborts while
-// Stuck persists blocked and bounces.
+// A commit failure maps to a returned error, never to shedengine.Stuck: a git fault is infrastructure
+// rather than plan quality, and a returned error persists failed and aborts while Stuck persists
+// blocked and bounces.
 func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if err := p.rotateStalePlanDir(); err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: rotate stale plan directory: %w", p.name, err)
-	}
-
 	outcome, pointer, err := p.inner.Call(ctx)
 	if err != nil || outcome != shedengine.Done {
 		return outcome, pointer, err
@@ -81,17 +74,41 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	return outcome, pointer, nil
 }
 
-// rotateStalePlanDir archives every top-level ".md" file currently in the plan directory into a
-// fresh archive-<stamp>[-N] subdirectory, leaving any other entry (a directory, or a non-.md file)
-// in place. It resolves the plan directory via planparser.PlanDir(p.anchorPath) -- never by naming
-// the "_lyx" literal, which the Lyxdirs Single-Declarer Invariant forbids in production
-// path-construction context.
+// NewPlanDirRotator returns the closure that archives the plan directory's stale top-level ".md"
+// files into a fresh archive-<stamp>[-N] subdirectory under it, resolving that directory from
+// anchorPath via planparser.PlanDir. A nil now defaults to time.Now.
 //
-// An absent plan directory, or one with no top-level .md file to move, is a no-op with a nil
-// error and creates nothing. Only files move, never directories, so a second rotation can never
-// nest a previous archive directory inside a new one.
-func (p *planWrite) rotateStalePlanDir() error {
-	planDir := planparser.PlanDir(p.anchorPath)
+// The returned closure is handed to shedadapters.NewSingleLLMProducer as its prepareFreshSpawn hook,
+// so it runs only once the attach probe has established that no live agent is writing into that
+// directory. Running it unconditionally ahead of the producer -- which is what this rotation used to
+// do, as a step inside the decorator's own Call -- moves 00-overview.md, the Plan spec's sole
+// declared output file, out from under an agent the very next line then attaches to: shuttle's Wait
+// polls for bare existence at the spec's paths, so a plan that was finished never classifies Done
+// and times out into a hard run failure instead.
+//
+// Only files move, never directories, so a second rotation can never nest a previous archive
+// directory inside a new one. An absent plan directory, or one with no top-level .md file to move,
+// is a no-op with a nil error and creates nothing.
+func NewPlanDirRotator(anchorPath string, now func() time.Time) func() error {
+	if now == nil {
+		now = time.Now
+	}
+	return func() error {
+		if err := rotateStalePlanDir(anchorPath, now); err != nil {
+			return fmt.Errorf("loomshed: rotate stale plan directory: %w", err)
+		}
+		return nil
+	}
+}
+
+// rotateStalePlanDir archives every top-level ".md" file currently in the plan directory resolved
+// from anchorPath into a fresh archive-<stamp>[-N] subdirectory, leaving any other entry (a
+// directory, or a non-.md file) in place.
+// It resolves the plan directory via planparser.PlanDir(anchorPath) -- never by naming the "_lyx"
+// literal, which the Lyxdirs Single-Declarer Invariant forbids in production path-construction
+// context.
+func rotateStalePlanDir(anchorPath string, now func() time.Time) error {
+	planDir := planparser.PlanDir(anchorPath)
 
 	entries, err := os.ReadDir(planDir)
 	if err != nil {
@@ -115,7 +132,7 @@ func (p *planWrite) rotateStalePlanDir() error {
 		return nil
 	}
 
-	stamp := p.now().UTC().Format(archiveTimestampFormat)
+	stamp := now().UTC().Format(archiveTimestampFormat)
 	archiveDir, err := firstFreePlanArchivePath(planDir, stamp)
 	if err != nil {
 		return err

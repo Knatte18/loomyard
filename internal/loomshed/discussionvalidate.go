@@ -7,8 +7,10 @@ package loomshed
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -53,10 +55,27 @@ func (p *discussionValidate) Call(ctx context.Context) (shedengine.Outcome, shed
 		return p.nonDoneExit(ctx, "", err)
 	}
 	if len(findings) > 0 {
+		// Surfaced rather than discarded. The bounce target is Discussion-Write, which is respawned
+		// with no knowledge of the complaint, so this log line is the only record anywhere of why the
+		// artifact was refused -- without it an operator watching a run bounce between the two rows
+		// has nothing at all to read. The Stuck itself still carries an empty pointer, per the row's
+		// gate-signal contract.
+		logger.Warn("loomshed: discussion artifacts failed validation", "producer", p.name, "decisionRecord", p.decisionRecordPath, "findings", formatDiscussionFindings(findings))
 		return p.nonDoneExit(ctx, shedengine.Stuck, nil)
 	}
 
 	return shedengine.Done, shedengine.OutputPointer{Path: p.decisionRecordPath}, nil
+}
+
+// formatDiscussionFindings renders findings as a single semicolon-separated list, using each
+// Finding's own Error() rendering so the log line and the standalone verb's envelope describe a
+// violation identically.
+func formatDiscussionFindings(findings []discussionparser.Finding) string {
+	parts := make([]string, len(findings))
+	for i, f := range findings {
+		parts[i] = f.Error()
+	}
+	return strings.Join(parts, "; ")
 }
 
 // nonDoneExit consults cancelErr before returning a non-Done result: a cancelled context replaces

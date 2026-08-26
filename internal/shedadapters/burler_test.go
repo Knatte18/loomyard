@@ -375,21 +375,38 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		}
 	})
 
-	t.Run("FocusFileSurvivingHydrateEntriesAppendedToPriorReviews", func(t *testing.T) {
+	t.Run("FocusFileWithADirectiveIsHydratedAfterDerivedEntries", func(t *testing.T) {
 		runDir := t.TempDir()
 		writeRoundPair(t, runDir, 1)
-		hydrateEntry := filepath.Join(runDir, "extra-context.md")
-		writeRoundFile(t, hydrateEntry)
-		writeFocusFile(t, runDir, 2, `{"hydrate":["`+hydrateEntry+`"]}`)
+		writeFocusFile(t, runDir, 2, focusFile{Round: 2, Focus: []string{"look at the relocation candidate"}})
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
 
 		if _, _, err := p.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
-		wantReviews := []string{roundReviewPath(runDir, 1), hydrateEntry}
+		// The hydrated entry is the focus file itself: that is how the judge's directive reaches the
+		// fixer round, and it is the delivery that was silently absent while the reader looked for a
+		// round-<N>-focus.json the writer never produced.
+		wantReviews := []string{roundReviewPath(runDir, 1), focusPath(runDir, 2)}
 		if !stringSlicesEqual(runner.gotProfiles[0].PriorReviews, wantReviews) {
-			t.Errorf("PriorReviews = %v; want %v (focus hydrate appended after derived entries)", runner.gotProfiles[0].PriorReviews, wantReviews)
+			t.Errorf("PriorReviews = %v; want %v (focus file appended after derived entries)", runner.gotProfiles[0].PriorReviews, wantReviews)
+		}
+	})
+
+	t.Run("FocusFileWithNoDirectiveIsNotHydrated", func(t *testing.T) {
+		runDir := t.TempDir()
+		writeRoundPair(t, runDir, 1)
+		writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{}, Focus: []string{}})
+		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		wantReviews := []string{roundReviewPath(runDir, 1)}
+		if !stringSlicesEqual(runner.gotProfiles[0].PriorReviews, wantReviews) {
+			t.Errorf("PriorReviews = %v; want %v (an APPROVED judge's empty focus file asserts nothing and is not handed to the round)", runner.gotProfiles[0].PriorReviews, wantReviews)
 		}
 	})
 }
@@ -457,7 +474,7 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	runDir := t.TempDir()
 	writeRoundPair(t, runDir, 1)
-	writeFocusFile(t, runDir, 2, `{"exclude_lenses":["lensA"]}`)
+	writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{"lensA"}})
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
 	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
@@ -601,7 +618,7 @@ func TestBurlerProducer_Call_RunnerErrorWrapped(t *testing.T) {
 
 func TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile(t *testing.T) {
 	runDir := t.TempDir()
-	writeFocusFile(t, runDir, 1, `{"exclude_lenses":["not-in-fan"]}`)
+	writeFocusFile(t, runDir, 1, focusFile{Round: 1, ExcludeLenses: []string{"not-in-fan"}})
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
 	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
@@ -817,4 +834,53 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 		}
 		assertUnchangedRoundOnRerun(t, runDir)
 	})
+}
+
+// TestBurlerProducer_Call_PreAttemptArchiveFailureHonoursCancellation is the guard for this
+// package's shared cancellation rule at the one exit that used to skip it: the pre-attempt
+// archiveStaleOutputs failure returned bare, so a run an operator had already cancelled was reported
+// as an unrelated infrastructure error instead of as the cancellation it was. Every other
+// non-success exit in Call already routes through failureExit, which consults cancelErr first.
+//
+// Reaching that branch needs the archive to fail AND the context to be cancelled at that moment, and
+// an already-cancelled context would be caught by Call's entry check long before -- so the injected
+// clock is used as the seam. archiveStaleOutputs calls now() after it has stat'd the stale file and
+// before it renames it, so cancelling from there lands the cancellation exactly inside the failing
+// archive, which a read-only run directory guarantees.
+func TestBurlerProducer_Call_PreAttemptArchiveFailureHonoursCancellation(t *testing.T) {
+	runDir := t.TempDir()
+	reviewPath := roundReviewPath(runDir, 1)
+	if err := os.WriteFile(reviewPath, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", reviewPath, err)
+	}
+	if err := os.Chmod(runDir, 0o555); err != nil {
+		t.Fatalf("Chmod(%s): %v", runDir, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(runDir, 0o755) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelledDuringArchive := false
+	now := func() time.Time {
+		cancelledDuringArchive = true
+		cancel()
+		return time.Unix(0, 0).UTC()
+	}
+
+	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, now)
+
+	_, _, err := p.Call(ctx)
+
+	if !cancelledDuringArchive {
+		t.Fatal("the injected clock never ran; the test never reached the archive step it is about")
+	}
+	if err == nil {
+		t.Fatal("Call() error = nil; want a non-nil error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Call() error = %v; want it to wrap context.Canceled, not the archive failure", err)
+	}
+	if runner.calls != 0 {
+		t.Errorf("runner.calls = %d; want 0", runner.calls)
+	}
 }

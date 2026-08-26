@@ -27,6 +27,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+// wireStatusPathsOnly builds the minimum a read-only status verb needs onto c: location, cwd, and
+// the two status-file paths. It loads no module config, constructs no engine, and can fail only if
+// loomengine's own path accessors do, which they cannot.
+//
+// It exists because wire() below loads eight module configs, a model-spec registry and the active
+// batchifier before any verb body runs, so a fault in ANY of them refused "lyx loom status" and
+// "lyx loom pause" outright -- including a fault an agent loom itself spawned, which is how this was
+// found: a Discussion-Write agent rewrote loom.yaml mid-run and from that moment the operator had
+// neither the read-out nor the emergency brake for a run that was still going. pause is the
+// documented graceful-stop mechanism; losing it to an unrelated config problem inverts the cost.
+//
+// The verbs that actually build producers -- run and drive -- deliberately keep the full wire(), and
+// keep failing early on a bad config, because for them an unloadable config is a real refusal rather
+// than an unrelated one. That is the same reasoning wire()'s own landingCfg comment already gives
+// for loading landing.yaml eagerly.
+func (c *loomCLI) wireStatusPathsOnly(location *lyxcwd.Location, cwd string) {
+	c.location = location
+	c.cwd = cwd
+	c.shedPaths = loomrecipe.ShedPaths{
+		StatusPath:     loomengine.LoomStatusFile(location),
+		LockPath:       loomengine.LoomRunLock(location),
+		StatusLockPath: loomengine.LoomStatusLock(location),
+	}
+}
+
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
 // the assembled shedrecipe.Env/loomrecipe.ShedPaths pair wrapping it.

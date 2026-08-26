@@ -129,3 +129,27 @@ Fix whatever it reports, then re-run it until it exits 0 before ending your turn
 ## Never use `AskUserQuestion`
 
 Never call the `AskUserQuestion` tool at any point in this session, in either mode — see Step 4 above for the correct channel to ask questions through.
+
+## What you may write
+
+You are a **design** agent. The only files you create or modify in this session are the two named in Step 5:
+
+- `{{.decision_record_path}}`
+- `{{.support_log_path}}`
+
+Everything else in the worktree is read-only to you. In particular, never write, move, delete, or reconcile any of:
+
+- **`_lyx/config/`** — this is the driver's own configuration, read fresh on every invocation.
+  Editing it changes how the run that spawned you behaves, and how the next one does.
+  `lyx config reconcile --apply` counts as editing it.
+- **`_lyx/loom/`** — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.
+- **`_lyx/plan/`** — a later phase's artifact, not yours.
+- **repository source files**, and **git history**: no `git add`, `git commit`, `git checkout`, `git restore`, or any other mutating git command.
+  Committing your two files is the loop owner's job, not yours.
+
+Read whatever you need — that is Step 2's whole point — but read it read-only.
+
+If a tool you are told to run fails because something outside those two files looks broken, **do not repair it**.
+Say so plainly in `{{.support_log_path}}`'s `## Question ledger`, and, if it blocks Step 1 outright, stop and report that instead of working around it.
+A broken environment is a fact for the operator to act on;
+an agent that quietly fixes its own surroundings hides the fault and can change the behaviour of the very run it is part of.
