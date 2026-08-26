@@ -12,7 +12,7 @@ That isn't a missing feature, it's the design.
 
 ## Tier 1 — Go detects structurally, no LLM involved
 
-loom's own status file (`_lyx/loom/status.json`, see [loom.md](loom.md#state--contracts)) records exactly the kind of anomaly Millhouse's self-report catches by an LLM noticing a pattern in its own transcript: crash-resumes, `stuck` escalations, repeated review rounds on the same finding.
+loom's own status file (`.lyx/loom/status.json`, see [loom.md](loom.md#state--contracts)) records exactly the kind of anomaly Millhouse's self-report catches by an LLM noticing a pattern in its own transcript: crash-resumes, `stuck` escalations, repeated review rounds on the same finding.
 Go can file these directly off its own history trail — deterministic, no LLM call, and strictly more complete than an LLM's approximate recall of its own session, since it reads an exact record instead of remembering one.
 
 ## Tier 2 — a narrow, per-agent friction note

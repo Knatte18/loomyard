@@ -65,9 +65,9 @@ This is not pedantry: `internal/hubgeometry` exists in the first place because c
 Get this wrong here and the failure mode is the same one hubgeometry was built to prevent, just spread across the ~20 places it now happens instead of one.
 
 **Shipped correction (slice 7, updated slice 9): "joins onto `cwd`" above is not what landed.**
-The as-built anchoring table — recorded in the plan's Shared Decisions — is anchor-aware, not a single blanket base: the durable, weft-synced, git-tracked `_lyx` group (`PlanDir`, `DiscussionDir`, `LoomStatusFile`, `WebsterDir`, `PatternDir`,
+The as-built anchoring table — recorded in the plan's Shared Decisions — is anchor-aware, not a single blanket base: the durable, weft-synced, git-tracked `_lyx` group (`PlanDir`, `DiscussionDir`, `WebsterDir`, `PatternDir`,
 and the rest) joins onto `Location.AnchorPath()`, not `cwd` directly;
-the ephemeral, machine-bound, never-git-tracked `.lyx` group (`logger.LogsDir`, renamed from `WorktreeLogsDir`; `ScoutDaemonStateFile`, `ScoutDaemonLock`) also joins onto `Location.AnchorPath()` as of slice 9, no longer `Location.WorktreePath()` — the two groups now share one anchoring rule, so a subpath-anchored repo has exactly one `.lyx` root instead of two;
+the ephemeral, machine-bound, never-git-tracked `.lyx` group (`logger.LogsDir`, renamed from `WorktreeLogsDir`; `ScoutDaemonStateFile`, `ScoutDaemonLock`, `LoomStatusFile`) also joins onto `Location.AnchorPath()` as of slice 9, no longer `Location.WorktreePath()` — the two groups now share one anchoring rule, so a subpath-anchored repo has exactly one `.lyx` root instead of two;
 and `HubLogsDir` alone joins onto `fabricengine.HubScratchDir(Location.HubPath)`, deliberately hub-anchored so one reed server per hub resolves to one deterministic place.
 A blanket "join onto `cwd`" would have silently relocated the last three.
 The two docs must not be allowed to disagree — re-read both after editing either.

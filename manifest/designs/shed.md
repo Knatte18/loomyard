@@ -242,7 +242,7 @@ type Status struct {
 
 `State`'s three clean-exit values — `StateRunning` excepted — are the **literal same strings** as `RunOutcome`'s three constants above, so mapping between `Result.Outcome` and `state` is identity, never a lookup table; `State` is the superset, adding `running` (a run in progress or interrupted mid-producer) and `failed` (an engine-level error), neither of which `RunOutcome` ever carries, since `Run` returns a non-nil `error` rather than a `Result` in the failure case.
 
-**The status file** (`Shed`'s own generic contract — `loom`'s `_lyx/loom/status.json` is one instance of it, not a `loom`-specific shape):
+**The status file** (`Shed`'s own generic contract — `loom`'s `.lyx/loom/status.json` is one instance of it, not a `loom`-specific shape):
 
 ```json
 {
