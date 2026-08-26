@@ -66,7 +66,8 @@ Batch-local decision beyond `## Shared Decisions`: the parse-time nil-versus-emp
   In the `renameLabel` branch, set the new group's `Pairs` to that call's own `pairs` slice, its `RenameRaw` to that call's own `raw` slice, and its `Refs` to that call's own pair endpoints in `Old`-then-`New` pair order;
   keep appending the same values to `card.Pairs`, `card.RenameRaw`, and `card.Targets` so those three stay the flat union.
   In the non-`Rename` branch, set the new group's `Refs` to that call's own `refs` slice and keep appending `refs` to `card.Targets`.
-  Preserve the nil-versus-empty distinction `parseRefField` returns: a type label present with zero bullets under it yields a group whose `Refs` is a non-nil empty slice.
+  Preserve the nil-versus-empty distinction `parseRefField` returns: one of the six non-`Rename` type labels present with zero bullets under it yields a group whose `Refs` is the non-nil empty slice `parseRefField` returned.
+  In the `renameLabel` branch, initialize the group's `Refs` to a non-nil empty slice before appending pair endpoints, so a `**Rename:**` label carrying zero well-formed pairs also yields a non-nil empty `Refs` rather than a nil one — without that initializer the branch's endpoint-append leaves `Refs` nil, and the seven labels would not share one stated invariant.
   Do not let a group's `Refs` alias the card-level `card.Targets` backing array — card 3's `normalizeCard` change rewrites both sides independently and must not double-apply `root:` through a shared array.
   Do not reorder `parseCardBody`'s switch cases.
   Update the wording of `parse.go`'s file-header comment, of the `typeLabels` table's comment, of the seven-type-label const block's comment, and of `parseTypeLabelCase`'s own doc comment so none of them asserts a card carries one type label;

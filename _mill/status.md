@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: plan-custom-card-skips-path-check
 branch: plan-custom-card-skips-path-check
 plan: _mill/plan
@@ -20,4 +20,5 @@ planning  '2026-08-26T17:58:12Z'
 plan-review-r1  '2026-08-26T18:05:24Z'
 plan-fix-r1  '2026-08-26T18:06:24Z'
 plan-review-r2  '2026-08-26T18:16:04Z'
+plan-fix-r2  '2026-08-26T18:16:34Z'
 ```

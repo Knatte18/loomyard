@@ -3,7 +3,7 @@
 ```yaml
 task: "Custom-typed plan cards skip path-missing checks"
 slug: "plan-custom-card-skips-path-check"
-approved: false
+approved: true
 started: "20260826-175419"
 parent: "main"
 root: ""
