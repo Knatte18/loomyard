@@ -4,9 +4,11 @@ Operator runbook for exercising the deployed `lyx.exe` against the sandbox Hub.
 This is the **ordered procedure**;
 for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox-hub.md).
 
-All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless stated otherwise.
-The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox/build.cmd`, `sandbox/core-suite.cmd`, `sandbox/reed-suite.cmd`, `sandbox/shuttle-suite.cmd`, `sandbox/burler-suite.cmd`, `sandbox/fetch.cmd`) hardcode this machine's paths: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path.
+All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard` on Windows, the repo root on POSIX) unless stated otherwise.
+The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox/win/build.cmd`, `sandbox/win/core-suite.cmd`, `sandbox/win/reed-suite.cmd`, `sandbox/win/shuttle-suite.cmd`, `sandbox/win/burler-suite.cmd`, `sandbox/win/fetch.cmd`) hardcode this machine's paths: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path.
 Each sandbox launcher does exactly one thing (build / one suite / fetch).
+
+> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `deploy.cmd`/`deploy-dev.cmd` have no POSIX port yet — that is still Windows-only.
 
 **Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected.
 The agent session is an interactive `claude` process;
@@ -15,11 +17,11 @@ The launcher prints a warning when it detects non-console stdio.
 
 ## What the suite does
 
-`sandbox/core-suite.cmd` resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub warp repo, and launches an interactive black-box agent there.
+`sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh` on POSIX) resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub warp repo, and launches an interactive black-box agent there.
 When the resolved binary is the dev build, the suite prepends `.dev-bin` to the agent's own child-process PATH, so its bare `lyx` invocations resolve to it — the agent still drives `lyx` from PATH only (never the source tree), just scoped to its own session, not your shell.
 The agent writes WARN/FAIL findings to `sandbox-report.json` in the warp repo.
 The suite only launches the agent;
-collecting the report is a separate step — after the session ends, run `sandbox/fetch.cmd` to fetch a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
+collecting the report is a separate step — after the session ends, run `sandbox/win/fetch.cmd` (`sandbox/posix/fetch.sh`) to fetch a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 
 Because the agent tests the resolved binary (dev-first, prod fallback), a stale `.dev-bin` binary means you are testing old code.
 Always deploy before a run (step 2) — `deploy-dev.cmd` is the fast path since it never touches the production binary.
@@ -68,22 +70,34 @@ Once the suite session starts, the fingerprint header's `Source: dev` line is th
 **First time** — clone the Hub to `C:\Code\lyx-test-HUB`:
 
 ```cmd
-sandbox/build.cmd
+sandbox/win/build.cmd
+```
+
+```sh
+sandbox/posix/build.sh
 ```
 
 **Reset** — tear down and re-clone a clean Hub (destroys all local Hub state):
 
 ```cmd
-sandbox/build.cmd -reset
+sandbox/win/build.cmd -reset
 ```
 
-Skip this step on repeat runs if the existing Hub is fine — `sandbox/core-suite.cmd` does not require a reset each time.
+```sh
+sandbox/posix/build.sh -reset
+```
+
+Skip this step on repeat runs if the existing Hub is fine — `sandbox/win/core-suite.cmd`/`sandbox/posix/core-suite.sh` does not require a reset each time.
 Reset when the Hub topology may be stale (e.g. after a warp/weft change) or when a previous run left it dirty.
 
 ### 4. Run the suite
 
 ```cmd
-sandbox/core-suite.cmd
+sandbox/win/core-suite.cmd
+```
+
+```sh
+sandbox/posix/core-suite.sh
 ```
 
 This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub warp repo and launches the interactive agent there.
@@ -94,14 +108,23 @@ Exit the agent session when it is done — the suite treats any exit code as nor
 Optional overrides:
 
 ```cmd
-sandbox/core-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
-sandbox/core-suite.cmd -prompt <text>   # override the instruction string
+sandbox/win/core-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
+sandbox/win/core-suite.cmd -prompt <text>   # override the instruction string
+```
+
+```sh
+sandbox/posix/core-suite.sh -claude <path>   # override the claude binary (default: from PATH)
+sandbox/posix/core-suite.sh -prompt <text>   # override the instruction string
 ```
 
 ### 4b. Run the reed suite (optional, needs live tmux)
 
 ```cmd
-sandbox/reed-suite.cmd
+sandbox/win/reed-suite.cmd
+```
+
+```sh
+sandbox/posix/reed-suite.sh
 ```
 
 This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub warp repo and launches the interactive agent there, same as step 4 but for `lyx reed`'s scenarios.
@@ -109,30 +132,39 @@ It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7.
 The attach scenario (M7) pauses for the operator to run `lyx reed attach` in a second terminal and confirm visually.
 Findings go to the same `sandbox-report.json`, so steps 5 (fetch) and 6 (triage) apply unchanged — fetch between sessions, don't run both suites and fetch once.
 
-Same `-claude`/`-prompt` overrides as `sandbox/core-suite.cmd`:
+Same `-claude`/`-prompt` overrides as `sandbox/win/core-suite.cmd`/`sandbox/posix/core-suite.sh`:
 
 ```cmd
-sandbox/reed-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
-sandbox/reed-suite.cmd -prompt <text>   # override the instruction string
+sandbox/win/reed-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
+sandbox/win/reed-suite.cmd -prompt <text>   # override the instruction string
+```
+
+```sh
+sandbox/posix/reed-suite.sh -claude <path>   # override the claude binary (default: from PATH)
+sandbox/posix/reed-suite.sh -prompt <text>   # override the instruction string
 ```
 
 ### 4c. Run the shuttle or burler suite (optional, needs live tmux + logged-in claude)
 
 ```cmd
-sandbox/shuttle-suite.cmd
-sandbox/burler-suite.cmd
+sandbox/win/shuttle-suite.cmd
+sandbox/win/burler-suite.cmd
 ```
 
 Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios respectively;
 both need a live tmux, PowerShell 7, a logged-in `claude`,
 and an `lyx init`-ed warp repo.
 Same `-claude`/`-prompt` overrides.
-After the session ends, the launcher runs `lyx reed down` in the warp repo (for the reed, shuttle, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/build.cmd -reset`.
+After the session ends, the launcher runs `lyx reed down` in the warp repo (for the reed, shuttle, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
 
 ### 5. Fetch the report
 
 ```cmd
-sandbox/fetch.cmd
+sandbox/win/fetch.cmd
+```
+
+```sh
+sandbox/posix/fetch.sh
 ```
 
 Reads `sandbox-report.json` from the Hub warp repo, validates and stamps it, and writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
@@ -142,7 +174,7 @@ if the agent wrote no report, this fails with a distinct "not found" error.
 ### 6. Triage findings
 
 The agent no longer files GitHub issues itself.
-Instead: the suite emits `sandbox-report.json` in the Hub warp repo → `sandbox/fetch.cmd` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
+Instead: the suite emits `sandbox-report.json` in the Hub warp repo → `sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
 
 ```
 /mill-report-to-tasks "<path-to-fetched-json>"
@@ -158,9 +190,9 @@ Then groom/spawn as usual.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `lyx` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) `C:\Code\tools\bin` not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
-| `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox/build.cmd -reset` |
-| Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox/build.cmd -reset` |
-| `sandbox/build.cmd -reset` fails: "being used by another process" | orphaned `tmux.exe` from an earlier suite session still holds Hub handles | the launcher now runs `lyx reed down` after reed-backed suites; if hit anyway, find the Hub-scoped `tmux.exe` PIDs by `StartTime` (`Get-Process -Name tmux \| Select Id,StartTime`) and kill only those — never blanket-kill by image name |
+| `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
+| Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
+| `build -reset` fails: "being used by another process" (Windows) / "text file busy" (POSIX) | orphaned tmux from an earlier suite session still holds Hub handles | the launcher now runs `lyx reed down` after reed-backed suites; if hit anyway, find the Hub-scoped tmux PIDs by start time (Windows: `Get-Process -Name tmux \| Select Id,StartTime`; POSIX: `ps -o pid,lstart,cmd -C tmux`) and kill only those — never blanket-kill by image name |
 | agent session ends early, scenarios abandoned, no report | launcher was backgrounded/redirected (no TTY) | rerun in a real attached terminal; heed the launcher's non-console stdio warning |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 
@@ -168,4 +200,4 @@ Then groom/spawn as usual.
 
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
 - [tools/sandbox/SANDBOX-CORE-SUITE.md](../tools/sandbox/SANDBOX-CORE-SUITE.md) — the embedded test scheme the agent follows.
-- [tools/sandbox/SANDBOX-REED-SUITE.md](../tools/sandbox/SANDBOX-REED-SUITE.md) — the embedded reed-specific test scheme `sandbox/reed-suite.cmd` follows.
+- [tools/sandbox/SANDBOX-REED-SUITE.md](../tools/sandbox/SANDBOX-REED-SUITE.md) — the embedded reed-specific test scheme `sandbox/win/reed-suite.cmd`/`sandbox/posix/reed-suite.sh` follows.
