@@ -93,7 +93,7 @@ All three items below closed when the **planparser: Card-format migration to `Ed
 - **Whether `Custom` needs its own mechanical check at all, or is purely an escape hatch by design.**
   Closed in the affirmative: `Custom` needs no type-specific mechanical check.
   It stays a principled, deliberate escape hatch — bound by every card-generic check (path well-formedness, field presence, and so on) but exempt from `path-missing` on its own targets and from the `Prosa` target-shape rule, exactly as documented and nothing more.
-  A card that can name its targets under a typed group has, by definition, found a fit and is therefore not `Custom` — a card carrying a `Custom` group could instead be expressed as a multi-label combination is a defect, not a legitimate use of the escape hatch.
+  A card that can name its targets under a typed group has, by definition, found a fit and is therefore not `Custom` — a card carrying a `Custom` group whose targets could instead be expressed as a multi-label combination is a defect, not a legitimate use of the escape hatch.
 - **Whether `ImpactSummary` on Delete needs a structured shape beyond one line of prose.**
   Closed: it stays one line of prose, identical in shape to an `Edit` card's.
   A structured shape (e.g. an enumerated caller list) would need a caller enumeration the parser cannot produce without the symbol lookup this task deliberately excludes — see the shape classifier's own deviation from ground-truth resolution, above.
