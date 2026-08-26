@@ -318,6 +318,82 @@ Fix: the writer is the load-bearing side (the stencils, the parser, and the judg
 `focusPath(runDir, round)` through `parseFocus`, mapping `exclude_lenses` onto `RoundFocus.ExcludeLenses` and hydrating the focus file itself
 so the fixer round actually reads the judge's directives; `doc.go:92` moves with it.
 
+### F8 — MEDIUM (CONFIRMED live) — the Discussion-Write agent can rewrite loom's own `_lyx/config/`, and did, flipping the run to interactive
+
+`contracts/stencils/loom/loom-template-discussion.md` — the whole file.
+
+The Discussion producer is a **design** agent: its contract is to read the board task, read the codebase, interview, and write exactly two files
+(`_lyx/discussion/decision-record.md` and `_lyx/discussion/support-log.md`).
+In autonomous mode it launches with `--dangerously-skip-permissions` (the pane header showed `⏵⏵ bypass permissions on`), and the stencil places
+**no write fence of any kind** on it. Grepping the stencil for prohibitions turns up only content rules — do not invent scope, do not propose an MVP,
+never call `AskUserQuestion` — and nothing at all about which paths it may write.
+
+Contrast the sibling contracts, which do fence: the `Webster-Burler` recipe row records that "fork reviewers are read-only and may never run any git command",
+and `fix-scope: overlay` on both other Burler rows "runs no git at all and restricts writes to Target.Paths".
+The one producer with an unrestricted, permission-bypassed shell is the one with no fence.
+
+Observed live: during the driven run the Discussion-Write agent rewrote `_lyx/config/loom.yaml`, the driver's own configuration.
+The file it left behind carries keys and comments that came from neither the shipped template nor the operator's edit:
+
+```yaml
+discussion_timeout_min: 20 # minutes the discussion agent's shuttle run is allowed to run (interactive interviews run long)
+discussion_interactive: true # whether the discussion phase runs as an interactive interview
+plan_timeout_min: 30 # minutes the plan agent's shuttle run is allowed to run
+review: sonnet[effort=medium] # model-spec for the discussion-review gate agent (see docs/reference/model-spec.md)
+```
+
+against the shipped `internal/loomengine/template.yaml`, which has `discussion_interactive: false` and entirely different comment text.
+
+The consequential line is `discussion_interactive: true`. `wire()` reads that key fresh on every call
+(`internal/loomcli/wiring.go:141-143`, "read fresh on every `wire()` call"), so **the next `lyx loom run` in this worktree would spawn an interview
+and wait for an operator who is not there** — on a task deliberately configured to run unattended.
+An agent silently converting its own successor into a blocking human gate is a self-sabotage path with no guard on it.
+
+Honest attribution: what *triggered* the rewrite in my run was an environment artifact — the agent's pane inherited `lyx` from `PATH`
+(the operator's older global install, not the dev binary under test), so `lyx board get` failed on a config-schema mismatch and the agent
+"repaired" the config to unblock itself. That trigger is mine.
+The **exposure** is not: nothing in the shipped stencil, spec, or shuttle layer prevents this agent from writing any path in the worktree,
+and `_lyx/config/` is precisely the state that decides whether the next run is unattended.
+
+Fix: give the Discussion stencil an explicit write fence — it writes the two named output files and nothing else, and specifically never
+`_lyx/config/`, `_lyx/plan/`, `_lyx/loom/`, or git history — in the same shape the other producers' scopes already state.
+
+### F9 — MEDIUM (CONFIRMED live, operator-observed) — scrolling an attached loom session injects arrow keys into the live agent's pane
+
+Reported by the operator while attached to the session this review drove:
+
+> "if I scroll the mouse inside the window, lots of `^[[B` and `^[[A` show up in there."
+
+Confirmed against the live server: reed ships `mouse: off` by default
+(`internal/reedengine`'s config template, materialized here as
+`mouse: ${env:LYX_REED_MOUSE:-off} # ... off preserves native terminal text selection/copy ...`),
+and the running server agrees:
+
+```
+$ tmux -L lyx-loomdrive-HUB-3225f10b show-options -g mouse
+mouse off
+```
+
+With `mouse off` tmux never claims the wheel, so the terminal emulator's own alternate-screen wheel→arrow translation fires and the
+`^[[A`/`^[[B` sequences are delivered **to the pane's foreground process** — the live `claude` agent — rather than scrolling anything.
+Two consequences, and the second is the serious one:
+
+1. The operator cannot scroll back through what an agent said, which is the main reason to attach at all.
+   `manifest/designs/loom.md`'s "Entry point" section sells exactly this view ("the screen is free for the reed view — the status line on top,
+   agents below as they spawn") and it is not navigable.
+2. Under `discussion_interactive: true` an operator is at the pane **by design** (that mode's entire premise), and every scroll gesture
+   types arrow keys into the interview's input. Trying to re-read the question edits the answer.
+
+The config comment states the trade it made ("off preserves native terminal text selection/copy") but nothing states the cost,
+and nothing tells an operator who attaches a loom session that the wheel is live input.
+
+Fix disposition: the default itself lives in `internal/reedengine`, outside this campaign's module.
+What is loom's to fix here is the operator-facing documentation of its own attach step, plus naming the escape
+(`LYX_REED_MOUSE=on`, or `mouse: on` in `reed.yaml`, either of which needs a fresh reed server boot to take effect, and costs
+native terminal selection unless the terminal's Shift-bypass is used).
+Changing reed's shipped default — `mouse: on` plus a `WheelUpPane` copy-mode binding, the conventional configuration that keeps both —
+is a reed change and is recorded here for the orchestrator rather than made in a loom hardening round.
+
 ### Live driving — the real hub
 
 A fresh, real fabric hub was built for this review (nothing in the operator's own repos was touched):
