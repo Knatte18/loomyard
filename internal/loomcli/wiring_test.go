@@ -572,3 +572,72 @@ func TestWire_PlanSpecEvaluatesToExpectedShape(t *testing.T) {
 		t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
 	}
 }
+
+// TestVerbReadsStatusOnly pins the exact set of verbs that skip the full engine-stack construction.
+// Adding a verb here silently would be a real regression: a verb that builds or drives producers
+// needs wire()'s early config refusal, and getting that wrong moves the failure from the operator's
+// terminal into a detached driver log.
+func TestVerbReadsStatusOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		verb string
+		want bool
+	}{
+		{"Status", "status", true},
+		{"Pause", "pause", true},
+		{"Run", "run", false},
+		{"Drive", "drive", false},
+		{"ValidateDiscussion", "validate-discussion", false},
+		{"ValidatePlan", "validate-plan", false},
+		{"UnknownVerb", "something-else", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := verbReadsStatusOnly(tt.verb); got != tt.want {
+				t.Errorf("verbReadsStatusOnly(%q) = %v; want %v", tt.verb, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWireStatusPathsOnly_FillsTheStatusPathsWithoutLoadingAnyConfig is the regression guard for the
+// defect: "lyx loom pause" and "lyx loom status" used to run the whole of wire(), so a fault in any
+// of eight module configs refused them both -- taking away the operator's read-out and the
+// documented emergency brake for a run that was still going. The location fixture here has no
+// _lyx/config directory at all, which is the strongest form of "no config is loaded".
+func TestWireStatusPathsOnly_FillsTheStatusPathsWithoutLoadingAnyConfig(t *testing.T) {
+	// Deliberately NOT hubLocation: this location's anchor has no _lyx/config directory at all, so
+	// a path that loaded any module config could not possibly succeed here.
+	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+
+	c := &loomCLI{}
+	c.wireStatusPathsOnly(location, location.AnchorPath())
+
+	if c.location != location {
+		t.Errorf("location = %v; want the told location", c.location)
+	}
+	if c.shedPaths.StatusPath != loomengine.LoomStatusFile(location) {
+		t.Errorf("StatusPath = %q; want %q", c.shedPaths.StatusPath, loomengine.LoomStatusFile(location))
+	}
+	if c.shedPaths.StatusLockPath != loomengine.LoomStatusLock(location) {
+		t.Errorf("StatusLockPath = %q; want %q", c.shedPaths.StatusLockPath, loomengine.LoomStatusLock(location))
+	}
+	if c.shedPaths.LockPath != loomengine.LoomRunLock(location) {
+		t.Errorf("LockPath = %q; want %q", c.shedPaths.LockPath, loomengine.LoomRunLock(location))
+	}
+	if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
+		t.Error("LockPath and StatusLockPath name the same file; shedengine.validate rejects that outright")
+	}
+	// Nothing that a module config would have filled may be populated: that is what proves no load
+	// happened rather than merely that none failed.
+	if c.reed != nil {
+		t.Error("reed engine was constructed; want the status-only path to build no engine")
+	}
+	if c.runner != nil {
+		t.Error("shuttle runner was constructed; want the status-only path to build no engine")
+	}
+	if c.env.AnchorPath != "" {
+		t.Errorf("env was assembled (AnchorPath = %q); want the status-only path to assemble no Env", c.env.AnchorPath)
+	}
+}

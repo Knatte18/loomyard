@@ -73,6 +73,38 @@ func awaitRunLock(lockHeld func() (bool, error), alive func() bool, wait func(),
 	return awaitRunLockDeadline, nil
 }
 
+// handshakeDisposition is what the session bootstrap does with an awaitRunLockResult.
+type handshakeDisposition int
+
+const (
+	// handshakeProceed means the bootstrap continues to its terminal handover.
+	handshakeProceed handshakeDisposition = iota
+	// handshakeRefuse means the bootstrap reports a failure and hands the terminal over to nothing.
+	handshakeRefuse
+)
+
+// dispositionForHandshake maps an awaitRunLockResult onto what the bootstrap should do next.
+//
+// awaitRunLockChildDied proceeds, and that is the whole point of this function existing rather than
+// the verb testing `result != awaitRunLockReady` inline. A child that is already gone before the
+// handshake's first poll is a driver that RAN AND FINISHED -- the common case, since a run that
+// halts fast (a blocked Preflight or Loom-Preflight, an exhausted bounce budget) exits within
+// milliseconds, well inside the first poll interval. Refusing there tells the operator the bootstrap
+// broke when in fact their task halted, and skips the tmux handover that is the bootstrap's entire
+// job, so the one place the halt is legible -- the status strand sitting in the session -- is the
+// one place they are not put.
+//
+// Only awaitRunLockDeadline is a genuine refusal: the child is still alive after the whole attempt
+// budget and has never taken the lock, which is a wedged spawn and nothing else.
+func dispositionForHandshake(result awaitRunLockResult) handshakeDisposition {
+	switch result {
+	case awaitRunLockReady, awaitRunLockChildDied:
+		return handshakeProceed
+	default:
+		return handshakeRefuse
+	}
+}
+
 // findStatusStrand returns the first strand in strands whose Name exactly matches name.
 func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengine.StrandStatus, bool) {
 	for _, s := range strands {
@@ -81,6 +113,45 @@ func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengin
 		}
 	}
 	return reedengine.StrandStatus{}, false
+}
+
+// statusStrandAction is what the bootstrap must do about the status strand.
+type statusStrandAction int
+
+const (
+	// statusStrandKeep means a live status strand is already present; add nothing.
+	statusStrandKeep statusStrandAction = iota
+	// statusStrandAdd means no strand carries the status strand's name; add one.
+	statusStrandAdd
+	// statusStrandReplace means a strand carries the name but is not live; remove that stale entry
+	// first, then add.
+	statusStrandReplace
+)
+
+// resolveStatusStrandAction decides what the bootstrap owes the status strand, from reed's tracked
+// strands.
+//
+// Liveness is part of the question, not a detail. Presence alone used to answer it, and reed keeps
+// tracking a strand whose pane is gone -- which is exactly the state any reed server restart leaves
+// behind: a reboot, a crash, a "tmux kill-server", or reed's own zombie-boot force-reap all leave
+// "loom-status" in reed.json with a cleared pane binding. A presence-only check then reported
+// "already there" on every subsequent `lyx loom run` in that worktree, so the status strand was
+// never re-added and the operator permanently lost the one-line read-out step 2 of the bootstrap
+// exists to give them.
+//
+// A dead entry is replaced rather than simply added over, because reed's add has no upsert
+// semantics: a second add under the same display name appends a second pane instead of replacing the
+// first, which is the very reason statusStrandDisplayName is a pinned constant.
+func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandAction, string) {
+	strand, found := findStatusStrand(strands, statusStrandDisplayName)
+	switch {
+	case !found:
+		return statusStrandAdd, ""
+	case strand.Live:
+		return statusStrandKeep, strand.GUID
+	default:
+		return statusStrandReplace, strand.GUID
+	}
 }
 
 // statusStrandCmd composes the status strand's pane command line through the shell seam, exactly as

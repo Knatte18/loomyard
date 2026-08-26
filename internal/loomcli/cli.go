@@ -112,12 +112,31 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		return nil
 	}
 
+	if verbReadsStatusOnly(cmd.Name()) {
+		c.wireStatusPathsOnly(location, cwd)
+		return nil
+	}
+
 	if err := c.wire(location, cwd); err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
 	return nil
+}
+
+// verbReadsStatusOnly reports whether the named loom subcommand needs nothing beyond the resolved
+// location and the two status-file paths -- no module config, no engine, no producer.
+//
+// The set is exactly the two read-only status verbs. Every other verb builds or drives producers and
+// keeps the full wire(), including its early config refusal.
+func verbReadsStatusOnly(name string) bool {
+	switch name {
+	case "status", "pause":
+		return true
+	default:
+		return false
+	}
 }
 
 // Command returns the cobra command tree for the loom module.

@@ -6,10 +6,23 @@ package loomshed
 
 import (
 	"context"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
+
+// formatPlanFindings renders findings as a single semicolon-separated list, using each
+// ValidationError's own Error() rendering so the log line and "lyx loom validate-plan"'s envelope
+// describe a violation identically.
+func formatPlanFindings(findings []planparser.ValidationError) string {
+	parts := make([]string, len(findings))
+	for i, f := range findings {
+		parts[i] = f.Error()
+	}
+	return strings.Join(parts, "; ")
+}
 
 // planValidate is the Plan-Validate producer: it parses the plan at anchorPath and runs
 // planparser's own machine checks against it.
@@ -57,6 +70,12 @@ func (p *planValidate) Call(ctx context.Context) (shedengine.Outcome, shedengine
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
+		// Surfaced rather than discarded. This row's bounce target is Plan-Write, respawned with no
+		// knowledge of which of loom-plan-spec.md's check IDs fired, so this line is the only record
+		// of it anywhere -- and both the Plan-Validate and Plan-Revalidate rows run this same
+		// producer, so it covers the fixer-introduced regression case too. The producer name
+		// distinguishes which row spoke.
+		logger.Warn("loomshed: plan failed validation", "producer", p.name, "planDir", planDir, "findings", formatPlanFindings(findings))
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	}
 

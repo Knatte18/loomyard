@@ -1,11 +1,13 @@
 // status.go implements the `status` loom verb: a one-shot JSON envelope of the current phase, and a
-// --watch mode that tails the same status file as a one-line-per-poll terminal keepalive.
+// --watch mode that tails the same status file, printing a line only when the composed activity
+// actually changes rather than once per poll.
 
 package loomcli
 
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -31,6 +33,39 @@ func renderStatusLine(st shedengine.Status) string {
 		line += " | wait " + st.Activity.Wait
 	}
 	return line
+}
+
+// statusUnavailableLine is the line the watch tail prints when a poll cannot read the status file.
+// It is a constant rather than an inline literal because printStatusLinesOnChange dedupes on the
+// printed text, so a transient fault must render byte-identically on every poll or it becomes its
+// own flood.
+const statusUnavailableLine = "loom status unavailable (status file transiently unreadable)"
+
+// printStatusLinesOnChange runs the watch tail: it polls, prints the polled line into out only when
+// that line differs from the one it last printed, and sleeps between polls.
+//
+// Suppressing an unchanged line is the whole point. A producer call lasts minutes while the tail
+// polls every second, so printing unconditionally emits hundreds of byte-identical lines per
+// producer: it turns the one-line strand pane manifest/designs/loom.md specifies into a scrolling
+// ticker, it fills tmux's scrollback (measured at 434 lines in fifteen minutes, against a 2000-line
+// default history limit) so nothing else that pane printed survives, and it buries the one line an
+// operator actually needs -- the moment the activity changes -- among the identical ones around it.
+//
+// polls bounds the loop so a test can drive a finite sequence with no wall-clock wait, exactly as
+// awaitRunLock's own attempts argument does; a non-positive polls means poll forever, which is what
+// the production call passes.
+func printStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), polls int) {
+	lastPrinted := ""
+	printedAny := false
+	for i := 0; polls <= 0 || i < polls; i++ {
+		line := poll()
+		if !printedAny || line != lastPrinted {
+			fmt.Fprintln(out, line)
+			lastPrinted = line
+			printedAny = true
+		}
+		sleep()
+	}
 }
 
 // statusCmd builds the `status` subcommand.
@@ -75,18 +110,16 @@ Example:
 			if watch {
 				// Watch tail: this is the narrow, explicitly-taken interactive-handoff exception --
 				// everything fallible already ran above, on the envelope. A read failure inside the
-				// loop below must not terminate it and must not write an envelope: the pane is
+				// poll below must not terminate the tail and must not write an envelope: the pane is
 				// expected to survive the driver rewriting the file underneath it.
-				for {
+				poll := func() string {
 					polled, polledFound, pollErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
-					switch {
-					case pollErr != nil || !polledFound:
-						fmt.Fprintln(out, "loom status unavailable (status file transiently unreadable)")
-					default:
-						fmt.Fprintln(out, renderStatusLine(polled))
+					if pollErr != nil || !polledFound {
+						return statusUnavailableLine
 					}
-					time.Sleep(interval)
+					return renderStatusLine(polled)
 				}
+				printStatusLinesOnChange(out, poll, func() { time.Sleep(interval) }, 0)
 			}
 
 			var product loomengine.Status

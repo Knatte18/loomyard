@@ -15,6 +15,11 @@
 // logs the observation and keeps polling instead of returning, so an interactive interview survives
 // its first question batch. Every other exit (OutcomeDone, OutcomeDied, a liveness mechanism
 // failure, OutcomeTimeout) is unaffected.
+// That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink
+// (.lyx/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached
+// driver's own log, which captures stderr and therefore only Warn and above. An operator asking "is
+// this interview waiting for me, or is it wedged?" reads the trace sink -- stated here because the
+// design that introduced AwaitOperator asserted the driver log records each ask, and it does not.
 
 package shuttleengine
 

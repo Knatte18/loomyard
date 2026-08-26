@@ -12,10 +12,9 @@ import (
 )
 
 // planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec,
-// Env.CommitPlan, Env.Shuttle, and Env.AnchorPath, then returns
-// loomshed.NewPlanWrite(name, shedadapters.NewSingleLLMProducer(name, env.PlanSpec, env.Shuttle,
-// env.Now), env.CommitPlan, env.AnchorPath, env.Now) -- a SingleLLMProducer behind a
-// rotate-and-commit decorator.
+// Env.CommitPlan, Env.Shuttle, and Env.AnchorPath, then builds a SingleLLMProducer carrying
+// loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's
+// post-Done commit decorator.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config
 // because building it needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this
@@ -26,7 +25,7 @@ import (
 // generic row's own model/effort Config keys would bypass the "plan" role's own model-spec
 // resolution and its plan_timeout_min timeout entirely.
 //
-// AnchorPath is validated here and threaded through because loomshed.NewPlanWrite resolves the
+// AnchorPath is validated here and threaded through because loomshed.NewPlanDirRotator resolves the
 // plan directory itself via planparser.PlanDir, the same split planValidateEntry already uses,
 // which keeps this package free of any planparser import.
 //
@@ -47,6 +46,10 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err := requireAbsRoot("PlanWrite", "AnchorPath", env.AnchorPath); err != nil {
 		return nil, err
 	}
-	inner := shedadapters.NewSingleLLMProducer(name, env.PlanSpec, env.Shuttle, env.Now)
-	return loomshed.NewPlanWrite(name, inner, env.CommitPlan, env.AnchorPath, env.Now), nil
+	// The rotation is handed to the producer as its fresh-spawn preparation, never run as a step
+	// ahead of it: it must not touch _lyx/plan until the producer's own attach probe has proved no
+	// live plan agent is writing there. See loomshed.NewPlanDirRotator.
+	rotate := loomshed.NewPlanDirRotator(env.AnchorPath, env.Now)
+	inner := shedadapters.NewSingleLLMProducer(name, env.PlanSpec, env.Shuttle, env.Now, rotate)
+	return loomshed.NewPlanWrite(name, inner, env.CommitPlan), nil
 }

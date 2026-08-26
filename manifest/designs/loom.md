@@ -82,6 +82,11 @@ The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machi
 ## Discussion producer detail — validation checks and review rubric
 
 `_lyx/discussion/` is produced by `Discussion-Write` (stencil: `contracts/stencils/loom/loom-template-discussion.md`, which pins `decision-record.md`'s and `support-log.md`'s section shape as the agent's own instructions).
+
+**`Discussion-Write` writes exactly those two files and nothing else, and its stencil says so.**
+This is the one agent `loom` spawns with an unrestricted, permission-bypassed shell and no scope restriction of its own — `fix-scope: overlay` confines both overlay `Burler` rows to their `Target.Paths` and forbids them git entirely, and the Webster fork reviewers are read-only, while the Discussion writer's contract is "explore the codebase" with no stated boundary.
+The fence names `_lyx/config/` first for a reason: that is the driver's own configuration, read fresh on every `wire()`, so an agent editing it changes how the run that spawned it behaves and how the next one does — including whether the next run is unattended at all.
+It also forbids repairing a broken environment rather than reporting it, because an agent that quietly fixes its own surroundings hides the fault from the operator.
 This section carries the detail that belongs to `Discussion-Validate` and `Discussion-Review` instead, rather than to the Discussion-Write stencil itself: a mechanical validator's checklist and a review rubric are not part of what the *writing* agent needs to read.
 
 ### Validation checks (spec for `Discussion-Validate`)
@@ -289,6 +294,9 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.
   The driver writes the file;
   the status strand reads and prints it — reed never parses it, it just hosts the pane.
+  **The strand prints on change, never once per poll.**
+  It keeps polling at its interval but emits a line only when the composed line differs from the one it last printed:
+  a producer call lasts minutes while the tail polls every second, so printing unconditionally turns the one-line pane into a scrolling ticker, fills tmux's scrollback with byte-identical lines until nothing else that pane printed survives, and buries the one line that matters — the transition — among the hundreds that do not.
 - **Round-level resume.**
   Handler/fixer artifacts are already on disk, so resuming inside a review block continues at the current round rather than restarting the phase.
 - **Separation of state.** The review segment owns its round state in its own run-directory files; `lyx run`'s status only needs phase + the segment's outcome. When the segment's `Bouncer` returns `Done`, `lyx run` advances.
@@ -308,6 +316,8 @@ For the step it was on:
 2. **Else, is the agent's session still alive?** `shuttleengine.Runner.Attach`, probed by `shedadapters.SingleLLMProducer.Call` before it archives anything, scans the run-dir root for a `run.json` whose `OutputFiles` match the spec's and whose persisted `Outcome` is still `"running"`, then asks `reed` (see [overview.md#modules](../../docs/overview.md#modules)) whether that record's `StrandGUID` is still tracked with a live pane.
    A match: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate).
 3. **Else (dead, no output):** `SingleLLMProducer.Call`'s unchanged archive-then-spawn fallback respawns a **fresh** agent for the step, hydrated from the prior round's on-disk artifacts.
+   **Every destructive preparation a row owes before a fresh agent belongs on this branch, never ahead of step 2's probe** — `SingleLLMProducer`'s `prepareFreshSpawn` seam is where such a step runs, and `Plan-Write`'s stale-plan-directory rotation is the one row that uses it.
+   A decorator wrapping the producer cannot host that work, because a decorator necessarily runs before `Call` and therefore before the probe: rotating `_lyx/plan` there moves `00-overview.md`, the Plan spec's sole declared output file, out from under the very agent the next line attaches to, and since the wait loop polls for bare existence at the spec's paths, a plan that was finished never classifies `done` and times out into a hard run failure instead.
    The round is idempotent, so a fresh handler is deterministic.
 
 loom therefore **never depends on `claude --resume` for correctness** — an unfinished step is respawned, not resumed (reed's `--resume` is finicky for programmatically-driven sessions,
@@ -333,6 +343,11 @@ If a future editor judges the heading actively misleading, renaming it is a sepa
 
 `lyx loom pause` requests a pause;
 the running orchestration honours it at the next **step boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
+
+**`pause` and `status` depend on the status file and nothing else.**
+Neither loads a module config, constructs an engine, or builds a producer — they resolve the location and the two status-file paths, and stop there.
+That independence is the point rather than an optimisation: an emergency brake that a fault in any of eight config files can take away is not an emergency brake, and the fault does not have to be the operator's — an agent loom itself spawned can rewrite `loom.yaml` mid-run.
+The verbs that genuinely build producers (`run`, `drive`) keep failing early and loudly on a bad config, because for them it is a real refusal rather than an unrelated one.
 
 - **A property of the loop pattern, not loom alone.**
   Every loop — loom (phases), the review segment (rounds), [Webster](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) (batches;
@@ -404,7 +419,12 @@ lyx loom run:
      already alive, then wait for its handshake            it reads/writes files, drives strands via reed;
                                                            the handshake polls for the driver taking the run
                                                            lock, so the spawner never returns before a driver
-                                                           is actually running)
+                                                           is actually running — OR before it has already
+                                                           run and exited, which is what every fast-halting
+                                                           run does and which proceeds to step 4 rather than
+                                                           refusing; only a child still alive after the whole
+                                                           attempt budget without ever taking the lock is a
+                                                           wedged spawn and refuses)
   4. attach the current terminal to the tmux session     (reed takes the foreground)
 ```
 

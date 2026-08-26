@@ -5,10 +5,24 @@ package loomshed
 
 import (
 	"context"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
+
+// formatSeedFailures renders report's determined failures as a single "check: reason" list,
+// semicolon separated, for the log line that surfaces them.
+// Like Preflight's own copy, it exists because this row carries no OnStuck and a human is its only
+// recovery, so the Failures slice is the only account of why the seed was refused.
+func formatSeedFailures(report loomengine.Report) string {
+	parts := make([]string, len(report.Failures))
+	for i, f := range report.Failures {
+		parts[i] = string(f.Check) + ": " + f.Reason
+	}
+	return strings.Join(parts, "; ")
+}
 
 // loomPreflightProducer is the Loom-Preflight producer: it validates that loom's own status file is
 // a coherent fresh seed at the told paths, mapping loomengine.CheckSeed's determined Report onto
@@ -68,6 +82,10 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
+		// Surfaced rather than discarded, for the same reason Preflight surfaces its own: this row
+		// carries no OnStuck, so its Stuck halts the run for a human who would otherwise be told only
+		// Shed's generic "stuck with no OnStuck target".
+		logger.Warn("loomshed: seed is not a coherent fresh start", "producer", p.name, "statusPath", p.statusPath, "failures", formatSeedFailures(report))
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	}
 

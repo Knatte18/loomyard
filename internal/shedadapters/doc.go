@@ -25,6 +25,11 @@
 //     this identical outcome switch, and a not-found probe falls through to the unchanged
 //     archive-then-run path. The probe applies to the PlanWrite and generic SingleLLM rows too, not
 //     only DiscussionWrite.
+//     A caller's own destructive preparation for a fresh agent -- rotating a stale output directory
+//     aside, say -- rides the constructor's prepareFreshSpawn seam and runs on that not-found branch,
+//     between the probe and the archive. It deliberately cannot be a decorator wrapping this
+//     producer: a decorator runs before Call and therefore before the probe, which is the same
+//     archive-before-probe hazard stated above, reintroduced one layer up.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
 //     (websterengine.SummaryPath) as the pointer's path.
 //     Webster's own "stuck" outcome, and a websterengine.ErrMasterAsking error, both map to Stuck
@@ -89,9 +94,17 @@
 // The presence of both files means, and only means, that round N completed and produced a usable
 // review; the round producer uses exactly that pair predicate to decide whether to advance, and the
 // Bouncer uses exactly that pair predicate to tell its seed call from its judge call.
-// The structured next-round directive is JSON at round-<N>-focus.json beside them, whose token names
-// the round the directives are for, not the round that produced them: a Bouncer rejecting round N
-// writes the file for round N+1, and the seed call writes the file for round 1.
+// The next-round directive is round-<N>-focus.md beside them -- YAML frontmatter carrying round,
+// exclude_lenses, and focus, over optional prose -- whose token names the round the directives are
+// for, not the round that produced them: a Bouncer rejecting round N writes the file for round N+1,
+// and the seed call writes the file for round 1.
+// One filename, one format, one parser: the Bouncer renders it and the BurlerRound row reads it back
+// through that same pair. The two sides once disagreed -- the writer emitted this .md file while the
+// reader opened a round-<N>-focus.json and strictly decoded JSON -- which silently emptied the
+// directive on every production read, so the agreement is pinned here rather than left implicit.
+// Its exclude_lenses reach the round's ClusterExclude; the file itself is hydrated into the round's
+// prior-review context whenever it carries a directive at all, which is how the judge's targeting
+// reaches the fixer.
 // Reading that file is fail-safe end to end, degrading to "no directive" with a warning rather than
 // erroring, including at application time when a well-formed directive cannot be honoured.
 // A segment that has already approved and is entered again does not replay that approval: its

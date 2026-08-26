@@ -35,6 +35,11 @@ var loomshedAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/discussionparser": true,
 	"github.com/Knatte18/loomyard/internal/batcher":          true,
 	"github.com/Knatte18/loomyard/internal/state":            true,
+	// internal/logger is a genuine new dependency rather than a loosened rule: the gate producers
+	// here surface the determined findings they used to discard, and it resolves no geometry of any
+	// kind, so it cannot drag cwd resolution in. internal/shedadapters, already on this list,
+	// imports it too.
+	"github.com/Knatte18/loomyard/internal/logger": true,
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package

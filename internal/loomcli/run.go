@@ -152,7 +152,20 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if _, ok := findStatusStrand(statusResult.Strands, statusStrandDisplayName); !ok {
+			strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands)
+			if strandAction == statusStrandReplace {
+				// A tracked-but-dead entry must be removed before adding, because reed's add has no
+				// upsert semantics and would otherwise leave two strands under one display name.
+				// A removal failure is not fatal to the bootstrap: it costs the operator the status
+				// pane for this run, not the run itself.
+				if _, err := c.reed.RemoveStrand(staleGUID, false); err != nil {
+					logger.Warn("loom: could not remove a dead status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
+					strandAction = statusStrandKeep
+				} else {
+					strandAction = statusStrandAdd
+				}
+			}
+			if strandAction == statusStrandAdd {
 				exe, err := os.Executable()
 				if err != nil {
 					_ = bootstrapLock.Release()
@@ -254,11 +267,18 @@ Example:
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
-				if result != awaitRunLockReady {
+				driverLogPath := loomengine.LoomDriverLog(c.location)
+				if dispositionForHandshake(result) == handshakeRefuse {
 					_ = bootstrapLock.Release()
-					driverLogPath := loomengine.LoomDriverLog(c.location)
 					clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath))
 					return nil
+				}
+				if result == awaitRunLockChildDied {
+					// Not a failure: the driver ran to completion and exited before the handshake's
+					// first poll, which is what every fast-halting run does. The tmux handover below
+					// still happens, because the status strand in that session is where the halt is
+					// legible. See dispositionForHandshake for the full argument.
+					logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
 				}
 			}
 

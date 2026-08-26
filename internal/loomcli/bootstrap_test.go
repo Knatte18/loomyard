@@ -194,6 +194,32 @@ func containsSubstring(s, substr string) bool {
 	return false
 }
 
+// TestDispositionForHandshake pins that only a deadline refuses the bootstrap.
+// The ChildDied row is the regression guard: the verb used to test `result != awaitRunLockReady`,
+// which collapsed a driver that ran and finished into the same refusal as a wedged spawn, reported
+// "driver did not take the run lock" for a run that had taken it and released it, and skipped the
+// tmux handover entirely -- so the status strand showing the actual halt was the one place the
+// operator was not put.
+func TestDispositionForHandshake(t *testing.T) {
+	tests := []struct {
+		name   string
+		result awaitRunLockResult
+		want   handshakeDisposition
+	}{
+		{"Ready", awaitRunLockReady, handshakeProceed},
+		{"ChildDied", awaitRunLockChildDied, handshakeProceed},
+		{"Deadline", awaitRunLockDeadline, handshakeRefuse},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dispositionForHandshake(tt.result); got != tt.want {
+				t.Errorf("dispositionForHandshake(%v) = %v; want %v", tt.result, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAttachArgv(t *testing.T) {
 	got := attachArgv("my-socket", "my-session")
 	want := []string{"-L", "my-socket", "attach-session", "-t", "=my-session"}
@@ -204,5 +230,70 @@ func TestAttachArgv(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("attachArgv()[%d] = %q; want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// TestResolveStatusStrandAction is the regression guard for a status pane that never came back.
+// The DeadEntry row is the defect: the bootstrap used to decide by presence alone, and reed keeps
+// tracking a strand whose pane is gone, so after any reed server restart -- a reboot, a crash, a
+// kill-server, or reed's own zombie-boot force-reap -- every subsequent "lyx loom run" in that
+// worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
+// no status read-out at all.
+func TestResolveStatusStrandAction(t *testing.T) {
+	tests := []struct {
+		name     string
+		strands  []reedengine.StrandStatus
+		want     statusStrandAction
+		wantGUID string
+	}{
+		{
+			name:    "NoStrandsAtAll",
+			strands: nil,
+			want:    statusStrandAdd,
+		},
+		{
+			name:    "OnlyOtherStrands",
+			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "discussion::g1", PaneID: "%2", Live: true}},
+			want:    statusStrandAdd,
+		},
+		{
+			name:     "LiveStatusStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			want:     statusStrandKeep,
+			wantGUID: "g0",
+		},
+		{
+			name:     "DeadEntryWithClearedPaneBinding",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "", Live: false}},
+			want:     statusStrandReplace,
+			wantGUID: "g0",
+		},
+		{
+			name:     "DeadEntryWithADeadPane",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: false}},
+			want:     statusStrandReplace,
+			wantGUID: "g0",
+		},
+		{
+			name: "LiveStatusStrandAmongOthers",
+			strands: []reedengine.StrandStatus{
+				{GUID: "g1", Name: "plan::g1", PaneID: "%3", Live: true},
+				{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true},
+			},
+			want:     statusStrandKeep,
+			wantGUID: "g0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotGUID := resolveStatusStrandAction(tt.strands)
+			if got != tt.want {
+				t.Errorf("resolveStatusStrandAction(%+v) action = %v; want %v", tt.strands, got, tt.want)
+			}
+			if gotGUID != tt.wantGUID {
+				t.Errorf("resolveStatusStrandAction(%+v) guid = %q; want %q", tt.strands, gotGUID, tt.wantGUID)
+			}
+		})
 	}
 }
