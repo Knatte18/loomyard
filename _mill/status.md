@@ -44,7 +44,9 @@ batches:
     commit_sha: 5bd2e80242b68aca6e660805978f7083ceafb812
     verify_baseline_failures: []
   - name: cli-convergence
-    state: pending
+    state: running
+    implementer_session: 07440e5c-3fca-4e37-90c9-a47701d5346d
+    start_sha: 8a2d8f2083d8855ee106cd40830c126e5875eaa7
     verify_baseline_failures: []
   - name: docs-and-live-proof
     state: pending
