@@ -38,9 +38,9 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 5 | `Discussion-Review` (`Discussion-Bouncer` + `Discussion-Burler`) | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
 | 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory, once `Plan-Sweep` is built for real — its absence today is the normal degraded state the stencil now names outright, not an error | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
-| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail, also callable standalone as `lyx loom validate-plan` |
+| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`), in the format-only mode that runs before review and so does not demand the approval flag | pass/fail, also callable standalone as `lyx loom validate-plan` |
 | 9 | `Plan-Review` (`Plan-Bouncer` + `Plan-Burler`) | bespoke | LLM/review segment | `_lyx/plan/` (current plan directory) → `_lyx/discussion/decision-record.md` (answer key) | verdict (APPROVED/stuck) + review file |
-| 10 | `Plan-Revalidate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks, re-run because the segment's fixer rounds rewrite the plan after `Plan-Validate` already ran and no row between the segment and `Webster` parses the plan otherwise | pass/fail — no artifact, a gate signal only |
+| 10 | `Plan-Revalidate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks, re-run because the segment's fixer rounds rewrite the plan after `Plan-Validate` already ran and no row between the segment and `Webster` parses the plan otherwise, in the approval-enforcing mode that confirms the flag `Plan-Bouncer`'s approved settle wrote | pass/fail — no artifact, a gate signal only; catches a fixer-introduced format regression first and the approval flag's presence second |
 | 11 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
 | 12 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like a review segment" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) |
 | 13 | `Webster-Review` (`Webster-Bouncer` + `Webster-Burler`) | bespoke | LLM/review segment | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
@@ -141,8 +141,9 @@ this subsection remains the durable copy.
 
 ### Plan-Validate detail
 
-`lyx loom validate-plan` makes the same three `planparser` calls this row's `ShedProducer` makes, in the same order: `planparser.PlanDir`, `planparser.ParsePlan`, then `planparser.Validate`.
-The verb and the row call the identical `planparser` functions, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
+`lyx loom validate-plan` makes the same two leading `planparser` calls this row's `ShedProducer` makes, in the same order — `planparser.PlanDir`, then `planparser.ParsePlan` — and then the same third call, chosen from the identical pair: `planparser.ValidateFormat` when the row's `require_approved` config key is absent (matched by the verb's default, no `--require-approved` flag), or `planparser.Validate` when it is `true` (matched by the verb's `--require-approved` flag).
+The verb and the row call the identical `planparser` functions in each mode, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
+The parity claim is now that the verb reaches every mode the row set uses: `Plan-Validate`'s format-only mode and `Plan-Revalidate`'s approval-enforcing mode both have a matching verb invocation.
 
 ### Plan-Review rubric
 
@@ -156,9 +157,9 @@ The subject under review is the current plan (`_lyx/plan/00-overview.md` and the
 
 Do not flag any of the following as a finding:
 
-- **Anything `Plan-Validate` already checks.**
-  The sixteen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically upstream;
-  re-deriving them here is duplicated work whose only possible outcome is disagreement with the parser.
+- **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
+  The sixteen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — fifteen of the sixteen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead;
+  re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
   Plan-time completeness of that intersection is explicitly not provable;
@@ -230,6 +231,9 @@ This carries an accepted budget asymmetry beside it: a re-entered segment's `Bou
 The Discussion and Plan segments fix overlay content and commit it through the loop owner's commit seam, while the Webster segment fixes warp source and commits each fix itself.
 The Fabric Git Invariant is the reason the split exists: it reserves every weft commit to the loop owner in Go,
 and it names the agent's own commit-per-fix to the warp repo as the one exception.
+
+**Row 9's approval flag is written on the approved settle, before the commit.**
+`Plan-Bouncer`'s approved settle writes the plan's approval flag through its `Approve` seam immediately before its `commit_seam` fires, so the flag lands inside the same commit that captures the segment's approved plan — never as working-tree dirt applied after the fact.
 
 **The review model's home is `loom.yaml`, not the recipe.**
 `loom.yaml`'s `review:` and `review_timeout_min:` keys are the review segments' model and timeout, validated at load time exactly like the existing `discussion:` and `plan:` keys.
