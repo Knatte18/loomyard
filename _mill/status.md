@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-bouncer-anchor-rundir-fix
 branch: loom-bouncer-anchor-rundir-fix
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-docs  '2026-08-26T07:42:18Z'
 holistic-reviewing  '2026-08-26T07:42:32Z'
 holistic-approved  '2026-08-26T07:46:16Z'
 done  '2026-08-26T07:47:39Z'
+pr-pending  '2026-08-26T07:49:08Z'
 ```
 
 ## Batches
