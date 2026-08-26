@@ -311,6 +311,8 @@ For the step it was on:
 2. **Else, is the agent's session still alive?** `shuttleengine.Runner.Attach`, probed by `shedadapters.SingleLLMProducer.Call` before it archives anything, scans the run-dir root for a `run.json` whose `OutputFiles` match the spec's and whose persisted `Outcome` is still `"running"`, then asks `reed` (see [overview.md#modules](../../docs/overview.md#modules)) whether that record's `StrandGUID` is still tracked with a live pane.
    A match: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate).
 3. **Else (dead, no output):** `SingleLLMProducer.Call`'s unchanged archive-then-spawn fallback respawns a **fresh** agent for the step, hydrated from the prior round's on-disk artifacts.
+   **Every destructive preparation a row owes before a fresh agent belongs on this branch, never ahead of step 2's probe** — `SingleLLMProducer`'s `prepareFreshSpawn` seam is where such a step runs, and `Plan-Write`'s stale-plan-directory rotation is the one row that uses it.
+   A decorator wrapping the producer cannot host that work, because a decorator necessarily runs before `Call` and therefore before the probe: rotating `_lyx/plan` there moves `00-overview.md`, the Plan spec's sole declared output file, out from under the very agent the next line attaches to, and since the wait loop polls for bare existence at the spec's paths, a plan that was finished never classifies `done` and times out into a hard run failure instead.
    The round is idempotent, so a fresh handler is deterministic.
 
 loom therefore **never depends on `claude --resume` for correctness** — an unfinished step is respawned, not resumed (reed's `--resume` is finicky for programmatically-driven sessions,

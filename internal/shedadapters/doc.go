@@ -25,6 +25,11 @@
 //     this identical outcome switch, and a not-found probe falls through to the unchanged
 //     archive-then-run path. The probe applies to the PlanWrite and generic SingleLLM rows too, not
 //     only DiscussionWrite.
+//     A caller's own destructive preparation for a fresh agent -- rotating a stale output directory
+//     aside, say -- rides the constructor's prepareFreshSpawn seam and runs on that not-found branch,
+//     between the probe and the archive. It deliberately cannot be a decorator wrapping this
+//     producer: a decorator runs before Call and therefore before the probe, which is the same
+//     archive-before-probe hazard stated above, reintroduced one layer up.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
 //     (websterengine.SummaryPath) as the pointer's path.
 //     Webster's own "stuck" outcome, and a websterengine.ErrMasterAsking error, both map to Stuck

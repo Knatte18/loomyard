@@ -1,11 +1,12 @@
-// planwrite_test.go exercises NewPlanWrite's rotate-then-delegate-then-commit sequencing against a
-// fake inner shedengine.ShedProducer and a real filesystem tree built under t.TempDir(): rotation
-// runs before the inner Call, commit fires exactly once and only on a Done outcome with a nil
-// error, and rotation/commit failures surface as wrapped errors rather than shedengine.Stuck. No
-// test in this file spawns a process, keeping the file tier 1 per the Test Tier Purity Invariant.
-// It is modelled on discussionwrite_test.go but declares its own fake types
-// (rotationAwareInnerProducer, planCommitRecorder) rather than reusing that file's
-// fakeInnerProducer/commitRecorder, which already exist in this package.
+// planwrite_test.go exercises the Plan-Write row's two halves separately, which is what they now
+// are: NewPlanWrite's post-Done commit decoration, and NewPlanDirRotator's stale-plan-directory
+// rotation.
+// The split is the subject, not an accident of layout. The rotation used to run as a step inside the
+// decorator's own Call, i.e. before the wrapped SingleLLMProducer's attach probe, which moved
+// 00-overview.md out from under a live plan agent on every resume. It is now the producer's
+// prepareFreshSpawn hook and runs only once that probe has found nothing to attach to -- the
+// ordering guard for that lives in internal/shedadapters/singlellm_test.go, where the probe is.
+// No test in this file spawns a process, keeping the file tier 1 per the Test Tier Purity Invariant.
 
 package loomshed
 
@@ -22,38 +23,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// rotationAwareInnerProducer is a caller-settable shedengine.ShedProducer stand-in that also
-// records, at Call time, the names of every .md file present directly under planDir -- letting a
-// test prove rotation ran before this producer was invoked.
-type rotationAwareInnerProducer struct {
-	planDir       string
-	outcome       shedengine.Outcome
-	pointer       shedengine.OutputPointer
-	err           error
-	calls         int
-	mdNamesAtCall []string
+// planInnerProducer is a caller-settable shedengine.ShedProducer stand-in recording its call count.
+type planInnerProducer struct {
+	outcome shedengine.Outcome
+	pointer shedengine.OutputPointer
+	err     error
+	calls   int
 }
 
-func (f *rotationAwareInnerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (f *planInnerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	f.calls++
-	f.mdNamesAtCall = readMDNames(f.planDir)
 	return f.outcome, f.pointer, f.err
-}
-
-// readMDNames returns the sorted-by-ReadDir-order names of every top-level ".md" file under dir,
-// or nil if dir does not exist.
-func readMDNames(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var names []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
-			names = append(names, e.Name())
-		}
-	}
-	return names
 }
 
 // planCommitRecorder is a caller-settable commit closure stand-in: Commit returns commitErr and
@@ -86,21 +66,20 @@ func setupPlanDir(t *testing.T, fileNames ...string) (anchorPath, planDir string
 	return anchorPath, planDir
 }
 
-func TestPlanWrite_Call(t *testing.T) {
-	fixedNow := func() time.Time {
-		return time.Date(2026, 8, 24, 17, 0, 0, 0, time.UTC)
-	}
+// fixedPlanClock is the pinned stamp every rotation-naming assertion in this file resolves against.
+func fixedPlanClock() time.Time {
+	return time.Date(2026, 8, 24, 17, 0, 0, 0, time.UTC)
+}
 
+func TestPlanWrite_Call(t *testing.T) {
 	t.Run("DoneWithNilErrorInvokesCommitOnceAndReturnsInnerVerbatim", func(t *testing.T) {
-		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
-		inner := &rotationAwareInnerProducer{
-			planDir: planDir,
+		inner := &planInnerProducer{
 			outcome: shedengine.Done,
 			pointer: shedengine.OutputPointer{Path: "00-overview.md"},
 		}
 		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
+		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -120,11 +99,10 @@ func TestPlanWrite_Call(t *testing.T) {
 	})
 
 	t.Run("StuckLeavesCommitUninvokedAndReturnsInnerVerbatim", func(t *testing.T) {
-		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Stuck}
+		inner := &planInnerProducer{outcome: shedengine.Stuck}
 		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
+		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -141,12 +119,11 @@ func TestPlanWrite_Call(t *testing.T) {
 	})
 
 	t.Run("InnerErrorLeavesCommitUninvoked", func(t *testing.T) {
-		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
 		innerErr := errors.New("inner producer failed")
-		inner := &rotationAwareInnerProducer{planDir: planDir, err: innerErr}
+		inner := &planInnerProducer{err: innerErr}
 		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
+		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		_, _, err := p.Call(context.Background())
 		if !errors.Is(err, innerErr) {
 			t.Errorf("Call() error = %v; want it to wrap %v", err, innerErr)
@@ -157,16 +134,14 @@ func TestPlanWrite_Call(t *testing.T) {
 	})
 
 	t.Run("CommitErrorSurfacesAsErrorNamingProducerWithEmptyOutcome", func(t *testing.T) {
-		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
 		commitErr := errors.New("git commit failed")
-		inner := &rotationAwareInnerProducer{
-			planDir: planDir,
+		inner := &planInnerProducer{
 			outcome: shedengine.Done,
 			pointer: shedengine.OutputPointer{Path: "00-overview.md"},
 		}
 		commit := &planCommitRecorder{commitErr: commitErr}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
+		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		outcome, pointer, err := p.Call(context.Background())
 		if !errors.Is(err, commitErr) {
 			t.Errorf("Call() error = %v; want it to wrap %v", err, commitErr)
@@ -182,31 +157,43 @@ func TestPlanWrite_Call(t *testing.T) {
 		}
 	})
 
-	t.Run("RotationHappensBeforeInnerCall", func(t *testing.T) {
-		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md")
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
+	// TheDecoratorTouchesNoFiles is the regression guard for the ordering defect: the commit
+	// decorator must be inert on the filesystem, so nothing it does can reach a live agent's output
+	// files ahead of the wrapped producer's attach probe.
+	t.Run("TheDecoratorTouchesNoFiles", func(t *testing.T) {
+		_, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md")
+		inner := &planInnerProducer{outcome: shedengine.Done}
 		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
+		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		if _, _, err := p.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
-		if len(inner.mdNamesAtCall) != 0 {
-			t.Errorf("inner saw %d .md files at call time; want 0 (rotation must run first)", len(inner.mdNamesAtCall))
+
+		for _, name := range []string{"00-overview.md", "01-card-one.md"} {
+			if _, err := os.Stat(filepath.Join(planDir, name)); err != nil {
+				t.Errorf("Stat(%s) = %v; want the decorator to have left it exactly where it was", name, err)
+			}
+		}
+		entries, err := os.ReadDir(planDir)
+		if err != nil {
+			t.Fatalf("ReadDir(%q) error = %v", planDir, err)
+		}
+		if len(entries) != 2 {
+			t.Errorf("plan directory has %d entries; want 2 (the decorator must create no archive directory)", len(entries))
 		}
 	})
+}
 
-	t.Run("RotationMovesEveryTopLevelMDFilePreservingContent", func(t *testing.T) {
+func TestNewPlanDirRotator(t *testing.T) {
+	t.Run("MovesEveryTopLevelMDFilePreservingContent", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md")
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
-		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
+		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
 		}
 
-		archiveDir := filepath.Join(planDir, planparser.ArchiveDirName(fixedNow().UTC().Format(archiveTimestampFormat), ""))
+		archiveDir := filepath.Join(planDir, planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))
 		for _, name := range []string{"00-overview.md", "01-card-one.md"} {
 			data, err := os.ReadFile(filepath.Join(archiveDir, name))
 			if err != nil {
@@ -231,44 +218,35 @@ func TestPlanWrite_Call(t *testing.T) {
 			t.Fatalf("WriteFile error = %v", err)
 		}
 
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
-		commit := &planCommitRecorder{}
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
+		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
 		}
 
 		if _, err := os.Stat(oldArchive); err != nil {
 			t.Errorf("pre-existing archive dir %q missing after rotation: %v", oldArchive, err)
 		}
-		if _, err := os.Stat(filepath.Join(oldArchive, planparser.ArchiveDirName(fixedNow().UTC().Format(archiveTimestampFormat), ""))); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(oldArchive, planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))); !os.IsNotExist(err) {
 			t.Errorf("new archive directory was nested inside the pre-existing one")
 		}
 	})
 
-	t.Run("RotationOverAbsentPlanDirectoryIsNoOp", func(t *testing.T) {
+	t.Run("AbsentPlanDirectoryIsANoOp", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		planDir := planparser.PlanDir(anchorPath)
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
-		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
+		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
 		}
 		if _, err := os.Stat(planDir); !os.IsNotExist(err) {
 			t.Errorf("plan directory %q was created by rotation over an absent directory", planDir)
 		}
 	})
 
-	t.Run("RotationOverEmptyPlanDirectoryCreatesNoArchiveDirectory", func(t *testing.T) {
+	t.Run("EmptyPlanDirectoryCreatesNoArchiveDirectory", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t)
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
-		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
+		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
 		}
 
 		entries, err := os.ReadDir(planDir)
@@ -282,21 +260,19 @@ func TestPlanWrite_Call(t *testing.T) {
 
 	t.Run("TwoRotationsUnderPinnedClockProduceStampThenStampDash1", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
-		commit := &planCommitRecorder{}
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
+		rotate := NewPlanDirRotator(anchorPath, fixedPlanClock)
 
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("first Call() error = %v; want nil", err)
+		if err := rotate(); err != nil {
+			t.Fatalf("first rotate() error = %v; want nil", err)
 		}
 		if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte("second"), 0o644); err != nil {
 			t.Fatalf("WriteFile error = %v", err)
 		}
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("second Call() error = %v; want nil", err)
+		if err := rotate(); err != nil {
+			t.Fatalf("second rotate() error = %v; want nil", err)
 		}
 
-		stamp := fixedNow().UTC().Format(archiveTimestampFormat)
+		stamp := fixedPlanClock().UTC().Format(archiveTimestampFormat)
 		first := filepath.Join(planDir, planparser.ArchiveDirName(stamp, ""))
 		second := filepath.Join(planDir, planparser.ArchiveDirName(stamp, "-1"))
 		if _, err := os.Stat(first); err != nil {
@@ -307,7 +283,7 @@ func TestPlanWrite_Call(t *testing.T) {
 		}
 	})
 
-	t.Run("RotationFailureReturnsErrorAndLeavesInnerCallCountZero", func(t *testing.T) {
+	t.Run("FailureSurfacesAsAWrappedError", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		planDir := planparser.PlanDir(anchorPath)
 		// Pre-create a regular file at the plan directory's own path, portably forcing os.ReadDir
@@ -319,26 +295,20 @@ func TestPlanWrite_Call(t *testing.T) {
 			t.Fatalf("WriteFile(%q) error = %v", planDir, err)
 		}
 
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
-		commit := &planCommitRecorder{}
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, fixedNow)
-		_, _, err := p.Call(context.Background())
+		err := NewPlanDirRotator(anchorPath, fixedPlanClock)()
 		if err == nil {
-			t.Fatalf("Call() error = nil; want a non-nil rotation error")
+			t.Fatalf("rotate() error = nil; want a non-nil rotation error")
 		}
-		if inner.calls != 0 {
-			t.Errorf("inner.calls = %d; want 0", inner.calls)
+		if !strings.Contains(err.Error(), "rotate stale plan directory") {
+			t.Errorf("rotate() error = %q; want it to name the operation", err.Error())
 		}
 	})
 
-	t.Run("NewPlanWriteWithNilNowNeitherPanicsNorErrorsAndStillProducesArchiveDirectory", func(t *testing.T) {
+	t.Run("NilNowDefaultsToTimeNowAndStillRotates", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
-		inner := &rotationAwareInnerProducer{planDir: planDir, outcome: shedengine.Done}
-		commit := &planCommitRecorder{}
 
-		p := NewPlanWrite("Plan-Write", inner, commit.Commit, anchorPath, nil)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
+		if err := NewPlanDirRotator(anchorPath, nil)(); err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
 		}
 
 		entries, err := os.ReadDir(planDir)
