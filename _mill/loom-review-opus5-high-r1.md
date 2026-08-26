@@ -548,6 +548,48 @@ Both rows' artifacts moved together, as `internal/shedadapters/doc.go` requires,
 history recorded `Discussion-Bouncer → stuck` (a seed), never a second `done`.
 (The fresh `round-1-focus.md` is the *synthetic* empty one, because the seed spawn itself failed against a torn-down reed server — see F11.)
 
+### Live driving — second, independent hub, anchored at a subpath
+
+To attack the `8cac77aa` anchor fix for real rather than synthetically, a **second** hub was built with `--subpath backend`,
+so `AnchorPath()` and `WorktreePath()` genuinely diverge:
+
+```
+hub:            <scratch>/hubs/subhub-HUB
+warp pair:      subhub-HUB/sub-e2e            <- WorktreePath()
+anchor:         subhub-HUB/sub-e2e/backend    <- AnchorPath()   (AnchorRel = "backend")
+sub-e2e/_lyx    does not exist
+sub-e2e/backend/_lyx -> sub-e2e-weft/backend/_lyx     (the junction lives at the anchor)
+```
+
+Three independent live confirmations that the anchor fix holds where it matters:
+
+1. **`Env.RunRoot`.** `lyx loom run` created `sub-e2e/backend/.lyx/loom/reviews/{discussion,plan,webster}` — anchor-side.
+   Nothing was created at `sub-e2e/.lyx` or `sub-e2e/_lyx`, which do not exist at all.
+2. **`hubgeom.BurlerGeometry` (fix site 2).** Forcing `Discussion-Burler` produced burler's own profile-path resolution error, which names the
+   resolved absolute path outright:
+
+   ```
+   burler: profile.Target.Paths entry ".../subhub-HUB/sub-e2e/backend/_lyx/discussion/decision-record.md" does not exist
+   ```
+
+   Under the pre-fix `l.WorktreePath()` fill this would have read `.../sub-e2e/_lyx/discussion/decision-record.md`.
+   (The "does not exist" is expected and is not the subject: the Bouncer was forced without ever running `Discussion-Write`.
+   The *resolved root* is what was under test.)
+3. **`shedrecipe.bouncerEntry` (fix site 1).** The `Discussion-Bouncer` seed spawn was caught mid-run and its rendered prompt read off disk
+   (`sub-e2e-weft/backend/.lyx/shuttle/789fd5ea.../prompt.md`, lines 41-42):
+
+   ```
+   `/…/subhub-HUB/sub-e2e/backend/_lyx/discussion/decision-record.md
+   /…/subhub-HUB/sub-e2e/backend/_lyx/discussion/support-log.md` is a newline-separated list of
+   absolute paths to the artifacts under review.
+   ```
+
+   Anchor-anchored, as the fix requires, in the one place a wrong root would silently hand the judge a tree that is not the one the commit seam commits.
+
+**F1 reproduced on this second, independent hub** as well: `lyx loom run` reported
+`{"error":"loom: driver did not take the run lock; ...","ok":false}` while `driver.log` recorded a clean
+`{"halted_producer":"Preflight","outcome":"blocked"}`. So F1 is not an artifact of the first hub's state.
+
 **Operator watch commands for this session** (both take no flags — they resolve from cwd):
 
 ```sh
