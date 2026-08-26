@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shedrecipe-approve-seam
+phase: approved-loomcli-wiring-and-flag
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-planparser-split-and-writer  '2026-08-26T12:17:15Z'
 approved-shedadapters-approve-seam  '2026-08-26T12:20:30Z'
 approved-planvalidate-two-mode  '2026-08-26T12:26:49Z'
 approved-shedrecipe-approve-seam  '2026-08-26T12:30:20Z'
+approved-loomcli-wiring-and-flag  '2026-08-26T12:35:21Z'
 ```
 
 ## Batches
@@ -58,9 +59,10 @@ batches:
     commit_sha: a52e69dc236570e799a37c6dab29664b00b957c6
     verify_baseline_failures: []
   - name: loomcli-wiring-and-flag
-    state: running
+    state: approved
     implementer_session: 7ce79937-f8b7-4eb8-96d6-f5f2eb186ff7
     start_sha: dc18ab291eecde0d6c33a6f616babdff798d5f2e
+    commit_sha: 0443f13ea6991a60857c337667f3120d284afc00
     verify_baseline_failures: []
   - name: recipe-wiring-and-regression
     state: pending
