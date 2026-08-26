@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-split-and-writer
+phase: approved-shedadapters-approve-seam
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-review-r2  '2026-08-26T12:10:00Z'
 planned  '2026-08-26T12:10:22Z'
 implementing  '2026-08-26T12:11:10Z'
 approved-planparser-split-and-writer  '2026-08-26T12:17:15Z'
+approved-shedadapters-approve-seam  '2026-08-26T12:20:30Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ batches:
     commit_sha: 4a930326f626d60b2b42493de656f5a4224047f2
     verify_baseline_failures: []
   - name: shedadapters-approve-seam
-    state: running
+    state: approved
     implementer_session: b44e2d48-e0cd-45d1-acf9-999644d71bcf
     start_sha: dca6ad635b6766362a5e82b04afd13f5c8d69eaf
+    commit_sha: 7e73f4693655441a7d7d77167bba53213141a511
     verify_baseline_failures: []
   - name: planvalidate-two-mode
     state: pending
