@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -31,7 +32,9 @@ type wantSequenceEntry struct {
 // the segment). The Plan-Review segment carries a fourth, trailing entry neither the
 // Discussion-Review nor the Webster-Review segment has a counterpart for: NamePlanRevalidate with
 // Done, the post-segment mechanical re-check, which passes here because the fixture's fake burler
-// leaves the plan untouched (buildSequenceFixture never sets fakeLoomBurler.corruptPlanOverview).
+// leaves the plan format untouched (buildSequenceFixture never sets
+// fakeLoomBurler.injectOrphanCardDir) and Plan-Bouncer's approve_seam has by then written the
+// approval flag Plan-Revalidate's require_approved: true key demands.
 // Stuck entries mid-run are therefore not a failure signal here; they are each segment doing its
 // job. The list runs to nineteen entries total.
 //
@@ -80,7 +83,11 @@ var wantSequenceOrder = []wantSequenceEntry{
 // TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the seventeen-row list
 // runs Preflight through Publish and blocks on Publish's Stuck verdict, never reaching Finalize --
 // see wantSequenceOrder's own doc comment for why, including for all three review segments' entry
-// shapes.
+// shapes. It also asserts the plan is left approved after the run: under the pre-fix code the fake
+// writer self-approved the plan it wrote, which masked Plan-Bouncer's approve_seam ever firing at
+// all -- a nil Env.ApprovePlan, a no-op closure, or a fake writer that started self-approving again
+// would each leave this history list passing for the wrong reason, so the trailing
+// planparser.ParsePlan check is what pins that the seam genuinely ran.
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
@@ -153,5 +160,17 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	}
 	if loomShuttle.bouncerJudgeCalls != 3 {
 		t.Errorf("fakeLoomShuttle.bouncerJudgeCalls = %d; want exactly 3 after a clean run", loomShuttle.bouncerJudgeCalls)
+	}
+
+	// This is the regression proof for F7: parse the fixture's own plan and assert Approved is
+	// true. The fake writer seeds and rewrites the plan unapproved on every "plan"-role Run, so this
+	// can only pass because Plan-Bouncer's approve_seam wrote the flag through env.ApprovePlan
+	// before the run reached Plan-Revalidate.
+	plan, err := planparser.ParsePlan(planparser.PlanDir(env.AnchorPath))
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	if !plan.Approved {
+		t.Errorf("ParsePlan().Approved = false; want true after a clean run")
 	}
 }
