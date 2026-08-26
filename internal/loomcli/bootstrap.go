@@ -115,6 +115,45 @@ func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengin
 	return reedengine.StrandStatus{}, false
 }
 
+// statusStrandAction is what the bootstrap must do about the status strand.
+type statusStrandAction int
+
+const (
+	// statusStrandKeep means a live status strand is already present; add nothing.
+	statusStrandKeep statusStrandAction = iota
+	// statusStrandAdd means no strand carries the status strand's name; add one.
+	statusStrandAdd
+	// statusStrandReplace means a strand carries the name but is not live; remove that stale entry
+	// first, then add.
+	statusStrandReplace
+)
+
+// resolveStatusStrandAction decides what the bootstrap owes the status strand, from reed's tracked
+// strands.
+//
+// Liveness is part of the question, not a detail. Presence alone used to answer it, and reed keeps
+// tracking a strand whose pane is gone -- which is exactly the state any reed server restart leaves
+// behind: a reboot, a crash, a "tmux kill-server", or reed's own zombie-boot force-reap all leave
+// "loom-status" in reed.json with a cleared pane binding. A presence-only check then reported
+// "already there" on every subsequent `lyx loom run` in that worktree, so the status strand was
+// never re-added and the operator permanently lost the one-line read-out step 2 of the bootstrap
+// exists to give them.
+//
+// A dead entry is replaced rather than simply added over, because reed's add has no upsert
+// semantics: a second add under the same display name appends a second pane instead of replacing the
+// first, which is the very reason statusStrandDisplayName is a pinned constant.
+func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandAction, string) {
+	strand, found := findStatusStrand(strands, statusStrandDisplayName)
+	switch {
+	case !found:
+		return statusStrandAdd, ""
+	case strand.Live:
+		return statusStrandKeep, strand.GUID
+	default:
+		return statusStrandReplace, strand.GUID
+	}
+}
+
 // statusStrandCmd composes the status strand's pane command line through the shell seam, exactly as
 // the reed header pane's own builder (headerLaunchCmd, headerpane.go) composes its command line: exe
 // invoked with the two-word status verb and the watch flag.

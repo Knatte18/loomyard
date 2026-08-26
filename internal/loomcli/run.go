@@ -152,7 +152,20 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if _, ok := findStatusStrand(statusResult.Strands, statusStrandDisplayName); !ok {
+			strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands)
+			if strandAction == statusStrandReplace {
+				// A tracked-but-dead entry must be removed before adding, because reed's add has no
+				// upsert semantics and would otherwise leave two strands under one display name.
+				// A removal failure is not fatal to the bootstrap: it costs the operator the status
+				// pane for this run, not the run itself.
+				if _, err := c.reed.RemoveStrand(staleGUID, false); err != nil {
+					logger.Warn("loom: could not remove a dead status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
+					strandAction = statusStrandKeep
+				} else {
+					strandAction = statusStrandAdd
+				}
+			}
+			if strandAction == statusStrandAdd {
 				exe, err := os.Executable()
 				if err != nil {
 					_ = bootstrapLock.Release()
