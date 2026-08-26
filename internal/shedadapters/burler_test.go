@@ -835,3 +835,52 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 		assertUnchangedRoundOnRerun(t, runDir)
 	})
 }
+
+// TestBurlerProducer_Call_PreAttemptArchiveFailureHonoursCancellation is the guard for this
+// package's shared cancellation rule at the one exit that used to skip it: the pre-attempt
+// archiveStaleOutputs failure returned bare, so a run an operator had already cancelled was reported
+// as an unrelated infrastructure error instead of as the cancellation it was. Every other
+// non-success exit in Call already routes through failureExit, which consults cancelErr first.
+//
+// Reaching that branch needs the archive to fail AND the context to be cancelled at that moment, and
+// an already-cancelled context would be caught by Call's entry check long before -- so the injected
+// clock is used as the seam. archiveStaleOutputs calls now() after it has stat'd the stale file and
+// before it renames it, so cancelling from there lands the cancellation exactly inside the failing
+// archive, which a read-only run directory guarantees.
+func TestBurlerProducer_Call_PreAttemptArchiveFailureHonoursCancellation(t *testing.T) {
+	runDir := t.TempDir()
+	reviewPath := roundReviewPath(runDir, 1)
+	if err := os.WriteFile(reviewPath, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", reviewPath, err)
+	}
+	if err := os.Chmod(runDir, 0o555); err != nil {
+		t.Fatalf("Chmod(%s): %v", runDir, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(runDir, 0o755) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelledDuringArchive := false
+	now := func() time.Time {
+		cancelledDuringArchive = true
+		cancel()
+		return time.Unix(0, 0).UTC()
+	}
+
+	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, now)
+
+	_, _, err := p.Call(ctx)
+
+	if !cancelledDuringArchive {
+		t.Fatal("the injected clock never ran; the test never reached the archive step it is about")
+	}
+	if err == nil {
+		t.Fatal("Call() error = nil; want a non-nil error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Call() error = %v; want it to wrap context.Canceled, not the archive failure", err)
+	}
+	if runner.calls != 0 {
+		t.Errorf("runner.calls = %d; want 0", runner.calls)
+	}
+}

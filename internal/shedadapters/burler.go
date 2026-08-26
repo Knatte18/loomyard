@@ -315,7 +315,17 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		// Before every attempt, including attempt 1: a leftover file at the round's own paths is
 		// renamed to a stamped sibling rather than being passed through to a run whose spec
 		// validation rejects a pre-existing output file.
+		//
+		// Routed through failureExit rather than returned bare, so it consults cancelErr first like
+		// every other non-success exit in this function. An archive failure is not a success verdict,
+		// and this package's shared cancellation rule admits no exception for it -- returning bare
+		// here reported an infrastructure error for a run an operator had already cancelled.
+		// It skips failureExit's own archive step by construction: archiveRound calls the very
+		// helper that just failed, so retrying it could only fail again.
 		if err := archiveStaleOutputs([]string{reviewPath, fixerReportPath}, p.now); err != nil {
+			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: archive stale outputs before attempt %d: %w", p.name, burlerEngineLabel, round, attempt, err)
 		}
 
