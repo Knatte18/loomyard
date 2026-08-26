@@ -49,8 +49,13 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 	// genuinely clean on both sides -- fabricengine.WireJunctions leaves untracked entries behind
 	// that the cleanliness check would otherwise report, mirroring internal/preflight's own
 	// setupFixture, which performs this same add-and-commit with no seed step at all.
+	// The commit is --allow-empty because after the clone-commit change the weft prime already
+	// arrives clean, .lyx is excluded through the weft repo's .git/info/exclude, and the _extra
+	// junction target materializes as an empty directory git does not track -- so this pair becomes
+	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
+	// drop the guarantee if a future fixture change reintroduces untracked weft content.
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "-m", "seed junctions")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--allow-empty", "-m", "seed junctions")
 
 	return h
 }

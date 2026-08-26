@@ -55,6 +55,15 @@ func ConfigFile(baseDir, module string) string {
 	return filepath.Join(ConfigDir(baseDir), module+".yaml")
 }
 
+// ConfigFileRel returns a module's configuration YAML file path relative to a worktree's anchor --
+// the same shape fabricengine.OriginRecordRel returns and the shape fabricengine.CommitAnchoredPaths
+// expects for its relPaths argument.
+// It is deliberately not derivable from ConfigFile by cancelling a base path: the two accessors join
+// their shared segments independently, so ConfigFileRel has no baseDir parameter to cancel out.
+func ConfigFileRel(module string) string {
+	return filepath.Join(lyxdirs.LyxDirName, configDirName, module+".yaml")
+}
+
 // Load loads and resolves configuration from a YAML file using a template.
 // Returns the resolved bytes or an error if the file is absent, missing keys, or cannot be
 // resolved.

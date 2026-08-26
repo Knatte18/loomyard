@@ -1,9 +1,10 @@
 // clone.go implements the fabriccli handler half for the fabric clone subcommand.
 // runCloneWithReset delegates into fabricengine.CloneHub after optionally tearing down an existing
 // hub when --reset is given, then calls CloneAndWire to drive the config materialization +
-// weft:main commit + junction wiring + reconcile sequence that makes "clone does everything" true
-// at the command level — CloneHub itself stays git/geometry-focused so fabricengine never imports
-// configsync (see fabricengine/clone.go's CloneResult doc comment for the import-cycle rationale).
+// weft:main commit + junction wiring + reconcile + per-worktree config commit sequence that makes
+// "clone does everything" true at the command level — CloneHub itself stays git/geometry-focused so
+// fabricengine never imports configsync (see fabricengine/clone.go's CloneResult doc comment for
+// the import-cycle rationale).
 
 package fabriccli
 
@@ -21,7 +22,8 @@ import (
 
 // CloneAndWire clones a hub via fabricengine.CloneHub and drives the wiring sequence that makes
 // "clone does everything" true: repo-wide fabric.yaml materialization, the weft:main anchor+config
-// commit and push, warp junction wiring, and per-worktree config reconciliation.
+// commit and push, warp junction wiring, per-worktree config reconciliation, and a commit of the
+// resulting per-worktree module configs on the weft primary branch, with no push.
 //
 // It is the single wiring sequence shared by the cobra clone handler and
 // internal/hubforge's hub factory; a second copy of this sequence anywhere is the
@@ -99,10 +101,21 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
+	var relPaths []string
 	for _, r := range results {
 		if r.Applied {
 			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.WeftBase, r.Module), "")
+			relPaths = append(relPaths, configengine.ConfigFileRel(r.Module))
 		}
+	}
+
+	// Commit the per-worktree module configs ReconcileAll just materialised, on the weft primary
+	// branch, with no push: an adopt-path re-clone leaves relPaths empty, which
+	// CommitAnchoredPaths's own len(relPaths) == 0 guard treats as a legitimate no-op, taking no
+	// lock and recording nothing. CommitWeftPaths appends its own KindCommitCreated entry at its
+	// success site, so no recording happens here.
+	if _, _, err := fabricengine.CommitAnchoredPaths(rec, l, relPaths, "fabric clone: record module configs", fabricengine.SyncOptions{}); err != nil {
+		return fabricengine.CloneResult{}, err
 	}
 
 	return res, nil

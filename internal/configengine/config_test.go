@@ -704,6 +704,33 @@ func TestConfigFile(t *testing.T) {
 	}
 }
 
+// TestConfigFileRel verifies that ConfigFileRel joins LyxDirName, "config", and the module's
+// ".yaml" filename into an anchor-relative path, that the result is never absolute, and that it
+// stays in lockstep with ConfigFile so the two accessors can never drift apart.
+func TestConfigFileRel(t *testing.T) {
+	t.Parallel()
+
+	for _, module := range []string{"loom", "board"} {
+		got := configengine.ConfigFileRel(module)
+		want := filepath.Join(lyxdirs.LyxDirName, "config", module+".yaml")
+
+		if got != want {
+			t.Errorf("ConfigFileRel(%q) = %q; want %q", module, got, want)
+		}
+		if filepath.IsAbs(got) {
+			t.Errorf("ConfigFileRel(%q) = %q; want a relative path", module, got)
+		}
+	}
+
+	base := "/home/user/project"
+	module := "myapp"
+	got := configengine.ConfigFile(base, module)
+	want := filepath.Join(base, configengine.ConfigFileRel(module))
+	if got != want {
+		t.Errorf("ConfigFile(%q, %q) = %q; want filepath.Join(base, ConfigFileRel(module)) = %q", base, module, got, want)
+	}
+}
+
 // TestLyxDirNameConstant verifies that LyxDirName is exported and has the expected value — moved
 // here from lyxcwd's own unit test now that internal/lyxdirs is the sole declarer of the "_lyx"
 // token, per the Lyxdirs Single-Declarer Invariant.
