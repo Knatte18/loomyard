@@ -58,7 +58,29 @@ PATH (F2, recorded as NOT-FIXED-THIS-ROUND).
 
 ## Findings
 
-_(recorded provisionally as they are spotted; severity ordering finalized last)_
+Twelve findings. Recorded provisionally as they were spotted (so the ids are in discovery
+order, not severity order); this index is the severity ranking, and each entry links what the
+finding is to how it was established.
+
+| Severity | Id | One line | Evidence |
+|---|---|---|---|
+| **BLOCKING** | F0 | A driver crash mid review-segment round spawns a DUPLICATE agent on the same artifacts | reproduced live twice, on two rows, plus a counted sweep of all spawn sites |
+| MEDIUM | F1 | `require_pr_to_base: []` is unrepresentable, and a longer list is silently truncated by `config reconcile --apply` | reproduced live; second half reproduced on an independent hub |
+| MEDIUM | F2 | An agent loom spawns resolves `lyx` from PATH and can silently rewrite the hub's stencils mid-run | observed unprompted in this round's own run, then reproduced under control on a third hub |
+| MEDIUM | F10 | A resumed run reports `paused`/`blocked`/`failed` for the whole first producer call | reproduced live, with a real judge session in the pane at the same instant |
+| LOW | F3 | `BurlerProducer`'s doc claims the Bouncer shares its round-completion predicate; it does not | traced |
+| LOW | F4 | `Batchifier` and the `Webster` row swallow `batcher.Active`'s error with no log line | traced, backed by a 16-site sweep |
+| LOW | F6 | `lyx loom status --watch`'s help states the exact behaviour the code exists to prevent | confirmed against live `--help` output |
+| LOW | F7 | `docs/overview.md`'s loom.yaml key list omits `review`/`review_timeout_min` | confirmed against the shipped template and `Config` |
+| LOW | F8 | The Bouncer's clear-and-re-seed discards an approved review generation with no log line | traced, with the existing test that pins the path |
+| LOW | F9 | `lyx loom --help` claims the shed engine "already drives Hardener" and omits every review segment | confirmed against live `--help` output |
+| LOW | F11 | The card shape the plan stencil mandates is forced onto `Custom`, disabling `path-missing` on its edit targets | observed in the live run's own plan — **NOT-FIXED-THIS-ROUND** |
+| NIT | F5 | `burlerRoundFileSet`'s `entry`/`field` parameters are dead, making two config errors indistinguishable | traced |
+
+Two further items are recorded inside their parent findings as **NOT-FIXED-THIS-ROUND**
+because each fix reaches well outside this module: F1's `Reconcile` truncation half (the
+sequence merge model, shared by all ten module configs) and F2's PATH half (the shuttle/reed
+spawn layer).
 
 ### F0 — a driver crash mid review-segment round spawns a DUPLICATE agent on the same artifacts — BLOCKING — CONFIRMED (reproduced live, twice-observed processes)
 
