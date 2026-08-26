@@ -1,30 +1,30 @@
 # Loom status spec — loom's spawn/handover status file
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/loom/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
+> **Status: Contract — pinned.** This doc pins the `.lyx/loom/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
 > Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (see [shed.md](../../manifest/designs/shed.md)) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
 
 ## What it is
 
-`_lyx/loom/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
+`.lyx/loom/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
 `lyx loom drive` (via `Shed.Run`) rewrites the shell on every step — that loop belongs to the driver verb `lyx loom run` spawns detached, never to `lyx loom run` itself;
 its t=0 "seed" — the handoff instant a task is spawned and given to loom — is written once, by `lyx loom run`'s own first invocation, before that spawn happens (see [The seed / handover](#the-seed--handover) below).
 
-It is durable **fabric-overlay state**: it lives under `_lyx/` (git-synced via fabric, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
+It is machine-local, never-tracked state: it lives under the ephemeral `.lyx/` tree, beside its own lock, and loom's orchestration state does not travel between machines.
 Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `internal/lyxcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
 
 ## Format decision (defended)
 
 The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`/ `ReadJSON[T]`: locked, atomic, typed) — the same mechanism `webster` uses for its own `_lyx/webster/state.json`.
 
-`_lyx/loom/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
+`.lyx/loom/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
 Reusing `internal/state` gives locking and atomic writes for free and keeps one state primitive across modules, rather than a second one-off for loom.
 
 ## The seed / handover
 
-The **seed** is the t=0 contents of `_lyx/loom/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
+The **seed** is the t=0 contents of `.lyx/loom/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
 
 It is written by **`lyx loom run`**, the session bootstrap, at its own first invocation — the mill-spawn analogue, but Go, never an agent.
-That binding is now pinned: `lyx loom run` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed weft-side before it spawns the detached driver.
+That binding is now pinned: `lyx loom run` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it.
 An optional thin `ly-spawn` skill may wrap it later,
 but `lyx loom run` is always the writer.
 
