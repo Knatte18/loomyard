@@ -15,18 +15,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
 // validCard returns a fully well-formed format-4 Card at position number with slug — Type Edit,
-// exactly one recognized type label, a single path-shaped Targets entry, a present-but-empty
-// Uses:, non-empty Intent:, a non-empty one-line ImpactSummary:, no retired labels, no malformed
-// Rename bullets, and a correctly prefixed Commit:. Each subtest below starts from this baseline
-// and mutates exactly the one field its own check cares about, so a finding it observes can only
-// come from the check under test, never incidental noise from the other fifteen.
+// exactly one recognized type label, a single path-shaped Targets entry, a single TargetGroups
+// entry mirroring that same Edit label and its own Refs, a present-but-empty Uses:, non-empty
+// Intent:, a non-empty one-line ImpactSummary:, no retired labels, no malformed Rename bullets,
+// and a correctly prefixed Commit:. Each subtest below starts from this baseline and mutates
+// exactly the one field its own check cares about, so a finding it observes can only come from
+// the check under test, never incidental noise from the other checks.
 func validCard(number int, slug string) planparser.Card {
+	targets := []string{fmt.Sprintf("pkg/card%d.go", number)}
 	return planparser.Card{
 		Number:           number,
 		Slug:             slug,
@@ -34,7 +37,8 @@ func validCard(number int, slug string) planparser.Card {
 		Type:             planparser.CardTypeEdit,
 		TypeLabelCount:   1,
 		HasType:          true,
-		Targets:          []string{fmt.Sprintf("pkg/card%d.go", number)},
+		Targets:          targets,
+		TargetGroups:     []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: targets}},
 		HasUses:          true,
 		Uses:             []string{},
 		HasIntent:        true,
@@ -43,6 +47,19 @@ func validCard(number int, slug string) planparser.Card {
 		ImpactSummary:    "impact for " + slug,
 		Commit:           fmt.Sprintf("%d: %s", number, slug),
 	}
+}
+
+// cardOfType returns a well-formed format-4 Card at position number with slug whose Type,
+// Targets, and single-entry TargetGroups all agree on typ and refs — the only construction path
+// this file's group-scoped subtests use for a fixture whose type differs from validCard's Edit
+// baseline, since reassigning Type or Targets on an already-returned Card never reaches its
+// separately-held TargetGroups entry.
+func cardOfType(number int, slug string, typ planparser.CardType, refs []string) planparser.Card {
+	card := validCard(number, slug)
+	card.Type = typ
+	card.Targets = refs
+	card.TargetGroups = []planparser.TargetGroup{{Type: typ, Refs: refs}}
+	return card
 }
 
 // countFor returns how many of findings carry the given Check name — every
@@ -271,6 +288,7 @@ func TestValidate_CardTypeMissing(t *testing.T) {
 		card.HasType = false
 		card.TypeLabelCount = 0
 		card.Type = planparser.CardTypeUnknown
+		card.TargetGroups = nil
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "card-type-missing"); got != 1 {
@@ -332,9 +350,8 @@ func TestValidate_CardPathMalformed(t *testing.T) {
 
 	t.Run("malformed symbol-shaped entry produces no finding", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"..BadSymbol"})
 		// No "/" at all, so classifyRef reads this as a symbol despite the leading "..".
-		card.Targets = []string{"..BadSymbol"}
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "card-path-malformed"); got != 0 {
@@ -344,8 +361,7 @@ func TestValidate_CardPathMalformed(t *testing.T) {
 
 	t.Run("malformed path-shaped entry produces a finding", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Targets = []string{"/abs/path.go"}
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"/abs/path.go"})
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "card-path-malformed"); got != 1 {
@@ -369,9 +385,9 @@ func TestValidate_RenameFormat(t *testing.T) {
 
 	t.Run("two malformed Rename bullets", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeRename
+		card := cardOfType(1, "a", planparser.CardTypeRename, nil)
 		card.RenameRaw = []string{"this bullet has no arrow", "neither does this one"}
+		card.TargetGroups[0].RenameRaw = card.RenameRaw
 		plan := &planparser.Plan{Format: 4, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "rename-format"); got != 2 {
@@ -397,8 +413,7 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 
 	t.Run("Rename card, mechanic present", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeRename
+		card := cardOfType(1, "a", planparser.CardTypeRename, nil)
 		plan := &planparser.Plan{Format: 4, Approved: true, RenameMechanic: "1. git mv old new first.", Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "rename-mechanic-missing"); got != 0 {
@@ -408,8 +423,7 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 
 	t.Run("Rename card, mechanic absent", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeRename
+		card := cardOfType(1, "a", planparser.CardTypeRename, nil)
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "rename-mechanic-missing"); got != 1 {
@@ -459,8 +473,7 @@ func TestValidate_CardMissingField(t *testing.T) {
 
 	t.Run("Delete missing ImpactSummary", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeDelete
+		card := cardOfType(1, "a", planparser.CardTypeDelete, []string{"pkg/card1.go"})
 		card.HasImpactSummary = false
 		card.ImpactSummary = ""
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
@@ -477,8 +490,7 @@ func TestValidate_CardMissingField(t *testing.T) {
 	for _, typ := range otherTypes {
 		t.Run(string(typ)+" missing ImpactSummary produces none", func(t *testing.T) {
 			t.Parallel()
-			card := validCard(1, "a")
-			card.Type = typ
+			card := cardOfType(1, "a", typ, []string{"pkg/card1.go"})
 			card.HasImpactSummary = false
 			card.ImpactSummary = ""
 			plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
@@ -511,9 +523,8 @@ func TestValidate_CardFieldEmpty(t *testing.T) {
 
 	t.Run("type label present with zero Targets", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{})
 		card.Uses = []string{"pkg/dep.go"}
-		card.Targets = []string{}
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "card-field-empty"); got != 1 {
@@ -616,9 +627,7 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 
 	t.Run("clean (path-only Prosa)", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeProsa
-		card.Targets = []string{"doc.go"}
+		card := cardOfType(1, "a", planparser.CardTypeProsa, []string{"doc.go"})
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "prosa-symbol-target"); got != 0 {
@@ -628,9 +637,7 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 
 	t.Run("symbol target on a Prosa card", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeProsa
-		card.Targets = []string{"pkg.Symbol"}
+		card := cardOfType(1, "a", planparser.CardTypeProsa, []string{"pkg.Symbol"})
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
@@ -690,9 +697,7 @@ func TestValidate_PathMissing(t *testing.T) {
 		} {
 			t.Run(string(typ), func(t *testing.T) {
 				t.Parallel()
-				card := validCard(1, "a")
-				card.Type = typ
-				card.Targets = []string{"missing.go"}
+				card := cardOfType(1, "a", typ, []string{"missing.go"})
 				plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 				findings := planparser.Validate(plan, t.TempDir())
 				if got := countFor(findings, "path-missing"); got != 1 {
@@ -704,9 +709,7 @@ func TestValidate_PathMissing(t *testing.T) {
 
 	t.Run("Create card absent target produces none", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCreate
-		card.Targets = []string{"missing.go"}
+		card := cardOfType(1, "a", planparser.CardTypeCreate, []string{"missing.go"})
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "path-missing"); got != 0 {
@@ -716,10 +719,10 @@ func TestValidate_PathMissing(t *testing.T) {
 
 	t.Run("Rename pair: absent Old side finds, absent New side does not", func(t *testing.T) {
 		t.Parallel()
-		card := validCard(1, "a")
-		card.Type = planparser.CardTypeRename
-		card.Pairs = []planparser.MovePair{{Old: "missing-old.go", New: "missing-new.go"}}
-		card.Targets = []string{"missing-old.go", "missing-new.go"}
+		card := cardOfType(1, "a", planparser.CardTypeRename, []string{"missing-old.go", "missing-new.go"})
+		pairs := []planparser.MovePair{{Old: "missing-old.go", New: "missing-new.go"}}
+		card.Pairs = pairs
+		card.TargetGroups[0].Pairs = pairs
 		plan := &planparser.Plan{Format: 4, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "path-missing"); got != 1 {
@@ -727,11 +730,30 @@ func TestValidate_PathMissing(t *testing.T) {
 		}
 	})
 
-	t.Run("Custom card: absent own target does not find, absent Uses path does", func(t *testing.T) {
+	t.Run("two Rename groups: one absent Old side yields exactly one finding", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCustom
-		card.Targets = []string{"missing-target.go"}
+		firstPairs := []planparser.MovePair{{Old: "missing-old.go", New: "missing-new.go"}}
+		secondPairs := []planparser.MovePair{{Old: "present-old.go", New: "present-new.go"}}
+		card.Type = planparser.CardTypeRename
+		card.Pairs = append(append([]planparser.MovePair{}, firstPairs...), secondPairs...)
+		card.Targets = []string{"missing-old.go", "missing-new.go", "present-old.go", "present-new.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeRename, Refs: []string{"missing-old.go", "missing-new.go"}, Pairs: firstPairs},
+			{Type: planparser.CardTypeRename, Refs: []string{"present-old.go", "present-new.go"}, Pairs: secondPairs},
+		}
+		root := t.TempDir()
+		materializeFiles(t, root, "present-old.go")
+		plan := &planparser.Plan{Format: 4, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, root)
+		if got := countFor(findings, "path-missing"); got != 1 {
+			t.Errorf("countFor(findings, path-missing) = %d; want 1 (one finding per group, not per card)", got)
+		}
+	})
+
+	t.Run("Custom card: absent own target does not find, absent Uses path does", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeCustom, []string{"missing-target.go"})
 		card.HasUses = true
 		card.Uses = []string{"missing-uses.go"}
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
@@ -741,28 +763,61 @@ func TestValidate_PathMissing(t *testing.T) {
 		}
 	})
 
+	t.Run("Edit group absent, Create group on the same card absent: only the Edit path is reported", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeEdit
+		card.Targets = []string{"missing-edit.go", "missing-create.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeEdit, Refs: []string{"missing-edit.go"}},
+			{Type: planparser.CardTypeCreate, Refs: []string{"missing-create.go"}},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "path-missing"); got != 1 {
+			t.Errorf("countFor(findings, path-missing) = %d; want 1", got)
+		}
+		for _, f := range findings {
+			if f.Check == "path-missing" && !strings.Contains(f.Detail, "missing-edit.go") {
+				t.Errorf("path-missing finding %+v; want it to name missing-edit.go", f)
+			}
+		}
+	})
+
+	t.Run("first group Create, second group Edit: the Edit group's absent path is still reported", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeCreate
+		card.Targets = []string{"new-file.go", "missing-edit.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"new-file.go"}},
+			{Type: planparser.CardTypeEdit, Refs: []string{"missing-edit.go"}},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "path-missing"); got != 1 {
+			t.Errorf("countFor(findings, path-missing) = %d; want 1 (first-label-wins is gone)", got)
+		}
+	})
+
 	t.Run("otherwise-missing path satisfied by the Create or Rename-New union", func(t *testing.T) {
 		t.Parallel()
 		root := t.TempDir()
 
-		create := validCard(1, "create")
-		create.Type = planparser.CardTypeCreate
-		create.Targets = []string{"new-file.go"}
+		create := cardOfType(1, "create", planparser.CardTypeCreate, []string{"new-file.go"})
 
-		usesCreateTarget := validCard(2, "uses-create-target")
 		// Custom so this card's own (irrelevant) Targets entry is exempt from path-missing,
 		// isolating the assertion to its Uses: satisfaction by the Create union.
-		usesCreateTarget.Type = planparser.CardTypeCustom
+		usesCreateTarget := cardOfType(2, "uses-create-target", planparser.CardTypeCustom, []string{"pkg/card2.go"})
 		usesCreateTarget.Uses = []string{"new-file.go"}
 
-		rename := validCard(3, "rename")
-		rename.Type = planparser.CardTypeRename
-		rename.Pairs = []planparser.MovePair{{Old: "orig.go", New: "renamed.go"}}
-		rename.Targets = []string{"orig.go", "renamed.go"}
+		rename := cardOfType(3, "rename", planparser.CardTypeRename, []string{"orig.go", "renamed.go"})
+		renamePairs := []planparser.MovePair{{Old: "orig.go", New: "renamed.go"}}
+		rename.Pairs = renamePairs
+		rename.TargetGroups[0].Pairs = renamePairs
 		materializeFiles(t, root, "orig.go")
 
-		usesRenameTarget := validCard(4, "uses-rename-target")
-		usesRenameTarget.Type = planparser.CardTypeCustom
+		usesRenameTarget := cardOfType(4, "uses-rename-target", planparser.CardTypeCustom, []string{"pkg/card4.go"})
 		usesRenameTarget.Uses = []string{"renamed.go"}
 
 		plan := &planparser.Plan{
@@ -810,9 +865,7 @@ func TestValidate_CommitSubjectMismatch(t *testing.T) {
 func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
 	t.Parallel()
 
-	card := validCard(1, "a")
-	card.Type = planparser.CardTypeCustom
-	card.Targets = []string{"/abs/malformed.go", "shared.go"}
+	card := cardOfType(1, "a", planparser.CardTypeCustom, []string{"/abs/malformed.go", "shared.go"})
 	card.HasIntent = false
 	card.Intent = ""
 	card.HasUses = true

@@ -543,10 +543,12 @@ func renameTargetsUnion(plan *Plan) map[string]bool {
 }
 
 // checkPathMissing implements path-missing: type-conditional, existence-dependent path checking.
-// Every card's path-shaped Uses entries are checked, including a Custom card's. A card's
-// path-shaped Targets are checked only when its Type is Edit, Delete, Move, or Prosa. A Rename
-// card's path-shaped Pairs.Old entries are checked, and its Targets are skipped entirely (so a
-// Rename's New side is never checked). Create and Custom cards' Targets are skipped. A path
+// Every card's path-shaped Uses entries are checked, including a Custom card's; this is a
+// card-level check, run once per card, not once per group. Within each card, its own
+// TargetGroups are then walked one at a time: a group's path-shaped Refs are checked only when
+// its own Type is Edit, Delete, Move, or Prosa. A Rename group's path-shaped Pairs.Old entries
+// are checked, read from that group's own Pairs, and its Refs are skipped entirely (so a
+// Rename's New side is never checked). Create and Custom groups' Refs are skipped. A path
 // otherwise reported missing is satisfied by existing on disk, by createTargetsUnion membership,
 // or by renameTargetsUnion membership.
 func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
@@ -578,24 +580,26 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 			report(c, u)
 		}
 
-		switch c.Type {
-		case CardTypeEdit, CardTypeDelete, CardTypeMove, CardTypeProsa:
-			for _, t := range c.Targets {
-				if !isPathRef(t) || satisfied(t) {
-					continue
+		for _, g := range c.TargetGroups {
+			switch g.Type {
+			case CardTypeEdit, CardTypeDelete, CardTypeMove, CardTypeProsa:
+				for _, t := range g.Refs {
+					if !isPathRef(t) || satisfied(t) {
+						continue
+					}
+					report(c, t)
 				}
-				report(c, t)
-			}
-		case CardTypeRename:
-			for _, p := range c.Pairs {
-				if !isPathRef(p.Old) || satisfied(p.Old) {
-					continue
+			case CardTypeRename:
+				for _, p := range g.Pairs {
+					if !isPathRef(p.Old) || satisfied(p.Old) {
+						continue
+					}
+					report(c, p.Old)
 				}
-				report(c, p.Old)
+			case CardTypeCreate, CardTypeCustom:
+				// Create's refs are new by definition, and Custom is an explicit escape hatch
+				// exempt from path-missing on its own refs.
 			}
-		case CardTypeCreate, CardTypeCustom:
-			// Create's targets are new by definition, and Custom is an explicit escape hatch
-			// exempt from path-missing on its own targets.
 		}
 	}
 
