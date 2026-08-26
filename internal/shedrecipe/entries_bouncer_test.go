@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -434,13 +435,12 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 	})
 }
 
-// layoutSettledBouncerRound1 writes round 1's review, verdict, and ledger files directly into
-// env.RunRoot/review-segment, so a bouncerEntry-built producer's first Call settles an
-// already-judged APPROVED round with no shuttle spawn -- the replay path, following
-// shedadapters.TestBouncer_Replay_Approved's precedent. The verdict and ledger file names and
-// frontmatter shapes mirror shedadapters/bouncerfiles.go's own parser expectations, and the report
-// file name mirrors bouncerEntry's own pinned ReportName convention.
-func layoutSettledBouncerRound1(t *testing.T, env Env) {
+// layoutBouncerRound1Report writes round 1's report file directly into env.RunRoot/review-segment,
+// so a bouncerEntry-built producer's first Call resolves round 1 and reaches the judge branch
+// rather than the seed branch -- the same setup TestBouncerEntry_ReportNamePinning uses to reach
+// the judge branch without depending on BurlerProducer. The file name mirrors bouncerEntry's own
+// pinned ReportName convention.
+func layoutBouncerRound1Report(t *testing.T, env Env) {
 	t.Helper()
 	runDir := filepath.Join(env.RunRoot, "review-segment")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
@@ -449,14 +449,36 @@ func layoutSettledBouncerRound1(t *testing.T, env Env) {
 	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("a review\n"), 0o644); err != nil {
 		t.Fatalf("write round-1-review.md: %v", err)
 	}
-	verdict := "---\nverdict: APPROVED\nrationale: \"because reasons\"\n---\n"
-	if err := os.WriteFile(filepath.Join(runDir, "round-1-bouncer-verdict.md"), []byte(verdict), 0o644); err != nil {
-		t.Fatalf("write round-1-bouncer-verdict.md: %v", err)
+}
+
+// judgeSeamFakeShuttle implements shedadapters.Shuttle by writing round 1's APPROVED verdict and
+// ledger to the spec's declared OutputFiles during Run, so a bouncerEntry-built producer's judge
+// call harvests and settles within the same Call that produced them -- the harvest vehicle this
+// file's commit-seam subtests drive, following shedadapters/bouncer_commit_test.go's own treatment
+// of the same removed APPROVED-replay vehicle.
+type judgeSeamFakeShuttle struct {
+	specs []shuttleengine.Spec
+}
+
+var _ shedadapters.Shuttle = (*judgeSeamFakeShuttle)(nil)
+
+// Run implements shedadapters.Shuttle: it records spec, writes round 1's verdict and ledger to the
+// judge call's first two declared OutputFiles, and reports shuttleengine.OutcomeDone.
+func (f *judgeSeamFakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+	f.specs = append(f.specs, spec)
+	if len(spec.OutputFiles) == 3 {
+		verdict := "---\nverdict: APPROVED\nrationale: \"because reasons\"\n---\n"
+		_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
+		ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
+		_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
 	}
-	ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
-	if err := os.WriteFile(filepath.Join(runDir, "round-1-bouncer-ledger.md"), []byte(ledger), 0o644); err != nil {
-		t.Fatalf("write round-1-bouncer-ledger.md: %v", err)
-	}
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+}
+
+// Attach implements shedadapters.Shuttle's probe method by always reporting not-found, matching
+// fakeShuttle's own Attach in fixture_test.go.
+func (f *judgeSeamFakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	return shuttleengine.Result{}, false, nil
 }
 
 // TestBouncerEntry_CommitSeam covers the two-value resolution of commit_seam, the presence guard
@@ -468,11 +490,13 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		// than rejected as unknown: bouncerEntry returning a nil error below means the key was
 		// recognised.
 		env := newTestEnv(t)
+		env.Shuttle = &judgeSeamFakeShuttle{}
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		planCalls := 0
 		env.CommitPlan = func() error { planCalls++; return nil }
 		cfg := minimalBouncerConfig(t, env)
 		cfg["commit_seam"] = "plan"
-		layoutSettledBouncerRound1(t, env)
+		layoutBouncerRound1Report(t, env)
 
 		producer, err := bouncerEntry("review-bounce", cfg, env)
 		if err != nil {
@@ -488,13 +512,15 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 	t.Run("DiscussionResolvesToCommitDiscussion", func(t *testing.T) {
 		env := newTestEnv(t)
+		env.Shuttle = &judgeSeamFakeShuttle{}
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		planCalls := 0
 		discussionCalls := 0
 		env.CommitPlan = func() error { planCalls++; return nil }
 		env.CommitDiscussion = func() error { discussionCalls++; return nil }
 		cfg := minimalBouncerConfig(t, env)
 		cfg["commit_seam"] = "discussion"
-		layoutSettledBouncerRound1(t, env)
+		layoutBouncerRound1Report(t, env)
 
 		producer, err := bouncerEntry("review-bounce", cfg, env)
 		if err != nil {
@@ -513,12 +539,14 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
 		env := newTestEnv(t)
+		env.Shuttle = &judgeSeamFakeShuttle{}
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		planCalls := 0
 		discussionCalls := 0
 		env.CommitPlan = func() error { planCalls++; return nil }
 		env.CommitDiscussion = func() error { discussionCalls++; return nil }
 		cfg := minimalBouncerConfig(t, env)
-		layoutSettledBouncerRound1(t, env)
+		layoutBouncerRound1Report(t, env)
 
 		producer, err := bouncerEntry("review-bounce", cfg, env)
 		if err != nil {
