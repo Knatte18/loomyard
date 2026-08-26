@@ -12,6 +12,10 @@ package burlerengine
 type Geometry struct {
 	// WorktreeRoot is the root Engine.Run resolves a Profile's relative paths against, via
 	// (*Profile).validate.
+	// What fills it differs by mode: hub mode now tells it the anchor path
+	// (hubgeom.BurlerGeometry), while standalone tells it the reviewed target directory
+	// (standalonegeom.BurlerGeometry) — this is why the field is not collapsible into AnchorPath
+	// and is not renamed.
 	WorktreeRoot string
 	// AnchorPath is the base the per-round .lyx/burler instruction directory joins onto.
 	AnchorPath string
