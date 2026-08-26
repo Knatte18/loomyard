@@ -3,7 +3,7 @@
 ```yaml
 task: 'reed: attach doesn''t reconcile session geometry with the terminal'
 slug: 'reed-attach-geometry-reconcile'
-approved: false
+approved: true
 started: '20260826-121937'
 parent: 'main'
 root: ""
