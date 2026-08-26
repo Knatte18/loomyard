@@ -575,3 +575,36 @@ agent; at the `Discussion-Burler` row it produced TWO. The difference is not the
 the tmux server, or the resume path — all three were identical. It is solely that
 `SingleLLMProducer` has the probe and `BurlerProducer`/`Bouncer` do not.
 
+### Live scenario 3 — F7's `approve_seam`/`require_approved` mechanism, both modes — PASS
+
+`Plan-Write` completed at 17:29:48 and the machine advanced through `Plan-Validate` to
+`Plan-Bouncer` (history 7 -> 9) — **the row-8 deadlock round 1 could never get past is gone,
+observed live.** The plan it produced is a genuine single-card plan against the minimal task:
+
+```
+$ ls _lyx/plan/
+00-overview.md
+01-greet-trim.md
+$ head -4 _lyx/plan/00-overview.md
+---
+format: 4
+approved: false
+root: cmd/tinytool
+```
+
+Both parity modes driven against that real, freshly-written, not-yet-approved plan — the exact
+state F7 was about:
+
+```
+$ lyx loom validate-plan                      # Plan-Validate's mode (no require_approved)
+{"ok":true,"plan_dir":".../_lyx/plan"}
+
+$ lyx loom validate-plan --require-approved   # Plan-Revalidate's mode
+{"error":"loom: plan is not yet valid",
+ "findings":["plan-unapproved: plan frontmatter approved: is not true"],"ok":false}
+```
+
+So the pre-review gate tolerates `approved: false` and the post-review gate genuinely enforces
+it, on the same bytes, through the same `planparser` functions the two rows call (Gate
+Self-Check Parity Invariant). That is F7's fix demonstrated end to end rather than argued.
+
