@@ -44,6 +44,8 @@ batches:
     commit_sha: de401a974c9027edd9ed54b4e5114a86a2e83002
     verify_baseline_failures: []
   - name: format-contract-sweep
-    state: pending
+    state: running
+    implementer_session: db9bf4ae-d026-4684-9061-ed6d24f1d3bb
+    start_sha: 6f9add739d16765f4300933fbccb01bf5b3a0cd8
     verify_baseline_failures: []
 ```
