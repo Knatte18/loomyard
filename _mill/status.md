@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-clone-commits-module-configs
+phase: holistic-reviewing
 slug: fabric-clone-commit-module-configs
 branch: fabric-clone-commit-module-configs
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-26T12:08:10Z'
 approved-configfilerel-accessor  '2026-08-26T12:11:57Z'
 approved-fixture-empty-stage-tolerance  '2026-08-26T12:14:12Z'
 approved-clone-commits-module-configs  '2026-08-26T12:21:48Z'
+holistic-reviewing  '2026-08-26T12:22:21Z'
 ```
 
 ## Batches
