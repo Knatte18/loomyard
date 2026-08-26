@@ -270,7 +270,15 @@ It reads loom's **status file** in `_lyx/`, sees which phase (and review sub-sta
 It is idempotent and re-entrant: **stop anywhere — Ctrl-C, crash, close the laptop — and the next `lyx run` continues where it left off.**
 
 This is the lyx model applied to orchestration: one-shot, daemonless, file-coordinated, resume-from-disk. `lyx run` is a pure function of {status file + artifact files} with no hidden process state.
-Because the status lives in the weft repo (git-synced), resume works across machines too.
+The status file lives in the weft repo, but it is not continuously committed there, so **resume across machines does not work today** — this line used to claim it did.
+`lyx loom run` commits the seed once, and the only other commit of that file is the checkpoint the landing rows make (see below);
+every persist in between leaves it as an uncommitted working-tree modification, so a second machine pulling the weft sees the task frozen wherever the last commit left it.
+Making it genuinely cross-machine means committing on every producer transition, which is a `Shed` persistence-policy decision with a real per-transition git cost, not a property this doc can assert into existence.
+
+**`Publish` and `Finalize` commit the status file before they merge, and that checkpoint is load-bearing rather than housekeeping.**
+`fabricengine`'s merge guard refuses any *tracked* modification on either side of the pair, and by the time the landing rows run, `Shed` has rewritten this tracked file once per transition — so without the checkpoint the last row of every run refuses on the run's own bookkeeping, with no `OnStuck` target and therefore no recovery but a human.
+Both rows take it through `landingshed.Deps.CommitStatus`, an injected loop-owner closure `internal/loomcli` fills, keeping the generic landing producers ignorant of where loom's status file lives.
+It runs inside each producer's own `Call`, never once at bootstrap, because a resumed run persists again immediately before the producer is called.
 It is per-task and cwd-authoritative ([Principle 4](../../docs/overview.md#principles)).
 
 **Human boundaries.** `lyx run` drives every phase it *can* drive **unattended** — the agents are interactive tmux sessions,
@@ -317,8 +325,14 @@ For the step it was on:
    (The agent's process may be long dead — its result survived.
    This is the common case.)
    This is never a producer-level shortcut answering "do files exist" on its own: inside a run there is an agent to attribute the completion to, while at the producer level a `Discussion-Validate` bounce makes the files-exist question true without any agent having run — the trap the next section resolves.
-2. **Else, is the agent's session still alive?** `shuttleengine.Runner.Attach`, probed by `shedadapters.SingleLLMProducer.Call` before it archives anything, scans the run-dir root for a `run.json` whose `OutputFiles` match the spec's and whose persisted `Outcome` is still `"running"`, then asks `reed` (see [overview.md#modules](../../docs/overview.md#modules)) whether that record's `StrandGUID` is still tracked with a live pane.
+2. **Else, is the agent's session still alive?** `shuttleengine.Runner.Attach`, probed before anything is archived, scans the run-dir root for a `run.json` whose `OutputFiles` match the spec's and whose persisted `Outcome` is still `"running"`, then asks `reed` (see [overview.md#modules](../../docs/overview.md#modules)) whether that record's `StrandGUID` is still tracked with a live pane.
    A match: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate).
+   **Every row that spawns an agent answers this question, and which rows do so is not left implicit here, because for a while it was and only one of them did.**
+   `SingleLLMProducer` probes it for `Discussion-Write` and `Plan-Write`;
+   `shedadapters.Bouncer` probes it on both its seed and its judge pass, for all three segments' `*-Bouncer` rows;
+   `shedadapters.BurlerProducer` probes it for all three `*-Burler` rows, matching on the round's own `round-<N>-review.md`/`round-<N>-fixer-report.md` pair, which is exactly the `OutputFiles` set `burlerengine` declares for that round's shuttle run.
+   The `Webster` row reaches the same no-duplicate property by a different mechanism it owns itself: `websterengine`'s entry-time reclaim stops a leftover live Master before starting a new one, rather than attaching to it.
+   Until the review-segment rows gained the probe, a driver crash inside any segment left that segment's agent alive and the next `lyx loom run` started a second one over it — two agents writing one review, and on the `Webster-Burler` row (`fix-scope: source`) two agents committing to one branch.
 3. **Else (dead, no output):** `SingleLLMProducer.Call`'s unchanged archive-then-spawn fallback respawns a **fresh** agent for the step, hydrated from the prior round's on-disk artifacts.
    **Every destructive preparation a row owes before a fresh agent belongs on this branch, never ahead of step 2's probe** — `SingleLLMProducer`'s `prepareFreshSpawn` seam is where such a step runs, and `Plan-Write`'s stale-plan-directory rotation is the one row that uses it.
    A decorator wrapping the producer cannot host that work, because a decorator necessarily runs before `Call` and therefore before the probe: rotating `_lyx/plan` there moves `00-overview.md`, the Plan spec's sole declared output file, out from under the very agent the next line attaches to, and since the wait loop polls for bare existence at the spec's paths, a plan that was finished never classifies `done` and times out into a hard run failure instead.
@@ -454,6 +468,13 @@ Every agent loom spawns — producers, the review handler, cluster reviewers, th
 see the `internal/shuttleengine` package documentation).
 **I/O still rides the file contract** — the agent writes its output files and Go reads them — so the file-contract design above is unchanged;
 only the *spawn + completion-detection* mechanism differs from a headless model.
+
+**An agent loom spawns resolves `lyx` from its own PATH, and that is a live hazard, recorded here rather than left to be rediscovered.**
+Every stencil loom's agents read tells them to run `lyx` verbs — `lyx board get`, `lyx loom validate-plan`, `lyx webster begin-batch` — and none of them names a binary, so each resolves whatever `lyx` the agent's shell finds.
+`lyx`'s own root pre-run seeds and **commits** the hub's stencils from its embedded registry, so an `lyx` of a different vintage than the driver silently rewrites the very prompt files the run's later rows read at call time, mid-run, and commits the rewrite to the board repo.
+This was observed live: during a crucible round's own pipeline run, an older installed `lyx` reached from an agent's shell reverted three loom stencils nine seconds in, deleting Discussion-Write's `## What you may write` fence and both halves of the plan-approval wording.
+Prefixing the driver's environment PATH does **not** fix it — an agent's shell re-sources the user profile and re-orders PATH back — so the fix belongs in the spawn layer (`shuttle`/`reed`), not here, and is not built.
+The operator-side mitigation today is to keep exactly one `lyx` reachable from a hub, and to treat the repeated `stencilstore: dev build does not refresh an untouched stencil` warning as the signal that two are: it names `lyx stencil sync` as the repair.
 
 The consequence for loom: it sits on top of the [`proc → reed → shuttle`](../../docs/overview.md#execution-stack-orchestration-layers) stack, so that stack is on loom's critical path. loom (via its review segments — see the `internal/shedadapters` package documentation — → `burler`, see the `internal/burlerengine` package documentation) calls `shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `reed` (see [overview.md#modules](../../docs/overview.md#modules);
 the strand bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go) and `shuttle` (see the `internal/shuttleengine` package documentation;

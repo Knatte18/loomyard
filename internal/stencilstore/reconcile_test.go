@@ -4,10 +4,14 @@
 package stencilstore
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // fakeRegistry implements Registry over a plain map, so no test in this package depends on the real
@@ -440,5 +444,34 @@ func TestReconcile_DriftingSourceDirStillSucceeds(t *testing.T) {
 	}
 	if len(written) != 0 {
 		t.Errorf("Reconcile(...) written = %v; want empty on a run where only .gitattributes was already seeded", written)
+	}
+}
+
+// TestReconcile_ModeDevRefusalNamesItsRemedy pins the dev-mode refusal's message, not just its
+// behaviour. The refusal is one-way -- an older installed binary running in production mode DOES
+// refresh, so it can downgrade a board's stencils, after which a newer dev build can only warn,
+// on every invocation, forever. A warning that does not name "lyx stencil sync" reads as benign
+// housekeeping while it is reporting that every producer will run on the older on-disk prompt.
+func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
+	baseDir := t.TempDir()
+	registry := newFakeRegistry(map[string][]byte{"family-one": []byte("original shipped body\n")})
+	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
+		t.Fatalf("seed Reconcile(...) returned error: %v", err)
+	}
+	registry.defaults["family-one"] = []byte("updated shipped body\n")
+
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	if _, err := Reconcile(baseDir, registry, ModeDev, ""); err != nil {
+		t.Fatalf("Reconcile(ModeDev) returned error: %v", err)
+	}
+
+	got := buf.String()
+	for _, want := range []string{"lyx stencil sync", "OLDER", "family-one"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("dev-mode refusal log = %q; want it to contain %q", got, want)
+		}
 	}
 }

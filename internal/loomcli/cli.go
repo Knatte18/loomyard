@@ -146,17 +146,19 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "loom",
 		Short: "bootstrap and drive one loom task's phase machine for this worktree",
-		Long: `loom drives one task's phase machine (Preflight, Discussion, Plan,
-Batchifier, Webster, Publish, Finalize) over a per-worktree status.json,
-the same shed engine that already drives Hardener. "run" is the bootstrap
-verb: it seeds the status file, commits the seed, and spawns/attaches the
+		Long: `loom drives one task's phase machine over a per-worktree status.json,
+on the generic shed engine. The machine walks seventeen producer rows: a
+two-row preflight, then Discussion, Plan, and Webster, each of the three
+followed by its own LLM review segment that loops until it approves or
+escalates, and finally Publish and Finalize. "run" is the bootstrap verb:
+it seeds the status file, commits the seed, and spawns/attaches the
 detached driver session; "drive" is the no-tmux escape hatch that runs the
 phase machine in the foreground for debugging and CI; "status" reports the
-current phase and, with --watch, tails it one line at a time; "pause"
-requests a pause at the next producer boundary. "validate-discussion" and
-"validate-plan" are the standalone form of the Discussion-Validate and
-Plan-Validate mechanical gates, callable by the writer agent before
-handoff.
+current phase and, with --watch, tails it, printing a line only when the
+activity changes; "pause" requests a pause at the next producer boundary.
+"validate-discussion" and "validate-plan" are the standalone form of the
+Discussion-Validate and Plan-Validate mechanical gates, callable by the
+writer agent before handoff.
 
 Example:
   lyx loom run

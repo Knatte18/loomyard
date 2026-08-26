@@ -204,6 +204,19 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 			t.Fatal("burlerRoundEntry() producer = nil; want non-nil")
 		}
 	})
+
+	// A nil Shuttle is refused rather than tolerated: it is the round's live-agent probe, and a
+	// producer built without it respawns over a still-live round -- two agents writing one review,
+	// and on a fix-scope: source row, two agents committing to one branch. A wiring slip must fail
+	// here, at construction, not silently at the next crash.
+	t.Run("NilShuttleSeamIsRefused", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Shuttle = nil
+		cfg := minimalBurlerConfig()
+
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "Shuttle")
+	})
 }
 
 // TestBurlerRoundEntry_EnvReviewFallback covers the three fallback outcomes for
@@ -460,4 +473,50 @@ func TestBurlerRoundEntry_ConstructionFailures(t *testing.T) {
 			t.Fatal("burlerRoundEntry() producer = nil; want non-nil")
 		}
 	})
+}
+
+// TestBurlerRoundEntry_FileSetErrorsNameTheirOwnMap pins the entry/field qualification on
+// profile.target and profile.fasit errors. The two maps carry identical key sets, so without it a
+// recipe author with a typo in one of them is told which key and never which map -- and the two
+// error strings are byte-identical.
+func TestBurlerRoundEntry_FileSetErrorsNameTheirOwnMap(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile map[string]any
+		want    string
+	}{
+		{
+			name:    "TargetWrongType",
+			profile: map[string]any{"rubric": "a rubric", "target": map[string]any{"paths": "not-a-list"}},
+			want:    "target",
+		},
+		{
+			name:    "FasitWrongType",
+			profile: map[string]any{"rubric": "a rubric", "fasit": map[string]any{"paths": "not-a-list"}},
+			want:    "fasit",
+		},
+		{
+			name:    "TargetUnknownKey",
+			profile: map[string]any{"rubric": "a rubric", "target": map[string]any{"pathz": []any{"x"}}},
+			want:    "target",
+		},
+		{
+			name:    "FasitUnknownKey",
+			profile: map[string]any{"rubric": "a rubric", "fasit": map[string]any{"pathz": []any{"x"}}},
+			want:    "fasit",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := Config{"run_subdir": "review-segment", "profile": tt.profile}
+
+			_, err := burlerRoundEntry("review-round", cfg, env)
+			if err == nil {
+				t.Fatal("burlerRoundEntry() error = nil; want non-nil")
+			}
+			assertErrContains(t, err, tt.want)
+			assertErrContains(t, err, "BurlerRound")
+		})
+	}
 }
