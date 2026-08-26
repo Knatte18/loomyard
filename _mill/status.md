@@ -37,7 +37,9 @@ batches:
     commit_sha: 4a930326f626d60b2b42493de656f5a4224047f2
     verify_baseline_failures: []
   - name: shedadapters-approve-seam
-    state: pending
+    state: running
+    implementer_session: b44e2d48-e0cd-45d1-acf9-999644d71bcf
+    start_sha: dca6ad635b6766362a5e82b04afd13f5c8d69eaf
     verify_baseline_failures: []
   - name: planvalidate-two-mode
     state: pending
