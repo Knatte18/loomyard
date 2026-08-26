@@ -82,6 +82,11 @@ The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machi
 ## Discussion producer detail — validation checks and review rubric
 
 `_lyx/discussion/` is produced by `Discussion-Write` (stencil: `contracts/stencils/loom/loom-template-discussion.md`, which pins `decision-record.md`'s and `support-log.md`'s section shape as the agent's own instructions).
+
+**`Discussion-Write` writes exactly those two files and nothing else, and its stencil says so.**
+This is the one agent `loom` spawns with an unrestricted, permission-bypassed shell and no scope restriction of its own — `fix-scope: overlay` confines both overlay `Burler` rows to their `Target.Paths` and forbids them git entirely, and the Webster fork reviewers are read-only, while the Discussion writer's contract is "explore the codebase" with no stated boundary.
+The fence names `_lyx/config/` first for a reason: that is the driver's own configuration, read fresh on every `wire()`, so an agent editing it changes how the run that spawned it behaves and how the next one does — including whether the next run is unattended at all.
+It also forbids repairing a broken environment rather than reporting it, because an agent that quietly fixes its own surroundings hides the fault from the operator.
 This section carries the detail that belongs to `Discussion-Validate` and `Discussion-Review` instead, rather than to the Discussion-Write stencil itself: a mechanical validator's checklist and a review rubric are not part of what the *writing* agent needs to read.
 
 ### Validation checks (spec for `Discussion-Validate`)
