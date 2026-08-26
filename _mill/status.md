@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-clone-commit-module-configs
 branch: fabric-clone-commit-module-configs
 plan: _mill/plan
@@ -27,4 +27,17 @@ plan-review-r3  '2026-08-26T12:00:33Z'
 plan-fix-r3  '2026-08-26T12:01:02Z'
 plan-review-r4  '2026-08-26T12:07:17Z'
 planned  '2026-08-26T12:07:35Z'
+implementing  '2026-08-26T12:08:10Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: configfilerel-accessor
+    state: pending
+  - name: fixture-empty-stage-tolerance
+    state: pending
+  - name: clone-commits-module-configs
+    state: pending
 ```
