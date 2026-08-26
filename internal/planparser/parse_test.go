@@ -1,8 +1,8 @@
 // parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
 // parsing, framing extraction), its per-card file-parsing behavior (the title heading, the
-// format-4 type-label model, Uses:/Intent:/ImpactSummary:, retired-label routing, and
-// Commit:/Verify:), the label-present-vs-absent field distinction, and a full round-trip over the
-// format-4 golden fixture (testdata/goodplan).
+// format-4 one-or-more type-label model and its per-label TargetGroups, Uses:/Intent:/
+// ImpactSummary:, retired-label routing, and Commit:/Verify:), the label-present-vs-absent field
+// distinction, and a full round-trip over the format-4 golden fixture (testdata/goodplan).
 
 package planparser_test
 
@@ -292,9 +292,9 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_TypeLabelCount covers TypeLabelCount/Type/HasType bookkeeping for the two
-// defect shapes card-type-missing exists to catch: two recognized type labels on one card, and
-// none at all.
+// TestParsePlan_Card_TypeLabelCount covers TypeLabelCount/Type/HasType/TargetGroups bookkeeping.
+// Two recognized type labels on one card — even the same label twice — is the supported
+// one-or-more shape, not a defect; the zero-labels shape stays a defect card-type-missing catches.
 func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 	t.Parallel()
 
@@ -318,6 +318,27 @@ func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 		if card.Type != planparser.CardTypeEdit {
 			t.Errorf("card.Type = %q; want %q (the first type label seen)", card.Type, planparser.CardTypeEdit)
 		}
+		if len(card.TargetGroups) != 2 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+		}
+		if card.TargetGroups[0].Type != planparser.CardTypeEdit {
+			t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
+		}
+		if card.TargetGroups[1].Type != planparser.CardTypeDelete {
+			t.Errorf("card.TargetGroups[1].Type = %q; want %q", card.TargetGroups[1].Type, planparser.CardTypeDelete)
+		}
+		wantRefs0 := []string{"a.go"}
+		if !slices.Equal(card.TargetGroups[0].Refs, wantRefs0) {
+			t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, wantRefs0)
+		}
+		wantRefs1 := []string{"b.go"}
+		if !slices.Equal(card.TargetGroups[1].Refs, wantRefs1) {
+			t.Errorf("card.TargetGroups[1].Refs = %v; want %v", card.TargetGroups[1].Refs, wantRefs1)
+		}
+		wantTargets := []string{"a.go", "b.go"}
+		if !slices.Equal(card.Targets, wantTargets) {
+			t.Errorf("card.Targets = %v; want %v (concatenation of both groups' Refs, body order)", card.Targets, wantTargets)
+		}
 	})
 
 	t.Run("no type label", func(t *testing.T) {
@@ -339,6 +360,88 @@ func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 		}
 		if card.Type != planparser.CardTypeUnknown {
 			t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeUnknown)
+		}
+		if len(card.TargetGroups) != 0 {
+			t.Errorf("len(card.TargetGroups) = %d; want 0", len(card.TargetGroups))
+		}
+	})
+
+	t.Run("single-label card produces exactly one group", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writePlanFiles(t, map[string]string{
+			"00-overview.md": minimalOverview,
+			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+		})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		card := plan.Cards[0]
+
+		if len(card.TargetGroups) != 1 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+		}
+		if card.TargetGroups[0].Type != planparser.CardTypeEdit {
+			t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
+		}
+	})
+
+	t.Run("repeated label produces two groups whose union equals one merged group's refs", func(t *testing.T) {
+		t.Parallel()
+
+		body := "# Card 1 — repeated label\n\n**Edit:**\n- `a.go`\n**Edit:**\n- `b.go`\n**Intent:** placeholder.\n"
+		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		card := plan.Cards[0]
+
+		if len(card.TargetGroups) != 2 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+		}
+		var union []string
+		for _, g := range card.TargetGroups {
+			if g.Type != planparser.CardTypeEdit {
+				t.Errorf("group.Type = %q; want %q", g.Type, planparser.CardTypeEdit)
+			}
+			union = append(union, g.Refs...)
+		}
+		wantUnion := []string{"a.go", "b.go"}
+		if !slices.Equal(union, wantUnion) {
+			t.Errorf("union of both groups' Refs = %v; want %v (equal to one merged group's refs)", union, wantUnion)
+		}
+	})
+
+	t.Run("two Rename labels give each group its own Pairs", func(t *testing.T) {
+		t.Parallel()
+
+		body := "# Card 1 — two renames\n\n" +
+			"**Rename:**\n- `old1.Symbol` -> `new1.Symbol`\n" +
+			"**Rename:**\n- `old2.Symbol` -> `new2.Symbol`\n" +
+			"**Intent:** placeholder.\n"
+		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		card := plan.Cards[0]
+
+		if len(card.TargetGroups) != 2 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+		}
+		wantPairs0 := []planparser.MovePair{{Old: "old1.Symbol", New: "new1.Symbol"}}
+		if !slices.Equal(card.TargetGroups[0].Pairs, wantPairs0) {
+			t.Errorf("card.TargetGroups[0].Pairs = %+v; want %+v", card.TargetGroups[0].Pairs, wantPairs0)
+		}
+		wantPairs1 := []planparser.MovePair{{Old: "old2.Symbol", New: "new2.Symbol"}}
+		if !slices.Equal(card.TargetGroups[1].Pairs, wantPairs1) {
+			t.Errorf("card.TargetGroups[1].Pairs = %+v; want %+v", card.TargetGroups[1].Pairs, wantPairs1)
+		}
+		wantCardPairs := append(append([]planparser.MovePair{}, wantPairs0...), wantPairs1...)
+		if !slices.Equal(card.Pairs, wantCardPairs) {
+			t.Errorf("card.Pairs = %+v; want %+v (concatenation of both groups' Pairs, body order)", card.Pairs, wantCardPairs)
 		}
 	})
 }
