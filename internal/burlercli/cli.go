@@ -104,7 +104,7 @@ Modes:
   read-only in BOTH modes (hub default: the hub's own stencils dir;
   standalone default: the derived state directory's own _lyx/stencils);
   --target-dir is standalone-only, defaults to the current directory, and is
-  refused in hub mode, where the worktree itself is structurally the target.
+  refused in hub mode, where the anchor path is structurally the target.
 
 Example:
   lyx burler run --profile profile.yaml
@@ -121,7 +121,7 @@ Example (standalone, outside any lyx hub):
 	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
 		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
-		"standalone-only: the directory burler reviews against; defaults to the current directory; refused in hub mode, where the worktree is already the target")
+		"standalone-only: the directory burler reviews against; defaults to the current directory; refused in hub mode, where the anchor path is already the target")
 
 	parent.AddCommand(c.runCmd())
 
