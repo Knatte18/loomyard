@@ -449,6 +449,35 @@ module reference, that the key does not exist.
 
 Fix: add both keys to the enumeration.
 
+### F9 — `lyx loom --help` claims the shed engine "already drives Hardener", and its phase list omits every review segment — LOW — CONFIRMED
+
+`internal/loomcli/cli.go:149-151`:
+
+```
+Long: `loom drives one task's phase machine (Preflight, Discussion, Plan,
+Batchifier, Webster, Publish, Finalize) over a per-worktree status.json,
+the same shed engine that already drives Hardener. ...
+```
+
+Two separate inaccuracies in one sentence, both in the module's own user-facing help:
+
+1. **"already drives Hardener" is false.** `manifest/designs/hardener.md`'s first line is
+   "**DRAFT — concept not yet settled**", with "**Status: Someday, deprioritized**" and "Do
+   not implement from this doc yet". `docs/overview.md:325` gets the tense right — "the
+   generic outer phase-FSM `loom` and **the eventual** `Hardener` are each built on" — and so
+   does every package doc. The CLI help is the only place in the tree that asserts Hardener
+   exists, and it asserts it to the operator.
+2. **The phase enumeration omits the three review segments and `Plan-Revalidate`.** It reads
+   as an exhaustive list (seven names, no ellipsis) but names 7 of the 17 rows, dropping
+   `Discussion-Validate`, `Plan-Validate`, `Plan-Revalidate`, `Loom-Preflight` and — most
+   consequentially — `Discussion-Review`, `Plan-Review`, and `Webster-Review`. The review gate
+   is the module's defining mechanism (`loom.md`: "each guarded by a uniform **review gate**"),
+   and an operator reading this help would not know a review segment sits between Discussion
+   and Plan at all, let alone that it spawns its own LLM sessions and can block the run.
+
+Fix: drop the false Hardener claim and give the enumeration the review segments, keeping it
+honest about being a summary rather than the full seventeen rows.
+
 ### F8 — the Bouncer's clear-and-re-seed throws away a whole approved review generation without a single log line — LOW — CONFIRMED (by trace)
 
 `internal/shedadapters/bouncer.go:187-198`:
