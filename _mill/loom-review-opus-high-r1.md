@@ -752,3 +752,47 @@ So the pre-review gate tolerates `approved: false` and the post-review gate genu
 it, on the same bytes, through the same `planparser` functions the two rows call (Gate
 Self-Check Parity Invariant). That is F7's fix demonstrated end to end rather than argued.
 
+### Live scenario 4 — the emergency brake survives a broken `loom.yaml` — PASS
+
+`manifest/designs/loom.md`'s "pause and status depend on the status file and nothing else"
+section exists because "an agent loom itself spawned can rewrite `loom.yaml` mid-run". Nothing
+had ever driven it. Driven here, against the RUNNING pipeline, mid `Plan-Burler` round:
+
+```
+# sabotage: loom.yaml's review model-spec made unparseable
+-review: opus[effort=high]
++review: opus[effort=high            <- unclosed bracket
+
+$ lyx loom status
+{"activity":{"now":"Plan-Burler",...},"state":"running","pause_requested":true,"ok":true}   # WORKS
+$ lyx loom pause
+{"ok":true,"status_file":".../_lyx/loom/status.json"}                                        # WORKS
+$ lyx loom drive
+{"error":"loom config key \"review\": modelspec: bracket part in \"opus[effort=high\" must
+  end with ']' and have nothing after it","ok":false}                                        # REFUSES
+```
+
+Both halves hold: the read-out and the brake survive a config fault that legitimately refuses
+the verbs that actually build producers, and the refusal names the offending key and the exact
+grammar violation. `loom.yaml` was restored immediately afterwards and the run continued.
+
+**Sabotage discipline note:** this is also the proof the scenario reached the code. The same
+three commands against a HEALTHY config all succeed, so a green `status`/`pause` here is only
+meaningful because `drive` — which goes through the full `wire()` — failed on the identical
+file at the identical moment.
+
+### Live scenario 5 — graceful pause at a producer boundary — PASS
+
+Requested mid `Plan-Burler` round (a real LLM round in flight):
+
+```
+$ lyx loom pause                       # 17:35:59
+{"ok":true,...}
+$ lyx loom status
+{"current_producer":"Plan-Burler","state":"running","pause_requested":true,...}
+```
+
+Nothing was killed: the flag went up, the state stayed `running`, and the burler agent kept
+working — exactly `loom.md`'s "The leaf agent finishes its unit; nothing is killed." The
+boundary outcome is recorded in the run account below.
+
