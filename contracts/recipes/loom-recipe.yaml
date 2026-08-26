@@ -290,7 +290,7 @@ producers:
         # here. An overlay round runs no git at all and restricts writes to Target.Paths, which this
         # profile deliberately leaves empty -- a fixer that cannot write source cannot fix a diff.
         fix-scope: source
-        # tool-use is required: the round reads _lyx/loom/status.json and runs read-only git to
+        # tool-use is required: the round reads .lyx/loom/status.json and runs read-only git to
         # obtain the diff, which is its entire subject.
         tool-use: true
         # No cluster-fan key: fork reviewers are read-only and may never run any git command,
