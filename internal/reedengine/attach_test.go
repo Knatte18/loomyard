@@ -246,6 +246,28 @@ func TestAttachArgv_ReservedRows(t *testing.T) {
 	}
 }
 
+// TestAttachArgv_ReservedRowsFloor pins the reserved-row floor: a #{status} readback large enough
+// relative to rows (e.g. a multi-line status bar) must not drive the planned box height to zero or
+// negative. reserved is clamped to rows-1 before the box is built, so the chain still plans a
+// one-row-remaining box rather than handing planLayout/render.Rules a non-positive height.
+func TestAttachArgv_ReservedRowsFloor(t *testing.T) {
+	script := goodAttachScript()
+	script.status = "30"
+	const cols, rows = 80, 24
+	e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+
+	got := e.AttachArgv(cols, rows)
+
+	const wantReserved = rows - 1
+	wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows - wantReserved})
+	if err != nil {
+		t.Fatalf("planLayout() unexpected error: %v", err)
+	}
+	if len(got) != 10 || got[9] != wantLayout {
+		t.Fatalf("AttachArgv() with #{status}=%q (rows=%d) = %v, want reserved floored to %d (layout %q)", script.status, rows, got, wantReserved, wantLayout)
+	}
+}
+
 // TestAttachArgv_ChainGate pins readback-not-exit-status-gates-the-chain: only #{window-size} and an
 // unrecognised #{status} suppress the chain; a recognised #{status} other than "off" is an input to
 // the reserved-row count, never a gate.

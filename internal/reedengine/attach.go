@@ -116,6 +116,14 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return errAttachChainSuppressed
 		}
 
+		// Floor reserved at rows-1 so the box height is never non-positive: an oversized #{status}
+		// readback (e.g. a multi-line status bar) must not hand planLayout/render.Rules a zero or
+		// negative height. render.Rules already floors every cell at 1, but that degrade must be a
+		// deliberate one-row-remaining box here, not an accidental non-positive input.
+		if reserved > rows-1 {
+			reserved = rows - 1
+		}
+
 		// The box is the TOLD client box; liveBoxLocked must not be called anywhere on this path,
 		// because at argv-build time the live window is still the pre-attach size and would be exactly
 		// the wrong answer. The focus target is deliberately discarded: the chain carries select-layout
