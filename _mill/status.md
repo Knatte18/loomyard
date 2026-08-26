@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
 plan: _mill/plan
@@ -27,4 +27,19 @@ plan-fix-r3  '2026-08-26T18:35:46Z'
 plan-review-r4  '2026-08-26T18:43:23Z'
 plan-fix-r4  '2026-08-26T18:44:01Z'
 planned  '2026-08-26T18:44:18Z'
+implementing  '2026-08-26T18:44:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: untrack-status-file
+    state: pending
+  - name: text-references
+    state: pending
+  - name: docs
+    state: pending
+  - name: regression-coverage
+    state: pending
 ```
