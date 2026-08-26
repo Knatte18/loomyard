@@ -20,6 +20,46 @@ _(pending)_
 
 _(recorded provisionally as they are spotted; severity ordering finalized last)_
 
+### F1 — `require_pr_to_base: []`, the only way to say "never open a PR", is rejected by the config loader — MEDIUM — CONFIRMED
+
+`internal/yamlengine/reconcile.go:78` (`MissingKeys`) + `internal/yamlengine/reconcile.go:137`
+(`collectLeafPathsHelper`) + `internal/landingshed/template.yaml:1`.
+
+`internal/landingshed/publish.go:98` gives `Publish` an early-`Done` branch taken whenever the
+task's parent branch is **not** in `Config.RequirePRToBase`, and `landing.yaml`'s own comment
+says the key is "a list rather than a bool because tasks branch off other tasks". The natural
+and only general way to express "this hub never requires a pull request" — the correct
+configuration for any repo whose remote is not GitHub — is the empty list.
+
+`MissingKeys` collects **sequence elements** as leaf key-paths (`require_pr_to_base[0]`), so
+shortening the shipped one-element list to `[]` is reported as a missing key and `Load` refuses.
+
+Reproduced live, first attempt at the live pipeline run:
+
+```
+$ .dev-bin/lyx loom run          # in the fixture pair, landing.yaml carrying require_pr_to_base: []
+{"error":"config file .../greet-suffix/_lyx/config/landing.yaml: missing keys:
+ require_pr_to_base[0]; run \"lyx config reconcile\"","ok":false}
+```
+
+The remedy the message names makes it worse: `lyx config reconcile` re-adds the template's
+`"main"` element, so the operator is told to undo the very edit they meant.
+
+The same defect applies to every list-valued config key in the repo, not just this one — no
+list can ever be shortened below the template's own length, and the shipped templates'
+list-valued keys are exactly the ones an operator is most likely to want to empty.
+
+Impact for loom specifically: with the empty list unreachable, a loom run in a
+non-GitHub-remote hub cannot reach `Finalize` at all — `Publish` carries no `on_stuck`
+(deliberately, per the recipe header), so its stuck verdict is `RunBlocked`, terminal.
+
+Workaround used for this round's fixture, recorded honestly: a one-element list naming a
+branch that is never the parent (`["__no_pr_required__"]`).
+
+Suggested fix: make `MissingKeys` require the sequence key itself but not its individual
+elements — a template list is a default, not a minimum length. See the fixer report for the
+exact shape landed.
+
 ## Docs & operability findings
 
 _(pending)_
