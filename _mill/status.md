@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: plan-custom-card-skips-path-check
 branch: plan-custom-card-skips-path-check
 plan: _mill/plan
@@ -22,4 +22,17 @@ plan-fix-r1  '2026-08-26T18:06:24Z'
 plan-review-r2  '2026-08-26T18:16:04Z'
 plan-fix-r2  '2026-08-26T18:16:34Z'
 planned  '2026-08-26T18:16:42Z'
+implementing  '2026-08-26T18:17:07Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: planparser-model-and-parse
+    state: pending
+  - name: group-scoped-validation
+    state: pending
+  - name: format-contract-sweep
+    state: pending
 ```
