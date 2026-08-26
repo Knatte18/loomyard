@@ -73,6 +73,38 @@ func awaitRunLock(lockHeld func() (bool, error), alive func() bool, wait func(),
 	return awaitRunLockDeadline, nil
 }
 
+// handshakeDisposition is what the session bootstrap does with an awaitRunLockResult.
+type handshakeDisposition int
+
+const (
+	// handshakeProceed means the bootstrap continues to its terminal handover.
+	handshakeProceed handshakeDisposition = iota
+	// handshakeRefuse means the bootstrap reports a failure and hands the terminal over to nothing.
+	handshakeRefuse
+)
+
+// dispositionForHandshake maps an awaitRunLockResult onto what the bootstrap should do next.
+//
+// awaitRunLockChildDied proceeds, and that is the whole point of this function existing rather than
+// the verb testing `result != awaitRunLockReady` inline. A child that is already gone before the
+// handshake's first poll is a driver that RAN AND FINISHED -- the common case, since a run that
+// halts fast (a blocked Preflight or Loom-Preflight, an exhausted bounce budget) exits within
+// milliseconds, well inside the first poll interval. Refusing there tells the operator the bootstrap
+// broke when in fact their task halted, and skips the tmux handover that is the bootstrap's entire
+// job, so the one place the halt is legible -- the status strand sitting in the session -- is the
+// one place they are not put.
+//
+// Only awaitRunLockDeadline is a genuine refusal: the child is still alive after the whole attempt
+// budget and has never taken the lock, which is a wedged spawn and nothing else.
+func dispositionForHandshake(result awaitRunLockResult) handshakeDisposition {
+	switch result {
+	case awaitRunLockReady, awaitRunLockChildDied:
+		return handshakeProceed
+	default:
+		return handshakeRefuse
+	}
+}
+
 // findStatusStrand returns the first strand in strands whose Name exactly matches name.
 func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengine.StrandStatus, bool) {
 	for _, s := range strands {

@@ -194,6 +194,32 @@ func containsSubstring(s, substr string) bool {
 	return false
 }
 
+// TestDispositionForHandshake pins that only a deadline refuses the bootstrap.
+// The ChildDied row is the regression guard: the verb used to test `result != awaitRunLockReady`,
+// which collapsed a driver that ran and finished into the same refusal as a wedged spawn, reported
+// "driver did not take the run lock" for a run that had taken it and released it, and skipped the
+// tmux handover entirely -- so the status strand showing the actual halt was the one place the
+// operator was not put.
+func TestDispositionForHandshake(t *testing.T) {
+	tests := []struct {
+		name   string
+		result awaitRunLockResult
+		want   handshakeDisposition
+	}{
+		{"Ready", awaitRunLockReady, handshakeProceed},
+		{"ChildDied", awaitRunLockChildDied, handshakeProceed},
+		{"Deadline", awaitRunLockDeadline, handshakeRefuse},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dispositionForHandshake(tt.result); got != tt.want {
+				t.Errorf("dispositionForHandshake(%v) = %v; want %v", tt.result, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAttachArgv(t *testing.T) {
 	got := attachArgv("my-socket", "my-session")
 	want := []string{"-L", "my-socket", "attach-session", "-t", "=my-session"}

@@ -254,11 +254,18 @@ Example:
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
-				if result != awaitRunLockReady {
+				driverLogPath := loomengine.LoomDriverLog(c.location)
+				if dispositionForHandshake(result) == handshakeRefuse {
 					_ = bootstrapLock.Release()
-					driverLogPath := loomengine.LoomDriverLog(c.location)
 					clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath))
 					return nil
+				}
+				if result == awaitRunLockChildDied {
+					// Not a failure: the driver ran to completion and exited before the handshake's
+					// first poll, which is what every fast-halting run does. The tmux handover below
+					// still happens, because the status strand in that session is where the halt is
+					// legible. See dispositionForHandshake for the full argument.
+					logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
 				}
 			}
 
