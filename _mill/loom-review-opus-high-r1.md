@@ -825,6 +825,47 @@ So the pre-review gate tolerates `approved: false` and the post-review gate genu
 it, on the same bytes, through the same `planparser` functions the two rows call (Gate
 Self-Check Parity Invariant). That is F7's fix demonstrated end to end rather than argued.
 
+**And then the seam itself fired, for real.** The Plan segment settled APPROVED at 17:40:53
+(the judge's verdict file carries `verdict: APPROVED` with three findings — one MEDIUM, one
+LOW, one NIT — all fixed by the round's own fixer phase, matching the Review Round Invariant's
+fix-every-severity rule). The machine went `Plan-Bouncer → Plan-Revalidate → Batchifier →
+Webster`, history 11 → 14, with no bounce.
+
+The load-bearing claim in `loom.md` — "**Row 9's approval flag is written on the approved
+settle, before the commit** … so the flag lands inside the same commit that captures the
+segment's approved plan — never as working-tree dirt applied after the fact" — verified from
+git, not from the file's current contents:
+
+```
+$ head -3 _lyx/plan/00-overview.md
+---
+format: 4
+approved: true
+$ git -C <weft> log --oneline -2
+3bd8cb1 loom: plan artifacts for greet-suffix
+6f6222f loom: seed session bootstrap for greet-suffix
+$ git -C <weft> show HEAD -- _lyx/plan/00-overview.md | grep -E '^[+-].*approved'
+-approved: false
++approved: true
+$ git -C <weft> status --porcelain
+ M _lyx/loom/status.json
+?? _lyx/webster/
+```
+
+The flip is a hunk *inside* `3bd8cb1`, and the working tree carries no residual plan change
+afterwards. Approve-then-Commit ordering confirmed against the durable record.
+
+That `Plan-Revalidate` then returned `done` is the independent confirmation that the flag the
+seam wrote is the flag the enforcing gate reads: with `require_approved: true` it runs
+`planparser.Validate`, whose `checkApproved` is exactly the check that failed two minutes
+earlier on the same file.
+
+**Overlay fix-scope confinement held too.** `Plan-Burler` runs `fix-scope: overlay` with
+`_lyx/plan` as its only target path, and after its round the weft showed only
+`_lyx/plan/00-overview.md` and `_lyx/plan/01-greet-trim.md` modified — nothing outside the
+target paths, and no agent-side commit (the Fabric Git Invariant reserves that to the loop
+owner, and the two plan commits above are both the loop owner's).
+
 ### Live scenario 4 — the emergency brake survives a broken `loom.yaml` — PASS
 
 `manifest/designs/loom.md`'s "pause and status depend on the status file and nothing else"
