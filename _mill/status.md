@@ -30,9 +30,14 @@ implementing  '2026-08-26T18:17:07Z'
 ```yaml
 batches:
   - name: planparser-model-and-parse
-    state: pending
+    state: running
+    implementer_session: 372ad507-c0f4-4ecc-a6c4-50bb309ca662
+    start_sha: 697b2663b03783a7a72e5310ef5c05de2783e256
+    verify_baseline_failures: []
   - name: group-scoped-validation
     state: pending
+    verify_baseline_failures: []
   - name: format-contract-sweep
     state: pending
+    verify_baseline_failures: []
 ```
