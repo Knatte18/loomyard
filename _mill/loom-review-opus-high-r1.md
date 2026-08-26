@@ -793,6 +793,26 @@ $ lyx loom status
 ```
 
 Nothing was killed: the flag went up, the state stayed `running`, and the burler agent kept
-working — exactly `loom.md`'s "The leaf agent finishes its unit; nothing is killed." The
-boundary outcome is recorded in the run account below.
+working — exactly `loom.md`'s "The leaf agent finishes its unit; nothing is killed."
+
+The boundary landed at 17:37:31, and every clause of the documented contract held:
+
+```
+17:37:17  Plan-Burler running  history=10  pause_requested=true   round still in flight
+17:37:26  burler strand gone from `lyx reed status` — the round finished its own unit,
+          wrote round-1-review.md AND round-1-fixer-report.md, and its pane was reaped
+17:37:31  Plan-Bouncer PAUSED   history=11  pause_requested=FALSE
+          $ ps -eo args | grep 'loom drive'   -> nothing; the driver exited cleanly
+```
+
+Four separate documented properties, all confirmed in one observation:
+1. The pause is honoured at a **producer boundary**, never mid-operation — the in-flight
+   `Burler` round completed and its artifacts landed.
+2. The routing persist still happened first (`Plan-Burler → stuck`, history 10 → 11,
+   `current_producer` advanced to `Plan-Bouncer`), so the resume point is the NEXT row, not a
+   re-run of the finished one.
+3. `pause_requested` was **cleared in the same persist** that recorded `paused` — `run.go:113`'s
+   "the durable record of 'this run is paused' is state, not the flag" — so the resume below
+   does not re-pause on the flag it is resuming from.
+4. The driver process exited rather than idling.
 
