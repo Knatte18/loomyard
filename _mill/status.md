@@ -37,7 +37,9 @@ batches:
     commit_sha: b97bd40d2973909cabc59c250f8153edd1fbf853
     verify_baseline_failures: []
   - name: group-scoped-validation
-    state: pending
+    state: running
+    implementer_session: 0b663071-2d65-4123-973a-66e346aae48c
+    start_sha: 0c5c43d3f0bd18ca5da7fe86953cd9df1f7b41e2
     verify_baseline_failures: []
   - name: format-contract-sweep
     state: pending
