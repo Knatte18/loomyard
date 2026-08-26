@@ -38,7 +38,8 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 - A mode parameter on `internal/loomshed`'s `NewPlanValidate` so the two rows sharing the one engine differ.
 - `contracts/recipes/loom-recipe.yaml`: `approve_seam: plan` on `Plan-Bouncer`, `require_approved: true` on `Plan-Revalidate`.
 - A `--require-approved` flag on `lyx loom validate-plan`, and the parity test extended to cover both rows.
-- Docs in the same commit: `manifest/designs/loom.md`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-template-plan.md`, `internal/loomengine/plan.go`'s package doc, and `CONSTRAINTS.md`'s Gate Self-Check Parity Invariant entry.
+- `internal/loomrecipe/fixture_test.go`'s `buildSequenceFixture` re-seeded to the unapproved plan `Plan-Write` actually writes — see the keystone-test decision below, this is the regression test for F7 itself.
+- Docs in the same commit: `manifest/designs/loom.md`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-template-plan.md`, `internal/loomengine/plan.go`'s package doc, and two `CONSTRAINTS.md` entries — the **Gate Self-Check Parity Invariant** (a gate's verb reaches every mode its row set uses) and the **Planparser Sole-Parser Invariant** (widened to sole parser *and* sole writer of the plan format).
 
 **Out:**
 
@@ -74,10 +75,11 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 ### validate-splits-into-two-named-functions
 
 - **Decision:** `internal/planparser` exposes two entry points.
-  `ValidateFormat(plan, worktreeRoot) []ValidationError` runs the fifteen format checks, `checkIndexFileConsistency` through `checkCommitSubjectMismatch`, plus `format-unrecognized`.
-  `Validate(plan, worktreeRoot) []ValidationError` keeps its current signature and current meaning: `ValidateFormat`'s findings plus the `plan-unapproved` check.
+  `ValidateFormat(plan, worktreeRoot) []ValidationError` runs the fourteen checks `checkIndexFileConsistency` through `checkCommitSubjectMismatch` plus `format-unrecognized` — fifteen IDs in all.
+  `Validate(plan, worktreeRoot) []ValidationError` keeps its current signature and current meaning: `ValidateFormat`'s fifteen findings plus the `plan-unapproved` check, sixteen IDs in all.
   The `plan-unapproved` check is extracted from `checkFormatAndApproval` so that `format-unrecognized` stays in the format set and `plan-unapproved` moves to the wrapper.
-- **Rationale:** two named functions read better than a boolean and, decisively, they mean the four existing call sites outside `internal/loomshed` — `internal/websterengine/runlevel.go`, `internal/webstercli/validate.go`, `internal/loomcli/validate.go` — need no signature churn and keep their present behaviour by default.
+- **Rationale:** two named functions read better than a boolean and, decisively, no `planparser.Validate` call site needs a signature change.
+  There are three production call sites outside `internal/loomshed`: `internal/websterengine/runlevel.go:332` and `internal/webstercli/validate.go:74` keep both their call and their behaviour unchanged, and `internal/loomcli/validate.go:97` keeps its call shape but switches which of the two functions it names, per the verb-mode decision below.
   `contracts/specs/loom-plan-spec.md` already frames `plan-unapproved` as "`approved: true`; else refuse to **run**", a consumer guard, which is exactly the split this makes explicit.
 - **Rejected:** a `ValidateOptions` struct parameter on `Validate`.
   It changes every call site for one boolean and makes the default mode a thing every caller must state.
@@ -86,7 +88,10 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 
 ### planvalidate-row-mode
 
-- **Decision:** `loomshed.NewPlanValidate` takes a mode telling it which of the two functions to call, and `shedrecipe`'s `planValidateEntry` reads a new optional `require_approved` bool config key (absent ⇒ `false`) to supply it.
+- **Decision:** `loomshed.NewPlanValidate` gains a fourth parameter, `requireApproved bool`, giving the signature `NewPlanValidate(name, anchorPath, worktreeRoot string, requireApproved bool) shedengine.ShedProducer`.
+  A plain `bool`, not a named mode type: the producer has exactly two modes and no third is foreseeable, and the field is stored as `requireApproved bool` on the unexported `planValidate` struct.
+  `shedrecipe`'s `planValidateEntry` reads a new optional `require_approved` bool config key (absent ⇒ `false`) to supply it.
+  The signature change touches four in-repo call sites, all in tests: `internal/loomrecipe/shape_test.go:49` (`NewPlanValidate("", "", "")` inside a `reflect.TypeOf`), `internal/loomshed/cancellation_test.go:86`, `internal/loomshed/gatefindings_test.go:93`, and the four constructions in `internal/loomshed/planvalidate_test.go`.
   `contracts/recipes/loom-recipe.yaml` sets `require_approved: true` on the `Plan-Revalidate` row and leaves the key absent on the `Plan-Validate` row.
 - **Rationale:** the two rows deliberately share one engine, and the recipe is where their difference already lives (their `on_done` targets already differ there).
   `Plan-Validate` runs before review and must not demand a flag only the review can produce;
@@ -130,6 +135,24 @@ It is the single blocker keeping loom from being crucible-merge-ready.
   A failed write also means the commit would capture a plan still marked unapproved, which `Plan-Revalidate` would then correctly reject, turning an I/O fault into a wasted review generation.
 - **Rejected:** degrade to `Stuck`.
 
+### a-failed-settle-seam-costs-one-review-generation-and-that-is-accepted
+
+- **Decision:** when `Approve` or `Commit` fails, `settle` returns the error, `shedengine.Run` persists the run `failed`, and the operator resumes.
+  `internal/shedengine/run.go:95` deliberately does not short-circuit `StateFailed` — it re-calls `current_producer` — so the resume re-enters `Plan-Bouncer.Call`, which finds its own APPROVED verdict still on disk, archives the run directory, re-seeds, and **spends a complete new LLM review generation** before settling again.
+  That cost is accepted for this task rather than engineered away.
+  No retry loop is added inside `settle`, and no short-circuit is added to the clear-and-re-seed trigger.
+- **Rationale:** the state converges without intervention, and every intermediate state is benign.
+  `Approve` runs before `Commit`, so the only reachable inconsistency is a plan carrying `approved: true` in the working tree but not in git.
+  The re-run's judge never reads the approval flag — the Plan-Review rubric forbids re-deriving anything `Plan-Validate` checks, and the sixteen check IDs are named there explicitly — so the second generation judges the same plan on the same grounds and reaches the same verdict.
+  On its APPROVED settle, `SetApproved` is an idempotent no-op over the already-flipped file and `CommitPlan` picks up the uncommitted change, so the run heals itself.
+  The trigger is an I/O fault on a local file write or a local git commit, which is rare, and the alternative costs more than it saves.
+- **Rejected:** a durable `settled` marker file written by `settle` after both seams succeed, with the clear-and-re-seed trigger narrowed to "APPROVED verdict **and** marker present", so an APPROVED-without-marker run directory means "my own settle failed part-way" and is retried rather than re-judged.
+  This is the correct long-term fix and it would eliminate the wasted generation for all three segments, not just this one — `Discussion-Bouncer` and `Webster-Bouncer` have the identical exposure today.
+  It is rejected here because it changes the generic `Bouncer`'s durable on-disk contract for two segments this task otherwise does not touch, which is exactly the scope growth F7's own fixer report warned against.
+  **It should be filed as its own follow-up task** once this one lands.
+- **Rejected:** retrying `Approve`/`Commit` in a bounded loop inside `settle`.
+  It hides a genuine I/O fault from the operator and does nothing for the crash-between-the-two-seams case, which is the one that actually costs a generation.
+
 ### approve-seam-accepts-only-plan
 
 - **Decision:** `approve_seam`'s only accepted value is `"plan"`, resolving to `Env.ApprovePlan` through the existing `requireSeam` guard.
@@ -142,8 +165,12 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 ### stencil-and-writer-doc-keep-approved-false
 
 - **Decision:** `contracts/stencils/loom/loom-template-plan.md` keeps emitting `approved: false` in both its frontmatter block and its minimal skeleton, and keeps the "Always write `approved: false` — you never self-approve" rule verbatim.
-  Only the trailing clause "a future review gate flips it to `true`" is corrected to name `Plan-Bouncer`'s approved settle as the row that does it.
+  Only the trailing clause "a future review gate flips it to `true`" (`loom-template-plan.md:80`) is corrected to name `Plan-Bouncer`'s approved settle as the row that does it.
   `internal/loomengine/plan.go`'s package doc gets the matching correction, dropping "not built here".
+  The stencil's **Step 5 — Self-check before ending your turn** (`:152-164`) stays **verbatim**, including "The verb takes no arguments" and "re-run it until it exits 0 before ending your turn".
+- **Rationale (Step 5 specifically):** Step 5 is the writer-facing half of the same deadlock and today it is an impossible instruction — the writer is told to write `approved: false` and then to re-run `lyx loom validate-plan` until it exits 0, which it never can.
+  The verb's new default mode is precisely what makes that instruction satisfiable, so the wording needs no change: bare `lyx loom validate-plan` still takes no arguments, and it now exits 0 on the unapproved plan the writer was ordered to produce.
+  Adding `--require-approved` to the stencil would be actively wrong — it would re-impose the deadlock on the one agent that must never satisfy it.
 - **Rationale:** the writer must not self-approve;
   that separation is what makes the review gate mean anything.
   The stencil was never wrong about the rule, only about the tense.
@@ -166,6 +193,7 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 - `internal/planparser/validate.go:79` `checkFormatAndApproval`, whose second half emits `plan-unapproved: plan frontmatter approved: is not true` at `:88-93`.
   It is the second of sixteen check IDs;
   the package doc at the top of the file lists all sixteen and names `checkFormatAndApproval` as the source of the first two, so that doc must be updated by the split.
+  The dispatch list in `Validate` itself is `validate.go:60-73`: fourteen `check*` calls after `checkFormatAndApproval`, which is why `ValidateFormat` is fourteen checks plus `format-unrecognized`, fifteen IDs, and `Validate` is sixteen.
 - `contracts/recipes/loom-recipe.yaml`, rows `Plan-Write`, `Plan-Validate`, `Plan-Bouncer`, `Plan-Burler`, `Plan-Revalidate`.
 
 **`internal/planparser`.**
@@ -197,7 +225,7 @@ Note the surrounding contract that the approved branch performs its side effects
   No new import is needed — `ApprovePlan` is a `func() error` and is built by the caller.
 
 **`internal/loomshed/planvalidate.go`.**
-`NewPlanValidate(name, anchorPath, worktreeRoot)` gains the mode parameter, and `Call` (`:60-81`) picks between the two `planparser` functions.
+`NewPlanValidate(name, anchorPath, worktreeRoot)` gains the trailing `requireApproved bool` parameter, and `Call` (`:60-81`) picks between the two `planparser` functions.
 The existing `logger.Warn("loomshed: plan failed validation", ...)` line at `:76` already distinguishes the two rows by producer name and needs no change.
 `formatPlanFindings` is shared and unchanged.
 
@@ -221,14 +249,20 @@ The existing `logger.Warn("loomshed: plan failed validation", ...)` line at `:76
 - `internal/planparser/validate_test.go:110-140` — `TestValidate_FormatAndApproval`, the direct test of the check being split.
 - `internal/loomcli/validate_test.go:166-175` — `planFixture`'s own `approved` parameter.
 - `internal/loomcli/parity_test.go:176` — `Stuck_Unapproved`.
+- `internal/loomrecipe/fixture_test.go:545` — `seedPlanValidateFixture(t, dir, true)`, the fixture whose approved-plan seed is why the nineteen-row `sequence_test.go` never caught F7;
+  see the Testing section's keystone paragraph.
+- `internal/loomrecipe/shape_test.go:49`, `internal/loomshed/cancellation_test.go:86` — mechanical `NewPlanValidate` call-site updates for the new parameter.
 
 **Pipeline behaviour after the fix, end to end.**
 `Plan-Write` (writes `approved: false`, commits) → `Plan-Validate` (`ValidateFormat`, passes) → `Plan-Bouncer` seeds, `Plan-Burler` rounds, `Plan-Bouncer` judges → APPROVED settle: `Approve` writes `approved: true`, then `Commit` commits the whole plan directory → `Plan-Revalidate` (`Validate`, approval present, passes) → `Batchifier` → `Webster`.
 The regression path stays coherent: if `Plan-Revalidate` finds a fixer-introduced format fault it bounces to `Plan-Write`, which rewrites the overview with `approved: false` again, and the segment re-enters — `Bouncer.Call`'s clear-and-re-seed archives the settled generation and judges afresh, so the stale APPROVED verdict cannot replay over a re-approved plan.
 
-**Idempotence.**
+**Idempotence, and what it is actually for.**
 Both seams are idempotent by construction: `SetApproved` over an already-approved plan is a no-op success, and `CommitAnchoredPaths` reports `committed == false` over an already-clean tracked path, which the `CommitPlan` closure already discards.
-That matters because `Bouncer.settle` can be reached more than once for one generation on a resume.
+This is **not** because `settle`'s approved branch runs twice within one generation — it cannot.
+`Bouncer.Call` (`bouncer.go:182-193`) archives the run directory and resets `n` to 0 the moment it finds an APPROVED verdict on disk at entry, so the approved branch of `settle` is reached at most once per generation.
+Idempotence matters for the two paths that genuinely re-run the seams over an already-approved working tree:
+a later generation approving a plan `Plan-Write` did not in fact rewrite, and the failed-settle resume described in the `a-failed-settle-seam-costs-one-review-generation-and-that-is-accepted` decision above, where the second generation's settle meets a file `SetApproved` already flipped and a commit `CommitPlan` may or may not have made.
 
 ## Constraints
 
@@ -238,8 +272,8 @@ From `CONSTRAINTS.md`:
   `internal/planparser` is the sole parser of `_lyx/plan/` and the sole declarer of the plan directory's path;
   it never resolves cwd and never imports `internal/lyxcwd`, taking the anchor path from its caller.
   This is what forces the approval writer into `planparser` and forbids `shedadapters`, `loomshed`, or `loomcli` from touching `00-overview.md` directly.
-  The invariant's wording covers parsing;
-  writing the format belongs to the same package by the same reasoning, and the invariant entry should be read as covering both after this task.
+  The shipped entry's wording is parse-only, and this task introduces the format's first writer, so **the entry itself is edited in this commit** — `internal/planparser` becomes the sole parser *and* the sole writer of the on-disk plan format, with the same "no other package parses or writes `00-overview.md`/`NN-<card-slug>.md`" bullet and the same review-obligation enforcement note.
+  Leaving the sole-writer property as an unwritten reading of a parse-only invariant is how the next task grows a second writer somewhere else.
 - **Gate Self-Check Parity Invariant.**
   A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function, and neither re-implements the other's check;
   the verb's envelope distinguishes a findings failure from an I/O fault structurally, by the presence of the `findings` key.
@@ -315,9 +349,24 @@ The `clean unapproved` × `flag absent` cell is the one that proves the deadlock
 Keep the envelope's structural `findings`-key discrimination, which is what the parity comparison keys off.
 Add a help-tree/flag-registration assertion for `--require-approved` if the existing help-tree test does not pick it up automatically.
 
-**Recipe-level wiring.**
+**Recipe-level wiring — the keystone, and the mechanism is already in the repo.**
 Assert `contracts/recipes/loom-recipe.yaml` still builds against a fully-populated `Env` with the two new keys present, and that a recipe naming `approve_seam` on a row whose `Env` seam is nil fails to build rather than building silently.
-Add a routing assertion that `Plan-Bouncer`'s `on_done` reaches `Batchifier` through `Plan-Revalidate` with no bounce, given an approved plan on disk — this is the closest thing to an end-to-end proof available without spending an LLM session, and it is the assertion that would have caught F7.
+
+The keystone assertion needs no new harness: `internal/loomrecipe/fixture_test.go`'s `buildSequenceFixture` is exactly the vehicle.
+It is an untagged Tier-1, fully offline fixture that builds the **real** producer list from the embedded recipe via `New`, over a temp anchor, with `fakeLoomShuttle` and `fakeLoomBurler` standing in for every LLM call, a real stencils directory supplied through `contracts/stencils` + `stencilstore` (which is what satisfies `NewBouncer`'s eager rubric probe), and `fakeAlwaysDoneProducer` substituted for row 1.
+`sequence_test.go`'s `wantSequenceOrder` already drives that fixture through all nineteen history rows, scripting each segment's APPROVED verdict through the fake shuttle, and `revalidate_test.go` already re-uses it to prove the `Plan-Revalidate` → `Plan-Write` bounce.
+So the seed-verdict-report machinery the assertion needs is shipped and working.
+
+**The one thing that fixture gets wrong is the whole reason F7 escaped CI.**
+`fixture_test.go:545` calls `seedPlanValidateFixture(t, dir, true)` — it hands `Plan-Validate` an **already-approved** plan, a plan the real `Plan-Write` is forbidden by its own stencil from ever producing.
+The nineteen-row sequence test therefore passed continuously while the live pipeline could not clear row 8.
+The fix and the regression test are the same edit: flip that argument to `false`, so the fixture seeds what `Plan-Write` actually writes, and fill `env.ApprovePlan` with a closure that runs the real `planparser.SetApproved` over the fixture's own plan directory.
+`wantSequenceOrder` must then still hold unchanged, all nineteen rows, `Plan-Validate` Done through `Plan-Revalidate` Done to `Batchifier`.
+Under today's code that flip fails at `Plan-Validate`;
+under the fix it passes, and it is the assertion that would have caught F7 on the day the row landed.
+Add one further assertion in the same test that the fixture's `00-overview.md` carries `approved: true` after the run, so a fixture that silently stopped exercising the seam cannot pass.
+
+Also add the negative case: with `env.ApprovePlan` left nil and `approve_seam` removed from the `Plan-Bouncer` row, the same fixture must halt at `Plan-Revalidate` rather than reaching `Batchifier` — this pins that `Plan-Revalidate` is genuinely enforcing the approval it is now the only row to check.
 
 **Not covered here.**
 A live driven loom run through `Finalize`.
@@ -336,5 +385,11 @@ That is the follow-on task this change exists to unblock.
 - **Q:** Which values does `approve_seam` accept? **A:** [auto-pick] `"plan"` only;
   absent leaves the seam nil, anything else is a construction error. **Why:** there is no discussion-side or webster-side approval flag, so a second value would be hypothetical.
 - **Q:** Do Webster, `webstercli`, and `Batchifier` change? **A:** [auto-pick] no — they keep calling the full `Validate` and keep refusing an unapproved plan. **Why:** they run after approval, and the refusal is the standalone-invocation guard the spec's "else refuse to run" wording was written for.
+- **Q:** (review round 2 gap) What happens when `Approve` or `Commit` fails and the operator resumes — `shedengine.Run` re-calls `Plan-Bouncer`, which archives its own APPROVED verdict and spends a whole new LLM review generation? **A:** [auto-pick] accepted as-is and recorded, with no retry loop and no short-circuit;
+  the state converges because both seams are idempotent and the judge never reads the approval flag. **Why:** the durable `settled`-marker short-circuit that would eliminate the cost changes the generic `Bouncer`'s on-disk contract for two segments this task does not otherwise touch, which is the scope growth F7's own fixer report warned against — filed as a follow-up instead.
+- **Q:** (review round 2 gap) How does the keystone routing assertion reach an APPROVED settle without an LLM run — the shuttle, the rubric-stencil probe, and the verdict/ledger/report set all have to come from somewhere? **A:** [auto-pick] reuse `internal/loomrecipe/fixture_test.go`'s existing `buildSequenceFixture`, which already supplies all three offline, and flip its `seedPlanValidateFixture(t, dir, true)` seed to `false`. **Why:** tracing the mechanism found the actual reason F7 survived CI — that fixture seeds an already-approved plan `Plan-Write` can never write, so the nineteen-row sequence test passed while the live pipeline deadlocked.
+  The flip is both the fix to the fixture and the regression test for the bug.
+- **Q:** (review round 2 gap) Does the plan stencil's Step 5 self-check block change? **A:** [auto-pick] it stays verbatim. **Why:** Step 5 is the writer-facing half of the same deadlock, and the verb's new default mode is exactly what makes "re-run it until it exits 0" satisfiable;
+  adding `--require-approved` there would re-impose the deadlock on the one agent that must never satisfy it.
 - **Q:** How deep does verification go in this task? **A:** [auto-pick] unit tests per package plus a recipe-level routing assertion that an approved plan reaches `Batchifier` with no bounce;
   no live LLM run. **Why:** a live end-to-end run is the thing this change unblocks and belongs to the follow-on task, while the routing assertion is what would have caught F7 in the first place.
