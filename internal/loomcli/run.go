@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // bootstrapHandshakePollInterval and bootstrapHandshakeAttempts bound the handshake's wait for the
@@ -292,7 +293,20 @@ Example:
 				return nil
 			}
 
-			attach := exec.Command(c.reed.TmuxPath(), attachArgv(c.reed.Socket(), c.reed.SessionName())...)
+			// Read the operator's own terminal size against stdout, exactly as
+			// internal/reedcli's own attach verb does. On error (piped output, no
+			// controlling terminal) this does not report on the envelope and does not
+			// abort: AttachArgv answers a non-positive cols/rows with the bare argv,
+			// exactly today's behaviour, so nothing regresses on a non-TTY. This adds
+			// no new fallible step that reports on the envelope, so step 7 keeps its
+			// interactive-handoff exception unchanged.
+			cols, rows, err := term.GetSize(int(os.Stdout.Fd()))
+			if err != nil {
+				logger.Warn("loom: no terminal size available, attaching without a chained layout", "err", err)
+				cols, rows = 0, 0
+			}
+
+			attach := exec.Command(c.reed.TmuxPath(), c.reed.AttachArgv(cols, rows)...)
 			attach.Stdin = os.Stdin
 			attach.Stdout = os.Stdout
 			attach.Stderr = os.Stderr

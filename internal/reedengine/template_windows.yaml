@@ -1,7 +1,7 @@
 tmux: ${env:LYX_REED_TMUX:-tmux}  # path to the tmux executable (on Windows this may resolve to psmux, a tmux-compatible port); set LYX_REED_TMUX to pin an explicit path
 shell: ${env:LYX_REED_SHELL:-pwsh}  # path to the shell command lyx launches inside each pane (pwsh by default on Windows); set LYX_REED_SHELL to pin an explicit path (e.g. if the PATH pwsh is a broken WindowsApps alias stub)
-width: 220  # tmux window width
-height: 50  # tmux window height
+width: 220  # tmux window width while no client has ever attached (new-session -x), and the fallback render box when the live window size cannot be read; once a client attaches tmux resizes the window to that client and reed renders against the live size instead
+height: 50  # tmux window height while no client has ever attached (new-session -y), and the fallback render box when the live window size cannot be read; once a client attaches tmux resizes the window to that client and reed renders against the live size instead
 collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present
 min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pane
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""

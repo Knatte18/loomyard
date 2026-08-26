@@ -1,6 +1,6 @@
 // bootstrap.go implements the session bootstrap's pure decisions: whether a driver must be spawned,
 // the handshake that waits for the spawned driver to take the run lock, the status strand's lookup
-// by its fixed name, and the two command-string builders the bootstrap composes over. Every piece
+// by its fixed name, and the one command-string builder the bootstrap composes over. Every piece
 // here is a pure function or takes injected seams, so the verb body in run.go is assembly over
 // judgment that is already under test -- no real lock, no real process, and no real clock is needed
 // to exercise any of it.
@@ -159,10 +159,4 @@ func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandA
 // invoked with the two-word status verb and the watch flag.
 func statusStrandCmd(sh shell.Shell, exe string) string {
 	return sh.Invoke(exe) + " " + sh.Quote("loom") + " " + sh.Quote("status") + " " + sh.Quote("--watch")
-}
-
-// attachArgv returns the tmux argv for an in-place attach into socket's session, in the same shape
-// internal/reedcli's own attachArgv builds.
-func attachArgv(socket, session string) []string {
-	return []string{"-L", socket, "attach-session", "-t", "=" + session}
 }

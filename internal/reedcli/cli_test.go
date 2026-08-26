@@ -1,5 +1,5 @@
 // cli_test.go covers the reedcli cobra seam through RunCLI: bare-group listing, the
-// unknown-subcommand JSON envelope, and the built attach invocation.
+// unknown-subcommand JSON envelope, and the not-a-git-repo error surface.
 // No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build smoke.
 // Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test
@@ -77,21 +77,5 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	}
 	if errMsg, _ := env["error"].(string); errMsg != "not a git repository" {
 		t.Errorf("RunCLI(status) error = %q; want exactly \"not a git repository\"", errMsg)
-	}
-}
-
-// TestAttachArgv verifies the attach invocation targets the worktree session by exact name using
-// "-L <socket> attach-session -t =<session>".
-func TestAttachArgv(t *testing.T) {
-	got := attachArgv("hub-abc123", "my-worktree")
-	want := []string{"-L", "hub-abc123", "attach-session", "-t", "=my-worktree"}
-
-	if len(got) != len(want) {
-		t.Fatalf("attachArgv() = %v; want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("attachArgv()[%d] = %q; want %q", i, got[i], want[i])
-		}
 	}
 }

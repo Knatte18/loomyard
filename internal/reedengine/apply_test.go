@@ -1,11 +1,13 @@
 // apply_test.go verifies planLayout produces the same layout string and focus target render.Rules
 // would for an equivalent canonical strand table (reusing render's golden expectations),
-// and that applyLayoutLocked skips tmux entirely when fewer than two panes are live — both
-// hermetic, no live tmux required.
+// that planLayout is handed its box by the caller and issues no tmux query of its own (the
+// told-box seam batch 2's AttachArgv relies on), and that applyLayoutLocked skips tmux entirely
+// when fewer than two panes are live — all hermetic, no live tmux required.
 
 package reedengine
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -35,7 +37,7 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
 
-	gotLayout, gotFocus, err := e.planLayout(st, live)
+	gotLayout, gotFocus, err := e.planLayout(st, live, render.Box{X: 0, Y: 0, W: 100, H: 21})
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
@@ -58,7 +60,7 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	}}
 	live := []LivePane{{ID: "%7"}, {ID: "%8"}}
 
-	gotLayout, gotFocus, err := e.planLayout(st, live)
+	gotLayout, gotFocus, err := e.planLayout(st, live, render.Box{X: 0, Y: 0, W: 80, H: 12})
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
@@ -95,7 +97,7 @@ func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	// Stale header: %9 is nowhere in live, so the plan must equal the
 	// no-header plan bit for bit.
 	st := &ReedState{Strands: strands, HeaderPaneID: "%9"}
-	gotLayout, gotFocus, err := e.planLayout(st, live)
+	gotLayout, gotFocus, err := e.planLayout(st, live, render.Box{X: 0, Y: 0, W: 100, H: 21})
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
@@ -113,7 +115,7 @@ func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	// Present-but-dead header corpse: the cell must still be emitted, same
 	// as any dead-but-present pane the layout has to enumerate.
 	liveWithCorpse := append([]LivePane{{ID: "%9", Dead: true, Top: 0}}, []LivePane{{ID: "%1", Top: 2}, {ID: "%2", Top: 12}}...)
-	gotLayout, _, err = e.planLayout(st, liveWithCorpse)
+	gotLayout, _, err = e.planLayout(st, liveWithCorpse, render.Box{X: 0, Y: 0, W: 100, H: 21})
 	if err != nil {
 		t.Fatalf("planLayout() with corpse header unexpected error: %v", err)
 	}
@@ -126,6 +128,45 @@ func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	}
 	if gotLayout != wantLayout {
 		t.Errorf("planLayout() with corpse header = %q, want the with-header plan %q (a present corpse still occupies a layout slot)", gotLayout, wantLayout)
+	}
+}
+
+// TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery pins the told-box seam batch 2's AttachArgv relies
+// on: planLayout must lay out against exactly the box its caller hands it, never the configured
+// width/height, and must never touch tmux itself to get there.
+func TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Width, e.cfg.Height = 999, 111
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+
+	hookCalled := false
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		hookCalled = true
+		return "", errors.New("planLayout must never touch tmux")
+	}
+
+	toldBox := render.Box{X: 0, Y: 0, W: 80, H: 12}
+	st := &ReedState{Strands: []Strand{
+		{GUID: "only", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}}
+	live := []LivePane{{ID: "%7"}}
+
+	gotLayout, _, err := e.planLayout(st, live, toldBox)
+	if err != nil {
+		t.Fatalf("planLayout() unexpected error: %v", err)
+	}
+	if hookCalled {
+		t.Error("planLayout() invoked the tmux hook; want zero tmux round trips")
+	}
+
+	wantLayout, _, err := render.Rules([]render.Strand{
+		{GUID: "only", PaneID: "%7", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}, toldBox, render.Params{CollapsedStripRows: 2, MinFullRows: 3}, []string{"%7"})
+	if err != nil {
+		t.Fatalf("render.Rules() unexpected error: %v", err)
+	}
+	if gotLayout != wantLayout {
+		t.Errorf("planLayout() layout = %q, want %q (the told box's dimensions, not the configured %dx%d pair)", gotLayout, wantLayout, e.cfg.Width, e.cfg.Height)
 	}
 }
 

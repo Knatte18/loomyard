@@ -54,6 +54,8 @@ No build order is implied between these items.
 
 1. **reed daemon: foreign-pane self-heal** — extends the `reed: daemon → Slack relay` item above; reap a stray/operator-split pane automatically instead of only on reed's next invocation, preferring event-driven tmux hooks over polling, gated by a policy that distinguishes a bug-induced pane from an intentional scratch pane. Prerequisite: cheapen the reap probe first (today it spawns a fresh pwsh + full `Win32_Process` WMI enumeration per poll).
 
+1. **reed daemon: live-resize layout self-heal** — a second self-heal job for the same daemon (the monitoring/self-heal core is independently worth having even if the Slack-relay half of `reed: daemon → Slack relay` never lands): `reed-attach-geometry-reconcile` fixed the layout mismatch at attach time, but a terminal resize *while already attached* still leaves tmux's own proportional rescale in charge until the next `lyx reed` op re-renders. That task's discussion considered and rejected a one-off tmux `set-hook`+`run-shell` reaction (new required subcommand, unverified on psmux, races reed's own lock) and a standalone watcher (reed has never been a daemon) — but folding this into a shared self-heal daemon that already needs event-driven tmux hooks for the foreign-pane item above may change that calculus, since the hook infrastructure and psmux verification would be paid for once, not per self-heal job.
+
 1. **shuttle `Spec`: generic tools-restriction** — meaningless for today's single-session A→B agent;
    cluster reviewers turned out to be fork subagents inside the handler's own session (`useExactTools`), not separate sessions needing their own `settings.json`, so this stays unmotivated rather than blocked on anything.
 

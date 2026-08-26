@@ -54,6 +54,21 @@
 // string (which a real tmux accepts and misassigns positionally rather
 // than rejecting).
 //
+// The live-geometry rule: the render box a layout is computed against is no
+// longer the config-pinned Width/Height. planLayout (apply.go) is always
+// TOLD its box as an explicit render.Box parameter and queries nothing of
+// its own — that separation is what lets its two callers disagree about
+// where the box comes from without planLayout itself needing to know.
+// applyLayoutLocked (apply.go) resolves the live box with
+// liveBoxLocked (windowsize.go) — `display-message -p -t '=<session>:'
+// '#{window_width} #{window_height}'` — and falls back to the configured
+// cfg.Width/cfg.Height pair on any round-trip error or malformed answer.
+// AttachArgv (attach.go) passes the attaching client's own told cols/rows
+// and never calls liveBoxLocked, because at argv-build time the live window
+// is still the PRE-attach size — querying it there would reintroduce the
+// exact rescale this task removes (Shared Decision
+// told-box-wins-live-query-is-the-fallback).
+//
 // # Multiplexer contract surface
 //
 // This package assumes its configured binary (psmux on Windows today, tmux
@@ -77,8 +92,11 @@
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
 // kill-session, attach-session) and "=<name>:" for window/pane targets
-// (list-panes, select-layout, display-message), since the window/pane
-// target parser rejects the bare "=<name>" form. This is load-bearing:
+// (list-panes, select-layout, display-message, and the chained
+// select-layout's own -t in the attach argv, plus the set-option pins'
+// window-targeted -t and the two display-message readbacks that confirm
+// them), since the window/pane target parser rejects the bare "=<name>"
+// form. This is load-bearing:
 // tmux falls back to PREFIX matching a bare -t name when no exact match
 // exists, so on the shared per-hub server a bare name issued from one
 // worktree can silently address a prefix-sharing sibling worktree's
@@ -276,4 +294,59 @@
 //     for an always-on pane either. Verified against a real tmux instance;
 //     contract_integration_test.go's TestHeaderNeverGetsZeroHeightLayoutCell
 //     pins it.
+//   - Silent layout rescale (apply.go, windowsize.go): select-layout accepts
+//     a layout string whose dimensions disagree with the live window (exit
+//     0) and silently rescales it proportionally — measured live on tmux
+//     3.6, a "220x50" string applied to a "100x30" window turned a 3-row
+//     collapsed strip into 1 row — so every absolute row budget reed
+//     computes (Header.HeightRows, CollapsedStripRows, MinFullRows) is
+//     scaled by live_height/string_height unless the string is sized to the
+//     live window. This is why applyLayoutLocked always plans against
+//     liveBoxLocked's live box rather than the configured one. The detached
+//     counterpart is the opposite failure: an OVER-budget string is not
+//     refused either — with no client attached, tmux GROWS the window to fit
+//     the cells, so a client-less session can end up taller than its
+//     configured boot height until the next attach snaps it back; with a
+//     client attached, the "window-size latest" pin holds the window at the
+//     client's size and tmux rescales the cells into it instead.
+//   - The chained attach (attach.go): AttachArgv's argv is
+//     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
+//     separator a literal one-character ";" argv element — never "\;",
+//     since exec.Command passes argv directly to the child and no shell ever
+//     sees it to unescape. The chained select-layout runs only after the
+//     client has attached and tmux has already resized the window to it, so
+//     the layout string lands verbatim with no rescale. attach-session is
+//     first in the chain, so a failing or unsupported select-layout still
+//     leaves the operator attached — strictly no worse than before this
+//     task. The window between building the string and applying it is not
+//     closed: it is planned under the op lock and executed by the shell
+//     seconds later, outside it, so the live pane set can have moved on by
+//     the time it runs. When the pane count no longer matches, tmux REFUSES
+//     the layout (exit 1, "have 3 panes but need 2") and destroys nothing;
+//     when the count still matches but membership shifted, cells apply
+//     positionally, so a strand ends up mis-sized rather than lost.
+//   - The two geometry option pins (windowsize.go): "status off" and
+//     "window-size latest" are pinned session/window-targeted
+//     (-t '=<session>:', and -w for window-size, per the Session targeting
+//     grammar above) both at boot and again in AttachArgv's pre-flight, and
+//     their EFFECTIVE values are read back with display-message rather than
+//     trusted from set-option's exit status, because a -g pin plus exit 0 is
+//     not proof the option took — verified live, tmux 3.6: a session-scoped
+//     "status on" survives a global "set-option -g status off" with exit 0,
+//     and a window-scoped "window-size manual" survives the global "latest"
+//     pin the same way. "#{status}" feeds the reserved-row count reserved
+//     for the status line ("off" -> 0, "on" -> 1, a numeric N -> N); a
+//     "#{window-size}" other than "latest", or either readback erroring or
+//     answering an unrecognised value, suppresses the chain rather than
+//     risking a wrong-height string. Unlike the remain-on-exit/mouse pins
+//     beside them, both pins and both readbacks here are NON-FATAL: those
+//     two are correctness dependencies, these two are geometry-quality
+//     options whose absence degrades to a working session, and psmux's
+//     support for them is unverified anywhere in this repo (Shared Decision
+//     geometry-tmux-failures-are-non-fatal-everywhere).
+//
+// requiredSubcommands (probe.go) did not grow for any of this: display-message,
+// select-layout, set-option, and list-panes were already spent by the engine
+// before this task, so the live-geometry rule, the attach chain, and the two
+// option pins add no capability-probe change and no new psmux risk.
 package reedengine

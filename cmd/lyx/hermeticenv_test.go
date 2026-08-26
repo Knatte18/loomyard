@@ -34,9 +34,10 @@ import (
 //     test data rather than as real evidence. It is NOT a package-level
 //     exemption — see hermeticenv_test.go's own entry below.
 var allowedNonHermetic = map[string]string{
-	"internal/proc":                           "spawns generic non-git processes — process control is the package's subject",
-	"cmd/lyx/hermeticenv_test.go":             "this guard file itself; carries the tokens as its own test data",
-	"tools/sandbox/pathresolve_guard_test.go": "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
+	"internal/proc":                                          "spawns generic non-git processes — process control is the package's subject",
+	"cmd/lyx/hermeticenv_test.go":                            "this guard file itself; carries the tokens as its own test data",
+	"tools/sandbox/pathresolve_guard_test.go":                "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
+	"internal/reedengine/attachgeometry_integration_test.go": "spawns a real tmux/pty client process via exec.Command to prove the attach handover — a real non-git process, not a git spawn",
 }
 
 // gitSpawnTokens are the raw substrings that mark a *_test.go file as git-spawning

@@ -2,11 +2,15 @@
 // parent chain, hidden-strand exclusion, empty/single-strand/parent-child edges, the
 // checksum-prefix invariant, the own-window rejection error, pane-order resequencing to physical
 // pane position, and the header top-band enumeration (Params.Header).
+// It also pins the two layout regimes a real (as opposed to config-pinned) terminal box makes
+// reachable: a budget-satisfying box where height.go's clamps never fire, and a too-short box where
+// they must — the latter with a companion assertion that no clamped cell height is ever non-positive.
 
 package render
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -31,6 +35,7 @@ func TestRulesGolden(t *testing.T) {
 		name      string
 		strands   []Strand
 		box       Box
+		header    Header
 		wantBody  string
 		wantFocus string
 	}{
@@ -84,11 +89,49 @@ func TestRulesGolden(t *testing.T) {
 			wantBody:  "100x15,0,0[100x2,0,0,1,100x12,0,3,2]",
 			wantFocus: "%2",
 		},
+		{
+			// A live terminal is routinely 24 or 30 rows, unlike the 220x50
+			// box a pinned config used to always hand Rules — a box this
+			// short means clampHeaderHeight/clampToFit now govern the common
+			// case rather than almost never firing. This row's box has room
+			// for the header band, its one-row divider, the collapsed strip
+			// at CollapsedStripRows, and both full panes above MinFullRows,
+			// so no clamp fires: header=2 (unclamped: floor=3, maxHeader=
+			// box.H-1-3=20, 2<=20), stack region {Y:3,H:21}, usable=21-2
+			// dividers=19, stripDemand=2 (mid collapses), fullRemaining=17
+			// split 8/9 between root and active (remainder to active).
+			name:      "HeaderPresentBudgetSatisfyingPreservesConfiguredHeaderAndStripHeights",
+			strands:   belowParentChain(),
+			box:       Box{X: 0, Y: 0, W: 100, H: 24},
+			header:    Header{PaneID: "%h", HeightRows: 2},
+			wantBody:  "100x24,0,0[100x2,0,0,h,100x8,0,3,1,100x2,0,12,2,100x9,0,15,3]",
+			wantFocus: "%3",
+		},
+		{
+			// The same strand fixture against a box too short for those
+			// budgets: header=2 stays unclamped (floor=3, maxHeader=
+			// box.H-1-3=4, 2<=4), stack region {Y:3,H:5}, usable=5-2
+			// dividers=3, stripDemand=2 (mid), fullRemaining=1 split 0/1
+			// between root and active (remainder to active) — root's natural
+			// 0 borrows 1 row via clampToFit's priority-1 reclaim, which the
+			// strip (mid) repays by shrinking from its natural 2 down to 1,
+			// leaving every stack cell at exactly 1 row.
+			name:      "HeaderPresentClampedRowNoCellEverNonPositive",
+			strands:   belowParentChain(),
+			box:       Box{X: 0, Y: 0, W: 100, H: 8},
+			header:    Header{PaneID: "%h", HeightRows: 2},
+			wantBody:  "100x8,0,0[100x2,0,0,h,100x1,0,3,1,100x1,0,5,2,100x1,0,7,3]",
+			wantFocus: "%3",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout, focus, err := Rules(tt.strands, tt.box, params, nil)
+			p := params
+			if tt.header != (Header{}) {
+				p.Header = tt.header
+			}
+			layout, focus, err := Rules(tt.strands, tt.box, p, nil)
 			if err != nil {
 				t.Fatalf("Rules() unexpected error: %v", err)
 			}
@@ -116,6 +159,39 @@ func TestRulesGolden(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// cellHeightPattern matches one PANE or GROUP cell's leading "<w>x<h>," dimension field of a tmux
+// window_layout string, capturing the height.
+var cellHeightPattern = regexp.MustCompile(`\d+x(\d+),`)
+
+// TestRulesClampedRowNeverEmitsANonPositiveCellHeight is the companion assertion
+// TestRulesGolden's table shape cannot express: every cell height in the
+// HeaderPresentClampedRowNoCellEverNonPositive golden row must be at least 1, no matter how far the
+// clamp had to reach. clampToFit's own documented last-resort branch (the active pane absorbing
+// whatever the earlier priority passes could not reclaim) is deliberately permitted to leave the
+// emitted cell heights summing to MORE than box.H when the window is shorter than the pane count —
+// this test does not exercise that branch (this fixture's clamp resolves in priority 1), and a
+// future reader should not read an over-sum in some OTHER fixture as a defect this test would have
+// caught.
+func TestRulesClampedRowNeverEmitsANonPositiveCellHeight(t *testing.T) {
+	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: "%h", HeightRows: 2}}
+	box := Box{X: 0, Y: 0, W: 100, H: 8}
+
+	layout, _, err := Rules(belowParentChain(), box, params, nil)
+	if err != nil {
+		t.Fatalf("Rules() unexpected error: %v", err)
+	}
+
+	for _, match := range cellHeightPattern.FindAllStringSubmatch(layout, -1) {
+		height, err := strconv.Atoi(match[1])
+		if err != nil {
+			t.Fatalf("cell height %q did not parse as an integer: %v", match[1], err)
+		}
+		if height < 1 {
+			t.Errorf("Rules() clamped layout %q contains a non-positive cell height %d", layout, height)
+		}
 	}
 }
 
