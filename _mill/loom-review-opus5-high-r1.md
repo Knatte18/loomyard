@@ -170,6 +170,61 @@ The config loads were not given the same treatment.
 
 Fix: give `status` and `pause` a minimal pre-run that resolves the location and the two status paths only, leaving `wire()` to the verbs that actually build producers (`run`, `drive`).
 
+### F6 — BLOCKING (CONFIRMED live) — the Bouncer's focus directive is never delivered: writer and reader disagree on filename, format, and fields
+
+Two incompatible focus-file contracts live in one package and never meet.
+
+**Writer** — `internal/shedadapters/round.go:63` + `bouncerfiles.go:205-246`:
+
+```go
+func focusPath(runDir string, round int) string {
+	return filepath.Join(runDir, fmt.Sprintf("round-%d-focus.md", round))
+}
+```
+
+`renderFocus` emits `---`-delimited **YAML frontmatter** carrying `round`, `exclude_lenses`, `focus`, plus optional prose.
+The shipped stencils `contracts/stencils/bouncer/bouncer-template-seed.md:31-47` and `bouncer-template-judge.md:87-103` instruct the judge agent to write exactly that shape at `{{.focus_path}}`.
+
+**Reader** — `internal/shedadapters/focus.go:35-37,50-70`:
+
+```go
+func roundFocusFilename(round int) string {
+	return fmt.Sprintf("round-%d-focus.json", round)
+}
+```
+
+`readRoundFocus` opens that `.json` path and strictly decodes **JSON** into `RoundFocus{ExcludeLenses, Hydrate}` — a different extension, a different serialization, and a different field set (`focus` vs `hydrate`).
+
+The `.json` file is written by nothing, so `readRoundFocus` returns the zero directive on **every** call in production, and `BurlerProducer.Call` (`burler.go:256,270-281`) consequently always sees an empty `focus.Hydrate` and an empty `focus.ExcludeLenses`.
+The entire targeting channel between the judge and the fixer round is dead.
+
+Reproduced live on the driven run:
+
+```
+$ ls .lyx/loom/reviews/discussion/
+round-1-focus.md
+
+$ grep focus .lyx/loom/driver.log
+level=WARN msg="shedadapters: focus file absent" producer=Discussion-Burler engine=burler
+  path=.../reviews/discussion/round-1-focus.json reason=absent
+```
+
+The Bouncer's seed pass had just spawned a real `claude` session and written a substantive, well-formed `round-1-focus.md`
+(a specific relocation candidate for the fixer to look at) — and the Burler row discarded it and ran unfocused.
+
+Cost: the seed call spends one real LLM spawn **and permanently consumes one unit of the segment's bounce budget**
+(`NewBouncer`'s budget rule, `bouncer.go:75-84`) to produce an artifact its only consumer cannot read.
+Every judge round after a BLOCKING verdict pays the same: `ensureFocus(round+1)` and the judge's own third output file are written for nobody.
+
+`internal/shedadapters/doc.go:92` pins the reader's spelling (`"The structured next-round directive is JSON at round-<N>-focus.json"`),
+so the package doc is wrong too. Notably, the `8cac77aa` design discussion saw this exact line and dismissed it as a stale doc comment
+("Out: the stale `round-<N>-focus.json` spelling in `internal/shedadapters/doc.go:90` (the code writes `round-<N>-focus.md`). Pre-existing, unrelated, left alone.")
+— it is not a doc-only wart, it is a live code divergence.
+
+Fix: the writer is the load-bearing side (the stencils, the parser, and the judge's contract all agree on it), so `readRoundFocus` must read
+`focusPath(runDir, round)` through `parseFocus`, mapping `exclude_lenses` onto `RoundFocus.ExcludeLenses` and hydrating the focus file itself
+so the fixer round actually reads the judge's directives; `doc.go:92` moves with it.
+
 ### Live driving — the real hub
 
 A fresh, real fabric hub was built for this review (nothing in the operator's own repos was touched):
