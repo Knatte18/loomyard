@@ -446,3 +446,108 @@ func TestMissingKeys_Integration(t *testing.T) {
 		})
 	}
 }
+
+// TestMissingKeys_SequenceLengthIsNotARequirement pins the rule that a template list is a default
+// rather than a minimum length: shortening or emptying a list-valued key is a legal configuration,
+// not a missing key. Before this, landing.yaml's documented no-pull-request mode
+// (require_pr_to_base: []) could not be loaded at all -- Load refused with
+// "missing keys: require_pr_to_base[0]" and named "lyx config reconcile" as the remedy, which
+// re-adds the template's own element and undoes the operator's edit.
+func TestMissingKeys_SequenceLengthIsNotARequirement(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		existing string
+		want     []string
+	}{
+		{
+			name:     "EmptiedList",
+			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
+			existing: "require_pr_to_base: []\nsquash: true\n",
+			want:     nil,
+		},
+		{
+			name:     "ShortenedList",
+			template: "bases: [\"a\", \"b\", \"c\"]\n",
+			existing: "bases: [\"a\"]\n",
+			want:     nil,
+		},
+		{
+			name:     "LengthenedList",
+			template: "bases: [\"a\"]\n",
+			existing: "bases: [\"a\", \"b\", \"c\"]\n",
+			want:     nil,
+		},
+		{
+			name:     "AbsentListKeyIsStillMissing",
+			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
+			existing: "squash: true\n",
+			want:     []string{"require_pr_to_base[0]"},
+		},
+		{
+			name:     "AbsentScalarKeyIsStillMissing",
+			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
+			existing: "require_pr_to_base: []\n",
+			want:     []string{"squash"},
+		},
+		{
+			name:     "NestedEmptiedList",
+			template: "outer:\n  inner: [\"x\"]\n",
+			existing: "outer:\n  inner: []\n",
+			want:     nil,
+		},
+		{
+			name:     "NestedAbsentListKeyIsStillMissing",
+			template: "outer:\n  inner: [\"x\"]\n  other: 1\n",
+			existing: "outer:\n  other: 1\n",
+			want:     []string{"outer.inner[0]"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := MissingKeys([]byte(tt.template), []byte(tt.existing))
+			if err != nil {
+				t.Fatalf("MissingKeys() unexpected error: %v", err)
+			}
+			sort.Strings(got)
+			sort.Strings(tt.want)
+			if len(got) != len(tt.want) {
+				t.Fatalf("MissingKeys() = %v; want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("MissingKeys() = %v; want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// TestSequenceBasePath covers the split MissingKeys keys its sequence-element rule off, including
+// the shapes that must NOT be read as an element.
+func TestSequenceBasePath(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		wantBase    string
+		wantElement bool
+	}{
+		{"TopLevelElement", "bases[0]", "bases", true},
+		{"NestedElement", "outer.inner[12]", "outer.inner", true},
+		{"PlainScalar", "squash", "", false},
+		{"NestedScalar", "outer.inner", "", false},
+		{"NoIndexDigits", "bases[]", "", false},
+		{"NonNumericIndex", "bases[a]", "", false},
+		{"NoOwningKey", "[0]", "", false},
+		{"UnclosedBracket", "bases[0", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base, isElement := sequenceBasePath(tt.path)
+			if base != tt.wantBase || isElement != tt.wantElement {
+				t.Errorf("sequenceBasePath(%q) = (%q, %v); want (%q, %v)", tt.path, base, isElement, tt.wantBase, tt.wantElement)
+			}
+		})
+	}
+}
