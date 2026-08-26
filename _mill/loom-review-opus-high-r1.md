@@ -503,3 +503,75 @@ config deviation from the shipped template in the whole fixture.
 /home/knatte/Code/loomyard/wts/loom-crucible-hardening-round2/.dev-bin/lyx loom status
 ```
 
+### Live scenario 1 — bootstrap and the Discussion phase (rows 1–6), OBSERVED
+
+```
+$ .dev-bin/lyx loom run          # 17:11:39
+  seeded + committed the status file, brought reed up, added the loom-status strand,
+  spawned the detached driver, then failed only at the tmux handover
+  ("open terminal failed: not a terminal") because this session has no TTY — the
+  documented step-7 interactive-handoff tail, and everything fallible had already run.
+$ .dev-bin/lyx reed status
+ {"session":"greet-suffix","socket":"lyx-tinytool2-HUB-22bfdfd7",
+  "strands":[{"name":"loom-status","paneId":"%0","live":true},
+             {"name":"discussion::9f518386","paneId":"%2","live":true}]}
+```
+
+Observed transitions from `status.json` (a poller printing only on change):
+
+```
+17:11:58 | Discussion-Write   running  history=2     (Preflight, Loom-Preflight both done)
+17:13:29 | Discussion-Bouncer running  history=4     (Discussion-Validate done)
+17:14:19 | Discussion-Burler  running  history=5     (Bouncer seed call -> Stuck, as designed)
+17:26:38 | Discussion-Bouncer running  history=6     (Burler round 1 complete -> Stuck)
+17:28:08 | Plan-Write         running  history=7     (Bouncer judged APPROVED -> Done)
+```
+
+Rows 1–6 all executed for real. Confirmed alongside:
+- `_lyx/discussion/{decision-record.md,support-log.md}` written by a real autonomous
+  Discussion-Write session.
+- A real `Discussion-Burler` round wrote `round-1-review.md` then `round-1-fixer-report.md`
+  under `.lyx/loom/reviews/discussion/`, review-before-fix, matching the Review Round
+  Invariant's A-before-B discipline (the pane showed "Review saved. Now job B.").
+- `commit_seam: discussion` fired on the APPROVED settle — the weft carries
+  `ac5e2d2 loom: discussion artifacts for greet-suffix` on top of `988afaf loom: seed
+  session bootstrap for greet-suffix`, i.e. the seed commit first and the segment's
+  approved-settle commit after.
+- The `Plan-Write` prompt visible in the live pane carried the CURRENT stencil text
+  ("`Plan-Bouncer`'s approved settle writes it to `true`"), confirming the `lyx stencil sync`
+  performed after F2 took effect for the rows that matter to this round.
+
+### Live scenario 2 — crash mid-`Plan-Write`, the round-1 deferred item — PASS
+
+This is the scenario round 1 recorded as "owed to a later round" because F7 made `Plan-Write`
+unreachable. Driven here for the first time.
+
+```
+state before:  current_producer Plan-Write, running, history=7
+               driver pid 2092990 = ".dev-bin/lyx loom drive"
+               plan agent pid 2100584 in pane %7, strand plan::c27f2d85
+               _lyx/plan does not exist yet (the agent had not written it)
+
+$ kill -9 2092990            # 17:28:42 — hard driver crash, agent left alive
+$ ps -p 2100584              # 2100584 Sl+   (agent survives, as designed)
+
+$ lyx loom run               # 17:28:49 — the documented resume
+$ lyx reed status
+ strands: loom-status (%0), plan::c27f2d85 (%7, live)      <-- SAME strand, no second one
+$ tmux -L ... list-panes -a
+ %0 ... lyx
+ %7 2100502 claude                                          <-- SAME pane, SAME pid
+$ ps -eo pid,ppid,etime,args | grep 'loom drive'
+ 2102151  1851  00:23  .dev-bin/lyx loom drive               <-- new driver alive, waiting
+```
+
+Exactly one plan agent. `SingleLLMProducer.Call`'s `Attach` probe (`singlellm.go:118`) found
+the live run and attached instead of respawning, and — the second half of the same
+invariant — `prepareFreshSpawn`'s plan-directory rotation did NOT run, so nothing was moved
+out from under the live agent.
+
+**This is the positive control for F0.** The identical crash, one row earlier, produced ONE
+agent; at the `Discussion-Burler` row it produced TWO. The difference is not the environment,
+the tmux server, or the resume path — all three were identical. It is solely that
+`SingleLLMProducer` has the probe and `BurlerProducer`/`Bouncer` do not.
+
