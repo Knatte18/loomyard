@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-docs-and-constraints  '2026-08-26T12:48:28Z'
 holistic-reviewing  '2026-08-26T12:49:05Z'
 holistic-approved  '2026-08-26T12:53:27Z'
 done  '2026-08-26T13:05:22Z'
+pr-pending  '2026-08-26T13:08:18Z'
 ```
 
 ## Batches
