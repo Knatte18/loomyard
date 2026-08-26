@@ -728,7 +728,8 @@ func goodPlanDir() string {
 // framing, and every field of every one of the seven cards must match the fixture's own
 // byte-consistent content, including the root: internal/boardcli resolution and the // worktree-
 // root escape. It also pins this migration's sharpest possible regression: a symbol target must
-// survive normalization unmodified under the fixture's non-empty root:.
+// survive normalization unmodified under the fixture's non-empty root:. Card 2 additionally
+// round-trips a multi-label card: an **Edit:** group followed by a **Create:** group.
 func TestParsePlan_GoldenFixture(t *testing.T) {
 	t.Parallel()
 
@@ -757,6 +758,12 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		t.Fatalf("len(plan.Cards) = %d; want 7", len(plan.Cards))
 	}
 
+	// wantGroup pins one expected TargetGroup: its own Type and its own Refs.
+	type wantGroup struct {
+		typ  planparser.CardType
+		refs []string
+	}
+
 	type wantCard struct {
 		number           int
 		slug             string
@@ -764,6 +771,7 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		typ              planparser.CardType
 		typeLabelCount   int
 		targets          []string
+		groups           []wantGroup
 		pairs            []planparser.MovePair
 		uses             []string
 		hasUses          bool
@@ -780,14 +788,21 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 1, slug: "json-row-type", summary: "define the RowJSON struct",
 			typ: planparser.CardTypeCreate, typeLabelCount: 1,
 			targets: []string{"boardcli.RowJSON"},
-			intent:  "Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.",
-			commit:  "1: json-row-type", verify: "go build ./...", hasVerify: true,
+			groups: []wantGroup{
+				{typ: planparser.CardTypeCreate, refs: []string{"boardcli.RowJSON"}},
+			},
+			intent: "Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.",
+			commit: "1: json-row-type", verify: "go build ./...", hasVerify: true,
 		},
 		{
 			number: 2, slug: "json-flag", summary: "add the --json bool flag and wire list.go",
-			typ: planparser.CardTypeEdit, typeLabelCount: 1,
-			targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go"},
-			uses:    []string{"internal/output/envelope.go"}, hasUses: true,
+			typ: planparser.CardTypeEdit, typeLabelCount: 2,
+			targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go", "internal/boardcli/list_json_test.go"},
+			groups: []wantGroup{
+				{typ: planparser.CardTypeEdit, refs: []string{"boardcli.newListCmd", "internal/boardcli/list.go"}},
+				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli/list_json_test.go"}},
+			},
+			uses: []string{"internal/output/envelope.go"}, hasUses: true,
 			intent:           "Add the `--json` bool flag to `newListCmd` and branch its row output between the table writer and the JSON path.",
 			impactSummary:    "Adds a --json flag to the list command and branches its row-emission path on it.",
 			hasImpactSummary: true,
@@ -796,13 +811,19 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 3, slug: "json-emission", summary: "marshal each row through output.Ok when --json is set",
 			typ: planparser.CardTypeCustom, typeLabelCount: 1,
 			targets: []string{"boardcli.emitJSON", "internal/output/emit.go"},
-			uses:    []string{"internal/boardcli/list.go"}, hasUses: true,
+			groups: []wantGroup{
+				{typ: planparser.CardTypeCustom, refs: []string{"boardcli.emitJSON", "internal/output/emit.go"}},
+			},
+			uses: []string{"internal/boardcli/list.go"}, hasUses: true,
 			intent: "Introduce `emitJSON`, a new helper in a new file, marshaling each row through `output.Ok` when `--json` is set.",
 		},
 		{
 			number: 4, slug: "legacy-rows-delete", summary: "remove the superseded legacy row-conversion file",
 			typ: planparser.CardTypeDelete, typeLabelCount: 1,
-			targets:          []string{"internal/boardengine/legacyrows.go"},
+			targets: []string{"internal/boardengine/legacyrows.go"},
+			groups: []wantGroup{
+				{typ: planparser.CardTypeDelete, refs: []string{"internal/boardengine/legacyrows.go"}},
+			},
 			intent:           "Remove the legacy per-row conversion helper now that `boardengine.MapRowJSON` (card 5) supersedes it.",
 			impactSummary:    "Deletes the legacy row-conversion file; no remaining callers reference it.",
 			hasImpactSummary: true,
@@ -811,6 +832,9 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 5, slug: "rowmapper-rename", summary: "rename the row mapper ahead of a later extraction",
 			typ: planparser.CardTypeRename, typeLabelCount: 1,
 			targets: []string{"boardengine.MapRow", "boardengine.MapRowJSON", "internal/boardengine/rows.go", "internal/boardengine/rowsjson.go"},
+			groups: []wantGroup{
+				{typ: planparser.CardTypeRename, refs: []string{"boardengine.MapRow", "boardengine.MapRowJSON", "internal/boardengine/rows.go", "internal/boardengine/rowsjson.go"}},
+			},
 			pairs: []planparser.MovePair{
 				{Old: "boardengine.MapRow", New: "boardengine.MapRowJSON"},
 				{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"},
@@ -821,13 +845,19 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 6, slug: "helppins-move", summary: "relocate the pinned help-tree fixture",
 			typ: planparser.CardTypeMove, typeLabelCount: 1,
 			targets: []string{"cmd/lyx/helppins.go"},
-			intent:  "Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
+			groups: []wantGroup{
+				{typ: planparser.CardTypeMove, refs: []string{"cmd/lyx/helppins.go"}},
+			},
+			intent: "Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
 		},
 		{
 			number: 7, slug: "json-docs", summary: "update the package doc comment and the standalone docs page",
 			typ: planparser.CardTypeProsa, typeLabelCount: 1,
 			targets: []string{"internal/boardcli/doc.go", "docs/boardcli-json.md"},
-			intent:  "Update the package doc comment and the standalone docs page describing `--json` output.",
+			groups: []wantGroup{
+				{typ: planparser.CardTypeProsa, refs: []string{"internal/boardcli/doc.go", "docs/boardcli-json.md"}},
+			},
+			intent: "Update the package doc comment and the standalone docs page describing `--json` output.",
 		},
 	}
 
@@ -850,6 +880,18 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		}
 		if !slices.Equal(c.Pairs, w.pairs) {
 			t.Errorf("card %d Pairs = %+v; want %+v", w.number, c.Pairs, w.pairs)
+		}
+		if len(c.TargetGroups) != len(w.groups) {
+			t.Fatalf("card %d len(TargetGroups) = %d; want %d", w.number, len(c.TargetGroups), len(w.groups))
+		}
+		for gi, wg := range w.groups {
+			g := c.TargetGroups[gi]
+			if g.Type != wg.typ {
+				t.Errorf("card %d TargetGroups[%d].Type = %q; want %q", w.number, gi, g.Type, wg.typ)
+			}
+			if !slices.Equal(g.Refs, wg.refs) {
+				t.Errorf("card %d TargetGroups[%d].Refs = %v; want %v", w.number, gi, g.Refs, wg.refs)
+			}
 		}
 		if w.hasUses {
 			if !c.HasUses {

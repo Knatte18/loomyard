@@ -6,9 +6,10 @@
 // already parsed by parse_test.go's TestParsePlan_GoldenFixture) and materializes exactly the
 // seven distinct paths its checked entries name under a hermetic t.TempDir() worktree root,
 // deliberately leaving absent the Custom card's own path-shaped target
-// (internal/output/emit.go) and the Rename pair's post-rename side
-// (internal/boardengine/rowsjson.go) — proving both exemptions positively rather than by omission
-// — so the whole seventeen-check Validate run returns zero findings.
+// (internal/output/emit.go), the Rename pair's post-rename side
+// (internal/boardengine/rowsjson.go), and card 2's own Create-group target
+// (internal/boardcli/list_json_test.go) — proving all three exemptions positively rather than by
+// omission — so the whole seventeen-check Validate run returns zero findings.
 
 package planparser_test
 
@@ -96,8 +97,9 @@ func materializeFiles(t *testing.T, root string, paths ...string) {
 // TestValidate_GoldenFixture_ZeroFindings round-trips the format-4 golden fixture
 // (testdata/goodplan) through Validate with exactly the seven distinct paths its checked entries
 // name materialized under a t.TempDir() worktreeRoot, but deliberately NOT the Custom card's own
-// path-shaped target or the Rename pair's post-rename side — proving all seventeen checks pass
-// simultaneously on the format-4 happy path.
+// path-shaped target, the Rename pair's post-rename side, or card 2's own Create-group target —
+// proving all seventeen checks pass simultaneously on the format-4 happy path, including card 2's
+// multi-label Edit-plus-Create shape.
 func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	t.Parallel()
 
@@ -115,8 +117,9 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 		"cmd/lyx/helppins.go",                // card 6's target
 		"internal/boardcli/doc.go",           // card 7's first target
 		"docs/boardcli-json.md",              // card 7's second target
-		// Deliberately absent: internal/output/emit.go (card 3's own Custom target — exempt) and
-		// internal/boardengine/rowsjson.go (card 5's Rename New side — never checked).
+		// Deliberately absent: internal/output/emit.go (card 3's own Custom target — exempt),
+		// internal/boardengine/rowsjson.go (card 5's Rename New side — never checked), and
+		// internal/boardcli/list_json_test.go (card 2's own Create-group target — exempt).
 	)
 
 	findings := planparser.Validate(plan, root)
