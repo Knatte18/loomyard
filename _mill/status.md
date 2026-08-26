@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-loomcli-wiring-and-flag  '2026-08-26T12:35:21Z'
 approved-recipe-wiring-and-regression  '2026-08-26T12:43:27Z'
 approved-docs-and-constraints  '2026-08-26T12:48:28Z'
 holistic-reviewing  '2026-08-26T12:49:05Z'
+holistic-approved  '2026-08-26T12:53:27Z'
 ```
 
 ## Batches
