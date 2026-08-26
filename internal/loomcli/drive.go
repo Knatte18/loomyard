@@ -1,5 +1,8 @@
-// drive.go implements the `drive` loom verb: the no-tmux escape hatch that runs the phase machine in
-// the foreground, for debugging and CI.
+// drive.go implements the `drive` loom verb: the escape hatch that runs the phase machine in the
+// foreground, for debugging and CI.
+// It ensures the reed substrate and then runs the machine, adding no status strand and handing the
+// terminal over to nothing -- those two omissions, not tmux itself, are what separate it from
+// `lyx loom run`.
 
 package loomcli
 
@@ -17,10 +20,18 @@ import (
 func (c *loomCLI) driveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "drive",
-		Short: "run loom's phase machine in the foreground, with no tmux and no strand",
-		Long: `drive runs loom's phase machine in the foreground: no tmux, no strand,
-and no terminal handover. It is the no-tmux escape hatch for debugging and
-CI. drive never seeds a status file and never commits anything -- only
+		Short: "run loom's phase machine in the foreground, with no status strand and no terminal handover",
+		Long: `drive runs loom's phase machine in the foreground: no status strand and
+no terminal handover. It is the escape hatch for debugging and CI.
+
+drive is NOT tmux-free. Every LLM row underneath it -- Discussion-Write,
+Plan-Write, and all three review segments -- spawns its agent through
+shuttle into a reed pane, so a live tmux session is required. drive
+ensures that session itself, exactly as "lyx loom run" does, rather than
+failing several producers deep once a row first tries to add a strand.
+What drive does not do is add the status strand or hand the terminal over.
+
+drive never seeds a status file and never commits anything -- only
 "lyx loom run" seeds, because only it owns the commit-before-precondition
 ordering the bootstrap needs.
 
@@ -40,6 +51,18 @@ Example:
 			// ordering.
 			if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.shedPaths.StatusPath+"; run \"lyx loom run\" first to bootstrap this task"))
+				return nil
+			}
+
+			// Ensure the reed substrate before the first producer call. drive adds no strand and
+			// hands no terminal over, but the rows beneath it spawn agents into reed panes, so
+			// without a live session the run gets several producers deep and then hard-errors on
+			// "no reed session" -- after the Discussion-Bouncer's seed spawn has already failed
+			// silently (runSeedSpawn degrades every failure to a warning), had a synthetic empty
+			// focus file written over its real one, and consumed a unit of the segment's bounce
+			// budget. Up is idempotent and is what "lyx loom run" already calls at its own step 4.
+			if _, err := c.reed.Up(); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
