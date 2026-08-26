@@ -112,11 +112,17 @@ func discussionValidateEntry(name string, cfg Config, env Env) (shedengine.ShedP
 	return loomshed.NewDiscussionValidate(name, env.DecisionRecordPath, env.SupportLogPath), nil
 }
 
-// planValidateEntry is the Constructor for the "PlanValidate" registry row: it validates
-// Env.AnchorPath and Env.WorktreeRoot and returns
-// loomshed.NewPlanValidate(name, env.AnchorPath, env.WorktreeRoot).
+// planValidateEntry is the Constructor for the "PlanValidate" registry row: it reads the optional
+// bool config key "require_approved" (absent means false) and validates Env.AnchorPath and
+// Env.WorktreeRoot, returning loomshed.NewPlanValidate(name, env.AnchorPath, env.WorktreeRoot,
+// requireApproved). The Plan-Validate row leaves this key absent, running before review; the
+// Plan-Revalidate row sets it true, running after the review segment settles.
 func planValidateEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
+	requireApproved, err := configBool(cfg, "require_approved", false)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "require_approved"); err != nil {
 		return nil, err
 	}
 	if err := requireAbsRoot("PlanValidate", "AnchorPath", env.AnchorPath); err != nil {
@@ -125,7 +131,7 @@ func planValidateEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 	if err := requireAbsRoot("PlanValidate", "WorktreeRoot", env.WorktreeRoot); err != nil {
 		return nil, err
 	}
-	return loomshed.NewPlanValidate(name, env.AnchorPath, env.WorktreeRoot), nil
+	return loomshed.NewPlanValidate(name, env.AnchorPath, env.WorktreeRoot, requireApproved), nil
 }
 
 // stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns
