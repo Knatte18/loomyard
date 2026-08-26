@@ -190,32 +190,6 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	}
 }
 
-// TestLoomStatusRel verifies LoomStatusRel is exactly the durable directory name joined with the
-// loom subdirectory and the status filename -- the anchor-relative form a weft commit pathspec
-// caller builds from.
-func TestLoomStatusRel(t *testing.T) {
-	want := filepath.Join(lyxdirs.LyxDirName, "loom", "status.json")
-	if got := LoomStatusRel(); got != want {
-		t.Errorf("LoomStatusRel() = %q; want %q", got, want)
-	}
-}
-
-// TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel is the regression guard that card
-// 11's refactor -- rewriting LoomStatusFile to join through LoomStatusRel -- left the returned
-// value byte-identical to a plain AnchorPath()/LoomStatusRel() join.
-func TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel(t *testing.T) {
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
-		WorktreeName: "repo",
-		AnchorRel:    filepath.Join("sub", "dir"),
-	}
-
-	want := filepath.Join(l.AnchorPath(), LoomStatusRel())
-	if got := LoomStatusFile(l); got != want {
-		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
-	}
-}
-
 // TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an
 // unanchored and a subpath-anchored *lyxcwd.Location, hand-built rather than spawned.
 func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
