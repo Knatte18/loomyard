@@ -190,6 +190,15 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			// disk at Call entry is the durable record that some earlier Call settled this
 			// segment. Continuing instead of clearing would replay that stale verdict, which is
 			// the defect this step removes.
+			//
+			// Logged before the archive, and at Warn rather than Info, because the clear is not
+			// cheap: it discards a settled generation and re-seeds from round 1, which costs a
+			// fresh judge spawn plus a fresh round -- real sessions, real minutes -- and can spend
+			// the leftover budget that halts the run, since the round producer's own bounce episode
+			// never resets. An operator whose run suddenly costs a second generation would
+			// otherwise find nothing about it in the driver log, the status file, or the run
+			// directory. A commit-seam failure followed by a resume takes this exact path.
+			logger.Warn("shedadapters: bouncer clearing an already-approved run directory and re-seeding from round 1", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "approvedRound", n, "runDir", b.cfg.RunDir)
 			if err := archiveRunDir(b.cfg.RunDir, b.cfg.Now); err != nil {
 				return b.degrade(ctx, "shedadapters: bouncer failed to clear an already-approved run directory", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 			}

@@ -527,3 +527,36 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 		t.Error("archived sibling is empty; want the prior two-round generation preserved")
 	}
 }
+
+// TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration pins the clear's own log line. The
+// clear is not cheap: it discards a settled APPROVED generation and re-seeds from round 1, costing a
+// fresh judge spawn plus a fresh round, and it can spend the leftover budget that halts the run
+// because the round producer's episode never resets. The failure branch beside it has always logged;
+// the branch that actually fires did not, so an operator whose run suddenly cost a second generation
+// had nothing to read anywhere.
+func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
+	cfg := newClearTestBouncerConfig(t)
+	cfg.Shuttle = &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
+		round:   1,
+		report:  bouncerReport(1),
+		verdict: bouncerVerdictContent("APPROVED"),
+		ledger:  bouncerLedgerContent(1),
+	}})
+
+	logBuf := captureBouncerWarnings(t)
+	if _, _, err := b.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+
+	got := logBuf.String()
+	for _, want := range []string{"clearing an already-approved run directory", cfg.Name, "approvedRound=1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("clear log = %q; want it to contain %q", got, want)
+		}
+	}
+}
