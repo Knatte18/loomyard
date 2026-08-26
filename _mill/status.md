@@ -65,7 +65,9 @@ batches:
     commit_sha: 0443f13ea6991a60857c337667f3120d284afc00
     verify_baseline_failures: []
   - name: recipe-wiring-and-regression
-    state: pending
+    state: running
+    implementer_session: f5ff46f7-1eb5-4366-b8ac-33919541b9d6
+    start_sha: fc219a2a07fb5ff34b6641af7ac0885727e6b9e9
     verify_baseline_failures: []
   - name: docs-and-constraints
     state: pending
