@@ -30,17 +30,26 @@ implementing  '2026-08-26T12:11:10Z'
 ```yaml
 batches:
   - name: planparser-split-and-writer
-    state: pending
+    state: running
+    implementer_session: c600e100-6d9e-4742-bb68-0fb4359b3f9b
+    start_sha: 197dd662814ea4a890bd246e677b45c98d9382d3
+    verify_baseline_failures: []
   - name: shedadapters-approve-seam
     state: pending
+    verify_baseline_failures: []
   - name: planvalidate-two-mode
     state: pending
+    verify_baseline_failures: []
   - name: shedrecipe-approve-seam
     state: pending
+    verify_baseline_failures: []
   - name: loomcli-wiring-and-flag
     state: pending
+    verify_baseline_failures: []
   - name: recipe-wiring-and-regression
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-constraints
     state: pending
+    verify_baseline_failures: []
 ```
