@@ -43,7 +43,9 @@ batches:
     commit_sha: 3cc583133dd5c31fa2295500d204d087afc39501
     verify_baseline_failures: []
   - name: text-references
-    state: pending
+    state: running
+    implementer_session: f789899c-ab8f-4557-9ca9-e0e7b3ef3459
+    start_sha: b813a6d26fedbc775648e2c2ac87dba4c5e50fc1
     verify_baseline_failures: []
   - name: docs
     state: pending
