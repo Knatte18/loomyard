@@ -51,6 +51,8 @@ batches:
     commit_sha: b55f0fd63cff2eec3cab78634a6e5bc190ef5f18
     verify_baseline_failures: []
   - name: docs-and-live-proof
-    state: pending
+    state: running
+    implementer_session: ea56e12d-1c2b-47a0-aa7d-5ab84d37f03f
+    start_sha: 03397c37fa344c2a55ba0fc6ebb9f55e6fc3e2a7
     verify_baseline_failures: []
 ```
