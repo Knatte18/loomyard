@@ -609,3 +609,100 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		}
 	})
 }
+
+// TestBouncerEntry_ApproveSeam covers the single-value resolution of approve_seam, the presence
+// guard requireSeam enforces on a configured-but-missing env.ApprovePlan, and the allowlist edit
+// that widens configRejectUnknown by exactly one name. Where a case needs to observe which
+// closure was resolved, it follows TestBouncerEntry_CommitSeam's own approach of driving a Call
+// through judgeSeamFakeShuttle and counting closure invocations, rather than inventing a second
+// mechanism.
+func TestBouncerEntry_ApproveSeam(t *testing.T) {
+	t.Run("PlanResolvesToApprovePlan", func(t *testing.T) {
+		// This subtest also demonstrates approve_seam is accepted by configRejectUnknown rather
+		// than rejected as unknown: bouncerEntry returning a nil error below means the key was
+		// recognised.
+		env := newTestEnv(t)
+		env.Shuttle = &judgeSeamFakeShuttle{}
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		approveCalls := 0
+		env.ApprovePlan = func() error { approveCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve_seam"] = "plan"
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if approveCalls != 1 {
+			t.Errorf("ApprovePlan call count = %d; want 1", approveCalls)
+		}
+	})
+
+	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Shuttle = &judgeSeamFakeShuttle{}
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		approveCalls := 0
+		env.ApprovePlan = func() error { approveCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if approveCalls != 0 {
+			t.Errorf("ApprovePlan call count = %d; want 0", approveCalls)
+		}
+	})
+
+	t.Run("UnrecognisedValueIsConstructionError", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve_seam"] = "discussion"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "approve_seam")
+		assertErrContains(t, err, "plan")
+	})
+
+	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ApprovePlan = nil
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve_seam"] = "plan"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "ApprovePlan")
+	})
+
+	t.Run("AbsentWithEnvClosureNilConstructsSuccessfully", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ApprovePlan = nil
+		cfg := minimalBouncerConfig(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil (the guard is on the key's presence, not on the Env field)", err)
+		}
+		if producer == nil {
+			t.Fatal("bouncerEntry() producer = nil; want non-nil")
+		}
+	})
+
+	t.Run("HyphenatedTypoIsUnrecognisedKey", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve-seam"] = "plan"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "approve-seam")
+	})
+}

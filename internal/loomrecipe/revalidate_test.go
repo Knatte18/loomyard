@@ -14,10 +14,20 @@ import (
 )
 
 // TestSequence_PlanRevalidateCatchesPostSegmentRegression scripts the Plan-Review segment's one
-// review round to leave the plan present and parseable but failing planparser's own
-// plan-unapproved check -- via fakeLoomBurler.corruptPlanOverview, set to the fixture's own plan
-// overview path before New is called -- and asserts the run bounces from Plan-Revalidate to
-// Plan-Write rather than continuing on to Batchifier.
+// review round to leave the plan present and parseable but format-invalid -- via
+// fakeLoomBurler.injectOrphanCardDir, set to the fixture's own plan directory before New is called,
+// which writes one extra unindexed card file no Card Index entry names -- and asserts the run
+// bounces from Plan-Revalidate to Plan-Write rather than continuing on to Batchifier.
+//
+// The corruption is deliberately an unindexed extra card file rather than the plan-unapproved
+// check this test originally exercised: Plan-Bouncer's approve_seam now writes the approval flag
+// moments before Plan-Revalidate would ever observe a cleared one, which would silently undo that
+// shape of regression. It is deliberately not an unparseable corruption either -- planvalidate.Call
+// maps a planparser.ParsePlan failure to a returned error, never to Stuck, so an unparseable
+// corruption would abort the run before the bounce assertion below is ever reached. An unindexed
+// extra file sidesteps both: planparser.ParsePlan only opens files the Card Index names, so it
+// still succeeds, and checkIndexFileConsistency then reports index-file-mismatch for the file no
+// card claims.
 //
 // Deliberately asserts nothing about what happens after that bounce: a re-entered Plan-Bouncer now
 // archives its run directory and re-judges from a fresh round 1 rather than replaying the settled
@@ -27,8 +37,8 @@ import (
 func TestSequence_PlanRevalidateCatchesPostSegmentRegression(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
-	planOverviewPath := filepath.Join(env.AnchorPath, lyxdirs.LyxDirName, "plan", "00-overview.md")
-	env.Burler.(*fakeLoomBurler).corruptPlanOverview = planOverviewPath
+	planDir := filepath.Join(env.AnchorPath, lyxdirs.LyxDirName, "plan")
+	env.Burler.(*fakeLoomBurler).injectOrphanCardDir = planDir
 
 	shed, err := New(env, paths)
 	if err != nil {

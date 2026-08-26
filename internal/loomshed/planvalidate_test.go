@@ -39,57 +39,123 @@ func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 	}
 }
 
+// seedFormatInvalidPlanValidateFixture writes a plan whose overview declares an unrecognized
+// format, tripping format-unrecognized regardless of requireApproved — the mode dimension must not
+// change a format-invalid plan's Stuck disposition either way.
+func seedFormatInvalidPlanValidateFixture(t *testing.T, anchorPath string) {
+	t.Helper()
+
+	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+
+	cardBody := "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
+		"**Intent:** placeholder card.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(cardBody), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	overview := "---\nformat: 99\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview file: %v", err)
+	}
+}
+
 func TestPlanValidate_Call(t *testing.T) {
-	t.Run("ZeroFindingsMapsToDone", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		worktreeRoot := t.TempDir()
-		seedPlanValidateFixture(t, anchorPath, true)
+	tests := []struct {
+		name            string
+		seed            func(t *testing.T, anchorPath string)
+		requireApproved bool
+		wantOutcome     shedengine.Outcome
+		wantErr         bool
+	}{
+		{
+			name:            "UnapprovedFormatClean_RequireApprovedTrueIsStuck",
+			seed:            func(t *testing.T, anchorPath string) { seedPlanValidateFixture(t, anchorPath, false) },
+			requireApproved: true,
+			wantOutcome:     shedengine.Stuck,
+		},
+		{
+			name:            "UnapprovedFormatClean_RequireApprovedFalseIsDone",
+			seed:            func(t *testing.T, anchorPath string) { seedPlanValidateFixture(t, anchorPath, false) },
+			requireApproved: false,
+			wantOutcome:     shedengine.Done,
+		},
+		{
+			name:            "FormatInvalid_RequireApprovedTrueIsStuck",
+			seed:            seedFormatInvalidPlanValidateFixture,
+			requireApproved: true,
+			wantOutcome:     shedengine.Stuck,
+		},
+		{
+			name:            "FormatInvalid_RequireApprovedFalseIsStuck",
+			seed:            seedFormatInvalidPlanValidateFixture,
+			requireApproved: false,
+			wantOutcome:     shedengine.Stuck,
+		},
+		{
+			name:            "CleanApproved_RequireApprovedTrueIsDone",
+			seed:            func(t *testing.T, anchorPath string) { seedPlanValidateFixture(t, anchorPath, true) },
+			requireApproved: true,
+			wantOutcome:     shedengine.Done,
+		},
+		{
+			name:            "CleanApproved_RequireApprovedFalseIsDone",
+			seed:            func(t *testing.T, anchorPath string) { seedPlanValidateFixture(t, anchorPath, true) },
+			requireApproved: false,
+			wantOutcome:     shedengine.Done,
+		},
+		{
+			name:            "UnparseableOverview_RequireApprovedTrueIsError",
+			seed:            func(t *testing.T, anchorPath string) {}, // no _lyx/plan/00-overview.md at all
+			requireApproved: true,
+			wantErr:         true,
+		},
+		{
+			name:            "UnparseableOverview_RequireApprovedFalseIsError",
+			seed:            func(t *testing.T, anchorPath string) {}, // no _lyx/plan/00-overview.md at all
+			requireApproved: false,
+			wantErr:         true,
+		},
+	}
 
-		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
-		wantPath := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
-		if pointer.Path != wantPath {
-			t.Errorf("Call() pointer.Path = %q; want %q", pointer.Path, wantPath)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			anchorPath := t.TempDir()
+			worktreeRoot := t.TempDir()
+			tt.seed(t, anchorPath)
 
-	t.Run("AtLeastOneFindingMapsToStuck", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		worktreeRoot := t.TempDir()
-		seedPlanValidateFixture(t, anchorPath, false) // unapproved -> plan-unapproved finding
+			p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot, tt.requireApproved)
+			outcome, pointer, err := p.Call(context.Background())
 
-		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
-		outcome, _, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
-	})
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Call() error = nil; want non-nil error for an unparseable plan directory")
+				}
+				if !strings.Contains(err.Error(), "planparser:") {
+					t.Errorf("Call() error = %q; want a planparser-prefixed error", err.Error())
+				}
+				if outcome == shedengine.Stuck {
+					t.Errorf("Call() outcome = %q; want no Stuck verdict for an unparseable plan", outcome)
+				}
+				return
+			}
 
-	t.Run("UnparseablePlanMapsToError", func(t *testing.T) {
-		anchorPath := t.TempDir() // no _lyx/plan/00-overview.md at all
-		worktreeRoot := t.TempDir()
-
-		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
-		outcome, _, err := p.Call(context.Background())
-		if err == nil {
-			t.Fatalf("Call() error = nil; want non-nil error for an unparseable plan directory")
-		}
-		if !strings.Contains(err.Error(), "planparser:") {
-			t.Errorf("Call() error = %q; want a planparser-prefixed error", err.Error())
-		}
-		if outcome == shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want no Stuck verdict for an unparseable plan", outcome)
-		}
-	})
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("Call() outcome = %q; want %q", outcome, tt.wantOutcome)
+			}
+			if tt.wantOutcome == shedengine.Done {
+				wantPath := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
+				if pointer.Path != wantPath {
+					t.Errorf("Call() pointer.Path = %q; want %q", pointer.Path, wantPath)
+				}
+			}
+		})
+	}
 
 	t.Run("CancelledContextReturnsErrorNotVerdict", func(t *testing.T) {
 		anchorPath := t.TempDir()
@@ -99,7 +165,7 @@ func TestPlanValidate_Call(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot)
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot, true)
 		outcome, _, err := p.Call(ctx)
 		if err == nil {
 			t.Fatalf("Call(cancelled) error = nil; want non-nil error")
