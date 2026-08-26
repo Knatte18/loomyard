@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-regression-coverage  '2026-08-26T19:13:07Z'
 holistic-reviewing  '2026-08-26T19:13:36Z'
 holistic-approved  '2026-08-26T19:18:29Z'
 done  '2026-08-26T19:20:04Z'
+pr-pending  '2026-08-26T19:21:00Z'
 ```
 
 ## Batches
