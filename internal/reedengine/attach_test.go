@@ -4,10 +4,10 @@
 // answered by destroying every pane in the session, so an attach that reaches select-layout on a
 // suppressed precondition would wipe the very session it is attaching to.
 //
-// Every case drives AttachArgv entirely through TmuxCmd's execHook seam — no exec.Command, no live
-// tmux server, no sleep — discriminating display-message responses on the format argument (the last
-// element of args), never on call order, so these tests do not silently pass if the call sequence
-// changes.
+// Every case drives AttachArgv entirely through TmuxCmd's execHook seam — no external process spawn,
+// no live tmux server, no sleep — discriminating display-message responses on the format argument
+// (the last element of args), never on call order, so these tests do not silently pass if the call
+// sequence changes.
 
 package reedengine
 

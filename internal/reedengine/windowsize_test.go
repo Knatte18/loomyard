@@ -1,6 +1,6 @@
 // windowsize_test.go covers windowsize.go's pure parsers/predicates and its four *Locked tmux
-// round trips, every one driven through TmuxCmd's execHook seam (no live server, no exec.Command,
-// no sleep) — the shape generation_test.go and strand_test.go already use.
+// round trips, every one driven through TmuxCmd's execHook seam (no live server, no external process
+// spawn, no sleep) — the shape generation_test.go and strand_test.go already use.
 
 package reedengine
 
