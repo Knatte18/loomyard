@@ -75,6 +75,7 @@ Batch-local decision beyond the overview's: card 4 carries an explicit temporary
   - `internal/hubforge/doc.go`
   - `internal/configreg/configreg.go`
   - `internal/configengine/config.go`
+  - `internal/configsync/configsync.go`
   - `internal/gitkit/gitkit.go`
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/commitweftpaths.go`
