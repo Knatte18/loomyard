@@ -1,8 +1,7 @@
 // loomstatus_test.go tests the AnchorPath-anchored LoomStatusFile/LoomStatusLock accessors on a
-// hand-built lyxcwd.Location — pure path arithmetic, no spawning, untagged (Tier 1). It pins the
-// scratch-dir split: LoomStatusFile (durable) stays under lyxdirs.LyxDirName, while LoomStatusLock
-// (never-tracked) resolves under lyxdirs.DotLyxDirName at the same mirrored subpath, for both an
-// unanchored and a subpath-anchored *lyxcwd.Location.
+// hand-built lyxcwd.Location — pure path arithmetic, no spawning, untagged (Tier 1). It pins every
+// loom status-directory accessor as a never-tracked transient under lyxdirs.DotLyxDirName, for both
+// an unanchored and a subpath-anchored *lyxcwd.Location.
 
 package loomengine
 
@@ -23,7 +22,7 @@ func TestLoomStatusFile(t *testing.T) {
 		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "loom", "status.json")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "status.json")
 	if got := LoomStatusFile(l); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}
@@ -62,7 +61,7 @@ func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 		AnchorRel:    ".",
 	}
 
-	want := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName, "loom", "status.json")
+	want := filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "loom", "status.json")
 	if got := LoomStatusFile(l); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}
@@ -70,7 +69,7 @@ func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 
 // TestLoomStatusLock_UnanchoredEqualsWorktreePath proves LoomStatusLock's AnchorPath anchoring
 // coincides with WorktreePath at AnchorRel "." — the same unanchored equivalence
-// TestLoomStatusFile_UnanchoredEqualsWorktreePath pins for the durable file, but for the
+// TestLoomStatusFile_UnanchoredEqualsWorktreePath pins for the status file, but for its own
 // never-tracked .lyx sibling.
 func TestLoomStatusLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
