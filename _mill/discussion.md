@@ -31,6 +31,7 @@ Every hub minted since the config-materialisation step landed carries the defect
 - `internal/fabriccli/clone.go` — `CloneAndWire` gains a weft commit of the module configs it just materialised, immediately after `configsync.ReconcileAll(res.WeftBase, true)`.
 - `internal/configengine/config.go` — a new `ConfigFileRel(module string) string` accessor returning the anchor-relative config path (`_lyx/config/<module>.yaml`), so `configDirName` stays unexported and the path segments are joined in exactly one place.
 - `internal/hubforge/seed.go` — `SeedConfig`'s commit gains `--allow-empty`, because this change removes the nine untracked files that until now guaranteed its `git add .` always staged something. See the `seedconfig-tolerates-empty-stage` Decision.
+- `internal/preflight/preflight_integration_test.go:51-52` and `internal/preflightshed/preflight_integration_test.go:52-53` — the same `--allow-empty` change, for the same reason. These are the other two members of the class; see the `empty-stage-class-enumeration` Decision for how the class was enumerated and why `internal/fabriccli/pushbypass_integration_test.go` is not in it.
 - Doc comments on `CloneAndWire` and on `internal/hubforge` (`hub.go` / `doc.go`), which describe the post-clone fixture state that this change makes clean rather than dirty.
 - New integration coverage proving both halves: the weft prime is clean after clone, and a pair created by `Topology.Add` off that clone has a populated `_lyx/config/`.
 
@@ -112,23 +113,41 @@ Every hub minted since the config-materialisation step landed carries the defect
   Probing `git diff --cached --quiet` and skipping the commit conditionally — more moving parts in a fixture helper for the same outcome, and it makes "did SeedConfig commit?" ambiguous to a reader.
   Both live callers (`internal/webstercli/verbs_test.go:773`, `internal/loomcli/smoke_test.go:155`) seed real overrides today, so this is a latent trap rather than an immediate breakage — which is exactly why it must be closed now rather than discovered later.
 
+### empty-stage-class-enumeration
+
+- Decision: the "fixture stages nothing and the bare `git commit` exits 1" class is enumerated mechanically, not by hand: every `gitkit.MustRun(..., "git", "add", ...)` followed by a bare `gitkit.MustRun(..., "git", "commit", ...)` run at `h.PrimeWeft()`, minus the sites where the fixture itself writes a file before staging.
+  The full class is three sites, and all three take `--allow-empty`.
+- Rationale: `gitkit.MustRun` `tb.Fatalf`s on any non-zero exit, so every member of this class becomes a hard fixture failure the moment the weft prime starts out clean.
+  Enumerating by grep rather than by memory is what makes the disposition complete instead of "the ones we happened to notice".
+  The members:
+  - `internal/hubforge/seed.go:44-45` — writes overrides, but a seed byte-identical to the reconciled file stages nothing.
+  - `internal/preflight/preflight_integration_test.go:51-52` — writes nothing of its own. Its only stageable content today is the nine untracked configs: `.lyx` is excluded via `.git/info/exclude`, and the `_extra` junction target materialises as an empty directory, which git does not track.
+  - `internal/preflightshed/preflight_integration_test.go:52-53` — same shape, same reason, and its own comment says it mirrors `internal/preflight`'s fixture.
+  - **Not** in the class: `internal/fabriccli/pushbypass_integration_test.go:68-73`, which writes `placeholderFile` under `_lyx` immediately before its `git add .`, so it always has something to stage.
+- Rationale for `--allow-empty` at the two preflight sites specifically: both exist to leave the fixture clean on the weft side, and after this change the clone already leaves it clean, so the add-and-commit becomes a no-op that must be allowed to succeed rather than deleted.
+  Deleting it would silently drop the guarantee if a future fixture change reintroduces untracked weft content.
+- Rejected: leaving the two preflight sites to be discovered by the Testing §8 regression sweep — the sweep would catch them, but as an unexplained red suite rather than a planned edit, and a plan writer with no disposition would be free to "fix" them by deleting the commits.
+
 ### no-backfill-for-existing-hubs
 
 - Decision: hubs minted before this change are out of scope. Nothing detects them, nothing repairs them, and `lyx config reconcile` is not taught to commit.
 - Rationale: the defect is a missing step in `clone`, and `clone` is where it is fixed.
   A backfill would need either a new verb or a repair branch in `reconcile` that commits on the operator's behalf — both are larger surfaces than the bug, and both would outlive the one-off condition they exist for.
   The operator remedy is a one-time manual fix-up per affected hub: run `lyx config reconcile --apply` in the prime pair, then commit `_lyx/config/` on the weft primary branch by hand.
-  After that single fix-up, every subsequently added pair inherits the configs exactly as it would from a hub minted post-fix, because `add` forks from the parent's weft branch.
+  After that fix-up, a pair added **from the fixed prime** inherits the configs exactly as it would from a hub minted post-fix.
+  The reach stops there: `Topology.Add` forks the new weft branch from `WeftBranchName(<the invoking worktree's warp HEAD branch>)` (`add.go`'s `parentBranch` / `parentWeftBranch`, used at the `createWeftWorktree` call), so a pair added *from an already-broken pre-fix pair* still inherits a config-less weft branch and still needs `lyx config reconcile --apply`.
+  Fixing an existing pair the same way — `reconcile --apply` then commit `_lyx/config/` on that pair's own weft branch by hand — makes it a sound parent in turn.
   Committing by hand in the weft repo is a human running ordinary git, which the Fabric Git Invariant explicitly permits — that invariant binds LYX's own code, not the operator.
-  Without the fix-up, the fallback stays what it is today: `lyx config reconcile --apply` in each new pair, forever.
+  Without any fix-up, the fallback stays what it is today: `lyx config reconcile --apply` in each new pair, forever.
 - Rejected: a `--backfill-configs` flag on `reconcile` — a migration surface for a condition that stops occurring the day this lands.
   Telling operators to `lyx fabric clone --reset` — destroys and re-mints the whole hub to fix nine files.
 
 ### docs-in-the-same-commit
 
-- Decision: update `CloneAndWire`'s doc comment (its enumerated wiring sequence gains the commit step) and `internal/hubforge`'s `hub.go` / `doc.go` post-clone-state description. No `CONSTRAINTS.md` change, no `docs/overview.md` change, no `manifest/roadmap.md` move.
+- Decision: update `CloneAndWire`'s doc comment (its enumerated wiring sequence gains the commit step), `internal/hubforge`'s `hub.go` / `doc.go` post-clone-state description, and `docs/shared-libs/configengine.md`'s `## Exported functions` section, which gains a `### ConfigFileRel(module string) string` entry beside the existing `ConfigDir` / `ConfigFile` entries. No `CONSTRAINTS.md` change, no `docs/overview.md` change, no `manifest/roadmap.md` move.
 - Rationale: the Documentation Lifecycle rule requires the touched module's doc to land in the same commit.
   There is no `manifest/designs/fabric.md`; fabric's module doc is `internal/fabricengine/doc.go` plus the CLI-layer package comments, and the changed behaviour is in `fabriccli`.
+  `docs/shared-libs/configengine.md` is in because it enumerates `configengine`'s exported surface function by function, and `ConfigFileRel` is a new exported function on exactly that surface — omitting it would leave the doc silently incomplete the day it lands.
   No new cross-cutting invariant is introduced — this change *satisfies* existing invariants rather than adding one.
   `roadmap.md` moves only on completing or adding a planned item; this is a bugfix.
 - Rejected: adding a "clone commits what it materialises" invariant to `CONSTRAINTS.md` — the Fabric Git Invariant and the Fabric-Fixture Invariant already cover the commit shape and the fixture consequence.
@@ -231,6 +250,7 @@ Discovered during discussion:
    Derive the expected count from the same source scenario 1 uses (`configreg.Modules()` minus `fabric`), never a hard-coded nine, so a tenth registered module does not silently make this test wrong.
 6. **`SeedConfig` survives a redundant seed.** Build a hub, then call `hubforge.SeedConfig` with a module's config set to exactly the content the clone already committed, and assert the helper does not `tb.Fatalf`.
    This is the direct regression test for the `seedconfig-tolerates-empty-stage` Decision, and it fails today only *after* the clone-commit change lands — so it is written alongside that change, not before it.
+   The two preflight fixtures in `empty-stage-class-enumeration` need no test of their own: their existing integration tests exercise the fixture on every run, so the `--allow-empty` edit is covered by the §8 sweep passing.
 
 **Unit coverage:**
 
