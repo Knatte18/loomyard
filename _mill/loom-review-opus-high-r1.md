@@ -268,6 +268,28 @@ only record of it anywhere"). The two rows sit beside each other and disagree.
 
 Fix: log the discarded error at `logger.Warn` on both rows, matching `planValidate`'s shape.
 
+### F5 — `burlerRoundFileSet`'s `entry` and `field` parameters are dead, and their absence makes two distinct config errors indistinguishable — NIT — CONFIRMED
+
+`internal/shedrecipe/entries_burler.go:101`:
+
+```go
+func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, error) {
+```
+
+Neither `entry` nor `field` is referenced in the body. Both call sites
+(`entries_burler.go:196` and `:200`) pass `"BurlerRound"` plus `"target"` / `"fasit"`, which
+reads as though the errors below are qualified by them. They are not: every error comes from
+`configString`/`configStringSlice`/`configRejectUnknown`, which render only the leaf key.
+
+Consequence: a bad `profile.target.paths` and a bad `profile.fasit.paths` both produce the
+byte-identical message `shedrecipe: config key "paths" must be a string list, got ...`, and a
+stray key under either produces `shedrecipe: unrecognized config key "X"` with no path. A
+recipe author with a typo in one of two sibling maps is told which key, never which map. The
+two unused parameters are the signature of an intent that was never wired up — `go vet` cannot
+see an unused function parameter, so nothing catches it.
+
+Fix: use the two parameters — wrap the returned error so it names the entry and the field.
+
 ## Docs & operability findings
 
 _(pending)_
