@@ -4,8 +4,11 @@ Job B for `_mill/loom-review-opus5-high-r1.md`. One commit per finding, on `loom
 
 ## Summary
 
-**17 findings. 13 fixed and committed. 4 recorded NOT-FIXED-THIS-ROUND**, three of them because the fix lives outside this
-campaign's module and one because it is a genuine feature addition rather than a hardening change.
+**17 findings. 14 fixed and committed. 3 recorded NOT-FIXED-THIS-ROUND** — two because the fix lives outside this campaign's
+module, and one (F7) because it is a genuine feature addition rather than a hardening change.
+
+F9 was in the out-of-module group until the operator decided it mid-round ("mouse should be on by default"), which is the one thing
+that resolves a trade a reviewer should not settle alone; it is fixed.
 
 | Finding | Severity | Disposition | Commit |
 |---|---|---|---|
@@ -17,7 +20,7 @@ campaign's module and one because it is a genuine feature addition rather than a
 | F6 — the Bouncer's focus directive never reaches the Burler | BLOCKING | **Fixed** | `loom: fix F6 …` |
 | F7 — the pipeline cannot pass `Plan-Validate` | BLOCKING | **NOT-FIXED-THIS-ROUND** (feature) | — |
 | F8 — the Discussion agent can rewrite loom's own config | MEDIUM | **Fixed** | `loom: fix F8 …` |
-| F9 — scrolling an attached session injects arrow keys | MEDIUM | **NOT-FIXED-THIS-ROUND** (reed) | — |
+| F9 — scrolling an attached session injects arrow keys | MEDIUM | **Fixed** (operator decision) | `reed: fix F9 …` |
 | F10 — `status --watch` reprints every second | MEDIUM | **Fixed** | `loom: fix F10 …` |
 | F11 — `drive` needs the reed substrate it disclaims | LOW | **Fixed** | `loom: fix F11 …` |
 | F12 — attach leaves pre-attach terminal content on screen | LOW | **NOT-FIXED-THIS-ROUND** (reed) | — |
@@ -118,13 +121,6 @@ committed, so `lyx fabric add` branches from a commit that does not carry them. 
 Recorded for the orchestrator. Worth pairing with the observation that the error text names the bare `lyx config reconcile` when the
 remedy is `--apply`.
 
-### F9 — scrolling an attached session injects arrow keys into the live agent (MEDIUM)
-
-`mouse: off` is `internal/reedengine`'s shipped default and a deliberate trade ("off preserves native terminal text
-selection/copy"). Changing it — `mouse: on` plus a `WheelUpPane` copy-mode binding, the conventional configuration that keeps both —
-is a reed change. Left for the orchestrator rather than made in a loom round. The bite is worst under `discussion_interactive: true`,
-where an operator is at the pane by design and every scroll gesture types into the interview.
-
 ### F12 — attach leaves pre-attach terminal content on screen (LOW)
 
 reed pins a fixed `width`/`height` and computes its whole layout against that box, never sets `window-size`, and both attach paths
@@ -147,6 +143,7 @@ Hermetic gates were run after every fix; the live column is what makes the diffe
 | F10 | Restored strand pane carries **one** line at `history=0`, against `history=434` in fifteen minutes before. |
 | F11 | With no reed session at all, `drive` brings the session up and proceeds into real producer work instead of erroring several rows deep. |
 | F17 | `[('loom-status','',False), …]` → `[…, ('loom-status','%6',True)]`, and the status pane is visibly back. |
+| F9 | A fresh reed boot against a `reed.yaml` carrying the new default reports `mouse on` from `tmux show-options -g mouse`. |
 
 **Sabotage-proved** (the mechanism was neutered and the new test confirmed to fail, per `crucible/README.md`'s refinement 5 —
 a green run that never executed the code is indistinguishable from a fix):
@@ -187,6 +184,7 @@ Production:
 - `internal/loomengine/config.go`
 - `internal/shuttleengine/wait.go` (doc only)
 - `contracts/recipes/loom-recipe.yaml` (comment only), `contracts/stencils/loom/loom-template-discussion.md`
+- `internal/reedengine/` — `template_posix.yaml`, `template_windows.yaml`, `doc.go` (F9, on the operator's decision)
 
 Tests:
 
@@ -231,6 +229,12 @@ Both reed servers created during this round were killed. Verified:
 $ pgrep -a -f 'tmux -L lyx-'              -> zero lyx tmux servers
 $ pgrep -a claude | grep -v 'claude -c$'  -> zero stray claude agents
 ```
+
+One orphan had to be killed by hand to reach that, and it is worth recording rather than glossing: after
+`tmux kill-server`, a `Plan-Write` agent process (a `claude` launched into a pane) **survived its pane's death** and had to be
+killed by pid. Whether reed's own `down`/`remove` reaping covers that path — it reaps pane children, and this was a
+server-level kill, not a pane-level one — is a reed question this round did not chase. Flagging it for the orchestrator as a
+possible follow-up rather than asserting it is a defect.
 
 The surviving `claude -c` processes are the operator's own. The two scratch hubs and their bare remotes are left on disk under the
 session scratchpad for the orchestrator to inspect; nothing outside it was touched, and no other worktree's git was used.
