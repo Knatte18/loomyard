@@ -124,6 +124,11 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 			}, nil
 		},
 		CommitPlan: func() error { return nil },
+		// ApprovePlan is a non-nil no-op closure, not a real planparser.SetApproved call: this
+		// file's subject is the constructed producer table and its routing graph, never a driven
+		// run, so nothing here reads the plan's approval flag -- card 25's dynamic negative case is
+		// where a deliberately non-writing closure is the thing under test.
+		ApprovePlan: func() error { return nil },
 	}
 
 	paths := ShedPaths{
