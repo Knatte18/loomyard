@@ -1,0 +1,28 @@
+MILL_REVIEW_BEGIN
+# Review: Fix Bouncer anchor-path and run-dir clearing — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-26
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 1's Context omits a file its Requirements name
+**Location:** Batch 1 (`01-anchor-root.md`), Card 1.
+**Issue:** Card 1's Requirements direct the new `BurlerGeometry` doc comment to "name `standalonegeom.BurlerGeometry` as the mode where `WorktreeRoot` and `AnchorPath` still legitimately diverge" — a factual claim about another package's behavior. `internal/standalonegeom/burlergeom.go` is not listed in Card 1's `Context:` or `Edits:` (it appears only in Card 2's Context), so the implementer must cold-start-explore to verify the claim this card asks them to assert in prose. This is the exact BLOCKING trigger under "Context completeness."
+**Fix:** Add `internal/standalonegeom/burlergeom.go` to Card 1's `Context:` list.
+
+### [NIT:consistency] Card 14 leaves `## Planned` with a stale lead-in after emptying it
+**Location:** Batch 3 (`03-docs.md`), Card 14.
+**Issue:** `### loom: real LLM producers` is `manifest/roadmap.md`'s only `## Planned` subsection, holding its only Planned item. Card 14 correctly instructs removing that now-empty subsection heading and lead-in when the one item under it is moved to Done, but doesn't address that this leaves `## Planned` itself with zero items — only its own top intro sentence ("grouped into sub-categories below for readability"), which then describes sub-categories that no longer exist.
+**Fix:** Have Card 14 also touch (or explicitly bless as fine) the now-inapplicable "grouped into sub-categories below" clause in `## Planned`'s own lead-in paragraph.
+
+## Verdict
+
+REQUEST_CHANGES
+Excellent, source-grounded plan; one Context-completeness gap (Card 1) must be fixed before approval.
+MILL_REVIEW_END

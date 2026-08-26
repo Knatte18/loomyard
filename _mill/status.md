@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: loom-bouncer-anchor-rundir-fix
 branch: loom-bouncer-anchor-rundir-fix
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussion-fix-r6  '2026-08-26T06:33:30Z'
 discussed  '2026-08-26T06:33:30Z'
 planning  '2026-08-26T06:41:28Z'
 plan-review-r1  '2026-08-26T06:48:37Z'
+plan-fix-r1  '2026-08-26T06:49:21Z'
 ```

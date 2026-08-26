@@ -28,6 +28,7 @@ Batch-local decision, on top of `## Shared Decisions`: `internal/shedrecipe/entr
   - `internal/hubgeom/webstergeom_test.go`
   - `internal/burlerengine/geometry.go`
   - `internal/hubgeom/doc.go`
+  - `internal/standalonegeom/burlergeom.go`
 - **Edits:**
   - `internal/hubgeom/hubgeom.go`
   - `internal/hubgeom/hubgeom_test.go`

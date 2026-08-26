@@ -62,7 +62,10 @@ Batch-local decision, on top of `## Shared Decisions`: both files are prose, so 
   Write instead what shipped — both defects fixed across all three review segments, the segments' `_lyx` paths now resolving against the anchor path their commit seam already anchored at, and a `Bouncer` re-entered after approving now archiving its run directory and re-judging rather than replaying a settled verdict.
   Keep it to a name plus one or two sentences, per the file's own Maintenance rules — the durable detail lives in `internal/shedadapters`' package documentation and in `manifest/designs/loom.md`, which the continuation line points at.
   The "### loom: real LLM producers" subsection's own lead-in paragraph ends with "the item below is unblocked", which names the item this card removes;
-  if removing the item leaves that subsection with no items, remove the now-empty subsection heading and its lead-in paragraph along with it rather than leaving a heading pointing at nothing.
+  it is that subsection's only item, so remove the subsection heading and its lead-in paragraph along with the item rather than leaving a heading pointing at nothing.
+  That empties `## Planned` entirely, which leaves its own lead-in paragraph ("Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom") describing sub-categories that no longer exist.
+  Rewrite that lead-in so it no longer references sub-categories or an order between them, and so it reads correctly over an empty section — one sentence stating what `## Planned` holds and that nothing is currently scheduled.
+  Keep the `## Planned` heading itself: the file's own Maintenance section names Planned, Someday, and Done as its three sections and states that numbering restarts in each, so deleting one of the three would falsify those rules and leave the next Planned item with nowhere to land.
   Change no other entry in any section, and add no `designs/<name>.md` file — a Done entry points at the module's own package documentation instead.
   Write it with semantic line breaks, one sentence per line.
 - **Commit:** `docs(roadmap): move the Bouncer anchor-root and run-dir item to Done`
