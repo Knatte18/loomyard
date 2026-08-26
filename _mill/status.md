@@ -6,6 +6,7 @@ slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: loom's status file can conflict on the landing merge
 task_description: |
   loom's status file can conflict on the landing merge
@@ -35,11 +36,17 @@ implementing  '2026-08-26T18:44:53Z'
 ```yaml
 batches:
   - name: untrack-status-file
-    state: pending
+    state: running
+    implementer_session: 62825fa4-777e-4a26-b453-ab47f6d0a1e7
+    start_sha: c2d247c40ec1bfa33830cd6d228a62d1a86bd353
+    verify_baseline_failures: []
   - name: text-references
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
   - name: regression-coverage
     state: pending
+    verify_baseline_failures: []
 ```
