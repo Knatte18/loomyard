@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: plan-custom-card-skips-path-check
 branch: plan-custom-card-skips-path-check
-plan: null
+plan: _mill/plan
 parent: main
 task: Custom-typed plan cards skip path-missing checks
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-26T17:11:38Z'
 discussed  '2026-08-26T17:50:28Z'
+planning  '2026-08-26T17:58:12Z'
 ```
