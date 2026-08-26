@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: fabric-clone-commit-module-configs
 branch: fabric-clone-commit-module-configs
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r3  '2026-08-26T11:24:10Z'
 discussion-fix-r4  '2026-08-26T11:28:59Z'
 discussed  '2026-08-26T11:28:59Z'
 planning  '2026-08-26T11:37:46Z'
+plan-review-r1  '2026-08-26T11:44:27Z'
 ```
