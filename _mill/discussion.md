@@ -40,7 +40,7 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 - A `--require-approved` flag on `lyx loom validate-plan`, and the parity test extended to cover both rows.
 - `internal/loomrecipe/fixture_test.go`'s fake `Plan-Write` corrected to write the unapproved plan the real writer is required to write, and `fakeLoomBurler`'s injected regression re-pointed to a format fault the new seam cannot mask — see the Testing section's keystone paragraph;
   the first of those is the regression test for F7 itself.
-- Docs in the same commit: `manifest/designs/loom.md`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-template-plan.md`, `internal/loomengine/plan.go`'s package doc, and two `CONSTRAINTS.md` entries — the **Gate Self-Check Parity Invariant** (a gate's verb reaches every mode its row set uses) and the **Planparser Sole-Parser Invariant** (widened to sole parser *and* sole writer of the plan format).
+- Docs in the same commit: `manifest/designs/loom.md`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-template-plan.md`, `contracts/stencils/loom/loom-rubric-plan-review.md`, `internal/loomengine/plan.go`'s package doc, `internal/planparser/validate.go`'s package doc, `internal/loomshed/planvalidate.go`'s package doc and `Call` doc, `internal/loomcli/validate.go`'s `Long` text, and two `CONSTRAINTS.md` entries — the **Gate Self-Check Parity Invariant** (a gate's verb reaches every mode its row set uses) and the **Planparser Sole-Parser Invariant** (widened to sole parser *and* sole writer of the plan format).
 
 **Out:**
 
@@ -197,6 +197,12 @@ It is the single blocker keeping loom from being crucible-merge-ready.
   The dispatch list in `Validate` itself is `validate.go:60-73`: fourteen `check*` calls after `checkFormatAndApproval`, which is why `ValidateFormat` is fourteen checks plus `format-unrecognized`, fifteen IDs, and `Validate` is sixteen.
 - `contracts/recipes/loom-recipe.yaml`, rows `Plan-Write`, `Plan-Validate`, `Plan-Bouncer`, `Plan-Burler`, `Plan-Revalidate`.
 
+**`contracts/stencils/loom/loom-rubric-plan-review.md`.**
+The Plan-Review rubric tells the judge not to re-derive "the sixteen check IDs … enforced deterministically upstream" (`:20`, `:31`), naming `format-unrecognized` through `commit-subject-mismatch`.
+After the split only **fifteen** are enforced upstream of the judge — `plan-unapproved` moves downstream to `Plan-Revalidate`, which runs *after* the segment.
+Disposition: reword the count and the upstream claim;
+the don't-re-derive instruction itself stays exactly as it is, since the judge must still not re-derive the approval flag either — it is not the judge's business in either direction.
+
 **`internal/planparser`.**
 Read-only today — the package has no writer of any kind (`parse.go`, `validate.go`, `sections.go`, `normalize.go`, `classify.go` contain no `os.WriteFile`).
 `SetApproved` is the package's first write path, so it also introduces the package's first write-side test fixtures.
@@ -227,6 +233,7 @@ Note the surrounding contract that the approved branch performs its side effects
 
 **`internal/loomshed/planvalidate.go`.**
 `NewPlanValidate(name, anchorPath, worktreeRoot)` gains the trailing `requireApproved bool` parameter, and `Call` (`:60-81`) picks between the two `planparser` functions.
+Two doc comments in this file pin the old contract as "a thin wrap over `planparser`'s own parse and validate steps" naming `planparser.Validate` specifically — the package doc at `:1-3` and `Call`'s own doc at `:47-54` — and both move in the same commit to describe the two-mode wrap.
 The existing `logger.Warn("loomshed: plan failed validation", ...)` line at `:76` already distinguishes the two rows by producer name and needs no change.
 `formatPlanFindings` is shared and unchanged.
 
@@ -236,7 +243,7 @@ The existing `logger.Warn("loomshed: plan failed validation", ...)` line at `:76
   `ApprovePlan` goes beside it, as `func() error { return planparser.SetApproved(planparser.PlanDir(location.AnchorPath())) }`.
   The file already imports `planparser` (it uses `planparser.PlanDirRel()` in the `CommitPlan` closure), so no new import.
 - `validate.go:72-111` `validatePlanCmd` — the flag lands here;
-  note `Args: cobra.NoArgs` stays and the `Long` text's "it takes no arguments and no flags" sentence must be corrected.
+  `Args: cobra.NoArgs` stays, and the **whole `Long` paragraph** (`:76-82`) is rewritten to describe both modes, not just its "it takes no arguments and no flags" sentence: it also claims the verb "runs `planparser.Validate` against it — the identical checks the Plan-Validate mechanical gate runs", and both halves of that become false in the new default mode.
   Per the CLI/Cobra Invariant every command carries a `Short`, which this one already does.
 - `parity_test.go:156-200` `TestGateParity_PlanValidate` and its `planFixture(t, anchorPath, worktreeRoot, approved bool)` helper at `:169`.
   The existing `Stuck_Unapproved` case (`:176-181`) asserts that an unapproved plan maps to `stuck`;
@@ -256,7 +263,21 @@ The existing `logger.Warn("loomshed: plan failed validation", ...)` line at `:76
 - `internal/loomrecipe/revalidate_test.go` and `fakeLoomBurler.corruptPlanOverview` (`fixture_test.go:114`, `:131-135`) — **`TestSequence_PlanRevalidateCatchesPostSegmentRegression` breaks under this change and must be re-pointed.**
   The fake burler injects its regression solely as `planFixtureOverview(false)`, i.e. by clearing the approval flag, and the test depends on `plan-unapproved` firing at `Plan-Revalidate`.
   The new `Approve` seam runs on `Plan-Bouncer`'s APPROVED settle, which is *after* the burler round, so the flag is flipped straight back to `true` and the bounce the test asserts stops happening.
-  Disposition: change `corruptPlanOverview` to inject a genuinely format-invalid regression that no approval write can undo — a Card Index entry naming a card file that is not on disk (`index-file-mismatch`) is the cleanest, since the fake already controls the overview's whole content and the card file is written separately.
+  Disposition: change the fake to inject a regression that no approval write can undo.
+  **The replacement must be parseable-but-invalid, and that constraint is sharp**: `planValidate.Call` maps a `ParsePlan` failure to a *returned error*, never to `Stuck` (`planvalidate.go:61-67`, and its own doc comment says why — "a plan that will not parse is not a plan the Plan-Write bounce target can be asked to improve").
+  An unparseable corruption therefore aborts the whole run and the test dies at its `Run() error` fatal before reaching the `Stuck` → `Plan-Write` assertion it exists to make.
+  Two corruptions are verified to satisfy the constraint:
+  - **Preferred — an orphan card file.** Leave the overview and `01-first-card.md` exactly as they are and additionally write an unindexed `99-orphan.md` into the plan directory.
+    `ParsePlan` only opens files the Card Index names, so it succeeds;
+    `checkIndexFileConsistency` reads the directory and reports `index-file-mismatch` for the file no card names (`validate.go:99-130`).
+    Purely additive, with no plan-format grammar to get right.
+    The fake's field is renamed from `corruptPlanOverview` to match — it no longer writes an overview.
+  - **Alternative — a card missing its `Intent:`.** Rewrite `01-first-card.md` with its heading and type label intact but no `**Intent:**`;
+    the parser records `HasIntent` false rather than failing, and `checkCardMissingField` reports `card-missing-field`.
+
+  Two corruptions that do **not** work, both of which look plausible: a Card Index entry naming an absent card file (`parseCardFile` hard-errors `card file not found`, `parse.go:279-297`), and dropping the Card Index entry while leaving the file on disk (`parseCardIndex` errors `no card index entries found` on an empty index, `parse.go:262`).
+  Neither is an `index-file-mismatch` finding;
+  both abort the run.
   The test's own subject and name are unchanged;
   only the corruption's flavour moves, and it moves to something the row could always catch and the seam can never mask.
 - `internal/loomrecipe/shape_test.go:49`, `internal/loomshed/cancellation_test.go:86` — mechanical `NewPlanValidate` call-site updates for the new parameter.
@@ -423,5 +444,8 @@ That is the follow-on task this change exists to unblock.
   the test's subject is that `Plan-Revalidate` catches a post-segment regression, and a format fault tests that subject better than the flag ever did.
 - **Q:** (review round 2 gap) Does the plan stencil's Step 5 self-check block change? **A:** [auto-pick] it stays verbatim. **Why:** Step 5 is the writer-facing half of the same deadlock, and the verb's new default mode is exactly what makes "re-run it until it exits 0" satisfiable;
   adding `--require-approved` there would re-impose the deadlock on the one agent that must never satisfy it.
+- **Q:** (review round 4 gap) The round-3 replacement corruption for `revalidate_test.go` — a Card Index entry naming an absent card file — makes `ParsePlan` hard-error, so the row returns an error and the test aborts instead of bouncing. What replaces it? **A:** [auto-pick] an **orphan card file**: leave the overview and `01-first-card.md` alone and additionally write an unindexed `99-orphan.md`, which parses cleanly and yields `index-file-mismatch`. **Why:** `planValidate.Call` maps a parse failure to a returned error and only a *validation* finding to `Stuck`, so the corruption must be parseable-but-invalid;
+  the orphan file is purely additive with no plan-format grammar to get wrong.
+  The reviewer's own alternative — dropping the index entry — fails the same way, since `parseCardIndex` errors on an empty index.
 - **Q:** How deep does verification go in this task? **A:** [auto-pick] unit tests per package plus a recipe-level routing assertion that an approved plan reaches `Batchifier` with no bounce;
   no live LLM run. **Why:** a live end-to-end run is the thing this change unblocks and belongs to the follow-on task, while the routing assertion is what would have caught F7 in the first place.
