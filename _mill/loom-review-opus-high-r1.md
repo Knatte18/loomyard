@@ -20,6 +20,100 @@ _(pending)_
 
 _(recorded provisionally as they are spotted; severity ordering finalized last)_
 
+### F0 — a driver crash mid review-segment round spawns a DUPLICATE agent on the same artifacts — BLOCKING — CONFIRMED (reproduced live, twice-observed processes)
+
+`internal/shedadapters/burler.go:238` (`BurlerProducer.Call`), and the same structural gap at
+`internal/shedadapters/bouncer.go:399` (`runSeedSpawn`), `internal/shedadapters/bouncer.go:532`
+(`judgeCall`), and `internal/shedadapters/webster.go:74` (`WebsterProducer.Call`).
+
+`manifest/designs/loom.md`'s "Crash recovery — resume on output files, not live processes"
+section states the ladder as loom's own invariant:
+
+> 2. **Else, is the agent's session still alive?** … A match: re-attach, just wait on its
+>    `Stop` hook (do **not** respawn — that would duplicate).
+
+That ladder is implemented in exactly ONE producer: `SingleLLMProducer`, whose `Call` probes
+`p.shuttle.Attach(spec)` before archiving anything (`singlellm.go:118`). **Every other
+LLM-spawning producer in loom's list has no probe at all.** `BurlerProducer.Call` goes
+straight from `highestCompleteRound` to `archiveStaleOutputs` to `p.runner.Run`; `Bouncer`'s
+seed and judge calls go straight to `b.cfg.Shuttle.Run`; `WebsterProducer.Call` goes straight
+to `p.run(...)`.
+
+**Reproduction, live, with process-level evidence.**
+
+State before the crash — one real Discussion-Burler round in flight:
+
+```
+$ .dev-bin/lyx loom status
+{"activity":{"now":"Discussion-Burler","last":"Discussion-Bouncer → stuck",...},
+ "current_producer":"Discussion-Burler","state":"running","history_length":5,...}
+$ .dev-bin/lyx reed status
+ strands: loom-status (%0), burler:1:3255aa42 (%4, live)
+driver pid 2086870 = ".dev-bin/lyx loom drive"
+burler agent pid 2089235 = "claude ... round-3829329960 ... --dangerously-skip-permissions"
+```
+
+Hard-kill the driver only, leaving its agent alive — the exact crash the doc's step 2 exists
+for:
+
+```
+$ kill -9 2086870
+$ ps -p 2086870      -> gone
+$ ps -p 2089235      -> 2089235 Sl+      (agent still alive)
+$ .dev-bin/lyx loom status
+  current_producer "Discussion-Burler", state "running"   (unchanged, as expected)
+```
+
+Resume exactly as `loom.md` documents ("stop anywhere … the next `lyx run` continues where it
+left off"):
+
+```
+$ lyx loom run
+$ .dev-bin/lyx reed status
+ strands: loom-status (%0),
+          burler:1:3255aa42 (%4, live),      <-- the ORPHAN from the dead driver
+          burler:1:c93847f8 (%5, live)       <-- the RESPAWN
+$ tmux -L ... list-panes -a
+ %4 2089153 claude
+ %5 2093019 claude
+```
+
+Two live `claude` agents, both `--dangerously-skip-permissions`, and both told to write the
+**same two files**:
+
+```
+$ grep -l 'reviews/discussion/round-1-review.md' <wt>/.lyx/burler/round-*/instruction-*.md
+ .lyx/burler/round-3441524935/instruction-2-review.md   (respawn)
+ .lyx/burler/round-3441524935/instruction-3-fix.md
+ .lyx/burler/round-3829329960/instruction-2-review.md   (orphan)
+ .lyx/burler/round-3829329960/instruction-3-fix.md
+```
+
+Both round directories point at
+`<wt>/.lyx/loom/reviews/discussion/round-1-review.md` and its `round-1-fixer-report.md`
+sibling.
+
+**Why this is BLOCKING, not cosmetic.**
+1. Two agents interleave writes to the same review and fixer-report files. Whichever finishes
+   second wins a file the other is mid-write on, and the Bouncer then judges an artifact that
+   is a splice of two independent reviews.
+2. `archiveStaleOutputs` runs in the respawn before either has written, so it cannot
+   deduplicate; the orphan's later write simply lands on top with nothing archived.
+3. Both rounds are `fix-scope: overlay` here and write into `_lyx/discussion/` concurrently,
+   so the *reviewed artifact itself* is edited by two agents at once. On the
+   **`Webster-Burler`** row the same crash is worse: that row is `fix-scope: source` and
+   commits per fix to the warp repo, so two agents would interleave commits.
+4. It doubles the real LLM cost of every crashed round, silently.
+5. Nothing anywhere reports it — no warning, no envelope field, no status-file entry. The only
+   way an operator sees it is by looking at the pane list.
+
+The run could not proceed correctly without manual intervention: the orphan had to be removed
+by hand before the segment could settle.
+
+Fix landed this round: give `BurlerProducer` and the `Bouncer`'s two spawn paths the same
+live-agent probe `SingleLLMProducer` already has, so a resume attaches to a still-live round
+instead of respawning over it. See the fixer report.
+
 ### F1 — `require_pr_to_base: []`, the only way to say "never open a PR", is rejected by the config loader — MEDIUM — CONFIRMED
 
 `internal/yamlengine/reconcile.go:78` (`MissingKeys`) + `internal/yamlengine/reconcile.go:137`
