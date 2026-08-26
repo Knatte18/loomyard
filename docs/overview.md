@@ -431,7 +431,7 @@ See `internal/fabricengine`'s own package doc for the state matrix, the verb tab
 
 The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — dogfooding lyx against itself.
 It lives on disk at `C:\Code\lyx-test-HUB` and exercises the resolved `lyx` binary under test: the dev binary via `deploy-dev` into `.dev-bin` when present, else the production binary on PATH via `deploy.cmd`.
-Build it via `sandbox/build.cmd`, run the core suite via `sandbox/core-suite.cmd` (or `sandbox/reed-suite.cmd` for the reed-specific suite, which needs live tmux), and collect the report via `sandbox/fetch.cmd` for either.
+Build it via `sandbox/win/build.cmd` (`sandbox/posix/build.sh` on Linux/macOS), run the core suite via `sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh`, or the `reed-suite`/`reed-suite.sh` pair for the reed-specific suite, which needs live tmux), and collect the report via `sandbox/win/fetch.cmd` (`sandbox/posix/fetch.sh`) for either.
 See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
 
 ## Other docs

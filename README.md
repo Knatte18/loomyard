@@ -130,7 +130,7 @@ Once deployed, run `lyx init` from a worktree to scaffold its `_lyx/` config.
 ## Sandbox Hub
 
 The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, exercising the real deployed binary end to end.
-Build it with `sandbox/build.cmd`, run the agent suite with `sandbox/core-suite.cmd`, and collect its findings with `sandbox/fetch.cmd`.
+Build it with `sandbox/win/build.cmd` (`sandbox/posix/build.sh` on Linux/macOS), run the agent suite with `sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh`), and collect its findings with `sandbox/win/fetch.cmd` (`sandbox/posix/fetch.sh`).
 See [docs/sandbox-howto.md](docs/sandbox-howto.md) for the runbook.
 
 ## Requirements
