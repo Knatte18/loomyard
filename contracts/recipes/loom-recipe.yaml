@@ -171,10 +171,14 @@ producers:
     # Webster carries no on_stuck at all, so without this row a fixer-introduced format regression
     # lands on the one row in the list a human is the only recovery for.
     engine: PlanValidate
-    # on_stuck is Plan-Write, not Plan-Bouncer: bouncing back into the segment live-locks, because
-    # judged(n) is still true for the already-APPROVED round, so settle returns Done immediately and
-    # the two rows ping-pong forever. Plan-Write is the same target Plan-Validate already bounces to,
-    # it terminates, and the bounce budget bounds it.
+    # on_stuck is Plan-Write, not Plan-Bouncer: this row reports mechanical format findings, and the
+    # fixer round is rubric-forbidden from re-deriving those, so the row that can actually repair
+    # them is the writer. Plan-Write is the same target Plan-Validate already bounces to, it
+    # terminates, and the bounce budget bounds it -- though the cost is no longer free now that a
+    # re-entered Plan-Bouncer archives and re-judges rather than replaying a settled verdict: each
+    # Stuck -> Plan-Write -> Plan-Validate -> Plan-Bouncer pass now runs a complete review
+    # generation, bounded by Plan-Revalidate's own bounce budget and, from the second generation on,
+    # by the Burler row's leftover budget.
     on_stuck: Plan-Write
     on_done: Batchifier
 
