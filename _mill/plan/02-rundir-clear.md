@@ -167,7 +167,6 @@ Batch-local decisions, on top of `## Shared Decisions`:
   - `internal/shedadapters/bouncer.go`
   - `internal/loomrecipe/coverage_guard_test.go`
   - `internal/loomrecipe/shape_test.go`
-  - `internal/loomrecipe/revalidate_test.go`
   - `_mill/discussion.md`
 - **Edits:**
   - `contracts/recipes/loom-recipe.yaml`

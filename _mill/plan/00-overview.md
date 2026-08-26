@@ -3,7 +3,7 @@
 ```yaml
 task: "Fix Bouncer anchor-path and run-dir clearing"
 slug: "loom-bouncer-anchor-rundir-fix"
-approved: false
+approved: true
 started: "20260826-063631"
 parent: "main"
 root: ""

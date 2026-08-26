@@ -77,7 +77,7 @@ Batch-local decision, on top of `## Shared Decisions`: `internal/shedrecipe/entr
 - **Moves:** none
 - **Requirements:** In `bouncerEntry`, change the `resolveUnderRoot("Bouncer", "artifact_paths", ...)` call to pass `env.AnchorPath` as its root instead of `env.WorktreeRoot`.
   Replace the `requireAbsRoot("Bouncer", "WorktreeRoot", env.WorktreeRoot)` guard with `requireAbsRoot("Bouncer", "AnchorPath", env.AnchorPath)`, keeping it in the same position relative to the `RunRoot`, `StencilsDir`, and `Shuttle` guards.
-  Reword `bouncerEntry`'s own file-level doc comment sentence "resolves artifact_paths against env.WorktreeRoot" to name `env.AnchorPath`, leaving the rest of that comment unchanged.
+  Reword `bouncerEntry`'s own function doc comment sentence "resolves artifact_paths against env.WorktreeRoot" to name `env.AnchorPath`, leaving the rest of that comment unchanged.
   Change nothing else in the entry: `run_subdir` still resolves under `env.RunRoot`, the `os.MkdirAll` of the joined run directory stays, and the `commit_seam` switch is untouched.
   In `internal/shedrecipe/entries_bouncer_test.go`, replace the `BlankEnvWorktreeRoot` subtest with a `BlankEnvAnchorPath` subtest asserting the error names `AnchorPath`, and add a subtest proving a blank `env.WorktreeRoot` no longer prevents a Bouncer row from building.
   Add a subtest that resolves `artifact_paths` with an `Env` whose `AnchorPath` and `WorktreeRoot` are two different existing absolute directories and asserts the constructed row's artifact path is under `AnchorPath` — the fixture in `internal/shedrecipe/fixture_test.go` already creates them as separate subdirectories, and the assertion is worthless if they coincide.
