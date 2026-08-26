@@ -409,6 +409,19 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, fmt.Errorf("set mouse: %w", err)
 	}
 
+	// Unlike the two set-option calls above, this one is non-fatal by design:
+	// remain-on-exit and mouse are correctness dependencies, while status and
+	// window-size are geometry-quality options whose absence degrades to
+	// tmux's own proportional rescale — a working session — and psmux's
+	// support for both is unverified anywhere in this repo, so a capability
+	// reed cannot confirm must not be able to take the boot down (Shared
+	// Decision geometry-tmux-failures-are-non-fatal-everywhere).
+	// Boot options never re-apply to an already-up session (the healthy
+	// already-up path returns early, above this block), which is why
+	// AttachArgv re-pins them in its own pre-flight rather than relying on
+	// this call.
+	e.pinGeometryOptionsLocked()
+
 	return true, stripped, nil
 }
 
