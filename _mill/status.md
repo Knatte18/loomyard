@@ -49,6 +49,8 @@ batches:
     commit_sha: 0057519a6961788f1cec5c93297ce34616c08fc0
     verify_baseline_failures: []
   - name: clone-commits-module-configs
-    state: pending
+    state: running
+    implementer_session: c2f8c84e-7762-4ff4-a622-9c2961b12126
+    start_sha: e6f36c37143f37b90c29e963de09c4e1ab340675
     verify_baseline_failures: []
 ```
