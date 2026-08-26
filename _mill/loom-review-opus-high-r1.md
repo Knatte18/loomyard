@@ -314,6 +314,29 @@ a quiet pane has every reason to think the strand has hung.
 
 Fix: correct both strings to describe print-on-change.
 
+### F7 — `docs/overview.md`'s loom.yaml key list omits the two review keys — LOW — CONFIRMED
+
+`docs/overview.md:319`:
+
+> loom's config module (`loom.yaml`, holding the `discussion`/`plan` role model-specs,
+> `discussion_timeout_min`/`plan_timeout_min`, and `discussion_interactive`) exists …
+
+`loomengine.Config` (`internal/loomengine/config.go:163`) carries seven keys, not five:
+`Review` and `ReviewTimeoutMin` are missing from the list above.
+`internal/loomengine/template.yaml:6-7` ships them, `LoadConfig` validates the review
+model-spec and the review timeout alongside the other four, and
+`manifest/designs/loom.md`'s "The review model's home is `loom.yaml`, not the recipe" section
+makes their location a deliberate, documented design decision:
+
+> `loom.yaml`'s `review:` and `review_timeout_min:` keys are the review segments' model and
+> timeout, validated at load time exactly like the existing `discussion:` and `plan:` keys.
+
+So the module table's enumeration is the one place that still describes the pre-review-segment
+config. An operator looking for where to tune the review model is told, by the top-level
+module reference, that the key does not exist.
+
+Fix: add both keys to the enumeration.
+
 ## Docs & operability findings
 
 _(pending)_
