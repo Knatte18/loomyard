@@ -92,8 +92,14 @@
 // A retry writes to the same two paths, because a retry is a second try at the one artifact the
 // round owes rather than a second artifact.
 // The presence of both files means, and only means, that round N completed and produced a usable
-// review; the round producer uses exactly that pair predicate to decide whether to advance, and the
-// Bouncer uses exactly that pair predicate to tell its seed call from its judge call.
+// review, and the round producer uses exactly that pair predicate to decide whether to advance.
+// The Bouncer's own round resolution is deliberately narrower and is stated here rather than
+// implied: ResolveRound stats the REVIEW file alone, so the two sides do not run the same test.
+// The asymmetry is safe only because of where an orphaned review can appear -- a process killed
+// between phase A and phase B leaves the run's current_producer naming the round producer, which
+// re-resolves the same round and archives the orphan before the Bouncer is routed to at all. A
+// change that lets the Bouncer be entered with an orphaned review present would have it judge a
+// review that no fixer round stands behind.
 // The next-round directive is round-<N>-focus.md beside them -- YAML frontmatter carrying round,
 // exclude_lenses, and focus, over optional prose -- whose token names the round the directives are
 // for, not the round that produced them: a Bouncer rejecting round N writes the file for round N+1,

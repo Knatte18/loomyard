@@ -189,8 +189,12 @@ func parseRoundReviewName(name string) (int, bool) {
 // advance and hydrate a fixer report that burlerengine's requireExistingPaths rejects fail-loud,
 // wedging the segment permanently, whereas under the pair predicate the orphan simply means the
 // round is incomplete and is re-run.
-// The same pair predicate is what the segment's Bouncer uses to tell its seed call from its judge
-// call, so the two sides run the same test.
+// The segment's Bouncer does NOT run the same test, and saying so matters: it resolves its round
+// through ResolveRound, which stats the review file alone. The asymmetry is safe today only because
+// of where an orphan can appear -- a process killed in that window leaves current_producer naming
+// this row, so this producer re-resolves the same round and archives the orphan before the Bouncer
+// is ever routed to. It is not safe by construction, and a future change that lets the Bouncer be
+// entered with an orphaned review present would have it judge a review no fixer round stands behind.
 func highestCompleteRound(runDir string) (int, error) {
 	entries, err := os.ReadDir(runDir)
 	if err != nil {
