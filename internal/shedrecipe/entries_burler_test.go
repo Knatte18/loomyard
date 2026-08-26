@@ -474,3 +474,49 @@ func TestBurlerRoundEntry_ConstructionFailures(t *testing.T) {
 		}
 	})
 }
+
+// TestBurlerRoundEntry_FileSetErrorsNameTheirOwnMap pins the entry/field qualification on
+// profile.target and profile.fasit errors. The two maps carry identical key sets, so without it a
+// recipe author with a typo in one of them is told which key and never which map -- and the two
+// error strings are byte-identical.
+func TestBurlerRoundEntry_FileSetErrorsNameTheirOwnMap(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile map[string]any
+		want    string
+	}{
+		{
+			name:    "TargetWrongType",
+			profile: map[string]any{"rubric": "a rubric", "target": map[string]any{"paths": "not-a-list"}},
+			want:    "target",
+		},
+		{
+			name:    "FasitWrongType",
+			profile: map[string]any{"rubric": "a rubric", "fasit": map[string]any{"paths": "not-a-list"}},
+			want:    "fasit",
+		},
+		{
+			name:    "TargetUnknownKey",
+			profile: map[string]any{"rubric": "a rubric", "target": map[string]any{"pathz": []any{"x"}}},
+			want:    "target",
+		},
+		{
+			name:    "FasitUnknownKey",
+			profile: map[string]any{"rubric": "a rubric", "fasit": map[string]any{"pathz": []any{"x"}}},
+			want:    "fasit",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := Config{"run_subdir": "review-segment", "profile": tt.profile}
+
+			_, err := burlerRoundEntry("review-round", cfg, env)
+			if err == nil {
+				t.Fatal("burlerRoundEntry() error = nil; want non-nil")
+			}
+			assertErrContains(t, err, tt.want)
+			assertErrContains(t, err, "BurlerRound")
+		})
+	}
+}
