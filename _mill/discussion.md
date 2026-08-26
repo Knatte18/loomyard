@@ -24,7 +24,7 @@ F12 did not create this conflict surface, but it widened it, and it is now the r
 
 **In:**
 
-- Move loom's status file from the durable, git-tracked `_lyx/loom/status.json` to the never-tracked `.lyx/loom/status.json`, beside the three ephemeral files loom already keeps there (`status.json.lock`, `run.lock`, `driver.log`, `bootstrap.lock`).
+- Move loom's status file from the durable, git-tracked `_lyx/loom/status.json` to the never-tracked `.lyx/loom/status.json`, beside the four ephemeral files loom already keeps there (`status.json.lock`, `run.lock`, `driver.log`, `bootstrap.lock`).
   This is a one-constructor change in `internal/loomengine/config.go` (`LoomStatusFile`); every reader already goes through it.
 - Delete `loomengine.LoomStatusRel()` — it exists only so callers can build fabric commit pathspecs for this file, and after this change nothing commits it.
 - Drop `loomengine.LoomStatusRel()` from `lyx loom run`'s seed-commit pathspec in `internal/loomcli/run.go` (step 3), leaving `fabricengine.OriginRecordRel()` as that commit's only path, and rewrite the step's comment, which currently explains the status file's inclusion at length.
@@ -42,6 +42,12 @@ F12 did not create this conflict surface, but it widened it, and it is now the r
 - **Enumerate the remaining references by full-text grep over the whole tree for the literal `_lyx/loom/status.json`, not by tracing Go call sites.**
   The constructor trace is sound for code that *resolves* the path, but blind to text that *names* it — prompts, recipe comments, doc comments, and fixture instructions. Run the grep before implementation and update every hit.
   The hits as of this discussion, all doc/comment drift once the stencil above is handled: `contracts/recipes/loom-recipe.yaml:293` (the `tool-use: true` justification comment on `Webster-Burler`), `internal/loomengine/status.go:8`, `internal/loomengine/report.go:25,27,31,34,39` (the four `CheckSeed` verdict doc comments), `internal/loomshed/seed.go:2`, `manifest/designs/loom.md:60,300`, `manifest/designs/shed.md:245`, `manifest/designs/self-report.md:15`, and `contracts/specs/loom-status-spec.md:3,8,19,24`.
+- **Run a second enumeration pass for the wording class, which neither the constructor trace nor the literal-path grep can reach.**
+  A third class of reference calls the file *durable*, *tracked*, or *weft-synced* without ever naming its path, so it survives both methods above.
+  The pass is two greps: one over the identifiers `LoomStatusFile` and `LoomStatusRel`, and one for `durable`/`tracked`/`weft-synced` wording in the vicinity of loom's status file.
+  Known hits: `manifest/designs/fabric-unified-view.md:68`, whose as-built anchoring table places `LoomStatusFile` in "the durable, weft-synced, git-tracked `_lyx` group" alongside `PlanDir`, `DiscussionDir`, `WebsterDir`, and `PatternDir` — `LoomStatusFile` moves out of that group and into the `.lyx` one;
+  `internal/loomengine/config.go`'s own comments at lines 88–90, 97–100, 119–120, 129–130, and 141–142, each of which describes `LoomStatusFile` as the durable counterpart the `.lyx`-side accessors mirror, an "analogy" that inverts once the status file is itself on the `.lyx` side;
+  plus `internal/shedengine/shed.go:13` and `internal/loomshed/seed.go:2`, already named above and listed here so the pass's own hit list is complete rather than split across two bullets.
 - Update `tools/sandbox/SANDBOX-CORE-SUITE.md`'s scenario S8 ("Loom status and pause over a seeded fixture", tagged `**Covers:** loom`), whose fixture note tells the operator to hand-write the status file at the old path.
   The scenario is the black-box coverage `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant requires for the `loom` module, so a stale fixture path makes it fail at the first step.
 - Add regression coverage that a full task landing no longer carries loom's status file into the parent (see [Testing](#testing)).
@@ -167,6 +173,8 @@ It is recorded here so a plan reader does not rediscover it and reopen the rejec
 `contracts/specs/loom-status-spec.md` — "What it is" (durable fabric-overlay state under `_lyx/`, git-synced via fabric, "which is what makes resume work across machines"), and "The seed / handover" ("commits the seed weft-side before it spawns the detached driver").
 `manifest/designs/loom.md` — the resume-across-machines paragraph, the `Publish`/`Finalize` checkpoint section, and the `State & contracts` bullet.
 Both are durable, kept docs, so they are edited in place, not deleted.
+`manifest/designs/fabric-unified-view.md:68` — its as-built anchoring table groups `LoomStatusFile` with the durable, weft-synced, git-tracked `_lyx` accessors; the entry moves to the `.lyx` group.
+Note this doc's own status banner: it is deleted once slice 6's open half lands, so it is edited in place now and simply goes away later — its scheduled deletion is not a reason to leave a false claim standing in the meantime.
 
 ## Constraints
 
@@ -210,6 +218,18 @@ These two are the TDD candidates — write the moved assertions first, watch the
 Deleting `LoomStatusRel()` and `landingshed.Deps.CommitStatus` breaks every remaining caller at build time; the existing `internal/landingshed/commitstatus_test.go` is deleted along with the seam, and `internal/loomcli/landingdeps_test.go`'s drift guard is updated to match the reduced `Deps` shape.
 `internal/landingshed/publish_test.go` and `finalize_test.go` lose their commit-status cases.
 No replacement test is written for "the seam is gone" — a deleted field needs no guard.
+
+**`internal/loomcli/smoke_test.go` — assertions about the deleted behaviour, not follow-the-constructor edits.**
+Its rig depends on the status file being tracked, so it needs a stated disposition rather than a mechanical path swap:
+
+- `seedAndCommitStatus` (line 323) seeds through the production `Seed` and then commits `loomengine.LoomStatusRel()` weft-side via `fabricengine.CommitWeftPaths` (line 329).
+  The commit half goes away with `LoomStatusRel()`; the seed half stays.
+- `poisonStatusFile` (line 342) writes an unrecognised top-level field to drive the strict-decode failure rig, then commits the same pathspec (line 364).
+  It keeps poisoning the file in place, untracked, and drops the commit.
+- `TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit` (line 661) asserts the seed commit's changed-file set is exactly `[]string{loomengine.LoomStatusRel()}` (line 681) plus a one-commit delta.
+  This is a direct assertion about the behaviour being deleted: the expected file set becomes the origin record alone.
+  The test's subject — that the seed commit lands before the first precondition row's cleanliness scan — survives, since `lyx loom run` still commits the origin record at the same point.
+- Both call sites at lines 576–577 and 868 follow their helpers with no change of their own.
 
 **The scenario that must be covered — the bug itself.**
 An integration test that lands two tasks in sequence off the same parent and asserts the second one's `Finalize` parent-side merge completes with no conflicts.
