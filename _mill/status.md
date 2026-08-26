@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-untrack-status-file
+phase: approved-text-references
 slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r4  '2026-08-26T18:44:01Z'
 planned  '2026-08-26T18:44:18Z'
 implementing  '2026-08-26T18:44:53Z'
 approved-untrack-status-file  '2026-08-26T18:55:56Z'
+approved-text-references  '2026-08-26T19:00:32Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     commit_sha: 3cc583133dd5c31fa2295500d204d087afc39501
     verify_baseline_failures: []
   - name: text-references
-    state: running
+    state: approved
     implementer_session: f789899c-ab8f-4557-9ca9-e0e7b3ef3459
     start_sha: b813a6d26fedbc775648e2c2ac87dba4c5e50fc1
+    commit_sha: d7b9a6d81aeb88003c5e65462eef0324cd5ae448
     verify_baseline_failures: []
   - name: docs
     state: pending
