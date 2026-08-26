@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: Plan-Write/Plan-Validate approval deadlock (F7)'
 slug: 'loom-plan-approval-gate'
-approved: false
+approved: true
 started: '20260826-114441'
 parent: 'main'
 root: ""
