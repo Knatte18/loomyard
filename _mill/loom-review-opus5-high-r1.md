@@ -50,6 +50,71 @@ The operator is told the bootstrap broke when in fact their *task* halted, and i
 Fix: branch on the three-way result. `awaitRunLockChildDied` is not an error — it means the driver already finished; fall through to step 7 and attach (the status strand shows the halt), or at minimum report the driver's own recorded outcome rather than a lock claim that is untrue.
 Only `awaitRunLockDeadline` deserves the "did not take the run lock" refusal.
 
+### F7 — BLOCKING (CONFIRMED live) — the pipeline cannot pass `Plan-Validate`: `Plan-Write` is required to write `approved: false` and `Plan-Validate` hard-fails on exactly that
+
+This is the reason the 17-row pipeline has never been shown to run end to end. It structurally cannot.
+
+Three shipped contracts contradict each other:
+
+1. **The writer must not approve.** `contracts/stencils/loom/loom-template-plan.md:71,79,127` — the stencil emits `approved: false` and states
+   "**Always write `approved: false` — you never self-approve**". `internal/loomengine/plan.go:11-13` says the same in the producer's own package doc,
+   adding that "flipping `approved` to `true` after that segment returns APPROVED is the future loom orchestrator's job, **not built here**."
+2. **The gate immediately after the writer rejects an unapproved plan.** `internal/loomshed/planvalidate.go:56` calls `planparser.Validate`,
+   whose `checkFormatAndApproval` (`internal/planparser/validate.go:88-93`) emits
+   `plan-unapproved: plan frontmatter approved: is not true` whenever `!plan.Approved`.
+   `contracts/recipes/loom-recipe.yaml` routes `Plan-Write --on_done--> Plan-Validate --on_stuck--> Plan-Write`.
+3. **Nothing in the recipe ever flips it.** `Plan-Bouncer`'s approved settle only calls `Commit` (`internal/shedadapters/bouncer.go:337-343`).
+   `Plan-Revalidate` re-runs the *same* `planparser.Validate`. `Webster` (`internal/websterengine/runlevel.go:332`) runs it a third time and refuses the run.
+
+So `Plan-Write` → `Plan-Validate` → `Stuck` → `Plan-Write` → … until `Plan-Validate`'s bounce budget is spent, then the run blocks to a human.
+The plan is never wrong; only the check is unsatisfiable.
+
+Reproduced live on the driven run. History after the discussion segment approved:
+
+```
+('Plan-Write','done'), ('Plan-Validate','stuck'), ('Plan-Write','done'), ('Plan-Validate','stuck'), ...
+_lyx/plan/  ->  archive-20260826T093144Z/  archive-20260826T093227Z/   (one per rejected generation)
+```
+
+The rejected plan, extracted and run through the shipped standalone gate out of band:
+
+```
+$ lyx loom validate-plan
+{"error":"loom: plan is not yet valid","findings":["plan-unapproved: plan frontmatter approved: is not true"],"ok":false}
+```
+
+and the plan itself:
+
+```
+---
+format: 4
+approved: false
+---
+# Plan: Add Goodbye helper to package greet
+...
+```
+
+One finding, and it is the one the writer was ordered to produce.
+
+The Gate Self-Check Parity Invariant did not catch this because it only pins that the verb and the row call the *same* functions — they do, and both are equally unsatisfiable.
+
+`contracts/specs/loom-plan-spec.md:206` frames the check as "`plan-unapproved` — `approved: true`; **else refuse to run**", i.e. a guard for the *consumer* (Webster),
+not for the format gate that sits between the writer and the reviewer. `manifest/designs/loom.md` row 8 likewise scopes `Plan-Validate` to
+"`loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`)" — a format subset, not the run-refusal guard.
+
+Fix (both halves are needed; either alone leaves the pipeline stuck):
+
+- **Approval must be produced.** `Plan-Bouncer`'s APPROVED settle is the only place in the list that knows the plan passed review, so it must set
+  `approved: true` in `00-overview.md` before it commits — the "future loom orchestrator's job" the design doc defers, reached by an injected
+  seam beside `Commit` (an `Approve func() error` on `BouncerConfig`, an `approve_seam: plan` recipe key, an `Env.ApprovePlan` closure, and a
+  `planparser` writer, since the Planparser Sole-Parser Invariant reserves plan-format writes to that package).
+- **The pre-review gate must not demand it.** `Plan-Validate` runs *before* review and must skip `plan-unapproved`; `Plan-Revalidate`, which runs
+  *after* the segment settles, must keep enforcing it. The two rows share the one `PlanValidate` engine, so that engine needs a recipe-authorable
+  `require_approved` key, and `lyx loom validate-plan` must pick the mode that keeps Gate Self-Check Parity honest.
+
+Size note: this is a genuine feature addition across `planparser`, `shedadapters`, `shedrecipe`, `loomshed`, `loomcli`, the recipe, and the docs —
+larger than a commit-per-fix hardening change. See the fixer report for the disposition taken.
+
 ### F2 — MEDIUM (CONFIRMED live) — every mechanical gate in the pipeline discards its findings, so a bounced or blocked run leaves no diagnosis anywhere
 
 Four producers, one shape. Each computes a structured list of exactly what failed and then throws it away:
