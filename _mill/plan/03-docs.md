@@ -22,7 +22,7 @@ Batch-local decision, on top of `## Shared Decisions`: both files are prose, so 
 
 ## Cards
 
-### Card 13: state the segment re-entry rule in the gate's design home
+### Card 14: state the segment re-entry rule in the gate's design home
 
 - **Context:**
   - `internal/shedadapters/doc.go`
@@ -41,11 +41,11 @@ Batch-local decision, on top of `## Shared Decisions`: both files are prose, so 
   Leave the mechanism — the trigger, the archive-aside, the recreate — to `internal/shedadapters`, which the section already delegates to;
   do not restate it here.
   Place the addition where it reads naturally within the existing section, after the paragraph describing the black box's two exits and its `Bouncer`/`Burler` pairing, and before the "Which segment fixes what, and commits how." paragraph.
-  Change no heading text and no anchor, because `manifest/roadmap.md` links to `designs/loom.md#the-gate` and card 14 relies on that link resolving.
+  Change no heading text and no anchor, because `manifest/roadmap.md` links to `designs/loom.md#the-gate` and card 15 relies on that link resolving.
   Write it with semantic line breaks, one sentence per line.
 - **Commit:** `docs(loom): record the gate's segment re-entry rule and its budget asymmetry`
 
-### Card 14: move the roadmap item to Done, without its refuted route claim
+### Card 15: move the roadmap item to Done, without its refuted route claim
 
 - **Context:**
   - `internal/shedadapters/doc.go`
@@ -74,6 +74,6 @@ Batch-local decision, on top of `## Shared Decisions`: both files are prose, so 
 
 `verify:` is `null`: both cards edit prose only, and neither `manifest/designs/loom.md` nor `manifest/roadmap.md` has a test that reads it — there is no runnable surface for this batch to check.
 
-The two properties worth confirming by hand while implementing are that `manifest/roadmap.md`'s `designs/loom.md#the-gate` link still resolves after card 13 (which is why card 13 is barred from changing that heading), and that removing the Planned item leaves no dangling "the item below is unblocked" lead-in behind it.
+The two properties worth confirming by hand while implementing are that `manifest/roadmap.md`'s `designs/loom.md#the-gate` link still resolves after card 14 (which is why card 14 is barred from changing that heading), and that removing the Planned item leaves no dangling "the item below is unblocked" lead-in behind it.
 
 Repo-wide coverage still applies at the task boundary: `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`) runs from the git root before mill-go marks the task done, so a stray non-doc edit in this batch could not pass unnoticed.

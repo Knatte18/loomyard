@@ -4,8 +4,8 @@
 task: "Fix Bouncer anchor-path and run-dir clearing"
 batch: "rundir-clear"
 number: 2
-cards: 5
-verify: go test ./internal/shedadapters/... ./internal/loomrecipe/...
+cards: 6
+verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomrecipe/...
 depends-on: [1]
 ```
 
@@ -13,9 +13,11 @@ depends-on: [1]
 
 This batch closes defect 2: a `Bouncer` re-entered after it has already settled a segment re-resolves the highest round, finds `judged(n)` still true, and replays the already-settled verdict — so an APPROVED replay returns `Done` immediately and a rewritten artifact passes the gate unjudged.
 The fix is a clear-and-re-seed step at `Call` entry, triggered by the already-APPROVED verdict the Bouncer itself wrote for the resolved round: archive the run directory aside, recreate it empty, and fall through with the round re-resolved to 0, which makes the same call a seed call.
-Card 8 adds the archive helper, card 9 makes the parsed verdict available at `Call` entry without a second read, card 10 wires the step in and repairs every claim and test the change falsifies, card 11 rewrites the two package-level docs that restate the falsified claims from other angles, and card 12 rewrites the recipe comment that justified `Plan-Revalidate`'s routing with the now-fixed live-lock.
+Card 8 adds the archive helper, card 9 makes the parsed verdict available at `Call` entry without a second read, card 10 wires the step in and repairs every claim and in-package test the change falsifies, card 11 rewrites the two package-level docs that restate the falsified claims from other angles, card 12 rewrites the recipe comment that justified `Plan-Revalidate`'s routing with the now-fixed live-lock, and card 13 repairs the one out-of-package test suite the change falsifies.
 
-The whole batch lives in `internal/shedadapters` except card 12's comment-only edit to `contracts/recipes/loom-recipe.yaml`, which is the file this batch shares with batch 1 and the reason for the `depends-on: [1]` edge.
+The whole batch lives in `internal/shedadapters` except card 12's comment-only edit to `contracts/recipes/loom-recipe.yaml` and card 13's test repair in `internal/shedrecipe`.
+The recipe file is the one this batch shares with batch 1, and is the reason for the `depends-on: [1]` edge;
+`internal/shedrecipe/entries_bouncer_test.go` is shared with batch 1's card 3 and rides the same edge.
 
 Batch-local decisions, on top of `## Shared Decisions`:
 
@@ -77,6 +79,7 @@ Batch-local decisions, on top of `## Shared Decisions`:
   - `internal/shedadapters/burler.go`
   - `internal/shedadapters/bouncer_seed_test.go`
   - `internal/shedadapters/bouncer_judge_test.go`
+  - `internal/shedadapters/archive_test.go`
   - `internal/shedengine/run.go`
   - `_mill/discussion.md`
 - **Edits:**
@@ -162,10 +165,12 @@ Batch-local decisions, on top of `## Shared Decisions`:
   - `_mill/discussion.md`
 - **Edits:**
   - `contracts/recipes/loom-recipe.yaml`
+  - `internal/loomrecipe/revalidate_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** One comment-only edit in `contracts/recipes/loom-recipe.yaml`, on the `Plan-Revalidate` row.
+- **Requirements:** Two comment-only edits, in `contracts/recipes/loom-recipe.yaml`'s `Plan-Revalidate` row and in `internal/loomrecipe/revalidate_test.go`'s doc comment on `TestSequence_PlanRevalidateCatchesPostSegmentRegression`, both narrating the same now-fixed defect.
+  Taking the recipe first.
   Its `on_stuck` comment currently justifies pointing at `Plan-Write` rather than `Plan-Bouncer` on the grounds that bouncing back into the segment live-locks, because `judged(n)` is still true for the already-APPROVED round and `settle` returns `Done` immediately.
   That live-lock is what this task removes, so the stated reason rots even though the routing is unchanged.
   `on_stuck` stays `Plan-Write`;
@@ -174,15 +179,48 @@ Batch-local decisions, on top of `## Shared Decisions`:
   State the cost the change now carries, because removing the live-lock is not free: each `Plan-Revalidate` `Stuck` to `Plan-Write` to `Plan-Validate` to `Plan-Bouncer` pass now runs a complete review generation where it previously replayed a settled verdict instantly, bounded by `Plan-Revalidate`'s own bounce budget and, from the second generation on, by the Burler row's leftover budget.
   Keep the surviving sentences that `Plan-Write` is the same target `Plan-Validate` already bounces to, that it terminates, and that the bounce budget bounds it.
   Change no row name, no `engine`, no `on_stuck`, no `on_done`, and no config value.
-  Run `internal/loomrecipe`'s coverage guard, shape, and revalidate tests afterwards to confirm the comment edit disturbed neither the row names nor the parsed shape.
-- **Commit:** `docs(loom-recipe): Plan-Revalidate on_stuck reason no longer cites the live-lock`
+
+  Then `internal/loomrecipe/revalidate_test.go`'s doc comment on `TestSequence_PlanRevalidateCatchesPostSegmentRegression`.
+  Its closing sentences narrate defect 2 as currently live: that on re-entry `Plan-Bouncer` finds round 1's APPROVED verdict, `judged(1)` is satisfied, and `settle` re-approves a plan the judge never saw, described as a pre-existing `shedadapters` defect "filed on the follow-up roadmap item this task adds rather than fixed here".
+  Neither stale-assertion inventory's enumeration method reaches this file — it is a test file in a different package — so nothing else in this plan corrects it, and left alone it would contradict the shipped behaviour the moment this task lands.
+  Reword those sentences to state that a re-entered `Plan-Bouncer` now archives its run directory and re-judges rather than replaying the settled verdict, and keep the surviving reason the test still asserts nothing about the post-bounce behaviour: its single subject is that `Plan-Revalidate` routes a post-segment format regression back to `Plan-Write` rather than letting it reach `Webster`.
+  This is a comment-only edit: change no assertion, no fixture, and no test body.
+
+  Run `internal/loomrecipe`'s coverage guard, shape, and revalidate tests afterwards to confirm both edits disturbed neither the recipe's row names nor its parsed shape.
+- **Commit:** `docs(loom): Plan-Revalidate's routing reason no longer cites the live-lock`
+
+### Card 13: repair `shedrecipe`'s commit-seam tests, which drive the removed replay path
+
+- **Context:**
+  - `internal/shedadapters/bouncer.go`
+  - `internal/shedadapters/bouncer_commit_test.go`
+  - `internal/shedrecipe/entries_bouncer.go`
+  - `internal/shedrecipe/fixture_test.go`
+- **Edits:**
+  - `internal/shedrecipe/entries_bouncer_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** `internal/shedrecipe/entries_bouncer_test.go`'s `TestBouncerEntry_CommitSeam` drives the same APPROVED-replay vehicle card 10 removes, one package removed: its `layoutSettledBouncerRound1` helper writes round 1's report, APPROVED verdict, and ledger directly into the run directory so a `bouncerEntry`-built producer's first `Call` settles with no shuttle spawn.
+  After card 10, that first `Call` archives and re-seeds instead of settling, so the injected `Commit` closure is never invoked and the `PlanResolvesToCommitPlan` and `DiscussionResolvesToCommitDiscussion` subtests fail on their `== 1` call-count assertions.
+  Repair both by switching them to the harvest vehicle, mirroring card 10's treatment of `internal/shedadapters/bouncer_commit_test.go`: lay out round 1's report only, and have the `Env.Shuttle` fake write round 1's verdict and ledger during its run so `judgeCall` harvests and settles within the same `Call`.
+  `AbsentLeavesSeamNil` asserts both call counts are 0 and so still passes over the cleared path, but switch it to the same vehicle as the other two so all three subtests exercise the same seam under the same conditions and the file carries one vehicle rather than two.
+  Rewrite `layoutSettledBouncerRound1`'s own doc comment, which cites `shedadapters.TestBouncer_Replay_Approved` as the precedent for a behaviour card 10 removes;
+  if the harvest rewrite leaves the helper writing only the report, rename it to match what it now lays out rather than leaving a `Settled` name over an unsettled fixture.
+  Change nothing in `internal/shedrecipe/entries_bouncer.go` — this card is test-only, and the entry's own behaviour is batch 1's card 3.
+  Leave every other subtest in the file alone, including batch 1 card 3's `BlankEnvAnchorPath` and divergent-roots additions.
+  Write the repair first, watch it fail against the already-landed card 10 change, then adjust until it passes.
+- **Commit:** `test(shedrecipe): commit-seam subtests settle through harvest, not replay`
 
 ## Batch Tests
 
-`verify:` runs `go test` over `internal/shedadapters` — where every card but card 12 lands, and which carries the new `bouncer_clear_test.go` plus the repaired `bouncer_replay_test.go` and `bouncer_commit_test.go` — and `internal/loomrecipe`, whose coverage-guard, shape, and revalidate tests are what prove card 12's comment edit disturbed neither the recipe's row names nor its parsed shape.
+`verify:` runs `go test` over three packages.
+`internal/shedadapters` is where cards 8 through 11 land, and carries the new `bouncer_clear_test.go` plus the repaired `bouncer_replay_test.go` and `bouncer_commit_test.go`.
+`internal/shedrecipe` is card 13's package: `TestBouncerEntry_CommitSeam` drives the removed replay path through `bouncerEntry`, so card 10 breaks it from one package away, and running that package here is what keeps the break inside the batch that causes it rather than deferring it to the task-wide done gate.
+`internal/loomrecipe` carries the coverage-guard, shape, and revalidate tests that prove card 12's two comment edits disturbed neither the recipe's row names nor its parsed shape.
 
-The scope is per-batch rather than repo-wide: no package outside these two is edited by any card here, and `internal/shedadapters` has no production importers whose behaviour changes beyond what `internal/loomrecipe` already exercises.
-Cross-package regressions are caught by `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`), which mill-go runs from the git root before marking the task done.
+The scope is per-batch rather than repo-wide: no package outside these three is edited by any card here, and `internal/shedrecipe` is `internal/shedadapters`' only importer whose existing tests drive `Bouncer.Call` over an already-approved run directory.
+Cross-package regressions beyond that are caught by `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`), which mill-go runs from the git root before marking the task done.
 
 Card 10's test set is the substance of the batch, and its non-triggering cases carry as much weight as its triggering ones: the trigger's whole justification is that its fire set is exactly a marker's would be, so each of the four non-fire cases — in-segment BLOCKING bouncing, a mid-segment resume with an unjudged round, a re-bounce with focus seeded and no report, and a verdict with no parsable ledger — is asserted to leave the run directory untouched.
 Three fire cases beyond the in-run re-entry are asserted rather than left implicit, because two are intended and one is an accepted regression: a fresh `Bouncer` over a directory a previous process left APPROVED, a later run reaching the segment from the top, and a resume after a `Commit` failure.

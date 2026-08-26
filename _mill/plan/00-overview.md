@@ -26,7 +26,7 @@ batches:
     name: rundir-clear
     file: 02-rundir-clear.md
     depends-on: [1]
-    verify: go test ./internal/shedadapters/... ./internal/loomrecipe/...
+    verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomrecipe/...
   - number: 3
     name: docs
     file: 03-docs.md
@@ -88,6 +88,7 @@ batches:
 - `internal/hubgeom/hubgeom.go`
 - `internal/hubgeom/hubgeom_test.go`
 - `internal/loomcli/wiring.go`
+- `internal/loomrecipe/revalidate_test.go`
 - `internal/shedadapters/archive.go`
 - `internal/shedadapters/archive_test.go`
 - `internal/shedadapters/bouncer.go`
