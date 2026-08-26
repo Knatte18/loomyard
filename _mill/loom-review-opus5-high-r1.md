@@ -50,11 +50,50 @@ The operator is told the bootstrap broke when in fact their *task* halted, and i
 Fix: branch on the three-way result. `awaitRunLockChildDied` is not an error — it means the driver already finished; fall through to step 7 and attach (the status strand shows the halt), or at minimum report the driver's own recorded outcome rather than a lock claim that is untrue.
 Only `awaitRunLockDeadline` deserves the "did not take the run lock" refusal.
 
-### F2 — MEDIUM (CONFIRMED live) — `Preflight`/`Loom-Preflight` discard every failure detail on the one row a human is the only recovery for
+### F2 — MEDIUM (CONFIRMED live) — every mechanical gate in the pipeline discards its findings, so a bounced or blocked run leaves no diagnosis anywhere
 
-`internal/preflightshed/preflight.go:52-58` and `internal/loomshed/loompreflight.go:67-72`.
+Four producers, one shape. Each computes a structured list of exactly what failed and then throws it away:
 
-Both compute a `preflight.Report` carrying `Failures []Failure{Check CheckID, Reason string}` and then discard it:
+| Producer | File:line | Discarded value |
+|---|---|---|
+| `Preflight` | `internal/preflightshed/preflight.go:52-58` | `preflight.Report.Failures` (`{Check CheckID, Reason string}`) |
+| `Loom-Preflight` | `internal/loomshed/loompreflight.go:67-72` | `loomengine.Report.Failures` (same type, alias) |
+| `Discussion-Validate` | `internal/loomshed/discussionvalidate.go:55-57` | `discussionparser.Validate`'s `findings` |
+| `Plan-Validate` / `Plan-Revalidate` | `internal/loomshed/planvalidate.go:56-61` | `planparser.Validate`'s `findings` |
+
+`Preflight` and `Loom-Preflight` carry no `on_stuck` at all (by design — "a human is the only thing that can fix any of the five"),
+so the operator's *only* signal is the generic Shed text.
+`Discussion-Validate` and `Plan-Validate` do bounce, but the bounce target is re-spawned with no knowledge of the complaint,
+so the discarded findings are the one thing that would let either the operator or the next agent converge.
+
+Both halves reproduced on the driven run:
+
+**Blocked-with-no-reason.** After `Preflight` blocked:
+
+```
+$ lyx loom status
+"error": "stuck with no OnStuck target",
+"activity": {"now":"Preflight","last":"Preflight → stuck","wait":"stuck with no OnStuck target"}
+$ cat .lyx/loom/driver.log
+{"halted_producer":"Preflight","history_length":1,"ok":true,"outcome":"blocked","reason":"stuck with no OnStuck target"}
+```
+
+Nothing named `worktree-clean`, `fabric-sync`, or which path was dirty.
+
+**Bounced-with-no-reason.** Later in the same run, `Plan-Write` produced a plan, `Plan-Validate` rejected it, and the run bounced back to `Plan-Write`:
+
+```
+history: [... ('Plan-Write','done'), ('Plan-Validate','stuck')]
+$ wc -l .lyx/loom/driver.log
+2 .lyx/loom/driver.log        # the ENTIRE log, for a run that had reached row 8
+$ grep -ci plan .lyx/loom/driver.log
+0
+```
+
+The rejected plan was archived to `_lyx/plan/archive-20260826T093144Z/` and a fresh `Plan-Write` agent was spawned with no idea what was wrong.
+Which of `loom-plan-spec.md`'s sixteen check IDs fired is unrecoverable.
+
+`Preflight` and `Loom-Preflight` share this shape:
 
 ```go
 if !report.OK {
@@ -63,19 +102,8 @@ if !report.OK {
 }
 ```
 
-Neither row carries an `on_stuck` in `contracts/recipes/loom-recipe.yaml` (by design — "a human is the only thing that can fix any of the five"),
-so the *only* thing the operator ever sees is the generic Shed text.
-Observed on the real run above: `lyx loom status` reported
-
-```
-"error": "stuck with no OnStuck target",
-"activity": {"now":"Preflight","last":"Preflight → stuck","wait":"stuck with no OnStuck target"}
-```
-
-and `.lyx/loom/driver.log` carried exactly one line, the same envelope. Nothing anywhere named `worktree-clean`, `fabric-sync`, or which path was dirty.
-The operator has to re-derive the cause by hand.
-
-Fix: log the determined failures (`logger.Warn` with the check IDs and reasons) before returning `Stuck`, in both producers — the same instrumentation posture every other adapter in `shedadapters` already takes on a degraded exit.
+Fix: log the determined failures (`logger.Warn` with the check IDs and reasons) before returning `Stuck`, in all four producers — the same instrumentation posture every adapter in `internal/shedadapters` already takes on a degraded exit (`Bouncer.degrade`, `BurlerProducer`'s retry warning, `WebsterProducer`'s stuck warning).
+The driver log is the operator's only window into a detached run, and today it is empty.
 
 ### F3 — MEDIUM (CONFIRMED live) — a freshly-added pair has no module config at all, so the shipped `run.sh` launcher fails on first use
 
