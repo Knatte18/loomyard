@@ -142,7 +142,7 @@ Everything else in the worktree is read-only to you. In particular, never write,
 - **`_lyx/config/`** — this is the driver's own configuration, read fresh on every invocation.
   Editing it changes how the run that spawned you behaves, and how the next one does.
   `lyx config reconcile --apply` counts as editing it.
-- **`_lyx/loom/`** — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.
+- **`.lyx/loom/`** — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.
 - **`_lyx/plan/`** — a later phase's artifact, not yours.
 - **repository source files**, and **git history**: no `git add`, `git commit`, `git checkout`, `git restore`, or any other mutating git command.
   Committing your two files is the loop owner's job, not yours.

@@ -29,7 +29,7 @@ func TestLoomTemplateDiscussion_FencesWhatItMayWrite(t *testing.T) {
 		{"declares the read-only default", "read-only to you"},
 		{"fences the driver's own config", "`_lyx/config/`"},
 		{"names reconcile --apply as an edit", "lyx config reconcile --apply"},
-		{"fences the phase machine's status file", "`_lyx/loom/`"},
+		{"fences the phase machine's status file", "`.lyx/loom/`"},
 		{"fences a later phase's artifact", "`_lyx/plan/`"},
 		{"fences mutating git", "no `git add`"},
 		{"forbids repairing a broken environment", "do not repair it"},
