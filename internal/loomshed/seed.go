@@ -1,5 +1,5 @@
 // seed.go implements Seed, the production writer for loom's initial status file -- nothing else in
-// production writes _lyx/loom/status.json today.
+// production writes .lyx/loom/status.json today.
 
 package loomshed
 

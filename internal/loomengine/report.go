@@ -22,21 +22,21 @@ type Failure = preflight.Failure
 type Report = preflight.Report
 
 // The four loom-specific checks, declared here because internal/preflight has no notion
-// of _lyx/loom/status.json.
+// of .lyx/loom/status.json.
 const (
-	// CheckSeedMissing fails when _lyx/loom/status.json does not exist.
+	// CheckSeedMissing fails when .lyx/loom/status.json does not exist.
 	// Unreachable through Shed: step 1's own read gate already hard-errors on the same not-found
 	// verdict — see CheckSeed's doc comment for the pre-emption rule stated in full.
 	CheckSeedMissing CheckID = "seed-missing"
-	// CheckSeedUnreadable fails when _lyx/loom/status.json cannot be stat'd or read for a reason
+	// CheckSeedUnreadable fails when .lyx/loom/status.json cannot be stat'd or read for a reason
 	// other than not-existing.
 	CheckSeedUnreadable CheckID = "seed-unreadable"
-	// CheckSeedIncoherent fails when _lyx/loom/status.json exists and decodes but violates the coherence
+	// CheckSeedIncoherent fails when .lyx/loom/status.json exists and decodes but violates the coherence
 	// validator's rules (see checkCoherence).
 	// Unreachable through Shed: two of its three producing branches are pre-empted by step 1's own
 	// read gate — see CheckSeed's doc comment for the pre-emption rule stated in full.
 	CheckSeedIncoherent CheckID = "seed-incoherent"
-	// CheckHalfFinished fails when _lyx/loom/status.json is otherwise coherent but its fresh-start
+	// CheckHalfFinished fails when .lyx/loom/status.json is otherwise coherent but its fresh-start
 	// invariants are violated — the task has already advanced past the point loom's own seed row is
 	// meant to gate.
 	CheckHalfFinished CheckID = "half-finished"

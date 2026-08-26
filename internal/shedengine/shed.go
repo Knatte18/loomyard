@@ -10,7 +10,7 @@ package shedengine
 // Run validates every field below before it touches anything.
 type Shed struct {
 	Producers []ProducerDef
-	// StatusPath is the durable status file; it is told and never derived.
+	// StatusPath is the status file; it is told and never derived.
 	StatusPath string
 	// LockPath is the run lock, held non-blocking for the whole of one Run.
 	LockPath string

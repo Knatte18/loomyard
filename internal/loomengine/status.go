@@ -5,7 +5,7 @@
 // Package loomengine implements loom's own seed-coherence check, CheckSeed: one of the four
 // preconditions a task must meet before it is fit to run, with the other three now
 // internal/preflight's orchestrator-agnostic tier-1/tier-2 checks (worktree geometry, worktree
-// cleanliness, fabric readiness/sync). CheckSeed validates _lyx/loom/status.json coherence over told
+// cleanliness, fabric readiness/sync). CheckSeed validates .lyx/loom/status.json coherence over told
 // absolute paths, reporting a determined verdict rather than erroring on anything short of an infra
 // failure.
 //
