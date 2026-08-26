@@ -44,7 +44,9 @@ batches:
     commit_sha: 812ad9e97e6ffcb03115853c38b1c734b2de569a
     verify_baseline_failures: []
   - name: rundir-clear
-    state: pending
+    state: running
+    implementer_session: f42648da-82c7-4d9d-be87-ed7097e3ef0e
+    start_sha: fe8b8f1d8876a66c6d65ad4ffba6aa8278c389a3
     verify_baseline_failures: []
   - name: docs
     state: pending
