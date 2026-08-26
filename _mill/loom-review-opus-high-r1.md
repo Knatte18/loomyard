@@ -290,6 +290,30 @@ see an unused function parameter, so nothing catches it.
 
 Fix: use the two parameters — wrap the returned error so it names the entry and the field.
 
+### F6 — `lyx loom status --watch`'s own help text states the exact behaviour the code deliberately does NOT have — LOW — CONFIRMED
+
+`internal/loomcli/status.go:86` (the `Long` text) and `internal/loomcli/status.go:147` (the
+flag help) both say the tail prints **"one line per poll"**:
+
+```
+With --watch, it performs the same read once as a pre-flight, then prints
+one line per poll to the terminal and never exits
+...
+cmd.Flags().BoolVar(&watch, "watch", false, "tail the status file one line per poll instead of ...")
+```
+
+The shipped behaviour is the opposite, and deliberately so. `printStatusLinesOnChange`
+(`status.go:57`) prints only when the composed line differs from the last printed one, and its
+own doc comment ninety lines above the flag says why in detail ("measured at 434 lines in
+fifteen minutes, against a 2000-line default history limit"). `manifest/designs/loom.md` pins
+it as an invariant: "**The strand prints on change, never once per poll.**"
+
+So the one user-facing description of this verb states the exact regression the code, its
+comments, and the design doc all exist to prevent. An operator reading `--help` and then seeing
+a quiet pane has every reason to think the strand has hung.
+
+Fix: correct both strings to describe print-on-change.
+
 ## Docs & operability findings
 
 _(pending)_
