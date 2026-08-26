@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-recipe-wiring-and-regression
+phase: approved-docs-and-constraints
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-planvalidate-two-mode  '2026-08-26T12:26:49Z'
 approved-shedrecipe-approve-seam  '2026-08-26T12:30:20Z'
 approved-loomcli-wiring-and-flag  '2026-08-26T12:35:21Z'
 approved-recipe-wiring-and-regression  '2026-08-26T12:43:27Z'
+approved-docs-and-constraints  '2026-08-26T12:48:28Z'
 ```
 
 ## Batches
@@ -72,8 +73,9 @@ batches:
     commit_sha: 7e303f68a5e2225eb953b0481e330fb8e4577124
     verify_baseline_failures: []
   - name: docs-and-constraints
-    state: running
+    state: approved
     implementer_session: fdbd0da5-7c4a-4556-b4dc-0ea4246f78a0
     start_sha: dbbc7ad904b7b6c169f75aad9aef8b8ebae68ccc
+    commit_sha: bfdcc33afbf752fe5b7b4a4ba7521f910ee40897
     verify_baseline_failures: []
 ```
