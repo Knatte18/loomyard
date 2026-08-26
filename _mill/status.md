@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r3
+phase: plan-fix-r3
 slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-fix-r1  '2026-08-26T18:14:05Z'
 plan-review-r2  '2026-08-26T18:24:08Z'
 plan-fix-r2  '2026-08-26T18:24:48Z'
 plan-review-r3  '2026-08-26T18:34:43Z'
+plan-fix-r3  '2026-08-26T18:35:46Z'
 ```
