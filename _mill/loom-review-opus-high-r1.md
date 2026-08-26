@@ -337,6 +337,43 @@ module reference, that the key does not exist.
 
 Fix: add both keys to the enumeration.
 
+### F8 — the Bouncer's clear-and-re-seed throws away a whole approved review generation without a single log line — LOW — CONFIRMED (by trace)
+
+`internal/shedadapters/bouncer.go:187-198`:
+
+```go
+if n > 0 {
+    if verdict, ok := b.judgedVerdict(n); ok && verdict == verdictApproved {
+        if err := archiveRunDir(b.cfg.RunDir, b.cfg.Now); err != nil {
+            return b.degrade(ctx, "...failed to clear an already-approved run directory", ...)
+        }
+        n = 0
+    }
+}
+```
+
+The FAILURE branch logs. The SUCCESS branch — the one that actually fires — logs nothing at
+all. Every other consequential event in this file carries a `logger.Warn` (the re-bounce at
+`:204`, the synthesized focus file at `:309`, the BLOCKING replay at `:361`, every `degrade`),
+and `Live-Substrate Spawn Observability` names exactly this class: "a cleanup that skipped are
+exactly the events an operator goes looking for after the fact".
+
+Why it matters concretely: this clear is not cheap. It discards a settled APPROVED generation
+and re-seeds from round 1, which costs one fresh judge spawn plus one fresh `Burler` round —
+real LLM sessions, real minutes — and, because the `Burler` row's bounce episode never resets
+(documented on `BurlerProducer`'s own doc comment), it can spend the leftover budget that
+halts the run. `TestBouncer_Clear_AfterCommitFailureSubsequentCallClears`
+(`bouncer_clear_test.go:384`) pins that a commit-seam failure followed by a resume takes this
+exact path, so a transient git fault silently converts into a whole extra review generation.
+
+**This is not a re-litigation of the clear-and-re-seed design** — that design is closed and
+verified (`8cac77aa`), and the finding accepts it entirely. The finding is only that the
+branch is silent: an operator whose run suddenly costs a second generation has nothing in the
+driver log, the status file, or the run directory naming why.
+
+Fix: log the clear at `logger.Warn` before archiving, naming the producer, the round whose
+APPROVED verdict triggered it, and the archive destination.
+
 ## Docs & operability findings
 
 _(pending)_
