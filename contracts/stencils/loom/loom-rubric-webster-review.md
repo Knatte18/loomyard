@@ -24,11 +24,11 @@ This gate sits downstream of three separate upstream gates, so a finding re-deri
 This section is the single definition of the review range;
 nothing else states it.
 
-1. Read `_lyx/loom/status.json` and take `product.parent`, the branch this run started from.
+1. Read `.lyx/loom/status.json` and take `product.parent`, the branch this run started from.
 2. Review `git diff $(git merge-base <product.parent> HEAD)..HEAD` — every commit the current branch introduces over that merge base.
 
 Both steps are read-only.
-If `_lyx/loom/status.json` cannot be read, or its `product.parent` is empty or absent, raise a BLOCKING finding stating that the review range could not be determined, and review nothing.
+If `.lyx/loom/status.json` cannot be read, or its `product.parent` is empty or absent, raise a BLOCKING finding stating that the review range could not be determined, and review nothing.
 Silently reviewing a guessed range is a worse failure than an honest block.
 
 ## Do not flag
