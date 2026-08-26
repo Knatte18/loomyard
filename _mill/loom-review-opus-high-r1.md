@@ -278,10 +278,28 @@ The `blocked` and `failed` variants are worse still: a resumed run also keeps di
 STALE `error` text (`Activity.Wait` is composed from it at `activity.go:24`), so the pane
 asserts a specific failure reason that the run is at that moment already retrying past.
 
+**The design doc already defines the semantics this violates**, which is what makes it a
+defect rather than a design choice. `manifest/designs/shed.md:239` defines the value:
+
+> `State` is the superset, adding `running` (**a run in progress or interrupted
+> mid-producer**) …
+
+and `shed.md:262` states the whole reason `state` is persisted at all:
+
+> without persisting the equivalent on disk, a restarted `lyx run` (or a human reading
+> `lyx loom status`) cannot tell "paused, resumable" from "blocked, needs a human" from
+> "crashed" — all three look identical, an unattended status file sitting still.
+
+A resumed run IS "a run in progress", and for the whole first producer call the file says
+otherwise — so the exact three-way distinction that paragraph says `state` exists to carry is
+the one it fails to carry, in the one window where an operator is actively looking. `shed.md`'s
+own step list writes `running` only when ROUTING (`shed.md:88`, "Otherwise write
+`state: "running"` before looping"), never at resume entry, which is precisely the gap.
+
 Fix: after step 3's pause/cancellation check passes and before step 4 calls the producer,
 persist `StateRunning` when the state just read is not already `StateRunning` — clearing the
 stale error in the same write. One extra status write per `Run` invocation, and only when the
-file was not already `running`.
+file was not already `running`. `shed.md`'s step list is updated in the same change.
 
 ### F1 — `require_pr_to_base: []`, the only way to say "never open a PR", is rejected by the config loader — MEDIUM — CONFIRMED
 
