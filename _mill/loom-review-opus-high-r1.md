@@ -12,8 +12,8 @@ the parent branch. It needed one operator intervention to get past the last row,
 intervention is finding F12.
 
 Thirteen findings: **2 BLOCKING, 3 MEDIUM, 7 LOW, 1 NIT** (see the severity index under
-Findings). Three are recorded NOT-FIXED-THIS-ROUND because each fix reaches outside this
-module, plus three half-findings inside F1, F2 and F12 for the same reason.
+Findings). Four are recorded NOT-FIXED-THIS-ROUND because each fix reaches outside this module or is a
+durable design decision, plus three half-findings inside F1, F2 and F12 for the same reason.
 
 **Top risk — F12, and it is what "no run had ever completed" was hiding.** `Shed` rewrites
 `_lyx/loom/status.json` on every transition; that file is tracked in the weft and is committed
@@ -174,7 +174,7 @@ PATH (F2, recorded as NOT-FIXED-THIS-ROUND).
 
 ## Findings
 
-Thirteen findings. Recorded provisionally as they were spotted (so the ids are in discovery
+Fourteen findings (thirteen from the independent review, plus F13 found during fix verification and labelled as such). Recorded provisionally as they were spotted (so the ids are in discovery
 order, not severity order); this index is the severity ranking, and each entry links what the
 finding is to how it was established.
 
@@ -185,6 +185,7 @@ finding is to how it was established.
 | MEDIUM | F1 | `require_pr_to_base: []` is unrepresentable, and a longer list is silently truncated by `config reconcile --apply` | reproduced live; second half reproduced on an independent hub |
 | MEDIUM | F2 | An agent loom spawns resolves `lyx` from PATH and can silently rewrite the hub's stencils mid-run | observed unprompted in this round's own run, then reproduced under control on a third hub |
 | MEDIUM | F10 | A resumed run reports `paused`/`blocked`/`failed` for the whole first producer call | reproduced live, with a real judge session in the pane at the same instant |
+| MEDIUM | F13 | loom's own status file is a merge subject on the landing merge; a conflict there corrupts the run's control state and takes the emergency brake with it | observed live during fix verification — **NOT-FIXED-THIS-ROUND** |
 | LOW | F3 | `BurlerProducer`'s doc claims the Bouncer shares its round-completion predicate; it does not | traced |
 | LOW | F4 | `Batchifier` and the `Webster` row swallow `batcher.Active`'s error with no log line | traced, backed by a 16-site sweep |
 | LOW | F6 | `lyx loom status --watch`'s help states the exact behaviour the code exists to prevent | confirmed against live `--help` output |
@@ -441,6 +442,68 @@ Fix, split by size:
 so on a resume from `blocked` straight into `Finalize`, F10's fix would re-introduce exactly
 the dirt F12 is about. F12's fix must therefore commit inside the producer, after any such
 persist, not once at bootstrap. Both fixes below are written with that ordering in mind.
+
+### F13 — loom's own status file is a merge subject on the landing merge, so a conflict there corrupts the run's control state — MEDIUM — CONFIRMED (observed live) — NOT-FIXED-THIS-ROUND
+
+**Found during Job 2, while live-verifying the F12 fix — recorded here rather than quietly
+fixed, because it was not part of the independent review.**
+
+`internal/loomcli/run.go:119` (the seed commit's pathspec) +
+`internal/landingshed/finalize.go` (the merge-in) + `internal/state/state.go:93`.
+
+`_lyx/loom/status.json` is committed on the task's weft branch and, via `Finalize`'s
+squash-merge, lands on the parent's. So the file exists on both sides of the very merge
+`Finalize` performs. When both sides have changed it since their merge base — which is the
+ordinary case from the second task in a hub onward, since each task's seed commit rewrites it
+with its own slug and history while the parent advances behind it — git cannot auto-merge it,
+and the run's own control file ends up carrying conflict markers.
+
+Observed live:
+
+```
+$ lyx loom drive
+{"error":"unmarshal state: invalid character '<' looking for beginning of object key
+  string","ok":false}
+$ git -C <weft> status --porcelain
+UU _lyx/loom/status.json
+$ head -12 <weft>/_lyx/loom/status.json
+...
+<<<<<<< HEAD
+    "last": "Finalize → done",
+=======
+    "last": "Finalize → done",
+>>>>>>> 8ba6e704900bb3e93990db693ab9e413db3ecd63
+```
+
+The blast radius is larger than a failed merge. Once the file carries markers, **every** reader
+fails: `Shed`'s own persist re-read (which is what produced the envelope above), `lyx loom
+status`, and — worst — `lyx loom pause`, the emergency brake `manifest/designs/loom.md`
+deliberately keeps independent of every module config precisely so a fault cannot take it away.
+A fault in loom's own status file takes it away anyway.
+
+**Honest scoping of the reproduction.** The divergence in the run above was partly self-
+inflicted: I had rewound the fixture's status file by hand several times to stage the F10 and
+F12 verifications, which produced two encodings of the same arrow character on the two sides.
+The *class* is not an artifact of that, and does not depend on my fix either — a task's seed
+commit alone already puts a modified `status.json` on the task side, and the parent already
+carries the previous task's. But I have not driven the clean second-task-in-a-hub case
+end to end, so I report the mechanism as confirmed and its clean-flow frequency as reasoned.
+
+**Interaction with F12's fix, stated plainly.** The status checkpoint F12 adds is one more
+change to the same file on the same side, so it widens this surface. It does not create it, and
+it fixes a blocker that fires on *every* run rather than from the second one onward, so it is
+the right trade — but the two findings must be read together, and a later round should not
+mistake this for a regression the checkpoint introduced.
+
+**NOT-FIXED-THIS-ROUND.** Every fix is a durable design decision about how per-task
+orchestration state coexists with a tree the task merges into and out of: give the path a
+`merge=ours` driver via a `.gitattributes` entry fabric seeds (a new mechanism, and a repo-level
+git config), stop tracking the status file and give cross-machine resume a different carrier, or
+exclude it from the landing merge's pathspec. Each reaches fabric, loom's seeding, and the
+status-file contract at once. `mergeresolve`'s LLM conflict resolver is the one mechanism
+already in the tree that could arguably own this, and whether it should be asked to resolve the
+orchestrator's own control file — while the orchestrator is mid-run — is exactly the decision
+this needs.
 
 ### F10 — a resumed run reports `paused`/`blocked`/`failed` for the whole first producer call, while a real LLM session is already spawning — MEDIUM — CONFIRMED (reproduced live)
 

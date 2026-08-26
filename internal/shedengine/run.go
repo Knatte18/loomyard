@@ -120,6 +120,22 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 			}, nil
 		}
 
+		// Step 3b, the resume write. A run resumed from paused, blocked, or failed reaches this
+		// point about to call a producer, while the status file still says paused, blocked, or
+		// failed -- and for every LLM row that is minutes, during which the file, the status strand,
+		// and "lyx loom status" all describe a run that is in fact already spawning. The stale
+		// error text goes with it: Activity.Wait is composed from it, so the pane would otherwise
+		// keep asserting a specific failure reason the loop is at that moment retrying past.
+		//
+		// This is the only write in the loop that is not the record of a producer's verdict, and it
+		// is deliberately conditional: on the ordinary running-to-running path it never fires, so
+		// the loop's one-persist-per-iteration shape is unchanged for every step after the first.
+		if st.State != StateRunning {
+			if err := s.persist(st.CurrentProducer, StateRunning, "", st.History, false); err != nil {
+				return Result{}, err
+			}
+		}
+
 		// Step 4: call the looked-up definition's producer.
 		outcome, output, callErr := def.Producer.Call(ctx)
 
