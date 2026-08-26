@@ -154,6 +154,52 @@ Fix landed this round: give `BurlerProducer` and the `Bouncer`'s two spawn paths
 live-agent probe `SingleLLMProducer` already has, so a resume attaches to a still-live round
 instead of respawning over it. See the fixer report.
 
+### F10 — a resumed run reports `paused`/`blocked`/`failed` for the whole first producer call, while a real LLM session is already spawning — MEDIUM — CONFIRMED (reproduced live)
+
+`internal/shedengine/run.go:67-124`. The loop reads the status file (step 1), short-circuits
+only on `StateDone`, checks pause/cancellation (step 3), and then calls the producer (step 4)
+— **without ever writing `StateRunning`.** The first persist happens only when that producer
+call *returns*, which for every LLM row in loom's list is minutes later. Until then the status
+file still carries the state the run was resumed FROM.
+
+`run.go:94` documents the routing half of this deliberately — "StateBlocked and StateFailed
+deliberately do not short-circuit -- the loop proceeds and re-calls current_producer, which is
+how a human resumes" — which is right. What is missing is that the file is never updated to
+say so.
+
+Reproduced live, immediately after the graceful-pause resume in scenario 5:
+
+```
+$ lyx loom run                    # 17:37:5x — resumes from state "paused"
+$ lyx reed status                 # 17:38:18
+ strands: loom-status (%0),
+          bouncer-judge:1:1be2c1ef (%10, LIVE)     <-- a real judge session is running
+$ ps -eo pid,etime,args | grep 'loom drive'
+ 2110778  00:21  .dev-bin/lyx loom drive           <-- the driver is alive and working
+$ lyx loom status                 # same moment
+ {"current_producer":"Plan-Bouncer","state":"paused", ...}   <-- says PAUSED
+```
+
+So the module's only observability surface — and `lyx loom status --watch`'s one-line strand
+pane, which `loom.md` says exists "so the operator sees what the Go driver is *doing*" — reads
+`loom paused | now Plan-Bouncer | last Plan-Burler → stuck` while a real, cost-bearing LLM
+session is live in the pane directly below it.
+
+Why this matters more than a cosmetic lag: the window is exactly the one an operator watches
+hardest. Having just typed `lyx loom run` to resume, they look at the strand to see whether the
+resume took. It says `paused`. The honest reading of that display is "my resume did not take",
+and the natural next action is to run `lyx loom run` again — which is harmless today only
+because the run lock refuses the second driver, not because the display was right.
+
+The `blocked` and `failed` variants are worse still: a resumed run also keeps displaying the
+STALE `error` text (`Activity.Wait` is composed from it at `activity.go:24`), so the pane
+asserts a specific failure reason that the run is at that moment already retrying past.
+
+Fix: after step 3's pause/cancellation check passes and before step 4 calls the producer,
+persist `StateRunning` when the state just read is not already `StateRunning` — clearing the
+stale error in the same write. One extra status write per `Run` invocation, and only when the
+file was not already `running`.
+
 ### F1 — `require_pr_to_base: []`, the only way to say "never open a PR", is rejected by the config loader — MEDIUM — CONFIRMED
 
 `internal/yamlengine/reconcile.go:78` (`MissingKeys`) + `internal/yamlengine/reconcile.go:137`
