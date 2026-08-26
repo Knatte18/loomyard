@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
-plan: null
+plan: _mill/plan
 parent: main
 task: 'loom: Plan-Write/Plan-Validate approval deadlock (F7)'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-26T10:58:41Z'
 discussion-fix-r5  '2026-08-26T11:40:30Z'
 discussed  '2026-08-26T11:40:30Z'
+planning  '2026-08-26T11:50:29Z'
 ```
