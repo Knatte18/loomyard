@@ -247,12 +247,23 @@
 //     waits on the underlying OS process actually exiting rather than
 //     trusting any CLI exit code as a death signal.
 //   - Mouse boot pin (lifecycle.go): the engine pins "-g mouse" to the
-//     configured mouse value (default "off") on a fresh boot, right
+//     configured mouse value (default "on") on a fresh boot, right
 //     alongside remain-on-exit. Like remain-on-exit and debug_log, this is
 //     applied only on the boot that spawns the session, so toggling mouse in
 //     config or LYX_REED_MOUSE on an already-running hub has no effect until
-//     the reed server restarts. "off" preserves native terminal text
-//     selection/copy; "on" enables click-to-switch-pane.
+//     the reed server restarts -- and an already-materialized reed.yaml keeps
+//     whatever value it holds, since reconcile is key-based and never rewrites
+//     a value.
+//     "on" is the default because "off" is not neutral: with mouse off tmux
+//     never claims the wheel, so the terminal's own alternate-screen wheel
+//     translation delivers arrow keys straight to the pane's foreground
+//     process. In a reed session that process is a live agent, so scrolling
+//     scrolls nothing and types into the agent instead -- and under an
+//     interactive producer, where an operator is at the pane by design, a
+//     scroll gesture edits the answer they were trying to re-read.
+//     The cost of "on" is that native terminal text selection needs the
+//     terminal's shift-bypass (hold Shift while dragging); tmux copy-mode is
+//     the in-band alternative. "on" also enables click-to-switch-pane.
 //   - Header band divider row (render/rules.go, height.go): the header pane
 //     and the strand stack below it are physically adjacent, so tmux/psmux
 //     always renders the same one-row border between them that

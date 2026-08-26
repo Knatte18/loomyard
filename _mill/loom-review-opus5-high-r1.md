@@ -9,7 +9,8 @@ Job A (review) COMPLETE. See `_mill/loom-review-opus5-high-r1-fixer-report.md` f
 
 ## Executive summary
 
-**16 findings: 3 BLOCKING, 6 MEDIUM, 3 LOW, 4 NIT.**
+**17 findings: 3 BLOCKING, 7 MEDIUM, 3 LOW, 4 NIT.**
+(16 from Job A; **F17** was found during Job B while verifying the fixes, and is marked as such where it appears.)
 
 **loom's 17-row pipeline cannot complete, and the reason is structural, not incidental.**
 `Plan-Write`'s own stencil orders it to write `approved: false`; `Plan-Validate`, the very next row, hard-fails on exactly that value; and no row in
@@ -631,6 +632,44 @@ requires and which likewise lands in the trace sink, not `driver.log`.
 
 Fix: correct the wording where it is asserted (`internal/shuttleengine/wait.go`'s file header and `manifest/designs/loom.md` if it repeats the claim)
 to name the durable trace sink, so an operator looks in the right place.
+
+### F17 — MEDIUM (CONFIRMED live) — the status strand never comes back after a reed server restart
+
+**Found during Job B, while verifying the other fixes, and independently reported by the operator.**
+Recorded here with the rest so the round's findings live in one place; it did not exist in the Job A list, and saying otherwise would misrepresent when it was caught.
+
+`internal/loomcli/run.go:155` with `internal/loomcli/bootstrap.go:109-116`.
+
+```go
+if _, ok := findStatusStrand(statusResult.Strands, statusStrandDisplayName); !ok {
+    ... AddStrand(...) ...
+}
+```
+
+`findStatusStrand` matches on `Name` alone and ignores `StrandStatus.Live`.
+reed keeps tracking a strand whose pane is gone, so **any** reed server restart — a reboot, a crash, a `tmux kill-server`, or reed's own
+zombie-boot force-reap — leaves `loom-status` in `reed.json` with a cleared pane binding.
+Every subsequent `lyx loom run` in that worktree then finds the stale entry, concludes "already there", and never re-adds it.
+
+Observed live:
+
+```
+$ lyx reed status
+[('loom-status', '', False), ('plan::cc4f37b4', '%5', True)]
+```
+
+— tracked, no pane id, not live — and the attached session had no status pane at all.
+The operator, watching that same session, reported it independently: *"now I see no status line at all any more? … now it's completely gone?"*
+
+The consequence is permanent for that worktree and silent: `manifest/designs/loom.md`'s bootstrap step 2 promises the strand, nothing errors,
+and the operator's only read-out on a detached driver is gone. The out-of-band remedy (`lyx reed resume`) is never suggested anywhere.
+
+Fix: make liveness part of the question. A live strand is kept; no strand is added; a tracked-but-dead one is **replaced** — removed first, then
+added, because reed's add has no upsert semantics and a second add under one display name appends a second pane rather than replacing the first
+(which is exactly why `statusStrandDisplayName` is a pinned constant).
+
+Worth naming why this hid: it only bites *after* a substrate restart, so a first run in a fresh worktree — which is what every test and every prior
+live exercise did — never reaches it.
 
 ### Live driving — the real hub
 
