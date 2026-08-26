@@ -198,26 +198,41 @@ func (b *Bouncer) round1FocusSeeded() bool {
 	return err == nil
 }
 
+// judgedVerdict reads and parses round's verdict file, then reads and parses round's ledger file,
+// returning false on any read or parse failure. It deliberately excludes the focus file, because
+// that file is an input to the next round rather than evidence about this one, and is
+// synthesizable -- including it would let a missing focus file invalidate a judgment that provably
+// happened.
+//
+// The returned bouncerVerdict is the value judged has always thrown away: Call's clear trigger
+// needs the parsed verdict at entry, and judged's discarding of it is what forced settle to re-read
+// the file.
+func (b *Bouncer) judgedVerdict(round int) (bouncerVerdict, bool) {
+	verdictRaw, err := os.ReadFile(verdictPath(b.cfg.RunDir, round))
+	if err != nil {
+		return "", false
+	}
+	verdict, _, err := parseVerdict(verdictRaw)
+	if err != nil {
+		return "", false
+	}
+	ledgerRaw, err := os.ReadFile(ledgerPath(b.cfg.RunDir, round))
+	if err != nil {
+		return "", false
+	}
+	if _, err := parseLedger(ledgerRaw); err != nil {
+		return "", false
+	}
+	return verdict, true
+}
+
 // judged reports whether round's verdict and ledger files both exist and parse. It deliberately
 // excludes the focus file, because that file is an input to the next round rather than evidence
 // about this one, and is synthesizable -- including it would let a missing focus file invalidate
 // a judgment that provably happened.
 func (b *Bouncer) judged(round int) bool {
-	verdictRaw, err := os.ReadFile(verdictPath(b.cfg.RunDir, round))
-	if err != nil {
-		return false
-	}
-	if _, _, err := parseVerdict(verdictRaw); err != nil {
-		return false
-	}
-	ledgerRaw, err := os.ReadFile(ledgerPath(b.cfg.RunDir, round))
-	if err != nil {
-		return false
-	}
-	if _, err := parseLedger(ledgerRaw); err != nil {
-		return false
-	}
-	return true
+	_, ok := b.judgedVerdict(round)
+	return ok
 }
 
 // degrade is every judge-call infrastructure failure's single exit: it consults cancelErr first
