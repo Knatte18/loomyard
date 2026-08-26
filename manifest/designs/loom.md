@@ -57,7 +57,7 @@ This table is the human-readable design record, not required to track the recipe
 `Preflight` and `Loom-Preflight` are **built**, together giving `loom` the two-row shape.
 Row 1, `Preflight`, is the generic, product-agnostic gate: built as `internal/preflightshed`'s general producer over `internal/preflight.Check`, it validates worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the worktree pair's cleanliness, and fabric readiness and sync — warp branch == weft branch, via `warp`'s drift detection.
 Row 1 is reusable verbatim by a second product's producer list, and that reuse is what makes `manifest/designs/hardener.md`'s "its own Preflight" possible.
-Row 2, `Loom-Preflight`, is loom's own: built as `internal/loomengine.CheckSeed` over told paths, it validates that `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
+Row 2, `Loom-Preflight`, is loom's own: built as `internal/loomengine.CheckSeed` over told paths, it validates that `.lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
 On `stuck`, `Shed` bounces to the producer's own explicit `OnStuck` target (e.g. `Plan-Validate`'s stuck route bounces back to `Plan-Write`), which may sit anywhere in the list, or escalates to a human when none is set — never "keep fixing symptoms."
 The same explicitness now governs the done direction too: `Done` routes via this producer's own `OnDone`, not by list position — see [`shed.md`'s routing and bounce-budget sections](shed.md#the-shed-loop--exact-mechanics) for the full design, not restated here.
 
@@ -266,20 +266,15 @@ The stencil adds two things beyond those two bullets, so this durable record is 
 
 `lyx loom run` (alias `lyx run`) is the phase machine,
 and it is essentially autonomous.
-It reads loom's **status file** in `_lyx/`, sees which phase (and review sub-state) the task is on, and continues from there.
+It reads loom's **status file** in `.lyx/`, sees which phase (and review sub-state) the task is on, and continues from there.
 It is idempotent and re-entrant: **stop anywhere — Ctrl-C, crash, close the laptop — and the next `lyx run` continues where it left off.**
 
 This is the lyx model applied to orchestration: one-shot, daemonless, file-coordinated, resume-from-disk. `lyx run` is a pure function of {status file + artifact files} with no hidden process state.
-The status file lives in the weft repo, but it is not continuously committed there, so **resume across machines does not work today** — this line used to claim it did.
-`lyx loom run` commits the seed once, and the only other commit of that file is the checkpoint the landing rows make (see below);
-every persist in between leaves it as an uncommitted working-tree modification, so a second machine pulling the weft sees the task frozen wherever the last commit left it.
-Making it genuinely cross-machine means committing on every producer transition, which is a `Shed` persistence-policy decision with a real per-transition git cost, not a property this doc can assert into existence.
+loom's status is machine-local by construction: it is never tracked, so a second machine sees nothing of a run's state, and that is the intended contract rather than a gap awaiting a carrier.
+Making it genuinely cross-machine would mean committing on every producer transition — a `Shed` persistence-policy decision with a real per-transition git cost — and no such carrier is designed or scaffolded by this change.
 
-**`Publish` and `Finalize` commit the status file before they merge, and that checkpoint is load-bearing rather than housekeeping.**
-`fabricengine`'s merge guard refuses any *tracked* modification on either side of the pair, and by the time the landing rows run, `Shed` has rewritten this tracked file once per transition — so without the checkpoint the last row of every run refuses on the run's own bookkeeping, with no `OnStuck` target and therefore no recovery but a human.
-Both rows take it through `landingshed.Deps.CommitStatus`, an injected loop-owner closure `internal/loomcli` fills, keeping the generic landing producers ignorant of where loom's status file lives.
-It runs inside each producer's own `Call`, never once at bootstrap, because a resumed run persists again immediately before the producer is called.
-It is per-task and cwd-authoritative ([Principle 4](../../docs/overview.md#principles)).
+**No checkpoint is needed before `Publish` and `Finalize` merge.**
+`fabricengine`'s merge guard refuses tracked modifications only, so a never-tracked status file cannot make either landing producer refuse on the run's own bookkeeping.
 
 **Human boundaries.** `lyx run` drives every phase it *can* drive **unattended** — the agents are interactive tmux sessions,
 but no human sits in them ([Agent execution](#agent-execution)).
@@ -297,10 +292,10 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 
 ### State & contracts
 
-- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: `current_producer` names which producer this run is at, and a **per-producer-call outcome** trail (`history`) records every call, including stuck-handler bounce-backs — per-round verdicts live in the review segment's own round artifacts, not here.
+- **The status file (`.lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: `current_producer` names which producer this run is at, and a **per-producer-call outcome** trail (`history`) records every call, including stuck-handler bounce-backs — per-round verdicts live in the review segment's own round artifacts, not here.
   Nothing orchestration-relevant lives anywhere else.
   The pause flag (`pause_requested`) is also kept **in-status** (see [Graceful pause](#graceful-pause)).
-  Product-scoped under `loom/`, not bare `_lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — the Someday `Hardener` will need its own status file too, and a bare `_lyx/status.json` could not serve both without colliding.
+  Product-scoped under `loom/`, not bare `.lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — the Someday `Hardener` will need its own status file too, and a bare `.lyx/status.json` could not serve both without colliding.
   `Shed` itself has no opinion on this path at all: it is told its status-file path, never derives it (see `shed.md`'s own producer-contract section) — this scoping is entirely `loom`'s own choice as the caller.
 - **It also carries a human-readable *current-activity* `activity`, mechanically composed by `Shed` itself** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.
@@ -313,9 +308,22 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
   Handler/fixer artifacts are already on disk, so resuming inside a review block continues at the current round rather than restarting the phase.
 - **Separation of state.** The review segment owns its round state in its own run-directory files; `lyx run`'s status only needs phase + the segment's outcome. When the segment's `Bouncer` returns `Done`, `lyx run` advances.
 
+### Operator migration note — moving the status file for a hub that still carries the tracked one
+
+A hub that carries the status file at its old, tracked location has a one-time migration step, not something loom performs for itself.
+
+Finish or abandon any in-flight loom run before upgrading: an in-flight run cannot be migrated.
+After the move, `lyx loom run` finds no file at the new path and seeds a fresh one, discarding the old run's `history` — which is budget-bearing, since per-producer bounce budgets are derived by counting `stuck` entries.
+
+Then, from each affected worktree, including the parent's, delete the file through that worktree's own `_lyx` junction with an ordinary `rm _lyx/loom/status.json`, and run `lyx fabric commit`, whose staging pathspec already covers the durable structural directory code-injected rather than through fabric config.
+A raw `git rm` inside the sibling overlay worktree is not the sanctioned spelling — the Fabric Git Invariant's exemption for ordinary human git covers the ordinary repo worktree only.
+The invariant's own carve-out is what makes this legitimate anyway: its ban binds LYX's own code at a loop-owner boundary, not a human running the shipped CLI by hand, which is why this is an operator step rather than something loom does for itself.
+
+The leftover file is inert rather than a live bug once no code writes that path, so this step is about removing dead tracked junk from the parent, not about a conflict that would otherwise recur.
+
 ### Crash recovery — resume on output files, not live processes
 
-After a crash, a restarted `lyx run` cold-starts from the `_lyx/` status file and must reconcile its logical state with whatever agents may or may not still be alive.
+After a crash, a restarted `lyx run` cold-starts from the `.lyx/` status file and must reconcile its logical state with whatever agents may or may not still be alive.
 The discipline that makes this tractable: **loom resumes on output files AND on live-agent evidence — file existence is never used on its own to skip a step.**
 The file contract still decouples "was the work done" from "is the process alive," but a check that reads output-file existence alone cannot tell an interrupted step from a re-entered one whose files were left behind by something other than a finished agent — see "The crash-versus-bounce question," below.
 For the step it was on:
@@ -421,10 +429,10 @@ lyx loom run:
                                                            refused when --parent disagrees with a recorded value)
   0b. seed the status file when it is absent               (loomshed.Seed; a re-run's already-seeded case is
                                                            tolerated via its own sentinel, never re-seeded)
-  0c. commit that seed weft-side, before anything below    (fabricengine.CommitWeftPaths; this must land
-                                                           before the driver spawns, or the phase machine's
+  0c. commit the origin record weft-side, before            (fabricengine.CommitAnchoredPaths; this must land
+      anything below                                        before the driver spawns, or the phase machine's
                                                            own first precondition row sees an uncommitted
-                                                           status file and fails immediately)
+                                                           provenance record and fails immediately)
   1. ensure the worktree's tmux session is up           (reed)
   2. add the status strand                                (reed.AddStrand "lyx loom status --watch",
                                                            display: below-parent, shrinkWhenWaitingOnChild:true —
@@ -446,7 +454,7 @@ lyx loom run:
   4. attach the current terminal to the tmux session     (reed takes the foreground)
 ```
 
-So **loom goes to the background and the tmux session takes the window.** loom needs no terminal — it coordinates through files and drives strands via reed — so the screen is free for the reed view (the status line on top, agents below as they spawn). loom and the view are independent: loom writes the `_lyx/` status file;
+So **loom goes to the background and the tmux session takes the window.** loom needs no terminal — it coordinates through files and drives strands via reed — so the screen is free for the reed view (the status line on top, agents below as they spawn). loom and the view are independent: loom writes the `.lyx/` status file;
 the status strand reads and prints it;
 neither blocks the other.
 
