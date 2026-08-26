@@ -430,6 +430,24 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 			t.Errorf("countFor(findings, rename-mechanic-missing) = %d; want 1", got)
 		}
 	})
+
+	t.Run("Rename group on a multi-label card, mechanic absent", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeEdit
+		renamePairs := []planparser.MovePair{{Old: "old.go", New: "new.go"}}
+		card.Pairs = renamePairs
+		card.Targets = []string{"pkg/card1.go", "old.go", "new.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeEdit, Refs: []string{"pkg/card1.go"}},
+			{Type: planparser.CardTypeRename, Refs: []string{"old.go", "new.go"}, Pairs: renamePairs},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-mechanic-missing"); got != 1 {
+			t.Errorf("countFor(findings, rename-mechanic-missing) = %d; want 1", got)
+		}
+	})
 }
 
 // TestValidate_CardMissingField covers card-missing-field: every card must carry Intent:, and a
@@ -500,6 +518,42 @@ func TestValidate_CardMissingField(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("Create-plus-Edit card with no ImpactSummary produces a finding", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeCreate
+		card.Targets = []string{"new-file.go", "edit-file.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"new-file.go"}},
+			{Type: planparser.CardTypeEdit, Refs: []string{"edit-file.go"}},
+		}
+		card.HasImpactSummary = false
+		card.ImpactSummary = ""
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-missing-field"); got != 1 {
+			t.Errorf("countFor(findings, card-missing-field) = %d; want 1", got)
+		}
+	})
+
+	t.Run("Create-plus-Prosa card with no ImpactSummary produces none", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeCreate
+		card.Targets = []string{"new-file.go", "doc.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"new-file.go"}},
+			{Type: planparser.CardTypeProsa, Refs: []string{"doc.go"}},
+		}
+		card.HasImpactSummary = false
+		card.ImpactSummary = ""
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-missing-field"); got != 0 {
+			t.Errorf("countFor(findings, card-missing-field) = %d; want 0", got)
+		}
+	})
 }
 
 // TestValidate_CardFieldEmpty covers card-field-empty: a present label with zero-length content
@@ -529,6 +583,31 @@ func TestValidate_CardFieldEmpty(t *testing.T) {
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "card-field-empty"); got != 1 {
 			t.Errorf("countFor(findings, card-field-empty) = %d; want 1", got)
+		}
+	})
+
+	t.Run("populated Edit group plus empty Create group: one finding naming Create", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Uses = []string{"pkg/dep.go"}
+		card.Type = planparser.CardTypeEdit
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeEdit, Refs: card.Targets},
+			{Type: planparser.CardTypeCreate, Refs: nil},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-field-empty"); got != 1 {
+			t.Errorf("countFor(findings, card-field-empty) = %d; want 1", got)
+		}
+		found := false
+		for _, f := range findings {
+			if f.Check == "card-field-empty" && strings.Contains(f.Detail, "**Create:**") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("card-field-empty finding = %+v; want one naming the Create label", findings)
 		}
 	})
 

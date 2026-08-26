@@ -289,21 +289,24 @@ func checkRenameFormat(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkRenameMechanicMissing implements rename-mechanic-missing: a plan with at least one Rename card but an empty RenameMechanic section.
+// checkRenameMechanicMissing implements rename-mechanic-missing: a plan with at least one Rename
+// group but an empty RenameMechanic section. A Rename group on an otherwise multi-label card still
+// counts — the requirement is keyed on the group's own presence, not the card's first-label Type.
 func checkRenameMechanicMissing(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	hasRename := false
 	for _, c := range plan.Cards {
-		if c.Type == CardTypeRename {
-			hasRename = true
-			break
+		for _, g := range c.TargetGroups {
+			if g.Type == CardTypeRename {
+				hasRename = true
+			}
 		}
 	}
 	if hasRename && plan.RenameMechanic == "" {
 		findings = append(findings, ValidationError{
 			Check:  "rename-mechanic-missing",
-			Detail: `plan has at least one Rename card but no "## Rename mechanic" section`,
+			Detail: `plan has at least one Rename group but no "## Rename mechanic" section`,
 		})
 	}
 
@@ -316,7 +319,9 @@ type cardFieldLabel struct {
 	label   string
 }
 
-// checkCardMissingField implements card-missing-field: every card must carry Intent:, and a card of type Edit or Delete must also carry ImpactSummary:.
+// checkCardMissingField implements card-missing-field: every card must carry Intent:, and a card
+// carrying any Edit or Delete TargetGroup must also carry ImpactSummary: — the requirement is a
+// union over the card's own groups, not the card's first-label Type.
 func checkCardMissingField(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -324,7 +329,14 @@ func checkCardMissingField(plan *Plan) []ValidationError {
 		fields := []cardFieldLabel{
 			{c.HasIntent, "Intent:"},
 		}
-		if c.Type == CardTypeEdit || c.Type == CardTypeDelete {
+		needsImpactSummary := false
+		for _, g := range c.TargetGroups {
+			if g.Type == CardTypeEdit || g.Type == CardTypeDelete {
+				needsImpactSummary = true
+				break
+			}
+		}
+		if needsImpactSummary {
 			fields = append(fields, cardFieldLabel{c.HasImpactSummary, "ImpactSummary:"})
 		}
 		for _, f := range fields {
@@ -342,16 +354,26 @@ func checkCardMissingField(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkCardFieldEmpty implements card-field-empty: a label present with no content is distinct from an absent label.
+// groupBoldLabel returns a TargetGroup's own type label in its card-body bold form, e.g. "**Edit:**".
+func groupBoldLabel(typ CardType) string {
+	return fmt.Sprintf("**%s:**", typ)
+}
+
+// checkCardFieldEmpty implements card-field-empty: a label present with no content is distinct
+// from an absent label. Each of a card's own TargetGroups is checked independently, so a card
+// carrying a populated group alongside an empty one still gets a finding for the empty group.
 func checkCardFieldEmpty(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		if c.HasType && len(c.Targets) == 0 {
+		for _, g := range c.TargetGroups {
+			if len(g.Refs) > 0 {
+				continue
+			}
 			findings = append(findings, ValidationError{
 				Check:  "card-field-empty",
 				Card:   cardID(c),
-				Detail: fmt.Sprintf("card %d's type label carries no targets", c.Number),
+				Detail: fmt.Sprintf("card %d's %s label carries no targets", c.Number, groupBoldLabel(g.Type)),
 			})
 		}
 		if c.HasUses && len(c.Uses) == 0 {
