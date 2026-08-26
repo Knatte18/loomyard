@@ -200,10 +200,13 @@ A parked, more aggressive parallel-execution idea also exists — see [../../man
 ## Validation checks (as implemented by `internal/planparser`)
 
 Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — sixteen rows, sixteen IDs.
-This figure counts distinct IDs rather than presentation rows, which resolves the row-count-versus-ID-count divergence the repo's former "14" carried (a 14-row list whose row 1 bundled two distinct IDs):
+This figure counts distinct IDs rather than presentation rows, which resolves the row-count-versus-ID-count divergence the repo's former "14" carried (a 14-row list whose row 1 bundled two distinct IDs).
+The sixteen IDs are split across two entry points, `ValidateFormat` and `Validate`: fifteen of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 2 below) is additionally checked by `Validate`, the full entry point.
+The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-two slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `4`); else refuse to run.
 2. `plan-unapproved` — `approved: true`; else refuse to run.
+   This is a consumer guard, and its "else refuse to run" is deliberately not enforced by every caller: `Plan-Revalidate` (the post-segment mechanical row) and every standalone plan consumer (`internal/websterengine`, `internal/webstercli`, `internal/batcher`) enforce it, while the pre-review gate, `Plan-Validate`, deliberately does not — the plan writer is forbidden from setting the flag, and the review segment (`Plan-Bouncer`'s approved settle) is what writes it, so a pre-review caller demanding it would be demanding something only review itself can produce.
 3. `index-file-mismatch` — Card Index ↔ card files consistent (numbering, slugs, no gaps, no orphaned file on disk).
    This check covers the card count because there is no separate `(C cards)` segment to cross-check;
    the index itself IS the card list.
