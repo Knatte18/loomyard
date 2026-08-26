@@ -6,8 +6,6 @@
 package loomcli
 
 import (
-	"fmt"
-
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -49,22 +47,6 @@ func landingDeps(
 		},
 		OpenParentFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.OpenParent(l, parentBranch)
-		},
-		// CommitStatus commits loom's own phase-machine status file, which Shed rewrites on every
-		// producer transition and which "lyx loom run" commits only once, as the seed. Both landing
-		// producers call this immediately before they merge, because fabricengine's merge guard
-		// refuses any tracked modification on either side of the pair -- and by that point the
-		// status file is exactly that.
-		//
-		// It mirrors wiring.go's CommitDiscussion/CommitPlan closures in every respect: the same
-		// CommitAnchoredPaths call, the same throwaway mutation recorder, the same EnvSyncOptions,
-		// and the same discard of the (sha, committed) pair in favour of the error alone, which is
-		// what makes a second call over an already-committed, already-clean path a no-op rather
-		// than a failure. The pathspec is loomengine.LoomStatusRel(), never a hand-built join
-		// naming the _lyx literal, which the Lyxdirs Single-Declarer Invariant forbids.
-		CommitStatus: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{loomengine.LoomStatusRel()}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
-			return err
 		},
 		Shuttle:  runner,
 		Registry: registry,

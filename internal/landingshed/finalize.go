@@ -112,20 +112,6 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	// Step 1b: commit the product's own status file, so the pair carries no tracked modification
-	// when the merge guard below runs. This must happen inside Call rather than once at bootstrap:
-	// Shed rewrites that file on every transition, including the persist a resumed run makes
-	// immediately before calling this producer, so any earlier commit is already stale by now.
-	//
-	// A commit failure maps to a returned error, never to Stuck: a git fault is infrastructure
-	// rather than a merge precondition a human resolves by editing the branch, and it is the same
-	// disposition loomshed's own commit decorators already give a failing commit seam.
-	if fz.deps.CommitStatus != nil {
-		if err := fz.deps.CommitStatus(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: commit status file: %w", finalizeName, err)
-		}
-	}
-
 	// Step 2: catch the task worktree up with the parent branch.
 	if outcome, out, err, done := fz.mergeInStep(ctx); done {
 		return outcome, out, err
