@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: reed-attach-geometry-reconcile
 branch: reed-attach-geometry-reconcile
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-08-26T11:36:54Z'
 planning  '2026-08-26T12:25:03Z'
 plan-review-r1  '2026-08-26T12:34:12Z'
 plan-fix-r1  '2026-08-26T12:35:13Z'
+plan-review-r2  '2026-08-26T12:43:17Z'
 ```
