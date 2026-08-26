@@ -283,6 +283,93 @@ instead of respawning over it; retire the Limitations paragraph that recorded th
 correct `loom.md`'s crash-recovery section so it describes the ladder that actually ships. See
 the fixer report.
 
+### F12 — `Finalize` blocks every loom run on loom's OWN status file — BLOCKING — CONFIRMED (reproduced live, then proven by removal)
+
+`internal/shedengine/run.go:328` (`persist`) + `internal/loomcli/run.go:119` (the seed commit's
+pathspec) + `internal/fabricengine/mergeguards.go:137` (`pairDirtyReason`) +
+`internal/landingshed/finalize.go:116` / `internal/landingshed/publish.go:110`.
+
+`Shed.persist` rewrites `_lyx/loom/status.json` on **every** producer transition. That file is
+**tracked** in the weft — `lyx loom run` commits it once, as the seed
+(`commitPaths := []string{loomengine.LoomStatusRel(), fabricengine.OriginRecordRel()}`), and
+**nothing ever commits it again**. The two commit seams that do fire mid-run commit
+`_lyx/discussion` and `_lyx/plan` and nothing else.
+
+`Finalize`'s first act is a merge-in against the parent, and `fabricengine`'s merge guard
+refuses on `worktreeDirty(scopeTracked, …)` over **both** sides of the pair. By the time
+`Finalize` runs, the weft's tracked `status.json` has been rewritten twenty times.
+
+So the last row of the pipeline is guaranteed to refuse, on every run, on any repository,
+because of loom's own bookkeeping. `Finalize` carries no `on_stuck` (deliberately — nothing in
+the list produces what it gates), so the refusal is `RunBlocked`: terminal, human-only, and it
+lands **after every expensive LLM session in the run has already been paid for**.
+
+**Reproduced live**, at the end of this round's full pipeline run:
+
+```
+17:51:06 | Finalize blocked 20 — "stuck with no OnStuck target"
+$ cat .lyx/loom/Finalize-stuck.md
+merge-in failed: fabricengine: merge preconditions failed: worktree dirty
+```
+
+**Isolated**, because "worktree dirty" could plausibly have been the stray build artifact an
+agent left behind. It was not — the guard is `scopeTracked`, and untracked files are invisible
+to it:
+
+```
+$ git -C <warp> status --porcelain
+?? tinytool                       # untracked, IGNORED by the guard
+$ git -C <weft> status --porcelain
+ M _lyx/loom/status.json           # the ONLY tracked modification in the pair
+?? _lyx/webster/outcome.yaml       # untracked, ignored
+?? _lyx/webster/reports/integration.yaml
+?? _lyx/webster/summary.md
+$ git -C <warp> diff --name-only            -> (nothing)
+$ git -C <weft> diff --name-only            -> _lyx/loom/status.json
+```
+
+**Proven by removal** — the sabotage-discipline check, run because a green result that never
+reached the code is worthless. Commit that one file, change nothing else, resume:
+
+```
+$ git -C <weft> add _lyx/loom/status.json && git -C <weft> commit -m "proof: ..."
+$ git -C <weft> diff --name-only            -> (empty)
+$ lyx loom run
+$ lyx loom status
+ current_producer Finalize | state DONE | history 21
+```
+
+`Finalize` went from `stuck` to `done` with the single tracked modification removed and nothing
+else touched. The diagnosis is not inferred.
+
+**A second, independent consequence of the same root cause.**
+`manifest/designs/loom.md` states: "Because the status lives in the weft repo (git-synced),
+resume works across machines too." It cannot. Only the seed is ever committed, so a second
+machine pulling the weft sees a task frozen at `current_producer: Preflight` with an empty
+history, whatever the first machine has actually done. The documented cross-machine resume
+feature is unreachable for the same reason `Finalize` refuses.
+
+Fix, split by size:
+- **Fixed this round:** commit the status file through an injected loop-owner seam immediately
+  before the landing rows perform their merge-in, so the pair is clean when the guard runs.
+  It must cover `Publish` as well as `Finalize`: `Publish` performs its own merge-in at
+  `publish.go:110` whenever a pull request IS required, and would hit the identical guard —
+  this round's fixture took `Publish`'s early-`Done` branch, so that half was never exercised
+  live and is fixed on the strength of the shared code path rather than a second reproduction.
+  The seam shape is the one this codebase already uses for exactly this
+  (`Env.CommitDiscussion` / `Env.CommitPlan` / `Env.ApprovePlan` are all injected loop-owner
+  closures), and it keeps `landingshed` free of any knowledge of loom's paths.
+- **NOT-FIXED-THIS-ROUND:** making the status file durable *continuously*, so cross-machine
+  resume actually works as documented. That is a policy question with real cost (a git commit
+  per producer transition, on a file that changes twenty-plus times a run) and it belongs to
+  `Shed`'s own persistence design, not to a hardening round. Recorded for the orchestrator.
+
+**Interaction with F10, stated so the two fixes are not applied blindly.** F10's fix persists
+`StateRunning` at resume entry, which re-dirties `status.json` before the producer is called —
+so on a resume from `blocked` straight into `Finalize`, F10's fix would re-introduce exactly
+the dirt F12 is about. F12's fix must therefore commit inside the producer, after any such
+persist, not once at bootstrap. Both fixes below are written with that ordering in mind.
+
 ### F10 — a resumed run reports `paused`/`blocked`/`failed` for the whole first producer call, while a real LLM session is already spawning — MEDIUM — CONFIRMED (reproduced live)
 
 `internal/shedengine/run.go:67-124`. The loop reads the status file (step 1), short-circuits
