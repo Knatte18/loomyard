@@ -35,6 +35,15 @@ F12 did not create this conflict surface, but it widened it, and it is now the r
 - Update `internal/shedengine`'s `StatusPath` doc comment, which calls it "the durable status file" — a word this repo's Durable-vs-Ephemeral State Invariant gives a specific, now-wrong meaning.
 - Update `internal/landingshed/doc.go` if it mentions the status-file checkpoint, and `internal/loomshed`'s seed doc comment where it describes the seed being committed weft-side.
 - Update the Tier-1 path guards that pin the old location: `cmd/lyx/constructoranchoring_test.go` and `cmd/lyx/notransients_test.go` (`LoomStatusFile` moves from `durableSet` to the transient set).
+- **Update `contracts/stencils/loom/loom-rubric-webster-review.md` — this one is behavioral, not doc drift.**
+  Its "Determining the review range" section is live agent prompt text: step 1 instructs the reviewer to read `_lyx/loom/status.json` and take `product.parent`, and the paragraph below it instructs the reviewer to raise a BLOCKING finding and review nothing when that file cannot be read.
+  The stencil is wired into two live recipe rows (`rubric_stencil: loom-rubric-webster-review` at `contracts/recipes/loom-recipe.yaml:241` for `Webster-Bouncer` and `:285` for `Webster-Burler`), so after the move it would read a path that no longer exists and force a spurious BLOCKING finding into every Webster-Review round of every future loom run — the review segment would never converge.
+  Both occurrences change to `.lyx/loom/status.json`.
+- **Enumerate the remaining references by full-text grep over the whole tree for the literal `_lyx/loom/status.json`, not by tracing Go call sites.**
+  The constructor trace is sound for code that *resolves* the path, but blind to text that *names* it — prompts, recipe comments, doc comments, and fixture instructions. Run the grep before implementation and update every hit.
+  The hits as of this discussion, all doc/comment drift once the stencil above is handled: `contracts/recipes/loom-recipe.yaml:293` (the `tool-use: true` justification comment on `Webster-Burler`), `internal/loomengine/status.go:8`, `internal/loomengine/report.go:25,27,31,34,39` (the four `CheckSeed` verdict doc comments), `internal/loomshed/seed.go:2`, `manifest/designs/loom.md:60,300`, `manifest/designs/shed.md:245`, `manifest/designs/self-report.md:15`, and `contracts/specs/loom-status-spec.md:3,8,19,24`.
+- Update `tools/sandbox/SANDBOX-CORE-SUITE.md`'s scenario S8 ("Loom status and pause over a seeded fixture", tagged `**Covers:** loom`), whose fixture note tells the operator to hand-write the status file at the old path.
+  The scenario is the black-box coverage `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant requires for the `loom` module, so a stale fixture path makes it fail at the first step.
 - Add regression coverage that a full task landing no longer carries loom's status file into the parent (see [Testing](#testing)).
 
 **Out:**
@@ -127,7 +136,12 @@ Weft branches are non-orphan and fork from the parent's weft branch, sharing a m
 `internal/loomengine/config.go` is the sole declarer: `loomDirName = "loom"`, `loomStatusFileName = "status.json"`, `LoomStatusRel()`, `LoomStatusFile(l)`, plus the `.lyx`-side siblings `LoomStatusLock`, `LoomRunLock`, `LoomDriverLog`, `LoomBootstrapLock`, `LoomScratchDir`.
 Every consumer reaches the file through `shedPaths.StatusPath`, wired once in `internal/loomcli/wiring.go` (`wireStatusPathsOnly` at line 49 and the full `wire` at line 140) from `loomengine.LoomStatusFile(location)`.
 Readers: `internal/shedengine/run.go` (step-1 read gate and every persist, via `internal/state`), `internal/loomcli/status.go`, `internal/loomcli/pause.go`, `internal/loomcli/drive.go`, `internal/loomengine.CheckSeed` (row 2, `Loom-Preflight`).
-None of them build the path themselves, so the move is genuinely one constructor plus its two guard tests.
+None of them build the path themselves, so every Go *call site* is covered by moving the one constructor and its two guard tests.
+
+**That constructor trace is not the whole consumer set, and must not be mistaken for it.**
+A second class of consumer names the path as text rather than resolving it, and is invisible to any search over Go call sites: agent prompt stencils, recipe comments, doc comments, and sandbox fixture instructions.
+One of them is behavioral — `contracts/stencils/loom/loom-rubric-webster-review.md`, the live rubric two recipe rows hand to the Webster-Review agent, which tells it to read the file and to raise a BLOCKING finding and review nothing if it cannot.
+The enumeration method for this class is a full-text grep over the whole tree for the literal `_lyx/loom/status.json`, run at implementation time rather than trusted from this document; the hits known today are listed in [Scope](#scope).
 
 **Where it is written and committed today.**
 `internal/loomshed/seed.go`'s `Seed` is the only production writer of the initial file (refusing to overwrite via `ErrSeedExists`, decided under the lock through `state.UpdateJSON`).
@@ -175,6 +189,8 @@ From `CONSTRAINTS.md`:
 - **CLI/Cobra Invariant** — no command surface changes here, but `lyx loom run`'s and `lyx loom status`'s help text must not end up describing a git-committed status file.
 - **Markdown Link Integrity** — `loom.md`'s `#crash-recovery--resume-on-output-files-not-live-processes` heading is linked from `manifest/roadmap.md` and from within `loom.md` itself; the doc edits must not change that heading's text.
 - **Documentation Lifecycle** — `contracts/specs/loom-status-spec.md` and `manifest/designs/loom.md` are durable docs, edited in the same commit as the code per `CLAUDE.md`'s task-completion rule.
+- **Sandbox Suite Coverage Invariant** — every registered lyx module is exercised by the black-box sandbox suite or explicitly excluded; `loom`'s coverage is scenario S8 in `tools/sandbox/SANDBOX-CORE-SUITE.md`, tagged `**Covers:** loom`, and its fixture note names the status-file path.
+  Enforced by `cmd/lyx/sandbox_coverage_test.go`, which checks tagging rather than fixture correctness — so a stale path there fails the operator, not the test suite.
 - **Test Tier Purity Invariant** — `cmd/lyx/notransients_test.go` and `constructoranchoring_test.go` are Tier 1 (pure `filepath.Join` arithmetic over hand-built `*lyxcwd.Location` fixtures, no process spawned, no fixture tree copied).
   Keep them that way.
 
@@ -208,6 +224,8 @@ The load-bearing assertion is the absence of conflicts on the second landing; a 
 - `Publish` and `Finalize` still merge cleanly when the status file has been rewritten by `Shed` and never committed — the direct proof that `pairDirtyReason`'s tracked-only scope makes the removed checkpoint unnecessary.
 - `lyx loom pause` and `lyx loom status` read the file at its new location.
   Existing `internal/loomcli` tests cover the behaviour; they need only follow the constructor.
+- The edited `loom-rubric-webster-review.md` stencil still validates and still resolves through both recipe rows that name it — covered by `lyx stencil validate` and the existing recipe/stencil wiring tests, which need no new cases, only a passing run.
+  Note the operational consequence for mill-plan to record rather than solve: per `tools/sandbox/SANDBOX-CORE-SUITE.md`'s S7 durability note, the board's stencils tree is seeded on first run and persists, so an operator's already-seeded board copy of this rubric does not pick the edit up on its own — it is `lyx stencil`'s existing promote/sync surface that reconciles it, not this task's code.
 
 **Not tested:** cross-machine resume, in either direction.
 It is removed as a claim, so there is nothing to assert about it.
@@ -220,4 +238,5 @@ It is removed as a claim, so there is nothing to assert about it.
 - **Q:** Does `lyx loom run` still commit anything at step 3? **A:** [auto-pick] Yes — `fabricengine.OriginRecordRel()` only. **Why:** the origin record is genuinely durable provenance and its self-healing unconditional-inclusion rationale is unaffected; only the status path leaves the list, and the step's comment is rewritten since its "neither file is on the never-tracked exclude list" claim stops being true.
 - **Q:** Do hubs already carrying a tracked `_lyx/loom/status.json` get an automatic migration? **A:** [auto-pick] No — a documented one-time operator step in `manifest/designs/loom.md`, gated on finishing or abandoning in-flight runs first. **Why:** the stale tracked file must be deleted from the weft branches or the bug persists, but an in-flight run cannot be migrated safely in any case — `history` is budget-bearing (per-producer bounce budgets are counted from it), so silently reseeding would hand every producer a fresh budget; and a one-shot migration path is permanent code exercised once.
 - **Q:** What proves the fix, given the bug was found by review rather than by a failing test? **A:** [auto-pick] An integration test landing two sequential tasks off one parent and asserting the second `Finalize`'s parent-side merge is conflict-free. **Why:** it is the only test that reproduces the actual failure — one task alone never conflicts, since the divergence requires both sides to have rewritten the file since their merge base.
+- **Q:** How is the consumer set enumerated — by tracing Go call sites, or by searching the whole tree for the literal path? **A:** [round-1 gap fix] Full-text grep over the whole tree, treated as the primary method; the constructor trace covers only code that resolves the path. **Why:** the trace missed `contracts/stencils/loom/loom-rubric-webster-review.md`, live prompt text wired into two recipe rows, which instructs the Webster-Review agent to raise a BLOCKING finding and review nothing when the status file cannot be read — after the move that fires on every review round of every future run, so the review segment would never converge.
 - **Q:** Does `CONSTRAINTS.md` gain a new invariant? **A:** [auto-pick] No. **Why:** the Durable-vs-Ephemeral State Invariant already covers the destination and already machine-enforces it; this task moves a file into compliance rather than establishing a new cross-cutting rule.
