@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: clone doesn''t commit written module configs'
 slug: 'fabric-clone-commit-module-configs'
-approved: false
+approved: true
 started: '20260826-113442'
 parent: 'main'
 root: ""
