@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-text-references  '2026-08-26T19:00:32Z'
 approved-docs  '2026-08-26T19:07:15Z'
 approved-regression-coverage  '2026-08-26T19:13:07Z'
 holistic-reviewing  '2026-08-26T19:13:36Z'
+holistic-approved  '2026-08-26T19:18:29Z'
 ```
 
 ## Batches
