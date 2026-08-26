@@ -106,6 +106,9 @@ producers:
     engine: PlanValidate
     on_stuck: Plan-Write
     on_done: Plan-Bouncer
+    # No config block, deliberately: this row runs before the review segment, and its absent
+    # require_approved key is what puts it in format-only mode -- it must not demand the
+    # plan-unapproved flag only Plan-Bouncer's approved settle can produce.
 
   - name: Plan-Bouncer
     engine: Bouncer
@@ -176,7 +179,10 @@ producers:
     # review segment, over whatever Plan-Burler's overlay rounds rewrote -- the judge is forbidden
     # by its own rubric from re-deriving those checks, Batchifier's Call never parses the plan, and
     # Webster carries no on_stuck at all, so without this row a fixer-introduced format regression
-    # lands on the one row in the list a human is the only recovery for.
+    # lands on the one row in the list a human is the only recovery for. The recipe now distinguishes
+    # the two rows sharing this engine by two things: their differing on_done targets, and this row's
+    # require_approved: true config key below, which puts it in the approval-enforcing mode
+    # Plan-Validate's absent key does not carry.
     engine: PlanValidate
     # on_stuck is Plan-Write, not Plan-Bouncer: this row reports mechanical format findings, and the
     # fixer round is rubric-forbidden from re-deriving those, so the row that can actually repair
@@ -188,6 +194,11 @@ producers:
     # by the Burler row's leftover budget.
     on_stuck: Plan-Write
     on_done: Batchifier
+    config:
+      # This row runs after the review segment settles, so it is the row that confirms the
+      # plan-unapproved flag is present -- catching both a fixer-introduced regression that clears
+      # it and a failed approval write.
+      require_approved: true
 
   - name: Batchifier
     engine: Batchifier
