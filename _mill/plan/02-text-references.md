@@ -53,7 +53,7 @@ It depends on batch 1 because it describes the post-move state; nothing in it ch
   In the read-only fence list, retarget the bullet that currently reads ``- **`_lyx/loom/`** — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.`` so it names `.lyx/loom/` instead, keeping the rest of the bullet's wording as it stands.
   After the move that directory is where the live status file is, and the old one no longer exists — leaving the fence unchanged would warn the agent off an empty path while leaving the real one unguarded.
   Leave the `_lyx/config/` and `_lyx/plan/` bullets alone; both still exist.
-  In `TestLoomTemplateDiscussion_FencesWhatItMayWrite`'s table, change the `{"fences the phase machine's status file", ...}` row's `phase` field from the backtick-wrapped old directory literal to the backtick-wrapped `.lyx/loom/` literal, leaving the row's `name` field and every other row unchanged.
+  In `TestLoomTemplateDiscussion_FencesWhatItMayWrite`'s table, change the `{"fences the phase machine's status file", ...}` row's `phrase` field from the backtick-wrapped old directory literal to the backtick-wrapped `.lyx/loom/` literal, leaving the row's `name` field and every other row unchanged.
   Both edits land in this one card and therefore in one commit: the assertion pins the exact literal, so the stencil edit fails that test until the assertion moves with it, and splitting them across cards would leave a red commit between them.
 - **Commit:** `fix(stencils): retarget the Discussion fence to the new status directory`
 

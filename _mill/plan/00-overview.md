@@ -3,7 +3,7 @@
 ```yaml
 task: "loom's status file can conflict on the landing merge"
 slug: "loom-status-file-merge-conflict"
-approved: false
+approved: true
 started: "20260826-175733"
 parent: "main"
 root: ""
