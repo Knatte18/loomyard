@@ -436,26 +436,30 @@ func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkProsaSymbolTarget implements prosa-symbol-target: a Prosa card's target list must hold only file(s), never a symbol.
+// checkProsaSymbolTarget implements prosa-symbol-target: a Prosa group's own target list must
+// hold only file(s), never a symbol. A symbol in the same card's non-Prosa group is not flagged —
+// the rule is scoped to the Prosa group's own Refs, not the card's flat Targets union.
 func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		if c.Type != CardTypeProsa {
-			continue
-		}
-		for _, t := range c.Targets {
-			if isPathRef(t) {
+		for _, g := range c.TargetGroups {
+			if g.Type != CardTypeProsa {
 				continue
 			}
-			findings = append(findings, ValidationError{
-				Check: "prosa-symbol-target",
-				Card:  cardID(c),
-				Detail: fmt.Sprintf(
-					"card %d is a Prosa card but targets the symbol %q; Prosa cards may only target files",
-					c.Number, t,
-				),
-			})
+			for _, t := range g.Refs {
+				if isPathRef(t) {
+					continue
+				}
+				findings = append(findings, ValidationError{
+					Check: "prosa-symbol-target",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d's Prosa group targets the symbol %q; a Prosa group may only target files",
+						c.Number, t,
+					),
+				})
+			}
 		}
 	}
 
@@ -513,16 +517,20 @@ func pathExistsOnDisk(worktreeRoot, p string) bool {
 	return err == nil
 }
 
-// createTargetsUnion returns the union, across every card in plan, of every CardTypeCreate card's path-shaped Targets entries.
+// createTargetsUnion returns the union, across every card in plan, of every CardTypeCreate
+// TargetGroup's own path-shaped Refs entries — a card carrying a Create group alongside a
+// differently-typed group contributes only the Create group's own refs, never its other groups'.
 func createTargetsUnion(plan *Plan) map[string]bool {
 	union := make(map[string]bool)
 	for _, c := range plan.Cards {
-		if c.Type != CardTypeCreate {
-			continue
-		}
-		for _, t := range c.Targets {
-			if isPathRef(t) {
-				union[t] = true
+		for _, g := range c.TargetGroups {
+			if g.Type != CardTypeCreate {
+				continue
+			}
+			for _, t := range g.Refs {
+				if isPathRef(t) {
+					union[t] = true
+				}
 			}
 		}
 	}

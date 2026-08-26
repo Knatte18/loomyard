@@ -644,6 +644,32 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1", got)
 		}
 	})
+
+	t.Run("Edit group symbol plus Prosa group symbol: only the Prosa group's is flagged", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeEdit
+		card.Targets = []string{"pkg.EditSymbol", "pkg.ProsaSymbol"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeEdit, Refs: []string{"pkg.EditSymbol"}},
+			{Type: planparser.CardTypeProsa, Refs: []string{"pkg.ProsaSymbol"}},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
+			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1", got)
+		}
+	})
+
+	t.Run("symbol lives only in the Edit group: no finding", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"pkg.EditSymbol"})
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "prosa-symbol-target"); got != 0 {
+			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 0", got)
+		}
+	})
 }
 
 // TestValidate_CardNumbering covers card-numbering: the card file's own heading number must match
@@ -827,6 +853,31 @@ func TestValidate_PathMissing(t *testing.T) {
 		findings := planparser.Validate(plan, root)
 		if got := countFor(findings, "path-missing"); got != 0 {
 			t.Errorf("countFor(findings, path-missing) = %d; want 0", got)
+		}
+	})
+
+	t.Run("Create group on an otherwise-Edit card satisfies a later card's Edit target on the same path", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+
+		createAndEdit := validCard(1, "create-and-edit")
+		createAndEdit.Type = planparser.CardTypeCreate
+		createAndEdit.Targets = []string{"shared-new.go", "own-edit.go"}
+		createAndEdit.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"shared-new.go"}},
+			{Type: planparser.CardTypeEdit, Refs: []string{"own-edit.go"}},
+		}
+		materializeFiles(t, root, "own-edit.go")
+
+		editSharedNew := cardOfType(2, "edit-shared-new", planparser.CardTypeEdit, []string{"shared-new.go"})
+
+		plan := &planparser.Plan{
+			Format: 4, Approved: true,
+			Cards: []planparser.Card{createAndEdit, editSharedNew},
+		}
+		findings := planparser.Validate(plan, root)
+		if got := countFor(findings, "path-missing"); got != 0 {
+			t.Errorf("countFor(findings, path-missing) = %d; want 0 (legitimate cross-card create-then-edit sequencing)", got)
 		}
 	})
 }
