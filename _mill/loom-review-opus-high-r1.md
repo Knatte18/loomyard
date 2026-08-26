@@ -308,6 +308,45 @@ only record of it anywhere"). The two rows sit beside each other and disagree.
 
 Fix: log the discarded error at `logger.Warn` on both rows, matching `planValidate`'s shape.
 
+**Counted, not asserted.** I enumerated every `return shedengine.Stuck` across loom's producer
+packages rather than reporting the two sites I happened to notice. Method:
+
+```
+grep -rn "shedengine.Stuck" --include=*.go \
+  internal/loomshed internal/shedadapters internal/landingshed internal/preflightshed \
+  | grep -v _test | grep return
+```
+
+16 return sites. Classified, every row including the ones judged correct:
+
+| Site | Reason reaches an operator? |
+|---|---|
+| `loomshed/planvalidate.go:96` | yes — `logger.Warn` with the findings list |
+| `loomshed/loompreflight.go:89` | yes — `logger.Warn` with the seed failures |
+| `loomshed/discussionvalidate.go:64` | yes — `logger.Warn` with the findings list |
+| `preflightshed/preflight.go:76` | yes — `logger.Warn` with the precondition failures |
+| `landingshed/publish.go:201` | yes — `reportStuck` writes a stuck-reason file |
+| `landingshed/finalize.go:186` | yes — `reportStuck` writes a stuck-reason file |
+| `shedadapters/bouncer.go:208` | yes — `logger.Warn`, the re-bounce line |
+| `shedadapters/bouncer.go:277` | yes — `degrade` logs every caller's message |
+| `shedadapters/bouncer.go:363` | yes — the BLOCKING verdict file itself is the record |
+| `shedadapters/bouncer.go:391` | n/a — the seed Stuck is a routine hand-off, and `runSeedSpawn` logs each of its own failures |
+| `shedadapters/burler.go:355` | n/a — a successful round's routine hand-off, not a fault |
+| `shedadapters/singlellm.go:172` | yes — `logger.Warn` with the asking message and session id |
+| `shedadapters/webster.go:86` | yes — `logger.Warn` with the master's question |
+| `shedadapters/webster.go:107` | yes — `logger.Warn` with `stuckReason` and `batchesDone` |
+| **`loomshed/batchifier.go:48`** | **NO** |
+| **`loomshed/webster.go:66`** | **NO** |
+
+Exactly two sites discard their reason, and both discard the *same* error —
+`batcher.Active`'s. Fourteen of sixteen get it right, which is what makes these two a
+divergence rather than a missing convention.
+
+What this enumeration cannot see: a Stuck reached through a helper that returns
+`(Outcome, OutputPointer, error)` without the literal token on the `return` line
+(`degrade`, `nonDoneExit`, `stuckOrCancelled` are the three in this tree, and all three are
+listed above via their own definition site rather than their call sites).
+
 ### F5 — `burlerRoundFileSet`'s `entry` and `field` parameters are dead, and their absence makes two distinct config errors indistinguishable — NIT — CONFIRMED
 
 `internal/shedrecipe/entries_burler.go:101`:
