@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-configfilerel-accessor
 slug: fabric-clone-commit-module-configs
 branch: fabric-clone-commit-module-configs
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r3  '2026-08-26T12:01:02Z'
 plan-review-r4  '2026-08-26T12:07:17Z'
 planned  '2026-08-26T12:07:35Z'
 implementing  '2026-08-26T12:08:10Z'
+approved-configfilerel-accessor  '2026-08-26T12:11:57Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-26T12:08:10Z'
 ```yaml
 batches:
   - name: configfilerel-accessor
-    state: running
+    state: approved
     implementer_session: 84a92ee6-3e1c-4477-bd84-6018d9bb45b8
     start_sha: 0de7dd8bdbc0ac5de28a2550f39d474db686b24b
+    commit_sha: 3a9590c7116418af78e80e81184a53b92295c1be
     verify_baseline_failures: []
   - name: fixture-empty-stage-tolerance
     state: pending
