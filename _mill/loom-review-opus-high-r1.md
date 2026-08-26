@@ -14,7 +14,47 @@ _(answered when the live driving concludes — see "What was tested")_
 
 ## Scope assessment
 
-_(pending)_
+**Design intent vs shipped: the producer list matches, and the two counts diverge exactly as
+documented.** `contracts/recipes/loom-recipe.yaml` carries seventeen rows;
+`manifest/designs/loom.md`'s table carries fifteen entries; the doc's own "The table and the
+shipped recipe diverge deliberately" paragraph accounts for the delta precisely — the table's
+`Plan-Sweep` row (absent from the recipe) against the recipe's three collapsed segment pairs.
+I checked row-for-row: `Preflight`, `Loom-Preflight`, `Discussion-Write`,
+`Discussion-Validate`, `Discussion-Bouncer`/`Discussion-Burler`, `Plan-Write`,
+`Plan-Validate`, `Plan-Bouncer`/`Plan-Burler`, `Plan-Revalidate`, `Batchifier`, `Webster`,
+`Webster-Bouncer`/`Webster-Burler`, `Publish`, `Finalize`. No row is stubbed: every one
+resolves to a real producer through `internal/shedrecipe`'s registry, and the live run below
+exercised them in order.
+
+**Deliberate absences, correctly absent.** `Plan-Sweep` is a documented Someday stub with its
+own build-order note, and `Plan-Write`'s stencil names its absence as the normal degraded
+state rather than an error — the design doc, the recipe, and the stencil all agree.
+
+**Routing matches the doc's stated rules.** Eight rows carry no `on_stuck` and therefore
+escalate rather than bounce — the recipe header names five gates (`Preflight`,
+`Loom-Preflight`, `Batchifier`, `Publish`, `Finalize`) plus three producers
+(`Discussion-Write`, `Plan-Write`, `Webster`). I verified all eight against the file. Every
+review segment carries a non-empty shared `segment:` label on both of its rows, which
+`shedengine.validate` (`validate.go:83`) requires for the mutual `OnStuck` edges to build at
+all.
+
+**F7's mechanism is shipped as designed, and its four halves agree.** `approve_seam: plan` is
+set on `Plan-Bouncer` and nowhere else; `bouncerEntry` (`entries_bouncer.go:106`) accepts only
+`"plan"` and guards the Env closure with `requireSeam`; `Bouncer.settle`
+(`bouncer.go:344-354`) calls `Approve` strictly before `Commit` and skips `Commit` entirely
+when `Approve` fails; `Plan-Validate` carries no `require_approved` key (format-only mode,
+`planparser.ValidateFormat`) while `Plan-Revalidate` carries `require_approved: true`
+(`planparser.Validate`, including `checkApproved`). The `Plan-Burler` profile's `fasit`
+instructions explicitly forbid the fixer from writing the `approved:` key itself. Nothing here
+is a stub or a partial landing.
+
+**Shipped-beyond-scope: none found.** No row, verb, or config key exists that the design docs
+do not license.
+
+**Deferred-that-should-ship: none found for loom itself.** The two things this round would
+most like to see shipped are neither loom's scope nor loom's layer — an attach/reclaim probe
+for the review-segment producers (F0, fixed here) and same-vintage `lyx` on a spawned agent's
+PATH (F2, recorded as NOT-FIXED-THIS-ROUND).
 
 ## Findings
 
