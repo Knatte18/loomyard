@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: plan-custom-card-skips-path-check
 branch: plan-custom-card-skips-path-check
 plan: _mill/plan
@@ -28,6 +28,8 @@ approved-group-scoped-validation  '2026-08-26T18:32:57Z'
 approved-format-contract-sweep  '2026-08-26T18:45:00Z'
 holistic-reviewing  '2026-08-26T18:45:34Z'
 holistic-fixing  '2026-08-26T18:50:30Z'
+nits-fixed-holistic  '2026-08-26T18:51:50Z'
+holistic-approved  '2026-08-26T18:51:58Z'
 ```
 
 ## Batches
