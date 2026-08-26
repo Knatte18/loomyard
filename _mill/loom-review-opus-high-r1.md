@@ -455,7 +455,50 @@ APPROVED verdict triggered it, and the archive destination.
 
 ## Docs & operability findings
 
-_(pending)_
+Severity-tagged findings live in the Findings section above; this section records what I
+checked and what came back clean, so a later round knows what has already been walked.
+
+**Checked and accurate** — `manifest/designs/loom.md` against the shipped tree:
+- The seventeen-vs-fifteen row-count divergence and its two separate causes: accurate.
+- The bootstrap's numbered steps 0a–4 against `internal/loomcli/run.go`'s actual step order
+  (parent record, seed, seed commit, reed up, strand, detached spawn + handshake, attach):
+  accurate, including the "already-seeded case is tolerated via its own sentinel" claim
+  (`loomshed.ErrSeedExists`) and the "a driver that already ran and exited proceeds to step 4
+  rather than refusing" clause, which is exactly what I observed twice live.
+- The crash-recovery ladder's three steps, for `SingleLLMProducer` — verified live (scenario
+  2). **But the doc states the ladder as loom's own invariant without saying it holds for only
+  one of loom's four LLM-spawning producers — that gap is F0, and the doc half of F0 is fixed
+  with it.**
+- "The strand prints on change, never once per poll": the implementation honours it; only the
+  verb's `--help` contradicts it (F6).
+- `Plan-Sweep`'s "stays a stub, deferred to its own Someday roadmap item": accurate — no
+  `Plan-Sweep` row exists in the recipe and `Plan-Write`'s stencil names its absence as the
+  normal degraded state.
+- The Plan-Validate detail section's parity claim ("the verb reaches every mode the row set
+  uses"): verified live against a real plan, both modes (scenario 3).
+- `manifest/designs/webster-parallel-execution.md`'s "strictly sequential, one card at a time"
+  — consistent with `batcher.yaml`'s default identity batchifier (one card, one batch) in the
+  fixture; nothing in loom's own rows implies or attempts parallelism.
+
+**Checked and inaccurate** — F6 (`status --watch` help), F7 (`docs/overview.md`'s loom.yaml
+key list), F3 (`BurlerProducer`'s round-predicate claim), plus F0's own doc half.
+
+**Operability observations that are not defects**, recorded so a later round does not re-file
+them:
+- `lyx loom run` from a non-TTY context fails only at its final `tmux attach-session` hand-off
+  ("open terminal failed: not a terminal") after every fallible step has already succeeded and
+  the driver is already detached and running. That is the documented step-7 exception behaving
+  correctly, not a bug — but it does mean the verb's exit status is not a usable success
+  signal in a headless context. `lyx loom status` is.
+- The weft worktree is legitimately dirty for the whole run (` M _lyx/loom/status.json`),
+  because Shed persists on every transition and only the CLI's own seed commit and the
+  segments' commit seams ever commit. This is already documented in
+  `internal/loomcli/smoke_test.go`'s own comments; noted here because it looks alarming live.
+- An agent that builds the project leaves its binary in the warp worktree (the fixture
+  accumulated an untracked `tinytool`). Nothing in loom's list cleans it up, and `Preflight`
+  only runs at row 1. Whether that can block `Finalize`'s merge guard is recorded under the
+  live-run account below rather than as a finding, since a real repo gitignores its build
+  output and this fixture deliberately does not.
 
 ## What was tested
 
