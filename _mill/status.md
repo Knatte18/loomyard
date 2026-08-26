@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-convergence
+phase: approved-docs-and-live-proof
 slug: reed-attach-geometry-reconcile
 branch: reed-attach-geometry-reconcile
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-26T12:44:24Z'
 approved-engine-live-geometry  '2026-08-26T12:52:58Z'
 approved-engine-attach-argv  '2026-08-26T12:57:53Z'
 approved-cli-convergence  '2026-08-26T13:05:18Z'
+approved-docs-and-live-proof  '2026-08-26T13:13:32Z'
 ```
 
 ## Batches
@@ -51,8 +52,9 @@ batches:
     commit_sha: b55f0fd63cff2eec3cab78634a6e5bc190ef5f18
     verify_baseline_failures: []
   - name: docs-and-live-proof
-    state: running
+    state: approved
     implementer_session: ea56e12d-1c2b-47a0-aa7d-5ab84d37f03f
     start_sha: 03397c37fa344c2a55ba0fc6ebb9f55e6fc3e2a7
+    commit_sha: 9de72b86533a0577430a22c3bde8844b2a844c79
     verify_baseline_failures: []
 ```
