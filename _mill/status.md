@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-plan-approval-gate
 branch: loom-plan-approval-gate
 plan: _mill/plan
@@ -22,4 +22,25 @@ plan-review-r1  '2026-08-26T11:59:02Z'
 plan-fix-r1  '2026-08-26T12:01:02Z'
 plan-review-r2  '2026-08-26T12:10:00Z'
 planned  '2026-08-26T12:10:22Z'
+implementing  '2026-08-26T12:11:10Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: planparser-split-and-writer
+    state: pending
+  - name: shedadapters-approve-seam
+    state: pending
+  - name: planvalidate-two-mode
+    state: pending
+  - name: shedrecipe-approve-seam
+    state: pending
+  - name: loomcli-wiring-and-flag
+    state: pending
+  - name: recipe-wiring-and-regression
+    state: pending
+  - name: docs-and-constraints
+    state: pending
 ```
