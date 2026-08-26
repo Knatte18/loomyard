@@ -42,7 +42,9 @@ batches:
     commit_sha: 3a9590c7116418af78e80e81184a53b92295c1be
     verify_baseline_failures: []
   - name: fixture-empty-stage-tolerance
-    state: pending
+    state: running
+    implementer_session: 6c1c9d32-5788-4e44-8aca-528510103d0d
+    start_sha: 400a8374cc775a938be699a558484d11d61c2a05
     verify_baseline_failures: []
   - name: clone-commits-module-configs
     state: pending
