@@ -89,8 +89,8 @@ func CommitWeftPaths(rec *Mutations, weftPath, anchorRel string, relPaths []stri
 // can reach this narrow, no-push, explicit-paths commit shape without ever naming a weft path,
 // importing internal/weftname, or otherwise learning that weft exists.
 //
-// relPaths are anchor-relative, the same shape OriginRecordRel and LoomStatusRel already return,
-// so a caller building its commit path list never joins AnchorRel itself.
+// relPaths are anchor-relative, the same shape OriginRecordRel already returns, so a caller
+// building its commit path list never joins AnchorRel itself.
 func CommitAnchoredPaths(rec *Mutations, l *lyxcwd.Location, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
 	return CommitWeftPaths(rec, WeftWorktree(l), l.AnchorRel, relPaths, msg, opts)
 }
