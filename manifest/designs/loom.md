@@ -289,6 +289,9 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.
   The driver writes the file;
   the status strand reads and prints it — reed never parses it, it just hosts the pane.
+  **The strand prints on change, never once per poll.**
+  It keeps polling at its interval but emits a line only when the composed line differs from the one it last printed:
+  a producer call lasts minutes while the tail polls every second, so printing unconditionally turns the one-line pane into a scrolling ticker, fills tmux's scrollback with byte-identical lines until nothing else that pane printed survives, and buries the one line that matters — the transition — among the hundreds that do not.
 - **Round-level resume.**
   Handler/fixer artifacts are already on disk, so resuming inside a review block continues at the current round rather than restarting the phase.
 - **Separation of state.** The review segment owns its round state in its own run-directory files; `lyx run`'s status only needs phase + the segment's outcome. When the segment's `Bouncer` returns `Done`, `lyx run` advances.
