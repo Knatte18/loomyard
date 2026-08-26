@@ -1,15 +1,15 @@
 // validate.go implements ValidateFormat and Validate, format-4 plan-format's machine check sets
 // (manifest/designs/plan-card-format.md), run in this fixed order.
-// ValidateFormat emits fifteen of the following distinct ValidationError.Check IDs, everything but
-// plan-unapproved; Validate emits all sixteen: format-unrecognized (checkFormatRecognized),
+// ValidateFormat emits sixteen of the following distinct ValidationError.Check IDs, everything but
+// plan-unapproved; Validate emits all seventeen: format-unrecognized (checkFormatRecognized),
 // plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing
-// (checkCardTypeMissing), card-retired-label (checkCardRetiredLabel), card-path-malformed
-// (checkCardPathMalformed), rename-format (checkRenameFormat), rename-mechanic-missing
-// (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty
-// (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), impact-summary-multiline
-// (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
-// (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch
-// (checkCommitSubjectMismatch).
+// (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label
+// (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), rename-format
+// (checkRenameFormat), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field
+// (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap
+// (checkCardFieldOverlap), impact-summary-multiline (checkImpactSummaryMultiline),
+// prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing
+// (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -53,14 +53,14 @@ func cardID(c Card) string {
 }
 
 // Validate runs every plan-format machine check against plan, including the plan-unapproved
-// approval gate, and returns every finding in fixed order: all sixteen check IDs documented in
+// approval gate, and returns every finding in fixed order: all seventeen check IDs documented in
 // this file's package comment, with plan-unapproved at position two.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return validate(plan, worktreeRoot, true)
 }
 
 // ValidateFormat runs every plan-format machine check against plan except the plan-unapproved
-// approval gate, and returns every finding in fixed order: fifteen of the sixteen check IDs
+// approval gate, and returns every finding in fixed order: sixteen of the seventeen check IDs
 // documented in this file's package comment, everything but plan-unapproved.
 // Approval is deliberately not ValidateFormat's business: the approved: flag is written after the
 // review segment settles, so a pre-review caller must not be told the plan is unapproved.
@@ -80,6 +80,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	}
 	findings = append(findings, checkIndexFileConsistency(plan)...)
 	findings = append(findings, checkCardTypeMissing(plan)...)
+	findings = append(findings, checkCustomNotAlone(plan)...)
 	findings = append(findings, checkCardRetiredLabel(plan)...)
 	findings = append(findings, checkCardPathMalformed(plan)...)
 	findings = append(findings, checkRenameFormat(plan)...)
@@ -170,23 +171,49 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkCardTypeMissing implements card-type-missing: every card must carry exactly one recognized type label.
+// checkCardTypeMissing implements card-type-missing: every card must carry at least one recognized
+// type label. Carrying more than one, or repeating the same label, is legal.
 func checkCardTypeMissing(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		switch {
-		case c.TypeLabelCount == 0:
+		if c.TypeLabelCount == 0 {
 			findings = append(findings, ValidationError{
 				Check:  "card-type-missing",
 				Card:   cardID(c),
 				Detail: fmt.Sprintf("card %d carries no recognized type label (Create/Edit/Delete/Rename/Move/Prosa/Custom)", c.Number),
 			})
-		case c.TypeLabelCount > 1:
+		}
+	}
+
+	return findings
+}
+
+// checkCustomNotAlone implements card-custom-not-alone: a card carrying a Custom TargetGroup
+// alongside a TargetGroup whose Type differs from CardTypeCustom is a defect, because Custom is
+// meant as a last-resort escape hatch, not a way to bundle an untyped target list onto an
+// otherwise ordinary card. Repetition of a label is legal for all seven labels including Custom,
+// so the predicate is "a Custom group coexists with a group whose Type differs", not "a Custom
+// group coexists with any other group" — a card carrying two Custom groups and nothing else is
+// unaffected. At most one finding is emitted per offending card, never one per offending group.
+func checkCustomNotAlone(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		hasCustom := false
+		hasOther := false
+		for _, g := range c.TargetGroups {
+			if g.Type == CardTypeCustom {
+				hasCustom = true
+			} else {
+				hasOther = true
+			}
+		}
+		if hasCustom && hasOther {
 			findings = append(findings, ValidationError{
-				Check:  "card-type-missing",
+				Check:  "card-custom-not-alone",
 				Card:   cardID(c),
-				Detail: fmt.Sprintf("card %d carries %d type labels; exactly one is required", c.Number, c.TypeLabelCount),
+				Detail: fmt.Sprintf("card %d carries a Custom group alongside a differently-typed group; Custom must stand alone", c.Number),
 			})
 		}
 	}

@@ -1,13 +1,14 @@
-// validate_test.go covers all sixteen of Validate's format-4 checks, each with at least one
-// triggering and one clean case, per manifest/designs/plan-card-format.md's sixteen distinct
-// ValidationError.Check IDs.
+// validate_test.go covers all seventeen of Validate's format-4 checks, each with at least one
+// triggering and one clean case, per manifest/designs/plan-card-format.md's seventeen distinct
+// ValidationError.Check IDs — sixteen of which ValidateFormat also emits, everything but
+// plan-unapproved.
 // The golden happy-path test reuses the format-4 seven-card golden fixture (testdata/goodplan,
 // already parsed by parse_test.go's TestParsePlan_GoldenFixture) and materializes exactly the
 // seven distinct paths its checked entries name under a hermetic t.TempDir() worktree root,
 // deliberately leaving absent the Custom card's own path-shaped target
 // (internal/output/emit.go) and the Rename pair's post-rename side
 // (internal/boardengine/rowsjson.go) — proving both exemptions positively rather than by omission
-// — so the whole sixteen-check Validate run returns zero findings.
+// — so the whole seventeen-check Validate run returns zero findings.
 
 package planparser_test
 
@@ -95,7 +96,7 @@ func materializeFiles(t *testing.T, root string, paths ...string) {
 // TestValidate_GoldenFixture_ZeroFindings round-trips the format-4 golden fixture
 // (testdata/goodplan) through Validate with exactly the seven distinct paths its checked entries
 // name materialized under a t.TempDir() worktreeRoot, but deliberately NOT the Custom card's own
-// path-shaped target or the Rename pair's post-rename side — proving all sixteen checks pass
+// path-shaped target or the Rename pair's post-rename side — proving all seventeen checks pass
 // simultaneously on the format-4 happy path.
 func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	t.Parallel()
@@ -268,8 +269,8 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_CardTypeMissing covers card-type-missing: zero type labels and two type labels
-// each produce one finding, exactly one produces none.
+// TestValidate_CardTypeMissing covers card-type-missing: zero type labels produces one finding,
+// while one label or more than one label both produce none — carrying multiple labels is legal.
 func TestValidate_CardTypeMissing(t *testing.T) {
 	t.Parallel()
 
@@ -302,8 +303,92 @@ func TestValidate_CardTypeMissing(t *testing.T) {
 		card.TypeLabelCount = 2
 		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
-		if got := countFor(findings, "card-type-missing"); got != 1 {
-			t.Errorf("countFor(findings, card-type-missing) = %d; want 1", got)
+		if got := countFor(findings, "card-type-missing"); got != 0 {
+			t.Errorf("countFor(findings, card-type-missing) = %d; want 0 (multiple labels are legal)", got)
+		}
+	})
+}
+
+// TestValidate_CustomNotAlone covers card-custom-not-alone: a Custom group coexisting with a
+// differently-typed group on the same card is a defect, but repeating Custom is not.
+func TestValidate_CustomNotAlone(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Custom group plus Edit group yields exactly one finding", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeCustom
+		card.Targets = []string{"custom-target.go", "edit-target.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCustom, Refs: []string{"custom-target.go"}},
+			{Type: planparser.CardTypeEdit, Refs: []string{"edit-target.go"}},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-custom-not-alone"); got != 1 {
+			t.Errorf("countFor(findings, card-custom-not-alone) = %d; want 1", got)
+		}
+	})
+
+	t.Run("Custom-only card yields none", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeCustom, []string{"custom-target.go"})
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-custom-not-alone"); got != 0 {
+			t.Errorf("countFor(findings, card-custom-not-alone) = %d; want 0", got)
+		}
+	})
+
+	t.Run("two Custom groups and nothing else yields none", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeCustom
+		card.TypeLabelCount = 2
+		card.Targets = []string{"first-custom.go", "second-custom.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCustom, Refs: []string{"first-custom.go"}},
+			{Type: planparser.CardTypeCustom, Refs: []string{"second-custom.go"}},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-custom-not-alone"); got != 0 {
+			t.Errorf("countFor(findings, card-custom-not-alone) = %d; want 0", got)
+		}
+	})
+
+	t.Run("two Custom groups plus one Edit group yields exactly one finding, not two", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeCustom
+		card.TypeLabelCount = 3
+		card.Targets = []string{"first-custom.go", "second-custom.go", "edit-target.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCustom, Refs: []string{"first-custom.go"}},
+			{Type: planparser.CardTypeCustom, Refs: []string{"second-custom.go"}},
+			{Type: planparser.CardTypeEdit, Refs: []string{"edit-target.go"}},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-custom-not-alone"); got != 1 {
+			t.Errorf("countFor(findings, card-custom-not-alone) = %d; want 1", got)
+		}
+	})
+
+	t.Run("multi-label card with no Custom group yields none", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.Type = planparser.CardTypeCreate
+		card.TypeLabelCount = 2
+		card.Targets = []string{"new-file.go", "edit-target.go"}
+		card.TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"new-file.go"}},
+			{Type: planparser.CardTypeEdit, Refs: []string{"edit-target.go"}},
+		}
+		plan := &planparser.Plan{Format: 4, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "card-custom-not-alone"); got != 0 {
+			t.Errorf("countFor(findings, card-custom-not-alone) = %d; want 0", got)
 		}
 	})
 }
