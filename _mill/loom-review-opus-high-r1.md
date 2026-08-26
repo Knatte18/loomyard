@@ -6,7 +6,53 @@
 
 ## Executive summary
 
-_(written last)_
+Round 2 drove `loom` live, end to end, on a real hub with a real minimal task, and reached
+regions no prior round had ever executed. Twelve findings: **1 BLOCKING, 3 MEDIUM, 7 LOW, 1
+NIT** (see the severity index under Findings). Two of the twelve are recorded
+NOT-FIXED-THIS-ROUND because each fix reaches outside this module, plus two half-findings
+inside F1 and F2 for the same reason.
+
+**Top risk — F0, and it is the round's headline.** A driver crash inside any review segment's
+round spawns a **duplicate agent** on resume: the `Bouncer`'s seed and judge spawns and
+`BurlerProducer`'s round have no live-agent probe, unlike `SingleLLMProducer` (which attaches)
+and `Webster` (which reclaims). Reproduced live twice — once on `Discussion-Burler`
+(`fix-scope: overlay`) and once on `Webster-Burler` (`fix-scope: source`, where **both** agents
+hold commit-per-fix authority over the same git branch). The same crash one row earlier, at
+`Plan-Write`, produced exactly one agent, which is the positive control proving this is the
+missing probe and not the environment. `manifest/designs/loom.md` states the no-duplicate
+ladder as loom's own invariant with no caveat; `internal/shedadapters/doc.go` records the gap
+as a deliberate scope call. The run could not proceed past it without a human deleting a pane.
+
+**Second risk — F2**, a supply-chain-shaped one: every stencil loom's agents read tells them to
+run `lyx`, agents resolve `lyx` from PATH, and `lyx`'s root pre-run rewrites and commits the
+hub's stencils from its own embedded registry. An older `lyx` on an agent's PATH silently
+downgraded three loom stencils nine seconds into this round's own first live run — deleting
+Discussion-Write's documented "What you may write" fence and reverting both halves of round 1's
+own F7 stencil work — and the newer binary then refuses to repair them, warning without naming
+the remedy.
+
+**What went right, and it is a lot.** F7's `approve_seam`/`require_approved` mechanism works
+exactly as designed, verified in both modes against a real plan and then verified from git that
+the approval flag lands *inside* the commit. The graceful-pause contract held on every clause.
+The emergency brake survived a deliberately broken `loom.yaml` while `drive` refused loudly.
+`Webster` ran from a real `Plan-Write` output for the first time ever, implemented the card,
+bundled its test, and committed it. Overlay fix-scope confinement held. The hermetic suite was
+green before and after.
+
+**Merge-readiness opinion: NOT merge-ready as found; merge-ready after this round's fixes, with
+two named residuals.** The blocking defect is real, reproduced, and cheap to close at loom's own
+layer (the probe reuses machinery that already exists). With F0 closed and the ten other fixes
+landed, the module meets the stated merge bar — correctness in the normal single-instance flow,
+plus each high-yield invariant holding under direct attack. The two residuals a later round or
+its own task must carry are F1's `Reconcile` truncation (config data loss, all modules) and
+F2's PATH half (shuttle/reed spawn layer), plus F11's card-format tension.
+
+**Honest limits of this round.** A crash mid-Webster *batch* was not staged — the single batch
+completed in about fifty seconds and the window closed before I acted; I drove the sibling half
+(crash mid-`Webster-Burler` round) instead and say so plainly. Windows path behaviour was not
+driven, per the prompt. And a REJECTED `Plan-Bouncer` verdict was not observed, because the
+judge approved on round 1; what I could verify of that path — that `approved` stays false until
+the seam writes it, and that the enforcing gate rejects it — was verified directly.
 
 ## Did a full live pipeline run complete this round?
 
