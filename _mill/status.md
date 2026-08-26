@@ -44,7 +44,9 @@ batches:
     commit_sha: 7e73f4693655441a7d7d77167bba53213141a511
     verify_baseline_failures: []
   - name: planvalidate-two-mode
-    state: pending
+    state: running
+    implementer_session: 9309dc24-7c82-42ef-b6fc-614bae3ae10d
+    start_sha: 7cd6bb1f9a0b373e41554c594502af19e7178d20
     verify_baseline_failures: []
   - name: shedrecipe-approve-seam
     state: pending
