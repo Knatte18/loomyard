@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-engine-live-geometry
 slug: reed-attach-geometry-reconcile
 branch: reed-attach-geometry-reconcile
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-08-26T12:35:13Z'
 plan-review-r2  '2026-08-26T12:43:17Z'
 planned  '2026-08-26T12:43:37Z'
 implementing  '2026-08-26T12:44:24Z'
+approved-engine-live-geometry  '2026-08-26T12:52:58Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-08-26T12:44:24Z'
 ```yaml
 batches:
   - name: engine-live-geometry
-    state: running
+    state: approved
     implementer_session: ca7e0937-8233-4dbb-bb01-5d888c2a0500
     start_sha: 3735ad281e2b0ef7601646a489650ff9d7d7330d
+    commit_sha: 6fcd820b758136e6c240450acdc7b7dc2eea7072
     verify_baseline_failures: []
   - name: engine-attach-argv
     state: pending
