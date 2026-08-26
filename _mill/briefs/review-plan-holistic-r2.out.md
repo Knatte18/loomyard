@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: loom's status file can conflict on the landing merge — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-26
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 4's Context omits the file resolveParentBranch is declared in
+**Location:** batch 01-untrack-status-file, Card 4 (`internal/loomcli/run.go`)
+**Issue:** The new comment text Requirements dictates makes a behavioral claim about `resolveParentBranch` ("otherwise finds the record present with a matching value and reports `write == false` while it is still uncommitted") — verified accurate against `internal/loomcli/seedinput.go`, but that file is listed in neither Card 4's `Context:` nor `Edits:`. Only `run.go`'s own call site (signature, not body) is visible to an implementer confined to the listed files.
+**Fix:** Add `internal/loomcli/seedinput.go` to Card 4's `Context:` list.
+
+### [NIT:consistency] Card 6's doc-comment rewrite instructions are looser than the plan's own norm
+**Location:** batch 01-untrack-status-file, Card 6 (`internal/loomcli/smoke_test.go`)
+**Issue:** "Rewrite this test's own doc comment and the paragraph in the file-header comment that names it as one of the suite's two regression guards" names the target paragraphs but not their new wording, unlike most other doc-rewrite instructions in this same plan (e.g. Cards 2, 12, 13, 14), which give exact replacement sentences.
+**Fix:** Spell out the intended replacement content (e.g. that the doc comment must stop describing a "seed-then-commit mechanism" and stop citing `Seed+CommitWeftPaths`, since the helper is now seed-only).
+
+## Verdict
+REQUEST_CHANGES
+Card 4's Context omission is the one blocking gap; everything else checked out against source.
+MILL_REVIEW_END

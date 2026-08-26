@@ -84,6 +84,7 @@ Batches 2, 3, and 4 consume nothing from this batch beyond the final on-disk pat
 - **Context:**
   - `internal/loomengine/config.go`
   - `internal/fabricengine/origin.go`
+  - `internal/loomcli/seedinput.go`
 - **Edits:**
   - `internal/loomcli/run.go`
 - **Creates:** none
@@ -151,7 +152,11 @@ Batches 2, 3, and 4 consume nothing from this batch beyond the final on-disk pat
   Rename `TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit` to `TestSmokeBootstrap_CleanlinessAfterSeed` and re-express it: keep the `fabricengine.Clean(loc)` assertion and the closing `preflight.Check` assertion unchanged, change the commit-count assertion from `afterCount != beforeCount+1` to `afterCount != beforeCount` with a message saying the seed must produce no commit at all, and delete the `wantFiles`/`weftHeadChangedFiles` assertion outright.
   The ordering hazard this case guarded is gone by construction rather than by a commit landing first: the seed now writes solely under the scratch tree, which the cleanliness scan excludes structurally.
   Do not substitute `fabricengine.OriginRecordRel()` for the removed pathspec — `fabricengine.Topology.Add` already commits that path when the pair is created, so a second commit of it is a no-op and would produce no commit for either assertion to observe.
-  Rewrite this test's own doc comment and the paragraph in the file-header comment that names it as one of the suite's two regression guards.
+  Rewrite this test's own doc comment, which currently opens by asserting the pair is clean "immediately after the seed commit, and the weft carries exactly one new commit touching only the status file", and whose second paragraph explains why the case drives "just the seed-then-commit mechanism directly (seedAndCommitStatus, the same Seed+CommitWeftPaths pair 'lyx loom run' itself performs at its own steps 2-3)" rather than a full bootstrap.
+  Neither claim survives: there is no seed commit and no `CommitWeftPaths` call left in the helper.
+  State instead that the case asserts the pair is clean immediately after the seed with no new commit at all, because the seed now writes solely under the never-committed scratch tree, and keep the second paragraph's surviving reason for driving the seed directly rather than a full bootstrap — a live driver's own persists rewrite the status file on every phase transition, so a post-driver check would observe a state that has nothing to do with what this case pins.
+  In the file-header comment, the paragraph naming "the regression home for the two bugs this task's own design rounds found" cites this case as "the cleanliness-ordering blocker (loom's own seed dirtying the weft and failing loom's own first precondition row)".
+  Update that clause to name the case's new subject — that the seed cannot dirty the pair at all — and its new name, leaving the double-spawn-window guard beside it untouched.
   After the edits, delete the `weftHeadChangedFiles` helper if it has no remaining caller, and drop the `slices` import if it has become unused; `weftCommitCount` keeps three other callers and stays.
   This file carries the `smoke` build tag, so `go test ./...` never compiles it — the batch verify runs `go vet -tags smoke ./internal/loomcli/...` for exactly that reason.
 - **Commit:** `test(loomcli): stop committing the status file in the smoke suite`
