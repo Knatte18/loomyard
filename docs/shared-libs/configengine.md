@@ -124,6 +124,10 @@ Returns `filepath.Join(baseDir, LyxDirName, "config")` — the directory where m
 
 Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a specific module's configuration file (e.g. `_lyx/config/board.yaml`).
 
+### `ConfigFileRel(module string) string`
+
+Returns `filepath.Join(LyxDirName, "config", module+".yaml")` — the anchor-relative form used to build weft commit pathspecs, as opposed to `ConfigFile`'s base-joined absolute form.
+
 ### `FindBaseDir(cwd string) (string, error)`
 
 Checks whether the given directory is an initialized Loomyard base directory.
