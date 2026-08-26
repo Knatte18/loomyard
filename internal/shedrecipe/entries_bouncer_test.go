@@ -150,6 +150,40 @@ func TestBouncerEntry_RunDirectory(t *testing.T) {
 	})
 }
 
+// TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath is this batch's load-bearing divergent-roots
+// assertion: newTestEnv's Env carries AnchorPath and WorktreeRoot as two distinct temp
+// subdirectories, so an artifact_paths entry resolved against the wrong root would land under a
+// directory this test can distinguish. shedadapters.BouncerConfig.ArtifactPaths is not exposed on
+// the returned shedengine.ShedProducer, so the resolved path is asserted the way this file already
+// asserts other BouncerConfig fields it cannot reach directly (TestBouncerEntry_EnvReviewFallback):
+// through the seed template's rendered prompt, captured by the fakeShuttle.
+func TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath(t *testing.T) {
+	env := newTestEnv(t)
+	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.artifacts}}\n")
+	cfg := minimalBouncerConfig(t, env)
+
+	producer, err := bouncerEntry("review-bounce", cfg, env)
+	if err != nil {
+		t.Fatalf("bouncerEntry() error = %v; want nil", err)
+	}
+	if _, _, err := producer.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+
+	fake := env.Shuttle.(*fakeShuttle)
+	if len(fake.specs) != 1 {
+		t.Fatalf("len(fake.specs) = %d; want 1 (the seed spawn)", len(fake.specs))
+	}
+	wantUnderAnchor := filepath.Join(env.AnchorPath, "artifact.md")
+	if !strings.Contains(fake.specs[0].Prompt, wantUnderAnchor) {
+		t.Errorf("seed prompt = %q; want it to contain %q (artifact.md resolved under Env.AnchorPath)", fake.specs[0].Prompt, wantUnderAnchor)
+	}
+	notWantUnderWorktree := filepath.Join(env.WorktreeRoot, "artifact.md")
+	if strings.Contains(fake.specs[0].Prompt, notWantUnderWorktree) {
+		t.Errorf("seed prompt contains %q; want artifact_paths resolved under AnchorPath, not WorktreeRoot", notWantUnderWorktree)
+	}
+}
+
 // TestBouncerEntry_ReportNamePinning is the batch's second load-bearing assertion: a drift in the
 // pinned report name makes shedadapters.ResolveRound return 0 forever, and the Bouncer re-seeds
 // every call rather than judging the report already on disk. This test writes round-1-review.md
@@ -347,12 +381,27 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		assertErrContains(t, err, "RunRoot")
 	})
 
-	t.Run("BlankEnvWorktreeRoot", func(t *testing.T) {
+	t.Run("BlankEnvAnchorPath", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		env.AnchorPath = ""
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "AnchorPath")
+	})
+
+	t.Run("BlankEnvWorktreeRootStillConstructs", func(t *testing.T) {
+		// env.WorktreeRoot is no longer read by bouncerEntry, so a blank value must not prevent a
+		// Bouncer row from building.
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.WorktreeRoot = ""
-		_, err := bouncerEntry("review-bounce", cfg, env)
-		assertErrContains(t, err, "WorktreeRoot")
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if producer == nil {
+			t.Fatal("bouncerEntry() producer = nil; want non-nil")
+		}
 	})
 
 	t.Run("BlankEnvStencilsDir", func(t *testing.T) {
