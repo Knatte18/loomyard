@@ -100,11 +100,19 @@ func TestBurlerGeometry(t *testing.T) {
 
 			var got burlerengine.Geometry = BurlerGeometry(l)
 
-			if got.WorktreeRoot != worktreeRoot {
-				t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want %q", got.WorktreeRoot, worktreeRoot)
+			if got.WorktreeRoot != anchorPath {
+				t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want %q (anchorPath)", got.WorktreeRoot, anchorPath)
 			}
 			if got.AnchorPath != anchorPath {
 				t.Errorf("BurlerGeometry(l).AnchorPath = %q; want %q", got.AnchorPath, anchorPath)
+			}
+			if got.WorktreeRoot == worktreeRoot {
+				// The subpath-anchored fixture must catch a later
+				// "simplification" that repoints BurlerGeometry's
+				// WorktreeRoot fill at l.WorktreePath(): the two only
+				// coincide when AnchorRel is ".", which this row
+				// deliberately is not.
+				t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want != WorktreeRoot %q", got.WorktreeRoot, worktreeRoot)
 			}
 		})
 	}

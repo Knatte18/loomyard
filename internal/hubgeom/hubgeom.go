@@ -33,9 +33,15 @@ func ReedGeometry(l *lyxcwd.Location) reedengine.Geometry {
 // It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lyxcwd
 // stays the sole owner of cwd resolution (the Cwd Resolution Invariant), and BurlerGeometry only
 // reads what l's caller already resolved.
+// WorktreeRoot is l.AnchorPath(), NOT l.WorktreePath(): a review segment's _lyx content is
+// anchor-anchored, matching the commit seam that commits it, so telling burler the anchor path as
+// its profile root is what keeps the two aligned. Converging or reverting the two would silently
+// change behaviour in a subpath-anchored hub, where the anchor path and the worktree path diverge.
+// standalonegeom.BurlerGeometry is the mode where WorktreeRoot and AnchorPath still legitimately
+// diverge: standalone fills WorktreeRoot with the reviewed target directory, not the anchor path.
 func BurlerGeometry(l *lyxcwd.Location) burlerengine.Geometry {
 	return burlerengine.Geometry{
-		WorktreeRoot: l.WorktreePath(),
+		WorktreeRoot: l.AnchorPath(),
 		AnchorPath:   l.AnchorPath(),
 	}
 }

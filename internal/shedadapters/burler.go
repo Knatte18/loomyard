@@ -43,11 +43,22 @@ var _ BurlerRunner = (*burlerengine.Engine)(nil)
 // Because the producer never returns Done, its Shed bounce episode never resets, so its
 // effectiveMaxBounces stops being a bounce-loop guard and becomes a cap on review rounds.
 //
-// That cap is a two-row relationship, not this row's own MaxBounces to raise: the segment's
-// Bouncer row has the same unresetting property and is the segment's entry point, so its Stuck
-// sequence runs one ahead of this producer's round count, and with equal budgets it exhausts
-// first -- the segment's round cap is therefore the smaller of the two rows' budgets, the
-// Bouncer's normally binds, and raising the cap means raising both rows together.
+// That cap is a two-row relationship, not this row's own MaxBounces to raise, and the two rows are
+// no longer symmetric once a segment can be re-entered after settling: the segment's Bouncer row
+// returns Done on approval, so its own episode resets at that Done, while this row's never does.
+// The Bouncer's budget binds in a segment's first generation -- its Stuck sequence runs one ahead
+// of this producer's round count, and with equal budgets it exhausts first. In any later
+// generation, though, this row's episode has kept counting since the segment's very first round,
+// so the Burler's leftover budget binds instead, not the Bouncer's fresh one.
+//
+// That is a real, accepted limitation, not a hypothetical: with equal max_bounces budgets, a first
+// generation that approves on round k leaves this row max_bounces-k units for every later
+// generation, and a first generation that approves on the last round leaves none -- the segment's
+// very first Burler hand-off in a second generation then halts the run on a bounce-budget-exhausted
+// escalation to a human. It is accepted because it fails safe (a halt and a human escalation, never
+// an unjudged artifact passing the gate), and because compensating for it means changing
+// shedengine's shared episode/budget model, a design change well past a single row's own doc
+// comment. Raising the cap for either generation means raising both rows' budgets together.
 type BurlerProducer struct {
 	name    string
 	runner  BurlerRunner

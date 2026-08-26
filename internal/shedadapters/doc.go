@@ -39,17 +39,19 @@
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
 //     the round artifacts on disk, and a failed round returning Stuck with no review written would
 //     be misread as a seed call.
-//   - Bouncer: Call resolves into one of four modes -- seed, re-bounce, judge, or replay -- and its
-//     harvest step acts on a judgment that provably happened (a verdict and ledger that both exist
-//     and parse) regardless of what the shuttle run itself reported. A parsed APPROVED verdict maps
-//     to Done, and a parsed BLOCKING verdict maps to Stuck, both reporting the round's ledger path
-//     as the pointer; every other path -- the seed call, the re-bounce, every degraded path --
-//     reports an empty pointer. The ledger is reported rather than withheld because the
-//     Bouncer's ledger is a real cross-round artifact a human reads, and hiding it on a BLOCKING
-//     Stuck would hide it exactly when an operator most needs it. The exists-or-empty rule matters
-//     because Shed never stats a pointer, so a pointer naming an unwritten file is caught nowhere
-//     and is simply persisted into the history for a human to read as though the artifact were
-//     there.
+//   - Bouncer: Call clears an already-approved round ahead of its own four-mode branch -- seed,
+//     re-bounce, judge, or replay -- and its harvest step acts on a judgment that provably happened
+//     (a verdict and ledger that both exist and parse) regardless of what the shuttle run itself
+//     reported. A parsed APPROVED verdict maps to Done only on the harvest that earns it, within the
+//     same Call that produced it; at Call entry, an already-APPROVED verdict maps to the clear
+//     instead. A parsed BLOCKING verdict maps to Stuck on harvest or on a BLOCKING replay, both
+//     reporting the round's ledger path as the pointer; every other path -- the seed call, the
+//     re-bounce, the clear itself, every degraded path -- reports an empty pointer. The ledger is
+//     reported rather than withheld because the Bouncer's ledger is a real cross-round artifact a
+//     human reads, and hiding it on a BLOCKING Stuck would hide it exactly when an operator most
+//     needs it. The exists-or-empty rule matters because Shed never stats a pointer, so a pointer
+//     naming an unwritten file is caught nowhere and is simply persisted into the history for a
+//     human to read as though the artifact were there.
 //
 // # Told, never derived
 //
@@ -92,6 +94,10 @@
 // writes the file for round N+1, and the seed call writes the file for round 1.
 // Reading that file is fail-safe end to end, degrading to "no directive" with a warning rather than
 // erroring, including at application time when a well-formed directive cannot be honoured.
+// A segment that has already approved and is entered again does not replay that approval: its
+// Bouncer archives the whole generation aside and re-judges from a fresh round 1 instead. Both rows'
+// artifacts move together in that archive, because BurlerProducer would otherwise resume at round
+// N+1, hydrating from a generation the Bouncer had already discarded.
 //
 // # Shared cancellation rule
 //

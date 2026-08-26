@@ -217,6 +217,10 @@ only the review *profile* (rubric + fasit), the fixer round's *fix-scope*, and t
 See the `internal/shedadapters` package documentation for the two producers and their round-artifact contract,
 and the `internal/burlerengine` package documentation for the combined handler/fixer round and the profile schema.
 
+**Segment re-entry re-judges, it never replays.**
+A segment that has already approved and is entered again does not replay that approval: its `Bouncer` row archives the prior generation's round artifacts aside and re-judges from a fresh round 1 instead.
+This carries an accepted budget asymmetry beside it: a re-entered segment's `Bouncer` row gets a fresh bounce budget, while its `Burler` row does not, so a second generation runs on the `Burler`'s leftover budget from the first and can halt the run by exhausting it — which fails safe to a human rather than looping silently.
+
 **Which segment fixes what, and commits how.**
 The Discussion and Plan segments fix overlay content and commit it through the loop owner's commit seam, while the Webster segment fixes warp source and commits each fix itself.
 The Fabric Git Invariant is the reason the split exists: it reserves every weft commit to the loop owner in Go,

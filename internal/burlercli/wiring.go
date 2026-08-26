@@ -64,11 +64,12 @@ func (c *burlerCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencil
 // geometry builders, and the reed/claude engines wired into a shuttleengine.Runner.
 func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, targetDirFlag string) error {
 	if targetDirFlag != "" {
-		return fmt.Errorf("burler: --target-dir is not honoured in hub mode: the worktree is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec")
+		return fmt.Errorf("burler: --target-dir is not honoured in hub mode: the anchor path is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec")
 	}
 
 	// Both configs anchor at loc.AnchorPath() -- the worktree the operator is actually standing in,
-	// never WorktreeRoot or any fabric sibling.
+	// never WorktreeRoot or any fabric sibling. hubgeom.BurlerGeometry now tells burlerengine that
+	// same anchor path as its own WorktreeRoot, so the geometry beside this wiring agrees with it.
 	anchorPath := loc.AnchorPath()
 
 	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
