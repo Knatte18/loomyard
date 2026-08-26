@@ -26,6 +26,12 @@ import (
 // Seeding the warp side is impossible and this function does not offer it: <worktree>/_lyx is a weft
 // junction excluded from the warp's index via .git/info/exclude, so `git add .` there stages nothing
 // and the commit errors.
+//
+// The commit is run with --allow-empty because, once fabriccli.CloneAndWire commits the module
+// configs it materialises, the base clone leaves the weft prime clean, so a seeded override that is
+// byte-identical to the just-committed reconciled file stages nothing and a bare `git commit` exits
+// 1 — which gitkit.MustRun turns into a tb.Fatalf in a test that did nothing wrong. The cost is an
+// occasional empty fixture commit that nothing observes.
 func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 	tb.Helper()
 
@@ -42,7 +48,7 @@ func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 	}
 
 	gitkit.MustRun(tb, h.PrimeWeft(), "git", "add", ".")
-	gitkit.MustRun(tb, h.PrimeWeft(), "git", "commit", "-m", "hubforge: seed config")
+	gitkit.MustRun(tb, h.PrimeWeft(), "git", "commit", "--allow-empty", "-m", "hubforge: seed config")
 }
 
 // SeedFabricConfig writes an override for the repo-wide fabric.yaml into h's board and commits it

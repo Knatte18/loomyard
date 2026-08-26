@@ -22,7 +22,9 @@
 // through fabricengine.NewBolt, matching what CloneAndWire itself does after ReconcileFabricAt.
 // Most former seeding sites need neither: fabriccli.CloneAndWire already runs
 // configsync.ReconcileAll and ReconcileFabricAt, so a real hub arrives with every registered module's
-// default config already materialized.
+// default config already materialized and committed on the weft primary branch — which is why
+// SeedConfig commits with an empty stage allowed: a seed byte-identical to the already-committed
+// file stages nothing, and a bare commit over nothing would otherwise fail.
 //
 // Teardown contract: junctions are discovered by walking the hub root with fslink.IsLink, never by
 // slug, and removed with fslink.Remove — a tb.Cleanup registered before tb.TempDir()'s own cleanup
