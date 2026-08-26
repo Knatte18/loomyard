@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: loom-status-file-merge-conflict
 branch: loom-status-file-merge-conflict
-plan: null
+plan: _mill/plan
 parent: main
 task: loom's status file can conflict on the landing merge
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-26T17:11:28Z'
 discussion-fix-r3  '2026-08-26T17:42:42Z'
 discussed  '2026-08-26T17:51:20Z'
+planning  '2026-08-26T18:03:17Z'
 ```
