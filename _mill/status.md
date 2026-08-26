@@ -37,9 +37,13 @@ implementing  '2026-08-26T07:16:37Z'
 ```yaml
 batches:
   - name: anchor-root
-    state: pending
+    state: running
+    implementer_session: cfd4d9ef-a9a1-48cb-bd23-0a0e1a4e4540
+    start_sha: 2aed18e5c9c93afa528ae9b10f0b40ba32e0fc80
+    verify_baseline_failures: []
   - name: rundir-clear
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
 ```
