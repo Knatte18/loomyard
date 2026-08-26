@@ -106,6 +106,17 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("push skipped; a pull request is required against parent branch %q", p.deps.ParentBranch))
 	}
 
+	// Step 3b: commit the product's own status file before the merge below, for the reason
+	// Finalize's own identical step states: Shed rewrites that file on every transition and
+	// commits it only at bootstrap, and fabricengine's merge guard refuses any tracked
+	// modification on either side of the pair. It sits after step 2's early return deliberately --
+	// a run that needs no pull request never merges here, so it has nothing to commit for.
+	if p.deps.CommitStatus != nil {
+		if err := p.deps.CommitStatus(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: commit status file: %w", publishName, err)
+		}
+	}
+
 	// Step 4: catch the task worktree up with the parent branch first.
 	mergeResult, err := p.resolver.Resolve(ctx, p.deps.ParentBranch)
 	if err != nil {

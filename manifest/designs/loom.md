@@ -270,7 +270,15 @@ It reads loom's **status file** in `_lyx/`, sees which phase (and review sub-sta
 It is idempotent and re-entrant: **stop anywhere — Ctrl-C, crash, close the laptop — and the next `lyx run` continues where it left off.**
 
 This is the lyx model applied to orchestration: one-shot, daemonless, file-coordinated, resume-from-disk. `lyx run` is a pure function of {status file + artifact files} with no hidden process state.
-Because the status lives in the weft repo (git-synced), resume works across machines too.
+The status file lives in the weft repo, but it is not continuously committed there, so **resume across machines does not work today** — this line used to claim it did.
+`lyx loom run` commits the seed once, and the only other commit of that file is the checkpoint the landing rows make (see below);
+every persist in between leaves it as an uncommitted working-tree modification, so a second machine pulling the weft sees the task frozen wherever the last commit left it.
+Making it genuinely cross-machine means committing on every producer transition, which is a `Shed` persistence-policy decision with a real per-transition git cost, not a property this doc can assert into existence.
+
+**`Publish` and `Finalize` commit the status file before they merge, and that checkpoint is load-bearing rather than housekeeping.**
+`fabricengine`'s merge guard refuses any *tracked* modification on either side of the pair, and by the time the landing rows run, `Shed` has rewritten this tracked file once per transition — so without the checkpoint the last row of every run refuses on the run's own bookkeeping, with no `OnStuck` target and therefore no recovery but a human.
+Both rows take it through `landingshed.Deps.CommitStatus`, an injected loop-owner closure `internal/loomcli` fills, keeping the generic landing producers ignorant of where loom's status file lives.
+It runs inside each producer's own `Call`, never once at bootstrap, because a resumed run persists again immediately before the producer is called.
 It is per-task and cwd-authoritative ([Principle 4](../../docs/overview.md#principles)).
 
 **Human boundaries.** `lyx run` drives every phase it *can* drive **unattended** — the agents are interactive tmux sessions,
