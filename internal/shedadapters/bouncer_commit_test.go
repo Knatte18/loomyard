@@ -1,8 +1,8 @@
-// bouncer_commit_test.go covers BouncerConfig.Commit alone -- the seam that lets a segment whose
-// round producer runs no git of its own still have its approved artifacts committed by the loop
-// owner. Every case below builds on the harvest vehicle: judgeFakeShuttle writes the round's
-// verdict and ledger during the run, so judgeCall harvests and settle runs within the same Call
-// that produced them, and nothing but the seam is under test.
+// bouncer_commit_test.go covers BouncerConfig.Commit and BouncerConfig.Approve -- the two seams
+// that let a segment whose round producer runs no git of its own still have its reviewed artifacts
+// approved and committed by the loop owner. Every case below builds on the harvest vehicle:
+// judgeFakeShuttle writes the round's verdict and ledger during the run, so judgeCall harvests and
+// settle runs within the same Call that produced them, and nothing but the seam(s) is under test.
 
 package shedadapters
 
@@ -186,5 +186,152 @@ func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
 		t.Errorf("settle() pointer = %q; want %q", ptr.Path, wantPointer)
+	}
+}
+
+// TestBouncer_Approve_CalledBeforeCommit pins that an APPROVED settle with a non-nil Approve calls
+// it exactly once, strictly before Commit. The ordering is asserted with one shared call-log slice
+// both closures append a marker string to, never with two independent booleans, since two booleans
+// cannot distinguish the two orderings.
+func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
+	var callLog []string
+	cfg := testBouncerConfig(t)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Approve = func() error {
+		callLog = append(callLog, "approve")
+		return nil
+	}
+	cfg.Commit = func() error {
+		callLog = append(callLog, "commit")
+		return nil
+	}
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	outcome, _, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+	}
+	want := []string{"approve", "commit"}
+	if len(callLog) != len(want) {
+		t.Fatalf("callLog = %v; want %v", callLog, want)
+	}
+	for i := range want {
+		if callLog[i] != want[i] {
+			t.Errorf("callLog = %v; want %v", callLog, want)
+			break
+		}
+	}
+}
+
+// TestBouncer_Approve_NilStillCommits pins that a nil Approve on an APPROVED settle still commits
+// normally, returns shedengine.Done, and is not an error -- the default behaviour every existing
+// Bouncer construction relies on staying unchanged.
+func TestBouncer_Approve_NilStillCommits(t *testing.T) {
+	commitCalls := 0
+	cfg := testBouncerConfig(t)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Commit = func() error {
+		commitCalls++
+		return nil
+	}
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	outcome, ptr, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if commitCalls != 1 {
+		t.Errorf("Commit call count = %d; want 1", commitCalls)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+	}
+	wantPointer := ledgerPath(cfg.RunDir, 1)
+	if ptr.Path != wantPointer {
+		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
+	}
+}
+
+// TestBouncer_Approve_FailingApproveSkipsCommit pins that an Approve returning a sentinel error
+// makes Call return an error wrapping that sentinel, with shedengine.Done not returned and the
+// Commit closure never invoked.
+func TestBouncer_Approve_FailingApproveSkipsCommit(t *testing.T) {
+	sentinel := errors.New("approve failed")
+	commitCalls := 0
+	cfg := testBouncerConfig(t)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Approve = func() error { return sentinel }
+	cfg.Commit = func() error {
+		commitCalls++
+		return nil
+	}
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	outcome, ptr, err := b.Call(context.Background())
+	if err == nil {
+		t.Fatal("Call() error = nil; want non-nil")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Errorf("Call() error = %v; want errors.Is(err, sentinel)", err)
+	}
+	if outcome != "" {
+		t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
+	}
+	if outcome == shedengine.Stuck {
+		t.Error("Call() outcome = Stuck; want anything but Stuck -- an approve failure must not be routed through degrade")
+	}
+	if ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	}
+	if commitCalls != 0 {
+		t.Errorf("Commit call count = %d; want 0 -- a failing Approve must skip Commit", commitCalls)
+	}
+}
+
+// TestBouncer_Approve_BlockingNeverCalls pins that a BLOCKING verdict never calls Approve,
+// mirroring TestBouncer_Commit_BlockingNeverCalls's shape.
+func TestBouncer_Approve_BlockingNeverCalls(t *testing.T) {
+	calls := 0
+	cfg := testBouncerConfig(t)
+	cfg.Shuttle = &fakeShuttle{}
+	cfg.Approve = func() error {
+		calls++
+		return nil
+	}
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
+		round:   1,
+		report:  bouncerReport(1),
+		verdict: bouncerVerdictContent("BLOCKING"),
+		ledger:  bouncerLedgerContent(1),
+	}})
+
+	outcome, _, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if calls != 0 {
+		t.Errorf("Approve call count = %d; want 0", calls)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 }

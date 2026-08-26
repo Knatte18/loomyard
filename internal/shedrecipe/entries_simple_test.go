@@ -324,3 +324,59 @@ func TestBatchifierEntry_RelativeAnchorPath(t *testing.T) {
 		t.Errorf("batchifierEntry() error = %v; want it to name field %q", err, "AnchorPath")
 	}
 }
+
+// TestPlanValidateEntry_RequireApprovedKey covers planValidateEntry's require_approved config key:
+// absent, true, and false all build successfully; a non-bool value is an error naming the key; and
+// an unrecognised key on this same entry is still rejected, proving the allowlist widened by
+// exactly one name rather than opening up.
+func TestPlanValidateEntry_RequireApprovedKey(t *testing.T) {
+	t.Run("AbsentBuildsSuccessfully", func(t *testing.T) {
+		producer, err := planValidateEntry("row-name", Config{}, newTestEnv(t))
+		if err != nil {
+			t.Fatalf("planValidateEntry() error = %v; want nil", err)
+		}
+		if producer == nil {
+			t.Fatalf("planValidateEntry() = nil producer; want non-nil")
+		}
+	})
+
+	t.Run("TrueBuildsSuccessfully", func(t *testing.T) {
+		producer, err := planValidateEntry("row-name", Config{"require_approved": true}, newTestEnv(t))
+		if err != nil {
+			t.Fatalf("planValidateEntry() error = %v; want nil", err)
+		}
+		if producer == nil {
+			t.Fatalf("planValidateEntry() = nil producer; want non-nil")
+		}
+	})
+
+	t.Run("FalseBuildsSuccessfully", func(t *testing.T) {
+		producer, err := planValidateEntry("row-name", Config{"require_approved": false}, newTestEnv(t))
+		if err != nil {
+			t.Fatalf("planValidateEntry() error = %v; want nil", err)
+		}
+		if producer == nil {
+			t.Fatalf("planValidateEntry() = nil producer; want non-nil")
+		}
+	})
+
+	t.Run("NonBoolIsError", func(t *testing.T) {
+		_, err := planValidateEntry("row-name", Config{"require_approved": "yes"}, newTestEnv(t))
+		if err == nil {
+			t.Fatalf("planValidateEntry() error = nil; want non-nil for a non-bool require_approved value")
+		}
+		if !strings.Contains(err.Error(), "require_approved") {
+			t.Errorf("planValidateEntry() error = %v; want it to name the key %q", err, "require_approved")
+		}
+	})
+
+	t.Run("UnrecognisedHyphenatedTypoIsRejected", func(t *testing.T) {
+		_, err := planValidateEntry("row-name", Config{"require-approved": true}, newTestEnv(t))
+		if err == nil {
+			t.Fatalf("planValidateEntry() error = nil; want non-nil for the unrecognised key %q", "require-approved")
+		}
+		if !strings.Contains(err.Error(), "require-approved") {
+			t.Errorf("planValidateEntry() error = %v; want it to name the offending key %q", err, "require-approved")
+		}
+	})
+}

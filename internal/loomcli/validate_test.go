@@ -209,31 +209,59 @@ func strconvBool(b bool) string {
 	return "false"
 }
 
+// TestValidatePlanCmd_RequireApprovedFlagRegistered asserts the flag itself is registered on the
+// command under its exact name with its documented default, since the repo's help-tree tests assert
+// subcommand names rather than flags and would not catch a flag that failed to register.
+func TestValidatePlanCmd_RequireApprovedFlagRegistered(t *testing.T) {
+	c := &loomCLI{}
+	flag := c.validatePlanCmd().Flags().Lookup("require-approved")
+	if flag == nil {
+		t.Fatal(`flag "require-approved" is not registered on validate-plan`)
+	}
+	if flag.DefValue != "false" {
+		t.Errorf(`flag "require-approved" default = %q; want "false"`, flag.DefValue)
+	}
+}
+
 func TestValidatePlanCmd(t *testing.T) {
 	tests := []struct {
-		name         string
-		build        func(anchorPath, worktreeRoot string) *loomCLI
-		wantExit     int
-		wantOK       bool
-		wantFindings bool
+		name             string
+		build            func(anchorPath, worktreeRoot string) *loomCLI
+		wantExitAbsent   int
+		wantOKAbsent     bool
+		wantFindAbsent   bool
+		wantExitRequire  int
+		wantOKRequire    bool
+		wantFindRequire  bool
+		wantFindingsName string
 	}{
 		{
 			name: "Clean",
 			build: func(anchorPath, worktreeRoot string) *loomCLI {
 				return planFixture(t, anchorPath, worktreeRoot, true)
 			},
-			wantExit:     0,
-			wantOK:       true,
-			wantFindings: false,
+			wantExitAbsent:  0,
+			wantOKAbsent:    true,
+			wantFindAbsent:  false,
+			wantExitRequire: 0,
+			wantOKRequire:   true,
+			wantFindRequire: false,
 		},
 		{
-			name: "Findings_Unapproved",
+			// Unapproved is the load-bearing case: the default (flag-absent) mode now succeeds --
+			// planparser.ValidateFormat never runs the plan-unapproved check -- while
+			// --require-approved still reports the plan-unapproved finding, matching Plan-Revalidate.
+			name: "Unapproved",
 			build: func(anchorPath, worktreeRoot string) *loomCLI {
 				return planFixture(t, anchorPath, worktreeRoot, false)
 			},
-			wantExit:     1,
-			wantOK:       false,
-			wantFindings: true,
+			wantExitAbsent:   0,
+			wantOKAbsent:     true,
+			wantFindAbsent:   false,
+			wantExitRequire:  1,
+			wantOKRequire:    false,
+			wantFindRequire:  true,
+			wantFindingsName: "plan-unapproved",
 		},
 		{
 			name: "ParseFault_NoPlanDirectory",
@@ -243,14 +271,17 @@ func TestValidatePlanCmd(t *testing.T) {
 					WorktreeRoot: worktreeRoot,
 				}}
 			},
-			wantExit:     1,
-			wantOK:       false,
-			wantFindings: false,
+			wantExitAbsent:  1,
+			wantOKAbsent:    false,
+			wantFindAbsent:  false,
+			wantExitRequire: 1,
+			wantOKRequire:   false,
+			wantFindRequire: false,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name+"/FlagAbsent", func(t *testing.T) {
 			anchorPath := t.TempDir()
 			worktreeRoot := t.TempDir()
 			c := tt.build(anchorPath, worktreeRoot)
@@ -258,19 +289,46 @@ func TestValidatePlanCmd(t *testing.T) {
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil)
 
-			if exitCode != tt.wantExit {
-				t.Errorf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExit, out.String())
+			if exitCode != tt.wantExitAbsent {
+				t.Errorf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExitAbsent, out.String())
 			}
 
 			env := decodeSingleEnvelope(t, out.String())
 
-			if ok, _ := env["ok"].(bool); ok != tt.wantOK {
-				t.Errorf("envelope ok = %v; want %v", env["ok"], tt.wantOK)
+			if ok, _ := env["ok"].(bool); ok != tt.wantOKAbsent {
+				t.Errorf("envelope ok = %v; want %v", env["ok"], tt.wantOKAbsent)
 			}
 
 			_, hasFindings := env["findings"]
-			if hasFindings != tt.wantFindings {
-				t.Errorf("envelope findings key present = %v; want %v (envelope: %v)", hasFindings, tt.wantFindings, env)
+			if hasFindings != tt.wantFindAbsent {
+				t.Errorf("envelope findings key present = %v; want %v (envelope: %v)", hasFindings, tt.wantFindAbsent, env)
+			}
+		})
+
+		t.Run(tt.name+"/RequireApproved", func(t *testing.T) {
+			anchorPath := t.TempDir()
+			worktreeRoot := t.TempDir()
+			c := tt.build(anchorPath, worktreeRoot)
+
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--require-approved"})
+
+			if exitCode != tt.wantExitRequire {
+				t.Errorf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExitRequire, out.String())
+			}
+
+			env := decodeSingleEnvelope(t, out.String())
+
+			if ok, _ := env["ok"].(bool); ok != tt.wantOKRequire {
+				t.Errorf("envelope ok = %v; want %v", env["ok"], tt.wantOKRequire)
+			}
+
+			findings, hasFindings := env["findings"]
+			if hasFindings != tt.wantFindRequire {
+				t.Errorf("envelope findings key present = %v; want %v (envelope: %v)", hasFindings, tt.wantFindRequire, env)
+			}
+			if tt.wantFindingsName != "" && !envelopeContains(findings, tt.wantFindingsName) {
+				t.Errorf("envelope findings does not mention %q; got: %v", tt.wantFindingsName, env)
 			}
 		})
 	}

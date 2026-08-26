@@ -77,7 +77,7 @@ Omit `root:` when there is no shared prefix.
 Card paths are always worktree-relative and clean: never absolute, never containing `..`.
 
 Always write `approved: false` — you never self-approve;
-a future review gate flips it to `true`.
+`Plan-Bouncer`'s approved settle writes it to `true`.
 Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required when any card is type `Rename`), `## verify:`.
 
 ### Each `NN-<card-slug>.md`

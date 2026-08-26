@@ -1,7 +1,8 @@
-// validate.go implements Validate, format-4 plan-format's complete machine check set
-// (manifest/designs/plan-card-format.md), run in this fixed order, emitting exactly these sixteen
-// distinct ValidationError.Check IDs: format-unrecognized, plan-unapproved (both from
-// checkFormatAndApproval), index-file-mismatch (checkIndexFileConsistency), card-type-missing
+// validate.go implements ValidateFormat and Validate, format-4 plan-format's machine check sets
+// (manifest/designs/plan-card-format.md), run in this fixed order.
+// ValidateFormat emits fifteen of the following distinct ValidationError.Check IDs, everything but
+// plan-unapproved; Validate emits all sixteen: format-unrecognized (checkFormatRecognized),
+// plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing
 // (checkCardTypeMissing), card-retired-label (checkCardRetiredLabel), card-path-malformed
 // (checkCardPathMalformed), rename-format (checkRenameFormat), rename-mechanic-missing
 // (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty
@@ -51,12 +52,32 @@ func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }
 
-// Validate runs every plan-format machine check against plan and returns every finding in fixed
-// order.
+// Validate runs every plan-format machine check against plan, including the plan-unapproved
+// approval gate, and returns every finding in fixed order: all sixteen check IDs documented in
+// this file's package comment, with plan-unapproved at position two.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
+	return validate(plan, worktreeRoot, true)
+}
+
+// ValidateFormat runs every plan-format machine check against plan except the plan-unapproved
+// approval gate, and returns every finding in fixed order: fifteen of the sixteen check IDs
+// documented in this file's package comment, everything but plan-unapproved.
+// Approval is deliberately not ValidateFormat's business: the approved: flag is written after the
+// review segment settles, so a pre-review caller must not be told the plan is unapproved.
+func ValidateFormat(plan *Plan, worktreeRoot string) []ValidationError {
+	return validate(plan, worktreeRoot, false)
+}
+
+// validate is the shared dispatch list behind Validate and ValidateFormat.
+// requireApproved selects whether checkApproved's plan-unapproved finding is included; it is an
+// ordering detail of that split, not a second exported seam.
+func validate(plan *Plan, worktreeRoot string, requireApproved bool) []ValidationError {
 	var findings []ValidationError
 
-	findings = append(findings, checkFormatAndApproval(plan)...)
+	findings = append(findings, checkFormatRecognized(plan)...)
+	if requireApproved {
+		findings = append(findings, checkApproved(plan)...)
+	}
 	findings = append(findings, checkIndexFileConsistency(plan)...)
 	findings = append(findings, checkCardTypeMissing(plan)...)
 	findings = append(findings, checkCardRetiredLabel(plan)...)
@@ -75,8 +96,8 @@ func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return findings
 }
 
-// checkFormatAndApproval implements format-unrecognized/plan-unapproved checks.
-func checkFormatAndApproval(plan *Plan) []ValidationError {
+// checkFormatRecognized implements format-unrecognized: plan.Format must equal recognizedFormat.
+func checkFormatRecognized(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	if plan.Format != recognizedFormat {
@@ -85,6 +106,14 @@ func checkFormatAndApproval(plan *Plan) []ValidationError {
 			Detail: fmt.Sprintf("format %d is not recognized; only format %d is known", plan.Format, recognizedFormat),
 		})
 	}
+
+	return findings
+}
+
+// checkApproved implements plan-unapproved: plan.Approved must be true.
+func checkApproved(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
 	if !plan.Approved {
 		findings = append(findings, ValidationError{
 			Check:  "plan-unapproved",
