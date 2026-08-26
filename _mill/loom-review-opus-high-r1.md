@@ -6,13 +6,26 @@
 
 ## Executive summary
 
-Round 2 drove `loom` live, end to end, on a real hub with a real minimal task, and reached
-regions no prior round had ever executed. Twelve findings: **1 BLOCKING, 3 MEDIUM, 7 LOW, 1
-NIT** (see the severity index under Findings). Two of the twelve are recorded
-NOT-FIXED-THIS-ROUND because each fix reaches outside this module, plus two half-findings
-inside F1 and F2 for the same reason.
+**A full seventeen-row `lyx loom run` completed for the first time ever this round** — Preflight
+through Finalize, on a real hub, against a real board task, with the change squash-merged into
+the parent branch. It needed one operator intervention to get past the last row, and that
+intervention is finding F12.
 
-**Top risk — F0, and it is the round's headline.** A driver crash inside any review segment's
+Thirteen findings: **2 BLOCKING, 3 MEDIUM, 7 LOW, 1 NIT** (see the severity index under
+Findings). Three are recorded NOT-FIXED-THIS-ROUND because each fix reaches outside this
+module, plus three half-findings inside F1, F2 and F12 for the same reason.
+
+**Top risk — F12, and it is what "no run had ever completed" was hiding.** `Shed` rewrites
+`_lyx/loom/status.json` on every transition; that file is tracked in the weft and is committed
+exactly once, as the seed. `Finalize`'s merge-in guard refuses on any tracked modification in
+either half of the pair, so **the last row of the pipeline refuses on loom's own bookkeeping,
+deterministically, on every run** — after every expensive session has already been paid for,
+with no `on_stuck` and therefore no recovery but a human. Reproduced live, isolated to a single
+file, and then proven by removal: committing that one file and changing nothing else took
+`Finalize` from `stuck` to `done`. The same root cause independently makes the documented
+cross-machine resume unreachable.
+
+**Second risk — F0.** A driver crash inside any review segment's
 round spawns a **duplicate agent** on resume: the `Bouncer`'s seed and judge spawns and
 `BurlerProducer`'s round have no live-agent probe, unlike `SingleLLMProducer` (which attaches)
 and `Webster` (which reclaims). Reproduced live twice — once on `Discussion-Burler`
@@ -23,7 +36,7 @@ missing probe and not the environment. `manifest/designs/loom.md` states the no-
 ladder as loom's own invariant with no caveat; `internal/shedadapters/doc.go` records the gap
 as a deliberate scope call. The run could not proceed past it without a human deleting a pane.
 
-**Second risk — F2**, a supply-chain-shaped one: every stencil loom's agents read tells them to
+**Third risk — F2**, a supply-chain-shaped one: every stencil loom's agents read tells them to
 run `lyx`, agents resolve `lyx` from PATH, and `lyx`'s root pre-run rewrites and commits the
 hub's stencils from its own embedded registry. An older `lyx` on an agent's PATH silently
 downgraded three loom stencils nine seconds into this round's own first live run — deleting
@@ -40,12 +53,15 @@ bundled its test, and committed it. Overlay fix-scope confinement held. The herm
 green before and after.
 
 **Merge-readiness opinion: NOT merge-ready as found; merge-ready after this round's fixes, with
-two named residuals.** The blocking defect is real, reproduced, and cheap to close at loom's own
-layer (the probe reuses machinery that already exists). With F0 closed and the ten other fixes
-landed, the module meets the stated merge bar — correctness in the normal single-instance flow,
-plus each high-yield invariant holding under direct attack. The two residuals a later round or
-its own task must carry are F1's `Reconcile` truncation (config data loss, all modules) and
-F2's PATH half (shuttle/reed spawn layer), plus F11's card-format tension.
+named residuals.** Both blocking defects are real, reproduced, isolated, and closable at loom's
+own layer with machinery that already exists — F0's probe reuses `shuttleengine.Attach` against
+output files `burlerengine` already declares, and F12's commit reuses the injected loop-owner
+seam pattern the Bouncer rows already use. With those two closed and the nine other fixes
+landed, the module meets the stated merge bar: correctness in the normal single-instance flow,
+plus each high-yield invariant holding under direct attack. The residuals a later round or its
+own task must carry are F1's `Reconcile` truncation (config data loss, all modules), F2's PATH
+half (shuttle/reed spawn layer), F12's continuous-status-durability half (what cross-machine
+resume actually needs), and F11's card-format tension.
 
 **Honest limits of this round.** A crash mid-Webster *batch* was not staged — the single batch
 completed in about fifty seconds and the window closed before I acted; I drove the sibling half
@@ -56,7 +72,61 @@ the seam writes it, and that the enforcing gate rejects it — was verified dire
 
 ## Did a full live pipeline run complete this round?
 
-_(answered when the live driving concludes — see "What was tested")_
+**YES — with one operator intervention, and that intervention is itself finding F12.**
+
+A single `lyx loom run`, from a fresh seed on a real hub against a real board task, walked all
+seventeen recipe rows and finished:
+
+```
+$ lyx loom status
+ current_producer: Finalize | state: done | history: 21
+ activity: {now: Finalize, last: "Finalize → done", wait: ""}
+```
+
+The full history, every row in order:
+
+```
+Preflight done · Loom-Preflight done · Discussion-Write done · Discussion-Validate done
+Discussion-Bouncer stuck (seed) · Discussion-Burler stuck (round 1) · Discussion-Bouncer done
+Plan-Write done · Plan-Validate done
+Plan-Bouncer stuck (seed) · Plan-Burler stuck (round 1) · Plan-Bouncer done
+Plan-Revalidate done · Batchifier done · Webster done
+Webster-Bouncer stuck (seed) · Webster-Burler stuck (round 1) · Webster-Bouncer done
+Publish done · Finalize stuck · Finalize done
+```
+
+Every `stuck` above except the last is a routine, designed hand-off (a Bouncer's seed call, and
+a Burler round returning control to its Bouncer). The one real halt is
+`Finalize stuck` — F12 — after which the run resumed and completed.
+
+The change actually landed. The parent `main` carries the squashed merge, and the merged code
+is correct:
+
+```
+$ git -C <hub>/tinytool2 log --oneline -2
+6824399 Squashed commit of the following:
+3e259ef tinytool: initial commit
+$ tail -5 <hub>/tinytool2/cmd/tinytool/greet.go
+// Greet returns the greeting line tinytool prints for name, with surrounding
+// whitespace trimmed. A whitespace-only name trims to empty, yielding "Hello, !".
+func Greet(name string) string {
+	return "Hello, " + strings.TrimSpace(name) + "!"
+}
+```
+
+Wall clock: 17:11:39 to 17:53:14, about 42 minutes, including two deliberate driver crashes,
+one graceful pause, and one config-sabotage probe injected along the way. Real provider
+sessions spawned, all serially: 1 Discussion-Write, 3 Bouncer seed calls, 3 Bouncer judge
+calls, 3 Burler rounds (plus 2 duplicate rounds the F0 crashes produced), 1 Webster Master
+with 1 batch fork and 1 integration fork, 1 Plan-Write — 16 or so in total.
+
+Two honest qualifications on the "yes":
+1. It needed the F12 intervention (one `git commit` of loom's own status file) to get past the
+   last row. Without it the run blocks terminally, every time.
+2. The fixture's `landing.yaml` names a base branch that is never the parent, so `Publish` took
+   its documented early-`Done` branch rather than opening a pull request — the honest
+   configuration for a hub whose remote is a local bare repo, not GitHub. `Publish`'s
+   pull-request path was therefore not exercised live.
 
 ## Scope assessment
 
@@ -104,12 +174,13 @@ PATH (F2, recorded as NOT-FIXED-THIS-ROUND).
 
 ## Findings
 
-Twelve findings. Recorded provisionally as they were spotted (so the ids are in discovery
+Thirteen findings. Recorded provisionally as they were spotted (so the ids are in discovery
 order, not severity order); this index is the severity ranking, and each entry links what the
 finding is to how it was established.
 
 | Severity | Id | One line | Evidence |
 |---|---|---|---|
+| **BLOCKING** | F12 | `Finalize` refuses on loom's own `status.json`, blocking the last row of every run | reproduced live, isolated to one file, proven by removal |
 | **BLOCKING** | F0 | A driver crash mid review-segment round spawns a DUPLICATE agent on the same artifacts | reproduced live twice, on two rows, plus a counted sweep of all spawn sites |
 | MEDIUM | F1 | `require_pr_to_base: []` is unrepresentable, and a longer list is silently truncated by `config reconcile --apply` | reproduced live; second half reproduced on an independent hub |
 | MEDIUM | F2 | An agent loom spawns resolves `lyx` from PATH and can silently rewrite the hub's stencils mid-run | observed unprompted in this round's own run, then reproduced under control on a third hub |
@@ -123,10 +194,11 @@ finding is to how it was established.
 | LOW | F11 | The card shape the plan stencil mandates is forced onto `Custom`, disabling `path-missing` on its edit targets | observed in the live run's own plan — **NOT-FIXED-THIS-ROUND** |
 | NIT | F5 | `burlerRoundFileSet`'s `entry`/`field` parameters are dead, making two config errors indistinguishable | traced |
 
-Two further items are recorded inside their parent findings as **NOT-FIXED-THIS-ROUND**
+Three further items are recorded inside their parent findings as **NOT-FIXED-THIS-ROUND**
 because each fix reaches well outside this module: F1's `Reconcile` truncation half (the
-sequence merge model, shared by all ten module configs) and F2's PATH half (the shuttle/reed
-spawn layer).
+sequence merge model, shared by all ten module configs), F2's PATH half (the shuttle/reed spawn
+layer), and F12's continuous-status-durability half (Shed's own persistence policy, which is
+what the documented cross-machine resume actually needs).
 
 ### F0 — a driver crash mid review-segment round spawns a DUPLICATE agent on the same artifacts — BLOCKING — CONFIRMED (reproduced live, twice-observed processes)
 
