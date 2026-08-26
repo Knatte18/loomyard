@@ -374,11 +374,10 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 // verdict.
 func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	path := focusPath(b.cfg.RunDir, 1)
-	if err := archiveStaleOutputs([]string{path}, b.cfg.Now); err != nil {
+
+	if err := b.runSeedSpawn(path); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer failed to archive a stale round-1 focus file", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
 	}
-
-	b.runSeedSpawn(path)
 
 	// ensureFocus is the seed-side twin of harvest, keyed on the file's state rather than on the
 	// spawn's outcome, so a spawn that wrote real targeting and then hit a run error keeps its
@@ -391,22 +390,32 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Stuck, shedengine.OutputPointer{}, nil
 }
 
-// runSeedSpawn attempts one seed shuttle spawn writing focusPath. Each step -- reading the seed
-// template, reading and stripping the rubric, filling the prompt, running the shuttle, and
-// checking its outcome -- logs a logger.Warn and returns without further action on failure,
-// leaving whatever ensureFocus(1) later finds on disk (or does not find) as the caller's only
-// signal.
-func (b *Bouncer) runSeedSpawn(focusPathValue string) {
+// runSeedSpawn attempts one seed pass writing focusPath: it probes for a still-live seed run and
+// waits on that when one is found, and otherwise archives the stale focus file and spawns a fresh
+// seed. Each step -- reading the seed template, reading and stripping the rubric, filling the
+// prompt, probing, running the shuttle, and checking the outcome -- logs a logger.Warn and returns
+// without further action on failure, leaving whatever ensureFocus(1) later finds on disk (or does
+// not find) as the caller's only signal.
+//
+// The one exception is the archive step, whose failure is returned so seedCall can degrade: an
+// archive that failed leaves a stale focus file at the path the spawn is about to declare as an
+// output, which shuttle's own spec validation then rejects, so continuing would spend the segment's
+// budget on a spawn that cannot start.
+//
+// The probe runs before the archive, exactly as SingleLLMProducer.Call's does: archiving renames the
+// very file a live seed agent is about to write, and shuttle's Wait polls for bare existence at that
+// path, so archiving first would make an attached seed unable to ever classify done.
+func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 	seedTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-seed")
 	if err != nil {
 		logger.Warn("shedadapters: bouncer seed template unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return
+		return nil
 	}
 
 	rubricRaw, err := stencilstore.Read(b.cfg.StencilsDir, b.cfg.RubricStencil)
 	if err != nil {
 		logger.Warn("shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return
+		return nil
 	}
 	// stencil.Fill strips a stamp banner from the template it parses but never from a marker
 	// value, so raw rubric bytes would inject a "<!-- lyx-stencil: sha256=... -->" line into the
@@ -421,7 +430,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) {
 	})
 	if err != nil {
 		logger.Warn("shedadapters: bouncer seed prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return
+		return nil
 	}
 
 	spec := shuttleengine.Spec{
@@ -433,14 +442,29 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) {
 		Role:        "bouncer-seed",
 		Round:       "1",
 	}
-	result, err := b.cfg.Shuttle.Run(spec)
+
+	result, attached, err := b.cfg.Shuttle.Attach(spec)
 	if err != nil {
-		logger.Warn("shedadapters: bouncer seed shuttle run failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
-		return
+		logger.Warn("shedadapters: bouncer seed attach probe failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
+		return nil
 	}
+	if attached {
+		logger.Info("shedadapters: attached to a live bouncer seed run instead of respawning", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
+	} else {
+		if err := archiveStaleOutputs([]string{focusPathValue}, b.cfg.Now); err != nil {
+			return err
+		}
+		result, err = b.cfg.Shuttle.Run(spec)
+		if err != nil {
+			logger.Warn("shedadapters: bouncer seed shuttle run failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
+			return nil
+		}
+	}
+
 	if result.Outcome != shuttleengine.OutcomeDone {
 		logger.Warn("shedadapters: bouncer seed run did not complete", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "outcome", result.Outcome)
 	}
+	return nil
 }
 
 // judgeCall runs the Bouncer's per-round judge pass for round n: read the round's report,
@@ -514,12 +538,6 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		return b.degrade(ctx, "shedadapters: bouncer judge prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 
-	// Archiving over all three paths clears any debris from an unfinished earlier judge call, so
-	// shuttleengine's own spec validation does not reject a pre-existing output file.
-	if err := archiveStaleOutputs(outputs, b.cfg.Now); err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer failed to archive stale judge outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
-	}
-
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: outputs,
@@ -529,7 +547,29 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Role:        "bouncer-judge",
 		Round:       strconv.Itoa(n),
 	}
-	result, runErr := b.cfg.Shuttle.Run(spec)
+
+	// Probe for a still-live judge run before archiving anything, exactly as
+	// SingleLLMProducer.Call does. A driver crash mid-judge leaves current_producer naming this row,
+	// so the next Call lands here with a live agent still writing these three files; respawning over
+	// it produces two judges racing to write one verdict, and archiving first would additionally
+	// rename those files out from under the surviving one.
+	result, attached, attachErr := b.cfg.Shuttle.Attach(spec)
+	if attachErr != nil {
+		return b.degrade(ctx, "shedadapters: bouncer judge attach probe failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", attachErr)
+	}
+
+	var runErr error
+	if attached {
+		logger.Info("shedadapters: attached to a live bouncer judge run instead of respawning", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
+	} else {
+		// Archiving over all three paths clears any debris from an unfinished earlier judge call, so
+		// shuttleengine's own spec validation does not reject a pre-existing output file. It runs
+		// only on this branch: the probe above has proved no live agent owns those paths.
+		if err := archiveStaleOutputs(outputs, b.cfg.Now); err != nil {
+			return b.degrade(ctx, "shedadapters: bouncer failed to archive stale judge outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+		}
+		result, runErr = b.cfg.Shuttle.Run(spec)
+	}
 
 	// Harvest: evaluate judged(n) against what is now on disk before classifying the run's own
 	// outcome. When it holds, act on a judgment that provably happened regardless of what the run

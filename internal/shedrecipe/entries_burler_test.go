@@ -204,6 +204,19 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 			t.Fatal("burlerRoundEntry() producer = nil; want non-nil")
 		}
 	})
+
+	// A nil Shuttle is refused rather than tolerated: it is the round's live-agent probe, and a
+	// producer built without it respawns over a still-live round -- two agents writing one review,
+	// and on a fix-scope: source row, two agents committing to one branch. A wiring slip must fail
+	// here, at construction, not silently at the next crash.
+	t.Run("NilShuttleSeamIsRefused", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Shuttle = nil
+		cfg := minimalBurlerConfig()
+
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "Shuttle")
+	})
 }
 
 // TestBurlerRoundEntry_EnvReviewFallback covers the three fallback outcomes for

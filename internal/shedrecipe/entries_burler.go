@@ -19,7 +19,7 @@ import (
 // burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env,
 // maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this
 // row's segment shares with its Bouncer row, and returns
-// shedadapters.NewBurlerProducer(name, env.Burler, profile, opts, runDir, env.Now).
+// shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now).
 func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -77,6 +77,13 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err := requireSeam("BurlerRound", "Burler", env.Burler); err != nil {
 		return nil, err
 	}
+	// The same Shuttle seam the segment's Bouncer row already reads, threaded here as the round's
+	// live-agent probe. Required rather than optional: without it a resumed run respawns over a
+	// still-live round, producing two agents writing one review -- and on a fix-scope: source row,
+	// two agents committing to one branch.
+	if err := requireSeam("BurlerRound", "Shuttle", env.Shuttle); err != nil {
+		return nil, err
+	}
 
 	runDir, err := resolveUnderRoot("BurlerRound", "run_subdir", env.RunRoot, runSubdir)
 	if err != nil {
@@ -89,7 +96,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: create run dir %q: %w", runDir, err)
 	}
 
-	producer, err := shedadapters.NewBurlerProducer(name, env.Burler, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: %w", err)
 	}

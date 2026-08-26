@@ -140,11 +140,28 @@
 // from-disk round resolution advances past it on the next call, and only the re-derivable
 // in-memory verdict is dropped.
 //
-// # Limitations
+// # Every spawning adapter probes for a live agent first
 //
-// The Bouncer and BurlerProducer rows drive the same Shuttle seam but do not go through
-// SingleLLMProducer, so they keep the respawn-over-a-live-agent path deliberately: a scope call
-// rather than a safety claim.
+// All four adapters answer the same question before they start anything: is an agent for this exact
+// step still alive? They answer it in two different ways, and the difference is the engine's, not a
+// policy choice here. SingleLLMProducer, Bouncer (on both its seed and its judge pass), and
+// BurlerProducer all call shuttleengine's Attach seam with the step's own OutputFiles and wait on a
+// match; WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover
+// Master rather than attaching to it.
+//
+// The probe always runs BEFORE the archive, in all three attaching adapters. Archiving renames the
+// very files a live agent is about to write, and shuttle's Wait polls for bare existence at those
+// paths, so archiving first would make an attached run unable to ever classify done -- in exactly
+// the case the probe exists to protect.
+//
+// The Bouncer and BurlerProducer rows once lacked this deliberately, recorded here as a scope call.
+// It was not survivable: a driver crash inside any review segment left the round's agent alive, and
+// the next Call spawned a second one over it -- two sessions writing one review and one fixer
+// report, and on a fix-scope: source row, two sessions committing to one branch. Both were
+// reproduced live before the probe was added, and neither run could continue without an operator
+// deleting a pane by hand.
+//
+// # Limitations
 //
 // Neither SingleLLMProducer nor WebsterProducer installs a mid-run cancellation bridge, so a cancel
 // is observed only once the run reaches a terminal outcome or its own configured deadline elapses --
