@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-rundir-clear
+phase: approved-docs
 slug: loom-bouncer-anchor-rundir-fix
 branch: loom-bouncer-anchor-rundir-fix
 plan: _mill/plan
@@ -32,6 +32,7 @@ planned  '2026-08-26T07:16:10Z'
 implementing  '2026-08-26T07:16:37Z'
 approved-anchor-root  '2026-08-26T07:22:42Z'
 approved-rundir-clear  '2026-08-26T07:39:54Z'
+approved-docs  '2026-08-26T07:42:18Z'
 ```
 
 ## Batches
@@ -51,7 +52,8 @@ batches:
     commit_sha: ef2a18ab0e501d1e4bdf5bc43a2b745b9c9a4733
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: 3546d814-3c66-4c46-bca7-d9d228909c31
     start_sha: 04a0d36a97d96c0580c929206fbc06cfed579c50
+    commit_sha: d9ad49c722b736af9e46541f1b00a9ace226c640
 ```
