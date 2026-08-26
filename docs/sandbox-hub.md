@@ -4,6 +4,8 @@
 
 > **Just want to run it?** See the operator runbook: [sandbox-howto.md](sandbox-howto.md) (deploy → clone Hub → run suite). This document is the reference for topology and design.
 
+> **Windows vs. POSIX.** Everything below is written for the Windows launchers (`sandbox/win/*.cmd`) and this machine's Windows paths (`C:\Code\...`). POSIX (Linux/macOS) equivalents ship alongside them under `sandbox/posix/*.sh`, invoked the same way (e.g. `sandbox/posix/build.sh`, `sandbox/posix/core-suite.sh -reset`) with `$HOME/Code` standing in for `C:\Code` as the Hub's parent directory — same subcommands, same flags, same `tools/sandbox` Go tool underneath.
+
 The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows.
 It exercises the resolved `lyx` binary under test — the dev binary deployed via `deploy-dev` into the derived `.dev-bin` directory when present, else the production binary on PATH deployed via `deploy.cmd` — against the real command surface, JSON output, and topology wiring users encounter.
 Its purpose is **dogfooding**: running lyx against itself to catch regressions early.
@@ -16,7 +18,7 @@ The Hub consists of two dedicated GitHub repositories and a local working direct
 
 ## Hub Location and Structure
 
-The Hub is cloned to `C:\Code\lyx-test-HUB` on this machine (the warp basename `lyx-test` + `-HUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveWarpName()`).
+The Hub is cloned to `C:\Code\lyx-test-HUB` on Windows, or `$HOME/Code/lyx-test-HUB` on POSIX (the warp basename `lyx-test` + `-HUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveWarpName()`).
 
 **Important:** The Hub lives **outside `C:\Code\loomyard\`**, so it is never mistaken for part of Loomyard itself and stays separate from the orchestrator codebase.
 
@@ -52,7 +54,11 @@ Deploy one of the two before the Hub can be built — if neither resolves, the s
 ### First Build
 
 ```cmd
-sandbox/build.cmd
+sandbox/win/build.cmd
+```
+
+```sh
+sandbox/posix/build.sh
 ```
 
 This command:
@@ -69,7 +75,11 @@ This command:
 To remove and rebuild the Hub:
 
 ```cmd
-sandbox/build.cmd -reset
+sandbox/win/build.cmd -reset
+```
+
+```sh
+sandbox/posix/build.sh -reset
 ```
 
 The `-reset` flag:
@@ -84,13 +94,17 @@ Once the Hub is built, the `suite` subcommand runs an automated black-box test s
 
 ### Prerequisites
 
-- Hub already built (`sandbox/build.cmd`).
+- Hub already built (`sandbox/win/build.cmd` / `sandbox/posix/build.sh`).
 - `lyx` resolvable: dev binary in `.dev-bin` (deployed via `deploy-dev`), or, as a fallback, on PATH (deployed via `deploy.cmd`).
 
 ### Usage
 
 ```cmd
-sandbox/core-suite.cmd
+sandbox/win/core-suite.cmd
+```
+
+```sh
+sandbox/posix/core-suite.sh
 ```
 
 This command, run from the lyx repo directory:
@@ -111,20 +125,29 @@ Collecting the report is a separate operator step (`fetch`, below).
 ### Optional flags
 
 ```cmd
-sandbox/core-suite.cmd -claude <path>   # override the claude binary (default: resolve from PATH)
-sandbox/core-suite.cmd -prompt <text>   # override the instruction string (default: built-in)
+sandbox/win/core-suite.cmd -claude <path>   # override the claude binary (default: resolve from PATH)
+sandbox/win/core-suite.cmd -prompt <text>   # override the instruction string (default: built-in)
+```
+
+```sh
+sandbox/posix/core-suite.sh -claude <path>   # override the claude binary (default: resolve from PATH)
+sandbox/posix/core-suite.sh -prompt <text>   # override the instruction string (default: built-in)
 ```
 
 ### Exit-code note
 
-The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox/fetch.cmd`.
+The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh`.
 
 ## Fetching the report
 
 After the suite session ends, collect the agent-written report into this repo's `.scratch/`:
 
 ```cmd
-sandbox/fetch.cmd
+sandbox/win/fetch.cmd
+```
+
+```sh
+sandbox/posix/fetch.sh
 ```
 
 This command:
@@ -137,7 +160,7 @@ On success it prints the fetched path and, when there are findings, the exact `/
 a clean run says so and points at nothing.
 
 If the agent produced no report, `fetch` fails with a distinct "not found" error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage".
-Only `sandbox/fetch.cmd` passes `-loomyard` (as `"%~dp0..\."`, the loomyard repo root), and only this subcommand needs it.
+Only `fetch` passes `-loomyard` (`sandbox/win/fetch.cmd` as `"%~dp0..\..\."`, `sandbox/posix/fetch.sh` via its resolved `$REPO_ROOT`), and only this subcommand needs it.
 
 ### Future: tmux launch
 
@@ -147,24 +170,32 @@ only the launch mechanism will differ.
 
 ## Running the reed suite
 
-Alongside the main suite, `sandbox/reed-suite.cmd` runs a dedicated black-box suite against `lyx reed`.
+Alongside the main suite, `sandbox/win/reed-suite.cmd`/`sandbox/posix/reed-suite.sh` runs a dedicated black-box suite against `lyx reed`.
 It mirrors the main-suite flow: copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub warp repo, git-excludes it the same way, clears any stale `sandbox-report.json`, and launches the interactive agent there.
-Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) beyond what the main suite requires.
-Findings land in the same `sandbox-report.json`, so `sandbox/fetch.cmd` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
+Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH on Windows, `tmux` on PATH on POSIX) beyond what the main suite requires.
+Findings land in the same `sandbox-report.json`, so `fetch` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
 
 ## Launchers and subcommands
 
 The single Go tool (`tools/sandbox`) still dispatches four subcommands internally — `build` (default), `suite`, `reed-suite`, and `fetch` — but each is fronted by its own single-purpose launcher, mirroring how `deploy.cmd`/`deploy-dev.cmd` each do one thing:
 
 ```cmd
-sandbox/build.cmd            # go run ./tools/sandbox -parent C:\Code build
-sandbox/build.cmd -reset     # ... build -reset  (tear down and re-clone)
-sandbox/core-suite.cmd            # ... suite  (run the interactive agent)
-sandbox/reed-suite.cmd       # ... reed-suite  (run the reed-specific interactive agent)
-sandbox/fetch.cmd            # ... -loomyard "%~dp0..\." fetch  (collect the report)
+sandbox/win/build.cmd            # go run ./tools/sandbox -parent C:\Code build
+sandbox/win/build.cmd -reset     # ... build -reset  (tear down and re-clone)
+sandbox/win/core-suite.cmd            # ... suite  (run the interactive agent)
+sandbox/win/reed-suite.cmd       # ... reed-suite  (run the reed-specific interactive agent)
+sandbox/win/fetch.cmd            # ... -loomyard "%~dp0..\..\." fetch  (collect the report)
 ```
 
-`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so `sandbox/build.cmd -reset` forwards `%*` straight through to `... build -reset`.
+```sh
+sandbox/posix/build.sh            # go run ./tools/sandbox -parent "$HOME/Code" build
+sandbox/posix/build.sh -reset     # ... build -reset  (tear down and re-clone)
+sandbox/posix/core-suite.sh            # ... suite  (run the interactive agent)
+sandbox/posix/reed-suite.sh       # ... reed-suite  (run the reed-specific interactive agent)
+sandbox/posix/fetch.sh            # ... -loomyard "$REPO_ROOT" fetch  (collect the report)
+```
+
+`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so `build -reset` forwards its remaining args straight through to `... build -reset` regardless of which launcher (`sandbox/win/build.cmd`'s `%*` or `sandbox/posix/build.sh`'s `"$@"`) invoked it.
 
 ## Purpose: dogfooding lyx
 
