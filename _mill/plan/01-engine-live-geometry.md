@@ -73,6 +73,8 @@ Batch-local decision, differing from nothing in `## Shared Decisions` but worth 
   - `internal/reedengine/render/rules.go`
   - `internal/reedengine/render/types.go`
   - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/apply_test.go`
+  - `internal/reedengine/spawn.go`
 - **Edits:**
   - `internal/reedengine/apply.go`
 - **Creates:** none
@@ -85,7 +87,17 @@ Batch-local decision, differing from nothing in `## Shared Decisions` but worth 
 
   Update `planLayout`'s doc comment to say the box is always told to it and that it queries nothing itself, and to name the two callers and their two different box sources (`applyLayoutLocked`'s live query, `AttachArgv`'s told client box, landing in batch 2).
 
-  Update `applyLayoutLocked`'s single call site to `e.planLayout(st, live, e.liveBoxLocked())`, and extend `applyLayoutLocked`'s doc comment with one sentence recording why the live box matters: `select-layout` with a layout string whose dimensions disagree with the live window exits 0 and silently rescales the layout proportionally, so every absolute row budget reed computes (`Header.HeightRows`, `CollapsedStripRows`, `MinFullRows`) was being scaled by `live_height / cfg.Height` on any window that is not exactly `cfg.Height` rows tall.
+  Restructure `applyLayoutLocked` so its two existing skip guards run FIRST, before anything else:
+  move the `if len(live) < 2 { return nil }` and `if !anyPlacedStrand(st.Strands, liveIDSet(live)) { return nil }` checks above the plan, then call `box := e.liveBoxLocked()` and `layout, focus, err := e.planLayout(st, live, box)` beneath them, keeping the plan-error wrap (`fmt.Errorf("plan layout: %w", err)`) and everything below it unchanged.
+  This ordering is required, not cosmetic: `liveBoxLocked` is a real `display-message` round trip, so evaluating it as an argument at the top of the function would fire a tmux call on exactly the degenerate paths this function's own doc comment promises to "skip both tmux calls entirely" — and `reconcileApplyPersistLocked` (`spawn.go`) runs this function once per launch on `Resume`, so the wasted round trip would repeat per strand.
+  It also makes this call site agree with `AttachArgv`'s ordering in batch 2, which evaluates the same two guards before it plans.
+
+  The one behavioural delta this reorder introduces, stated so it is a decision rather than an accident: a plan error (today only reachable via a strand carrying `render.AnchorOwnWindow`, which `render.Rules` rejects) is no longer returned when a skip guard has already fired.
+  That is correct — the guards mean there is nothing to apply, so there is nothing the plan error could have prevented — and nothing pins the old behaviour: `apply_test.go`'s `TestApplyLayoutLocked_SkipsTmuxWhenFewerThanTwoLivePanes` and `TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane` both assert a nil return, and both keep passing.
+  Both of those tests also rely on the fixture's nonexistent tmux binary making a stray round trip "fail loudly", which the guards-first order keeps true;
+  leave their comments alone, and do not weaken either test.
+
+  Then extend `applyLayoutLocked`'s doc comment with one sentence recording why the live box matters: `select-layout` with a layout string whose dimensions disagree with the live window exits 0 and silently rescales the layout proportionally, so every absolute row budget reed computes (`Header.HeightRows`, `CollapsedStripRows`, `MinFullRows`) was being scaled by `live_height / cfg.Height` on any window that is not exactly `cfg.Height` rows tall.
 
   Also record the detached-session consequence in that same comment, so a later reader does not read it as a bug: while detached, an over-budget layout string is accepted by `select-layout` and answered by GROWING the window to fit the cells, so a session with no client can end up taller than its configured boot height until the next client attaches and snaps it back.
   Do not change `anyPlacedStrand`, `liveIDSet`, `aliveIDSet`, or `paneIDsByTop`.
@@ -115,6 +127,7 @@ Batch-local decision, differing from nothing in `## Shared Decisions` but worth 
   - `internal/reedengine/overlay.go`
   - `internal/reedengine/lock_test.go`
   - `internal/reedengine/generation_test.go`
+  - `internal/reedengine/strand_test.go`
   - `internal/reedengine/render/rules.go`
 - **Edits:**
   - `internal/reedengine/apply_test.go`

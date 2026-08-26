@@ -91,6 +91,7 @@ Batch-local decision: `AttachArgv` calls `withOpLock` exactly once, blocking, th
   - `internal/reedengine/attach.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/lock_test.go`
   - `internal/reedengine/strand_test.go`
   - `internal/reedengine/render/types.go`
