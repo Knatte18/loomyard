@@ -162,6 +162,10 @@ type Hub struct {
 	WeftBase string
 	// Container is the tb.TempDir() the hub was cloned into.
 	Container string
+	// Mutations is the mutation record fabriccli.CloneAndWire produced while building this hub,
+	// populated verbatim from CloneResult.Mutated(), never re-derived — exposed so a test can assert
+	// the record's shape without rebuilding the bare-template machinery this package owns.
+	Mutations fabricengine.Mutations
 }
 
 // PrimeWorktree returns the path to this hub's prime warp worktree — the warp repository itself, not
@@ -211,6 +215,9 @@ func (h *Hub) PairLauncherDir(slug string) string {
 // warp binding, but no junctions and no repo-wide fabric.yaml — which leaves three of the gate's eight
 // path-ownership kinds (ownedWiredJunction, ownedDriftedWiredJunction, ownedUnderGeometryRoot)
 // structurally unreachable.
+// The hub CloneAndWire returns arrives with its weft prime worktree clean: each registered
+// non-"fabric" module's config is committed on the weft primary branch, rather than carried as
+// untracked content.
 // It calls tb.Fatalf on any error.
 func NewHub(tb testing.TB, anchor string) *Hub {
 	tb.Helper()
@@ -253,6 +260,7 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		WeftBare:  weftBare,
 		WeftBase:  res.WeftBase,
 		Container: container,
+		Mutations: res.Mutated(),
 	}
 }
 
