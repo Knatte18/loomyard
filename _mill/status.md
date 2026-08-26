@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: reed-attach-geometry-reconcile
 branch: reed-attach-geometry-reconcile
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-engine-attach-argv  '2026-08-26T12:57:53Z'
 approved-cli-convergence  '2026-08-26T13:05:18Z'
 approved-docs-and-live-proof  '2026-08-26T13:13:32Z'
 holistic-reviewing  '2026-08-26T13:14:09Z'
+holistic-fixing  '2026-08-26T13:18:48Z'
 ```
 
 ## Batches
