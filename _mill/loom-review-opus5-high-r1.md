@@ -105,6 +105,71 @@ Appended after each command/scenario returns.
 - `go vet ./internal/loomengine/... ./internal/loomcli/... ./internal/loomrecipe/... ./internal/loomshed/... ./internal/shedengine/... ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/shedbuild/... ./internal/hubgeom/...` — **PASS** (rc=0, no output).
 - `go test -count=5 ./internal/loomengine/... ./internal/loomcli/... ./internal/loomrecipe/... ./internal/loomshed/... ./internal/shedengine/... ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/shedbuild/... ./internal/hubgeom/... ./cmd/lyx/...` — **PASS**, rc=0, all ten packages `ok`.
 
+### F4 — BLOCKING (CONFIRMED by trace) — `Plan-Write`'s rotation archives a live agent's output files, defeating probe-before-archive
+
+`internal/loomshed/planwrite.go:67-70`.
+
+```go
+func (p *planWrite) Call(ctx context.Context) (...) {
+    if err := p.rotateStalePlanDir(); err != nil { ... }   // <-- unconditional, BEFORE inner
+    outcome, pointer, err := p.inner.Call(ctx)
+    ...
+}
+```
+
+`rotateStalePlanDir` moves **every top-level `.md` file** out of `_lyx/plan/` into `_lyx/plan/archive-<stamp>/`.
+`p.inner` is the `*shedadapters.SingleLLMProducer` whose entire `probe-before-archive` design decision
+(`internal/shedadapters/singlellm.go:96-102`) exists to guarantee that nothing renames a live agent's output files before `Attach` has had a chance to find it:
+
+> "Archiving is a rename of the very files a live agent may be about to write, and Wait polls for bare existence at the spec's paths,
+> so archiving before the probe would make an attached run unable to ever classify Done, in exactly the case the probe exists to protect."
+
+The decorator does exactly that, one layer above the producer that was hardened against it.
+`PlanSpec` declares `OutputFiles: []string{overviewPath}` (`internal/loomengine/plan.go:82`), i.e. `_lyx/plan/00-overview.md` — a top-level `.md` file, so it is always in the rotation's set.
+
+Failure scenario (the exact "kill the driver mid Plan-Write" ladder rung this campaign's prompt names):
+
+1. `Plan-Write` spawns agent A; A writes the card files and then `00-overview.md` (written last, as the run's done-sentinel).
+2. The driver is killed before `shedengine` persists the `Done` — the accepted at-least-once window.
+3. `lyx loom run` resumes at `current_producer: Plan-Write`.
+4. `planWrite.Call` rotates `00-overview.md` and every card into `archive-<stamp>/`.
+5. `SingleLLMProducer.Call` probes `Attach`, finds A's `run.json` with `Outcome: "running"` and a live strand, and **attaches**.
+6. `Run.Wait` polls `allOutputFilesExist([.../00-overview.md])` — false, because step 4 moved it. A has already ended its turn and nothing ever sends it new input.
+7. The run spins to `plan_timeout_min`, classifies `OutcomeTimeout`, and `mapOutcome` turns that into a returned error → `shedengine` persists `state: failed` and aborts the whole run.
+
+A completed plan is converted into a hard run failure, with the work sitting in an archive directory nobody looks at.
+The milder variant is worse in a different way: a crash while A is still mid-plan rotates the cards A already wrote, A then writes a `00-overview.md` whose Card Index names files that are no longer at those paths, and `Plan-Validate` fails `path-missing` on a plan that was fine.
+
+Fix: the rotation must run only on the respawn branch — after `Attach` reports nothing to attach to.
+The natural seam is a `beforeSpawn func() error` hook on `SingleLLMProducer`, invoked between the failed probe and `archiveStaleOutputs`, with `planWrite` supplying its rotation as that hook and dropping its own unconditional call.
+
+### F5 — MEDIUM (CONFIRMED live) — `lyx loom pause` and `lyx loom status` are disabled by a fault in ANY module config
+
+`internal/loomcli/cli.go:115` → `internal/loomcli/wiring.go:36-78`.
+
+`resolvePersistentPreRun` calls `c.wire()` for every subcommand except the bare `loom` group, and `wire()` eagerly loads
+`loom.yaml`, `reed.yaml`, `shuttle.yaml`, `webster.yaml`, `landing.yaml`, `burler.yaml`, `models.yaml` and the active batcher,
+then resolves webster roles and the review model — before any verb body runs.
+`pause` needs `StatusPath`/`StatusLockPath`. `status` needs the same. Neither needs the other eight loads.
+
+Observed live, on the run driven for this review: the Discussion-Write agent (running with bypassed permissions in its own pane) rewrote `_lyx/config/loom.yaml`.
+From that moment on:
+
+```
+$ lyx loom pause
+{"error":"config file .../loom.yaml: missing keys: discussion_interactive, plan, plan_timeout_min, review, review_timeout_min; run \"lyx config reconcile\"","ok":false}
+$ lyx loom status
+{"error":"...same...","ok":false}
+```
+
+while the driver itself kept running happily (it wired once, at process start) and the already-started status strand kept printing.
+So the operator lost both the read-out **and the emergency brake** for a run that was still going, and `lyx loom pause` is the documented graceful-stop mechanism (`manifest/designs/loom.md`, "Graceful pause").
+
+The hazard is already recognised twice in `wiring.go`'s own comments — `OpenBisector` stays lazy because "this pre-run must not fail `status`/`pause` against a healthy-but-unwired location", and `Env.Landing` is deferred to `drive.go` because "wire() runs for every verb including `status`/`pause`".
+The config loads were not given the same treatment.
+
+Fix: give `status` and `pause` a minimal pre-run that resolves the location and the two status paths only, leaving `wire()` to the verbs that actually build producers (`run`, `drive`).
+
 ### Live driving — the real hub
 
 A fresh, real fabric hub was built for this review (nothing in the operator's own repos was touched):
