@@ -84,10 +84,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 
-	// BurlerGeometry, not WebsterGeometry: BurlerGeometry fills WorktreeRoot from
-	// location.WorktreePath(), while WebsterGeometry fills its own from location.AnchorPath() for a
-	// reason specific to webster's CLI call sites (see webstergeom.go's doc comment). That reasoning
-	// does not carry over to Burler, so the two geometries are not interchangeable here.
+	// BurlerGeometry, not WebsterGeometry: this is burler's own geometry, carrying burler's
+	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
+	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
+	// with distinct field sets, not interchangeable constructors of the same shape.
 	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir)
 
 	runDeps := websterengine.RunDeps{

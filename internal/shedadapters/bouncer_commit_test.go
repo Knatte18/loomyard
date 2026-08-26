@@ -1,8 +1,8 @@
 // bouncer_commit_test.go covers BouncerConfig.Commit alone -- the seam that lets a segment whose
 // round producer runs no git of its own still have its approved artifacts committed by the loop
-// owner. Every case below builds on the replay path, following TestBouncer_Replay_Approved as its
-// precedent: the replay path reaches settle with no shuttle spawn at all, so nothing but the seam
-// is under test.
+// owner. Every case below builds on the harvest vehicle: judgeFakeShuttle writes the round's
+// verdict and ledger during the run, so judgeCall harvests and settle runs within the same Call
+// that produced them, and nothing but the seam is under test.
 
 package shedadapters
 
@@ -19,7 +19,7 @@ import (
 func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	calls := 0
 	cfg := testBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{}
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error {
 		calls++
 		return nil
@@ -28,12 +28,7 @@ func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 	}
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round:   1,
-		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("APPROVED"),
-		ledger:  bouncerLedgerContent(1),
-	}})
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	outcome, ptr, err := b.Call(context.Background())
 	if err != nil {
@@ -90,17 +85,12 @@ func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 // sets Commit for this row.
 func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
 	cfg := testBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{}
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	b, err := NewBouncer(cfg)
 	if err != nil {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 	}
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round:   1,
-		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("APPROVED"),
-		ledger:  bouncerLedgerContent(1),
-	}})
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	outcome, ptr, err := b.Call(context.Background())
 	if err != nil {
@@ -124,18 +114,13 @@ func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
 func TestBouncer_Commit_FailingCommitIsAnError(t *testing.T) {
 	sentinel := errors.New("commit failed")
 	cfg := testBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{}
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error { return sentinel }
 	b, err := NewBouncer(cfg)
 	if err != nil {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 	}
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round:   1,
-		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("APPROVED"),
-		ledger:  bouncerLedgerContent(1),
-	}})
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	outcome, ptr, err := b.Call(context.Background())
 	if err == nil {

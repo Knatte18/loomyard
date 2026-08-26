@@ -19,12 +19,11 @@ import (
 // overview path before New is called -- and asserts the run bounces from Plan-Revalidate to
 // Plan-Write rather than continuing on to Batchifier.
 //
-// Deliberately asserts nothing about what happens after that bounce: on re-entry Plan-Bouncer finds
-// its run directory still holding round 1's APPROVED verdict, so judged(1) is satisfied and settle
-// re-approves a plan the judge never saw. That stale-verdict replay is a pre-existing shedadapters
-// defect shared with the Discussion-Validate bounce path, confirmed at plan time and filed on the
-// follow-up roadmap item this task adds rather than fixed here -- so this test must not encode the
-// current post-bounce behaviour as if it were intended.
+// Deliberately asserts nothing about what happens after that bounce: a re-entered Plan-Bouncer now
+// archives its run directory and re-judges from a fresh round 1 rather than replaying the settled
+// verdict its run directory still holds. This test's single subject stays that Plan-Revalidate
+// routes a post-segment format regression back to Plan-Write rather than letting it reach Webster --
+// it asserts nothing about the post-bounce behaviour either way.
 func TestSequence_PlanRevalidateCatchesPostSegmentRegression(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 

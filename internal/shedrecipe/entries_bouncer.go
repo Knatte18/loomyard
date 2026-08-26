@@ -14,7 +14,7 @@ import (
 
 // bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins
 // and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves
-// artifact_paths against env.WorktreeRoot, resolves the optional commit_seam key to one of
+// artifact_paths against env.AnchorPath, resolves the optional commit_seam key to one of
 // env.CommitPlan or env.CommitDiscussion, and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
@@ -92,7 +92,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := requireAbsRoot("Bouncer", "RunRoot", env.RunRoot); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("Bouncer", "WorktreeRoot", env.WorktreeRoot); err != nil {
+	if err := requireAbsRoot("Bouncer", "AnchorPath", env.AnchorPath); err != nil {
 		return nil, err
 	}
 	if err := requireAbsRoot("Bouncer", "StencilsDir", env.StencilsDir); err != nil {
@@ -116,7 +116,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 
 	resolvedArtifactPaths := make([]string, len(artifactPaths))
 	for i, p := range artifactPaths {
-		resolved, err := resolveUnderRoot("Bouncer", "artifact_paths", env.WorktreeRoot, p)
+		resolved, err := resolveUnderRoot("Bouncer", "artifact_paths", env.AnchorPath, p)
 		if err != nil {
 			return nil, err
 		}

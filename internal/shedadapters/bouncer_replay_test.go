@@ -20,7 +20,6 @@ import (
 )
 
 func TestBouncer_Replay_Approved(t *testing.T) {
-	logBuf := captureBouncerWarnings(t)
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newTestBouncer(t, shuttle)
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
@@ -34,18 +33,17 @@ func TestBouncer_Replay_Approved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q (without replay this disk state bounces forever and Done is unreachable)", outcome, shedengine.Done)
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q (an already-APPROVED round clears and re-seeds rather than replaying)", outcome, shedengine.Stuck)
 	}
-	wantPointer := ledgerPath(cfg.RunDir, 1)
-	if ptr.Path != wantPointer {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
+	if ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() pointer = %+v; want empty (the seed path this clear falls through to reports an empty pointer)", ptr)
 	}
-	if shuttle.called {
-		t.Error("Call() invoked the shuttle seam on a replay; want it never called")
+	if !shuttle.called {
+		t.Error("Call() did not invoke the shuttle seam; want the seed spawn the clear falls through to")
 	}
-	if logBuf.Len() != 0 {
-		t.Errorf("Call() logged a warning on an APPROVED replay; want none, got %q", logBuf.String())
+	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); !os.IsNotExist(err) {
+		t.Errorf("round 1's verdict file still exists in the recreated run dir: %v", err)
 	}
 }
 
@@ -106,23 +104,31 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 	}
 }
 
+// TestBouncer_Judged_IgnoresFocusFile proves judged(N) does not treat an absent round-2-focus.md as
+// debris: its fixture deliberately carries a BLOCKING verdict, not an APPROVED one, so this test's
+// subject (judged's focus-file exclusion) is isolated from the clear trigger card 10 adds, which
+// fires only on an APPROVED verdict and would otherwise collide with what this test proves.
 func TestBouncer_Judged_IgnoresFocusFile(t *testing.T) {
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newTestBouncer(t, shuttle)
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("APPROVED"),
+		verdict: bouncerVerdictContent("BLOCKING"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 	// round-2-focus.md is deliberately absent: judged(N) must not treat that as debris.
 
-	outcome, _, err := b.Call(context.Background())
+	outcome, ptr, err := b.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q (verdict and ledger present and parsing is a replay, not a re-judge)", outcome, shedengine.Done)
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q (verdict and ledger present and parsing is a replay, not a re-judge)", outcome, shedengine.Stuck)
+	}
+	wantPointer := ledgerPath(cfg.RunDir, 1)
+	if ptr.Path != wantPointer {
+		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
 	}
 	if shuttle.called {
 		t.Error("Call() invoked the shuttle seam despite judged(N) holding; the absent focus file must not force a re-judge")
@@ -252,12 +258,10 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 		}
 	})
 
-	t.Run("Replay_Approved", func(t *testing.T) {
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	t.Run("Harvest_Approved", func(t *testing.T) {
+		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 		b, cfg := newTestBouncer(t, shuttle)
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("APPROVED"), ledger: bouncerLedgerContent(1),
-		}})
+		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		outcome, ptr, err := b.Call(context.Background())
 		if err != nil {

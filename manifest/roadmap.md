@@ -7,14 +7,7 @@ See Maintenance below for how the numbering works.
 
 ## Planned
 
-Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
-
-### loom: real LLM producers
-
-What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. The `Bouncer`/`shedadapters: Burler-round producer` engines each wraps, and the Plan Card format each rubric judges, have both shipped — the item below is unblocked.
-
-1. **loom: review segments resolve `_lyx` paths against the wrong root and don't clear their Bouncer run directory on re-entry** — Folds two more defects touching the same shared `Bouncer` code, since splitting them would have several tasks editing the same rows: both review segments resolve their `_lyx` paths against `Env.WorktreeRoot` while the matching commit closures anchor at `AnchorPath()` — latent while `AnchorRel` is `"."`, its default, but re-pointing the shared entry would silently change both segments at once; and neither segment clears its Bouncer run directory when a downstream row bounces past the writer and back through the segment, so a stale round's already-settled verdict and ledger can satisfy `judged(n)` again on re-entry — confirmed present in the shipped `Discussion-Validate` → `Discussion-Write` → `Discussion-Bouncer` path and shared by the new `Plan-Revalidate` → `Plan-Write` → `Plan-Bouncer` path.
-   See [designs/loom.md](designs/loom.md#the-gate).
+This section holds what's committed to next; nothing is currently scheduled here.
 
 ## Someday
 
@@ -119,6 +112,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
    See [designs/loom.md](designs/loom.md#crash-recovery--resume-on-output-files-not-live-processes).
 
 1. **loom: `Discussion-Burler` fix-scope corrected to `overlay`** — the `Discussion-Burler` row now runs `fix-scope: overlay` and `Discussion-Bouncer` commits its approved settle through `commit_seam: discussion`, restoring compliance with the Fabric Git Invariant, with a parse-level guard added so the class of violation cannot ship again.
+   See [designs/loom.md](designs/loom.md#the-gate).
+
+1. **loom: review segments resolve `_lyx` paths against the wrong root and don't clear their Bouncer run directory on re-entry** — both defects are fixed across all three review segments: the segments' `_lyx` paths now resolve against the anchor path their commit seam already anchored at, and a `Bouncer` re-entered after approving now archives its run directory and re-judges rather than replaying a settled verdict.
    See [designs/loom.md](designs/loom.md#the-gate).
 
 ## Maintenance
