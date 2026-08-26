@@ -30,6 +30,7 @@ Every hub minted since the config-materialisation step landed carries the defect
 
 - `internal/fabriccli/clone.go` — `CloneAndWire` gains a weft commit of the module configs it just materialised, immediately after `configsync.ReconcileAll(res.WeftBase, true)`.
 - `internal/configengine/config.go` — a new `ConfigFileRel(module string) string` accessor returning the anchor-relative config path (`_lyx/config/<module>.yaml`), so `configDirName` stays unexported and the path segments are joined in exactly one place.
+- `internal/hubforge/seed.go` — `SeedConfig`'s commit gains `--allow-empty`, because this change removes the nine untracked files that until now guaranteed its `git add .` always staged something. See the `seedconfig-tolerates-empty-stage` Decision.
 - Doc comments on `CloneAndWire` and on `internal/hubforge` (`hub.go` / `doc.go`), which describe the post-clone fixture state that this change makes clean rather than dirty.
 - New integration coverage proving both halves: the weft prime is clean after clone, and a pair created by `Topology.Add` off that clone has a populated `_lyx/config/`.
 
@@ -41,6 +42,7 @@ Every hub minted since the config-materialisation step landed carries the defect
 - **The remedy text in `configengine`'s not-found error is not changed.** F3 notes in passing that it names the bare dry-run `lyx config reconcile` rather than `--apply`; that is its own finding on its own surface. Once this task lands, the error should not be reachable on a fresh pair at all.
 - **`lyx fabric add` gains no defensive config materialisation.** The root cause is fixed at clone; a second materialisation site would be a divergent copy of a sequence that already exists once.
 - **The repo-wide `fabric.yaml` path is unchanged.** It is already committed on `weft:main` through `ReconcileFabricAt` + `Bolt.Commit`; only the per-worktree nine are affected.
+- **Hubs already minted before this lands are not backfilled.** No migration verb, no repair step in `reconcile`, no clone-time detection of an old hub. See the `no-backfill-for-existing-hubs` Decision for the operator remedy — a plan writer must not invent a backfill.
 
 ## Decisions
 
@@ -96,7 +98,31 @@ Every hub minted since the config-materialisation step landed carries the defect
 - Decision: accept that `hubforge.NewHub` fixtures change from "weft prime carries nine untracked files under `_lyx/`" to "weft prime is clean", and treat any test that breaks as a test asserting the bug.
 - Rationale: the hubforge Fabric-Fixture Invariant states every hub fixture is built through `fabriccli.CloneAndWire`, so this is not a side effect to be worked around — it is the invariant working.
   A clean post-clone weft prime is also strictly more correct for the destruction gate's dirtiness checks, which observe real worktree state.
+  Scope note: this Decision covers *assertions* about the old dirty state. It does not cover a fixture **helper** acquiring a new way to fail — that is `seedconfig-tolerates-empty-stage`'s subject, and it is fixed in the helper rather than absorbed by its callers.
 - Rejected: gating the new commit behind an option so fixtures keep the old shape — that would make the fixture stop matching a real clone, which is the one thing the Fabric-Fixture Invariant exists to prevent.
+
+### seedconfig-tolerates-empty-stage
+
+- Decision: `internal/hubforge/seed.go`'s `SeedConfig` commits with `git commit --allow-empty` instead of a bare `git commit`.
+- Rationale: `SeedConfig` runs `gitkit.MustRun(tb, h.PrimeWeft(), "git", "add", ".")` followed by `gitkit.MustRun(tb, h.PrimeWeft(), "git", "commit", "-m", "hubforge: seed config")`, and `gitkit.MustRun` calls `tb.Fatalf` on any non-zero exit (`internal/gitkit/gitkit.go:41-43`).
+  Today the nine untracked config files guarantee `git add .` always stages something, so the commit can never exit non-zero.
+  After this change the base clone leaves the weft prime clean, so a seeded override that is byte-identical to the just-committed reconciled file stages nothing and `git commit` exits 1 — a fixture-level `tb.Fatalf` in a test that did nothing wrong, and a failure mode unreachable before this change.
+  `--allow-empty` removes the new failure mode outright, at the cost of an occasional empty fixture commit that nothing observes.
+- Rejected: leaving `SeedConfig` alone and letting it break — this is not a test asserting the bug, it is a fixture helper acquiring a new way to fail, so the `fixture-state-change-is-the-point` Decision does not cover it.
+  Probing `git diff --cached --quiet` and skipping the commit conditionally — more moving parts in a fixture helper for the same outcome, and it makes "did SeedConfig commit?" ambiguous to a reader.
+  Both live callers (`internal/webstercli/verbs_test.go:773`, `internal/loomcli/smoke_test.go:155`) seed real overrides today, so this is a latent trap rather than an immediate breakage — which is exactly why it must be closed now rather than discovered later.
+
+### no-backfill-for-existing-hubs
+
+- Decision: hubs minted before this change are out of scope. Nothing detects them, nothing repairs them, and `lyx config reconcile` is not taught to commit.
+- Rationale: the defect is a missing step in `clone`, and `clone` is where it is fixed.
+  A backfill would need either a new verb or a repair branch in `reconcile` that commits on the operator's behalf — both are larger surfaces than the bug, and both would outlive the one-off condition they exist for.
+  The operator remedy is a one-time manual fix-up per affected hub: run `lyx config reconcile --apply` in the prime pair, then commit `_lyx/config/` on the weft primary branch by hand.
+  After that single fix-up, every subsequently added pair inherits the configs exactly as it would from a hub minted post-fix, because `add` forks from the parent's weft branch.
+  Committing by hand in the weft repo is a human running ordinary git, which the Fabric Git Invariant explicitly permits — that invariant binds LYX's own code, not the operator.
+  Without the fix-up, the fallback stays what it is today: `lyx config reconcile --apply` in each new pair, forever.
+- Rejected: a `--backfill-configs` flag on `reconcile` — a migration surface for a condition that stops occurring the day this lands.
+  Telling operators to `lyx fabric clone --reset` — destroys and re-mints the whole hub to fix nine files.
 
 ### docs-in-the-same-commit
 
@@ -158,7 +184,8 @@ The new `ConfigFileRel` belongs beside `ConfigFile`.
 **Consumers of the fix.**
 `internal/hubforge/hub.go`'s `NewHub` drives `fabriccli.CloneAndWire` (line ~226) and populates `Hub.WeftBase` verbatim from `res.WeftBase`.
 Every hub fixture in the repo is therefore affected — this is the hubforge Fabric-Fixture Invariant working as designed.
-`hubforge.SeedConfig` writes overrides into `h.WeftBase` and commits them at `h.PrimeWeft()` with a `git add .`; after this change that `git add .` will find nothing new to stage from the base clone, only the seeded overrides, which is the intended shape.
+`hubforge.SeedConfig` (`internal/hubforge/seed.go:44-45`) writes overrides into `h.WeftBase` and commits them at `h.PrimeWeft()` with `git add .` + `git commit`, both through `gitkit.MustRun`, which `tb.Fatalf`s on a non-zero exit.
+After this change that `git add .` will find nothing new to stage from the base clone, only the seeded overrides — the intended shape, but also the reason the commit needs `--allow-empty` (see the `seedconfig-tolerates-empty-stage` Decision): a seed byte-identical to the reconciled file now stages nothing and the bare commit would exit 1.
 
 **Gotchas.**
 
@@ -200,15 +227,18 @@ Discovered during discussion:
 
 3. **Anchor scoping.** Repeat scenario 1 with `hubforge.NewHub(t, "backend")` and assert the committed paths are `backend/_lyx/config/<module>.yaml` — proves `ScopedPathspec(l.AnchorRel, …)` is doing its job and that the commit was not run at `WeftBase` (a subdirectory of the worktree root at a non-`"."` anchor).
 4. **Idempotence / no spurious commit.** Assert that the commit exists exactly once on the weft primary branch after a clone — i.e. the module-config commit is a single commit, not one per module, and a second `configsync.ReconcileAll` over the same tree would report nothing applied.
-5. **Mutation record.** Assert `res.Mutated()` from a direct `fabriccli.CloneAndWire` call contains the nine `file_written` entries followed by a `commit_created` entry naming the weft worktree — order is part of the vocabulary.
+5. **Mutation record.** Assert `res.Mutated()` from a direct `fabriccli.CloneAndWire` call contains one `file_written` entry per materialised module followed by a `commit_created` entry naming the weft worktree — order is part of the vocabulary.
+   Derive the expected count from the same source scenario 1 uses (`configreg.Modules()` minus `fabric`), never a hard-coded nine, so a tenth registered module does not silently make this test wrong.
+6. **`SeedConfig` survives a redundant seed.** Build a hub, then call `hubforge.SeedConfig` with a module's config set to exactly the content the clone already committed, and assert the helper does not `tb.Fatalf`.
+   This is the direct regression test for the `seedconfig-tolerates-empty-stage` Decision, and it fails today only *after* the clone-commit change lands — so it is written alongside that change, not before it.
 
 **Unit coverage:**
 
-6. `configengine.ConfigFileRel` — untagged, table-free unit test asserting the returned path for a couple of module names and that it is relative (`!filepath.IsAbs`). Pair it with an assertion tying it to `ConfigFile`: `ConfigFile(base, m)` equals `filepath.Join(base, ConfigFileRel(m))`, so the two accessors can never drift.
+7. `configengine.ConfigFileRel` — untagged, table-free unit test asserting the returned path for a couple of module names and that it is relative (`!filepath.IsAbs`). Pair it with an assertion tying it to `ConfigFile`: `ConfigFile(base, m)` equals `filepath.Join(base, ConfigFileRel(m))`, so the two accessors can never drift.
 
 **Regression sweep:**
 
-7. Run the full gate — `go test ./...` then `go test -tags integration ./...`. The fixture-state change (weft prime clean rather than carrying nine untracked files) will surface in `internal/fabricengine`'s live-state integration harness if any cell encodes the old dirty shape.
+8. Run the full gate — `go test ./...` then `go test -tags integration ./...`. The fixture-state change (weft prime clean rather than carrying nine untracked files) will surface in `internal/fabricengine`'s live-state integration harness if any cell encodes the old dirty shape.
    Any such failure is a test asserting the bug and gets updated to the corrected state, not worked around; note each one in the batch's report so the change in fixture state is auditable rather than silent.
 
 ## Q&A log
@@ -221,4 +251,5 @@ Discovered during discussion:
 - **Q:** Where do the tests live? **A:** [auto-pick] a new `//go:build integration` file in `internal/fabriccli/`, `package fabriccli_test`, using `hubforge.NewHub`, plus an untagged unit test for `ConfigFileRel`. **Why:** the hubforge Fabric-Fixture Invariant explicitly sanctions an external `*_test` package for tests inside `fabriccli`'s dependency set, and `testmain_test.go` already wires `gitkit.HermeticGitEnv()`; the Test Tier Purity Invariant forbids `hubforge.NewHub` from an untagged file.
 - **Q:** What commit message? **A:** [auto-pick] `fabric clone: record module configs`. **Why:** mirrors the sibling board commit `fabric clone: record anchor + repo-wide config` in the same function, with "module configs" distinguishing the per-worktree nine from the repo-wide one.
 - **Q:** Which docs move in the same commit? **A:** [auto-pick] `CloneAndWire`'s doc comment plus `internal/hubforge`'s `hub.go`/`doc.go` post-clone-state description; no `CONSTRAINTS.md`, no `docs/overview.md`, no `manifest/roadmap.md`. **Why:** there is no `manifest/designs/fabric.md` — fabric's module doc is its package comments; no new cross-cutting invariant is introduced; and `roadmap.md` moves only for planned items, not bugfixes.
+- **Q:** [review r1 gap] `hubforge.SeedConfig`'s `git add .` + `git commit` runs through `gitkit.MustRun`, which `tb.Fatalf`s on non-zero exit; once the base clone leaves the weft prime clean, a seed byte-identical to the reconciled file stages nothing and the commit exits 1. What is the disposition? **A:** [auto-pick] `SeedConfig`'s commit gains `--allow-empty`, and `internal/hubforge/seed.go` joins the in-scope file list. **Why:** the new failure mode is a fixture helper acquiring a new way to fail, not a test asserting the bug, so the `fixture-state-change-is-the-point` Decision does not cover it; `--allow-empty` closes it outright with one flag, versus a conditional `git diff --cached --quiet` probe that adds branching to a fixture helper for the same outcome. Both live callers seed real overrides today, so this is a latent trap that would surface later rather than at merge.
 - **Q:** How are hubforge-fixture breakages handled when the weft prime becomes clean? **A:** [auto-pick] update them to the corrected state and note each in the batch report. **Why:** the Fabric-Fixture Invariant makes fixture state track a real clone by design, so a cell encoding the old dirty shape is asserting the bug.
