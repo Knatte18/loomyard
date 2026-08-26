@@ -114,11 +114,7 @@ producers:
       # A plan is 00-overview.md plus a variable number of card files, so no enumeration written
       # here stays correct across plans -- the single directory entry is what stays right. Both
       # consumers accept a directory: shedadapters.NewBouncer stats nothing, and burlerengine's own
-      # path check documents that a file and a directory both satisfy it. This entry resolves
-      # against Env.WorktreeRoot, which is knowingly not the AnchorPath() root Env.CommitPlan
-      # anchors at; the two are identical while AnchorRel is "." (its default), the shipped
-      # Discussion pair carries the same shape, and the fix is filed as its own roadmap item rather
-      # than made here.
+      # path check documents that a file and a directory both satisfy it.
       artifact_paths:
         - _lyx/plan
       rubric_stencil: loom-rubric-plan-review
@@ -200,7 +196,7 @@ producers:
       run_subdir: webster
       # The subject under review is the committed diff, which artifact_paths cannot name at all:
       # the key is required and non-empty, every entry resolves to an absolute path under
-      # Env.WorktreeRoot, and the generic bouncer-template-judge.md renders the list as the
+      # Env.AnchorPath, and the generic bouncer-template-judge.md renders the list as the
       # artifacts under review with "read each one". Whatever value is chosen is a workaround, so
       # the question is only which one gives the judge the most useful reading -- the single plan
       # directory entry is the card contract the diff is measured against, and Plan-Bouncer
