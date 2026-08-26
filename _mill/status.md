@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-planparser-model-and-parse
 slug: plan-custom-card-skips-path-check
 branch: plan-custom-card-skips-path-check
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-review-r2  '2026-08-26T18:16:04Z'
 plan-fix-r2  '2026-08-26T18:16:34Z'
 planned  '2026-08-26T18:16:42Z'
 implementing  '2026-08-26T18:17:07Z'
+approved-planparser-model-and-parse  '2026-08-26T18:22:39Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-08-26T18:17:07Z'
 ```yaml
 batches:
   - name: planparser-model-and-parse
-    state: running
+    state: approved
     implementer_session: 372ad507-c0f4-4ecc-a6c4-50bb309ca662
     start_sha: 697b2663b03783a7a72e5310ef5c05de2783e256
+    commit_sha: b97bd40d2973909cabc59c250f8153edd1fbf853
     verify_baseline_failures: []
   - name: group-scoped-validation
     state: pending
