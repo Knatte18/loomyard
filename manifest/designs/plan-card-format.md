@@ -33,6 +33,15 @@ No `DependsOn`/`Produces` field. Dependency edges are derived, never authored: a
 | Prosa | file(s), no symbol target | none | not required | — |
 | Custom | either | none — explicit escape hatch | as applicable | — |
 
+A multi-label card composes this table's four columns as follows, one rule per column:
+
+- **Target list holds** — per group, no composition: each label's own sub-bullets hold only that label's own kind of target, exactly as the table row states for that label alone.
+- **Mechanical check** — the union across the card's own groups: every group's own mechanical check runs, each against that group's own targets, never against another group's targets.
+  `Create`'s "none — check nothing equivalent exists first" cell is a real obligation that joins this union like any other, not a no-op that a multi-label card can skip past.
+- **`ImpactSummary`** — required whenever any of the card's own groups is `Edit` or `Delete`, and stays exactly one per card even when several of its groups require it: it states the blast radius across every `Edit`/`Delete` group's targets together, never a separate summary per group.
+- **Batchable?** — least permissive wins across the card's own groups: a card is batchable only when every one of its groups says `Yes`, and a single `No` group makes the whole card `No`.
+  `Prosa`/`Custom`'s "—" is never a vote in this computation — it neither forces `No` nor grants `Yes`, so a `Prosa`/`Custom` group's presence is transparent to the other groups' own answer.
+
 `Intent` vs. `ImpactSummary`: `Intent` is what/why, the card's main content. `ImpactSummary` is a separate, hard-capped one-line blast-radius conclusion ("3 callers, all local to billing package, no cross-module effects") — kept as its own field specifically so it stays terse; folding it into `Intent` lets it balloon into unbounded reasoning.
 
 **Rename does not require `ImpactSummary`.** A correctly executed AST-aware rename is binary — every reference updates and the build/tests pass, or a leftover reference fails the build immediately. There is no graded blast-radius judgment to summarize. The same blind spot `assert-no-callers` has for Delete still applies: string/reflection-based references (a registry keyed by name, `getattr` in Python) survive a rename without failing the build. Rename must also rewrite the target symbol's own leading self-reference in its own doc comment (Go convention opens a doc comment with the symbol's name) — safe to do mechanically, since the card's own `old -> new` pair names exactly what changed; verify with the same grep pass.
@@ -84,8 +93,10 @@ All three items below closed when the **planparser: Card-format migration to `Ed
 - **Whether `Custom` needs its own mechanical check at all, or is purely an escape hatch by design.**
   Closed in the affirmative: `Custom` needs no type-specific mechanical check.
   It stays a principled, deliberate escape hatch — bound by every card-generic check (path well-formedness, field presence, and so on) but exempt from `path-missing` on its own targets and from the `Prosa` target-shape rule, exactly as documented and nothing more.
+  A card that can name its targets under a typed group has, by definition, found a fit and is therefore not `Custom` — a card carrying a `Custom` group could instead be expressed as a multi-label combination is a defect, not a legitimate use of the escape hatch.
 - **Whether `ImpactSummary` on Delete needs a structured shape beyond one line of prose.**
   Closed: it stays one line of prose, identical in shape to an `Edit` card's.
   A structured shape (e.g. an enumerated caller list) would need a caller enumeration the parser cannot produce without the symbol lookup this task deliberately excludes — see the shape classifier's own deviation from ground-truth resolution, above.
 - **Reconciliation with `contracts/specs/loom-plan-spec.md`'s existing validator checks — which of those still apply, which are now redundant, which need rewriting.**
-  Closed: the disposition table this task implemented lands on sixteen distinct check IDs, one row per ID, in `contracts/specs/loom-plan-spec.md`'s own Validation checks section — up from the spec's former 14-row list, which itself bundled two distinct IDs into its first row.
+  Closed: the disposition table this task implemented lands on seventeen distinct check IDs, one row per ID, in `contracts/specs/loom-plan-spec.md`'s own Validation checks section — up from the spec's former 14-row list, which itself bundled two distinct IDs into its first row.
+  Seventeen, not sixteen, because the multi-label grammar added its own new `card-custom-not-alone` row: a card carrying a `Custom` group alongside a differently-typed group is a defect the original one-label-per-card grammar had no need to check for.
