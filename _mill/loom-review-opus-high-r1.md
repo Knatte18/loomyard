@@ -1037,6 +1037,60 @@ different mechanism from `SingleLLMProducer`'s attach but has the same no-duplic
 A round with a larger fixture task (enough cards that a batch runs for minutes) could stage
 this properly.
 
+### Live scenario 7 — crash mid-`Webster-Burler` round — F0 REPRODUCED AGAIN, on the source-scope row
+
+The second half of the mission's "crash/resume ladder for the rows past Plan" bullet, and the
+severe variant of F0: `Webster-Burler` is the one row in the whole recipe running
+`fix-scope: source`, so its agent has warp write access and commit-per-fix authority.
+
+```
+17:43:49 | Webster-Burler running history=16
+$ lyx reed status      -> burler:1:b4791233 (%13, live)
+$ ps ... 'loom drive'  -> 2110778  06:33  .dev-bin/lyx loom drive
+$ git log --oneline -1 -> 4f1bf6a 1: greet-trim
+
+$ kill -9 2110778                       # 17:44:3x
+$ lyx loom run
+$ lyx reed status
+ strands: loom-status (%0),
+          burler:1:b4791233 (%13, live)      <-- ORPHAN, still alive
+          burler:1:a0ff9cb9 (%14, live)      <-- RESPAWN
+$ tmux -L ... list-panes -a
+ %13 2116430 claude
+ %14 2117592 claude
+```
+
+Both target the same artifacts, from two different burler round directories:
+
+```
+$ grep -l 'reviews/webster/round-1-fixer-report.md' <wt>/.lyx/burler/round-*/instruction-3-fix.md
+ .lyx/burler/round-1197877629/instruction-3-fix.md
+ .lyx/burler/round-861290293/instruction-3-fix.md
+```
+
+And both carry commit authority over the warp repo:
+
+```
+$ grep -n commit .lyx/burler/round-861290293/instruction-3-fix.md
+14:You commit each fix individually, once green, before starting the next finding.
+   Commit message format: `<module-or-target>: fix <finding-id> — <one-line what/why>`. Never push.
+```
+
+So the crash produced **two concurrent agents, each instructed to commit per fix to the same
+git repository, each judging the same diff, each writing the same review and fixer-report
+files.** Interleaved commits from two independent reviewers of the same diff is a materially
+worse outcome than the overlay case in F0's first reproduction: the overlay case corrupts an
+`_lyx` artifact a later row re-reads, this one corrupts the branch that `Publish` and
+`Finalize` are about to land.
+
+The orphan was removed by hand (`lyx reed remove b4791233…`) within about twenty seconds so the
+pipeline could continue — which is itself the finding's operational shape: **the run cannot
+recover from its own documented resume path without a human deleting a pane.**
+
+Two independent reproductions, on two different rows, with two different `fix-scope` values,
+against the identical crash-and-resume sequence that produced exactly one agent at
+`Plan-Write`. F0 is not an anecdote.
+
 ### Live scenario 5 details
 
 Four separate documented properties, all confirmed in one observation:
