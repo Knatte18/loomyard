@@ -59,7 +59,12 @@ Batch-local decision beyond the overview's: card 4 carries an explicit temporary
   Update this file's header comment (the six-line comment above `package fabriccli`), which enumerates the wiring sequence, so its enumeration includes the new per-worktree config commit.
   Update `CloneAndWire`'s own doc comment the same way: its first sentence enumerates "repo-wide fabric.yaml materialization, the weft:main anchor+config commit and push, warp junction wiring, and per-worktree config reconciliation" and must now also name the per-worktree config commit that follows reconciliation, stated as a commit on the weft primary branch with no push.
 
-  In `internal/hubforge/hub.go`, update the `Hub` type's or `NewHub`'s doc comment to describe the post-clone state a `CloneAndWire`-built hub now arrives in: the weft prime worktree is clean, with each registered non-`fabric` module's config committed on the weft primary branch, rather than carrying those files as untracked content.
+  In `internal/hubforge/hub.go`, add a `Mutations fabricengine.Mutations` field to the `Hub` struct, populated in `NewHub`'s returned literal verbatim from `res.Mutated()` — the same copy-the-result-through discipline the existing `WeftBase: res.WeftBase` field uses, never re-derived.
+  Document it as the mutation record `fabriccli.CloneAndWire` produced while building this hub, exposed so a test can assert the record's shape without rebuilding the bare-template machinery `hubforge` owns.
+  It is the accessor card 4's test 5 reads;
+  without it `NewHub` discards `res.Mutations` entirely and that record is unreachable from outside this package.
+
+  Also in `internal/hubforge/hub.go`, update the `Hub` type's or `NewHub`'s doc comment to describe the post-clone state a `CloneAndWire`-built hub now arrives in: the weft prime worktree is clean, with each registered non-`fabric` module's config committed on the weft primary branch, rather than carrying those files as untracked content.
   In `internal/hubforge/doc.go`, update the package comment's seeding-contract paragraph — the one already stating that a real hub arrives with every registered module's default config already materialized — so it also says those configs arrive committed, and that this is why `SeedConfig` commits with an empty stage allowed.
   Keep both edits to the doc text;
   do not change hubforge's behaviour in this card.
@@ -105,9 +110,9 @@ Batch-local decision beyond the overview's: card 4 carries an explicit temporary
   4. One commit, not one per module.
      Assert that `git log --oneline` on the weft primary branch of a freshly-built hub contains the subject `fabric clone: record module configs` exactly once, and that a second `configsync.ReconcileAll` over the same weft base reports `Applied` false for every module.
   5. Mutation record shape.
-     Call `fabriccli.CloneAndWire` directly (not through `hubforge.NewHub`) against bare repos, and assert the returned `res.Mutated().Entries()` contains one `fabricengine.KindFileWritten` entry per module in the derived set, followed by a `fabricengine.KindCommitCreated` entry whose `Target` is the weft worktree, with the commit entry last — array order is part of the vocabulary.
-     If wiring a direct `CloneAndWire` call in this file would duplicate `hubforge`'s bare-template machinery, drive the hub through `hubforge.NewHub` and read the record it produced instead, keeping the same ordering assertion;
-     do not copy `hubforge`'s template builder into this file.
+     Read the record `CloneAndWire` produced for a `hubforge.NewHub(t, ".")` hub from the `Mutations` field card 3 adds to `hubforge.Hub`, and assert `h.Mutations.Entries()` contains one `fabricengine.KindFileWritten` entry per module in the derived set, followed by a `fabricengine.KindCommitCreated` entry whose `Target` is the weft worktree, with the commit entry last — array order is part of the vocabulary.
+     Read the record through that field rather than calling `fabriccli.CloneAndWire` directly against hand-built bare repos: `hubforge` owns the bare-template builder and does not export it, `gitkit.CopyRepo` is documented as callable from one package alone and this is not it, and re-cloning from an already-cloned hub's `WarpBare`/`WeftBare` would take the adopt path, where `configsync.ReconcileAll` reports `Applied` false and no config commit is produced at all.
+     Do not copy `hubforge`'s template builder into this file, and do not add a second bare-pair fixture.
 
   Before finalising, establish the TDD property the discussion asks for without committing a red tree: temporarily comment out the `fabricengine.CommitAnchoredPaths` call card 3 added to `internal/fabriccli/clone.go`, confirm tests 1 through 5 fail, then restore the call and confirm they pass.
   Leave `internal/fabriccli/clone.go` byte-identical to card 3's committed state — the temporary edit is a check, never part of this card's diff.

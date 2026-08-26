@@ -25,6 +25,7 @@ No batch-local decisions beyond the overview's `docs-land-with-their-own-behavio
 - **Context:**
   - `internal/lyxdirs/dirs.go`
   - `internal/fabricengine/commitweftpaths.go`
+  - `internal/fabricengine/origin.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/configengine/config.go`
