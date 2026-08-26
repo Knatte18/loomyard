@@ -48,8 +48,13 @@ func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 	// repo, where they start out untracked. Commit them so a freshly-built
 	// fixture is genuinely clean on both sides, since CheckResolved's
 	// worktree-clean check covers the paired sibling too.
+	// The commit is --allow-empty because after the clone-commit change the weft prime already
+	// arrives clean, .lyx is excluded through the weft repo's .git/info/exclude, and the _extra
+	// junction target materializes as an empty directory git does not track -- so this pair becomes
+	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
+	// drop the guarantee if a future fixture change reintroduces untracked weft content.
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "-m", "seed junctions")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--allow-empty", "-m", "seed junctions")
 
 	return h, slug
 }

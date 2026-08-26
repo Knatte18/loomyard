@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -164,9 +165,20 @@ func TestStencilCLI_ListAndValidate(t *testing.T) {
 	}
 	droppedMarker := markers[0]
 	droppedToken := "{{." + droppedMarker + "}}"
-	newWarnContent := strings.Replace(string(warnContent), droppedToken, "", 1)
+	// Every occurrence has to go: TopLevelMarkers reports a deduplicated set, so a stencil that
+	// declares the same marker in two places still declares it after one occurrence is removed,
+	// and validate would rightly report nothing.
+	newWarnContent := strings.ReplaceAll(string(warnContent), droppedToken, "")
 	if newWarnContent == string(warnContent) {
 		t.Fatalf("marker token %q not found in %s's on-disk content", droppedToken, warnName)
+	}
+	remaining, err := stencil.TopLevelMarkers([]byte(newWarnContent))
+	if err != nil {
+		t.Fatalf("TopLevelMarkers(%s) after dropping %q: %v", warnName, droppedMarker, err)
+	}
+	if slices.Contains(remaining, droppedMarker) {
+		t.Fatalf("marker %q still declared by %s after dropping every %q token; markers = %v",
+			droppedMarker, warnName, droppedToken, remaining)
 	}
 	if err := os.WriteFile(warnPath, []byte(newWarnContent), 0o644); err != nil {
 		t.Fatalf("write %s: %v", warnPath, err)
