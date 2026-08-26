@@ -37,7 +37,9 @@ batches:
     commit_sha: 6fcd820b758136e6c240450acdc7b7dc2eea7072
     verify_baseline_failures: []
   - name: engine-attach-argv
-    state: pending
+    state: running
+    implementer_session: 340f6a80-b3c0-4f67-8d9a-63a941a450f7
+    start_sha: 7aa140d18fdaa817540648e11877a03275d09bba
     verify_baseline_failures: []
   - name: cli-convergence
     state: pending
