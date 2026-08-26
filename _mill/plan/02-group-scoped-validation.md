@@ -17,7 +17,12 @@ The whole diff is confined to `validate.go` and `validate_test.go`, under 1500 l
 
 The card-generic checks must NOT change: `checkCardPathMalformed`, `checkCardFieldOverlap`, and the `Uses` loop inside `checkPathMissing` all read the flat card-level union batch 1 preserved, and that is deliberate.
 
-Batch-local decision beyond `## Shared Decisions`: `card-custom-not-alone` emits exactly one finding per offending card, never one per offending group — the rule is a property of the card's label set, and per-group reporting would make a card look worse the more `Custom` groups it piled up.
+Batch-local decisions beyond `## Shared Decisions`:
+
+- `card-custom-not-alone` emits exactly one finding per offending card, never one per offending group — the rule is a property of the card's label set, and per-group reporting would make a card look worse the more `Custom` groups it piled up.
+- **Hand-built `Card` fixtures must set `Type`, `Targets`, and `TargetGroups` together.** `internal/planparser/validate_test.go`'s existing subtests build a baseline via `validCard(number, slug)` and then reassign `card.Type`, `card.Targets`, `card.Pairs`, or `card.Uses` in place.
+  A Go field reassignment on one of those never touches a separately-held `TargetGroups` entry, so once this batch's six checks read `TargetGroups`, every such subtest silently tests a stale `Edit` group instead of the type it meant to set — some failing outright, some coincidentally reporting the expected count for the wrong reason.
+  Card 4 introduces a `cardOfType` helper that sets all three together and sweeps every existing call site onto it, and cards 5, 6, and 7 build their new fixtures through the same helper rather than by post-construction mutation.
 
 ## Cards
 
@@ -44,6 +49,10 @@ Batch-local decision beyond `## Shared Decisions`: `card-custom-not-alone` emits
   Rewrite `checkPathMissing`'s doc comment so every per-type rule it states is phrased per group rather than per card.
   In `internal/planparser/validate_test.go`, extend the `validCard` helper so the baseline card it returns also carries a `TargetGroups` slice holding one `planparser.TargetGroup` with `Type` `planparser.CardTypeEdit` and `Refs` equal to that card's own `Targets` value — without this every group-scoped check in this batch sees an empty group list and the whole suite stops exercising them.
   Update `validCard`'s doc comment to say so.
+  Add a second helper `cardOfType(number int, slug string, typ planparser.CardType, refs []string) planparser.Card` that starts from `validCard(number, slug)` and then sets `Type`, `Targets`, and a single-entry `TargetGroups` holding `{Type: typ, Refs: refs}` together, so a fixture cannot carry a `Type` its group list disagrees with.
+  Then sweep every existing subtest in `validate_test.go` that builds a card via `validCard` and afterwards reassigns `card.Type`, `card.Targets`, or `card.Pairs`, replacing each such construction with `cardOfType` (and, for a `Rename` fixture, additionally setting both the card-level `Pairs` and that same group's own `Pairs` from one value).
+  A field reassignment on a returned `Card` never reaches its separately-held `TargetGroups` entry, so leaving these call sites as they are makes every group-scoped check in this batch read a stale `Edit` group: `TestValidate_ProsaSymbolTarget`'s symbol-target case, `TestValidate_PathMissing`'s `Create card absent target produces none` and `Custom card` cases, `TestValidate_RenameMechanicMissing`'s mechanic-absent case, and `TestValidate_CardMissingField`'s non-`Edit`/`Delete` type loop would each assert against a type the fixture no longer really carries — some failing outright, and others reporting the expected count for a reason unrelated to what they test.
+  Leave subtests that mutate only `card.Uses`, `card.Intent`, `card.ImpactSummary`, `card.Commit`, or `card.RetiredLabels` on the `validCard` baseline unchanged — none of those fields participates in a target group.
   Add to `TestValidate_PathMissing` the defect's own regression case: one card carrying an `Edit` group naming a path absent from the hermetic `worktreeRoot` plus a `Create` group naming a second absent path yields exactly one `path-missing` finding, on the `Edit` group's path only.
   Add a case proving a card carrying two `Rename` groups, one of whose `Old` sides is absent, yields exactly one `path-missing` finding rather than one per group.
   Add a case proving a card whose first group is `Create` and whose second group is `Edit` gets the `Edit` group's absent path reported — the observable consequence of first-label-wins being gone.
@@ -66,6 +75,7 @@ Batch-local decision beyond `## Shared Decisions`: `card-custom-not-alone` emits
   Rewrite both function doc comments in group terms, and rewrite the `prosa-symbol-target` finding's `Detail` string so it names the offending group's label rather than calling the whole card a `Prosa` card.
   In `internal/planparser/validate_test.go`, add to `TestValidate_ProsaSymbolTarget` a case proving a card carrying an `Edit` group holding a symbol plus a `Prosa` group holding a symbol yields exactly one `prosa-symbol-target` finding, and a case proving a card whose only symbol lives in its `Edit` group yields none.
   Add a test proving a `Create` group on an otherwise-`Edit` card satisfies a later card's `Edit` target naming the same path, so the legitimate cross-card create-then-edit sequencing is not flagged as `path-missing`.
+  Build every single-group fixture this card adds through the `cardOfType` helper card 4 introduces, and every multi-group fixture by setting `Type`, `Targets`, and `TargetGroups` together at construction time — never by reassigning a field on an already-returned `Card`.
 - **Commit:** `fix(planparser): scope create-union and prosa-symbol-target to target groups`
 
 ### Card 6: field-empty, ImpactSummary and rename-mechanic per group
@@ -88,6 +98,7 @@ Batch-local decision beyond `## Shared Decisions`: `card-custom-not-alone` emits
   In `internal/planparser/validate_test.go`, add to `TestValidate_CardFieldEmpty` a case proving a card with a populated `Edit` group and an empty `Create` group yields exactly one `card-field-empty` finding whose `Detail` names the `Create` label.
   Add to `TestValidate_CardMissingField` a case proving a `Create`-plus-`Edit` card with no `ImpactSummary` yields a `card-missing-field` finding and a case proving a `Create`-plus-`Prosa` card with none yields no finding.
   Add to `TestValidate_RenameMechanicMissing` a case proving a plan whose only `Rename` group sits on a multi-label card, with no `## Rename mechanic` section, yields the finding.
+  Build every single-group fixture this card adds through the `cardOfType` helper card 4 introduces, and every multi-group fixture by setting `Type`, `Targets`, and `TargetGroups` together at construction time — never by reassigning a field on an already-returned `Card`.
 - **Commit:** `fix(planparser): scope field-empty, ImpactSummary and rename-mechanic to target groups`
 
 ### Card 7: relax card-type-missing and add card-custom-not-alone
@@ -113,6 +124,7 @@ Batch-local decision beyond `## Shared Decisions`: `card-custom-not-alone` emits
   a card carrying two `Custom` groups and nothing else yields none;
   a card carrying two `Custom` groups plus one `Edit` group yields exactly one finding, not two;
   a multi-label card with no `Custom` group yields none.
+  Build every single-group fixture this card adds through the `cardOfType` helper card 4 introduces, and every multi-group fixture by setting `Type`, `Targets`, and `TargetGroups` together at construction time — never by reassigning a field on an already-returned `Card`.
 - **Commit:** `feat(planparser): relax card-type-missing and add card-custom-not-alone`
 
 ## Batch Tests
