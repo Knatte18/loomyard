@@ -241,8 +241,8 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 
 // planFixtureCard is the syntactically complete, one-card plan-format card body seedPlanValidateFixture
 // and fakeLoomShuttle's "plan"-role branch both write, kept as a single package-level constant so the
-// two writers never drift apart. The sole card is a Create card so path-missing never fires
-// regardless of worktreeRoot's contents — a Create card's targets stay exempt from on-disk existence
+// two writers never drift apart. The sole card carries a Create group so path-missing never fires
+// regardless of worktreeRoot's contents — a Create group's targets stay exempt from on-disk existence
 // checking.
 const planFixtureCard = "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
 	"**Intent:** placeholder card.\n"
