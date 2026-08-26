@@ -34,11 +34,10 @@ type Config map[string]any
 type Env struct {
 	// Cwd is the caller's told working directory, read by Preflight.
 	Cwd string
-	// AnchorPath is the told anchor path, read by Batchifier, PlanValidate, Webster, and
+	// AnchorPath is the told anchor path, read by Batchifier, PlanValidate, Webster, Bouncer, and
 	// SingleLLM's anchor_path token.
 	AnchorPath string
-	// WorktreeRoot is the told worktree root, read by PlanValidate and the root every
-	// worktree-relative Config path resolves against.
+	// WorktreeRoot is the told worktree root, read by PlanValidate and by SingleLLM's output_files.
 	WorktreeRoot string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
