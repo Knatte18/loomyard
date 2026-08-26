@@ -190,9 +190,42 @@ non-GitHub-remote hub cannot reach `Finalize` at all — `Publish` carries no `o
 Workaround used for this round's fixture, recorded honestly: a one-element list naming a
 branch that is never the parent (`["__no_pr_required__"]`).
 
-Suggested fix: make `MissingKeys` require the sequence key itself but not its individual
-elements — a template list is a default, not a minimum length. See the fixer report for the
-exact shape landed.
+**The same root cause bites in the other direction too, and that half IS data loss.**
+`collectLeafPathsHelper` (`reconcile.go:176-183`) models each sequence ELEMENT as its own
+named config key (`require_pr_to_base[0]`, `[1]`, …), and `applyExistingOverrides`
+(`reconcile.go:117`) copies only `Value`/`Tag`/`Style` onto matching template leaves — it
+cannot resize the template's sequence. So a user list LONGER than the template's is truncated
+to the template's length on `lyx config reconcile --apply`.
+
+Reproduced on the independent probe hub:
+
+```
+# landing.yaml hand-edited to a three-entry list
+require_pr_to_base: ["main", "develop", "release"]
+
+$ lyx config reconcile
+ ...{"module":"landing","removed":["require_pr_to_base[1]","require_pr_to_base[2]"]}...
+$ lyx config reconcile --apply
+ ...{"module":"landing","applied":true,"removed":["require_pr_to_base[1]","require_pr_to_base[2]"]}...
+$ head -1 .../landing.yaml
+require_pr_to_base: ["main"]          # "develop" and "release" are gone
+```
+
+Two operator-authored values destroyed. It is reported — under `removed`, as though they were
+stale keys the template had dropped — which is precisely backwards: they are the operator's
+configuration, and the template's own single entry is the default they replaced.
+
+Suggested fix, split by blast radius:
+- **Fixed this round (narrow, relaxes an error only):** `MissingKeys` requires the sequence
+  KEY, not its individual elements — a template list is a default, not a minimum length. This
+  is what makes `require_pr_to_base: []` loadable and therefore `Publish`'s documented
+  no-pull-request mode reachable, which is the loom-visible half.
+- **NOT-FIXED-THIS-ROUND:** the `Reconcile` truncation. Fixing it means changing the merge
+  model for sequences across every module's config (replace the template's sequence node
+  wholesale rather than overriding element leaves), in a shared leaf package all ten module
+  configs load through. That is a cross-cutting change to shared config handling, not a
+  loom hardening fix, and it deserves its own task with its own test matrix. Recorded here in
+  full, with the reproduction above, for the orchestrator to spin out.
 
 ### F2 — an agent loom spawns resolves `lyx` from PATH, so it can silently rewrite the hub's stencils mid-run — MEDIUM — CONFIRMED
 
