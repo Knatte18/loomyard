@@ -38,7 +38,8 @@ It is the single blocker keeping loom from being crucible-merge-ready.
 - A mode parameter on `internal/loomshed`'s `NewPlanValidate` so the two rows sharing the one engine differ.
 - `contracts/recipes/loom-recipe.yaml`: `approve_seam: plan` on `Plan-Bouncer`, `require_approved: true` on `Plan-Revalidate`.
 - A `--require-approved` flag on `lyx loom validate-plan`, and the parity test extended to cover both rows.
-- `internal/loomrecipe/fixture_test.go`'s `buildSequenceFixture` re-seeded to the unapproved plan `Plan-Write` actually writes — see the keystone-test decision below, this is the regression test for F7 itself.
+- `internal/loomrecipe/fixture_test.go`'s fake `Plan-Write` corrected to write the unapproved plan the real writer is required to write, and `fakeLoomBurler`'s injected regression re-pointed to a format fault the new seam cannot mask — see the Testing section's keystone paragraph;
+  the first of those is the regression test for F7 itself.
 - Docs in the same commit: `manifest/designs/loom.md`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-template-plan.md`, `internal/loomengine/plan.go`'s package doc, and two `CONSTRAINTS.md` entries — the **Gate Self-Check Parity Invariant** (a gate's verb reaches every mode its row set uses) and the **Planparser Sole-Parser Invariant** (widened to sole parser *and* sole writer of the plan format).
 
 **Out:**
@@ -249,8 +250,15 @@ The existing `logger.Warn("loomshed: plan failed validation", ...)` line at `:76
 - `internal/planparser/validate_test.go:110-140` — `TestValidate_FormatAndApproval`, the direct test of the check being split.
 - `internal/loomcli/validate_test.go:166-175` — `planFixture`'s own `approved` parameter.
 - `internal/loomcli/parity_test.go:176` — `Stuck_Unapproved`.
-- `internal/loomrecipe/fixture_test.go:545` — `seedPlanValidateFixture(t, dir, true)`, the fixture whose approved-plan seed is why the nineteen-row `sequence_test.go` never caught F7;
-  see the Testing section's keystone paragraph.
+- `internal/loomrecipe/fixture_test.go:393` — `fakeLoomShuttle`'s `"plan"` branch writing `planFixtureOverview(true)`, the self-approving `Plan-Write` stand-in that is why the nineteen-row `sequence_test.go` never caught F7.
+  Its sibling `:545` `seedPlanValidateFixture(t, dir, true)` is inert at row 8 (rotated away) but flips for honesty.
+  See the Testing section's keystone paragraph.
+- `internal/loomrecipe/revalidate_test.go` and `fakeLoomBurler.corruptPlanOverview` (`fixture_test.go:114`, `:131-135`) — **`TestSequence_PlanRevalidateCatchesPostSegmentRegression` breaks under this change and must be re-pointed.**
+  The fake burler injects its regression solely as `planFixtureOverview(false)`, i.e. by clearing the approval flag, and the test depends on `plan-unapproved` firing at `Plan-Revalidate`.
+  The new `Approve` seam runs on `Plan-Bouncer`'s APPROVED settle, which is *after* the burler round, so the flag is flipped straight back to `true` and the bounce the test asserts stops happening.
+  Disposition: change `corruptPlanOverview` to inject a genuinely format-invalid regression that no approval write can undo — a Card Index entry naming a card file that is not on disk (`index-file-mismatch`) is the cleanest, since the fake already controls the overview's whole content and the card file is written separately.
+  The test's own subject and name are unchanged;
+  only the corruption's flavour moves, and it moves to something the row could always catch and the seam can never mask.
 - `internal/loomrecipe/shape_test.go:49`, `internal/loomshed/cancellation_test.go:86` — mechanical `NewPlanValidate` call-site updates for the new parameter.
 
 **Pipeline behaviour after the fix, end to end.**
@@ -357,16 +365,35 @@ It is an untagged Tier-1, fully offline fixture that builds the **real** produce
 `sequence_test.go`'s `wantSequenceOrder` already drives that fixture through all nineteen history rows, scripting each segment's APPROVED verdict through the fake shuttle, and `revalidate_test.go` already re-uses it to prove the `Plan-Revalidate` → `Plan-Write` bounce.
 So the seed-verdict-report machinery the assertion needs is shipped and working.
 
-**The one thing that fixture gets wrong is the whole reason F7 escaped CI.**
-`fixture_test.go:545` calls `seedPlanValidateFixture(t, dir, true)` — it hands `Plan-Validate` an **already-approved** plan, a plan the real `Plan-Write` is forbidden by its own stencil from ever producing.
-The nineteen-row sequence test therefore passed continuously while the live pipeline could not clear row 8.
-The fix and the regression test are the same edit: flip that argument to `false`, so the fixture seeds what `Plan-Write` actually writes, and fill `env.ApprovePlan` with a closure that runs the real `planparser.SetApproved` over the fixture's own plan directory.
-`wantSequenceOrder` must then still hold unchanged, all nineteen rows, `Plan-Validate` Done through `Plan-Revalidate` Done to `Batchifier`.
-Under today's code that flip fails at `Plan-Validate`;
-under the fix it passes, and it is the assertion that would have caught F7 on the day the row landed.
+**The one thing that fixture gets wrong is the whole reason F7 escaped CI, and the offending line is the fake `Plan-Write`.**
+`fakeLoomShuttle`'s `spec.Role == "plan"` branch — the stand-in for row 6, `Plan-Write` — writes `planFixtureOverview(**true**)` at `fixture_test.go:393`.
+The fake writer **self-approves**, which is exactly what `loom-template-plan.md:79` forbids the real writer from doing.
+The fixture therefore hands row 8 a plan the production `Plan-Write` can never produce, the nineteen-row sequence test passed continuously, and the live pipeline could not clear row 8.
+
+Note the line that is *not* to blame, because the round-2 draft of this section named it wrongly: `fixture_test.go:545`'s `seedPlanValidateFixture(t, dir, true)` never reaches `Plan-Validate` at all.
+`loomshed.NewPlanWrite`'s rotation archives every top-level `.md` file in the plan directory before the shuttle runs — `fixture_test.go:283-287` documents this as the reason the `"plan"` branch rewrites the whole directory rather than only `spec.OutputFiles` — so the seeded overview is gone by row 8 and its `approved` value is inert there.
+Flip it to `false` as well for honesty, but the regression rides entirely on `:393`.
+mill-plan must check whether any other test in `internal/loomrecipe` (e.g. `resume_test.go`) depends on that seed's value before flipping it.
+
+**The regression test is one character.**
+Change `fixture_test.go:393` to `planFixtureOverview(false)`, so the `Plan-Write` stand-in obeys the stencil it is standing in for, and fill `env.ApprovePlan` with a closure running the real `planparser.SetApproved` over the fixture's own plan directory.
+`sequence_test.go`'s `wantSequenceOrder` must then still hold unchanged — all nineteen rows, `Plan-Validate` Done through `Plan-Revalidate` Done to `Batchifier`.
+Under today's code that flip makes `Plan-Validate` report Stuck and the sequence bounce;
+under the fix it passes.
+It is the assertion that would have caught F7 on the day row 8 landed.
 Add one further assertion in the same test that the fixture's `00-overview.md` carries `approved: true` after the run, so a fixture that silently stopped exercising the seam cannot pass.
 
-Also add the negative case: with `env.ApprovePlan` left nil and `approve_seam` removed from the `Plan-Bouncer` row, the same fixture must halt at `Plan-Revalidate` rather than reaching `Batchifier` — this pins that `Plan-Revalidate` is genuinely enforcing the approval it is now the only row to check.
+**The negative case, by a mechanism that is actually reachable.**
+Removing `approve_seam` from the `Plan-Bouncer` row is *not* reachable through `buildSequenceFixture`: `loomrecipe.New` parses the embedded `recipes.LoomRecipe` unconditionally at `loomrecipe.go:86`, and leaving `env.ApprovePlan` nil against the shipped recipe makes `New` fail at `requireSeam` before the run starts.
+Express it two ways instead:
+
+- **Dynamic**, through the shipped fixture: substitute `env.ApprovePlan` with a **non-nil no-op** closure.
+  `requireSeam` only checks non-nil, so construction succeeds, the segment approves, nothing writes the flag, and the run must halt at `Plan-Revalidate` with `plan-unapproved` and bounce to `Plan-Write` rather than reaching `Batchifier`.
+  This pins that `Plan-Revalidate` is genuinely enforcing the approval it is now the only row to check.
+- **Static**, over a hand-authored recipe document: assert the two new keys are wired as shipped, and that mis-wirings are rejected, by parsing modified YAML through `shedbuild.Parse([]byte(...))` exactly as `internal/loomrecipe/overlay_seam_guard_test.go:270` already does.
+  Cases: the shipped `recipes.LoomRecipe` carries `approve_seam: plan` on `Plan-Bouncer` and `require_approved: true` on `Plan-Revalidate` and on no other row;
+  a document naming `approve_seam` on a row whose `Env` seam is nil fails to build;
+  an unknown `approve_seam` value fails to build.
 
 **Not covered here.**
 A live driven loom run through `Finalize`.
@@ -387,8 +414,13 @@ That is the follow-on task this change exists to unblock.
 - **Q:** Do Webster, `webstercli`, and `Batchifier` change? **A:** [auto-pick] no — they keep calling the full `Validate` and keep refusing an unapproved plan. **Why:** they run after approval, and the refusal is the standalone-invocation guard the spec's "else refuse to run" wording was written for.
 - **Q:** (review round 2 gap) What happens when `Approve` or `Commit` fails and the operator resumes — `shedengine.Run` re-calls `Plan-Bouncer`, which archives its own APPROVED verdict and spends a whole new LLM review generation? **A:** [auto-pick] accepted as-is and recorded, with no retry loop and no short-circuit;
   the state converges because both seams are idempotent and the judge never reads the approval flag. **Why:** the durable `settled`-marker short-circuit that would eliminate the cost changes the generic `Bouncer`'s on-disk contract for two segments this task does not otherwise touch, which is the scope growth F7's own fixer report warned against — filed as a follow-up instead.
-- **Q:** (review round 2 gap) How does the keystone routing assertion reach an APPROVED settle without an LLM run — the shuttle, the rubric-stencil probe, and the verdict/ledger/report set all have to come from somewhere? **A:** [auto-pick] reuse `internal/loomrecipe/fixture_test.go`'s existing `buildSequenceFixture`, which already supplies all three offline, and flip its `seedPlanValidateFixture(t, dir, true)` seed to `false`. **Why:** tracing the mechanism found the actual reason F7 survived CI — that fixture seeds an already-approved plan `Plan-Write` can never write, so the nineteen-row sequence test passed while the live pipeline deadlocked.
-  The flip is both the fix to the fixture and the regression test for the bug.
+- **Q:** (review round 2 gap) How does the keystone routing assertion reach an APPROVED settle without an LLM run — the shuttle, the rubric-stencil probe, and the verdict/ledger/report set all have to come from somewhere? **A:** [auto-pick] reuse `internal/loomrecipe/fixture_test.go`'s existing `buildSequenceFixture`, which already supplies all three offline. **Why:** tracing the mechanism found the actual reason F7 survived CI, and round 3 corrected which line carries it — `fakeLoomShuttle`'s `"plan"` branch at `:393` writes `planFixtureOverview(true)`, so the fake `Plan-Write` self-approves in a way the real one is forbidden to.
+  Flipping that one argument to `false` is both the fixture fix and the regression test.
+  The round-2 draft blamed `:545`'s seed instead, which `NewPlanWrite`'s rotation discards before row 8 ever reads it.
+- **Q:** (review round 3 gap) How is the negative case expressed, given `loomrecipe.New` parses the embedded recipe unconditionally and a nil `Env.ApprovePlan` fails at `requireSeam` before the run starts? **A:** [auto-pick] two ways — dynamically by substituting a non-nil **no-op** `env.ApprovePlan` in the shipped fixture, and statically by parsing hand-authored recipe YAML through `shedbuild.Parse` as `overlay_seam_guard_test.go:270` already does. **Why:** the no-op closure passes `requireSeam`'s non-nil check while writing nothing, which is exactly the condition `Plan-Revalidate` must catch;
+  the static half pins the shipped recipe's own key wiring, which no dynamic run asserts.
+- **Q:** (review round 3 gap) `TestSequence_PlanRevalidateCatchesPostSegmentRegression` injects its regression as `approved: false`, which the new `Approve` seam undoes — what happens to it? **A:** [auto-pick] re-point `fakeLoomBurler.corruptPlanOverview` to a genuinely format-invalid corruption, an `index-file-mismatch` from a Card Index entry naming an absent card file. **Why:** the seam runs after the burler round, so any approval-flag corruption is masked by construction;
+  the test's subject is that `Plan-Revalidate` catches a post-segment regression, and a format fault tests that subject better than the flag ever did.
 - **Q:** (review round 2 gap) Does the plan stencil's Step 5 self-check block change? **A:** [auto-pick] it stays verbatim. **Why:** Step 5 is the writer-facing half of the same deadlock, and the verb's new default mode is exactly what makes "re-run it until it exits 0" satisfiable;
   adding `--require-approved` there would re-impose the deadlock on the one agent that must never satisfy it.
 - **Q:** How deep does verification go in this task? **A:** [auto-pick] unit tests per package plus a recipe-level routing assertion that an approved plan reaches `Batchifier` with no bounce;
