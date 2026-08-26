@@ -374,6 +374,61 @@ Fixes, split by size:
   outside this module and outside a hardening round's commit-per-fix loop. Recorded here for
   the orchestrator to spin into its own task.
 
+### F11 — the card shape `Plan-Write`'s own stencil mandates is forced onto `Custom`, which silently disables `path-missing` on its edit targets — LOW — CONFIRMED (observed in the live plan) — NOT-FIXED-THIS-ROUND
+
+`contracts/stencils/loom/loom-template-plan.md` (card rules) + `internal/planparser/validate.go:174`
+(`checkCardTypeMissing`) + `internal/planparser/validate.go:545` (`checkPathMissing`).
+
+Three shipped rules collide:
+
+1. The plan stencil requires a card to **bundle its own test**: "implementation plus test for
+   the same behaviour land together; only pure refactors/renames may rely on existing tests
+   instead."
+2. The same stencil requires **exactly one** bold type label per card, and
+   `checkCardTypeMissing` enforces it: `card %d carries %d type labels; exactly one is required`.
+3. `checkPathMissing` skips `Create` and `Custom` cards' targets entirely.
+
+A card that edits an existing file AND creates a new test file therefore has no correct
+single label — it is an `Edit` and a `Create` at once — so the only label that fits is
+`Custom`. And `Custom` is exactly the label whose targets escape existence checking.
+
+Observed, unprompted, in the live run's own plan — the very first card of the very first
+real plan `Plan-Write` has ever produced end to end:
+
+```
+$ head -6 _lyx/plan/01-greet-trim.md
+# Card 1 — greet-trim
+
+**Custom:**
+- `greet.go`
+- `greet_test.go`
+```
+
+`greet.go` is an edit target that exists; `greet_test.go` is a create target that does not.
+Because the card is `Custom`, neither was existence-checked. Had the plan writer typo'd
+`greet.go`, `path-missing` would have stayed silent — the plan would have passed both
+`Plan-Validate` and `Plan-Revalidate` and reached Webster with an unresolvable target.
+
+This is not a mistyped card. `manifest/designs/loom.md`'s Plan-Review rubric calls `Custom`
+"a last resort … never as a shortcut around correct typing", and warns that "a mistyped one
+silently escapes two checks the rest of the plan is held to" — but here correct typing IS
+`Custom`, for the single most common card shape the format asks authors to write. The round's
+own `Plan-Bouncer` judge noticed the symptom and filed it as a NIT ("the `Custom` type label
+carries no stated rationale"), which is the rubric working as designed and still not reaching
+the real issue.
+
+**NOT-FIXED-THIS-ROUND**, and deliberately so: every available fix is a contract change, not a
+bug fix — allow a second type label, add an `EditAndCreate`-shaped type, or make
+`checkPathMissing` classify a `Custom` card's targets individually by whether some other card
+creates them. Each reaches `planparser`, the plan stencil, the Plan-Review rubric,
+`plan-card-format.md`, and webster's own consumption of `Targets`, and each needs its own
+check-matrix. That is a design task, not a hardening round's commit-per-fix loop. Recorded in
+full for the orchestrator to spin out.
+
+Severity is LOW rather than MEDIUM because the downstream failure is loud rather than silent:
+a Webster fork handed a target that does not exist fails its batch visibly. The cost is a
+wasted real batch, not a wrong result that ships.
+
 ### F3 — `BurlerProducer`'s doc comment claims the Bouncer uses the same round-completion predicate; it does not — LOW — CONFIRMED
 
 `internal/shedadapters/burler.go:177-178` states: "The same pair predicate is what the
