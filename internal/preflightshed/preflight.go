@@ -5,10 +5,25 @@ package preflightshed
 
 import (
 	"context"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
+
+// formatFailures renders report's determined failures as a single "check: reason" list, semicolon
+// separated, for the log line that surfaces them.
+// It exists because a Report's Failures slice is the only account of WHY this row refused, and this
+// row carries no OnStuck: a human is the only recovery, and the driver log is the only place they
+// can read it.
+func formatFailures(report preflight.Report) string {
+	parts := make([]string, len(report.Failures))
+	for i, f := range report.Failures {
+		parts[i] = string(f.Check) + ": " + f.Reason
+	}
+	return strings.Join(parts, "; ")
+}
 
 // preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its
 // determined Report onto shedengine's contract.
@@ -52,6 +67,12 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
+		// The determined failures are surfaced rather than discarded: this row carries no OnStuck --
+		// by design, since nothing in the producer list produces what it gates -- so its Stuck halts
+		// the whole run for a human, and without this line the only thing that human is told is
+		// Shed's generic "stuck with no OnStuck target". The pointer stays empty: this is a gate
+		// signal, not an artifact.
+		logger.Warn("preflightshed: preconditions not met", "producer", p.name, "cwd", p.cwd, "failures", formatFailures(report))
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	}
 
