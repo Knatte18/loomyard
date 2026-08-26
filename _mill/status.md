@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-attach-geometry-reconcile
 branch: reed-attach-geometry-reconcile
 plan: _mill/plan
@@ -32,6 +32,7 @@ holistic-fixing  '2026-08-26T13:18:48Z'
 nits-fixed-holistic  '2026-08-26T13:23:16Z'
 holistic-approved  '2026-08-26T13:23:24Z'
 done  '2026-08-26T13:30:18Z'
+pr-pending  '2026-08-26T13:31:38Z'
 ```
 
 ## Batches
