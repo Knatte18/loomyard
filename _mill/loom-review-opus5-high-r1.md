@@ -394,6 +394,84 @@ native terminal selection unless the terminal's Shift-bypass is used).
 Changing reed's shipped default — `mouse: on` plus a `WheelUpPane` copy-mode binding, the conventional configuration that keeps both —
 is a reed change and is recorded here for the orchestrator rather than made in a loom hardening round.
 
+### F10 — MEDIUM (CONFIRMED live, operator-observed) — `lyx loom status --watch` reprints an unchanged line every second, flooding the strand pane and evicting its scrollback
+
+`internal/loomcli/status.go:80-89`.
+
+```go
+for {
+    polled, polledFound, pollErr := state.ReadJSONStrict[...](...)
+    switch {
+    case pollErr != nil || !polledFound:
+        fmt.Fprintln(out, "loom status unavailable (status file transiently unreadable)")
+    default:
+        fmt.Fprintln(out, renderStatusLine(polled))
+    }
+    time.Sleep(interval)
+}
+```
+
+The line is printed unconditionally on every poll — default `interval` is `1s` — regardless of whether anything changed.
+A producer call lasts minutes, so the overwhelming majority of those lines are byte-identical to the one above them.
+
+Reported by the operator while attached:
+
+> "WHY does it print 'loom pause' ALL THE TIME. Once is enough."
+
+Captured from the live pane during the driven run:
+
+```
+loom running | now Discussion-Write | last Loom-Preflight → done
+loom running | now Discussion-Write | last Loom-Preflight → done
+loom running | now Discussion-Write | last Loom-Preflight → done
+... (identical, once per second, for the whole producer call)
+```
+
+Three harms, in increasing order of seriousness:
+
+1. `manifest/designs/loom.md` specifies this strand as "**a 1-line pane at the top**". A pane emitting a fresh line every second is a scrolling
+   ticker, not a status line — and reed collapses it to `collapsed_strip_rows: 3` once an agent pane exists, so the operator watches three rows of
+   the same sentence scroll past forever.
+2. It fills tmux's scrollback. Measured on the live pane after ~15 minutes: `%0 [history 434/2000, 279476 bytes]`.
+   With `history-limit` at tmux's 2000 default, a run fills and starts evicting the buffer roughly every 33 minutes, so anything else that pane
+   ever printed is gone. This compounds F9: the wheel does not scroll, and there is nothing worth scrolling to anyway.
+3. It hides real transitions. The one line an operator actually needs — the moment `now` changes — is visually indistinguishable from the
+   hundreds of identical lines around it.
+
+Fix: print only when the composed line differs from the last one printed (always printing the first). That keeps the keepalive's real purpose —
+a change is surfaced within one poll — while making the pane match its own design contract.
+The `"status file transiently unreadable"` fallback needs the same dedupe, or a transient fault becomes its own flood.
+
+### F11 — LOW (CONFIRMED live) — `lyx loom drive` advertises itself as the no-tmux escape hatch but cannot run any LLM producer without a live reed session
+
+`internal/loomcli/drive.go:20-28`.
+
+```
+Short: "run loom's phase machine in the foreground, with no tmux and no strand",
+Long:  `drive runs loom's phase machine in the foreground: no tmux, no strand,
+and no terminal handover. It is the no-tmux escape hatch for debugging and CI.
+```
+
+"No tmux" is true only of `drive` itself. Every LLM row underneath it — `Discussion-Write`, `Plan-Write`, and all three review segments — spawns
+through `shuttleengine` → `reed`, which requires a live tmux session. `run` calls `c.reed.Up()` as its step 4; `drive` calls nothing equivalent
+and performs no precondition check.
+
+Reproduced live: after tearing down the reed server, `lyx loom drive` ran happily through `Discussion-Bouncer` and only failed two producers later:
+
+```
+{"error":"shedadapters: Discussion-Burler (burler): round 1 attempt 1: run: burler: shuttle run: shuttle: add strand:
+ no reed session (1 strands persisted); run \"lyx reed resume\" to rebuild, or \"lyx reed up\" for a bare substrate","ok":false}
+```
+
+The cost of failing late rather than up front is not zero: `Discussion-Bouncer`'s seed call had already attempted its spawn, and because
+`runSeedSpawn` degrades every failure to a `logger.Warn` and returns (`internal/shedadapters/bouncer.go:387-432`), the failure was swallowed,
+`ensureFocus(1)` wrote a **synthetic empty focus file** over the real one, and the row consumed a unit of bounce budget — all before anything
+told the operator the substrate was missing. The `Discussion-Burler` row then hard-errors on the identical condition, so the two rows disagree
+about whether a dead substrate is recoverable.
+
+Fix: `drive` should ensure the substrate (`c.reed.Up()`, as `run` does) or refuse on the envelope naming `lyx reed up`, before the first producer
+call. And the help text must stop claiming "no tmux" for a verb that cannot function without it.
+
 ### Live driving — the real hub
 
 A fresh, real fabric hub was built for this review (nothing in the operator's own repos was touched):
@@ -418,6 +496,57 @@ The toy warp repo is a two-file Go module (`greet/greet.go`, `README.md`); the b
   `{"error":"loom: driver did not take the run lock; ...","ok":false}`. See findings F1 and F2.
 - `lyx loom status` — round-tripped `slug`/`parent`/`current_producer`/`state`/`activity`/`history_length` correctly.
 - `lyx reed status` — `{"ok":true,"session":"loom-e2e","socket":"lyx-loomdrive-HUB-3225f10b","strands":[{"name":"loom-status","live":true,"paneId":"%0"}]}`.
+
+Then, on the clean pair, the full chain ran for real — the first time any of it has been shown to chain end to end:
+
+```
+Preflight → done
+Loom-Preflight → done
+Discussion-Write → done          (real sonnet session, wrote decision-record.md + support-log.md)
+Discussion-Validate → done
+Discussion-Bouncer → stuck       (seed call: real spawn, wrote round-1-focus.md)
+Discussion-Burler → stuck        (real burler round: round-1-review.md + round-1-fixer-report.md)
+Discussion-Bouncer → done        (judge: APPROVED, commit seam fired)
+Plan-Write → done
+Plan-Validate → stuck            ← and here it bounces forever. See F7.
+Plan-Write → done
+Plan-Validate → stuck
+... (x4 observed before the run was paused)
+```
+
+**`commit_seam: discussion` proven live.** Two real weft commits landed, both named `loom: discussion artifacts for loom-e2e`:
+`8651cf4` from `discussionWrite`'s own post-Done commit, and `fe3ce97` from the **Bouncer's approved settle** — carrying exactly the
+fixer round's relocation edit:
+
+```
+$ git -C loom-e2e-weft show --stat fe3ce97
+ _lyx/discussion/decision-record.md | 1 -
+-- Fixed the `_lyx/config/board.yaml` config ... via `lyx config reconcile --apply` ...
+```
+
+This is the Fabric Git Invariant's whole reason for the row, and it holds.
+
+**Graceful pause proven live.** With a real `Plan-Write` agent mid-run, `lyx loom pause` returned `{"ok":true}`, and the driver stopped at the
+next producer boundary rather than mid-call:
+
+```
+pause_requested False | Plan-Validate paused | activity {'now':'Plan-Validate','last':'Plan-Write → done','wait':''}
+```
+
+The flag was consumed in the same persist that recorded `paused`, exactly as `shedengine.Run` step 3 documents, and the agent pane was
+cleaned up — `tmux list-panes` showed only the header and the status strand left.
+
+**Bouncer clear-and-re-seed (the `8cac77aa` fix) proven live.** With `Discussion-Review` sitting APPROVED from the run above, `current_producer`
+was set back to `Discussion-Bouncer` to force segment re-entry. The Bouncer archived the whole settled generation aside and re-seeded from empty:
+
+```
+.lyx/loom/reviews/discussion-20260826T093809Z/   round-1-{review,fixer-report,bouncer-verdict,bouncer-ledger,focus}.md, round-2-focus.md
+.lyx/loom/reviews/discussion/                    round-1-focus.md   (fresh)
+```
+
+Both rows' artifacts moved together, as `internal/shedadapters/doc.go` requires, and the stale APPROVED verdict was **not** replayed —
+history recorded `Discussion-Bouncer → stuck` (a seed), never a second `done`.
+(The fresh `round-1-focus.md` is the *synthetic* empty one, because the seed spawn itself failed against a torn-down reed server — see F11.)
 
 **Operator watch commands for this session** (both take no flags — they resolve from cwd):
 
