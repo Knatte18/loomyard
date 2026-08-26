@@ -469,6 +469,13 @@ see the `internal/shuttleengine` package documentation).
 **I/O still rides the file contract** — the agent writes its output files and Go reads them — so the file-contract design above is unchanged;
 only the *spawn + completion-detection* mechanism differs from a headless model.
 
+**An agent loom spawns resolves `lyx` from its own PATH, and that is a live hazard, recorded here rather than left to be rediscovered.**
+Every stencil loom's agents read tells them to run `lyx` verbs — `lyx board get`, `lyx loom validate-plan`, `lyx webster begin-batch` — and none of them names a binary, so each resolves whatever `lyx` the agent's shell finds.
+`lyx`'s own root pre-run seeds and **commits** the hub's stencils from its embedded registry, so an `lyx` of a different vintage than the driver silently rewrites the very prompt files the run's later rows read at call time, mid-run, and commits the rewrite to the board repo.
+This was observed live: during a crucible round's own pipeline run, an older installed `lyx` reached from an agent's shell reverted three loom stencils nine seconds in, deleting Discussion-Write's `## What you may write` fence and both halves of the plan-approval wording.
+Prefixing the driver's environment PATH does **not** fix it — an agent's shell re-sources the user profile and re-orders PATH back — so the fix belongs in the spawn layer (`shuttle`/`reed`), not here, and is not built.
+The operator-side mitigation today is to keep exactly one `lyx` reachable from a hub, and to treat the repeated `stencilstore: dev build does not refresh an untouched stencil` warning as the signal that two are: it names `lyx stencil sync` as the repair.
+
 The consequence for loom: it sits on top of the [`proc → reed → shuttle`](../../docs/overview.md#execution-stack-orchestration-layers) stack, so that stack is on loom's critical path. loom (via its review segments — see the `internal/shedadapters` package documentation — → `burler`, see the `internal/burlerengine` package documentation) calls `shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `reed` (see [overview.md#modules](../../docs/overview.md#modules);
 the strand bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go) and `shuttle` (see the `internal/shuttleengine` package documentation;
 the swappable provider engine).

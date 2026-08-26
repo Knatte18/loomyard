@@ -96,7 +96,14 @@ func reconcileOne(path, name string, state State, onDisk, shipped []byte, mode M
 			return false, nil
 		}
 		if mode == ModeDev {
-			logger.Warn("stencilstore: dev build does not refresh an untouched stencil", "stencil", name)
+			// The remedy is named at the point of failure rather than left for a reader to find,
+			// because without it this warning reads as benign housekeeping while it is in fact
+			// reporting that every producer reading this stencil will run on the OLDER on-disk text.
+			// A dev build refuses to refresh so it never clobbers a board's stencils with whatever
+			// is in a working tree, and the refusal is one-way: an older installed binary running in
+			// prod mode DOES refresh, so it can downgrade a board's stencils and the newer dev build
+			// can then only warn about it, on every single invocation, forever.
+			logger.Warn("stencilstore: dev build does not refresh an untouched stencil; producers will read the OLDER on-disk copy -- run \"lyx stencil sync\" to force-refresh it", "stencil", name, "path", path)
 			return false, nil
 		}
 		if err := writeStamped(path, shipped, BodyHash(shipped)); err != nil {
