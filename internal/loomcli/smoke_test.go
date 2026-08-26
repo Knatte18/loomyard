@@ -12,10 +12,10 @@
 // binary "loom drive" knows how to dispatch.
 //
 // This suite is the regression home for the two bugs this task's own design rounds found before any
-// code existed: the cleanliness-ordering blocker (loom's own seed dirtying the weft and failing
-// loom's own first precondition row -- TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit) and the
-// double-spawn window (the run lock being taken by the child long after the spawn call returns --
-// TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
+// code existed: the cleanliness blocker (loom's own seed being unable to dirty the weft at all, since
+// it now writes solely under the never-committed scratch tree -- TestSmokeBootstrap_CleanlinessAfterSeed)
+// and the double-spawn window (the run lock being taken by the child long after the spawn call
+// returns -- TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
 //
 // A note on driver-liveness timing: loom's own producer table (contracts/recipes/loom-recipe.yaml)
 // now carries seventeen rows, every one backed by a real producer -- no row reports Done
@@ -38,7 +38,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -300,34 +299,12 @@ func weftCommitCount(t *testing.T, dir string) int {
 	return n
 }
 
-// weftHeadChangedFiles returns the paths HEAD's own commit changed, relative to dir's repository
-// root.
-func weftHeadChangedFiles(t *testing.T, dir string) []string {
-	t.Helper()
-	out, err := exec.Command("git", "-C", dir, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").Output()
-	if err != nil {
-		t.Fatalf("git -C %s diff-tree HEAD: %v", dir, err)
-	}
-	var files []string
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			files = append(files, l)
-		}
-	}
-	return files
-}
-
-// seedAndCommitStatus seeds loc's status file directly through the production Seed function and
-// commits it weft-side -- the same seed-then-commit shape "lyx loom run" itself performs, used here
-// so a standalone-driver test does not need a live tmux server just to get a valid seeded pair.
-func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
+// seedStatus seeds loc's status file directly through the production Seed function, used here so a
+// standalone-driver test does not need a live tmux server just to get a valid seeded pair.
+func seedStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 	t.Helper()
 	if err := loomshed.Seed(loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc), slug, "main"); err != nil {
 		t.Fatalf("loomshed.Seed: %v", err)
-	}
-	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
-		t.Fatalf("commit seed: %v", err)
 	}
 }
 
@@ -358,11 +335,6 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	}
 	if err := os.WriteFile(statusPath, poisoned, 0o644); err != nil {
 		t.Fatalf("write poisoned status: %v", err)
-	}
-
-	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
-		t.Fatalf("commit poisoned status: %v", err)
 	}
 }
 
@@ -573,7 +545,7 @@ func TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *test
 	// own smoke sweep.
 	registerBootstrapTeardown(t, loc, worktree)
 
-	seedAndCommitStatus(t, loc, slug)
+	seedStatus(t, loc, slug)
 	poisonStatusFile(t, loc)
 	poisonedBytes, err := os.ReadFile(loomengine.LoomStatusFile(loc))
 	if err != nil {
@@ -646,41 +618,35 @@ func TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove(t *testing.T) {
 }
 
 // (g) the cleanliness ordering -- in a freshly added, never-run pair the bootstrap reaches past the
-// first precondition row rather than blocking on it, the fabric cleanliness check reports clean
-// immediately after the seed commit, and the weft carries exactly one new commit touching only the
-// status file. This is one of the two named regression guards this suite exists for and asserts the
-// mechanism directly, not merely a happy outcome.
-// This case deliberately drives just the seed-then-commit mechanism directly (seedAndCommitStatus,
-// the same Seed+CommitWeftPaths pair "lyx loom run" itself performs at its own steps 2-3) rather than
-// the full "loom run" bootstrap: once a driver actually runs, its own persists rewrite the status
-// file's WORKING TREE content on every phase transition without ever committing those rewrites (only
-// the CLI's own explicit seed commit is ever committed), which would dirty the weft again and make a
-// post-driver cleanliness check fail for a reason that has nothing to do with the ordering this case
-// exists to pin -- see the file-level doc comment's note on driver-liveness timing for why the driver
-// portion of a full bootstrap cannot be relied on to have not yet run by the time a caller checks.
-func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
+// first precondition row rather than blocking on it, and the fabric cleanliness check reports clean
+// immediately after the seed with no new commit at all. This is one of the two named regression
+// guards this suite exists for and asserts the mechanism directly, not merely a happy outcome.
+// This case deliberately drives just the seed mechanism directly (seedStatus, the same Seed call
+// "lyx loom run" itself performs at its own step 2) rather than the full "loom run" bootstrap: once a
+// driver actually runs, its own persists rewrite the status file's WORKING TREE content on every
+// phase transition, which would dirty the weft again and make a post-driver cleanliness check fail
+// for a reason that has nothing to do with the ordering this case exists to pin -- see the
+// file-level doc comment's note on driver-liveness timing for why the driver portion of a full
+// bootstrap cannot be relied on to have not yet run by the time a caller checks.
+func TestSmokeBootstrap_CleanlinessAfterSeed(t *testing.T) {
 	_, loc, worktree, slug := newWiredPairFixture(t)
 
 	weftDir := fabricengine.WeftWorktree(loc)
 	beforeCount := weftCommitCount(t, weftDir)
 
-	seedAndCommitStatus(t, loc, slug)
+	seedStatus(t, loc, slug)
 
 	clean, reason, err := fabricengine.Clean(loc)
 	if err != nil {
 		t.Fatalf("fabricengine.Clean: %v", err)
 	}
 	if !clean {
-		t.Errorf("fabricengine.Clean() = (false, %q); want clean immediately after the seed commit", reason)
+		t.Errorf("fabricengine.Clean() = (false, %q); want clean immediately after the seed", reason)
 	}
 
 	afterCount := weftCommitCount(t, weftDir)
-	if afterCount != beforeCount+1 {
-		t.Errorf("weft commit count = %d; want exactly %d (the single seed commit)", afterCount, beforeCount+1)
-	}
-	wantFiles := []string{loomengine.LoomStatusRel()}
-	if changed := weftHeadChangedFiles(t, weftDir); !slices.Equal(changed, wantFiles) {
-		t.Errorf("weft HEAD changed files = %v; want exactly %v", changed, wantFiles)
+	if afterCount != beforeCount {
+		t.Errorf("weft commit count = %d; want unchanged at %d -- the seed must produce no commit at all", afterCount, beforeCount)
 	}
 
 	report, _, err := preflight.Check(worktree)
@@ -688,12 +654,12 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 		t.Fatalf("preflight.Check: %v", err)
 	}
 	if report.Has(preflight.CheckWorktreeClean) {
-		t.Errorf("Check report still carries CheckWorktreeClean after the seed commit; the bootstrap must reach past the first precondition row rather than block on it")
+		t.Errorf("Check report still carries CheckWorktreeClean after the seed; the bootstrap must reach past the first precondition row rather than block on it")
 	}
 }
 
 // mustGitSmoke runs a git subcommand against dir, failing the test on any non-zero exit -- the plain
-// direct-exec shape smoke tests already use for weftCommitCount/weftHeadChangedFiles, extended here to
+// direct-exec shape smoke tests already use for weftCommitCount, extended here to
 // a general run-and-fail helper for the legacy-pair rig below.
 func mustGitSmoke(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -744,12 +710,10 @@ func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *
 		t.Fatalf("healing loom run: %v; output: %s", err, stdout)
 	}
 
-	// The origin record specifically must now be committed and clean. The overall weft is not
-	// asserted clean here: once a driver actually runs, its own persists rewrite the status file's
-	// working-tree content on every phase transition without ever committing those rewrites (see
-	// TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit's doc comment), which legitimately dirties
-	// the weft again for a reason that has nothing to do with the origin-record healing this case
-	// exists to pin.
+	// The overall weft is not asserted clean here; the cleanliness assertion scopes down to the
+	// origin record specifically, because that record is the only tracked path this scenario is
+	// about -- the status file's own persists now land under the never-committed scratch tree and
+	// cannot dirty the pair at all.
 	if status := weftPathspecStatus(t, weftDir, originRel); status != "" {
 		t.Errorf("origin record status after the healing run = %q; want it committed and clean", status)
 	}
