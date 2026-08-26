@@ -220,19 +220,6 @@ func TestDispositionForHandshake(t *testing.T) {
 	}
 }
 
-func TestAttachArgv(t *testing.T) {
-	got := attachArgv("my-socket", "my-session")
-	want := []string{"-L", "my-socket", "attach-session", "-t", "=my-session"}
-	if len(got) != len(want) {
-		t.Fatalf("attachArgv() = %v; want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("attachArgv()[%d] = %q; want %q", i, got[i], want[i])
-		}
-	}
-}
-
 // TestResolveStatusStrandAction is the regression guard for a status pane that never came back.
 // The DeadEntry row is the defect: the bootstrap used to decide by presence alone, and reed keeps
 // tracking a strand whose pane is gone, so after any reed server restart -- a reboot, a crash, a

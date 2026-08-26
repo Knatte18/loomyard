@@ -1,0 +1,124 @@
+// windowsize.go owns the live-window-size query and its fallback, the two geometry option pins
+// (status off, window-size latest), and the two effective-value readbacks the attach path (batch 2)
+// gates the chain on.
+// Every tmux interaction here is non-fatal, per the Shared Decision
+// geometry-tmux-failures-are-non-fatal-everywhere: a failure is logged via logger.Warn and answered
+// with a safe fallback, never returned as an error.
+
+package reedengine
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
+)
+
+// parseWindowSize parses a `display-message -p '#{window_width} #{window_height}'` answer into a
+// width/height pair.
+// It requires exactly two whitespace-separated fields, both parsing as strictly positive integers;
+// any other shape — empty, one field, three or more fields, non-numeric, zero, or negative — reports
+// ok == false. No I/O.
+func parseWindowSize(out string) (w, h int, ok bool) {
+	fields := strings.Fields(strings.TrimSpace(out))
+	if len(fields) != 2 {
+		return 0, 0, false
+	}
+	w, errW := strconv.Atoi(fields[0])
+	h, errH := strconv.Atoi(fields[1])
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return 0, 0, false
+	}
+	return w, h, true
+}
+
+// liveBoxLocked queries the live tmux window size for this engine's session and returns it as a
+// render.Box anchored at the origin.
+// On a round-trip error or a malformed answer, it logs via logger.Warn and falls back to the
+// configured e.cfg.Width/e.cfg.Height — exactly today's pre-live-query value — so a degraded query
+// never blocks a caller.
+// Assumes the op lock is already held.
+func (e *Engine) liveBoxLocked() render.Box {
+	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window_width} #{window_height}")
+	if err != nil {
+		logger.Warn("reed: failed to query live window size, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
+	}
+	w, h, ok := parseWindowSize(out)
+	if !ok {
+		logger.Warn("reed: malformed live window size answer, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "answer", out)
+		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
+	}
+	return render.Box{X: 0, Y: 0, W: w, H: h}
+}
+
+// reservedRowsFromStatus maps a `#{status}` readback to the number of window rows tmux's status line
+// consumes: "off" yields 0, "on" yields 1, and a non-negative integer string yields that integer
+// verbatim.
+// Every other value — including the empty string and a negative integer — reports ok == false.
+// Trimmed and lowercased before matching. No I/O.
+func reservedRowsFromStatus(raw string) (rows int, ok bool) {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	switch v {
+	case "off":
+		return 0, true
+	case "on":
+		return 1, true
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// windowSizeAllowsChain reports whether a `#{window-size}` readback permits the attach chain: true
+// only for the exact value "latest" (trimmed and lowercased), false for every other value including
+// "manual", "largest", "smallest" and the empty string. No I/O.
+func windowSizeAllowsChain(raw string) bool {
+	return strings.ToLower(strings.TrimSpace(raw)) == "latest"
+}
+
+// pinGeometryOptionsLocked pins this session's window to "status off" and "window-size latest".
+// Both pins are session/window-targeted rather than -g, because a session- or window-scoped value set
+// from the operator's own ~/.tmux.conf silently wins over a global set while set-option still exits
+// 0 — verified live. Each call's error is logged via logger.Warn and then ignored; the second pin is
+// attempted even when the first failed, per the Shared Decision
+// geometry-tmux-failures-are-non-fatal-everywhere.
+// Assumes the op lock is already held.
+func (e *Engine) pinGeometryOptionsLocked() {
+	target := exactSessionWindowTarget(e.SessionName())
+	if err := e.tmux.run("set-option", "-t", target, "status", "off"); err != nil {
+		logger.Warn("reed: failed to pin status off", "socket", e.Socket(), "session", e.SessionName(), "option", "status", "err", err)
+	}
+	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {
+		logger.Warn("reed: failed to pin window-size latest", "socket", e.Socket(), "session", e.SessionName(), "option", "window-size", "err", err)
+	}
+}
+
+// readStatusRowsLocked reads back this session's effective `#{status}` value and reports the number
+// of rows it reserves, per reservedRowsFromStatus.
+// A round-trip error is logged via logger.Warn and reported as (0, false).
+// Assumes the op lock is already held.
+func (e *Engine) readStatusRowsLocked() (rows int, ok bool) {
+	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{status}")
+	if err != nil {
+		logger.Warn("reed: failed to read back status option", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return 0, false
+	}
+	return reservedRowsFromStatus(out)
+}
+
+// readWindowSizeLatestLocked reads back this session's effective `#{window-size}` value and reports
+// whether it permits the attach chain, per windowSizeAllowsChain.
+// A round-trip error is logged via logger.Warn and reported as false.
+// Assumes the op lock is already held.
+func (e *Engine) readWindowSizeLatestLocked() bool {
+	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window-size}")
+	if err != nil {
+		logger.Warn("reed: failed to read back window-size option", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return false
+	}
+	return windowSizeAllowsChain(out)
+}

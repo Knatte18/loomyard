@@ -63,16 +63,24 @@ func paneIDsByTop(live []LivePane) []string {
 }
 
 // planLayout computes the tmux window_layout string and focus pane id for
-// st's current strand table against live, without touching tmux. It injects
-// the header pane if present and filters by live panes only.
-func (e *Engine) planLayout(st *ReedState, live []LivePane) (layout, focus string, err error) {
+// st's current strand table against live, within box, without touching tmux
+// itself: box is always told to it by the caller, and it queries nothing of
+// its own. It injects the header pane if present and filters by live panes
+// only.
+//
+// The two callers pass two different box sources: applyLayoutLocked passes
+// e.liveBoxLocked()'s live tmux window query (falling back to the configured
+// box on failure), while AttachArgv (batch 2) passes the box it computes from
+// the attaching client's own told terminal size and never calls
+// liveBoxLocked — see the Shared Decision told-box-wins-live-query-is-the-fallback.
+func (e *Engine) planLayout(st *ReedState, live []LivePane, box render.Box) (layout, focus string, err error) {
 	presentIDs := liveIDSet(live)
 	strands := toRenderStrands(st.Strands, presentIDs)
 	headerPaneID := st.HeaderPaneID
 	if !presentIDs[headerPaneID] {
 		headerPaneID = ""
 	}
-	return render.Rules(strands, render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, render.Params{
+	return render.Rules(strands, box, render.Params{
 		CollapsedStripRows: e.cfg.CollapsedStripRows,
 		MinFullRows:        e.cfg.MinFullRows,
 		Header:             render.Header{PaneID: headerPaneID, HeightRows: e.cfg.Header.HeightRows},
@@ -108,17 +116,40 @@ func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
 // string would then enumerate zero panes, which tmux answers by destroying
 // the session's entire pane set (see anyPlacedStrand) — with nothing of
 // reed's to lay out, there is nothing worth destroying foreign panes over.
+//
+// The live box query (e.liveBoxLocked) runs only after both guards above have
+// passed, not as an argument evaluated up front: liveBoxLocked is a real
+// display-message round trip, and reconcileApplyPersistLocked (spawn.go) runs
+// this function once per launch on Resume, so evaluating it eagerly would
+// fire a wasted tmux call, repeated per strand, on exactly the degenerate
+// paths this function skips. This also makes this call site agree with
+// AttachArgv's ordering (batch 2), which evaluates the same two guards before
+// it plans.
+//
+// select-layout with a layout string whose dimensions disagree with the live
+// window exits 0 and silently rescales the layout proportionally, so every
+// absolute row budget reed computes (Header.HeightRows, CollapsedStripRows,
+// MinFullRows) was being scaled by live_height/cfg.Height on any window that
+// is not exactly cfg.Height rows tall — this is why the box passed to
+// planLayout below is always the live one, not the configured one.
+//
+// While detached, an over-budget layout string is accepted by select-layout
+// and answered by GROWING the window to fit the cells, so a session with no
+// client can end up taller than its configured boot height until the next
+// client attaches and snaps it back — a consequence of the live-box query,
+// not a bug.
 func (e *Engine) applyLayoutLocked(st *ReedState, live []LivePane) error {
-	layout, focus, err := e.planLayout(st, live)
-	if err != nil {
-		return fmt.Errorf("plan layout: %w", err)
-	}
-
 	if len(live) < 2 {
 		return nil
 	}
 	if !anyPlacedStrand(st.Strands, liveIDSet(live)) {
 		return nil
+	}
+
+	box := e.liveBoxLocked()
+	layout, focus, err := e.planLayout(st, live, box)
+	if err != nil {
+		return fmt.Errorf("plan layout: %w", err)
 	}
 
 	session := e.SessionName()
