@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: loom-bouncer-anchor-rundir-fix
 branch: loom-bouncer-anchor-rundir-fix
 plan: null
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-08-25T17:20:23Z'
 discussion-fix-r3  '2026-08-26T06:18:22Z'
 discussion-fix-r4  '2026-08-26T06:23:34Z'
+discussion-fix-r6  '2026-08-26T06:33:30Z'
+discussed  '2026-08-26T06:33:30Z'
 ```
