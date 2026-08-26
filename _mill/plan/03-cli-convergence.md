@@ -95,12 +95,13 @@ Batch-local decisions:
 ### Card 11: retire both deleted builders' tests
 
 - **Context:**
-  - `internal/reedengine/attach_test.go`
   - `internal/loomcli/bootstrap.go`
   - `internal/reedcli/attach.go`
 - **Edits:**
   - `internal/reedcli/cli_test.go`
   - `internal/loomcli/bootstrap_test.go`
+  - `internal/reedengine/attach_test.go`
+  - `internal/reedengine/windowsize_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -111,6 +112,9 @@ Batch-local decisions:
   Keep both files themselves — every other test in each stays.
   Update `internal/reedcli/cli_test.go`'s file-header comment, which currently names "the built attach invocation" as one of the three things the file covers, and remove any now-unused import each file is left with.
   Do not delete or weaken any other test in either file.
+
+  Verify surfaced a pre-existing defect from batch 2: `internal/reedengine/attach_test.go`'s and `internal/reedengine/windowsize_test.go`'s file-header comments each document, in prose, that the file drives its cases "through TmuxCmd's execHook seam" with "no exec.Command" — but `cmd/lyx/tierpurity_test.go` and `cmd/lyx/hermeticenv_test.go` scan for the banned token as a raw substring, including inside comments, so the literal string "exec.Command" in prose trips both guards even though neither file's actual test code spawns a process.
+  Reword each occurrence of the literal substring `exec.Command` in both files' header comments to an equivalent description that avoids the token (for example, "no live tmux server, no external process spawn") — a wording fix only, no test behavior changes.
 - **Commit:** `test: retire the two attach-argv tests whose builders the engine replaced`
 
 ## Batch Tests
