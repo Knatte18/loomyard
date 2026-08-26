@@ -29,7 +29,7 @@ No build order is implied between these items.
 
 1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree.
 
-1. **reed: daemon → Slack relay** — standalone watchdog + bidirectional Slack relay per worktree.
+1. **reed: watchdog daemon** — a standalone per-worktree daemon that self-heals what `reed` today only notices reactively, on its next invocation: reaps a stray/operator-split pane automatically (event-driven tmux hooks preferred over polling, gated by a policy that distinguishes a bug-induced pane from an intentional scratch pane; prerequisite — cheapen the reap probe first, today it spawns a fresh pwsh + full `Win32_Process` WMI enumeration per poll), and reconciles session geometry after a live terminal resize (`reed-attach-geometry-reconcile` fixed the mismatch at attach time only; a resize *while already attached* still leaves tmux's own proportional rescale in charge until the next `lyx reed` op re-renders — that task's discussion considered and rejected both a one-off tmux `set-hook`+`run-shell` reaction and a standalone watcher on their own, but a shared daemon that already needs event-driven tmux hooks for the pane-reap job pays for that hook infrastructure and psmux verification once, not per job). The self-heal core is worth building on its own merits, independent of the Slack-relay item below.
 
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
 
@@ -51,10 +51,6 @@ No build order is implied between these items.
 
 1. **warp-visibility: `CLAUDE.local.md` invisible in the Fabric repo's git history** — expose `CLAUDE.local.md` via symlink (Windows-Developer-Mode note + copy fallback) so nothing lyx-related shows up in the Fabric repo's own git history; the `CONSTRAINTS.md`-equivalent half is already covered by the shipped `PATTERN.md`, which lives in `weft` and is already invisible there.
    See [designs/warp-visibility.md](designs/warp-visibility.md).
-
-1. **reed daemon: foreign-pane self-heal** — extends the `reed: daemon → Slack relay` item above; reap a stray/operator-split pane automatically instead of only on reed's next invocation, preferring event-driven tmux hooks over polling, gated by a policy that distinguishes a bug-induced pane from an intentional scratch pane. Prerequisite: cheapen the reap probe first (today it spawns a fresh pwsh + full `Win32_Process` WMI enumeration per poll).
-
-1. **reed daemon: live-resize layout self-heal** — a second self-heal job for the same daemon (the monitoring/self-heal core is independently worth having even if the Slack-relay half of `reed: daemon → Slack relay` never lands): `reed-attach-geometry-reconcile` fixed the layout mismatch at attach time, but a terminal resize *while already attached* still leaves tmux's own proportional rescale in charge until the next `lyx reed` op re-renders. That task's discussion considered and rejected a one-off tmux `set-hook`+`run-shell` reaction (new required subcommand, unverified on psmux, races reed's own lock) and a standalone watcher (reed has never been a daemon) — but folding this into a shared self-heal daemon that already needs event-driven tmux hooks for the foreign-pane item above may change that calculus, since the hook infrastructure and psmux verification would be paid for once, not per self-heal job.
 
 1. **shuttle `Spec`: generic tools-restriction** — meaningless for today's single-session A→B agent;
    cluster reviewers turned out to be fork subagents inside the handler's own session (`useExactTools`), not separate sessions needing their own `settings.json`, so this stays unmotivated rather than blocked on anything.
@@ -99,6 +95,8 @@ No build order is implied between these items.
    The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, whenever picked up (`Shed`/`loom` now exist to consume it).
 
 1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability today means hand-threading a passthrough `Env` field through three layers (`shedrecipe` → `loomrecipe` → `loomcli`), since `shedrecipe` can't import the capability's owning package directly (Shed Recipe Registry Invariant); both shipped `loom: Discussion-Write producer` and `loom: Plan-Write producer` repeated this identical three-layer edit for their own two `Env` fields. The idea — not yet designed — is for a producer to declare what it needs and have the registry wire it automatically, closer to how a VS Code extension declares its own capabilities than to hand-editing a host per extension. Genuinely deep: likely touches the Shed Recipe Registry Invariant itself and all fourteen existing registry entries already wired the old way.
+
+1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the `reed: watchdog daemon` item above once it exists. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
 ## Done
 
