@@ -339,6 +339,11 @@ If a future editor judges the heading actively misleading, renaming it is a sepa
 `lyx loom pause` requests a pause;
 the running orchestration honours it at the next **step boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
 
+**`pause` and `status` depend on the status file and nothing else.**
+Neither loads a module config, constructs an engine, or builds a producer — they resolve the location and the two status-file paths, and stop there.
+That independence is the point rather than an optimisation: an emergency brake that a fault in any of eight config files can take away is not an emergency brake, and the fault does not have to be the operator's — an agent loom itself spawned can rewrite `loom.yaml` mid-run.
+The verbs that genuinely build producers (`run`, `drive`) keep failing early and loudly on a bad config, because for them it is a real refusal rather than an unrelated one.
+
 - **A property of the loop pattern, not loom alone.**
   Every loop — loom (phases), the review segment (rounds), [Webster](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) (batches;
   its loop is LLM-held,
