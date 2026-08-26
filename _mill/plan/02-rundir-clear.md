@@ -67,6 +67,7 @@ Batch-local decisions, on top of `## Shared Decisions`:
   Give `judgedVerdict` a doc comment stating what the extra return value is for: `Call`'s clear trigger needs the parsed verdict at entry, and `judged`'s discarding of it is what forced `settle` to re-read the file.
   This card changes no behavior: `Call`'s `if b.judged(n)` and `judgeCall`'s harvest `if b.judged(n)` both keep calling the wrapper, and `settle` keeps its own defensive re-read, which preserves its documented "vanished between judged and settle" degrade path and is the smaller change.
   `TestBouncer_Judged_IgnoresFocusFile` in `internal/shedadapters/bouncer_replay_test.go` must keep passing unchanged, which is the check that this split is behavior-preserving.
+  That test's APPROVED fixture is itself repaired one card later, by card 10, whose clear trigger fires on exactly that disk state — but it is untouched here, and its passing over the unchanged fixture is precisely what proves this card changed nothing.
 - **Commit:** `refactor(shedadapters): judgedVerdict returns the parsed verdict beside its bool`
 
 ### Card 10: clear an already-approved run directory at `Call` entry
@@ -118,8 +119,13 @@ Batch-local decisions, on top of `## Shared Decisions`:
   Because `testBouncerConfig` sets `RunDir` to `t.TempDir()` itself, give this file's fixtures a run directory nested one level inside `t.TempDir()` so each archived sibling is cleaned up with the temp tree.
 
   Repair the two existing test files the change falsifies.
-  In `internal/shedadapters/bouncer_replay_test.go`, `TestBouncer_Replay_Approved` asserts the removed behaviour outright and must be rewritten to assert the new one (the same disk state now clears and seeds), and `TestBouncer_PointerDiscipline`'s `Replay_Approved` subtest must be re-pointed the same way or replaced by a `Harvest_Approved` subtest that still proves a `Done` pointer names a file that exists.
-  `TestBouncer_Replay_Blocking`, `TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives`, and the remaining pointer-discipline subtests reach `settle` through the judge path or a BLOCKING verdict and are unaffected.
+  In `internal/shedadapters/bouncer_replay_test.go`, three tests lay out a round-1 report plus an APPROVED verdict and ledger and then call `Call` — the exact disk state that now fires the clear — and each must be repaired.
+  `TestBouncer_Replay_Approved` asserts the removed behaviour outright and must be rewritten to assert the new one (the same disk state now clears and seeds).
+  `TestBouncer_PointerDiscipline`'s `Replay_Approved` subtest must be re-pointed the same way or replaced by a `Harvest_Approved` subtest that still proves a `Done` pointer names a file that exists.
+  `TestBouncer_Judged_IgnoresFocusFile` is the third and is easy to miss, because its subject is not the replay path at all: it proves `judged(N)` does not treat an absent `round-2-focus.md` as debris, and it happens to prove it through an APPROVED fixture.
+  Repair it by switching its fixture's verdict to BLOCKING and its assertions to the BLOCKING-replay outcome (`Stuck` with round 1's ledger pointer, shuttle still never invoked) — that keeps the test isolating its actual subject, which the clear trigger does not touch, rather than colliding with it.
+  Do not simply delete it: `judged`'s focus-file exclusion is deliberate and load-bearing, and card 9 rests on this test as the proof its `judgedVerdict` split is behavior-preserving.
+  `TestBouncer_Replay_Blocking`, `TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives`, `TestBouncer_FocusSynthesis_OverUnparseableFile`, and the remaining pointer-discipline subtests reach `settle` through the judge path or a BLOCKING verdict and are unaffected.
   In `internal/shedadapters/bouncer_commit_test.go`, `TestBouncer_Commit_ApprovedCallsExactlyOnce`, `TestBouncer_Commit_NilIsNotAnError`, and `TestBouncer_Commit_FailingCommitIsAnError` each reach `settle` via the APPROVED-replay vehicle, which no longer exists; convert each to the harvest vehicle by laying out the round's report only and driving the shuttle with `judgeFakeShuttle`, which writes the verdict and ledger during the run so `judgeCall` harvests and settles in the same call.
   Update that file's own header comment, which names the replay path as every case's vehicle.
   `TestBouncer_Commit_BlockingNeverCalls` uses a BLOCKING verdict and is unaffected;
