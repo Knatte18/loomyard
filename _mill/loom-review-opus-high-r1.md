@@ -174,7 +174,7 @@ PATH (F2, recorded as NOT-FIXED-THIS-ROUND).
 
 ## Findings
 
-Fourteen findings (thirteen from the independent review, plus F13 found during fix verification and labelled as such). Recorded provisionally as they were spotted (so the ids are in discovery
+Fifteen findings (thirteen from the independent review, plus F13 and F14 found during fix verification and labelled as such). Recorded provisionally as they were spotted (so the ids are in discovery
 order, not severity order); this index is the severity ranking, and each entry links what the
 finding is to how it was established.
 
@@ -185,6 +185,7 @@ finding is to how it was established.
 | MEDIUM | F1 | `require_pr_to_base: []` is unrepresentable, and a longer list is silently truncated by `config reconcile --apply` | reproduced live; second half reproduced on an independent hub |
 | MEDIUM | F2 | An agent loom spawns resolves `lyx` from PATH and can silently rewrite the hub's stencils mid-run | observed unprompted in this round's own run, then reproduced under control on a third hub |
 | MEDIUM | F10 | A resumed run reports `paused`/`blocked`/`failed` for the whole first producer call | reproduced live, with a real judge session in the pane at the same instant |
+| MEDIUM | F14 | Two of loom's ten smoke tests were already broken, one spawning a real provider session the cost model says cannot happen, plus a leaked tmux server | measured during Job 2, proven pre-existing at the round-2 seed commit |
 | MEDIUM | F13 | loom's own status file is a merge subject on the landing merge; a conflict there corrupts the run's control state and takes the emergency brake with it | observed live during fix verification — **NOT-FIXED-THIS-ROUND** |
 | LOW | F3 | `BurlerProducer`'s doc claims the Bouncer shares its round-completion predicate; it does not | traced |
 | LOW | F4 | `Batchifier` and the `Webster` row swallow `batcher.Active`'s error with no log line | traced, backed by a 16-site sweep |
@@ -504,6 +505,62 @@ status-file contract at once. `mergeresolve`'s LLM conflict resolver is the one 
 already in the tree that could arguably own this, and whether it should be asked to resolve the
 orchestrator's own control file — while the orchestrator is mid-run — is exactly the decision
 this needs.
+
+### F14 — two of loom's ten smoke tests were already broken, one of them spawning a real provider session the cost model says cannot happen — MEDIUM — CONFIRMED (measured)
+
+**Found during Job 2, while re-running the prompt's own named live-smoke list — recorded here
+rather than quietly fixed, because it was not part of the independent review.**
+
+`internal/loomcli/smoke_test.go` — `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed`
+and `TestSmokeBootstrap_HandshakeFailureRefusesWithoutAttaching`.
+
+Both fail deterministically, and **both predate this round**: I proved it by checking the tree
+out at `980f2d48` (the round-2 seed commit, before any of my changes) and re-running each — the
+same two failures, identical shapes.
+
+**1. `AdvancesMachineFromExistingSeed` times out after 30s, and it spawns a real `claude` while
+it does.** Measured by sampling the process table for the whole run:
+
+```
+t=4s  claude procs: 3      (baseline on this host is 2 -- the operator's own sessions)
+t=8s  claude procs: 3
+...
+t=28s claude procs: 3
+t=32s claude procs: 2      (the extra one dies when the test's timeout kills the drive)
+```
+
+Exactly one extra real provider subprocess, alive for the whole test. This contradicts the
+campaign's own cost declaration, which states that every `internal/loomcli` smoke test "spawns 0
+real subprocesses in practice (every fixture bounces before a real spawn — every one of their
+fixtures leaves `SingleLLMProducer`'s own precondition/spec validation failing before
+`shuttleengine.Run` is ever called)". That is no longer true: the fixture's spec validates, the
+run starts for real, and `Wait` blocks on `Discussion-Write`'s deadline — which comes from
+`loom.yaml`'s `discussion_timeout_min`, shipped at **480**. An eight-hour block behind a
+thirty-second assertion.
+
+This is the safety-relevant half. A wrong process count in a cost declaration is precisely what
+`crucible/README.md`'s RAM incident came from, and this round's declaration inherited the wrong
+number.
+
+**2. `HandshakeFailureRefusesWithoutAttaching` asserts behaviour the shipped code deliberately
+does not have.** It expects a driver that dies to make the bootstrap refuse. `run.go`'s
+`dispositionForHandshake` maps `awaitRunLockChildDied` onto **proceed**, with a doc comment
+explaining exactly why ("a driver that RAN AND FINISHED … refusing there tells the operator the
+bootstrap broke when in fact their task halted, and skips the tmux handover that is the
+bootstrap's entire job"). Only `awaitRunLockDeadline` — a child alive for the whole budget
+without ever taking the lock — is a real refusal, and a poisoned status file kills the child
+rather than wedging it, so the rig cannot produce its own subject.
+
+**3. A third, smaller one found alongside: a leaked tmux server.**
+`TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog` never registers a
+teardown, yet `lyx loom drive` calls `reed.Up()` before the phase machine runs. Two stray tmux
+servers were left running by one smoke sweep, and I had to kill them by hand — in a suite where
+"no stray state" is itself an invariant under test.
+
+All three fixed this round: the fixture is now provider-free by construction (a provider path
+that cannot exist, a two-second startup window, and a one-minute discussion deadline), the
+died-child case is re-aimed at the disposition that actually ships and renamed to say so, and
+the leaking test registers the teardown its siblings already do.
 
 ### F10 — a resumed run reports `paused`/`blocked`/`failed` for the whole first producer call, while a real LLM session is already spawning — MEDIUM — CONFIRMED (reproduced live)
 
