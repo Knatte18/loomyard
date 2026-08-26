@@ -30,6 +30,7 @@ It is its own batch because it is a new file in a tier no other batch touches, i
   - `internal/loomcli/landingdeps.go`
   - `internal/loomengine/config.go`
   - `internal/loomshed/seed.go`
+  - `internal/state/state.go`
   - `internal/hubforge/hub.go`
   - `internal/mergeresolve/deps.go`
   - `internal/fabricengine/origin.go`

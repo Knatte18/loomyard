@@ -37,6 +37,8 @@ Batches 2, 3, and 4 consume nothing from this batch beyond the final on-disk pat
   In `notransientsFixture`'s table pair, move the `{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)}` row out of `durableSet` and into `transientSet`, placing it immediately before the existing `loomengine.LoomStatusLock` row so the status file and its own lock sit adjacent.
   Leave `durableSet`'s remaining rows, `transientSet`'s remaining rows, and the three direction checks in `TestNoTransientsUnderLyx` unchanged.
   In `TestConstructorAnchoring_Unanchored` and `TestConstructorAnchoring_SubpathAnchored`, move the `assertPath(t, "loomengine.LoomStatusFile", ...)` call out of each function's `_lyx`-durable group and into its `.lyx` group, immediately before the `loomengine.LoomStatusLock` line, changing the expected value from `filepath.Join(lyxBase, "loom", "status.json")` to `filepath.Join(dotLyxBase, "loom", "status.json")` in both.
+  In the same file's header comment, the paragraph beginning "As of this batch there are two groups, not three" enumerates "the `.lyx` group in full" as `loomengine.LoomStatusLock`, `loomengine.LoomDriverLog`, `loomengine.LoomBootstrapLock`, `websterengine.PromptsDir`/`ScratchDir`, and `logger.LogsDir`.
+  Add `loomengine.LoomStatusFile` to that list, so the enumeration stays true the moment its assertion joins the group; leave the rest of the paragraph as it stands.
   Both files stay Tier 1 — pure `filepath.Join` arithmetic over hand-built `*lyxcwd.Location` fixtures, no process spawned, no fixture tree copied — so introduce no `t.TempDir()`, no `exec.Command`, and no build tag.
   These assertions fail until card 7 lands; that is the intended TDD signal.
 - **Commit:** `test(cmd/lyx): pin loom's status file under .lyx`
