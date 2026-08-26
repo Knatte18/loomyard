@@ -5,15 +5,57 @@
 
 ## Status
 
-IN PROGRESS — Job A (review) underway.
+Job A (review) COMPLETE. See `_mill/loom-review-opus5-high-r1-fixer-report.md` for Job B.
 
 ## Executive summary
 
-_(filled at end of Job A)_
+**16 findings: 3 BLOCKING, 6 MEDIUM, 3 LOW, 4 NIT.**
+
+**loom's 17-row pipeline cannot complete, and the reason is structural, not incidental.**
+`Plan-Write`'s own stencil orders it to write `approved: false`; `Plan-Validate`, the very next row, hard-fails on exactly that value; and no row in
+the shipped recipe ever flips it. The run bounces `Plan-Write → Plan-Validate → Plan-Write` until the bounce budget blocks it — four full cycles were
+observed live, each burning a real LLM session on a plan that was never wrong (**F7**).
+That is why "the full pipeline has never been proven to run end to end" — it never could.
+
+Everything *upstream* of that wall, though, works, and this round proved it live for the first time:
+`Preflight → Loom-Preflight → Discussion-Write → Discussion-Validate → Discussion-Review (seed → burler round → APPROVED) → Plan-Write` all chained on
+a real hub with real `claude` sessions. The `commit_seam: discussion` produced a genuine weft commit carrying the fixer round's edit. Graceful pause
+landed at a producer boundary and cleaned its agent up. The `8cac77aa` Bouncer clear-and-re-seed and both halves of its anchor-path fix were confirmed
+on a **subpath-anchored** hub where `AnchorPath()` and `WorktreePath()` genuinely diverge — not synthetically. And all three of the interactive
+`Discussion-Write` checks the campaign named held: an ask is non-terminal, a driver killed mid-interview re-attaches to the live agent with the
+operator's answers intact, and two live matching runs are refused rather than picked.
+
+The other two BLOCKING findings are both "a hardened mechanism defeated from one layer up":
+**F4** — `Plan-Write`'s decorator archives the plan directory *before* `SingleLLMProducer` gets to probe `Attach`, which is precisely the
+`probe-before-archive` hazard that producer was built to avoid; a crash mid-plan therefore converts a finished plan into a hard `OutcomeTimeout`
+failure. **F6** — the Bouncer writes `round-N-focus.md` (YAML frontmatter) and the Burler row reads `round-N-focus.json` (strict JSON, different
+fields), so the judge's entire targeting channel is dead in production; the seed pass spends a real LLM spawn *and* a permanent unit of bounce budget
+producing a file its only consumer cannot read.
+
+The MEDIUM band is dominated by operability, and three of them came from the operator watching the live session: every mechanical gate discards its
+findings so a blocked or bouncing run leaves no diagnosis anywhere (**F2** — the driver log was **2 lines** for a run that had reached row 8);
+`lyx loom pause`, the documented emergency brake, is disabled by a fault in any of eight module configs (**F5**); the status strand reprints an
+unchanged line every second, flooding its own scrollback (**F10**); scrolling an attached session types arrow keys into the live agent (**F9**);
+and the Discussion agent — permission-bypassed and un-fenced — rewrote loom's own `loom.yaml`, flipping the next run to interactive (**F8**).
+
+**Merge-readiness: NOT READY.** F7 alone means the module cannot do the thing it exists to do.
 
 ## Scope assessment
 
-_(filled at end of Job A)_
+**Design intent vs. shipped.** The as-built recipe matches `manifest/designs/loom.md`'s table row-for-row, including the documented
+seventeen-vs-fifteen divergence (`Plan-Sweep` absent, three segment pairs collapsed). Nothing is shipped beyond scope.
+
+**Deferred-that-should-be-fixed.** One item, and it is F7: `manifest/designs/loom.md` and `internal/loomengine/plan.go` both defer flipping
+`approved` to "the future loom orchestrator", and the design table's row 8 scopes `Plan-Validate` to "`loom-plan-spec.md`'s existing hard-fail checks
+(e.g. `depends-on-order`)" — a *format* subset. The shipped row calls the whole of `planparser.Validate`, which includes the consumer-side
+run-refusal guard. The deferral and the over-broad gate together make the pipeline unrunnable, so the deferral is not survivable as written.
+
+**Not a scope gap.** `Plan-Sweep`'s absence is genuinely benign — the Plan stencil names its own degraded state outright, and `Plan-Write` produced a
+correct plan without it in every live run.
+
+**Docs accuracy.** Good overall, with four specific rots recorded: the recipe header's `on_stuck` enumeration (F13),
+`internal/shedadapters/doc.go`'s `focus.json` spelling (F6 — previously written off as a stale comment, actually a live code divergence),
+the `AwaitOperator` claim about which log file records an ask (F16), and `lyx loom drive`'s "no tmux" self-description (F11).
 
 ## Findings
 
@@ -782,6 +824,47 @@ lyx reed status     # prints the JSON session/socket/strands
 lyx reed attach     # hands this terminal to the live tmux session
 ```
 
+### Live smoke (real substrate, exactly one named test per the cost declaration)
+
+- `go test -tags smoke ./internal/loomcli/... -run TestSmokeBootstrap_BringsUpSessionStrandAndDriver -v -count=1` — **PASS** (1.11s).
+- The EXECUTION BAN was respected: `TestSmokeBurlerClusterCleanFan` and `TestSmokeBurlerClusterRogueFork` were **not** run,
+  and no bare `-run Smoke` pattern was ever used.
+
+### Teardown
+
+Both reed servers created for this review were killed at the end. Verified:
+
+```
+$ pgrep -a -f 'tmux -L lyx-'      -> zero lyx tmux servers
+$ pgrep -a claude | grep -v 'claude -c$'  -> zero stray claude agents
+```
+
+The two surviving `claude -c` processes are the operator's own (1+ day uptime), not this review's.
+Both scratch hubs and their bare remotes remain on disk under the session scratchpad for the orchestrator to inspect; nothing outside it was touched.
+
 ## Could NOT verify
 
-_(filled at end of Job A)_
+Stated plainly rather than glossed.
+
+- **Everything downstream of `Plan-Validate`.** `Plan-Revalidate`, `Batchifier`, `Webster`, `Webster-Review`, `Publish`, and `Finalize` were never
+  reached, because F7 blocks the run at row 8. In particular the campaign's "**Webster chained from a real `Plan-Write` output**" item is
+  **unverified**, and cannot be verified until F7 is fixed. That dependency is the strongest argument for fixing F7 rather than only recording it.
+- **The `Plan-Review` and `Webster-Review` segments end to end.** Only `Discussion-Review` was driven through a full seed → round → APPROVED → commit
+  cycle. The other two are the same two adapters with different config, and their construction was exercised (all three run dirs are created at
+  `loomrecipe.New`), but neither was run.
+- **A crash mid-`Webster` batch.** Same blocker.
+- **F4 reproduced end to end.** F4 is CONFIRMED by trace — the code path is unambiguous and every step of it was read — but I did not stage the
+  full crash-mid-Plan-Write sequence live, because F7 makes `Plan-Write` bounce before a crash window is interesting, and staging it would have meant
+  hand-building the state F7 prevents. It is the one BLOCKING finding whose *live* reproduction is owed to a later round.
+- **The visual half of F12.** I have no TTY, so `lyx reed attach` cannot be observed from this session at all. The operator supplied that half from
+  their own terminal (with a screenshot); the code-side mechanism is mine. This is a genuine environment gap, not a cost excuse.
+- **Windows path behaviour.** Explicitly out of scope and unreachable from this Linux host — reasoned about nowhere, driven nowhere.
+- **Concurrency stress.** Deliberately not run: the campaign's merge bar is the normal single-instance flow, and the cost declaration bans the generic
+  N-concurrent-suites gate for this module.
+
+### One environment artifact, owned rather than hidden
+
+The first live run's Discussion agent inherited `lyx` from `PATH` — the operator's older global install (2026-07), whose config schema differs from
+the dev binary under test. `lyx board get` failed on that mismatch, the agent ran `lyx config reconcile --apply` to unblock itself, and the resulting
+config churn is what surfaced F5 and F8. Later runs were driven with `.dev-bin` prepended to `PATH`, and both findings were re-confirmed against a
+correct binary. The *trigger* was mine; the exposures are real and remain unmitigated.
