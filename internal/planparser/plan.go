@@ -1,6 +1,7 @@
 // plan.go defines planparser's public struct model: Plan (the whole parsed `_lyx/plan/` directory)
-// and Card (one flat, format-4 plan-format card), plus CardType (a card's own type label) and
-// MovePair (the normalized-path pair a Rename card's Pairs field carries).
+// and Card (one flat, format-4 plan-format card), plus CardType (a card's own type label),
+// TargetGroup (one type label's own occurrence on a card), and MovePair (the normalized-path pair
+// a Rename group's Pairs field carries).
 // No parsing logic lives here — see parse.go, normalize.go, and sections.go for how these types are
 // filled.
 
@@ -81,24 +82,34 @@ type Card struct {
 	SourcePath string
 
 	// Type is the first recognized type label the card body carried, or CardTypeUnknown when none.
+	// Type is retained for exported-field compatibility only: it is explicitly not validation
+	// state, no check in internal/planparser/validate.go reads it, and a new check must key on
+	// TargetGroups, never on Type, or it silently reintroduces first-label-wins.
 	Type CardType
 
-	// TypeLabelCount is how many recognized type labels the card body carried, so a two-label card
-	// (a card-type-missing defect) is expressible.
+	// TypeLabelCount is how many recognized type labels the card body carried. TypeLabelCount is
+	// retained for exported-field compatibility only: a count above one is legal rather than a
+	// defect, and it is not validation state.
 	TypeLabelCount int
 
 	// HasType reports whether TypeLabelCount is greater than zero.
 	HasType bool
 
-	// Targets is the card's own flat target ref list — symbols and paths mixed, in body order.
-	// For a Rename card, both endpoints of every Pairs entry are projected here too, Old then New.
+	// TargetGroups is one entry per recognized type label the card body carried, in body order.
+	// A card carrying two labels has two entries, and a card carrying the same label twice also
+	// has two entries.
+	TargetGroups []TargetGroup
+
+	// Targets is the flat union across every TargetGroups entry's own Refs, in body order.
+	// Retained because downstream consumers and the card-generic checks read it.
 	Targets []string
 
-	// Pairs is every well-formed "- `old` -> `new`" sub-bullet under a Rename card's "**Rename:**"
-	// field. Populated for a Rename card only.
+	// Pairs is the flat union across every Rename group's own Pairs, in body order. Retained
+	// because downstream consumers and the card-generic checks read it.
 	Pairs []MovePair
 
-	// RenameRaw is every "**Rename:**" sub-bullet that failed the two-symbol pair grammar.
+	// RenameRaw is the flat union across every Rename group's own RenameRaw, in body order.
+	// Retained because downstream consumers and the card-generic checks read it.
 	RenameRaw []string
 
 	// Uses is the card's "**Uses:**" field: refs the card reads or depends on without targeting.
@@ -135,6 +146,27 @@ type Card struct {
 
 	// HasVerify reports whether the card carried a "**Verify:**" label at all.
 	HasVerify bool
+}
+
+// TargetGroup is one type label's own occurrence on a card. Its Type is the CardType that label
+// declares, its Refs is that label's own backtick-wrapped sub-bullets in body order, and its
+// Pairs/RenameRaw are populated only when Type is CardTypeRename.
+type TargetGroup struct {
+	// Type is the CardType this group's own label declared.
+	Type CardType
+
+	// Refs is this group's own backtick-wrapped sub-bullets, in body order. For a Rename group,
+	// Refs carries both endpoints of every one of that group's own Pairs entries, Old then New,
+	// in pair order.
+	Refs []string
+
+	// Pairs is every well-formed "- `old` -> `new`" sub-bullet this group's own "**Rename:**"
+	// label carried. Populated when Type is CardTypeRename only.
+	Pairs []MovePair
+
+	// RenameRaw is every sub-bullet under this group's own "**Rename:**" label that failed the
+	// two-symbol pair grammar. Populated when Type is CardTypeRename only.
+	RenameRaw []string
 }
 
 // MovePair is one well-formed "old -> new" sub-bullet: a Rename card declaring that Old is
