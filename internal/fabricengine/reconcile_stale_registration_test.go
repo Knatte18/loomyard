@@ -38,6 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/google/go-cmp/cmp"
 )
 
 // TestReconcile_RecreatesHandDeletedWeftWorktree deletes a pair's weft worktree directory with
@@ -659,6 +660,73 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	}
 	if branchExistsAt(t, weftRepoRoot, orphan) {
 		t.Errorf("orphan branch %q still exists in the weft repo after --apply; want deleted", orphan)
+	}
+}
+
+// TestCleanup_ForceIsReservedAndChangesNoVerdict pins the reserved-ness of Cleanup's force parameter
+// itself, which nothing pinned once raddleFoldedBack — force's only consumer — was deleted.
+// A reserved flag that nothing tests is a flag that quietly grows a gate again: `lyx fabric cleanup
+// --force` is still accepted on the command line and still documented as answering no gate, so the
+// property has to be asserted rather than assumed. This compares the full verdict set from a dry run
+// with force=false against one with force=true over the same fixture — an unmanaged non-suffixed
+// branch beside a genuine orphan, so both a protected and an unprotected verdict are in the
+// comparison — and then confirms the apply pass with force=true deletes exactly the orphan.
+func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "cleanup-force-reserved"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := topology.Remove(l, slug, true); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	if err != nil {
+		t.Fatalf("WeftRepoRoot: %v", err)
+	}
+	orphan := fabricengine.WeftBranchName(slug)
+	gitkit.MustRun(t, weftRepoRoot, "git", "branch", orphan)
+	const unmanaged = "legacy-notes"
+	gitkit.MustRun(t, weftRepoRoot, "git", "branch", unmanaged)
+
+	dryWithoutForce, err := topology.Cleanup(l, false, false)
+	if err != nil {
+		t.Fatalf("Cleanup(dry, force=false): %v", err)
+	}
+	dryWithForce, err := topology.Cleanup(l, false, true)
+	if err != nil {
+		t.Fatalf("Cleanup(dry, force=true): %v", err)
+	}
+	if diff := cmp.Diff(dryWithoutForce.Entries, dryWithForce.Entries); diff != "" {
+		t.Errorf("Cleanup(dry) entries differ between force=false and force=true (-without +with):\n%s\nforce is reserved and must answer no gate in this verb", diff)
+	}
+
+	applied, err := topology.Cleanup(l, true, true)
+	if err != nil {
+		t.Fatalf("Cleanup(apply, force=true): %v", err)
+	}
+	for _, entry := range applied.Entries {
+		switch entry.Branch {
+		case orphan:
+			if !entry.Deleted {
+				t.Errorf("Cleanup(apply, force=true) left orphan %q undeleted; want deleted", orphan)
+			}
+		case unmanaged:
+			if entry.Deleted {
+				t.Errorf("Cleanup(apply, force=true) deleted unmanaged branch %q; want it protected — force may not answer the gate's own carve-outs", unmanaged)
+			}
+		}
+	}
+	if branchExistsAt(t, weftRepoRoot, orphan) {
+		t.Errorf("orphan branch %q still exists after Cleanup(apply, force=true); want deleted", orphan)
+	}
+	if !branchExistsAt(t, weftRepoRoot, unmanaged) {
+		t.Errorf("unmanaged branch %q was deleted by Cleanup(apply, force=true); want it to survive", unmanaged)
 	}
 }
 
