@@ -163,7 +163,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	}
 	reasons = append(reasons, detachedReasons...)
 
-	sources, sourceReasons := resolveMergeSources(f, l, source)
+	sources, sourceReasons := resolveMergeSources(f, source)
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {
@@ -326,11 +326,6 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
-	l, err := lyxcwd.ResolveWorktree(f.warpPath)
-	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
-	}
-
 	// Foreign-state refusal: git-level merge state that fabric did not itself start refuses the
 	// whole call, leaving the foreign state untouched, but only when no fabric record already
 	// covers it — a recorded merge takes the ordinary in-progress guard path below instead.
@@ -380,7 +375,7 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	}
 	reasons = append(reasons, syncReasons...)
 
-	sources, sourceReasons := resolveMergeSources(f, l, source)
+	sources, sourceReasons := resolveMergeSources(f, source)
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {

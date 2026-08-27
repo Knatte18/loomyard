@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // mergeSources holds, per side, the resolved SHA a merge call actually merges — the freshness rule's
@@ -35,39 +34,21 @@ type mergeSources struct {
 // Both sides run a best-effort Fetch() first — a fetch failure is tolerated and logged via
 // logger.Warn, never fatal (millhouse's fetch-then-prefer-origin rule) — then resolve the local
 // branch and its origin/<branch> remote-tracking ref via gitrepo.ResolveSHA.
-// A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound; a weft
-// counterpart existing neither locally (weftBranchExists(l, ...)) nor as origin/<source>-weft
-// post-fetch appends mergeReasonNotFabricManaged, per the Shared Decision on the post-fetch
-// remote-only weft counterpart.
-// The two reasons are gated asymmetrically, and which of them can accompany the other is worth stating
-// exactly, because the obvious summary — "they stay disjoint" — is false against the shipped behaviour
-// and against the two places that pin it.
-// A source that DOES resolve on warp but has no weft counterpart reports mergeReasonNotFabricManaged
-// alone: the weft arm's own source-not-found is gated on weftManaged, so "this branch is not a fabric
-// pair" arrives without a second, vaguer reason beside it that tells the operator nothing more.
-// A source that resolves NOWHERE reports both, and that is deliberate rather than leakage — the warp
-// arm's mergeReasonSourceNotFound is ungated, because a mistyped branch name is unmanaged AND missing,
-// and an operator told only "not fabric-managed" would go looking for a weft counterpart to create
-// instead of at the name they got wrong. TestRunCLI_MergeNonexistentBranchReportsAggregatedGuardError
-// and SANDBOX-FABRIC-SUITE's F19 both pin that dual answer, so gating the warp arm to make the pair
-// literally disjoint would break the behaviour, not tidy it.
+// A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound — the only
+// reason this function can still return.
 //
-// A managed weft counterpart that nevertheless fails to RESOLVE is a third case, and it appends
-// mergeReasonSourceNotFound because the alternative is worse. weftManaged and weft resolvability are
-// not the same test: weftBranchExists is a raw `git rev-parse --verify refs/heads/<branch>` at the
-// weft REPO root, while pickMergeSourceSHA's local arm is a go-git ResolveRevision in the weft
-// WORKTREE. Whenever the first succeeds and the second does not, weftManaged is true, and with the
-// pick's found-ness discarded no reason was appended at all — leaving weftSHA the empty string, handed
-// straight to MergeStart as `git merge --ff --no-commit ""`. The blast radius was contained (the git
-// error routes into selfAbortMergeAttempt, which resets both sides and deletes the record), but the
-// error a caller saw described a malformed git argument rather than the precondition that failed.
-// Gating the reason on weftManaged makes an empty ref unreachable by construction without disturbing
-// the unmanaged case's single-reason contract.
+// The weft counterpart's SHA is still resolved and returned: mergeState.WeftSource still needs a
+// value, best-effort and possibly empty. What this function has lost is the power to refuse on the
+// weft's behalf. Resolving the weft counterpart no longer gates on whether it is a recognized fabric
+// pair (weftBranchExists), so an unresolvable weft counterpart simply leaves weftSHA the empty
+// string rather than appending mergeReasonNotFabricManaged or mergeReasonSourceNotFound.
+// mergeReasonNotFabricManaged is no longer reachable from this function at all — its constant is
+// retained only because mergevocab_test.go pins its string as part of the closed reason set.
 //
 // Every reason is collected, never returned early — each guard is evaluated regardless of an earlier
 // failure — and newMergeGuardError deduplicates, so a source missing on both sides still reports one
 // mergeReasonSourceNotFound rather than disclosing that two subjects were checked.
-func resolveMergeSources(f *Fabric, l *lyxcwd.Location, source string) (mergeSources, []string) {
+func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	var reasons []string
 	weftBranch := WeftBranchName(source)
 
@@ -86,14 +67,7 @@ func resolveMergeSources(f *Fabric, l *lyxcwd.Location, source string) (mergeSou
 	}
 	weftLocalSHA, weftLocalErr := f.weft.ResolveSHA(weftBranch)
 	weftRemoteSHA, weftRemoteErr := f.weft.ResolveSHA("origin/" + weftBranch)
-	weftManaged := weftBranchExists(l, weftBranch) || weftRemoteErr == nil
-	if !weftManaged {
-		reasons = append(reasons, mergeReasonNotFabricManaged)
-	}
-	weftSHA, weftFound := pickMergeSourceSHA(f.weft, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
-	if weftManaged && !weftFound {
-		reasons = append(reasons, mergeReasonSourceNotFound)
-	}
+	weftSHA, _ := pickMergeSourceSHA(f.weft, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
 
 	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons
 }
