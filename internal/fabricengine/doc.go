@@ -855,13 +855,22 @@
 // # The merge surface
 //
 // **The two verbs, and why there are two.** `MergeIn(source)` (merge.go) merges `source` into the
-// current pair's own warp and weft checkouts, in the task worktree where a conflict is meant to be
-// resolved by hand. `Merge(source, opts)` merges into a target pair the caller opened a separate
-// handle on — squash-capable via `opts.Squash`, and expected conflict-free: any conflict there
-// self-aborts both sides and returns `*ErrMergeInRequired`, since resolving a conflict against an
-// already-checked-out target worktree is not something git permits from another worktree of the same
-// repo. The two are not one verb with a flag, because their guards, failure modes, and worktrees
-// genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge` rejection).
+// current pair's warp checkout, in the task worktree where a conflict is meant to be resolved by
+// hand. `Merge(source, opts)` merges into a target pair's warp checkout — the pair the caller opened
+// a separate handle on — squash-capable via `opts.Squash`, and expected conflict-free: any conflict
+// there self-aborts the warp side and returns `*ErrMergeInRequired`, since resolving a conflict
+// against an already-checked-out target worktree is not something git permits from another worktree
+// of the same repo. The two are not one verb with a flag, because their guards, failure modes, and
+// worktrees genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge`
+// rejection).
+//
+// **The weft is never a merge participant, in either verb or either direction.** Everything routed
+// to the weft belongs to exactly one worktree and one branch, so there is nothing there for a merge
+// to reconcile — a merge carries code, and the weft carries system files, not code. Two consequences
+// follow directly: `unifyConflictPaths`' weft conflict list is permanently empty, never populated,
+// and `fabriccli`'s junction-staging conflict path is unreachable rather than wrong — both are
+// retained plumbing (see the `conclude-and-conflict-plumbing-is-retained` decision), not dead code
+// waiting to be deleted.
 //
 // **The recorded merge.** A merge in progress is tracked by a JSON record, `fabric-merge.json`, kept
 // beside the correspondence index — never derived from git state, because derivation fails in ways a
@@ -873,8 +882,8 @@
 //
 // **The lifecycle quartet and crash recovery.** `MergeIn`/`Merge` start an attempt; `MergeContinue`
 // concludes one once every conflict is resolved in the worktree; `MergeAbort` discards one,
-// restoring both sides to their pre-merge SHAs — including a side that only fast-forwarded or never
-// moved, but never a side whose conclude already landed (see below). Every state-changing step
+// restoring the warp side to its pre-merge SHA — including a side that only fast-forwarded or never
+// moved, but never one whose conclude already landed (see below). Every state-changing step
 // re-persists the record before it acts, so
 // a crash mid-attempt leaves a record a resumed `MergeContinue`/`MergeAbort` can still read and act
 // on — there is no window where the record and the checkouts can drift silently out of reach of the
@@ -1022,7 +1031,7 @@
 // drives them (`internal/websterengine/integration.go`).
 //
 // **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
-// merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found both sides already
+// merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found the warp side already
 // carrying the resolved source. Both are read off the merge-state record's own fields rather than
 // hardcoded per return site, which is what makes them answer honestly in the two cases that used to
 // lie: a merge that fast-forwarded both sides fabricates no commit at all and reports `Committed`
