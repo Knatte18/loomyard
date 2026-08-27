@@ -274,7 +274,11 @@ This is the lyx model applied to orchestration: one-shot, daemonless, file-coord
 The status file lives in the weft repo, and `Shed` commits and pushes it on every producer transition through an injected seam `internal/loomcli` fills, so a second machine that pulls the branch sees the run's live FSM state rather than wherever the last commit happened to leave it.
 The push respects `SkipPush`;
 a commit failure halts the run, since a git fault on the run's own bookkeeping is infrastructure breakage, while a push failure only warns and self-heals on the next transition, since an offline laptop must not kill an autonomous run.
-A status commit is skipped outright while the weft is mid-merge, logged at warn, because a foreign merge session mid-flight makes the weft's git state untrustworthy for the moment.
+A status commit is skipped outright while the weft is mid-merge, logged at warn, because a foreign merge session mid-flight makes the weft's git state untrustworthy for the moment;
+an unreadable mid-merge probe skips the same way, since a failure to observe git state is the same untrustworthy-state category rather than a separate one.
+That probe is unlocked by construction — nothing loom or fabric can hold serialises against an operator running plain git in the weft checkout — so the skip has a second half at the far end of the window:
+a commit that fails while a merge has since gone live is re-probed and absorbed as the same skip, not escalated to the halt, because a lost race is not infrastructure breakage.
+The residual it does not close is one `git add`: a commit losing that race has already staged the status file into the operator's merge index, and their own conclude carries it.
 Loom does not do the operator's other half of cross-machine resume: nothing in `internal/loomcli` pulls, so a second machine resumes by pulling the branch itself with `lyx fabric pull`.
 
 **`Publish` and `Finalize` still commit the status file immediately before they merge, but the weft is no longer a merge participant at all, so that checkpoint is now a no-op safety net on the ordinary path rather than the last row's only protection.**
