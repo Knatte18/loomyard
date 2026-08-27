@@ -149,15 +149,17 @@ With `WeftOutcome` written as `mergeOutcomeAlreadyUpToDate`, that function's exi
 
 - **Context:**
   - `internal/fabricengine/merge.go`
-  - `internal/fabricengine/merge_target_integration_test.go`
-  - `internal/fabricengine/mergein_integration_test.go`
-  - `internal/fabricengine/mergein_recovery_integration_test.go`
   - `internal/fabricengine/gitsha_integration_test.go`
   - `internal/fabricengine/export_test.go`
   - `internal/fabricengine/testmain_test.go`
   - `internal/hubforge/hub.go`
   - `internal/gitkit/gitkit.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/fabricengine/merge_target_integration_test.go`
+  - `internal/fabricengine/mergein_integration_test.go`
+  - `internal/fabricengine/mergein_recovery_integration_test.go`
+  - `internal/fabricengine/mergecrucible_integration_test.go`
+  - `internal/fabricengine/mergelock_integration_test.go`
 - **Creates:**
   - `internal/fabricengine/mergeweftlocal_integration_test.go`
 - **Deletes:** none
@@ -171,6 +173,7 @@ With `WeftOutcome` written as `mergeOutcomeAlreadyUpToDate`, that function's exi
   (4) `MergeIn` in the opposite direction — a parent branch's `_lyx/` content never reaches the child's weft worktree and the child's live `_lyx/` content is unchanged;
   (5) a genuine warp-side conflict still reaching `unifyConflictPaths` — `MergeIn` returns a non-empty `Conflicts` list naming the warp path, leaving the pair mid-merge for `MergeContinue`.
   Additionally assert, in scenario 1, that the merge record's `WeftOutcome` is the `up_to_date` string by reading the record through `fabricengine.MergeStatePathForTest` before the verb deletes it, or by asserting `MergeResult.AlreadyUpToDate` is false while the warp genuinely moved.
+  Additionally, update the five existing suites now listed under `Edits:` so they assert warp-only behavior instead of the two-sided behavior cards 1 and 2 remove: drop or repoint assertions that expect a weft-side merge commit, a weft conflict, a weft pre-merge sync, or a weft conclude failure, replacing each with the equivalent warp-side assertion where the scenario still makes sense, and deleting a scenario outright only where it has no warp-side analogue (e.g. a fixture built specifically to conflict the weft side alone) — record the deletion's reason in a comment at the deletion site rather than leaving it silent. No pre-existing test name disappears without a replacement covering the same regression surface on the warp side, per the Test Integrity Guardrail.
 - **Commit:** `test(fabricengine): pin the warp-only merge against a real pair`
 
 ## Batch Tests
