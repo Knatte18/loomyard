@@ -247,9 +247,10 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 }
 
 // deleteWeftBranch deletes a weft branch through the gate's deleteBranch executor, recording errors
-// in entry. force is always false here even when Topology.Cleanup was called with force true:
-// --force there answers the folded-back-raddle gate above, evaluated before this call is reached, and
-// may not answer the gate's own primary-weft carve-out or checked-out check.
+// in entry. force is always false here because deleteWeftBranch's own request never had a
+// force-answerable gate to begin with: Topology.Cleanup's force parameter is reserved and consulted
+// by no gate in this verb, and may not answer the gate's own primary-weft carve-out or checked-out
+// check either way.
 // rec is the calling verb's own recorder, passed straight through to deleteBranch.
 func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
 	weftRepoRoot, err := WeftRepoRoot(l)
