@@ -264,8 +264,12 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 
 // PushResult exists solely to carry the mutation record: push had no result type at all before this
 // slice, which is why its envelope had nowhere to put one.
-// All three push entry points — PushWeft, PushWarpAt, and CoalescePushBothAt — return this same type,
-// so a composed push verb concatenates homogeneous records.
+// EVERY push entry point in this package returns this same type, whichever side it pushes and
+// whichever primitive it pushes through, so a composed push verb concatenates homogeneous records.
+// That is stated as the invariant rather than as a roll-call of the entry points: the roll-call
+// spelling ("all three push entry points — PushWeft, PushWarpAt, and CoalescePushBothAt") had
+// already gone stale twice by the time anyone read it, first for PushWarpRebaseFreeAt and then for
+// PushAnchored, because a list of call sites is maintenance a doc comment cannot win.
 type PushResult struct {
 	MutationRecord
 }

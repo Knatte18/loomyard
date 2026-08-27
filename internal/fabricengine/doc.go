@@ -878,10 +878,20 @@
 // **The weft is never a merge participant, in either verb or either direction.** Everything routed
 // to the weft belongs to exactly one worktree and one branch, so there is nothing there for a merge
 // to reconcile — a merge carries code, and the weft carries system files, not code. Two consequences
-// follow directly: `unifyConflictPaths`' weft conflict list is permanently empty, never populated,
-// and `fabriccli`'s junction-staging conflict path is unreachable rather than wrong — both are
-// retained plumbing (see the `conclude-and-conflict-plumbing-is-retained` decision), not dead code
-// waiting to be deleted.
+// follow directly: no merge fabric starts can ever CREATE a weft conflict, so `MergeIn` passes
+// `unifyConflictPaths` a nil weft list at every call site of its own, and `fabriccli`'s
+// junction-staging conflict path is unreachable rather than wrong — both are retained plumbing (see
+// the `conclude-and-conflict-plumbing-is-retained` decision), not dead code waiting to be deleted.
+//
+// The weft conflict list is not, however, permanently empty as a whole, and reading it that way
+// misses a live path: `MergeContinue` reads `f.weft.ConflictedFiles()` for real and routes it
+// through `unifiedRemainingConflicts` into that same weft arm, so a FOREIGN weft conflict — an
+// operator's own plain-git merge in the weft checkout, which the Fabric Git Invariant's carve-out
+// permits — does surface a weft path in the returned `Conflicts`. Reproduced live: a raw conflicting
+// merge in the weft while a fabric merge record was open made `merge --continue` refuse with
+// `unresolved: ["_lyx/loom/status.json"]`. That is the machinery working, not leaking: the weft is
+// invisible from the visible worktree, so naming the path is the only actionable refusal available,
+// and the arm must stay for the legacy-record case `concludeMergeSides` still handles.
 //
 // **The recorded merge.** A merge in progress is tracked by a JSON record, `fabric-merge.json`, kept
 // beside the correspondence index — never derived from git state, because derivation fails in ways a
@@ -1042,8 +1052,17 @@
 // is not a merge participant, so a detached weft HEAD cannot produce the unreachable-commit shape
 // this precondition exists to prevent, and the guard set that used to evaluate both sides
 // unconditionally — pairDirtyReason, detachedHeadReason, syncedToUpstreamReason, and
-// resolveMergeSources' own refusal arm — now evaluates the warp side alone throughout; the weft has
-// lost its power to block a merge, on top of having already lost its participation in one.
+// resolveMergeSources' own refusal arm — now evaluates the warp side alone throughout. Drive all
+// four weft states at once and the merge still decides purely on warp state.
+//
+// Exactly two weft-reading refusals survive that narrowing, and they are kept on purpose rather than
+// missed. `foreignMergeStatePresent` still refuses MergeIn/Merge on weft-side git merge state fabric
+// did not start (mergestate.go says so at its own definition), and MergeContinue still refuses on a
+// weft-side conflicted index (see "The merge surface"). Both answer the same question — an operator
+// is running plain git inside the weft checkout right now — which is a reason to stop that no
+// narrowing of the ordinary guard set was meant to remove. So: the weft lost its power to block a
+// merge on ORDINARY state (dirt, detachment, upstream divergence, an unresolvable counterpart), not
+// on foreign in-flight git state.
 //
 // **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
 // merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found the warp side already
