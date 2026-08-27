@@ -34,10 +34,15 @@
 // --is-ancestor` — never `f.warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
+// The weft ff-pull is non-fatal: a failed upstream probe or a failed weft pull is warned and leaves
+// `PullResult.WeftPulled` false, but the warp fetch/reconcile below runs regardless — reconciling a
+// weft that failed to pull is a named manual operator step, never something `Pull` resolves for the
+// caller.
 // The call's result is `PullResult`, a PATTERN-residue report naming which post-anchor weft commits
 // touch the `_lyx/PATTERN.md`/`_lyx/pattern/` paths and therefore need review, since they were
 // written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
-// the full flow and the `*PartialPullError` weft-succeeded/warp-failed contract.
+// the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
+// faithfully reports whether the weft arm completed rather than asserting it always did.
 // Those paths are scoped through the pair's recorded anchor, so a subpath-anchored hub's residue is
 // found at `<anchor>/_lyx/PATTERN.md` rather than silently reported as empty.
 //
@@ -492,6 +497,12 @@
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.
+// `PushAnchored(l, opts)` and `MergeStateActive(l)` are two further vocabulary-neutral, `l`-in
+// entry points reachable the same way `CommitAnchoredPaths` is. `PushAnchored` is the synchronous,
+// rebase-free counterpart to `CommitAnchoredPaths`: a caller is expected to treat its returned
+// `gitrepo.ErrPushRejected` as a human-decidable condition rather than retrying. `MergeStateActive`
+// is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing —
+// distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
 //
 // # The mutation record
 //
@@ -855,13 +866,22 @@
 // # The merge surface
 //
 // **The two verbs, and why there are two.** `MergeIn(source)` (merge.go) merges `source` into the
-// current pair's own warp and weft checkouts, in the task worktree where a conflict is meant to be
-// resolved by hand. `Merge(source, opts)` merges into a target pair the caller opened a separate
-// handle on — squash-capable via `opts.Squash`, and expected conflict-free: any conflict there
-// self-aborts both sides and returns `*ErrMergeInRequired`, since resolving a conflict against an
-// already-checked-out target worktree is not something git permits from another worktree of the same
-// repo. The two are not one verb with a flag, because their guards, failure modes, and worktrees
-// genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge` rejection).
+// current pair's warp checkout, in the task worktree where a conflict is meant to be resolved by
+// hand. `Merge(source, opts)` merges into a target pair's warp checkout — the pair the caller opened
+// a separate handle on — squash-capable via `opts.Squash`, and expected conflict-free: any conflict
+// there self-aborts the warp side and returns `*ErrMergeInRequired`, since resolving a conflict
+// against an already-checked-out target worktree is not something git permits from another worktree
+// of the same repo. The two are not one verb with a flag, because their guards, failure modes, and
+// worktrees genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge`
+// rejection).
+//
+// **The weft is never a merge participant, in either verb or either direction.** Everything routed
+// to the weft belongs to exactly one worktree and one branch, so there is nothing there for a merge
+// to reconcile — a merge carries code, and the weft carries system files, not code. Two consequences
+// follow directly: `unifyConflictPaths`' weft conflict list is permanently empty, never populated,
+// and `fabriccli`'s junction-staging conflict path is unreachable rather than wrong — both are
+// retained plumbing (see the `conclude-and-conflict-plumbing-is-retained` decision), not dead code
+// waiting to be deleted.
 //
 // **The recorded merge.** A merge in progress is tracked by a JSON record, `fabric-merge.json`, kept
 // beside the correspondence index — never derived from git state, because derivation fails in ways a
@@ -873,8 +893,8 @@
 //
 // **The lifecycle quartet and crash recovery.** `MergeIn`/`Merge` start an attempt; `MergeContinue`
 // concludes one once every conflict is resolved in the worktree; `MergeAbort` discards one,
-// restoring both sides to their pre-merge SHAs — including a side that only fast-forwarded or never
-// moved, but never a side whose conclude already landed (see below). Every state-changing step
+// restoring the warp side to its pre-merge SHA — including a side that only fast-forwarded or never
+// moved, but never one whose conclude already landed (see below). Every state-changing step
 // re-persists the record before it acts, so
 // a crash mid-attempt leaves a record a resumed `MergeContinue`/`MergeAbort` can still read and act
 // on — there is no window where the record and the checkouts can drift silently out of reach of the
@@ -1011,18 +1031,22 @@
 // a refusal there mutates nothing, while a refusal from the sync step can already have
 // fast-forwarded the other side.
 //
-// **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
-// `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
-// asymmetry is what makes this a precondition rather than a curiosity: a conclude-commit landed on a
-// detached HEAD is reachable from no ref and disappears at the next checkout, while the paired
-// repo's half of the same merge — whose own HEAD was on a branch — is already final, and the verb
-// has deleted its own record on the way out, so `MergeAbort` cannot put it back. Refusing before the
-// attempt starts is the only point at which that divergence is still recoverable. This matters in
-// practice because `Fabric.CheckoutDetached`/`RestoreBranch` exist and webster's integration bisect
-// drives them (`internal/websterengine/integration.go`).
+// **The warp checkout must be on a branch.** A merge verb refuses with the guard reason `checkout is
+// not on a branch` while the warp checkout has HEAD pointing straight at a commit. A conclude-commit
+// landed on a detached HEAD is reachable from no ref and disappears at the next checkout, and the
+// verb has already deleted its own record on the way out by the time that is discovered, so
+// `MergeAbort` cannot put it back — refusing before the attempt starts is the only point at which
+// that is still recoverable. This matters in practice because `Fabric.CheckoutDetached`/
+// `RestoreBranch` exist and webster's integration bisect drives them
+// (`internal/websterengine/integration.go`). The weft's own detachment no longer refuses anything: it
+// is not a merge participant, so a detached weft HEAD cannot produce the unreachable-commit shape
+// this precondition exists to prevent, and the guard set that used to evaluate both sides
+// unconditionally — pairDirtyReason, detachedHeadReason, syncedToUpstreamReason, and
+// resolveMergeSources' own refusal arm — now evaluates the warp side alone throughout; the weft has
+// lost its power to block a merge, on top of having already lost its participation in one.
 //
 // **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
-// merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found both sides already
+// merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found the warp side already
 // carrying the resolved source. Both are read off the merge-state record's own fields rather than
 // hardcoded per return site, which is what makes them answer honestly in the two cases that used to
 // lie: a merge that fast-forwarded both sides fabricates no commit at all and reports `Committed`

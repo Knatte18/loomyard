@@ -16,6 +16,11 @@ import (
 
 // concludeMergeSides lands the conclude-commit on both sides of an in-progress merge, under the
 // caller's already-held write lock: warp first, then weft, in that fixed order.
+// The weft arm is retained deliberately, for cross-binary record compatibility, not because a weft
+// conclude can still be produced: MergeIn and Merge now write WeftOutcome as mergeOutcomeAlreadyUpToDate
+// from their first checkpoint onward, so this arm's own st.WeftOutcome != mergeOutcomeAlreadyUpToDate
+// guard skips it on every record this binary produces, and it is reachable only for a fabric-merge.json
+// record a binary predating this change left behind, where WeftOutcome can legitimately be "staged".
 // A side whose recorded outcome is fast_forwarded or up_to_date is skipped — no commit is fabricated
 // on a no-op side — and a side whose committed SHA is already recorded is skipped too, for
 // idempotency across a resumed MergeContinue.
@@ -342,18 +347,20 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	}, nil
 }
 
-// MergeAbort discards an in-progress merge, restoring both sides to their pre-merge SHAs: with no
-// record and no foreign git merge state it returns *ErrNoMergeInProgress; with no record but foreign
-// state present it returns *ErrForeignMergeState, the same rule as MergeContinue.
-// An attempt whose conclude may already have landed on either side refuses with a *MergeGuardError
+// MergeAbort discards an in-progress merge, restoring the warp side alone to its pre-merge SHA — not
+// the weft, which is no longer a merge participant; see resetMergeSides for why it takes and resets
+// a warp SHA argument only. With no record and no foreign git merge state it returns
+// *ErrNoMergeInProgress; with no record but foreign state present it returns *ErrForeignMergeState,
+// the same rule as MergeContinue.
+// An attempt whose conclude may already have landed on the warp side refuses with a *MergeGuardError
 // carrying mergeReasonConcludeLanded (concludeLandedReason), before anything is reset: restoring
-// from the recorded pre-merge SHAs would discard a commit that really landed, and in the
+// from the recorded pre-merge SHA would discard a commit that really landed, and in the
 // MergeIn-with-conflicts flow that commit carries the operator's own resolutions. MergeContinue is
 // the recovery for that shape, and it is idempotent across the resumed run.
 // The combined write lock is acquired BEFORE the record is read and that guard runs — never after —
 // so a conclude landing while this call waits for the lock is seen by the guard instead of being
 // destroyed by the reset (see the in-body comment for the raced shape that ordering closes).
-// It then resets both sides via resetMergeSides — including a
+// It then resets the warp side via resetMergeSides — including a
 // fast-forwarded side and a side that never moved — then deletes the merge-state record and returns
 // MergeResult{} (Committed false).
 func (f *Fabric) MergeAbort() (res MergeResult, err error) {
@@ -394,7 +401,7 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 		return MergeResult{}, newMergeGuardError(reasons)
 	}
 
-	if err := f.resetMergeSides(rec, st.WarpStart, st.WeftStart); err != nil {
+	if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
 		return MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {

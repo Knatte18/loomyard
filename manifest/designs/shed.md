@@ -273,6 +273,13 @@ type Status struct {
 
 The seed itself is written by a spawn-time command, not by `Shed`, and `pause_requested` living in-status rather than in a separate flag file is a deliberate divergence from `webster`'s own separate pause flag file, one `contracts/specs/loom-status-spec.md` documents for `loom`'s instance of this shell.
 
+**`Shed` exposes an optional injected `CommitStatus` seam, `func(producer, state string) error`.**
+When a product wires it, the status file is committed once per transition rather than only when the product's own callers happen to commit it — every step-5/6 persist, the resume write, and the pause write alike, since `persist` is the loop's single write path.
+The call fires after the write and outside `internal/state`'s lock, so a slow seam — a synchronous network push, say — never blocks a status reader; `lyx loom status --watch` included.
+A nil seam is a silent no-op, matching `shedadapters.BouncerConfig.Commit`'s own nil convention, and is what keeps a product wiring no seam behaving exactly as before.
+A seam error propagates out of `persist` and halts `Run`, but the status-file write has already happened and is durable by then, so a resumed run picks up from the correct on-disk state regardless of whether the commit itself succeeded.
+The accepted cost is a millisecond-scale window in which a reader can see the new state on disk before git carries it — strictly better than the whole-run-length gap that exists without the seam wired at all.
+
 **The external-writer lock contract.** Any actor other than `Shed` that writes this file — a product's pause verb, its spawn-time seeder, anything touching `product` — must go through `internal/state` using the same `StatusLockPath` `Shed` was told, because that lock is advisory and keyed on the caller-supplied path. A writer that ignores it can still lose its write, and can still clobber `Shed`'s. This cannot be enforced from `Shed`'s side, so it is written down here, alongside the two producer-side obligations that already are. The merge-safety claim above is qualified accordingly: safe against a concurrent external writer *that takes the same lock*, never unconditionally.
 
 **`pause_requested` is a request `Shed` consumes, not a latch.** It is cleared in the same persist that records `state: "paused"`, so no window exists in which a stale `true` flag sits on disk; the durable record of "this run is paused" is the `state` field. Without this, the next run would re-read a still-true flag and pause again immediately, forever.

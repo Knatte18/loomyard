@@ -28,6 +28,16 @@ type Shed struct {
 	// fresh budget -- which is why this task overturned it in favor of the persisted,
 	// per-producer count above. Read the missing reset as intentional, not an omission.
 	MaxBounces int
+	// CommitStatus is the injected closure persist calls after every successful status-file
+	// write. Nil is the absent value and means "commit nothing", which is what keeps a product
+	// that wires no seam behaving exactly as before, matching shedadapters.BouncerConfig.Commit's
+	// own nil convention. It receives the transition's own current_producer and state as plain
+	// strings, not State, so the owner can build a per-transition commit message rather than a
+	// repeated constant, and so a filling caller in another package never has to import this
+	// engine's enum type. It is called outside internal/state's write lock, never inside the
+	// mutate callback: a synchronous network push inside that lock would block every status
+	// reader -- "lyx loom status --watch" included -- for the push's duration.
+	CommitStatus func(producer, state string) error
 }
 
 // RunOutcome is the whole run's terminal classification.

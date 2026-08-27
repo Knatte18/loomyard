@@ -51,10 +51,12 @@ func landingDeps(
 			return fabricengine.OpenParent(l, parentBranch)
 		},
 		// CommitStatus commits loom's own phase-machine status file, which Shed rewrites on every
-		// producer transition and which "lyx loom run" commits only once, as the seed. Both landing
-		// producers call this immediately before they merge, because fabricengine's merge guard
-		// refuses any tracked modification on either side of the pair -- and by that point the
-		// status file is exactly that.
+		// producer transition. The per-transition Shed.CommitStatus seam (wiring.go) already keeps
+		// the status file current on the ordinary path, so both landing producers calling this
+		// immediately before they merge is retained only as the sole protection if a product wires
+		// Shed.CommitStatus as nil -- not because the merge guard still inspects the local-only side
+		// of the pair, which this task removed from the merge participants entirely, so the guard no
+		// longer looks at it.
 		//
 		// It mirrors wiring.go's CommitDiscussion/CommitPlan closures in every respect: the same
 		// CommitAnchoredPaths call, the same throwaway mutation recorder, the same EnvSyncOptions,

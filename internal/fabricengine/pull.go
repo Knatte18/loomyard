@@ -4,7 +4,8 @@
 // empty-commit machinery.
 // This file defines PullResult and *PartialPullError — the result and partial-failure contract
 // batches 3-4 (the CLI and docs layers) consume — mirroring PartialCommitError's shape (commit.go),
-// with the two sides' roles swapped to match Pull's weft-first ordering.
+// with the two sides' roles swapped: PartialPullError reports a call whose warp-side work did not
+// complete, regardless of whether the weft arm (now non-fatal) completed alongside it.
 
 package fabricengine
 
@@ -17,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
@@ -32,8 +34,9 @@ type PullResult struct {
 	// has no upstream yet (a freshly bootstrapped hub whose suffixed primary
 	// branch exists only locally until the first push lands; there is nothing
 	// to fast-forward from, so skipping is success, not failure).
-	// Every field below is only ever populated once this is true —
-	// see Fabric.Pull's weft-first ordering.
+	// A failed upstream probe or a failed weft pull leaves this false and
+	// does not stop the call: Fabric.Pull's weft arm is non-fatal, and the
+	// warp fetch/reconcile below runs regardless of this field's value.
 	WeftPulled bool
 	// WarpFetched reports whether the warp fetch (f.warp.Fetch) ran and
 	// succeeded.
@@ -80,11 +83,15 @@ type PatternResidueEntry struct {
 	Paths   []string
 }
 
-// PartialPullError reports a Fabric.Pull call whose weft side completed cleanly but whose warp-side
-// work did not — mirroring PartialCommitError's shape (commit.go) with the two sides' roles
-// swapped, per the weft-first-ordering / report-not-rollback Shared Decision.
-// WeftPulled is always true for this type: a weft-side failure never produces a *PartialPullError
-// at all, since Fabric.Pull returns immediately on that path (see Fabric.Pull's doc comment).
+// PartialPullError reports a Fabric.Pull call whose warp-side work did not complete — mirroring
+// PartialCommitError's shape (commit.go) with the two sides' roles swapped, per the
+// weft-first-ordering / report-not-rollback Shared Decision.
+// WeftPulled faithfully reports whether the weft arm completed, which may now be false: since the
+// weft arm became non-fatal, a *PartialPullError can be returned with the weft side never having
+// pulled at all.
+// What has NOT changed: this type still never reports a weft-side failure on its own — a weft-side
+// failure alone is no longer an error at all (Fabric.Pull warns and continues), so *PartialPullError
+// is only ever constructed alongside a genuine warp-side failure.
 // Stage names which warp-side step failed (e.g. "fetch", "reset", "reanchor"), so a caller (or an
 // operator reading the error) knows exactly where the call stopped without re-deriving it from
 // Err's message.
@@ -94,10 +101,14 @@ type PartialPullError struct {
 	Err        error
 }
 
-// Error implements the error interface, stating that weft succeeded and naming the warp-side stage
-// that failed.
+// Error implements the error interface, naming the warp-side stage that failed and, depending on
+// WeftPulled, either confirming the weft pull succeeded alongside it or naming the weft pull as a
+// second failure.
 func (e *PartialPullError) Error() string {
-	return fmt.Sprintf("fabricengine: weft pull succeeded, warp %s failed: %v", e.Stage, e.Err)
+	if e.WeftPulled {
+		return fmt.Sprintf("fabricengine: weft pull succeeded, warp %s failed: %v", e.Stage, e.Err)
+	}
+	return fmt.Sprintf("fabricengine: weft pull did not complete, warp %s also failed: %v", e.Stage, e.Err)
 }
 
 // Unwrap returns the wrapped error, so errors.Is/errors.As reach it.
@@ -198,10 +209,17 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
-// Pull is fabric's unified pull entry point: it pulls weft first, then fetches and inspects warp,
-// reconciling weft's correspondence when warp's history has been rewritten.
+// Pull is fabric's unified pull entry point: it attempts the weft ff-pull first, then fetches and
+// inspects warp, reconciling weft's correspondence when warp's history has been rewritten.
+// The weft arm is non-fatal: a failed upstream probe or a failed weft `git pull --ff-only` is
+// logged as a warning and leaves PullResult.WeftPulled false, but the warp fetch/reconcile runs
+// regardless — a weft that has locally diverged from its own upstream (for example, a status push
+// rejected and warned past on an earlier call) must never stall the warp side's own resume.
 // A warp-side failure reports the accumulated result rather than unwinding the weft pull
 // (weft-first-ordering / report-not-rollback).
+// Reconciling a weft that failed to pull is a named manual operator step — `git -C <weft> reset
+// --hard origin/<branch>` — never something Pull resolves by rewriting history on the caller's
+// behalf, since a push rejection means another machine has already advanced the same FSM state.
 func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -226,11 +244,12 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	// A weft branch with no upstream has nothing to fast-forward from — the freshly bootstrapped
 	// hub's suffixed primary exists only locally until the first push lands — so the weft pull is
 	// skipped as a vacuous success rather than surfacing git's "no tracking information" failure.
+	// A probe failure is non-fatal: it is warned and treated as "nothing to pull from" so the warp
+	// side still runs, rather than stalling the whole call on a weft-side observation failure.
 	weftHasUpstream, err := f.weftHasUpstream()
 	if err != nil {
-		return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
-	}
-	if weftHasUpstream {
+		logger.Warn("fabricengine: weft pull: resolve upstream failed, continuing to warp", "weft", f.weftPath, "err", err)
+	} else if weftHasUpstream {
 		// Sample the weft SHA before and after the pull, and record KindRepoAdvanced only on a
 		// change — PullWeft's own f.weft.Pull() also returns nil when the weft is already up to
 		// date, so an unconditional entry would fabricate a mutation on that no-op path.
@@ -243,32 +262,38 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		// pull is a legitimate before-sample rather than an observation failure.
 		beforeWeftSHA, beforeErr := weftSHAOrEmpty(f)
 		if err := f.PullWeft(opts); err != nil {
-			return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
-		}
-		if beforeErr == nil {
-			if afterWeftSHA, afterErr := weftSHAOrEmpty(f); afterErr == nil && afterWeftSHA != beforeWeftSHA {
-				rec.Append(KindRepoAdvanced, f.weftPath, afterWeftSHA)
+			// A rejected/diverged weft is routine once a status push may be warned past — warn and
+			// fall through to the warp side rather than stalling the operator's whole resume verb.
+			// Recovery is a named manual step: `git -C <weft> reset --hard origin/<branch>`.
+			logger.Warn("fabricengine: weft pull failed, continuing to warp", "weft", f.weftPath, "err", err)
+		} else {
+			result.WeftPulled = true
+			if beforeErr == nil {
+				if afterWeftSHA, afterErr := weftSHAOrEmpty(f); afterErr == nil && afterWeftSHA != beforeWeftSHA {
+					rec.Append(KindRepoAdvanced, f.weftPath, afterWeftSHA)
+				}
 			}
 		}
+	} else {
+		result.WeftPulled = true
 	}
-	result.WeftPulled = true
 	hadUnpushed, err := f.warp.HasUnpushed()
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "unpushed-check", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "unpushed-check", Err: err}
 	}
 
 	if err := f.warp.Fetch(); err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "fetch", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "fetch", Err: err}
 	}
 	result.WarpFetched = true
 
 	upstreamSHA, err := f.warpUpstreamSHA()
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "resolve", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "resolve", Err: err}
 	}
 	localHEAD, err := f.warp.CurrentSHA()
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "resolve", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "resolve", Err: err}
 	}
 
 	if localHEAD == upstreamSHA {
@@ -279,7 +304,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	// without a trace — so a dirty warp worktree is refused here, before anything mutates warp.
 	dirty, err := f.warpWorktreeDirty()
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "dirty-check", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "dirty-check", Err: err}
 	}
 	if dirty {
 		return result, ErrWarpDirty
@@ -287,12 +312,12 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 
 	isFF, err := f.warp.IsAncestor(localHEAD, upstreamSHA)
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "classify", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "classify", Err: err}
 	}
 
 	if isFF {
 		if err := f.ResetHard(rec, upstreamSHA); err != nil {
-			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
+			return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "reset", Err: err}
 		}
 		f.recordWarpAdvance(rec, localHEAD)
 		result.WarpAdvanced = true
@@ -313,21 +338,21 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	// every recorded anchor; without the rebuild, the walk missed those surviving anchors and
 	// returned a false ErrNoSurvivingAnchor that no later call could ever clear.
 	if err := f.RebuildIndex(); err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "load-index", Err: err}
 	}
 	path, err := f.corrIndexPath()
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "load-index", Err: err}
 	}
 	ix, err := loadCorrIndex(path)
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "load-index", Err: err}
 	}
 	entries := ix.entries()
 
 	if len(entries) == 0 {
 		if err := f.ResetHard(rec, upstreamSHA); err != nil {
-			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
+			return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "reset", Err: err}
 		}
 		f.recordWarpAdvance(rec, localHEAD)
 		result.WarpAdvanced = true
@@ -339,14 +364,14 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		return f.warp.IsAncestor(sha, upstreamSHA)
 	})
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "anchor-walk", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "anchor-walk", Err: err}
 	}
 	if !found {
 		return result, ErrNoSurvivingAnchor
 	}
 
 	if err := f.ResetHard(rec, upstreamSHA); err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "reset", Err: err}
 	}
 	f.recordWarpAdvance(rec, localHEAD)
 	result.WarpAdvanced = true
@@ -358,25 +383,25 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "reanchor", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "reanchor", Err: err}
 	}
 	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "reanchor", Err: fmt.Errorf("fabricengine: acquire weft write lock: %w", err)}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "reanchor", Err: fmt.Errorf("fabricengine: acquire weft write lock: %w", err)}
 	}
 	defer func() { _ = l.Release() }()
 
 	msg := appendWarpSHATrailer("fabric: re-anchor weft after warp rebase", upstreamSHA)
 	reanchorSHA, _, err := f.commitEmptySnapshot(msg, upstreamSHA)
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "reanchor", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "reanchor", Err: err}
 	}
 	result.Reconciled = true
 	result.ReanchorWeftSHA = reanchorSHA
 
 	residue, err := f.patternResidueCommits(anchor.WeftSHA, weftHEADBeforeAnchor)
 	if err != nil {
-		return result, &PartialPullError{WeftPulled: true, Stage: "residue", Err: err}
+		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "residue", Err: err}
 	}
 	result.PatternResidue = residue
 
