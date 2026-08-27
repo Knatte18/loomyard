@@ -215,9 +215,11 @@ type branchRequest struct {
 	ownership branchOwnership
 	// dirtiness declares which dirtiness probe the pipeline runs against branch.
 	dirtiness branchDirtiness
-	// force, when true, may answer a call site's own gate (e.g. Cleanup's raddleFoldedBack) but
-	// never the gate's own checked-out-branch dirtiness check — see branch-deletion-is-ref-shaped
-	// in _mill/discussion.md.
+	// force is reserved: every branchRequest construction in this package hardcodes it false today,
+	// since no branch-deletion call site's own gate currently answers to it (Cleanup's own force
+	// parameter is likewise reserved and consulted by no gate — see cleanup.go). Even if a future
+	// gate did consult it, force could never answer the checked-out-branch dirtiness check itself —
+	// see branch-deletion-is-ref-shaped in _mill/discussion.md.
 	force bool
 }
 
@@ -694,8 +696,10 @@ func checkBranchRequest(req branchRequest) error {
 // at any worktree. git branch -D cannot delete a checked-out branch anyway, so this converts git's
 // own refusal into a named gate refusal, the same move as re-gating removeWarpWorktreeDir's fallback.
 // Unlike checkPathDirtiness, req.force is never consulted here — branch-deletion-is-ref-shaped in
-// _mill/discussion.md is explicit that --force may answer a call site's own gate (Cleanup's
-// raddleFoldedBack) but never this check.
+// _mill/discussion.md is explicit that --force may answer a call site's own gate but never this
+// check. No branch-deletion call site's own gate currently answers to force in practice: every
+// branchRequest construction in this package hardcodes force: false, and Cleanup's own force
+// parameter is likewise reserved and consulted by no gate (see cleanup.go).
 func checkBranchDirtiness(req branchRequest) error {
 	branches, err := listWeftBranches(req.ownership.location)
 	if err != nil {
