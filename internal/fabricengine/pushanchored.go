@@ -27,11 +27,16 @@ import (
 // recorder parameter either — PushResult already embeds MutationRecord, so the Mutation Record
 // Invariant is satisfied without one.
 //
-// A rejected push surfaces gitrepo.ErrPushRejected UNWRAPPED — this is load-bearing, not
-// incidental. gitrepo.PushRebaseFree returns that sentinel bare rather than wrapped with %w, and the
-// loom-side per-transition closure this function was added for matches exactly that sentinel with
-// errors.Is to warn and continue on a routine rejection while treating every other push error as
-// fatal; wrapping it here would silently turn that routine rejection into a run-halting error.
+// A rejected push surfaces gitrepo.ErrPushRejected UNWRAPPED: gitrepo.PushRebaseFree returns that
+// sentinel bare rather than wrapped with %w, and this function passes it straight through so a
+// caller CAN discriminate a routine rejection from every other push failure with errors.Is.
+// Which callers actually do so is a separate question, and stating it precisely matters because an
+// earlier version of this comment asserted a discrimination that no caller performed: the loom-side
+// per-transition closure this function was added for (internal/loomcli's newCommitStatusSeam) warns
+// and continues on EVERY push error, rejection or not, per the commit-hard-errors-push-warns
+// decision — an offline laptop must not kill an autonomous run either. The unwrapped sentinel is
+// therefore a property this package preserves and pins (pushanchored_integration_test.go), not one
+// any current consumer's control flow depends on.
 //
 // Returns (PushResult{}, nil) immediately, with no lock taken and nothing recorded, when
 // opts.SkipGit or opts.SkipPush is true.
