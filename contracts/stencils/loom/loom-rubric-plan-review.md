@@ -14,10 +14,10 @@ they are out of scope, and a finding raised against one is never legitimate.
 
 The format contract is `contracts/specs/loom-plan-spec.md`, and the Card model it implements is described in `manifest/designs/plan-card-format.md`.
 This rubric points at both and restates neither.
-The mechanical checks over that contract are already enforced — fifteen of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+The mechanical checks over that contract are already enforced — sixteen of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
-Sitting directly downstream of a sixteen-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
+Sitting directly downstream of a seventeen-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
 
 **`support-log.md` is outside this review entirely.**
 It appears in neither the artifact list nor the answer key, and it must not be read or reasoned from.
@@ -28,7 +28,7 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 Do not flag any of the following as a finding:
 
 - **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The sixteen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — fifteen of the sixteen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+  The seventeen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — sixteen of the seventeen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
@@ -49,6 +49,7 @@ Do not flag any of the following as a finding:
 - **`Custom` is a last resort.**
   Used only where none of `Create`, `Edit`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
   A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target`, so a mistyped one silently escapes two checks the rest of the plan is held to.
+  A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
 - **Fidelity to the decision record.**
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.
   That path is anchor-relative: it resolves from this session's own working directory, and it is deliberately not the absolute form the artifact list uses.

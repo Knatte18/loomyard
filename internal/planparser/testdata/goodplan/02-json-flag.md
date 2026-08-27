@@ -4,6 +4,9 @@
 - `boardcli.newListCmd`
 - `list.go`
 
+**Create:**
+- `list_json_test.go`
+
 **Uses:**
 - `//internal/output/envelope.go`
 
