@@ -34,10 +34,15 @@
 // --is-ancestor` — never `f.warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
+// The weft ff-pull is non-fatal: a failed upstream probe or a failed weft pull is warned and leaves
+// `PullResult.WeftPulled` false, but the warp fetch/reconcile below runs regardless — reconciling a
+// weft that failed to pull is a named manual operator step, never something `Pull` resolves for the
+// caller.
 // The call's result is `PullResult`, a PATTERN-residue report naming which post-anchor weft commits
 // touch the `_lyx/PATTERN.md`/`_lyx/pattern/` paths and therefore need review, since they were
 // written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
-// the full flow and the `*PartialPullError` weft-succeeded/warp-failed contract.
+// the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
+// faithfully reports whether the weft arm completed rather than asserting it always did.
 // Those paths are scoped through the pair's recorded anchor, so a subpath-anchored hub's residue is
 // found at `<anchor>/_lyx/PATTERN.md` rather than silently reported as empty.
 //
