@@ -27,6 +27,8 @@ With `WeftOutcome` written as `mergeOutcomeAlreadyUpToDate`, that function's exi
 - **Context:**
   - `internal/gitrepo/merge.go`
   - `internal/fabricengine/mergeguards.go`
+  - `internal/fabricengine/mergepaths.go`
+  - `internal/fabricengine/mergestate.go`
   - `internal/fabricengine/fabric.go`
 - **Edits:**
   - `internal/fabricengine/merge.go`
@@ -50,6 +52,7 @@ With `WeftOutcome` written as `mergeOutcomeAlreadyUpToDate`, that function's exi
 - **Context:**
   - `internal/gitrepo/merge.go`
   - `internal/fabricengine/mergeguards.go`
+  - `internal/fabricengine/mergestate.go`
   - `internal/fabricengine/fabric.go`
 - **Edits:**
   - `internal/fabricengine/merge.go`
@@ -149,6 +152,7 @@ With `WeftOutcome` written as `mergeOutcomeAlreadyUpToDate`, that function's exi
   - `internal/fabricengine/merge_target_integration_test.go`
   - `internal/fabricengine/mergein_integration_test.go`
   - `internal/fabricengine/mergein_recovery_integration_test.go`
+  - `internal/fabricengine/gitsha_integration_test.go`
   - `internal/fabricengine/export_test.go`
   - `internal/fabricengine/testmain_test.go`
   - `internal/hubforge/hub.go`
