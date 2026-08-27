@@ -598,16 +598,18 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	}
 }
 
-// TestPull_WeftPullFailsWarpUntouched forces the weft ff-pull to fail (a local weft commit
-// diverging from a remote-advanced upstream) and asserts warp is never fetched/reset, the error
-// surfaces, and warp HEAD is unchanged.
-func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
+// TestPull_WeftDivergedAndWarpFetchFails_PartialError forces the weft ff-pull to fail (a local weft
+// commit diverging from a remote-advanced upstream) combined with a warp-side failure (warpPath
+// carries no configured remote, so f.warp.Fetch() itself fails). Since the weft arm is now
+// non-fatal, Pull still attempts the warp side, and the combined failure must surface as a
+// *PartialPullError whose WeftPulled is false and whose Error() names both failures rather than
+// claiming the weft pull succeeded — this is the rewrite of the pre-non-fatal-weft test that used
+// to assert the opposite disposition (an immediate error with warp never touched).
+func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	fixturesDir := t.TempDir()
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
-
-	preWarpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
 
 	// A real hub's weft primary checks out the suffixed branch (fabricengine.WeftBranchName("main")),
 	// never bare "main", and that suffixed branch carries no upstream at all until something pushes
@@ -628,16 +630,106 @@ func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
 	commitPlain(t, weftFixture.PrimeWeft(), "local-only.txt", "local weft change")
 
+	// warpPath has no configured remote at all -- f.warp.Fetch() fails, giving this test its
+	// warp-side failure alongside the weft-side one.
 	result, err := f.Pull(fabricengine.SyncOptions{})
-	if err == nil {
-		t.Fatalf("Pull() error = nil; want an error (weft pull should fail to fast-forward)")
+	var partialErr *fabricengine.PartialPullError
+	if !errors.As(err, &partialErr) {
+		t.Fatalf("Pull() error = %v (%T); want a *fabricengine.PartialPullError", err, err)
+	}
+	if partialErr.WeftPulled {
+		t.Errorf("PartialPullError.WeftPulled = true; want false (the weft pull failed to fast-forward)")
 	}
 	if result.WeftPulled {
-		t.Errorf("Pull() result.WeftPulled = true; want false (a weft-side failure must report the zero result)")
+		t.Errorf("Pull() result.WeftPulled = true; want false")
 	}
+	if strings.Contains(partialErr.Error(), "weft pull succeeded") {
+		t.Errorf("PartialPullError.Error() = %q; must not claim the weft pull succeeded", partialErr.Error())
+	}
+}
 
-	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != preWarpHEAD {
-		t.Errorf("warp HEAD after failed Pull() = %q; want unchanged %q (warp must never be touched)", got, preWarpHEAD)
+// TestPull_WeftDivergedWarpAdvancesCleanly covers the ordinary shape the non-fatal weft arm exists
+// for: a weft that has genuinely diverged from its own upstream (git pull --ff-only hard-refuses)
+// while warp's own remote has simply advanced, with no rewrite involved at all. Pull must still
+// fetch and advance warp, report WeftPulled false, return a nil error, and leave weft HEAD exactly
+// where it was before the call.
+func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
+
+	weftBranch := fabricengine.WeftBranchName("main")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "push", "-u", "origin", weftBranch)
+
+	cloneB := filepath.Join(fixturesDir, "weft-diverge-cloneB")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", "-b", weftBranch, weftFixture.WeftBare, cloneB)
+	gitkit.MustRun(t, cloneB, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, cloneB, "git", "config", "user.name", "Test")
+	commitPlain(t, cloneB, "from-clone-b.txt", "b")
+	gitkit.MustRun(t, cloneB, "git", "push", "-q")
+
+	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
+	commitPlain(t, weftFixture.PrimeWeft(), "local-only.txt", "local weft change")
+	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
+
+	// Advance warp's remote with a clean, non-rewritten commit -- no history rewrite is involved.
+	clone := filepath.Join(fixturesDir, "warp-clone-weft-diverge")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	gitkit.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, clone, "git", "config", "user.name", "Test")
+	ffSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
+	gitkit.MustRun(t, clone, "git", "push")
+
+	result, err := f.Pull(fabricengine.SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v; want nil (a weft-side failure is non-fatal)", err)
+	}
+	if result.WeftPulled {
+		t.Errorf("Pull() WeftPulled = true; want false (the weft failed to fast-forward)")
+	}
+	if !result.WarpAdvanced || result.NewWarpHEAD != ffSHA {
+		t.Errorf("Pull() WarpAdvanced=%v NewWarpHEAD=%q; want warp advanced to %q despite the weft-side failure", result.WarpAdvanced, result.NewWarpHEAD, ffSHA)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft()); got != preWeftHEAD {
+		t.Errorf("weft HEAD after Pull() = %q; want unchanged %q (the failed weft pull must not move weft HEAD)", got, preWeftHEAD)
+	}
+}
+
+// TestPull_HealthyPairBothSidesPullCleanly pins the ordinary path against a regression that simply
+// stops pulling the weft: with a healthy weft upstream and an advanced warp remote, both sides must
+// still report success and the weft HEAD must actually advance.
+func TestPull_HealthyPairBothSidesPullCleanly(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
+
+	weftBranch := fabricengine.WeftBranchName("main")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "push", "-u", "origin", weftBranch)
+
+	cloneB := filepath.Join(fixturesDir, "weft-healthy-cloneB")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", "-b", weftBranch, weftFixture.WeftBare, cloneB)
+	gitkit.MustRun(t, cloneB, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, cloneB, "git", "config", "user.name", "Test")
+	weftFFSHA := commitPlain(t, cloneB, "from-clone-b.txt", "b")
+	gitkit.MustRun(t, cloneB, "git", "push", "-q")
+
+	clone := filepath.Join(fixturesDir, "warp-clone-healthy")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	gitkit.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, clone, "git", "config", "user.name", "Test")
+	warpFFSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
+	gitkit.MustRun(t, clone, "git", "push")
+
+	result, err := f.Pull(fabricengine.SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	if !result.WeftPulled {
+		t.Errorf("Pull() WeftPulled = false; want true (a clean fast-forward on both sides)")
+	}
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft()); got != weftFFSHA {
+		t.Errorf("weft HEAD after Pull() = %q; want it advanced to %q", got, weftFFSHA)
+	}
+	if !result.WarpAdvanced || result.NewWarpHEAD != warpFFSHA {
+		t.Errorf("Pull() WarpAdvanced=%v NewWarpHEAD=%q; want warp advanced to %q", result.WarpAdvanced, result.NewWarpHEAD, warpFFSHA)
 	}
 }
 
