@@ -2,13 +2,13 @@
 // corresponding warp worktree sibling and deletes them according to a flag matrix.
 //
 // Flag matrix:
-//   - apply == false                → dry-run/report only; nothing is deleted. The gate verdict is
-//     still computed, so a dry run's Protected flags match exactly what the same flags plus --apply
-//     would do.
-//   - apply == true && !force       → delete non-gate-protected orphan branches;
-//     task branches where raddleFoldedBack returns false are skipped (protected).
-//   - apply == true && force == true → also delete gate-protected task branches.
-//   - force == true && !apply       → report only; force does not imply apply.
+//   - apply == false → dry-run/report only; nothing is deleted.
+//   - apply == true  → deletes every orphan weft branch that is not the primary weft branch, not
+//     checked out at a worktree, and not unmanaged (no "-weft" suffix, e.g. inherited from history
+//     predating fabric's uniform naming scheme).
+//
+// force is reserved and currently consulted by no gate in this verb; see Topology.Cleanup's own
+// doc comment.
 //
 // A weft branch's warp sibling is recovered via WeftWarpSlug(branch) —
 // inverting WeftBranchName's suffix. The weft repo may also hold non-suffixed weft
@@ -70,8 +70,7 @@ type CleanupBranchEntry struct {
 	// unmanaged (non-suffixed) status, and when deletion itself failed.
 	Deleted bool `json:"deleted"`
 	// Protected reports whether the branch was skipped rather than deleted —
-	// because raddleFoldedBack returned false and force was not set, because the
-	// branch is not fabric-managed (no "-weft" suffix, e.g. inherited from history
+	// because the branch is not fabric-managed (no "-weft" suffix, e.g. inherited from history
 	// predating fabric's uniform naming scheme), or because the branch is
 	// currently checked out at a worktree (git branch -D could never delete it).
 	Protected bool `json:"protected,omitempty"`
@@ -88,17 +87,12 @@ type CleanupResult struct {
 	Entries []CleanupBranchEntry `json:"entries"`
 }
 
-// raddleFoldedBack reports whether the weft branch's _lyx/raddle/ has been squash-merged back.
-// Currently returns false conservatively; branches are gate-protected unless --force is set.
-func raddleFoldedBack(_ string) bool {
-	return false
-}
-
 // Cleanup finds weft branches with no corresponding warp worktree sibling and reports or deletes
-// them per the flag matrix: apply gates whether any deletion happens, force bypasses the
-// _lyx/raddle/ merge-back gate, checked-out branches are always protected.
-// The repo's primary weft branch is protected unconditionally, in every mode — see
-// primaryWeftBranch for why branch-space liveness alone cannot protect it.
+// them per the flag matrix: apply gates whether any deletion happens, checked-out branches are
+// always protected. The repo's primary weft branch is protected unconditionally, in every mode —
+// see primaryWeftBranch for why branch-space liveness alone cannot protect it.
+// force is reserved and currently consulted by no gate in this verb: deleteWeftBranch already
+// hardcodes force: false for its own request, and that stays true.
 func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -166,18 +160,6 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupRe
 
 		if weftBranch.WorktreePath != "" {
 			// Checked-out branch: always protected, never deletable.
-			entry.Protected = true
-			result.Entries = append(result.Entries, entry)
-			continue
-		}
-
-		// The gate is evaluated in BOTH modes, before the apply check rather than after it. A dry
-		// run exists to answer "what would --apply do with these same flags", and evaluating the
-		// gate only under --apply made it answer a different question: every orphan branch is
-		// gate-protected while raddleFoldedBack is conservative, so a dry run reported branches as
-		// deletable that --apply then protected.
-		folded := raddleFoldedBack(branch)
-		if !folded && !force {
 			entry.Protected = true
 			result.Entries = append(result.Entries, entry)
 			continue
