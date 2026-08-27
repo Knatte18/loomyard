@@ -66,7 +66,7 @@ AFTER you have your own independent findings, you MAY consult prior rounds' `_mi
 - Code: the file list above — read every one of them in full, not excerpts.
 - Docs: `manifest/designs/fabric-unified-view.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md`, `docs/overview.md`, `CONSTRAINTS.md` (esp. the Fabric Destruction Chokepoint Invariant, Mutation Record Invariant, Fabric Vocabulary Invariant), `README.md`.
 - Sandbox suite (scenario ideas only, never invoke its launcher): `tools/sandbox/SANDBOX-FABRIC-SUITE.md`.
-- **Design intent (SPEC)**: the original task's `_mill/discussion.md` no longer exists in this worktree (its own worktree was torn down after landing) — recover it from git history instead: `git show 4b30b14e:_mill/discussion.md`. That commit ("mill-start: write discussion.md for weft-local-only-files") is the authoritative source of intended scope/behavior for this diff. Treat it as the SPEC, not a review — reading it is required, not clean-room-violating.
+- **Design intent (SPEC)**: the original task's `_mill/discussion.md` no longer exists in this worktree (its own worktree was torn down after landing) — recover it from git history instead: `git show ec433317:_mill/discussion.md`. That commit ("mill-start: discussion-gap-fix round 5 for weft-local-only-files") is the LAST write to that file and the authoritative source of intended scope/behavior for this diff. Do NOT use `4b30b14e` (the initial write) — it describes the wiki brief's original `MergeOptions.LocalOnlyPaths` per-path design, which `4ccd610d` (gap-fix round 1) explicitly rejected in favor of the "weft is never a merge participant" design actually shipped; rounds 2-5 (through `ec433317`) only add precision/detail on top of that same rejection, not a further scope change. Treat it as the SPEC, not a review — reading it is required, not clean-room-violating. (round `sonnet-high-r2` caught the `4b30b14e` staleness live; this citation was corrected by the orchestrator afterward.)
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`.
 
 ## Mission (assess on two axes, be adversarial)
@@ -146,7 +146,7 @@ TEARDOWN DISCIPLINE: no tmux/LLM substrate to tear down here, but confirm no str
 
 ## How to judge each finding
 For each code finding give: `file:line`, a concrete failure scenario (inputs/state → wrong behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED (reproduced/traced) vs PLAUSIBLE (looks wrong, unverified).
-For scope: `_mill/discussion.md` (recovered at `4b30b14e`)-promised vs shipped; flag deferred-that-should-be-v1 and shipped-beyond-scope.
+For scope: `_mill/discussion.md` (recovered at `ec433317`)-promised vs shipped; flag deferred-that-should-be-v1 and shipped-beyond-scope.
 
 **Severity affects how you REPORT a finding, not whether you fix it.** ALL findings you record get fixed in Job 2 — including every NIT.
 A LARGE finding (a genuine subsystem addition, a cross-cutting refactor reaching outside this diff's scope) does NOT belong in this round's commit-per-fix loop — record it fully, mark it explicitly NOT-FIXED-THIS-ROUND with the reason, and the orchestrator will spin it into its own mill-wiki task.
@@ -167,4 +167,4 @@ None — round 1.
 2. A fixer report at `_mill/fabric-review-<yourtag>-fixer-report.md` (what you implemented, what you deferred and why, exact test commands + results, changed files). Commit it.
 3. In your final chat message: a concise summary (executive summary + counts by severity + the two report paths + an explicit merge-readiness verdict). Do not paste the whole reports.
 
-Begin with the clean-room review (read the SPEC at `4b30b14e:_mill/discussion.md` + the diff files + the module docs, then drive the real substrate), produce your independent findings, then implement and verify the fixes.
+Begin with the clean-room review (read the SPEC at `ec433317:_mill/discussion.md` + the diff files + the module docs, then drive the real substrate), produce your independent findings, then implement and verify the fixes.
