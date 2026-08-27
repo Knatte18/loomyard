@@ -7,7 +7,10 @@ See Maintenance below for how the numbering works.
 
 ## Planned
 
-This section holds what's committed to next; nothing is currently scheduled here.
+This section holds what's committed to next.
+
+1. **producer-agnostic final-summary artifact** — generalize webster's own `_lyx/webster/summary.md` (title+body prose, the PR-text source `landingshed`'s Publish producer already reads via `websterengine.ParseSummary`/`SummaryPath`) into a shed-level told path rather than a websterengine-owned one, so a future last-content-producer (e.g. Tenter) can satisfy the same contract without `Finalize`/`Publish` needing to know which producer wrote it. Wire `Finalize`'s squash-merge `MergeOptions.Message` to read it too — today it is left unset (`internal/landingshed/finalize.go`), so a squash-merged landing commit carries no composed message even though the content to compose one from already exists on disk.
+   See `internal/websterengine/summary.go`, `internal/landingshed/publish.go`, `internal/landingshed/finalize.go`.
 
 ## Someday
 
