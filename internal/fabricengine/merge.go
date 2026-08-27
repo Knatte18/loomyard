@@ -1,10 +1,12 @@
 // merge.go implements fabric's public merge surface: MergeOptions/MergeResult, MergeIn, and Merge.
-// MergeIn merges a source branch into the current pair's own warp and weft checkouts and surfaces
-// any conflicts for resolution in that same worktree.
+// Neither verb makes the weft a merge participant: both merge the warp checkout alone, in either
+// direction (see doc.go's "The merge surface").
+// MergeIn merges a source branch into the current pair's own warp checkout and surfaces any
+// conflicts for resolution in that same worktree.
 // Merge merges a source branch into a target pair the caller opened a handle on — squash-capable,
-// expected conflict-free — synchronizing that target to its own upstream first and self-aborting to
-// *ErrMergeInRequired on any conflict, since conflict resolution belongs in the source pair's own
-// worktree, not the target's.
+// expected conflict-free — synchronizing that target's warp side to its own upstream first and
+// self-aborting to *ErrMergeInRequired on any conflict, since conflict resolution belongs in the
+// source pair's own worktree, not the target's.
 
 package fabricengine
 
