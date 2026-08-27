@@ -878,10 +878,20 @@
 // **The weft is never a merge participant, in either verb or either direction.** Everything routed
 // to the weft belongs to exactly one worktree and one branch, so there is nothing there for a merge
 // to reconcile — a merge carries code, and the weft carries system files, not code. Two consequences
-// follow directly: `unifyConflictPaths`' weft conflict list is permanently empty, never populated,
-// and `fabriccli`'s junction-staging conflict path is unreachable rather than wrong — both are
-// retained plumbing (see the `conclude-and-conflict-plumbing-is-retained` decision), not dead code
-// waiting to be deleted.
+// follow directly: no merge fabric starts can ever CREATE a weft conflict, so `MergeIn` passes
+// `unifyConflictPaths` a nil weft list at every call site of its own, and `fabriccli`'s
+// junction-staging conflict path is unreachable rather than wrong — both are retained plumbing (see
+// the `conclude-and-conflict-plumbing-is-retained` decision), not dead code waiting to be deleted.
+//
+// The weft conflict list is not, however, permanently empty as a whole, and reading it that way
+// misses a live path: `MergeContinue` reads `f.weft.ConflictedFiles()` for real and routes it
+// through `unifiedRemainingConflicts` into that same weft arm, so a FOREIGN weft conflict — an
+// operator's own plain-git merge in the weft checkout, which the Fabric Git Invariant's carve-out
+// permits — does surface a weft path in the returned `Conflicts`. Reproduced live: a raw conflicting
+// merge in the weft while a fabric merge record was open made `merge --continue` refuse with
+// `unresolved: ["_lyx/loom/status.json"]`. That is the machinery working, not leaking: the weft is
+// invisible from the visible worktree, so naming the path is the only actionable refusal available,
+// and the arm must stay for the legacy-record case `concludeMergeSides` still handles.
 //
 // **The recorded merge.** A merge in progress is tracked by a JSON record, `fabric-merge.json`, kept
 // beside the correspondence index — never derived from git state, because derivation fails in ways a
