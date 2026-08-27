@@ -94,6 +94,7 @@ The recovery stays a named manual step — `git -C <weft> reset --hard origin/<b
   - `internal/gitkit/gitkit.go`
 - **Edits:**
   - `internal/fabricengine/pull_integration_test.go`
+  - `internal/fabriccli/merge_cli_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -105,6 +106,10 @@ The recovery stays a named manual step — `git -C <weft> reset --hard origin/<b
   (2) the same diverged weft combined with a warp-side failure — assert the returned error is a `*PartialPullError` whose `WeftPulled` is false and whose `Error()` string does not claim the weft pull succeeded;
   (3) a healthy pair where both sides pull cleanly — assert `WeftPulled` true and the weft HEAD advanced, so the ordinary path is pinned against a regression that simply stops pulling the weft.
   Reuse the file's existing fixture helpers rather than adding new ones.
+  Extending beyond the plan's original scope (added during implementation, since widening this batch's `verify:` to `internal/fabriccli/...` — required because card 16 edits `weft_verbs.go` — surfaces three `internal/fabriccli/merge_cli_integration_test.go` failures batch 2's own narrower `verify:` (fabricengine only) never caught): batch 2's `weft-guards-drop` made the weft side a non-participant in `Merge`/`MergeIn` and removed `mergeReasonNotFabricManaged` from `resolveMergeSources`, but never updated this CLI-layer file to match, following Card 12's established playbook of inverting rather than deleting a test whose premise a batch has since removed.
+  Rewrite `TestRunCLI_MergeNonexistentBranchReportsAggregatedGuardError` (rename to `TestRunCLI_MergeNonexistentBranchReportsSourceNotFound`) to assert only `"source branch not found"` in the aggregated error text, and additionally assert the error does NOT contain `"source branch is not fabric-managed"`, since that reason is no longer reachable.
+  Rewrite `TestRunCLI_MergeStageIsTheOnlyRouteForAWeftSideConflict` (rename to `TestRunCLI_MergeStageResolvesAWarpSideConflict`) to conflict on an ordinary warp-side path instead of a weft-side one behind a junction — a weft-side conflict can no longer occur via `merge-in` — keeping the resolve/`merge-stage`/`merge --continue` end-to-end pin but dropping the junction-bypass-only assertion block, since that property no longer holds.
+  Rewrite `TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths` to conflict on two warp-side paths (e.g. `conflict-a.txt`/`conflict-b.txt` via two `setupConflictingDivergenceCLI` calls against the same source branch) rather than one warp-side and one weft-side path, since the weft side can no longer contribute a second conflicting path; stage one, and assert `merge --continue` still refuses and names exactly the other, unstaged path under `"unresolved"`.
 - **Commit:** `test(fabricengine): pin the non-fatal weft pull arm`
 
 ## Batch Tests
