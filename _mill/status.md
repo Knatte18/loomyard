@@ -50,7 +50,9 @@ batches:
     commit_sha: 2af724af78014422066d22fa9f1d90fa049efcf6
     verify_baseline_failures: []
   - name: weft-guards-drop
-    state: pending
+    state: running
+    implementer_session: 10c24189-70a6-4c62-90b0-64f94e797ccc
+    start_sha: 21fa3a2ce99290553f713a6b41adae3b6e9e6dec
     verify_baseline_failures: []
   - name: pull-non-fatal-weft
     state: pending
