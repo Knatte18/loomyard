@@ -36,7 +36,9 @@ batches:
     commit_sha: f23616d0a60fa83a81ec082007ff4637bb2d5f19
     verify_baseline_failures: []
   - name: cleanup-raddle-gate
-    state: pending
+    state: running
+    implementer_session: b2882614-b190-4d09-ab62-d67c393cbec4
+    start_sha: 555f354595ef9d46db1d54919600c7ecd5334b23
     verify_baseline_failures: []
   - name: shed-commitstatus-seam
     state: pending
