@@ -130,21 +130,18 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 	return localSHA, true
 }
 
-// pairDirtyReason reports mergeReasonWorktreeDirty when either checkout of f carries uncommitted
+// pairDirtyReason reports mergeReasonWorktreeDirty when f's warp checkout carries uncommitted
 // tracked changes.
-// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
-// which side was dirty, nor that two subjects were checked.
+// The weft side is not evaluated: it is not a merge participant, so its dirtiness cannot affect a
+// warp-only merge's correctness, and checking it could only refuse a merge that would have been
+// right.
 func pairDirtyReason(f *Fabric) ([]string, error) {
 	warpDirty, _, err := worktreeDirty(scopeTracked, f.warpPath)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
 	}
-	weftDirty, _, err := worktreeDirty(scopeTracked, f.weftPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
-	}
 
-	if warpDirty || weftDirty {
+	if warpDirty {
 		return []string{mergeReasonWorktreeDirty}, nil
 	}
 	return nil, nil
@@ -166,25 +163,20 @@ func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
 	return "", false, fmt.Errorf("fabricengine: resolve upstream in %s: %w", dir, runErr)
 }
 
-// detachedHeadReason reports mergeReasonDetachedHead when either checkout of f has HEAD pointing
+// detachedHeadReason reports mergeReasonDetachedHead when f's warp checkout has HEAD pointing
 // straight at a commit instead of at a branch.
 // A merge concluded on a detached HEAD lands a commit no ref reaches, so the next checkout discards
-// it silently — while the paired repo's half of the same merge, whose own HEAD was on a branch, is
-// already landed for good and no longer abortable, since the merge verb deleted its record on the
-// way out. Refusing before the attempt starts is the only point at which that is recoverable.
-// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
-// which side (if either) was detached.
+// it silently — the only point at which that is recoverable is before the attempt starts.
+// The weft side is not evaluated: it is not a merge participant, so its head attachment cannot
+// affect a warp-only merge's correctness, and checking it could only refuse a merge that would have
+// been right.
 func detachedHeadReason(f *Fabric) ([]string, error) {
 	warpDetached, err := f.warp.HeadDetached()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: check checkout head attachment: %w", err)
 	}
-	weftDetached, err := f.weft.HeadDetached()
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check checkout head attachment: %w", err)
-	}
 
-	if warpDetached || weftDetached {
+	if warpDetached {
 		return []string{mergeReasonDetachedHead}, nil
 	}
 	return nil, nil
