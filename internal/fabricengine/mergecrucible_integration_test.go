@@ -40,55 +40,67 @@ func assertSoleGuardReason(t *testing.T, label string, err error, want string) {
 	}
 }
 
-// TestMergeCrucible_DetachedHeadRefused pins finding F2: a merge verb must refuse while either
-// checkout has HEAD pointing straight at a commit rather than at a branch.
+// TestMergeCrucible_DetachedHeadRefused pins finding F2 on the warp side: a merge verb must refuse
+// while the warp checkout has HEAD pointing straight at a commit rather than at a branch.
 // Without the guard, MergeIn reported full success on a detached warp HEAD, landed a warp merge
 // commit no ref reaches, landed the weft merge commit permanently, and deleted its own record — so
 // the warp half vanished at the next checkout with the weft half already final and no longer
 // abortable.
-// The table drives both sides, since the guard is aggregated and must fire whichever side is
-// detached.
+// A detached WEFT HEAD no longer refuses: the weft is not a merge participant, so its head
+// attachment cannot affect a warp-only merge's correctness — TestMergeCrucible_WeftDetachedDoesNotRefuse
+// below covers that side instead, asserting the merge proceeds.
 func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
-	tests := []struct {
-		name       string
-		detachWeft bool
-	}{
-		{name: "WarpDetached", detachWeft: false},
-		{name: "WeftDetached", detachWeft: true},
+	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
+	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "--detach", "HEAD")
+
+	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+
+	_, err := f.MergeIn("feature")
+	assertSoleGuardReason(t, "MergeIn(feature)", err, "checkout is not on a branch")
+
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpBefore {
+		t.Errorf("warp HEAD = %q; want unchanged %q", got, warpBefore)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-			commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
-			commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+		t.Errorf("weft HEAD = %q; want unchanged %q", got, weftBefore)
+	}
 
-			detachDir := h.PrimeWorktree()
-			if tt.detachWeft {
-				detachDir = h.PrimeWeft()
-			}
-			gitkit.MustRun(t, detachDir, "git", "checkout", "-q", "--detach", "HEAD")
+	inProgress, err := f.MergeInProgress()
+	if err != nil {
+		t.Fatalf("MergeInProgress: %v", err)
+	}
+	if inProgress {
+		t.Error("MergeInProgress() = true after a refused merge; want false — a guard refusal must write no record")
+	}
+}
 
-			warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-			weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+// TestMergeCrucible_WeftDetachedDoesNotRefuse used to be TestMergeCrucible_DetachedHeadRefused's
+// WeftDetached table case, pinning detachedHeadReason's now-removed weft arm. detachedHeadReason
+// evaluates the warp side alone now, so a detached weft HEAD no longer blocks MergeIn: the weft is
+// not a merge participant, and its own detachment cannot affect a warp-only merge's correctness.
+func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
+	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
+	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
 
-			_, err := f.MergeIn("feature")
-			assertSoleGuardReason(t, "MergeIn(feature)", err, "checkout is not on a branch")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "checkout", "-q", "--detach", "HEAD")
 
-			if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpBefore {
-				t.Errorf("warp HEAD = %q; want unchanged %q", got, warpBefore)
-			}
-			if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
-				t.Errorf("weft HEAD = %q; want unchanged %q", got, weftBefore)
-			}
+	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
 
-			inProgress, err := f.MergeInProgress()
-			if err != nil {
-				t.Fatalf("MergeInProgress: %v", err)
-			}
-			if inProgress {
-				t.Error("MergeInProgress() = true after a refused merge; want false — a guard refusal must write no record")
-			}
-		})
+	_, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v; want nil — a detached weft HEAD must no longer refuse a merge the warp alone completes", err)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got == warpBefore {
+		t.Errorf("warp HEAD = %q; want it to have moved off %q", got, warpBefore)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+		t.Errorf("weft HEAD = %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore)
 	}
 }
 

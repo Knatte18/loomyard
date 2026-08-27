@@ -372,10 +372,16 @@ func TestMergeIn_Freshness_SourceResolvableNowhere(t *testing.T) {
 	}
 }
 
-// TestMergeIn_NotFabricManaged_NothingMutated covers the fabric-managed guard: a source branch with
-// no "-weft" counterpart, locally or remotely, refuses with the fixed "source branch is not
-// fabric-managed" reason, mutating neither side's HEAD.
-func TestMergeIn_NotFabricManaged_NothingMutated(t *testing.T) {
+// TestMergeIn_NoWeftCounterpart_NothingMutated used to be TestMergeIn_NotFabricManaged_NothingMutated,
+// pinning resolveMergeSources' now-removed fabric-managed guard: a source branch with no "-weft"
+// counterpart, locally or remotely, used to refuse with the fixed "source branch is not
+// fabric-managed" reason. resolveMergeSources no longer refuses on the weft's behalf at all — it
+// still resolves the weft counterpart's SHA for mergeState.WeftSource, best-effort, but an
+// unresolvable one simply leaves that field empty rather than blocking the merge.
+// This fixture's "feature" branch is created at the current HEAD, so with the guard gone the call
+// reaches the degenerate AlreadyUpToDate case instead of refusing — nothing mutates either way,
+// which is why the original nothing-mutated assertions still hold verbatim.
+func TestMergeIn_NoWeftCounterpart_NothingMutated(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "feature")
@@ -383,13 +389,12 @@ func TestMergeIn_NotFabricManaged_NothingMutated(t *testing.T) {
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
 
-	_, err := f.MergeIn("feature")
-	var guardErr *fabricengine.MergeGuardError
-	if !errors.As(err, &guardErr) {
-		t.Fatalf("MergeIn(feature) error = %v (%T); want *fabricengine.MergeGuardError", err, err)
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v; want nil — a source with no weft counterpart must no longer refuse", err)
 	}
-	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "source branch is not fabric-managed" {
-		t.Errorf("MergeIn(feature) guard reasons = %v; want exactly [\"source branch is not fabric-managed\"]", guardErr.Reasons)
+	if !res.AlreadyUpToDate {
+		t.Errorf("MergeIn(feature).AlreadyUpToDate = false; want true — feature was branched at the current HEAD")
 	}
 
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpBefore {
@@ -400,40 +405,56 @@ func TestMergeIn_NotFabricManaged_NothingMutated(t *testing.T) {
 	}
 }
 
-// TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide covers the dirty-pair guard: a dirty warp-only
-// pair and a dirty weft-only pair both refuse with the fixed "worktree dirty" reason, and the two
-// error values are byte-identical (never revealing which side was dirty).
-func TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide(t *testing.T) {
-	hWarpDirty, fWarpDirty, _, _, _, _ := newMergePairFixture(t, ".")
-	gitkit.MustRun(t, hWarpDirty.PrimeWorktree(), "git", "branch", "feature")
-	gitkit.MustRun(t, hWarpDirty.PrimeWeft(), "git", "branch", "feature-weft")
-	if err := os.WriteFile(filepath.Join(hWarpDirty.PrimeWorktree(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+// TestMergeIn_DirtyWarpRefuses covers the dirty-pair guard's surviving half: a dirty warp-only pair
+// refuses with the fixed "worktree dirty" reason.
+// It was TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide's warp-dirty half; the byte-identical-
+// either-side assertion that test's name promised no longer holds now that the weft half doesn't
+// refuse at all (TestMergeIn_DirtyWeftDoesNotRefuse below), so the two halves are split into
+// separately named tests rather than kept under one name that describes a property only one of them
+// still has.
+func TestMergeIn_DirtyWarpRefuses(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "feature")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "feature-weft")
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
-	gitkit.MustRun(t, hWarpDirty.PrimeWorktree(), "git", "add", "dirty.txt")
-	_, errWarpDirty := fWarpDirty.MergeIn("feature")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "dirty.txt")
 
-	hWeftDirty, fWeftDirty, _, _, _, _ := newMergePairFixture(t, ".")
-	gitkit.MustRun(t, hWeftDirty.PrimeWorktree(), "git", "branch", "feature")
-	gitkit.MustRun(t, hWeftDirty.PrimeWeft(), "git", "branch", "feature-weft")
-	if err := os.WriteFile(filepath.Join(hWeftDirty.PrimeWeft(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+	_, err := f.MergeIn("feature")
+	var guardErr *fabricengine.MergeGuardError
+	if !errors.As(err, &guardErr) {
+		t.Fatalf("warp-dirty MergeIn() error = %v (%T); want *fabricengine.MergeGuardError", err, err)
+	}
+	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "worktree dirty" {
+		t.Errorf("warp-dirty guard reasons = %v; want exactly [\"worktree dirty\"]", guardErr.Reasons)
+	}
+}
+
+// TestMergeIn_DirtyWeftDoesNotRefuse used to be TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide's
+// weft-dirty half, pinning pairDirtyReason's now-removed weft arm. pairDirtyReason evaluates the warp
+// side alone now, so a dirty weft no longer blocks MergeIn — the weft is not a merge participant, so
+// its dirtiness cannot affect a warp-only merge's correctness. This fixture's "feature" branch is
+// created at the current HEAD, so with the guard gone the call reaches the degenerate
+// AlreadyUpToDate case rather than landing a real merge commit.
+func TestMergeIn_DirtyWeftDoesNotRefuse(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "feature")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "feature-weft")
+	if err := os.WriteFile(filepath.Join(h.PrimeWeft(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
-	gitkit.MustRun(t, hWeftDirty.PrimeWeft(), "git", "add", "dirty.txt")
-	_, errWeftDirty := fWeftDirty.MergeIn("feature")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "dirty.txt")
 
-	var guardErrWarp, guardErrWeft *fabricengine.MergeGuardError
-	if !errors.As(errWarpDirty, &guardErrWarp) {
-		t.Fatalf("warp-dirty MergeIn() error = %v (%T); want *fabricengine.MergeGuardError", errWarpDirty, errWarpDirty)
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("weft-dirty MergeIn() error = %v; want nil — a dirty weft must no longer refuse", err)
 	}
-	if !errors.As(errWeftDirty, &guardErrWeft) {
-		t.Fatalf("weft-dirty MergeIn() error = %v (%T); want *fabricengine.MergeGuardError", errWeftDirty, errWeftDirty)
+	if !res.AlreadyUpToDate {
+		t.Errorf("weft-dirty MergeIn().AlreadyUpToDate = false; want true — feature was branched at the current HEAD")
 	}
-	if len(guardErrWarp.Reasons) != 1 || guardErrWarp.Reasons[0] != "worktree dirty" {
-		t.Errorf("warp-dirty guard reasons = %v; want exactly [\"worktree dirty\"]", guardErrWarp.Reasons)
-	}
-	if errWarpDirty.Error() != errWeftDirty.Error() {
-		t.Errorf("error values diverge by side: warp-dirty = %q, weft-dirty = %q; want byte-identical", errWarpDirty.Error(), errWeftDirty.Error())
+	if out := gitkit.GitStatusPorcelain(t, h.PrimeWeft()); !strings.Contains(out, "dirty.txt") {
+		t.Errorf("weft git status --porcelain after MergeIn = %q; want it to still mention dirty.txt — MergeIn never touches the weft", out)
 	}
 }
 
