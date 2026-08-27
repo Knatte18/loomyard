@@ -33,6 +33,7 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 - `internal/loomrecipe` — a `ShedPaths.CommitStatus` field threaded into the constructed `shedengine.Shed`.
 - `internal/loomcli` — filling that closure with commit-then-push over loom's status path.
 - `internal/fabricengine` — a new `PushAnchored(l, opts)` beside the existing `CommitAnchoredPaths`.
+- `internal/fabricengine` — a new `MergeStateActive(l) (bool, error)`, the vocabulary-neutral merge-state probe the commit closure consults.
 - `CONSTRAINTS.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md` — docs, same commit.
 
 **Out:**
@@ -91,9 +92,14 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 
 ### commit-and-push-every-transition
 
-- Decision: the loom-side closure commits and pushes on every transition, respecting `SyncOptions.SkipPush`. The push goes through a new synchronous `fabricengine.PushAnchored(l, opts)`, a vocabulary-neutral `l`-in / no-path-out wrapper mirroring `CommitAnchoredPaths` (`internal/fabricengine/commitweftpaths.go:95`) and modelled on `PushWarpAt`'s `At`-shaped signature.
+- Decision: the loom-side closure commits and pushes on every transition, respecting `SyncOptions.SkipPush`. The push goes through a new synchronous `fabricengine.PushAnchored(l, opts)`, a vocabulary-neutral `l`-in / no-path-out wrapper mirroring `CommitAnchoredPaths` (`internal/fabricengine/commitweftpaths.go:95`).
+  Its underlying primitive is **`gitrepo.PushRebaseFree`, never `gitrepo.PushCoalesced`** — the same choice `PushWarpRebaseFreeAt` (`spawn.go:110-123`) already made, for the same two reasons.
+  A rejected push surfaces as `gitrepo.ErrPushRejected` and is treated as an ordinary push failure: warn and continue, never retry, never rebase.
 - Rationale: an unpushed commit does not deliver cross-machine resume, and pulling the branch is the whole point. Transitions are minutes apart — each is a real LLM session — so one narrowly-scoped push is noise. Synchronous because push failure is warn-and-continue, and a detached push cannot report the failure the warning carries.
-- Rejected: commit-only with a separate push verb; `SpawnDetachedPush` (failure invisible); debounced push; opening a `*Fabric` per transition to call `PushWeft`.
+  `PushCoalesced` is disqualified twice over: its `pushWithRebaseRetry` path runs `git pull --rebase` on a rejected push, which rewrites this side's SHAs and invalidates the correspondence index — contradicting `### correspondence-unchanged` and turning a rejection into a silent history rewrite of a *running* weft;
+  and it takes a repo-root push-lock file, which would contend with `SpawnDetachedPush` children and landing-time pushes on every transition, and returns on a failed acquisition before `HasUnpushed` is ever consulted. `PushRebaseFree` does neither, so the transition push has no lock, no residue, and no contention with fabric's existing push paths.
+  A rejection means another machine advanced the branch — exactly the multi-machine case this feature enables — and resolving that is a human decision, not something a background persist may rewrite history over.
+- Rejected: `PushCoalesced` (above); commit-only with a separate push verb; `SpawnDetachedPush` (failure invisible); debounced push; opening a `*Fabric` per transition to call `PushWeft`.
 
 ### commit-hard-errors-push-warns
 
@@ -103,13 +109,21 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 
 ### skip-while-mid-merge
 
-- Decision: `CommitStatus` detects an in-progress merge and skips — no commit, no push, no error — logging at warn.
-- Rationale: git refuses a path-scoped commit while `MERGE_HEAD` is live, and that state is reachable: `mergeresolve.mergeInErrorResult` (`internal/mergeresolve/mergeresolve.go:68-78`) deliberately leaves foreign merge state untouched and goes Stuck. Without the skip, every subsequent persist would hard-error and turn a recoverable Stuck into a dead run.
-- Rejected: hard-erroring by design; falling back to a full-tree commit mid-merge.
+- Decision: `CommitStatus` consults a new `fabricengine.MergeStateActive(l) (bool, error)` and skips when it reports true — no commit, no push, no error — logging at warn.
+  `MergeStateActive` answers "is either side of the pair mid-merge at the git level", consulting exactly what the unexported `foreignMergeStatePresent` (`internal/fabricengine/mergestate.go:257-276`) already consults: `MergeHeadPresent()` and `ConflictedFiles()` on both sides. It takes an `l *lyxcwd.Location`, not an open `*Fabric`, matching `CommitAnchoredPaths`/`PushAnchored`'s shape.
+- Rationale: git refuses a path-scoped commit while `MERGE_HEAD` is live, and that state is reachable — `mergeresolve.mergeInErrorResult` (`internal/mergeresolve/mergeresolve.go:68-78`) deliberately leaves foreign merge state untouched and goes Stuck. Without the skip, every subsequent persist would hard-error and turn a recoverable Stuck into a dead run.
+  `Fabric.MergeInProgress` cannot serve as the probe: it is `mergeRecordExists()`'s bare boolean and "never consults `foreignMergeStatePresent`" (`mergelifecycle.go:407-413`), so it is false in precisely the foreign-state case the skip exists for — and it needs an open `*Fabric`, which the closure does not hold.
+- Rejected: probing via `Fabric.MergeInProgress`; hard-erroring by design; falling back to a full-tree commit mid-merge.
+
+### mergestate-weft-fields-stay
+
+- Decision: `mergeState`'s four weft fields (`WeftStart`, `WeftSource`, `WeftOutcome`, `WeftCommitted` — `internal/fabricengine/mergestate.go:44-51`) are kept and filled, recording the weft as unmoved: the current weft SHA for start and source, the up-to-date outcome string, and whatever the conclude path leaves in `WeftCommitted`.
+- Rationale: they are load-bearing, not descriptive. `mergeAttemptIncompleteReason` (`mergelifecycle.go:236-240`) refuses a resume when `WeftOutcome == ""`, and `mergeguards.go:296,324` read `WeftCommitted`/`WeftOutcome`/`WeftSource`. Filling them as unmoved also leaves the persisted JSON schema byte-compatible, so a merge-state file written by a pre-change binary stays readable by a post-change one and vice versa.
+- Rejected: dropping the fields (breaks resume and the persisted schema); leaving them empty (`mergeAttemptIncompleteReason` refuses every resume).
 
 ### landing-checkpoint-stays
 
-- Decision: `landingshed.Deps.CommitStatus` and its call at `Finalize.Call` step 1b are kept unchanged.
+- Decision: `landingshed.Deps.CommitStatus` and its calls in **both** landing producers (`internal/landingshed/finalize.go:123` and `publish.go:114`) are kept unchanged.
 - Rationale: with the per-transition hook wired it is a no-op on the ordinary path (`StageAndCommit` reports `committed == false` on a clean tracked path), and it is the only protection if a product wires `Shed.CommitStatus` as nil. Removing it would couple the generic landing producers to a Shed persistence policy they cannot see.
 - Rejected: removing the field as subsumed; marking it deprecated.
 
@@ -162,6 +176,7 @@ The primary weft branch is protected unconditionally by `primaryWeftBranch` and 
 - `git` refuses to stage through a junction, so `_lyx/` paths can only be staged in the weft worktree directly (`internal/fabriccli/merge_verbs.go:91,216`). Nothing in this design stages `_lyx/` during a merge, which is one more thing the redesign removes.
 - A child's weft branch is created from the parent's weft at spawn, so a child inherits whatever `_lyx/` the parent branch carries. Under this design the parent accumulates none, so the inherited tree is empty in practice — except on a parent that ran loom directly on itself. The plan should confirm this rather than assume it.
 - `pairDirtyReason` (`internal/fabricengine/mergeguards.go:137-145`) checks dirtiness with `scopeTracked`, so untracked files never block a merge.
+- **The pull side is an operator step, not loom's.** Nothing in `internal/loomcli` pulls; a second machine resumes by pulling the branch itself (`lyx fabric pull`). The transition push is branch-scoped rather than path-scoped, so it also carries the artifact commits made by the separate discussion and plan closures (`wiring.go:179`, `:205`) — those reach the remote through it, not through any push of their own.
 
 ## Constraints
 
@@ -228,3 +243,6 @@ The closure commits then pushes; a push failure does not surface as an error whi
 - **Q:** Do `discussion/`, `plan/`, and `webster/` reach the parent? **A:** No, and that is intended. The parent carries the code, not the scaffolding.
 - **Q:** Is the archive tag the durable record of the scaffolding? **A:** No — loomyard creates no tags and there is no snapshot mechanism; every `Snapshot` in the tree is `Mutations.Snapshot()`, an in-memory mutation record. The branch alone is the record.
 - **Q:** Does `CONSTRAINTS.md` gain a third state category? **A:** No. There is no per-path rule to describe, so the existing invariant gains one sentence: weft content is per-branch and never a merge participant.
+- **Q:** Which push primitive does `PushAnchored` use? **A:** `gitrepo.PushRebaseFree`, never `PushCoalesced`. `PushCoalesced`'s rebase-retry rewrites this side's SHAs on a rejected push and invalidates the correspondence index, and it takes a repo-root push lock that would contend with existing push paths on every transition.
+- **Q:** How does the closure detect that a merge is in progress? **A:** A new `fabricengine.MergeStateActive(l)`, consulting `MergeHeadPresent()` and `ConflictedFiles()` on both sides. `Fabric.MergeInProgress` cannot serve — it answers "does fabric have a merge record", is false for foreign merge state, and needs an open `*Fabric`.
+- **Q:** What happens to `mergeState`'s weft fields when weft never merges? **A:** Kept and filled as unmoved. `mergeAttemptIncompleteReason` refuses a resume when `WeftOutcome == ""`, and keeping them leaves the persisted JSON schema compatible in both directions.
