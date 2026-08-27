@@ -91,7 +91,26 @@ This diff's central claim is **"the weft is never a merge participant, in either
 - The correctness of `Fabric.Commit`'s general async-push/lock machinery predating this diff (only the NEW `PushAnchored` entry point and its consumption by the CommitStatus seam are in scope).
 
 ## Round context seeded from prior-round verification
-This is round 1 — no prior round, no known residual. Do a genuinely independent clean-room pass per the high-yield focus list above.
+**Safety pass.** Round `opus-high-r1` found 0 BLOCKING, 4 MEDIUM, 5 LOW, 4 NIT and fixed all 13. The orchestrator independently verified — cold `go build`/`go vet`/`go test -count=5` over the in-scope packages, cold `-tags integration` over fabricengine/fabriccli/landingshed, 3× concurrent copies of the fabricengine integration binary (clean, no real FAIL/panic/race marker), and personally sabotage-proved the one real production fix (see below) by reverting it, watching all three of its regression tests fail at the intended assertion, then restoring and confirming an empty diff. No residual was found. Full detail: `_mill/fabric-review-opus-high-r1.md` and `_mill/fabric-review-opus-high-r1-fixer-report.md` — you MAY read these now that you are seeded (the clean-room constraint only applies to forming your OWN findings first; consult them afterward per that section).
+
+Do a genuinely independent clean-room pass — form your own findings first, per the high-yield focus list above, BEFORE reading the round-1 material — to find anything round 1 missed, or honestly confirm merge-readiness ("no new defects, ship it" is the expected, valuable outcome of a safety pass — do not invent work).
+
+**Do NOT re-open the following CLOSED-AND-VERIFIED items** (all independently confirmed by the orchestrator, not just self-reported by round 1):
+- F1 (`pushanchored.go` doc no longer claims an `errors.Is(ErrPushRejected)` discrimination that doesn't exist) — `79947900`
+- F2/F11/F13 (the `MergeStateActive` probe-then-commit TOCTOU in `internal/loomcli/wiring.go`'s `newCommitStatusSeam` now takes the skip disposition instead of hard-erroring when a commit fails because a merge went live after the probe; doc enumeration reordered to match execution; `loom.md` names both skip causes) — `c974f8ae`, sabotage-proved by the orchestrator directly
+- F3 (`doc.go`: the weft conflict list is not permanently empty — `MergeContinue` populates it from a real foreign weft conflict) — `694029c6`
+- F4 (`doc.go`: the weft has not lost ALL power to block a merge — `foreignMergeStatePresent` and a weft conflicted index both still refuse) — `d16b8adc`
+- F5 (`merge.go` file header no longer claims `MergeIn` touches the weft) — `df185c8b`
+- F6 (`ErrWarpDirty` no longer promises the weft was fast-forwarded) — `84687354`
+- F7 (`cleanup`'s reserved `--force` pinned as inert; orphan/primary/unmanaged carve-outs all reconfirmed live) — `79366900`
+- F8 (real-substrate integration coverage added for the CommitStatus seam against a live fabric pair, closing the stub-only gap) — `0135044f`
+- F9 (narrowed weft guards pinned in combination — dirty AND detached together — not just one at a time) — `4c00a8e3`
+- F10 (single merge-state write at `MergeIn`/`Merge` start, `WeftOutcome` pre-filled in the struct literal, closing the empty-`WeftOutcome` crash window) — `769ec82d`
+- F12 (`PushResult`'s doc states the invariant instead of a roll-call that had already gone stale twice) — `6045f34c`
+
+Two items round 1 explicitly disclosed as residuals rather than defects — do not re-flag these as new findings unless you find a reason the disclosure itself is wrong:
+1. F2's remaining `git add` staging into a foreign merge's index on a lost race (the commit-hard-error is now avoided, but the file is still staged in the operator's index before the failure is detected) — bounded, closing it needs a lock the operator doesn't take.
+2. `sideRecordedMergeGone`'s squash exemption — pre-existing, untouched by `ab99f531`, out of this campaign's scope.
 
 State the **merge bar**: correctness in the NORMAL single-instance flow is the gate. An N×-concurrent suite (if you run one against the integration-tagged git tests — see cost declaration below, this is CHEAP for this module, unlike an LLM-driving one) is a diagnostic amplifier, not a merge blocker.
 
