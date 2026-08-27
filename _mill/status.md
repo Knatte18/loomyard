@@ -71,6 +71,8 @@ batches:
     commit_sha: ad55d609328f72ce584af4739a1f1715d955b7a7
     verify_baseline_failures: []
   - name: loom-transition-commit
-    state: pending
+    state: running
+    implementer_session: fd1d6dd7-2ece-49a0-b9eb-cb69148aadd0
+    start_sha: bf61dac736ad87f345f2e4e0483de33e60f30f21
     verify_baseline_failures: []
 ```
