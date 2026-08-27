@@ -352,6 +352,9 @@ func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 
 // pullResultMap converts a fabricengine.PullResult into the map shape output.Ok
 // expects, flattening each PatternResidueEntry the same way.
+// weft_pulled can now be false inside a SUCCESS envelope — the weft arm is non-fatal, so a false
+// value here means the warp side pulled while the weft did not; the operator's remedy is to
+// reconcile the weft by hand (`git -C <weft> reset --hard origin/<branch>`).
 func pullResultMap(result fabricengine.PullResult) map[string]any {
 	residue := make([]map[string]any, 0, len(result.PatternResidue))
 	for _, entry := range result.PatternResidue {

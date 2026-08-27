@@ -341,8 +341,22 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // strict read, because the merge strips it and the next read sees a clean file. This is accepted
 // because product is the sanctioned channel for everything an external writer legitimately owns,
 // and a key outside it is a mistake nothing here promises to preserve.
+//
+// After the write, and only after UpdateJSON has returned and released StatusLockPath, persist
+// calls s.CommitStatus with the transition's own nextCurrentProducer and string(nextState),
+// never from inside the mutate callback above: a synchronous network push made while
+// StatusLockPath is held would block every ReadJSON/ReadJSONStrict reader on that path for the
+// push's duration -- "lyx loom status --watch" included, which is precisely the observability
+// this seam exists to deliver. A nil CommitStatus is a silent no-op. A non-nil error the closure
+// returns propagates out of persist and therefore halts Run, but by then the status-file write
+// has already happened and is durable -- that ordering is load-bearing. The accepted cost is a
+// millisecond-scale read-then-commit window in which a reader can see the new state on disk
+// before git carries it, which is strictly better than today, where that gap lasts the whole run
+// rather than milliseconds. The closure is called on every persist invocation, never
+// conditionally on nextCurrentProducer having changed: state, history, and error can all change
+// without it, and the pause and resume writes happen outside any producer call.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool) error {
-	return state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
+	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
 		}
@@ -356,4 +370,11 @@ func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError st
 		}
 		return cur, nil
 	})
+	if err != nil {
+		return err
+	}
+	if s.CommitStatus == nil {
+		return nil
+	}
+	return s.CommitStatus(nextCurrentProducer, string(nextState))
 }

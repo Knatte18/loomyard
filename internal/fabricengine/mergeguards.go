@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // mergeSources holds, per side, the resolved SHA a merge call actually merges — the freshness rule's
@@ -35,39 +34,21 @@ type mergeSources struct {
 // Both sides run a best-effort Fetch() first — a fetch failure is tolerated and logged via
 // logger.Warn, never fatal (millhouse's fetch-then-prefer-origin rule) — then resolve the local
 // branch and its origin/<branch> remote-tracking ref via gitrepo.ResolveSHA.
-// A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound; a weft
-// counterpart existing neither locally (weftBranchExists(l, ...)) nor as origin/<source>-weft
-// post-fetch appends mergeReasonNotFabricManaged, per the Shared Decision on the post-fetch
-// remote-only weft counterpart.
-// The two reasons are gated asymmetrically, and which of them can accompany the other is worth stating
-// exactly, because the obvious summary — "they stay disjoint" — is false against the shipped behaviour
-// and against the two places that pin it.
-// A source that DOES resolve on warp but has no weft counterpart reports mergeReasonNotFabricManaged
-// alone: the weft arm's own source-not-found is gated on weftManaged, so "this branch is not a fabric
-// pair" arrives without a second, vaguer reason beside it that tells the operator nothing more.
-// A source that resolves NOWHERE reports both, and that is deliberate rather than leakage — the warp
-// arm's mergeReasonSourceNotFound is ungated, because a mistyped branch name is unmanaged AND missing,
-// and an operator told only "not fabric-managed" would go looking for a weft counterpart to create
-// instead of at the name they got wrong. TestRunCLI_MergeNonexistentBranchReportsAggregatedGuardError
-// and SANDBOX-FABRIC-SUITE's F19 both pin that dual answer, so gating the warp arm to make the pair
-// literally disjoint would break the behaviour, not tidy it.
+// A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound — the only
+// reason this function can still return.
 //
-// A managed weft counterpart that nevertheless fails to RESOLVE is a third case, and it appends
-// mergeReasonSourceNotFound because the alternative is worse. weftManaged and weft resolvability are
-// not the same test: weftBranchExists is a raw `git rev-parse --verify refs/heads/<branch>` at the
-// weft REPO root, while pickMergeSourceSHA's local arm is a go-git ResolveRevision in the weft
-// WORKTREE. Whenever the first succeeds and the second does not, weftManaged is true, and with the
-// pick's found-ness discarded no reason was appended at all — leaving weftSHA the empty string, handed
-// straight to MergeStart as `git merge --ff --no-commit ""`. The blast radius was contained (the git
-// error routes into selfAbortMergeAttempt, which resets both sides and deletes the record), but the
-// error a caller saw described a malformed git argument rather than the precondition that failed.
-// Gating the reason on weftManaged makes an empty ref unreachable by construction without disturbing
-// the unmanaged case's single-reason contract.
+// The weft counterpart's SHA is still resolved and returned: mergeState.WeftSource still needs a
+// value, best-effort and possibly empty. What this function has lost is the power to refuse on the
+// weft's behalf. Resolving the weft counterpart no longer gates on whether it is a recognized fabric
+// pair (weftBranchExists), so an unresolvable weft counterpart simply leaves weftSHA the empty
+// string rather than appending mergeReasonNotFabricManaged or mergeReasonSourceNotFound.
+// mergeReasonNotFabricManaged is no longer reachable from this function at all — its constant is
+// retained only because mergevocab_test.go pins its string as part of the closed reason set.
 //
 // Every reason is collected, never returned early — each guard is evaluated regardless of an earlier
 // failure — and newMergeGuardError deduplicates, so a source missing on both sides still reports one
 // mergeReasonSourceNotFound rather than disclosing that two subjects were checked.
-func resolveMergeSources(f *Fabric, l *lyxcwd.Location, source string) (mergeSources, []string) {
+func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	var reasons []string
 	weftBranch := WeftBranchName(source)
 
@@ -86,14 +67,7 @@ func resolveMergeSources(f *Fabric, l *lyxcwd.Location, source string) (mergeSou
 	}
 	weftLocalSHA, weftLocalErr := f.weft.ResolveSHA(weftBranch)
 	weftRemoteSHA, weftRemoteErr := f.weft.ResolveSHA("origin/" + weftBranch)
-	weftManaged := weftBranchExists(l, weftBranch) || weftRemoteErr == nil
-	if !weftManaged {
-		reasons = append(reasons, mergeReasonNotFabricManaged)
-	}
-	weftSHA, weftFound := pickMergeSourceSHA(f.weft, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
-	if weftManaged && !weftFound {
-		reasons = append(reasons, mergeReasonSourceNotFound)
-	}
+	weftSHA, _ := pickMergeSourceSHA(f.weft, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
 
 	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons
 }
@@ -130,21 +104,18 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 	return localSHA, true
 }
 
-// pairDirtyReason reports mergeReasonWorktreeDirty when either checkout of f carries uncommitted
+// pairDirtyReason reports mergeReasonWorktreeDirty when f's warp checkout carries uncommitted
 // tracked changes.
-// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
-// which side was dirty, nor that two subjects were checked.
+// The weft side is not evaluated: it is not a merge participant, so its dirtiness cannot affect a
+// warp-only merge's correctness, and checking it could only refuse a merge that would have been
+// right.
 func pairDirtyReason(f *Fabric) ([]string, error) {
 	warpDirty, _, err := worktreeDirty(scopeTracked, f.warpPath)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
 	}
-	weftDirty, _, err := worktreeDirty(scopeTracked, f.weftPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
-	}
 
-	if warpDirty || weftDirty {
+	if warpDirty {
 		return []string{mergeReasonWorktreeDirty}, nil
 	}
 	return nil, nil
@@ -166,25 +137,20 @@ func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
 	return "", false, fmt.Errorf("fabricengine: resolve upstream in %s: %w", dir, runErr)
 }
 
-// detachedHeadReason reports mergeReasonDetachedHead when either checkout of f has HEAD pointing
+// detachedHeadReason reports mergeReasonDetachedHead when f's warp checkout has HEAD pointing
 // straight at a commit instead of at a branch.
 // A merge concluded on a detached HEAD lands a commit no ref reaches, so the next checkout discards
-// it silently — while the paired repo's half of the same merge, whose own HEAD was on a branch, is
-// already landed for good and no longer abortable, since the merge verb deleted its record on the
-// way out. Refusing before the attempt starts is the only point at which that is recoverable.
-// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
-// which side (if either) was detached.
+// it silently — the only point at which that is recoverable is before the attempt starts.
+// The weft side is not evaluated: it is not a merge participant, so its head attachment cannot
+// affect a warp-only merge's correctness, and checking it could only refuse a merge that would have
+// been right.
 func detachedHeadReason(f *Fabric) ([]string, error) {
 	warpDetached, err := f.warp.HeadDetached()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: check checkout head attachment: %w", err)
 	}
-	weftDetached, err := f.weft.HeadDetached()
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check checkout head attachment: %w", err)
-	}
 
-	if warpDetached || weftDetached {
+	if warpDetached {
 		return []string{mergeReasonDetachedHead}, nil
 	}
 	return nil, nil
@@ -203,13 +169,14 @@ func mergeInProgressReason(f *Fabric) ([]string, error) {
 	return nil, nil
 }
 
-// syncedToUpstreamReason reports mergeReasonNotSynced when either side of f is genuinely diverged
-// from its own upstream: a side with no upstream passes vacuously (Fabric.Pull's no-upstream rule),
-// and a side with an upstream passes when its tip is not diverged from it — upstream ancestor of HEAD
-// (in sync or ahead) passes, HEAD ancestor of upstream (behind, since Merge's own pre-merge sync step
-// will advance it) passes, and only neither direction (a genuine divergence) fails.
-// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
-// which side (if either) was out of sync.
+// syncedToUpstreamReason reports mergeReasonNotSynced when f's warp side is genuinely diverged from
+// its own upstream: no upstream passes vacuously (Fabric.Pull's no-upstream rule), and an upstream
+// passes when the tip is not diverged from it — upstream ancestor of HEAD (in sync or ahead) passes,
+// HEAD ancestor of upstream (behind, since Merge's own pre-merge sync step will advance it) passes,
+// and only neither direction (a genuine divergence) fails.
+// The weft side is not evaluated. Per-transition status pushes warn and continue on a rejected push,
+// which makes a locally-diverged weft a routine, expected state — a retained weft arm here would
+// refuse every subsequent landing with mergeReasonNotSynced.
 //
 // This is a pre-fetch FAST PATH, not the whole of the not-synced precondition, and reading it as the
 // whole of it is a mistake with a live failure behind it. Every helper in this file resolves @{u}
@@ -226,11 +193,7 @@ func syncedToUpstreamReason(f *Fabric) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	weftNotSynced, err := sideNotSyncedToUpstream(f.weft, f.weftPath)
-	if err != nil {
-		return nil, err
-	}
-	if warpNotSynced || weftNotSynced {
+	if warpNotSynced {
 		return []string{mergeReasonNotSynced}, nil
 	}
 	return nil, nil

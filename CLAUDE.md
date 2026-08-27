@@ -13,7 +13,7 @@ Record any new cross-cutting invariant there, same commit.
 ## Persistent notes go in git, not file-memory
 
 This project is worked in short-lived mill **worktrees** torn down on merge — the file-based `memory/` store is per-worktree and vanishes with it.
-Put durable notes in this file, `_lyx/raddle/`, or code comments instead: anything versioned and merged into `main`.
+Put durable notes in this file, `_lyx/raddle/`, or code comments instead: `_lyx/raddle/` content reaches the parent by being regenerated fresh against the parent's HEAD and committed onto the parent pair at landing time, never by a merge carrying the child's copy forward.
 
 ## Pushing to main — only from the worktree that IS main
 

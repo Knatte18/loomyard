@@ -599,9 +599,9 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 }
 
 // TestCleanup_DryRunMatchesApplyVerdict proves a dry run answers the question a dry run is for:
-// what the same flags plus --apply would actually do. The gate used to be evaluated only under
-// --apply, so a dry run reported every orphan branch as deletable while --apply then protected all
-// of them — the report and the action never agreed.
+// what the same flags plus --apply would actually do. An orphan weft branch is unprotected in both
+// the dry run and the apply, and --apply alone (no --force) actually deletes it — an orphan weft
+// branch is deletable under --apply alone, with no fold-back gate standing between it and deletion.
 func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -651,8 +651,14 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 		t.Errorf("dry-run Protected = %v; --apply Protected = %v; want them to agree",
 			dryEntry.Protected, appliedEntry.Protected)
 	}
-	if appliedEntry.Deleted {
-		t.Fatalf("--apply deleted %q without --force; the gate is not doing its job, so this test proves nothing", orphan)
+	if dryEntry.Protected {
+		t.Errorf("dry-run Protected = true for orphan branch %q; want false (no fold-back gate protects it)", orphan)
+	}
+	if !appliedEntry.Deleted {
+		t.Fatalf("--apply did not delete %q without --force; want it deleted (no fold-back gate protects an orphan)", orphan)
+	}
+	if branchExistsAt(t, weftRepoRoot, orphan) {
+		t.Errorf("orphan branch %q still exists in the weft repo after --apply; want deleted", orphan)
 	}
 }
 

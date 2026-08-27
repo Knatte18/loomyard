@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -26,6 +27,89 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// commitStatusDeps carries the three fabric calls newCommitStatusSeam drives, injected as plain
+// function values rather than reached directly, so the seam's branching -- commit hard-errors, push
+// warns, mid-merge skips -- is drivable in a Tier 1 test from stub closures, with no hub fixture and
+// no git spawn.
+type commitStatusDeps struct {
+	// MergeActive reports whether the fabric sibling worktree that carries the status file is
+	// mid-merge at the git level.
+	MergeActive func() (bool, error)
+	// Commit commits loom's own status file with msg.
+	Commit func(msg string) error
+	// Push pushes the fabric sibling worktree's unpushed commits.
+	Push func() error
+}
+
+// loomCommitStatusDeps builds a commitStatusDeps over location, filling each field from fabric:
+// MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths
+// scoped to loomengine.LoomStatusRel(), and Push from fabricengine.PushAnchored.
+func loomCommitStatusDeps(location *lyxcwd.Location) commitStatusDeps {
+	return commitStatusDeps{
+		MergeActive: func() (bool, error) {
+			return fabricengine.MergeStateActive(location)
+		},
+		// Commit discards the (sha, committed) pair in favour of the error alone, exactly as
+		// landingdeps.go's own CommitStatus closure does -- which is what makes a second call over
+		// an already-clean tracked path a no-op rather than a failure.
+		Commit: func(msg string) error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LoomStatusRel()}, msg, fabricengine.EnvSyncOptions())
+			return err
+		},
+		Push: func() error {
+			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions())
+			return err
+		},
+	}
+}
+
+// commitStatusMessage renders the commit message for a per-transition status commit. It is a
+// function rather than a bare constant because the seam fires once per transition rather than once
+// per landing, and an unreadable stream of identical messages is the log a resuming operator has to
+// read.
+func commitStatusMessage(producer, state string) string {
+	return fmt.Sprintf("loom: %s -> %s", producer, state)
+}
+
+// newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps, implementing three
+// dispositions in this exact order:
+//
+//  1. commit-hard-errors: a Commit failure returns an error from the seam and therefore halts the
+//     run -- a git fault on the run's own bookkeeping is infrastructure breakage, the same disposition
+//     landingshed already gives a failing CommitStatus.
+//  2. push-warns: a Push failure logs a warning and returns nil -- an offline laptop must not kill an
+//     autonomous run, and the next transition's push catches the branch up.
+//     gitrepo.ErrPushRejected is an ordinary push failure here -- warn and continue, never retry,
+//     never rebase -- because a rejection means another machine advanced the branch, which is a human
+//     decision rather than something a background persist may rewrite history over.
+//  3. skip-while-mid-merge: MergeActive reporting true skips both Commit and Push, logged at warn. A
+//     non-nil error from MergeActive is treated exactly like true -- an unreadable probe is the same
+//     "git state cannot be trusted right now" category the skip exists for, and probe I/O failures
+//     cluster precisely when foreign merge machinery is touching the repo.
+func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
+	return func(producer, state string) error {
+		active, err := deps.MergeActive()
+		if err != nil {
+			logger.Warn("loomcli: skip status commit, merge-state probe failed", "producer", producer, "state", state, "error", err)
+			return nil
+		}
+		if active {
+			logger.Warn("loomcli: skip status commit, fabric sibling is mid-merge", "producer", producer, "state", state)
+			return nil
+		}
+
+		if err := deps.Commit(commitStatusMessage(producer, state)); err != nil {
+			return err
+		}
+
+		if err := deps.Push(); err != nil {
+			logger.Warn("loomcli: status push failed, next transition will catch up", "producer", producer, "state", state, "error", err)
+			return nil
+		}
+		return nil
+	}
+}
 
 // wireStatusPathsOnly builds the minimum a read-only status verb needs onto c: location, cwd, and
 // the two status-file paths. It loads no module config, constructs no engine, and can fail only if
@@ -45,10 +129,18 @@ import (
 func (c *loomCLI) wireStatusPathsOnly(location *lyxcwd.Location, cwd string) {
 	c.location = location
 	c.cwd = cwd
+	// CommitStatus is filled here too, even though wireStatusPathsOnly's own read-only verbs (status,
+	// pause) never call Run and so never invoke it: filling both literals keeps them structurally
+	// identical, so a future verb promoted from this path to wire()'s cannot silently lose the hook.
+	// loomCommitStatusDeps builds three closures and performs no I/O at build time, so it neither
+	// loads config nor opens a fabric -- this doc comment's own claim that wireStatusPathsOnly "loads
+	// no module config, constructs no engine, and can fail only if loomengine's own path accessors
+	// do" stays true with this fill in place.
 	c.shedPaths = loomrecipe.ShedPaths{
 		StatusPath:     loomengine.LoomStatusFile(location),
 		LockPath:       loomengine.LoomRunLock(location),
 		StatusLockPath: loomengine.LoomStatusLock(location),
+		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location)),
 	}
 }
 
@@ -239,7 +331,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// env-landing-filled-in-drive-not-wire design decision.
 	}
 
-	// c.shedPaths carries the four told values shedengine.Shed itself reads and no shedrecipe.Env
+	// c.shedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env
 	// registry entry reads. StatusPath and StatusLockPath are deliberately told twice, once here and
 	// once above in c.env -- that duplication is inherent to the split between loomrecipe.New's two
 	// argument types and must not be collapsed; loomrecipe.New errors if the two copies disagree.
@@ -254,6 +346,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// (which itself falls back to shedengine's internal default of ten), not a run-wide
 		// total -- the budget itself is per-producer and episode-scoped, counted from the
 		// persisted history rather than held in memory.
+		CommitStatus: newCommitStatusSeam(loomCommitStatusDeps(location)),
 	}
 
 	c.location = location

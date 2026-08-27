@@ -549,8 +549,8 @@ func MergeStatePathForTest(f *Fabric) (string, error) {
 }
 
 // ResetMergeSidesForTest re-exports f.resetMergeSides (production plumbing: destroy.go), for
-// mergestate_integration_test.go's direct assertion on the gated two-sided merge-abort reset —
+// mergestate_integration_test.go's direct assertion on the gated warp-only merge-abort reset —
 // driven without going through a merge verb, none of which exist yet in this batch.
-func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA, weftSHA string) error {
-	return f.resetMergeSides(rec, warpSHA, weftSHA)
+func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA string) error {
+	return f.resetMergeSides(rec, warpSHA)
 }

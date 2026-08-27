@@ -36,6 +36,7 @@ Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_ly
 - Siblings under `AnchorPath()` (hub: `BoardDir(hub)`; standalone: `standalonestate.Derive`).
 - No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
 - Structural (`fabricengine.structuralCommittedDirs`/`structuralNeverCommittedDirs`), never from `fabric.yaml`'s `pathspec`.
+- Weft content is per-branch and is never a merge participant in either direction.
 
 ## Hub Containment Invariant
 

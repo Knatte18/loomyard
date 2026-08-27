@@ -36,6 +36,14 @@ const mergeStateFileName = "fabric-merge.json"
 // carries as its second parent. sideConcludeAlreadyLanded is what consumes them.
 // A record written by an older binary carries them empty; every consumer treats empty as "no
 // evidence available" and refuses to make a positive claim, never as "evidence satisfied".
+//
+// WeftStart, WeftSource, WeftOutcome and WeftCommitted now record the weft as unmoved rather than as
+// a merge participant. WeftStart is the weft HEAD at record time; WeftSource is the best-effort
+// resolved weft counterpart SHA, legitimately empty when no counterpart resolves; WeftOutcome is
+// written as mergeOutcomeAlreadyUpToDate before any MergeStart call runs; WeftCommitted stays empty
+// on every path this binary produces. The fields are kept rather than dropped for two reasons:
+// mergeAttemptIncompleteReason refuses a resume on an empty WeftOutcome, and filling them leaves the
+// persisted JSON schema byte-compatible in both directions across the binary change.
 type mergeState struct {
 	Verb          string    `json:"verb"`   // "merge-in" | "merge"
 	Source        string    `json:"source"` // caller-supplied branch
@@ -96,6 +104,9 @@ func (st *mergeState) landedConcludeCommit() bool {
 // race the lock deliberately does not close (the pre-lock probe is unlocked by design); deriving
 // MergeResult.AlreadyUpToDate from here makes the loser of that race report what a strictly
 // sequential run of the same two calls reports.
+// The weft conjunct is now always satisfied, since WeftOutcome is written as
+// mergeOutcomeAlreadyUpToDate before any weft MergeStart call runs — so the derived
+// MergeResult.AlreadyUpToDate answers about the warp side alone.
 func (st *mergeState) bothSidesAlreadyUpToDate() bool {
 	return st.WarpOutcome == mergeOutcomeAlreadyUpToDate && st.WeftOutcome == mergeOutcomeAlreadyUpToDate
 }
@@ -254,6 +265,10 @@ func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
 // Each of the four probes is pinned by its own row of
 // TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses (three shapes x two sides). Before that
 // matrix existed, deleting either weft probe, or either warp probe, left the whole suite green.
+//
+// Both weft probes are deliberately kept even though the weft is no longer a merge participant: this
+// is the one weft-reading guard the change leaves in place, and it still refuses a mutating merge
+// verb on weft-side foreign merge state.
 func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	warpMergeHead, err := f.warp.MergeHeadPresent()
 	if err != nil {

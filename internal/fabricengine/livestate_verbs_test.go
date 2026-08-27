@@ -728,11 +728,13 @@ func pruneCase() VerbCase {
 // exercise cleanup.go's own primaryWeft carve-out or the gate's primaryWeftBranch check -- both of
 // which only matter once liveness alone stops protecting the primary line.
 //
-// Run calls Cleanup with force=true, not the force=false this batch's own dirtiness-scope table
-// otherwise describes: raddleFoldedBack (cleanup.go:91) unconditionally returns false today, so
-// without force no orphan branch can ever be deleted regardless of state, which would make this cell's
-// documented "orphan managed branches gone" clean-state effect unreachable. force=true is what
-// actually exercises Cleanup's deletion path against a verified-clean orphan.
+// Run calls Cleanup with force=true. Before raddleFoldedBack's removal this was required: the old
+// fold-back gate unconditionally protected an orphan branch unless force was set, so without it no
+// orphan branch could ever be deleted regardless of state. raddleFoldedBack is gone now, and
+// Cleanup's own force parameter is reserved and consulted by no gate (see cleanup.go) — apply alone
+// already deletes an orphan branch (TestCleanup_DryRunMatchesApplyVerdict). force=true is kept here
+// as the pre-existing argument choice; it is no longer load-bearing for this cell's clean-state
+// effect.
 func cleanupCase() VerbCase {
 	return VerbCase{
 		Name: "Cleanup",

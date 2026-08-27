@@ -10,8 +10,9 @@
 // shape is already covered exhaustively by internal/fabricengine's own mergein_integration_test.go,
 // and duplicating that matrix here would couple this file to another package's own check set (see
 // this batch's own decision that the integration tier here stays small and purposeful). A second,
-// non-conflicting file diverges on the weft side instead, so "the parent pair carries the task's
-// content on both sides" has something concrete to assert on each side.
+// non-conflicting file diverges on the weft side instead, so "the weft is not a merge participant"
+// (the weft-local-only-files task's own Fabric.Merge/MergeIn change) has something concrete to
+// assert: the task pair's weft-only file must NOT reach the parent pair's weft.
 
 package landingshed_test
 
@@ -137,9 +138,11 @@ func currentSHALanding(t *testing.T, dir string) string {
 // TestFinalize_ResolvesConflictAndSquashMergesIntoParent builds a task pair and a parent pair off
 // the same hub, diverges both on conflict.txt (a genuine warp-side conflict) and diverges the task
 // pair alone on a second, clean weft-side file, runs Finalize with a fake session that writes a real
-// resolution to the conflicted file, and asserts that the parent pair afterward carries the task's
-// content on both sides, that the squash setting took effect, and that no merge record is left
-// behind on either pair.
+// resolution to the conflicted file, and asserts that the parent pair's warp afterward carries the
+// task's resolved content and the squash setting took effect there, that the parent pair's weft is
+// left byte-identical -- the weft is not a merge participant, per this task's own
+// no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge
+// record is left behind on either pair.
 func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 
@@ -182,6 +185,11 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 		t.Fatalf("NewFinalize() error = %v; want nil", err)
 	}
 
+	// Captured before Call so the weft-not-a-merge-participant assertion below has a concrete
+	// before/after pair to compare, mirroring internal/fabricengine's own weftBefore/weftHEAD
+	// convention (see e.g. mergeweftlocal_integration_test.go).
+	parentWeftBefore := currentSHALanding(t, parentWeft)
+
 	outcome, _, err := fz.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -193,8 +201,7 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 		t.Errorf("fake shuttle Run() called %d time(s); want exactly 1 (one conflict-resolution session)", shuttle.calls)
 	}
 
-	// The parent pair carries the task's content on both sides: the resolved conflict.txt on warp,
-	// and the clean task-note.txt on weft.
+	// The parent pair's warp carries the task's resolved content.
 	warpContent, err := os.ReadFile(filepath.Join(parentWarp, "conflict.txt"))
 	if err != nil {
 		t.Fatalf("read parent warp conflict.txt: %v", err)
@@ -202,22 +209,22 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	if string(warpContent) != "resolved content\n" {
 		t.Errorf("parent warp conflict.txt = %q; want the resolved content %q", warpContent, "resolved content\n")
 	}
-	weftContent, err := os.ReadFile(filepath.Join(parentWeft, "task-note.txt"))
-	if err != nil {
-		t.Fatalf("read parent weft task-note.txt: %v", err)
+
+	// The parent pair's weft is left byte-identical: the weft is not a merge participant, so the
+	// task pair's weft-only task-note.txt never reaches it, on either the file-tree or the commit
+	// graph -- mirroring internal/fabricengine's own "weft is not a merge participant" assertion
+	// shape (see e.g. mergeweftlocal_integration_test.go's weftBefore/weftHEAD byte-identical check).
+	if _, err := os.Stat(filepath.Join(parentWeft, "task-note.txt")); !os.IsNotExist(err) {
+		t.Errorf("os.Stat(parent weft task-note.txt) error = %v; want a not-exist error -- the weft is not a merge participant", err)
 	}
-	if string(weftContent) != "task weft note\n" {
-		t.Errorf("parent weft task-note.txt = %q; want %q", weftContent, "task weft note\n")
+	if got := currentSHALanding(t, parentWeft); got != parentWeftBefore {
+		t.Errorf("parent weft HEAD = %q; want byte-identical %q -- the weft is not a merge participant", got, parentWeftBefore)
 	}
 
-	// The squash setting took effect: a single-parent commit on both sides of the parent pair.
+	// The squash setting took effect on the parent pair's warp: a single-parent commit.
 	warpHEAD := currentSHALanding(t, parentWarp)
-	weftHEAD := currentSHALanding(t, parentWeft)
 	if got := gitParentCountLanding(t, parentWarp, warpHEAD); got != 1 {
 		t.Errorf("parent warp HEAD %s has %d parents; want exactly 1 (a squash commit)", warpHEAD, got)
-	}
-	if got := gitParentCountLanding(t, parentWeft, weftHEAD); got != 1 {
-		t.Errorf("parent weft HEAD %s has %d parents; want exactly 1 (a squash commit)", weftHEAD, got)
 	}
 
 	// No merge record is left behind on either pair. fabricengine's own MergeRecordExistsForTest is

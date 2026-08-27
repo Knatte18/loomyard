@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// setupResolvedConflictedMergeIn builds a pair mid-merge on "feature" with conflicts on both sides
+// setupResolvedConflictedMergeIn builds a pair mid-merge on "feature" with the warp-side conflict
 // already resolved and staged — the state where MergeContinue would conclude and MergeAbort would
 // reset — and returns the hub and handle.
 func setupResolvedConflictedMergeIn(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
@@ -33,23 +33,18 @@ func setupResolvedConflictedMergeIn(t *testing.T) (*hubforge.Hub, *fabricengine.
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if len(res.Conflicts) != 2 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted", res.Conflicts)
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want the warp-side conflict", res.Conflicts)
 	}
 
-	commitOnCurrentBranchStage := func(dir, rel string) {
-		t.Helper()
-		writeFileForTest(t, dir, rel, "resolved\n")
-		gitkit.MustRun(t, dir, "git", "add", rel)
-	}
-	commitOnCurrentBranchStage(h.PrimeWorktree(), "clash.txt")
-	commitOnCurrentBranchStage(h.PrimeWeft(), "_lyx/weft-clash.txt")
+	writeFileForTest(t, h.PrimeWorktree(), "clash.txt", "resolved\n")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
 	return h, f
 }
 
@@ -109,12 +104,10 @@ func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting
 		return abortErr
 	})
 
-	// While MergeAbort waits: the concurrent winner concludes both sides and retires the record —
+	// While MergeAbort waits: the concurrent winner concludes the warp side and retires the record —
 	// what a raced MergeContinue holding this same lock does.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--no-edit")
 	warpConcluded := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftConcluded := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
 	if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
 		t.Fatalf("DeleteMergeStateForTest() error = %v", err)
 	}
@@ -126,9 +119,6 @@ func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting
 	}
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpConcluded {
 		t.Errorf("warp HEAD after refused abort = %q; want the landed conclude %q untouched", got, warpConcluded)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftConcluded {
-		t.Errorf("weft HEAD after refused abort = %q; want the landed conclude %q untouched", got, weftConcluded)
 	}
 }
 
@@ -149,7 +139,6 @@ func TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress
 	})
 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--no-edit")
 	if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
 		t.Fatalf("DeleteMergeStateForTest() error = %v", err)
 	}

@@ -271,13 +271,14 @@ It reads loom's **status file** in `_lyx/`, sees which phase (and review sub-sta
 It is idempotent and re-entrant: **stop anywhere — Ctrl-C, crash, close the laptop — and the next `lyx run` continues where it left off.**
 
 This is the lyx model applied to orchestration: one-shot, daemonless, file-coordinated, resume-from-disk. `lyx run` is a pure function of {status file + artifact files} with no hidden process state.
-The status file lives in the weft repo, but it is not continuously committed there, so **resume across machines does not work today** — this line used to claim it did.
-`lyx loom run` commits the seed once, and the only other commit of that file is the checkpoint the landing rows make (see below);
-every persist in between leaves it as an uncommitted working-tree modification, so a second machine pulling the weft sees the task frozen wherever the last commit left it.
-Making it genuinely cross-machine means committing on every producer transition, which is a `Shed` persistence-policy decision with a real per-transition git cost, not a property this doc can assert into existence.
+The status file lives in the weft repo, and `Shed` commits and pushes it on every producer transition through an injected seam `internal/loomcli` fills, so a second machine that pulls the branch sees the run's live FSM state rather than wherever the last commit happened to leave it.
+The push respects `SkipPush`;
+a commit failure halts the run, since a git fault on the run's own bookkeeping is infrastructure breakage, while a push failure only warns and self-heals on the next transition, since an offline laptop must not kill an autonomous run.
+A status commit is skipped outright while the weft is mid-merge, logged at warn, because a foreign merge session mid-flight makes the weft's git state untrustworthy for the moment.
+Loom does not do the operator's other half of cross-machine resume: nothing in `internal/loomcli` pulls, so a second machine resumes by pulling the branch itself with `lyx fabric pull`.
 
-**`Publish` and `Finalize` commit the status file before they merge, and that checkpoint is load-bearing rather than housekeeping.**
-`fabricengine`'s merge guard refuses any *tracked* modification on either side of the pair, and by the time the landing rows run, `Shed` has rewritten this tracked file once per transition — so without the checkpoint the last row of every run refuses on the run's own bookkeeping, with no `OnStuck` target and therefore no recovery but a human.
+**`Publish` and `Finalize` still commit the status file immediately before they merge, but the weft is no longer a merge participant at all, so that checkpoint is now a no-op safety net on the ordinary path rather than the last row's only protection.**
+It is retained because it is the sole protection if a product wires `Shed.CommitStatus` as nil.
 Both rows take it through `landingshed.Deps.CommitStatus`, an injected loop-owner closure `internal/loomcli` fills, keeping the generic landing producers ignorant of where loom's status file lives.
 It runs inside each producer's own `Call`, never once at bootstrap, because a resumed run persists again immediately before the producer is called.
 It is per-task and cwd-authoritative ([Principle 4](../../docs/overview.md#principles)).
