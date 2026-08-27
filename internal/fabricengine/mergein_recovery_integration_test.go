@@ -175,42 +175,46 @@ func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T
 	}
 }
 
-// TestMergeContinue_ConcludePartialFailure_RetryConcludesRemainingSideOnly covers a conclude-phase
-// partial failure: the weft side's conclude-commit is sabotaged to fail, so MergeIn returns
-// *ErrMergeIncomplete with the record retained and warp's landed SHA recorded; removing the
-// sabotage and re-running MergeContinue then concludes only the remaining (weft) side, pinned by SHA
-// comparison on the already-landed warp side.
-func TestMergeContinue_ConcludePartialFailure_RetryConcludesRemainingSideOnly(t *testing.T) {
+// TestMergeContinue_ConcludeFailureThenRetryConcludes covers a conclude-phase failure on the warp
+// side — the only side concludeMergeSides now has anything to conclude on: the conclude-commit is
+// sabotaged to fail, so MergeIn returns *ErrMergeIncomplete with the record retained and no
+// WarpCommitted recorded; removing the sabotage and re-running MergeContinue then lands the
+// conclude-commit for the first time.
+// This test used to sabotage the weft side specifically, pinning a partial failure where warp had
+// already landed and only the weft side needed a retry. That shape has no warp-only analogue and is
+// deleted along with it: concludeMergeSides has only the warp side left to conclude, so a conclude
+// failure is total, not partial — see the merge-drops-weft task. The already-landed-then-retried
+// idempotency this test also used to cover is pinned instead by
+// TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking.
+func TestMergeContinue_ConcludeFailureThenRetryConcludes(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	// setupCleanNonFastForward forks the branch off the pre-divergence HEAD, then advances current
-	// separately — a genuine (non-fast-forward) merge target on each side, so both sides land a real
-	// conclude commit rather than a fast-forward (which concludeMergeSides skips outright).
+	// separately — a genuine (non-fast-forward) merge target, so the merge lands a real conclude
+	// commit rather than a fast-forward (which concludeMergeSides skips outright).
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	setupCleanNonFastForward(t, h.PrimeWeft(), "feature-weft", "weft-branch.txt", "weft-current.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
-	installFailingPreCommitHook(t, h.PrimeWeft())
+	installFailingPreCommitHook(t, h.PrimeWorktree())
 
 	_, err := f.MergeIn("feature")
 	var incompleteErr *fabricengine.ErrMergeIncomplete
 	if !errors.As(err, &incompleteErr) {
-		t.Fatalf("MergeIn(feature) with weft conclude sabotaged: error = %v (%T); want *fabricengine.ErrMergeIncomplete", err, err)
+		t.Fatalf("MergeIn(feature) with warp conclude sabotaged: error = %v (%T); want *fabricengine.ErrMergeIncomplete", err, err)
 	}
 
 	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || !exists {
-		t.Errorf("MergeRecordExistsForTest() after partial failure = (%v, %v); want (true, nil)", exists, err)
+		t.Errorf("MergeRecordExistsForTest() after conclude failure = (%v, %v); want (true, nil)", exists, err)
 	}
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
 	if err != nil || !found {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
-	if st.WarpCommitted == "" {
-		t.Errorf("merge state WarpCommitted = \"\"; want the landed warp conclude SHA")
+	if st.WarpCommitted != "" {
+		t.Fatalf("merge state WarpCommitted = %q; want empty — the sabotaged conclude must not have landed anything", st.WarpCommitted)
 	}
-	warpCommittedBeforeRetry := st.WarpCommitted
-	warpHEADBeforeRetry := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
-	removePreCommitHook(t, h.PrimeWeft())
+	removePreCommitHook(t, h.PrimeWorktree())
 
 	res, err := f.MergeContinue("")
 	if err != nil {
@@ -219,13 +223,8 @@ func TestMergeContinue_ConcludePartialFailure_RetryConcludesRemainingSideOnly(t 
 	if !res.Committed {
 		t.Errorf("MergeContinue().Committed = false; want true")
 	}
-
-	warpHEADAfterRetry := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	if warpHEADAfterRetry != warpHEADBeforeRetry {
-		t.Errorf("warp HEAD changed on retry: before = %q, after = %q; want unchanged (idempotent, already landed)", warpHEADBeforeRetry, warpHEADAfterRetry)
-	}
-	if warpHEADAfterRetry != warpCommittedBeforeRetry {
-		t.Errorf("warp HEAD after retry = %q; want the SHA already recorded as committed %q", warpHEADAfterRetry, warpCommittedBeforeRetry)
+	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
+		t.Errorf("MergeRecordExistsForTest() after the retry = (%v, %v); want (false, nil)", exists, err)
 	}
 }
 
@@ -441,151 +440,95 @@ func TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide(t *testing.T) {
 // TestMergeIn_UnmappablePathConflict_SelfAbortsBothSides covers a weft-side conflict on a repo-root
 // path outside the wired name-set: the merge self-aborts on both sides, returns
 // *ErrUnmergeableState, restores the pair to its pre-merge SHAs, and leaves no record.
-func TestMergeIn_UnmappablePathConflict_SelfAbortsBothSides(t *testing.T) {
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+// TestMergeIn_UnmappablePathConflict_SelfAbortsBothSides used to cover a weft-root conflict outside
+// the wired name set, which unifyConflictPaths' own weftPathVisible test flagged unmappable and
+// self-aborted the merge with *ErrUnmergeableState. MergeIn now calls unifyConflictPaths with a
+// literal nil weft conflict list — the weft can no longer conflict at all — so that loop, and the
+// unmappable outcome it alone could produce, is unreachable from MergeIn: a warp path (already
+// worktree-relative) never sets unmappable, and the same-path-from-both-sides collision needs a
+// non-empty weft list to occur. This test is deleted rather than adapted, since there is no warp-side
+// shape left that reaches the branch under test — see the merge-drops-weft task.
+// unifyConflictPaths' own unmappable behavior stays covered directly, at the unit level, by
+// mergepaths_test.go, which is exactly the plumbing-is-retained decision's point: the function stays
+// correct for a caller that still passes it a real weft list, even though MergeIn is no longer one.
 
-	branchAtCurrentHEAD(t, h.PrimeWorktree(), "feature")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "unmappable-root-conflict.txt")
-
-	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
-
-	_, err := f.MergeIn("feature")
-	var unmergeableErr *fabricengine.ErrUnmergeableState
-	if !errors.As(err, &unmergeableErr) {
-		t.Fatalf("MergeIn(feature) with an unmappable weft-root conflict: error = %v (%T); want *fabricengine.ErrUnmergeableState", err, err)
-	}
-
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStartSHA {
-		t.Errorf("warp HEAD after self-abort = %q; want restored pre-merge SHA %q", got, warpStartSHA)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStartSHA {
-		t.Errorf("weft HEAD after self-abort = %q; want restored pre-merge SHA %q", got, weftStartSHA)
-	}
-	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
-		t.Errorf("MergeRecordExistsForTest() after self-abort = (%v, %v); want (false, nil)", exists, err)
-	}
-}
-
-// TestMergeIn_ConflictMarkers_NeverLeakWeftName covers conflict-marker content: a weft-only
-// conflict's markers carry the merged source SHA as their trailing label and never a "-weft"-suffixed
-// name, and a warp-only conflict's markers are styled identically, so the two are indistinguishable.
+// TestMergeIn_ConflictMarkers_NeverLeakWeftName used to cover conflict-marker content on both a
+// weft-only conflict and a warp-only conflict, asserting the two were styled identically so neither
+// ever leaked a "-weft"-suffixed branch name. The weft arm is deleted along with the weft's ability to
+// conflict at all — see the merge-drops-weft task — leaving the warp-only assertion, which needs no
+// cross-side comparison any more since there is no other side to compare against.
 func TestMergeIn_ConflictMarkers_NeverLeakWeftName(t *testing.T) {
-	hWeft, fWeft, _, _, _, _ := newMergePairFixture(t, ".")
-	branchAtCurrentHEAD(t, hWeft.PrimeWorktree(), "feature")
-	setupConflictingDivergence(t, hWeft.PrimeWeft(), "feature-weft", "_lyx/marker-conflict.txt")
-	weftSourceSHA, err := fabricengine.WeftForTest(fWeft).ResolveSHA("feature-weft")
-	if err != nil {
-		t.Fatalf("ResolveSHA(feature-weft) error = %v", err)
-	}
-	if _, err := fWeft.MergeIn("feature"); err != nil {
-		t.Fatalf("MergeIn(feature) [weft-only conflict] error = %v", err)
-	}
-	weftConflictContent, err := os.ReadFile(filepath.Join(hWeft.PrimeWeft(), "_lyx", "marker-conflict.txt"))
-	if err != nil {
-		t.Fatalf("read conflicted file: %v", err)
-	}
-	if strings.Contains(string(weftConflictContent), "-weft") {
-		t.Errorf("weft-only conflict markers leak a \"-weft\" name: %s", weftConflictContent)
-	}
-	if !strings.Contains(string(weftConflictContent), ">>>>>>> "+weftSourceSHA) {
-		t.Errorf("weft-only conflict markers = %s; want a trailing \">>>>>>> %s\" label", weftConflictContent, weftSourceSHA)
-	}
-
-	hWarp, fWarp, _, _, _, _ := newMergePairFixture(t, ".")
-	setupConflictingDivergence(t, hWarp.PrimeWorktree(), "feature", "marker-conflict.txt")
-	branchAtCurrentHEAD(t, hWarp.PrimeWeft(), "feature-weft")
-	warpSourceSHA, err := fabricengine.WarpForTest(fWarp).ResolveSHA("feature")
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "marker-conflict.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	warpSourceSHA, err := fabricengine.WarpForTest(f).ResolveSHA("feature")
 	if err != nil {
 		t.Fatalf("ResolveSHA(feature) error = %v", err)
 	}
-	if _, err := fWarp.MergeIn("feature"); err != nil {
-		t.Fatalf("MergeIn(feature) [warp-only conflict] error = %v", err)
+	if _, err := f.MergeIn("feature"); err != nil {
+		t.Fatalf("MergeIn(feature) [warp conflict] error = %v", err)
 	}
-	warpConflictContent, err := os.ReadFile(filepath.Join(hWarp.PrimeWorktree(), "marker-conflict.txt"))
+	warpConflictContent, err := os.ReadFile(filepath.Join(h.PrimeWorktree(), "marker-conflict.txt"))
 	if err != nil {
 		t.Fatalf("read conflicted file: %v", err)
 	}
+	if strings.Contains(string(warpConflictContent), "-weft") {
+		t.Errorf("warp conflict markers leak a \"-weft\" name: %s", warpConflictContent)
+	}
 	if !strings.Contains(string(warpConflictContent), ">>>>>>> "+warpSourceSHA) {
-		t.Errorf("warp-only conflict markers = %s; want a trailing \">>>>>>> %s\" label", warpConflictContent, warpSourceSHA)
-	}
-
-	weftMarkerPrefix := strings.SplitN(string(weftConflictContent), "\n", 2)[0]
-	warpMarkerPrefix := strings.SplitN(string(warpConflictContent), "\n", 2)[0]
-	if weftMarkerPrefix != warpMarkerPrefix {
-		t.Errorf("conflict marker opening line diverges by side: weft-only = %q, warp-only = %q; want identical style", weftMarkerPrefix, warpMarkerPrefix)
+		t.Errorf("warp conflict markers = %s; want a trailing \">>>>>>> %s\" label", warpConflictContent, warpSourceSHA)
 	}
 }
 
-// TestMergeIn_SubpathAnchoredHub_PathMapping covers path mapping on a subpath-anchored hub: a
-// conflict inside the junctioned path is reported at its unified worktree-root-relative path, and
-// the reported file is reachable there through the junction.
-func TestMergeIn_SubpathAnchoredHub_PathMapping(t *testing.T) {
-	h, f, _, _, _, _ := newMergePairFixture(t, "backend")
+// TestMergeIn_SubpathAnchoredHub_PathMapping used to cover path mapping on a subpath-anchored hub for
+// a weft-side conflict: a conflict inside the junctioned path had to be reported at its unified
+// worktree-root-relative path via weftPathVisible's anchor/wired-name join. That mapping step only
+// ever ran for weft paths — a warp path already IS worktree-relative and passes through
+// unifyConflictPaths unchanged, subpath anchor or not, so there is no warp-side version of this test
+// that would exercise anything the plain warp-conflict tests do not already cover. Deleted along with
+// the weft's ability to conflict at all — see the merge-drops-weft task. The mapping function itself
+// stays covered at the unit level by mergepaths_test.go.
 
-	branchAtCurrentHEAD(t, h.PrimeWorktree(), "feature")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "backend/_lyx/anchored-conflict.txt")
-
-	res, err := f.MergeIn("feature")
-	if err != nil {
-		t.Fatalf("MergeIn(feature) error = %v", err)
-	}
-	want := "backend/_lyx/anchored-conflict.txt"
-	if len(res.Conflicts) != 1 || res.Conflicts[0] != want {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want [%q]", res.Conflicts, want)
-	}
-
-	visiblePath := filepath.Join(h.PrimeWorktree(), filepath.FromSlash(want))
-	if _, err := os.Stat(visiblePath); err != nil {
-		t.Errorf("os.Stat(%s) error = %v; want the conflicted file reachable through the junction from the visible worktree root", visiblePath, err)
-	}
-}
-
-// TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking covers the crash shape where a
-// side's conclude-commit landed but the record never learned its SHA — the state a kill between
+// TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking covers the crash shape where the
+// warp side's conclude-commit landed but the record never learned its SHA — the state a kill between
 // `git commit` and the record re-save leaves behind, simulated exactly by resolving a conflicted
-// MergeIn and committing each side with plain git while the record still says committed:"".
+// MergeIn and committing the warp side with plain git while the record still says committed:"".
 // Before the adoption arm existed this state was a permanent wedge: MergeContinue re-ran
 // `git commit` on a clean tree and failed forever, MergeAbort refused via concludeLandedReason, and
 // no fabric verb could ever clear the record.
-// The resumed MergeContinue must adopt both landed commits off HEAD — creating no new commit —
-// report Committed true, record one KindMergeCommitted per adopted side carrying the adopted SHA,
-// and delete the record.
+// The resumed MergeContinue must adopt the landed commit off HEAD — creating no new commit — report
+// Committed true, record a KindMergeCommitted carrying the adopted SHA, and delete the record.
+// This test used to also land and adopt a weft-side conclude, since a weft-side conflict was how the
+// two-sided design kept BOTH sides pending. With the weft no longer able to conflict, there is only
+// the warp side left to adopt — see the merge-drops-weft task.
 func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if len(res.Conflicts) != 2 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted", res.Conflicts)
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want the warp-side conflict", res.Conflicts)
 	}
 
-	// Resolve both sides, then land each conclude with plain git — on-disk state now byte-identical
-	// to a crash between concludeMergeSides' `git commit` and its record re-save, on both sides.
-	writeResolved := func(dir, rel string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(rel)), []byte("resolved\n"), 0o644); err != nil {
-			t.Fatalf("write resolved %s: %v", rel, err)
-		}
+	// Resolve, then land the conclude with plain git — on-disk state now byte-identical to a crash
+	// between concludeMergeSides' `git commit` and its record re-save.
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "clash.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolved clash.txt: %v", err)
 	}
-	writeResolved(h.PrimeWorktree(), "clash.txt")
-	writeResolved(h.PrimeWeft(), "_lyx/weft-clash.txt")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "_lyx/weft-clash.txt")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--no-edit")
 
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
 	if err != nil || !found {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
-	if st.WarpCommitted != "" || st.WeftCommitted != "" {
-		t.Fatalf("recorded conclude SHAs = (%q, %q); want both empty — the invisible shape", st.WarpCommitted, st.WeftCommitted)
+	if st.WarpCommitted != "" {
+		t.Fatalf("recorded warp conclude SHA = %q; want empty — the invisible shape", st.WarpCommitted)
 	}
 
 	// Sanity: MergeAbort must refuse this state (R2's guard), leaving MergeContinue as the recovery.
@@ -595,31 +538,27 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 	}
 
 	warpHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
 
 	contRes, err := fresh.MergeContinue("")
 	if err != nil {
 		t.Fatalf("MergeContinue() on invisible landed conclude: error = %v; want adoption to finish the merge", err)
 	}
 	if !contRes.Committed {
-		t.Errorf("MergeContinue().Committed = false; want true — the pair carries this merge's conclude-commits")
+		t.Errorf("MergeContinue().Committed = false; want true — the pair carries this merge's conclude-commit")
 	}
 
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpHEADBefore {
 		t.Errorf("warp HEAD after adoption = %q; want unchanged %q — adoption must not create a commit", got, warpHEADBefore)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftHEADBefore {
-		t.Errorf("weft HEAD after adoption = %q; want unchanged %q — adoption must not create a commit", got, weftHEADBefore)
-	}
 
-	adopted := map[string]bool{warpHEADBefore: false, weftHEADBefore: false}
+	adopted := false
 	for _, entry := range contRes.Mutated().Entries() {
-		if entry.Kind == fabricengine.KindMergeCommitted {
-			adopted[entry.Detail] = true
+		if entry.Kind == fabricengine.KindMergeCommitted && entry.Detail == warpHEADBefore {
+			adopted = true
 		}
 	}
-	if !adopted[warpHEADBefore] || !adopted[weftHEADBefore] {
-		t.Errorf("MergeContinue() mutations = %v; want KindMergeCommitted carrying both adopted SHAs %q and %q", contRes.Mutated().Entries(), warpHEADBefore, weftHEADBefore)
+	if !adopted {
+		t.Errorf("MergeContinue() mutations = %v; want a KindMergeCommitted carrying the adopted SHA %q", contRes.Mutated().Entries(), warpHEADBefore)
 	}
 
 	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || exists {
@@ -681,28 +620,27 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if len(res.Conflicts) != 2 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted — the scenario needs a real conclude pending on each side", res.Conflicts)
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want the warp-side conflict — the scenario needs a real conclude pending", res.Conflicts)
 	}
 
 	sourceWarpSHA := resolveSHAForTest(t, h.PrimeWorktree(), "feature")
 	unrelatedWarpSHA := abortMergeAndLandUnrelatedCommit(t, h.PrimeWorktree(), "warp-unrelated.txt")
-	unrelatedWeftSHA := abortMergeAndLandUnrelatedCommit(t, h.PrimeWeft(), "_lyx/weft-unrelated.txt")
 
 	// Precondition, asserted rather than assumed: the record must still be live and must still show
-	// neither side concluded, or the scenario is not the one this test names.
+	// the warp side unconcluded, or the scenario is not the one this test names.
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
 	if err != nil || !found {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
-	if st.WarpCommitted != "" || st.WeftCommitted != "" {
-		t.Fatalf("recorded conclude SHAs = (%q, %q); want both empty", st.WarpCommitted, st.WeftCommitted)
+	if st.WarpCommitted != "" {
+		t.Fatalf("recorded warp conclude SHA = %q; want empty", st.WarpCommitted)
 	}
 	if st.WarpStart == unrelatedWarpSHA {
 		t.Fatalf("warp HEAD did not move off the recorded start %q; the ambiguous signal this test exercises is not present", st.WarpStart)
@@ -730,9 +668,6 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	if isAncestorForTest(t, h.PrimeWorktree(), sourceWarpSHA, unrelatedWarpSHA) {
 		t.Fatalf("feature (%q) is an ancestor of the unrelated commit (%q); the fixture did not actually leave the source un-merged", sourceWarpSHA, unrelatedWarpSHA)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != unrelatedWeftSHA {
-		t.Errorf("weft HEAD after the refusal = %q; want the operator's own commit %q left untouched", got, unrelatedWeftSHA)
-	}
 }
 
 // TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted pins the first-parent clause of the
@@ -748,14 +683,14 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if len(res.Conflicts) != 2 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted", res.Conflicts)
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want the warp-side conflict", res.Conflicts)
 	}
 
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
@@ -775,10 +710,6 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
 	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-
-	// Weft: abort back to its recorded start, so MergeContinue's unresolved-conflicts guard passes
-	// and the call genuinely reaches the warp adoption probe.
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
 
 	// Precondition, asserted rather than assumed: the hand-landed commit is a two-parent merge whose
 	// SECOND parent is the recorded source and whose FIRST parent is NOT the recorded start — the one
@@ -819,7 +750,7 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	// A decoy branch off the current warp HEAD with one non-conflicting commit, so a plain merge of
 	// it onto the recorded start auto-concludes into a two-parent commit.
@@ -830,8 +761,8 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if len(res.Conflicts) != 2 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted", res.Conflicts)
+	if len(res.Conflicts) != 1 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want the warp-side conflict", res.Conflicts)
 	}
 
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
@@ -845,9 +776,6 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-ff", "--no-edit", decoySHA)
 	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-
-	// Weft: abort back to its recorded start so the unresolved-conflicts guard passes.
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
 
 	// Precondition, asserted rather than assumed: right base, wrong source.
 	parents := commitParentsForTest(t, h.PrimeWorktree(), handSHA)
@@ -910,28 +838,7 @@ func rootCommitForTest(t *testing.T, dir string) string {
 // entry accounts for. fabric can never produce an octopus: it starts every non-squash merge with a
 // single `git merge --ff --no-commit <sourceSHA>`, so its conclude has exactly two parents.
 func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T) {
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	// Warp merges CLEANLY (outcome staged, HEAD unmoved) while weft conflicts, so the record survives
-	// with warp_committed empty and the warp side genuinely pending a conclude.
-	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
-
-	res, err := f.MergeIn("feature")
-	if err != nil {
-		t.Fatalf("MergeIn(feature) error = %v", err)
-	}
-	if len(res.Conflicts) != 1 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want exactly the weft-side conflict — the warp side must merge cleanly for this fixture", res.Conflicts)
-	}
-
-	st, found, err := fabricengine.LoadMergeStateForTest(f)
-	if err != nil || !found {
-		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
-	}
-	if st.WarpOutcome != "staged" || st.WarpCommitted != "" {
-		t.Fatalf("recorded warp state = (outcome %q, committed %q); want a staged side with no conclude yet", st.WarpOutcome, st.WarpCommitted)
-	}
+	h, st := setupWarpStagedPendingConclude(t)
 
 	// The operator discards the staged merge and merges the recorded source alongside an unrelated
 	// branch. The decoy is rooted outside the recorded start's history, or git would drop the start as
@@ -945,10 +852,6 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-edit", st.WarpSource, decoySHA)
 	octopusSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-
-	// Weft: abort back to its recorded start so MergeContinue's unresolved-conflicts guard passes and
-	// the call genuinely reaches the warp adoption probe.
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
 
 	// Precondition, asserted rather than assumed: a THREE-parent commit whose first parent is the
 	// recorded start and whose second is the recorded source — every clause of the old loose test
@@ -984,45 +887,48 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 	}
 }
 
-// setupWarpStagedWeftConflictedResolved builds the one fixture the two conclude-evidence tests below
-// share: the warp side merges CLEANLY (a real non-fast-forward merge, outcome staged, MERGE_HEAD live)
-// while the weft side conflicts, and the weft conflict is then resolved and staged through
-// MergeStageResolved.
-// Resolving the weft side is what isolates these tests on the WARP side: with weft left conflicted,
-// MergeContinue's unresolved-conflicts guard refuses first and the call never reaches the precondition
-// under test, and with weft aborted instead, the weft side would trip that precondition too and the
-// aggregated reason would no longer say which side produced it.
-// It returns the hub and the loaded record, asserting the fixture really is the shape described rather
-// than assuming it.
-func setupWarpStagedWeftConflictedResolved(t *testing.T) (*hubforge.Hub, fabricengine.MergeStateForTest) {
+// setupWarpStagedPendingConclude builds the one fixture several conclude-evidence tests in this file
+// share: the warp side merges CLEANLY (a real non-fast-forward merge, outcome staged, MERGE_HEAD
+// live) with no conclude landed yet, and the merge-state record already reflects that on disk —
+// WarpOutcome "staged", WarpCommitted empty, WeftOutcome already "up_to_date" since the weft is not a
+// merge participant.
+// It builds this state directly via gitrepo.Repo.MergeStart and SaveMergeStateForTest rather than
+// through a real MergeIn call. Before this batch, a weft-side conflict was what kept MergeIn from
+// auto-concluding a clean warp side, isolating the tests below on the warp side alone; with the weft
+// no longer able to conflict, a MergeIn whose warp side merges cleanly now concludes and deletes its
+// own record immediately, so there is no other way left to leave this pending-conclude window open —
+// see the merge-drops-weft task.
+// It returns the hub and the manufactured record, asserting the fixture really is the shape described
+// rather than assuming it.
+func setupWarpStagedPendingConclude(t *testing.T) (*hubforge.Hub, fabricengine.MergeStateForTest) {
 	t.Helper()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
 
-	res, err := f.MergeIn("feature")
+	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	warpRepo := fabricengine.WarpForTest(f)
+	warpSourceSHA, err := warpRepo.ResolveSHA("feature")
 	if err != nil {
-		t.Fatalf("MergeIn(feature) error = %v", err)
+		t.Fatalf("ResolveSHA(feature) error = %v", err)
 	}
-	if len(res.Conflicts) != 1 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want exactly the weft-side conflict — the warp side must merge cleanly for this fixture", res.Conflicts)
-	}
-
-	st, found, err := fabricengine.LoadMergeStateForTest(f)
-	if err != nil || !found {
-		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
-	}
-	if st.WarpOutcome != "staged" || st.WarpCommitted != "" {
-		t.Fatalf("recorded warp state = (outcome %q, committed %q); want a staged side with no conclude yet", st.WarpOutcome, st.WarpCommitted)
+	if _, err := warpRepo.MergeStart(warpSourceSHA, false); err != nil {
+		t.Fatalf("warp MergeStart(%s) error = %v", warpSourceSHA, err)
 	}
 
-	// Resolve the weft conflict properly, so this pair's only irregularity is the one each test plants.
-	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "_lyx", "weft-clash.txt"), []byte("resolved\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(_lyx/weft-clash.txt): %v", err)
+	st := fabricengine.MergeStateForTest{
+		Verb:        "merge-in",
+		Source:      "feature",
+		WarpStart:   warpStart,
+		WeftStart:   weftStart,
+		WarpSource:  warpSourceSHA,
+		WarpOutcome: "staged",
+		WeftOutcome: "up_to_date",
+		StartedAt:   time.Now(),
 	}
-	if _, err := f.MergeStageResolved(res.Conflicts); err != nil {
-		t.Fatalf("MergeStageResolved(%v) error = %v", res.Conflicts, err)
+	if err := fabricengine.SaveMergeStateForTest(f, st); err != nil {
+		t.Fatalf("SaveMergeStateForTest() error = %v", err)
 	}
 	return h, st
 }
@@ -1070,7 +976,7 @@ func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpH
 // on the recorded start and a MERGE_HEAD is live, so sideConcludeAlreadyLanded correctly reports "not
 // landed" and hands straight to the commit that was the defect.
 func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *testing.T) {
-	h, st := setupWarpStagedWeftConflictedResolved(t)
+	h, st := setupWarpStagedPendingConclude(t)
 
 	// The operator discards fabric's staged merge and starts an unrelated one, leaving it uncommitted.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
@@ -1117,7 +1023,7 @@ func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *test
 // The test asserts that first-entry-equals-the-source precondition explicitly, so a regression to the
 // truncating read fails here instead of passing.
 func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *testing.T) {
-	h, st := setupWarpStagedWeftConflictedResolved(t)
+	h, st := setupWarpStagedPendingConclude(t)
 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
 	decoyBase := rootCommitForTest(t, h.PrimeWorktree())
@@ -1155,7 +1061,7 @@ func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *t
 // It is the same silent false success as the live-different-merge shape, reached without any second
 // merge at all — one `git merge --abort` and one `git add`.
 func TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted(t *testing.T) {
-	h, st := setupWarpStagedWeftConflictedResolved(t)
+	h, st := setupWarpStagedPendingConclude(t)
 
 	// The operator discards fabric's staged merge and stages unrelated content of their own.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
@@ -1267,7 +1173,7 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	setupCleanNonFastForward(t, h.PrimeWeft(), "feature-weft", "weft-branch.txt", "weft-current.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	// Sabotage the warp conclude so Merge stops with the record retained and warp_outcome staged —
 	// the state a crash between `git merge --squash` and the conclude commit leaves.
@@ -1335,12 +1241,12 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 // exists to prevent, and the assertion that discriminates is the same one: a verb that returns
 // without error must never leave git-level merge state behind on either side.
 func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead(t *testing.T) {
-	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+	h, f, commitOnWarpBranch, _, _, _ := newMergePairFixture(t, ".")
 
 	// The decoy is built first, off the pre-merge tip, so merging it later is a clean non-fast-forward.
 	commitOnWarpBranch("decoy", "decoy.txt", "the operator's own second merge\n", "decoy: unrelated branch")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -1417,7 +1323,7 @@ func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *tes
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	setupCleanNonFastForward(t, h.PrimeWeft(), "feature-weft", "weft-branch.txt", "weft-current.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	// Sabotage the warp conclude so Merge stops with the record retained, squash recorded, and the
 	// warp side staged with no conclude SHA.

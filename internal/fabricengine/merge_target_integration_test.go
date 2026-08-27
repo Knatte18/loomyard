@@ -151,15 +151,18 @@ func TestMerge_CleanSquash(t *testing.T) {
 }
 
 // TestMerge_CleanNonSquash covers the clean non-squash merge scenario: a real merge commit with two
-// parents on both sides, plain `git merge` semantics preserved.
+// parents on the warp side, plain `git merge` semantics preserved, and the weft side left byte-for-byte
+// unmoved — Merge is no longer a weft-side merge participant.
 func TestMerge_CleanNonSquash(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 
 	targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
-	// A target-side commit on each checkout, so merging "feature"/"feature-weft" is a genuine
-	// (non-fast-forward) merge on both sides rather than a plain pointer advance.
+	// A target-side commit on each checkout, so merging "feature" is a genuine (non-fast-forward)
+	// merge on the warp side rather than a plain pointer advance. The weft-side commit only proves the
+	// weft checkout stays put across the merge.
 	commitOnCurrentBranch(t, targetWarpPath, "target-progress.txt", "target progress\n", "target: progress")
 	commitOnCurrentBranch(t, targetWeftPath, "_lyx/target-progress.txt", "target progress\n", "target: progress weft")
+	weftBefore := fabricengine.CurrentSHAForTest(t, targetWeftPath)
 
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
@@ -172,17 +175,16 @@ func TestMerge_CleanNonSquash(t *testing.T) {
 	}
 
 	warpHEAD := fabricengine.CurrentSHAForTest(t, targetWarpPath)
-	weftHEAD := fabricengine.CurrentSHAForTest(t, targetWeftPath)
 	if got := gitParentCount(t, targetWarpPath, warpHEAD); got != 2 {
 		t.Errorf("target warp HEAD %s has %d parents; want exactly 2 (a real merge commit)", warpHEAD, got)
 	}
-	if got := gitParentCount(t, targetWeftPath, weftHEAD); got != 2 {
-		t.Errorf("target weft HEAD %s has %d parents; want exactly 2 (a real merge commit)", weftHEAD, got)
+	if got := fabricengine.CurrentSHAForTest(t, targetWeftPath); got != weftBefore {
+		t.Errorf("target weft HEAD = %q; want unchanged %q — the weft is not a merge participant", got, weftBefore)
 	}
 }
 
 // TestMerge_MessagePrecedence covers Merge's Message option: empty uses git's own prepared message,
-// set is used verbatim on both sides.
+// set is used verbatim on the warp side — the only side Merge concludes.
 func TestMerge_MessagePrecedence(t *testing.T) {
 	t.Run("empty uses git's prepared message", func(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
@@ -202,9 +204,10 @@ func TestMerge_MessagePrecedence(t *testing.T) {
 		}
 	})
 
-	t.Run("set is used verbatim on both sides", func(t *testing.T) {
+	t.Run("set is used verbatim on the warp side", func(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
+		weftBefore := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target"))
 
 		const msg = "custom target-pair merge message"
 		res, err := target.Merge("feature", fabricengine.MergeOptions{Squash: true, Message: msg})
@@ -218,8 +221,10 @@ func TestMerge_MessagePrecedence(t *testing.T) {
 		if got := gitCommitSubject(t, h.PairWarpWorktree("target"), "HEAD"); got != msg {
 			t.Errorf("warp commit subject = %q; want verbatim %q", got, msg)
 		}
-		if got := gitCommitSubject(t, h.PairWeftSibling("target"), "HEAD"); got != msg {
-			t.Errorf("weft commit subject = %q; want verbatim %q", got, msg)
+		// The weft is not a merge participant, so the message option never reaches it — the weft HEAD
+		// stays exactly where it was.
+		if got := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target")); got != weftBefore {
+			t.Errorf("target weft HEAD = %q; want unchanged %q", got, weftBefore)
 		}
 	})
 }
@@ -285,14 +290,14 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 }
 
 // TestMerge_StaleTargetSyncsBeforeMerging covers a target behind its own upstream: Merge's pre-merge
-// sync step fetches and fast-forwards it (KindRepoAdvanced recorded) before merging, landing both the
-// remote advance and the merge's own content.
+// sync step fetches and fast-forwards the warp side (KindRepoAdvanced recorded) before merging,
+// landing both the remote advance and the merge's own content. The weft side is not synced — it is
+// not a merge participant — so a weft-side remote advance is left unfetched.
 func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
 	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
-	advanceRemoteBranch(t, h.WeftBare, "target-weft", "remote-weft.txt", "remote content\n", "origin: advance target-weft")
 
 	res, err := target.Merge("feature", fabricengine.MergeOptions{})
 	if err != nil {
@@ -314,9 +319,6 @@ func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(h.PairWarpWorktree("target"), "remote-warp.txt")); err != nil {
 		t.Errorf("remote-warp.txt missing after Merge: %v; want it fetched and fast-forwarded before merging", err)
-	}
-	if _, err := os.Stat(filepath.Join(h.PairWeftSibling("target"), "remote-weft.txt")); err != nil {
-		t.Errorf("remote-weft.txt missing after Merge: %v; want it fetched and fast-forwarded before merging", err)
 	}
 }
 
@@ -398,12 +400,14 @@ func TestMerge_NoUpstreamSidePassesVacuously(t *testing.T) {
 	}
 }
 
-// TestMerge_ConflictSelfAborts covers a merge that would conflict: it self-aborts, restoring the
-// target pair's SHAs and worktrees exactly, returning *ErrMergeInRequired with Source set and leaving
-// no record — and the error value is identical whether the warp or the weft side would have
-// conflicted.
+// TestMerge_ConflictSelfAborts covers a warp-side merge that would conflict: it self-aborts,
+// restoring the target pair's warp SHA and worktree exactly, returning *ErrMergeInRequired with
+// Source set and leaving no record.
+// This test used to also cover a weft-side conflict, asserting the returned error was byte-identical
+// regardless of which side conflicted. That sub-scenario has no warp-side analogue and is deleted
+// here: Merge no longer merges the weft side at all, so a weft-side conflict is not a shape Merge can
+// produce any more — see the merge-drops-weft task.
 func TestMerge_ConflictSelfAborts(t *testing.T) {
-	// Warp conflicts, weft clean.
 	hWarp, targetWarp, commitOnSourceWarp1, commitOnSourceWeft1 := newMergeTargetFixture(t, ".")
 	commitOnCurrentBranch(t, hWarp.PairWarpWorktree("target"), "conflict.txt", "target content\n", "target: seed conflict.txt")
 	commitOnSourceWarp1("feature", "conflict.txt", "feature content\n", "feature: diverge conflict.txt")
@@ -434,41 +438,6 @@ func TestMerge_ConflictSelfAborts(t *testing.T) {
 	}
 	if inProgress, err := targetWarp.MergeInProgress(); err != nil || inProgress {
 		t.Errorf("[warp conflict] MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
-	}
-
-	// Weft conflicts, warp clean.
-	hWeft, targetWeft, commitOnSourceWarp2, commitOnSourceWeft2 := newMergeTargetFixture(t, ".")
-	commitOnSourceWarp2("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
-	commitOnCurrentBranch(t, hWeft.PairWeftSibling("target"), "_lyx/conflict.txt", "target content\n", "target: seed conflict.txt")
-	commitOnSourceWeft2("feature-weft", "_lyx/conflict.txt", "feature content\n", "feature: diverge conflict.txt")
-
-	warpBeforeF := fabricengine.CurrentSHAForTest(t, hWeft.PairWarpWorktree("target"))
-	weftBeforeF := fabricengine.CurrentSHAForTest(t, hWeft.PairWeftSibling("target"))
-
-	_, errWeftConflict := targetWeft.Merge("feature", fabricengine.MergeOptions{})
-	var reqWeft *fabricengine.ErrMergeInRequired
-	if !errors.As(errWeftConflict, &reqWeft) {
-		t.Fatalf("Merge(feature) [weft conflict] error = %v (%T); want *ErrMergeInRequired", errWeftConflict, errWeftConflict)
-	}
-	if reqWeft.Source != "feature" {
-		t.Errorf("[weft conflict] ErrMergeInRequired.Source = %q; want %q", reqWeft.Source, "feature")
-	}
-	if got := fabricengine.CurrentSHAForTest(t, hWeft.PairWarpWorktree("target")); got != warpBeforeF {
-		t.Errorf("[weft conflict] target warp HEAD = %q; want restored pre-merge SHA %q", got, warpBeforeF)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, hWeft.PairWeftSibling("target")); got != weftBeforeF {
-		t.Errorf("[weft conflict] target weft HEAD = %q; want restored pre-merge SHA %q", got, weftBeforeF)
-	}
-	if exists, err := fabricengine.MergeRecordExistsForTest(targetWeft); err != nil || exists {
-		t.Errorf("[weft conflict] MergeRecordExistsForTest() = (%v, %v); want (false, nil)", exists, err)
-	}
-	if inProgress, err := targetWeft.MergeInProgress(); err != nil || inProgress {
-		t.Errorf("[weft conflict] MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
-	}
-
-	// The byte-identical-error assertion: the value never discloses which side conflicted.
-	if errWarpConflict.Error() != errWeftConflict.Error() {
-		t.Errorf("error values differ by side: warp-conflict = %q, weft-conflict = %q; want identical", errWarpConflict.Error(), errWeftConflict.Error())
 	}
 }
 
@@ -615,24 +584,22 @@ func TestMerge_CrashRecovery(t *testing.T) {
 
 // TestMerge_PreMergeSyncRunsInsideTheWriteLock pins the one mutation Merge performs before its merge
 // record exists: the pre-merge sync step.
-// The sync fast-forwards BOTH checkouts, and it runs at a point where no merge record has been
+// The sync fast-forwards the warp checkout, and it runs at a point where no merge record has been
 // written yet — so mergeBlocksMutation reports false and the sibling weft-mutating verbs
 // (Commit/Pull/Checkout/Remove) do not refuse. The weft write lock is therefore the only thing that
-// can serialize it, and acquiring the lock after the sync left `git merge --ff-only` running in the
-// weft checkout alongside a concurrent Commit writing that same index.
+// can serialize it against a concurrent Commit writing the same weft index.
 // The assertion is behavioural rather than structural: with the lock externally held, Merge must not
-// have advanced either side by the time a sibling would have finished its own write, and must
+// have advanced the warp side by the time a sibling would have finished its own write, and must
 // complete once the lock is released.
 func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
 	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
-	advanceRemoteBranch(t, h.WeftBare, "target-weft", "remote-weft.txt", "remote content\n", "origin: advance target-weft")
 
-	syncedWeftFile := filepath.Join(h.PairWeftSibling("target"), "remote-weft.txt")
-	if _, err := os.Stat(syncedWeftFile); !os.IsNotExist(err) {
-		t.Fatalf("Stat(%s) before Merge = %v; want not-exist — the fixture must be genuinely stale for the sync step to have anything to do", syncedWeftFile, err)
+	syncedWarpFile := filepath.Join(h.PairWarpWorktree("target"), "remote-warp.txt")
+	if _, err := os.Stat(syncedWarpFile); !os.IsNotExist(err) {
+		t.Fatalf("Stat(%s) before Merge = %v; want not-exist — the fixture must be genuinely stale for the sync step to have anything to do", syncedWarpFile, err)
 	}
 
 	lockPath := fabricengine.WeftWriteLockPathForTest(t, target)
@@ -654,9 +621,9 @@ func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
 	case <-time.After(150 * time.Millisecond):
 		// Still blocked, as expected.
 	}
-	if _, err := os.Stat(syncedWeftFile); !os.IsNotExist(err) {
+	if _, err := os.Stat(syncedWarpFile); !os.IsNotExist(err) {
 		_ = externalLock.Release()
-		t.Fatalf("Stat(%s) while the lock was held = %v; want not-exist — the pre-merge sync mutated the weft checkout outside the lock", syncedWeftFile, err)
+		t.Fatalf("Stat(%s) while the lock was held = %v; want not-exist — the pre-merge sync mutated the warp checkout outside the lock", syncedWarpFile, err)
 	}
 
 	if err := externalLock.Release(); err != nil {
@@ -672,8 +639,8 @@ func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
 		t.Fatal("Merge() did not complete after the external lock was released")
 	}
 
-	if _, err := os.Stat(syncedWeftFile); err != nil {
-		t.Errorf("Stat(%s) after Merge = %v; want the sync step to have landed it once the lock was free", syncedWeftFile, err)
+	if _, err := os.Stat(syncedWarpFile); err != nil {
+		t.Errorf("Stat(%s) after Merge = %v; want the sync step to have landed it once the lock was free", syncedWarpFile, err)
 	}
 }
 
@@ -785,23 +752,16 @@ func TestMerge_UnfetchedDivergedTargetRefuses(t *testing.T) {
 	assertMergeRefusedAsNotSynced(t, h, res, err, warpBefore, weftBefore)
 }
 
-// TestMerge_UnfetchedDivergedWeftRefuses is TestMerge_UnfetchedDivergedTargetRefuses' weft-side twin.
-// The weft side carries its own upstream and its own divergence, and every helper in the sync path is
-// per-side, so covering warp alone leaves the weft arm of both syncedToUpstreamReason and
-// syncSideBeforeMerge unexercised — deleting either weft half left the whole suite green before this
-// test existed.
-func TestMerge_UnfetchedDivergedWeftRefuses(t *testing.T) {
-	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
-	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
-
-	divergeSideWithoutFetching(t, h.PairWeftSibling("target"), h.WeftBare, "target-weft", "remote-weft.txt", "local-weft.txt")
-
-	warpBefore := fabricengine.CurrentSHAForTest(t, h.PairWarpWorktree("target"))
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target"))
-
-	res, err := target.Merge("feature", fabricengine.MergeOptions{})
-	assertMergeRefusedAsNotSynced(t, h, res, err, warpBefore, weftBefore)
-}
+// TestMerge_UnfetchedDivergedWeftRefuses used to be TestMerge_UnfetchedDivergedTargetRefuses' weft-side
+// twin, pinning syncSideBeforeMerge's post-fetch divergence check on the weft side. This batch deletes
+// Merge's weft-side sync call entirely (Merge no longer synchronizes or merges the weft side at all),
+// so that post-fetch weft arm no longer exists to pin, and an unfetched weft divergence no longer
+// refuses — only a divergence the pre-lock guard stage can already see (already-fetched
+// remote-tracking state) still refuses, which TestMerge_FetchedDivergedWeftRefuses below continues to
+// cover. This test is deleted rather than weakened to a passing assertion, since asserting the new
+// (non-refusing) behavior here would silently document a regression as a feature; the weft's remaining
+// power to block a merge is covered by the still-present syncedToUpstreamReason guard and by
+// TestMerge_FetchedDivergedWeftRefuses.
 
 // TestMerge_FetchedDivergedWeftRefuses covers syncedToUpstreamReason's WEFT half specifically: the
 // divergence is fetched before the call, so the PRE-LOCK guard is what must refuse.

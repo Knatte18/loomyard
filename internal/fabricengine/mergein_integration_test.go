@@ -1,20 +1,17 @@
 //go:build integration
 
 // mergein_integration_test.go covers MergeIn's scenario matrix against a real hubforge pair: both
-// sides clean, a conflict on either side alone (asserting the two are byte-identical in shape — the
-// single most important test in the task), both sides conflicting, a fast-forward racing a conflict,
-// the already-up-to-date fast paths, worktree-resolved conflicts via MergeContinue, MergeAbort, and
-// the never-squashes merge-commit shape.
+// sides clean, a warp-side conflict (the only side MergeIn can now conflict on), the already-up-to-date
+// fast paths, worktree-resolved conflicts via MergeContinue, MergeAbort, and the never-squashes
+// merge-commit shape.
 
 package fabricengine_test
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -138,55 +135,6 @@ func setupCleanNonFastForward(t *testing.T, dir, branch, branchFile, currentFile
 	commitOnCurrentBranch(t, dir, currentFile, "current progress\n", "progress current past "+branch)
 }
 
-// mergeResultShape is the structural comparison mergein_integration_test.go's byte-identical-shape
-// scenario compares two MergeResults through: everything except the conflicted paths' own spellings
-// and the mutation record's own SHAs.
-type mergeResultShape struct {
-	AlreadyUpToDate bool
-	ConflictsLen    int
-	Committed       bool
-	MutationKinds   []fabricengine.Kind
-	MutationTargets []string
-}
-
-func shapeOf(res fabricengine.MergeResult) mergeResultShape {
-	entries := res.Mutated().Entries()
-	kinds := make([]fabricengine.Kind, len(entries))
-	targets := make([]string, len(entries))
-	for i, e := range entries {
-		kinds[i] = e.Kind
-		targets[i] = e.Target
-	}
-	return mergeResultShape{
-		AlreadyUpToDate: res.AlreadyUpToDate,
-		ConflictsLen:    len(res.Conflicts),
-		Committed:       res.Committed,
-		MutationKinds:   kinds,
-		MutationTargets: targets,
-	}
-}
-
-// jsonKeys returns the sorted top-level key set of v's JSON marshalling, for the shape assertion's
-// structural (not byte-for-byte) comparison.
-func jsonKeys(t *testing.T, v any) []string {
-	t.Helper()
-
-	data, err := json.Marshal(v)
-	if err != nil {
-		t.Fatalf("json.Marshal(%+v): %v", v, err)
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("json.Unmarshal(%s): %v", data, err)
-	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 // TestMergeIn_BothSidesClean covers the both-sides-clean scenario: Committed true, both sides
 // concluded, correspondence recorded, the record deleted, and MergeInProgress false afterward.
 // Both target branches carry a divergent commit of their own, so the merge genuinely needs a
@@ -229,174 +177,69 @@ func TestMergeIn_BothSidesClean(t *testing.T) {
 	}
 }
 
-// TestMergeIn_WarpConflictsWeftClean_And_WeftConflictsWarpClean covers a warp-only conflict, a
-// weft-only conflict, and asserts the two are byte-identical in shape — the single most important
-// test in the task.
-func TestMergeIn_WarpConflictsWeftClean_And_WeftConflictsWarpClean(t *testing.T) {
-	// Warp conflicts, weft clean.
-	hWarpConflict, fWarpConflict, _, commitOnWeftBranch1, _, _ := newMergePairFixture(t, ".")
-	setupConflictingDivergence(t, hWarpConflict.PrimeWorktree(), "feature", "conflict.txt")
-	commitOnWeftBranch1("feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
-
-	resWarpConflict, errWarpConflict := fWarpConflict.MergeIn("feature")
-	if errWarpConflict != nil {
-		t.Fatalf("MergeIn(feature) [warp conflict] error = %v", errWarpConflict)
-	}
-	if len(resWarpConflict.Conflicts) == 0 {
-		t.Fatal("MergeIn(feature) [warp conflict] Conflicts is empty; want at least one path")
-	}
-	if resWarpConflict.Committed {
-		t.Error("MergeIn(feature) [warp conflict] Committed = true; want false")
-	}
-	if inProgress, err := fWarpConflict.MergeInProgress(); err != nil || !inProgress {
-		t.Errorf("MergeInProgress() [warp conflict] = (%v, %v); want (true, nil)", inProgress, err)
-	}
-
-	// Weft conflicts, warp clean.
-	hWeftConflict, fWeftConflict, commitOnWarpBranch2, _, _, _ := newMergePairFixture(t, ".")
-	commitOnWarpBranch2("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
-	setupConflictingDivergence(t, hWeftConflict.PrimeWeft(), "feature-weft", "_lyx/conflict.txt")
-
-	resWeftConflict, errWeftConflict := fWeftConflict.MergeIn("feature")
-	if errWeftConflict != nil {
-		t.Fatalf("MergeIn(feature) [weft conflict] error = %v", errWeftConflict)
-	}
-	if len(resWeftConflict.Conflicts) == 0 {
-		t.Fatal("MergeIn(feature) [weft conflict] Conflicts is empty; want at least one path")
-	}
-	if resWeftConflict.Committed {
-		t.Error("MergeIn(feature) [weft conflict] Committed = true; want false")
-	}
-	if inProgress, err := fWeftConflict.MergeInProgress(); err != nil || !inProgress {
-		t.Errorf("MergeInProgress() [weft conflict] = (%v, %v); want (true, nil)", inProgress, err)
-	}
-
-	// The byte-identical-shape assertion.
-	if (errWarpConflict == nil) != (errWeftConflict == nil) {
-		t.Fatalf("error values differ: warp-conflict err = %v, weft-conflict err = %v", errWarpConflict, errWeftConflict)
-	}
-	shapeWarp, shapeWeft := shapeOf(resWarpConflict), shapeOf(resWeftConflict)
-	if shapeWarp.AlreadyUpToDate != shapeWeft.AlreadyUpToDate || shapeWarp.Committed != shapeWeft.Committed || shapeWarp.ConflictsLen != shapeWeft.ConflictsLen {
-		t.Errorf("mismatched top-level shape: warp-conflict = %+v, weft-conflict = %+v", shapeWarp, shapeWeft)
-	}
-	if len(shapeWarp.MutationKinds) != len(shapeWeft.MutationKinds) {
-		t.Fatalf("mismatched mutation-kind count: warp-conflict = %v, weft-conflict = %v", shapeWarp.MutationKinds, shapeWeft.MutationKinds)
-	}
-	for i := range shapeWarp.MutationKinds {
-		if shapeWarp.MutationKinds[i] != shapeWeft.MutationKinds[i] {
-			t.Errorf("mutation kind[%d]: warp-conflict = %q, weft-conflict = %q; want identical sequences", i, shapeWarp.MutationKinds[i], shapeWeft.MutationKinds[i])
-		}
-	}
-	if len(shapeWarp.MutationTargets) != len(shapeWeft.MutationTargets) {
-		t.Fatalf("mismatched mutation-target count: warp-conflict = %v, weft-conflict = %v", shapeWarp.MutationTargets, shapeWeft.MutationTargets)
-	}
-	for i := range shapeWarp.MutationTargets {
-		if shapeWarp.MutationTargets[i] != shapeWeft.MutationTargets[i] {
-			t.Errorf("mutation target[%d]: warp-conflict = %q, weft-conflict = %q; want identical sequences (same fixture layout both sides)", i, shapeWarp.MutationTargets[i], shapeWeft.MutationTargets[i])
-		}
-	}
-
-	keysWarp, keysWeft := jsonKeys(t, resWarpConflict), jsonKeys(t, resWeftConflict)
-	if len(keysWarp) != len(keysWeft) {
-		t.Fatalf("JSON key sets differ: warp-conflict = %v, weft-conflict = %v", keysWarp, keysWeft)
-	}
-	for i := range keysWarp {
-		if keysWarp[i] != keysWeft[i] {
-			t.Errorf("JSON key[%d]: warp-conflict = %q, weft-conflict = %q", i, keysWarp[i], keysWeft[i])
-		}
-	}
-}
-
-// TestMergeIn_BothSidesConflict covers both sides conflicting: one flat, lexically sorted list
-// containing paths from both sides, in the unified namespace, with no duplicates.
-func TestMergeIn_BothSidesConflict(t *testing.T) {
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "warp-conflict.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-conflict.txt")
+// TestMergeIn_WarpConflicts covers a warp conflict — the only side MergeIn can now conflict on.
+// This test used to also cover a weft-only conflict and assert the two produced byte-identical
+// result shapes; the weft arm is deleted, with no replacement, since MergeIn no longer merges the
+// weft side at all, so a weft-side conflict is not a shape it can produce any more — see the
+// merge-drops-weft task.
+func TestMergeIn_WarpConflicts(t *testing.T) {
+	h, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	commitOnWeftBranch("feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
-		t.Fatalf("MergeIn(feature) error = %v", err)
+		t.Fatalf("MergeIn(feature) [warp conflict] error = %v", err)
 	}
-	if len(res.Conflicts) != 2 {
-		t.Fatalf("MergeIn(feature).Conflicts = %v; want exactly 2 entries", res.Conflicts)
+	if len(res.Conflicts) == 0 {
+		t.Fatal("MergeIn(feature) [warp conflict] Conflicts is empty; want at least one path")
 	}
-	if !sort.StringsAreSorted(res.Conflicts) {
-		t.Errorf("MergeIn(feature).Conflicts = %v; want lexically sorted", res.Conflicts)
+	if res.Committed {
+		t.Error("MergeIn(feature) [warp conflict] Committed = true; want false")
 	}
-	seen := map[string]bool{}
-	for _, p := range res.Conflicts {
-		if seen[p] {
-			t.Errorf("MergeIn(feature).Conflicts = %v; want no duplicates, found repeat %q", res.Conflicts, p)
-		}
-		seen[p] = true
-	}
-	if !seen["warp-conflict.txt"] || !seen["_lyx/weft-conflict.txt"] {
-		t.Errorf("MergeIn(feature).Conflicts = %v; want both warp-conflict.txt and _lyx/weft-conflict.txt", res.Conflicts)
+	if inProgress, err := f.MergeInProgress(); err != nil || !inProgress {
+		t.Errorf("MergeInProgress() [warp conflict] = (%v, %v); want (true, nil)", inProgress, err)
 	}
 }
 
+// TestMergeIn_BothSidesConflict used to cover both sides conflicting simultaneously, asserting one
+// flat, lexically sorted, deduplicated list spanning both sides. That scenario has no warp-side
+// analogue and is deleted: MergeIn no longer merges the weft side at all, so the weft half can never
+// conflict, and "both sides conflict" is not a reachable shape any more — see the merge-drops-weft
+// task. TestMergeIn_WarpConflicts covers the warp side's own conflict-reporting behavior.
+
 // TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable pins the core.quotepath
-// regression: a conflict on a path outside git's default ASCII quoting set — on either side — must
+// regression on the warp side: a conflict on a path outside git's default ASCII quoting set must
 // surface as the raw worktree-relative path. Before ConflictedFiles passed `-z`, git handed back
-// the C-quoted rendering (`"\303\244..."`, quotes included): the warp side's reported path was a
-// literal that exists nowhere in the worktree, and the weft side's quoted form failed
-// weftPathVisible's prefix test, so a mappable in-tree conflict self-aborted the whole merge as
-// *ErrUnmergeableState.
+// the C-quoted rendering (`"\303\244..."`, quotes included), so the reported path was a literal that
+// exists nowhere in the worktree.
+// This test used to also seed a weft-side non-ASCII conflict, since weftPathVisible's own prefix test
+// was a second, independent place the quoted form could fail. That arm is deleted along with the
+// weft's ability to conflict at all — see the merge-drops-weft task.
 func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "ä-warp.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/ä-weft.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v; want nil — a non-ASCII in-tree conflict is mappable, never *ErrUnmergeableState", err)
 	}
-	want := []string{"_lyx/ä-weft.txt", "ä-warp.txt"}
-	if len(res.Conflicts) != len(want) || res.Conflicts[0] != want[0] || res.Conflicts[1] != want[1] {
+	want := []string{"ä-warp.txt"}
+	if len(res.Conflicts) != len(want) || res.Conflicts[0] != want[0] {
 		t.Errorf("MergeIn(feature).Conflicts = %q; want %q — raw path bytes, not git's C-quoted rendering", res.Conflicts, want)
 	}
 }
 
-// TestMergeIn_OneSideFastForwardsOtherConflicts_AbortRestoresFastForwardedSide covers the B1 case:
-// one side fast-forwards while the other conflicts, conflicts are reported, and MergeAbort returns
-// the fast-forwarded side to its recorded pre-merge SHA.
-func TestMergeIn_OneSideFastForwardsOtherConflicts_AbortRestoresFastForwardedSide(t *testing.T) {
-	h, f, _, _, _, _ := newMergePairFixture(t, ".")
-
-	setupCleanFastForward(t, h.PrimeWorktree(), "feature", "ff.txt")
-	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/conflict.txt")
-
-	// Captured after the divergence above lands, since those are the actual pre-merge SHAs MergeIn's
-	// own record captures and MergeAbort must restore.
-	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
-
-	res, err := f.MergeIn("feature")
-	if err != nil {
-		t.Fatalf("MergeIn(feature) error = %v", err)
-	}
-	if len(res.Conflicts) == 0 {
-		t.Fatal("MergeIn(feature) Conflicts is empty; want the weft-side conflict reported")
-	}
-
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got == warpStartSHA {
-		t.Fatalf("warp HEAD after conflicted MergeIn = %q (unchanged); want it to have fast-forwarded before abort restores it", got)
-	}
-
-	if _, err := f.MergeAbort(); err != nil {
-		t.Fatalf("MergeAbort() error = %v", err)
-	}
-
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStartSHA {
-		t.Errorf("warp HEAD after MergeAbort = %q; want restored pre-merge SHA %q", got, warpStartSHA)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStartSHA {
-		t.Errorf("weft HEAD after MergeAbort = %q; want restored pre-merge SHA %q", got, weftStartSHA)
-	}
-}
+// TestMergeIn_OneSideFastForwardsOtherConflicts_AbortRestoresFastForwardedSide used to cover the B1
+// case: the warp side fast-forwards while the weft side conflicts, and MergeAbort restores the
+// fast-forwarded warp side to its recorded pre-merge SHA. That shape has no warp-only analogue and is
+// deleted: with the weft no longer a merge participant, there is no "other side" left that can
+// conflict while the warp side fast-forwards — a fast-forwarding warp side means the whole call
+// concludes cleanly, never conflicted. MergeAbort's own restore-a-fast-forwarded-side behavior is
+// covered structurally by TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded's fixtures and
+// by mergestate_test.go's own outcome-classification tests — see the merge-drops-weft task.
 
 // TestMergeIn_OneSideAlreadyUpToDate_OtherMerges covers the mixed already-up-to-date case: the
 // merge concludes, no empty commit is fabricated on the no-op side, and correspondence pairs the

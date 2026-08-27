@@ -444,7 +444,8 @@ func mergeHeadPresentInCheckout(t *testing.T, dir string) bool {
 func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
 
-	// The same content reaches the branch and the trunk independently, on both sides.
+	// The same content reaches the branch and the trunk independently, on the warp side — the only
+	// side MergeIn merges. The weft side is seeded identically only to prove it stays untouched.
 	commitOnWarpBranch("feature", "shared.txt", "same change\n", "feature: warp same change")
 	commitOnWarpCurrent("shared.txt", "same change\n", "target: warp same change, reached independently")
 	commitOnWeftBranch("feature-weft", "shared-weft.txt", "same change\n", "feature: weft same change")
@@ -466,16 +467,17 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 	}
 
 	if res.AlreadyUpToDate {
-		t.Error("MergeIn(feature).AlreadyUpToDate = true; neither source is an ancestor of its side's HEAD, so this is a real merge")
+		t.Error("MergeIn(feature).AlreadyUpToDate = true; the warp source is not an ancestor of warp HEAD, so this is a real merge")
 	}
 	if !res.Committed {
-		t.Error("MergeIn(feature).Committed = false; a real merge on both sides must land its conclude-commit")
+		t.Error("MergeIn(feature).Committed = false; a real merge on the warp side must land its conclude-commit")
 	}
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got == warpBefore {
 		t.Errorf("warp HEAD = %q, unchanged; want the conclude-commit to have landed", got)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got == weftBefore {
-		t.Errorf("weft HEAD = %q, unchanged; want the conclude-commit to have landed", got)
+	// The weft is not a merge participant, so its HEAD never moves.
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+		t.Errorf("weft HEAD = %q; want unchanged %q — the weft is not a merge participant", got, weftBefore)
 	}
 
 	inProgress, err := f.MergeInProgress()
@@ -493,36 +495,19 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 	}
 }
 
-// installRefusingPreCommitHook writes a pre-commit hook in dir's checkout that always exits 1, so
-// the next `git commit` there fails the way a policy hook, a missing gpg key, or a full disk would.
-// It returns a function that removes the hook again.
-func installRefusingPreCommitHook(t *testing.T, dir string) (remove func()) {
-	t.Helper()
-
-	hookDir := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "--absolute-git-dir")) + "/hooks"
-	if err := os.MkdirAll(hookDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", hookDir, err)
-	}
-	hook := filepath.Join(hookDir, "pre-commit")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-		t.Fatalf("write %s: %v", hook, err)
-	}
-	return func() {
-		if err := os.Remove(hook); err != nil {
-			t.Fatalf("remove %s: %v", hook, err)
-		}
-	}
-}
-
 // TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded pins crucible round opus-medium-r2's
-// finding R2: MergeAbort restores both sides from the recorded pre-merge SHAs, so an abort issued
+// finding R2: MergeAbort restores the warp side from its recorded pre-merge SHA, so an abort issued
 // against a half-concluded attempt discarded a conclude-commit that had really landed -- in this
 // flow, one carrying the operator's own hand-written conflict resolutions, reset away under
 // force: true with an "ok" result and no warning.
 // Two arms, because the record is not always honest about what landed:
-//   - Recorded: the weft conclude fails on a refusing hook after the warp conclude landed and was
-//     written into the record, which is the shape the ErrMergeIncomplete path documents as
-//     deliberate retention.
+//   - Recorded: the warp conclude lands and IS written into the record (WarpCommitted set), then the
+//     call crashes before it can run RecordCorrespondence/deleteMergeState — the one window, now that
+//     the weft is not a merge participant and concludeMergeSides has nothing left to conclude on that
+//     side, where the record can know the conclude landed but the call as a whole never finished.
+//     SaveMergeStateForTest manufactures that exact post-record-save, pre-delete crash point directly,
+//     since a real MergeContinue call no longer has an independent second side to fail on and complete
+//     one-sided otherwise.
 //   - Invisible: the operator concludes the warp side by hand with plain git, so warp HEAD has moved
 //     past its recorded start while warp_committed is still empty. concludeMergeSides leaves exactly
 //     this shape whenever CurrentSHA or the record re-save fails after `git commit` succeeded, and a
@@ -540,12 +525,17 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 			name: "RecordedConcludeSHA",
 			landWarpConclude: func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string {
 				t.Helper()
-				removeHook := installRefusingPreCommitHook(t, h.PrimeWeft())
-				t.Cleanup(removeHook)
-				if _, err := f.MergeContinue(""); !errors.As(err, new(*fabricengine.ErrMergeIncomplete)) {
-					t.Fatalf("MergeContinue(\"\") error = %v (%T); want *fabricengine.ErrMergeIncomplete — the fixture needs the weft conclude to fail after the warp conclude landed", err, err)
+				st, found, err := fabricengine.LoadMergeStateForTest(f)
+				if err != nil || !found {
+					t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 				}
-				return fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+				gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+				sha := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+				st.WarpCommitted = sha
+				if err := fabricengine.SaveMergeStateForTest(f, st); err != nil {
+					t.Fatalf("SaveMergeStateForTest() error = %v", err)
+				}
+				return sha
 			},
 		},
 		{
@@ -594,41 +584,39 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 // the HEAD read is always what actually refuses.
 // The shape that isolates the first clause puts HEAD back: after a half-concluded attempt whose warp
 // conclude landed and WAS recorded, the operator resets that side to the recorded pre-merge SHA.
-// HEAD no longer looks moved on either side, so only the record's own memory of the conclude stands
-// between MergeAbort and a two-sided force reset. It must still refuse: the recorded SHA is evidence
-// that a commit was made, and after the reset that commit is reachable from no branch, so an abort
-// that proceeded would discard it for good along with any resolutions it carries.
+// HEAD no longer looks moved, so only the record's own memory of the conclude stands between
+// MergeAbort and a force reset. It must still refuse: the recorded SHA is evidence that a commit was
+// made, and after the reset that commit is reachable from no branch, so an abort that proceeded would
+// discard it for good along with any resolutions it carries.
+// The record is manufactured directly via SaveMergeStateForTest, the same "record learned about a
+// landed conclude, then the call never reached its own delete" shape
+// TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded's RecordedConcludeSHA arm builds — a real
+// MergeContinue call has no independent weft side left to fail on and finish one-sided.
 func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
 	h, f := mergeCrucibleWarpConflictFixture(t)
 	resolveWarpConflict(t, h.PrimeWorktree(), "conflict.txt")
-
-	removeHook := installRefusingPreCommitHook(t, h.PrimeWeft())
-	if _, err := f.MergeContinue(""); !errors.As(err, new(*fabricengine.ErrMergeIncomplete)) {
-		t.Fatalf("MergeContinue(\"\") error = %v (%T); want *fabricengine.ErrMergeIncomplete — the fixture needs the weft conclude to fail after the warp conclude landed", err, err)
-	}
-	removeHook()
 
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
 	if err != nil || !found {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
-	if st.WarpCommitted == "" {
-		t.Fatalf("recorded WarpCommitted is empty; the fixture needs the warp conclude recorded")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	st.WarpCommitted = fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	if err := fabricengine.SaveMergeStateForTest(f, st); err != nil {
+		t.Fatalf("SaveMergeStateForTest() error = %v", err)
 	}
 
 	// The operator puts the landed side back, so the HEAD-moved clause can no longer fire.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "reset", "--hard", st.WarpStart)
 
-	// Preconditions, asserted rather than assumed: NEITHER side's HEAD is off its recorded start any
-	// more, so the second clause is false on both and the recorded SHA is the only evidence left.
+	// Preconditions, asserted rather than assumed: HEAD is not off its recorded start any more, so the
+	// second clause is false and the recorded SHA is the only evidence left. The weft side never moved
+	// in the first place — it is not a merge participant.
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != st.WarpStart {
 		t.Fatalf("warp HEAD = %q after the reset; want the recorded start %q, or the HEAD-moved clause refuses instead of the one under test", got, st.WarpStart)
 	}
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != st.WeftStart {
-		t.Fatalf("weft HEAD = %q; want the recorded start %q, or the weft side's HEAD-moved clause refuses instead of the one under test", got, st.WeftStart)
-	}
-	if st.WeftCommitted != "" {
-		t.Fatalf("recorded WeftCommitted = %q; want empty, or the weft side's own recorded-SHA clause refuses instead of the warp one", st.WeftCommitted)
+		t.Fatalf("weft HEAD = %q; want the recorded start %q", got, st.WeftStart)
 	}
 
 	res, err := f.MergeAbort()
