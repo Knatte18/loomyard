@@ -64,7 +64,9 @@ batches:
     commit_sha: fda2beb63aeae716071fda66ef733c1bfdefcee1
     verify_baseline_failures: []
   - name: push-and-mergestate-probe
-    state: pending
+    state: running
+    implementer_session: 5a52957b-c87a-4286-9d11-ec87f941a392
+    start_sha: c28a98fd37980cf29d1a346ce96443cb0ca45ece
     verify_baseline_failures: []
   - name: loom-transition-commit
     state: pending
