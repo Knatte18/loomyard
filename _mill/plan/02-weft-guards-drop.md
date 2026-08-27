@@ -116,6 +116,8 @@ The `mergeReasonNotFabricManaged` constant itself stays: `mergevocab_test.go` pi
 - **Edits:**
   - `internal/fabricengine/merge_target_integration_test.go`
   - `internal/fabricengine/mergestate_integration_test.go`
+  - `internal/fabricengine/mergecrucible_integration_test.go`
+  - `internal/fabricengine/mergein_recovery_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -125,6 +127,9 @@ The `mergeReasonNotFabricManaged` constant itself stays: `mergevocab_test.go` pi
   Keep `assertMergeRefusedAsNotSynced` and the warp-side `TestMerge_UnfetchedDivergedTargetRefuses`/`TestMerge_FetchedDivergedTargetRefuses` tests exactly as written — warp-side dirty, detached and not-synced still refuse, and those tests are the proof.
   In `internal/fabricengine/mergestate_integration_test.go`, update `wantWorktreeResetEntries` to expect exactly one `KindWorktreeReset` entry carrying the warp pre-merge SHA, drop its `wantWeftSHA` parameter, and update every caller and every surrounding assertion that reads the weft entry — including `TestMergeState_ResetMergeSides_PrimePairBothSidesAdmitted`, whose name and doc comment must be corrected to describe a warp-only reset.
   Update every `fabricengine.ResetMergeSidesForTest` call in that file to the narrowed signature.
+  Extending beyond the plan's original scope (added during implementation, since the full-package `verify:` surfaces these too): `internal/fabricengine/mergecrucible_integration_test.go`'s `TestMergeCrucible_DetachedHeadRefused`'s `WeftDetached` table case pinned `detachedHeadReason`'s now-removed weft arm — invert it in place to assert `MergeIn` proceeds (no error, both HEADs move as an ordinary merge would) while leaving the `WarpDetached` case untouched.
+  `internal/fabricengine/mergein_recovery_integration_test.go`'s `TestMergeIn_NotFabricManaged_NothingMutated` pinned `resolveMergeSources`' now-removed `mergeReasonNotFabricManaged` arm — invert it to assert `MergeIn` no longer refuses a source with no weft counterpart (the fixture's same-SHA `feature` branch make this the degenerate `AlreadyUpToDate` case, so nothing mutates either, keeping the original nothing-mutated assertions valid), renaming to state the new property.
+  That same file's `TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide` pinned `pairDirtyReason`'s now-removed weft arm on its weft-dirty half — split it into the warp-dirty case (unchanged assertion: refuses with `"worktree dirty"`) and a weft-dirty case rewritten to assert `MergeIn` no longer refuses, renaming both to state what each half now pins rather than keeping the single byte-identical-either-side name that no longer holds.
 - **Commit:** `test(fabricengine): a diverged weft no longer refuses a merge`
 
 ### Card 13: integration coverage for the dropped weft guards and the one-sided abort
