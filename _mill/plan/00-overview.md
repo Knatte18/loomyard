@@ -3,7 +3,7 @@
 ```yaml
 task: "Add a local-only file category to weft"
 slug: "weft-local-only-files"
-approved: false
+approved: true
 started: "20260827-073054"
 parent: "main"
 root: ""
