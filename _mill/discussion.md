@@ -34,7 +34,7 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 - `internal/loomcli` — filling that closure with commit-then-push over loom's status path.
 - `internal/fabricengine` — a new `PushAnchored(l, opts)` beside the existing `CommitAnchoredPaths`.
 - `internal/fabricengine` — a new `MergeStateActive(l) (bool, error)`, the vocabulary-neutral merge-state probe the commit closure consults.
-- `CONSTRAINTS.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md` — docs, same commit.
+- `CONSTRAINTS.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md` — docs, same commit. The `CONSTRAINTS.md` edit is ordered *after* a merge-in of `main`; see `constraints-gains-one-sentence`.
 
 **Out:**
 
@@ -42,7 +42,7 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 - **`internal/gitrepo`.** No new primitives are needed — skipping a side means not calling `MergeStart` on it.
 - **`internal/landingshed`.** No new deps, no new step, no `Publish` change. Both producers are untouched.
 - **Teardown as part of a loom run.** Deleting the weft branch cannot happen from inside the worktree it belongs to; it stays an outside verb.
-- **Raddle.** `_lyx/raddle/` does not exist yet. Its fold-back concern is deferred wholesale, and its placeholder gate is removed rather than kept warm.
+- **Raddle.** `_lyx/raddle/` does not exist, and building it would not reintroduce a fold-back concern: it would be weft content, so it is per-branch-local like the rest of `_lyx`. The placeholder gate is removed as structurally unnecessary, not deferred.
 - **The millhouse repo.** `mill-merge`'s own `_mill`-hardcoded delete-then-restore is not generalized here; different repository, and this design needs no equivalent.
 - **Moving `status.json` to `.lyx/`.** PR #208's approach stays rejected.
 
@@ -81,8 +81,8 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 ### raddle-gate-removed
 
 - Decision: `raddleFoldedBack` (`internal/fabricengine/cleanup.go:93-95`) and the `Protected` branch it feeds are removed, along with the fold-back row of `Cleanup`'s documented flag matrix.
-- Rationale: it is a stub returning `false`, so today every fabric-managed orphan weft branch is protected unless `--force` — which makes routine teardown require the destructive flag. Raddle does not exist; the gate is re-added with it if it is wanted.
-- Rejected: keeping the stub gate and routing teardown through it.
+- Rationale: it is a stub returning `false`, so today every fabric-managed orphan weft branch is protected unless `--force` — which makes routine teardown require the destructive flag. Raddle does not exist, and building it would not bring the gate back: `_lyx/raddle/` would be weft content, hence per-branch-local and never a merge participant, so there would be nothing to fold back and nothing for a gate to guard. `_lyx` has one category, not two.
+- Rejected: keeping the stub gate and routing teardown through it; keeping it warm as a placeholder for raddle.
 
 ### commit-hook-lives-in-persist
 
@@ -136,8 +136,10 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 ### constraints-gains-one-sentence
 
 - Decision: `CONSTRAINTS.md`'s Durable-vs-Ephemeral State Invariant gains a single rule — weft content is per-branch and is never a merge participant in either direction — with no third category introduced.
-- Rationale: the brief asked for a *tracked-but-merge-local* category because it assumed a per-path rule. There is no per-path rule: the split is structural, so the invariant states one more fact rather than growing a category. The file was trimmed on `main` to rules-only, no rationale, and the addition matches that voice.
-- Rejected: a third bullet-group category; a separate cross-referencing invariant section.
+- Rationale: the brief asked for a *tracked-but-merge-local* category because it assumed a per-path rule. There is no per-path rule: the split is structural, so the invariant states one more fact rather than growing a category. The file was trimmed to rules-only — no rationale, no narrative — by `d66cefe5` on `main`, and the addition matches that trimmed voice.
+- Ordering prerequisite: `d66cefe5` is **not** on this branch. Merge `main` in before editing `CONSTRAINTS.md`. This branch still carries the 659-line pre-trim file against `main`'s 259-line one, so editing the copy in place would land the new sentence inside text `main` has already deleted, and the landing merge would then surface a large conflict that has nothing to do with this task.
+- Sequencing caveat for the plan: at the time of writing `d66cefe5` exists only as an unpushed commit on the local `main` worktree — `origin/main` is at `2ac41110`. The plan must confirm it has been pushed before relying on the merge-in, rather than assuming a fetch will find it.
+- Rejected: a third bullet-group category; a separate cross-referencing invariant section; editing this branch's pre-trim copy and letting the merge sort it out.
 
 ## Technical context
 
@@ -180,7 +182,8 @@ The primary weft branch is protected unconditionally by `primaryWeftBranch` and 
 
 ## Constraints
 
-From `CONSTRAINTS.md` (trimmed to rules-only on `main`; keep additions in that voice):
+From `CONSTRAINTS.md` as it stands on `main` after the rules-only trim (`d66cefe5`) — **not** as it stands on this branch, which predates that trim and is still the 659-line rationale-heavy version.
+Merge `main` in before reading or editing the file, and keep additions in the trimmed voice:
 
 - **Durable-vs-Ephemeral State Invariant** — the invariant being extended. `_lyx` holds tracked content only; `.lyx` holds never-tracked content at the mirrored subpath; neither is read from `fabric.yaml`'s `pathspec`.
 - **Fabric Vocabulary Invariant** — warp/weft vocabulary is `fabricengine`-private. No new caller-facing identifier may contain `Weft` or `Warp`: `PushAnchored`, never `PushAnchoredWeft`.
@@ -231,7 +234,7 @@ The closure commits then pushes; a push failure does not surface as an error whi
 - **Q:** How does loom's `status.json` survive a producer deleting the directory it lives in? **A:** It does not, which is why no deletion happens. `Finalize` is a producer inside the run and Shed persists again the moment it returns; any child-side delete is undone by the run's own next write, and in between the live FSM state is missing from the tree it is read from. Removing weft from merging removes the need for a delete at all.
 - **Q:** Does the merge-in from the parent need weft? **A:** No — warp only, same argument, same direction-independent reason.
 - **Q:** Does either verb gain a flag or option to express this? **A:** No. From outside there is one repo called Fabric; the behaviour changes inside `fabricengine` and no signature moves.
-- **Q:** What about the raddle fold-back gate on `Cleanup`? **A:** Removed. Raddle does not exist, and the stub gate protects every orphan weft branch from ordinary teardown. It is re-added with raddle if wanted.
+- **Q:** What about the raddle fold-back gate on `Cleanup`? **A:** Removed outright, not deferred. The stub gate protects every orphan weft branch from ordinary teardown, and raddle would not resurrect it: `_lyx/raddle/` would be weft content, hence per-branch-local and never merged, so there is no fold-back for a gate to guard. `_lyx` has exactly one category — local, and never a merge participant.
 - **Q:** Who tears down the weft branch? **A:** An outside verb, after nothing is in the worktree any more. Teardown cannot run from inside the worktree it removes, so no loom producer does it.
 - **Q:** What happens to warp↔weft correspondence when weft never moves during a merge? **A:** Nothing changes. The index maps a warp SHA to the weft SHA current at that point, and `Merge` already records correspondence even when one side never moved.
 - **Q:** What about `fabric.yaml`'s `pathspec` key, which can route extra directories to weft? **A:** It defaults to empty and has no shipped use case — the only `_extra` occurrences are test fixtures. The rule takes no exception for it: anything routed to weft is per-branch-local.
@@ -245,4 +248,5 @@ The closure commits then pushes; a push failure does not surface as an error whi
 - **Q:** Does `CONSTRAINTS.md` gain a third state category? **A:** No. There is no per-path rule to describe, so the existing invariant gains one sentence: weft content is per-branch and never a merge participant.
 - **Q:** Which push primitive does `PushAnchored` use? **A:** `gitrepo.PushRebaseFree`, never `PushCoalesced`. `PushCoalesced`'s rebase-retry rewrites this side's SHAs on a rejected push and invalidates the correspondence index, and it takes a repo-root push lock that would contend with existing push paths on every transition.
 - **Q:** How does the closure detect that a merge is in progress? **A:** A new `fabricengine.MergeStateActive(l)`, consulting `MergeHeadPresent()` and `ConflictedFiles()` on both sides. `Fabric.MergeInProgress` cannot serve — it answers "does fabric have a merge record", is false for foreign merge state, and needs an open `*Fabric`.
+- **Q:** Is this branch's `CONSTRAINTS.md` the file the addition is written against? **A:** No. This branch predates the rules-only trim (`d66cefe5`) and still carries the 659-line version; `main` carries 259 lines. Merging `main` in is an ordered prerequisite of the edit, and the plan must confirm `d66cefe5` has been pushed first — at the time of writing it exists only locally.
 - **Q:** What happens to `mergeState`'s weft fields when weft never merges? **A:** Kept and filled as unmoved. `mergeAttemptIncompleteReason` refuses a resume when `WeftOutcome == ""`, and keeping them leaves the persisted JSON schema compatible in both directions.
