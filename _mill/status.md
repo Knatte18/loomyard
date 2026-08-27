@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shed-commitstatus-seam
+phase: approved-weft-guards-drop
 slug: weft-local-only-files
 branch: weft-local-only-files
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-08-27T07:57:56Z'
 approved-merge-drops-weft  '2026-08-27T08:30:09Z'
 approved-cleanup-raddle-gate  '2026-08-27T08:36:05Z'
 approved-shed-commitstatus-seam  '2026-08-27T08:41:29Z'
+approved-weft-guards-drop  '2026-08-27T09:02:54Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     commit_sha: 2af724af78014422066d22fa9f1d90fa049efcf6
     verify_baseline_failures: []
   - name: weft-guards-drop
-    state: running
+    state: approved
     implementer_session: 10c24189-70a6-4c62-90b0-64f94e797ccc
     start_sha: 21fa3a2ce99290553f713a6b41adae3b6e9e6dec
+    commit_sha: f728ad85f41919219131e0430031061a9655e596
     verify_baseline_failures: []
   - name: pull-non-fatal-weft
     state: pending
