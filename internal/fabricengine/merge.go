@@ -264,7 +264,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		if unmappable {
 			logger.Warn("fabricengine: MergeIn produced unmappable conflict paths; self-aborting",
 				"warp_conflicts", warpConflicts)
-			if err := f.resetMergeSides(rec, st.WarpStart, st.WeftStart); err != nil {
+			if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
 				return MergeResult{}, err
 			}
 			if err := f.deleteMergeState(); err != nil {
@@ -477,7 +477,7 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	// state is ever left behind, and the conflicting side is not disclosed — a fixed message, with the
 	// source traveling in the error's own field.
 	if warpOutcome == gitrepo.MergeConflicted {
-		if err := f.resetMergeSides(rec, st.WarpStart, st.WeftStart); err != nil {
+		if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
 			return MergeResult{}, err
 		}
 		if err := f.deleteMergeState(); err != nil {
@@ -614,7 +614,7 @@ func wrapMergeSyncError(err error) error {
 func (f *Fabric) selfAbortMergeAttempt(rec *Mutations, st *mergeState, side string, mergeErr error) error {
 	logger.Warn("fabricengine: merge attempt failed mid-way; self-aborting", "side", side, "error", mergeErr)
 
-	if err := f.resetMergeSides(rec, st.WarpStart, st.WeftStart); err != nil {
+	if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
 		return err
 	}
 	if err := f.deleteMergeState(); err != nil {

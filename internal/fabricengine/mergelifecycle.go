@@ -347,9 +347,9 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	}, nil
 }
 
-// MergeAbort discards an in-progress merge, restoring the warp side to its pre-merge SHA — not both
-// sides, since the weft is no longer a merge participant; see resetMergeSides for why it still takes
-// and resets a weft SHA argument: with no record and no foreign git merge state it returns
+// MergeAbort discards an in-progress merge, restoring the warp side alone to its pre-merge SHA — not
+// the weft, which is no longer a merge participant; see resetMergeSides for why it takes and resets
+// a warp SHA argument only. With no record and no foreign git merge state it returns
 // *ErrNoMergeInProgress; with no record but foreign state present it returns *ErrForeignMergeState,
 // the same rule as MergeContinue.
 // An attempt whose conclude may already have landed on the warp side refuses with a *MergeGuardError
@@ -401,7 +401,7 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 		return MergeResult{}, newMergeGuardError(reasons)
 	}
 
-	if err := f.resetMergeSides(rec, st.WarpStart, st.WeftStart); err != nil {
+	if err := f.resetMergeSides(rec, st.WarpStart); err != nil {
 		return MergeResult{}, err
 	}
 	if err := f.deleteMergeState(); err != nil {
