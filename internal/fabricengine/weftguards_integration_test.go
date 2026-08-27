@@ -121,6 +121,41 @@ func TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly(t *testin
 	assertSoleGuardReason(t, "MergeIn(does-not-exist-anywhere)", err, "source branch not found")
 }
 
+// TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges drives the narrowed guards IN COMBINATION,
+// which the per-guard rows above deliberately do not.
+// The distinction is not cosmetic: the guard stage aggregates every reason before it decides, so a
+// single retained weft conjunct inside any one helper is invisible while the other weft states are
+// happy — a per-guard row would keep passing and the merge would still refuse once a real weft went
+// bad in more than one way at a time, which is the ordinary shape for a weft carrying a live loom
+// run. Here the weft is simultaneously on a detached HEAD, carrying uncommitted tracked changes, and
+// sitting on a branch with no upstream, while the warp side is clean.
+func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "checkout", "-q", "--detach", "HEAD")
+	if err := os.WriteFile(filepath.Join(h.PrimeWeft(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+		t.Fatalf("write dirty.txt: %v", err)
+	}
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "dirty.txt")
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) [weft dirty AND detached] error = %v; want nil — combined weft state must not refuse a merge the warp alone can complete", err)
+	}
+	if !res.Committed {
+		t.Errorf("MergeIn(feature) [weft dirty AND detached].Committed = false; want true — a real (non-fast-forward) merge")
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+		t.Errorf("weft HEAD changed to %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore)
+	}
+	if out := gitkit.GitStatusPorcelain(t, h.PrimeWeft()); out == "" {
+		t.Error("weft git status --porcelain after MergeIn = clean; want the uncommitted dirty.txt still there — the merge must not have tidied the weft")
+	}
+}
+
 // TestWeftGuards_EveryRecordThisBinaryWritesIsResumable pins the invariant that made the second,
 // redundant saveMergeState call in MergeIn/Merge worth removing: every merge-state record this
 // binary persists carries a non-empty WeftOutcome from its very first on-disk appearance, so
