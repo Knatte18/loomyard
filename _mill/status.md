@@ -57,7 +57,9 @@ batches:
     commit_sha: f728ad85f41919219131e0430031061a9655e596
     verify_baseline_failures: []
   - name: pull-non-fatal-weft
-    state: pending
+    state: running
+    implementer_session: 601363a9-adb5-44ba-956c-31a22a7f08ab
+    start_sha: 887cbd6c98b03098279796ac35142ba9ad6cbc44
     verify_baseline_failures: []
   - name: push-and-mergestate-probe
     state: pending
