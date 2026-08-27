@@ -54,8 +54,9 @@ func landingDeps(
 		// producer transition. The per-transition Shed.CommitStatus seam (wiring.go) already keeps
 		// the status file current on the ordinary path, so both landing producers calling this
 		// immediately before they merge is retained only as the sole protection if a product wires
-		// Shed.CommitStatus as nil -- not because the merge guard still inspects the weft, since
-		// batches 1-2 made the weft a non-merge-participant and the guard no longer looks at it.
+		// Shed.CommitStatus as nil -- not because the merge guard still inspects the local-only side
+		// of the pair, which this task removed from the merge participants entirely, so the guard no
+		// longer looks at it.
 		//
 		// It mirrors wiring.go's CommitDiscussion/CommitPlan closures in every respect: the same
 		// CommitAnchoredPaths call, the same throwaway mutation recorder, the same EnvSyncOptions,
