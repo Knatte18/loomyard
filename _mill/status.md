@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: weft-local-only-files
 branch: weft-local-only-files
-plan: null
+plan: _mill/plan
 parent: main
 task: Add a local-only file category to weft
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-27T05:35:03Z'
 discussed  '2026-08-27T07:24:47Z'
+planning  '2026-08-27T07:40:33Z'
 ```
