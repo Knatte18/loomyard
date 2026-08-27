@@ -29,17 +29,26 @@ implementing  '2026-08-27T07:57:56Z'
 ```yaml
 batches:
   - name: merge-drops-weft
-    state: pending
+    state: running
+    implementer_session: c71b0080-aebc-4d32-ae8d-51b91cf9ad40
+    start_sha: 89d72540692795868bde40fb0c612db9ba5f4932
+    verify_baseline_failures: []
   - name: cleanup-raddle-gate
     state: pending
+    verify_baseline_failures: []
   - name: shed-commitstatus-seam
     state: pending
+    verify_baseline_failures: []
   - name: weft-guards-drop
     state: pending
+    verify_baseline_failures: []
   - name: pull-non-fatal-weft
     state: pending
+    verify_baseline_failures: []
   - name: push-and-mergestate-probe
     state: pending
+    verify_baseline_failures: []
   - name: loom-transition-commit
     state: pending
+    verify_baseline_failures: []
 ```
