@@ -44,7 +44,7 @@ type loomCLI struct {
 	reed *reedengine.Engine
 	// env is the assembled shedrecipe.Env that driveCmd (drive.go) passes to loomrecipe.New.
 	env shedrecipe.Env
-	// shedPaths carries the four told values shedengine.Shed itself reads, which driveCmd passes
+	// shedPaths carries the five told values shedengine.Shed itself reads, which driveCmd passes
 	// alongside env, and which statusCmd, pauseCmd, and runCmd read directly.
 	shedPaths loomrecipe.ShedPaths
 	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps. It is

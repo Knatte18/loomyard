@@ -1,4 +1,4 @@
-// loomrecipe.go implements ShedPaths and New: the four told Shed-only values and the entry point
+// loomrecipe.go implements ShedPaths and New: the five told Shed-only values and the entry point
 // that parses contracts/recipes.LoomRecipe, builds it against a caller-supplied shedrecipe.Env, and
 // returns the assembled *shedengine.Shed.
 
@@ -16,7 +16,7 @@ import (
 // ShedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env
 // registry entry reads: StatusPath, LockPath, StatusLockPath, MaxBounces, and CommitStatus.
 //
-// These four cannot travel in shedrecipe.Env: Env holds roots and run-wide values the registry
+// These five cannot travel in shedrecipe.Env: Env holds roots and run-wide values the registry
 // entries read, and no entry reads LockPath.
 //
 // StatusPath and StatusLockPath are deliberately told twice -- once in Env (for loomPreflightEntry)
@@ -42,7 +42,7 @@ type ShedPaths struct {
 }
 
 // New parses recipes.LoomRecipe, builds it against env, and returns a *shedengine.Shed carrying
-// the built []shedengine.ProducerDef plus paths' four fields.
+// the built []shedengine.ProducerDef plus paths' five fields.
 //
 // New uses shedbuild.Parse on the embedded bytes, never shedbuild.Load -- there is no on-disk
 // runtime location for this recipe. It surfaces both the parse error and the build error rather

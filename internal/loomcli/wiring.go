@@ -331,7 +331,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// env-landing-filled-in-drive-not-wire design decision.
 	}
 
-	// c.shedPaths carries the four told values shedengine.Shed itself reads and no shedrecipe.Env
+	// c.shedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env
 	// registry entry reads. StatusPath and StatusLockPath are deliberately told twice, once here and
 	// once above in c.env -- that duplication is inherent to the split between loomrecipe.New's two
 	// argument types and must not be collapsed; loomrecipe.New errors if the two copies disagree.
