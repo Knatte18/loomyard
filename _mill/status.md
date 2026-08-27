@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-transition-commit
+phase: holistic-reviewing
 slug: weft-local-only-files
 branch: weft-local-only-files
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-weft-guards-drop  '2026-08-27T09:02:54Z'
 approved-pull-non-fatal-weft  '2026-08-27T09:18:53Z'
 approved-push-and-mergestate-probe  '2026-08-27T09:27:23Z'
 approved-loom-transition-commit  '2026-08-27T09:32:17Z'
+holistic-reviewing  '2026-08-27T09:32:51Z'
 ```
 
 ## Batches
