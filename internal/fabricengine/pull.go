@@ -134,7 +134,10 @@ var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and 
 // Every warp advance goes through ResetHard, which silently discards uncommitted tracked
 // modifications — strictly more destructive than the plain `git pull` an external actor would run —
 // so Pull refuses before mutating warp instead, mirroring Checkout's dirty-weft refusal.
-// The weft side has already been fast-forwarded when this is returned; warp is untouched.
+// The weft arm has already RUN when this is returned, but no longer necessarily SUCCEEDED: it
+// became non-fatal, so a failed upstream probe or a failed weft `git pull --ff-only` warns and
+// falls through to exactly this check. Read PullResult.WeftPulled for which of the two happened.
+// Warp itself is untouched either way.
 var ErrWarpDirty = errors.New("fabricengine: warp worktree has uncommitted changes; commit or stash them, then re-run pull; aborting, no warp changes")
 
 // weftHasUpstream reports whether the weft worktree's current branch has a configured upstream

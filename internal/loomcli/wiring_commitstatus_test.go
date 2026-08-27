@@ -99,6 +99,69 @@ func TestNewCommitStatusSeam_CommitErrorPropagates(t *testing.T) {
 	}
 }
 
+// TestNewCommitStatusSeam_CommitFailsAfterMergeWentLive_TakesTheSkip pins the other end of the
+// unlocked probe window. MergeActive answers false on the pre-commit probe and true on the
+// post-failure re-probe -- the shape a real operator produces by starting a plain-git merge in the
+// fabric sibling worktree between the two -- and the seam must absorb the resulting commit failure
+// as the skip disposition rather than halting the run with it.
+// Driven live during review: without the re-probe, a MERGE_HEAD landing in that window failed the
+// path-scoped commit with git's "cannot do a partial commit during a merge" and killed the run.
+func TestNewCommitStatusSeam_CommitFailsAfterMergeWentLive_TakesTheSkip(t *testing.T) {
+	t.Parallel()
+
+	probes := 0
+	pushCalled := false
+	deps := commitStatusDeps{
+		MergeActive: func() (bool, error) {
+			probes++
+			return probes > 1, nil
+		},
+		Commit: func(msg string) error {
+			return errors.New("gitrepo: git commit: fatal: cannot do a partial commit during a merge")
+		},
+		Push: func() error {
+			pushCalled = true
+			return nil
+		},
+	}
+
+	seam := newCommitStatusSeam(deps)
+	if err := seam("Discussion-Write", "running"); err != nil {
+		t.Errorf("seam(...) = %v; want nil -- a commit failure a live merge explains takes the skip disposition, never the halt", err)
+	}
+	if probes != 2 {
+		t.Errorf("MergeActive called %d time(s); want exactly 2 -- once before the commit, once to explain its failure", probes)
+	}
+	if pushCalled {
+		t.Error("Push was called; want it skipped -- nothing was committed to push")
+	}
+}
+
+// TestNewCommitStatusSeam_CommitFailsAndReProbeFails_TakesTheSkip asserts that an unreadable
+// merge-state re-probe resolves the same way the unreadable pre-commit probe does: warn and
+// continue. An observation failure must not be the thing that halts an autonomous run.
+func TestNewCommitStatusSeam_CommitFailsAndReProbeFails_TakesTheSkip(t *testing.T) {
+	t.Parallel()
+
+	probes := 0
+	deps := commitStatusDeps{
+		MergeActive: func() (bool, error) {
+			probes++
+			if probes == 1 {
+				return false, nil
+			}
+			return false, errors.New("probe unreadable")
+		},
+		Commit: func(msg string) error { return errors.New("commit failed") },
+		Push:   func() error { return nil },
+	}
+
+	seam := newCommitStatusSeam(deps)
+	if err := seam("Discussion-Write", "running"); err != nil {
+		t.Errorf("seam(...) = %v; want nil -- an unreadable re-probe is the same untrustworthy-git-state category the skip exists for", err)
+	}
+}
+
 // TestNewCommitStatusSeam_PushErrorReturnsNil asserts a Push error returns nil from the seam, so a
 // failed push never halts a run, while Commit still ran.
 func TestNewCommitStatusSeam_PushErrorReturnsNil(t *testing.T) {
