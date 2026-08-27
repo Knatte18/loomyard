@@ -195,13 +195,14 @@ func mergeInProgressReason(f *Fabric) ([]string, error) {
 	return nil, nil
 }
 
-// syncedToUpstreamReason reports mergeReasonNotSynced when either side of f is genuinely diverged
-// from its own upstream: a side with no upstream passes vacuously (Fabric.Pull's no-upstream rule),
-// and a side with an upstream passes when its tip is not diverged from it — upstream ancestor of HEAD
-// (in sync or ahead) passes, HEAD ancestor of upstream (behind, since Merge's own pre-merge sync step
-// will advance it) passes, and only neither direction (a genuine divergence) fails.
-// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
-// which side (if either) was out of sync.
+// syncedToUpstreamReason reports mergeReasonNotSynced when f's warp side is genuinely diverged from
+// its own upstream: no upstream passes vacuously (Fabric.Pull's no-upstream rule), and an upstream
+// passes when the tip is not diverged from it — upstream ancestor of HEAD (in sync or ahead) passes,
+// HEAD ancestor of upstream (behind, since Merge's own pre-merge sync step will advance it) passes,
+// and only neither direction (a genuine divergence) fails.
+// The weft side is not evaluated. Per-transition status pushes warn and continue on a rejected push,
+// which makes a locally-diverged weft a routine, expected state — a retained weft arm here would
+// refuse every subsequent landing with mergeReasonNotSynced.
 //
 // This is a pre-fetch FAST PATH, not the whole of the not-synced precondition, and reading it as the
 // whole of it is a mistake with a live failure behind it. Every helper in this file resolves @{u}
@@ -218,11 +219,7 @@ func syncedToUpstreamReason(f *Fabric) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	weftNotSynced, err := sideNotSyncedToUpstream(f.weft, f.weftPath)
-	if err != nil {
-		return nil, err
-	}
-	if warpNotSynced || weftNotSynced {
+	if warpNotSynced {
 		return []string{mergeReasonNotSynced}, nil
 	}
 	return nil, nil
