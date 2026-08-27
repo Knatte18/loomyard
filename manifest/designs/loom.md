@@ -158,7 +158,7 @@ The subject under review is the current plan (`_lyx/plan/00-overview.md` and the
 Do not flag any of the following as a finding:
 
 - **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The sixteen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — fifteen of the sixteen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead;
+  The seventeen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — sixteen of the seventeen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead;
   re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
@@ -179,6 +179,7 @@ Also flag:
 - **`Custom` is a last resort.**
   Used only where none of `Create`, `Edit`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
   A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target`, so a mistyped one silently escapes two checks the rest of the plan is held to.
+  A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
 - **Fidelity to the decision record.**
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.
   The decision record is the measuring stick and never the subject — every finding is raised against the plan, never against the decision record.
@@ -258,7 +259,7 @@ This section is a doc *about* that stencil, per the Producer Pointer-Rule Invari
 Two dimensions on top of ordinary diff review:
 
 - **Comment-convention compliance.** Any new/changed doc comment follows [code-comment-conventions.md](code-comment-conventions.md) — no unnecessary symbol cross-references.
-- **Per-card mechanical check.** Confirms the card's Type-specific mechanical check actually ran and passed (e.g. the AST-script-plus-grep for a Rename card, `assert-no-callers` for a Delete card), not only that the diff compiles and tests pass.
+- **Per-card mechanical check.** Confirms every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's (e.g. the AST-script-plus-grep for a Rename group, `assert-no-callers` for a Delete group), not only that the diff compiles and tests pass.
 
 The stencil adds two things beyond those two bullets, so this durable record is not thinner than the shipped file: it derives its own review range from `product.parent` in loom's status file rather than guessing, and it blocks with a BLOCKING finding when that value cannot be read; and it carries a do-not-flag list keeping the three upstream gates' subjects — the plan's format, the plan itself, and the overlay artifacts — out of this gate's findings.
 

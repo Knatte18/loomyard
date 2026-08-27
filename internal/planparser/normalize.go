@@ -1,7 +1,8 @@
 // normalize.go implements plan-format's root:/// card-path resolution rule
 // (contracts/specs/loom-plan-spec.md, "Card path resolution: root: and //"): normalizeCardPath
 // resolves one raw card path against the plan's root:, and normalizeCard applies it to every path
-// field on a single Card.
+// field on a single Card — both its card-level Targets/Uses/Pairs and every one of its own
+// TargetGroups' Refs/Pairs.
 // Normalization is classifier-gated: normalizeCard and normalizeRefSlice consult classify.go's
 // isPathRef before touching an entry, so only path-shaped refs are rewritten — a symbol entry
 // (e.g. "shedrecipe.Lookup") passes through verbatim, never picking up a spurious root: prefix.
@@ -41,12 +42,17 @@ func cleanPosixPath(p string) string {
 	return path.Clean(filepath.ToSlash(p))
 }
 
-// normalizeCard rewrites card.Targets, card.Uses, and both endpoints of every card.Pairs entry in
-// place against root, applying normalizeCardPath only to entries isPathRef classifies as paths —
-// a symbol entry passes through verbatim. Because card.Targets already carries both endpoints of
-// every Pairs entry (parseTypeLabelCase projects them there), normalizing Pairs and Targets
-// independently yields the same result on both sides; both normalizations are kept rather than
-// deriving one from the other.
+// normalizeCard rewrites card.Targets, card.Uses, both endpoints of every card.Pairs entry, and
+// every card.TargetGroups[i].Refs/Pairs entry in place against root, applying normalizeCardPath
+// only to entries isPathRef classifies as paths — a symbol entry passes through verbatim.
+// RenameRaw is never normalized on either side: it holds unparsed sub-bullet text captured
+// verbatim so rename-format has something to report.
+// The card-level fields and each group's own fields are normalized independently rather than one
+// being rebuilt from the other, which is what preserves normalizeRefSlice's nil-vs-empty-slice
+// distinction a rebuild-by-concatenation would flatten.
+// After the call, Card.Targets equals the concatenation of TargetGroups[*].Refs in body order and
+// Card.Pairs equals the concatenation of TargetGroups[*].Pairs in body order, with symbol-shaped
+// entries passing through verbatim on both sides.
 func normalizeCard(card *Card, root string) {
 	normalizeRefSlice(card.Targets, root)
 	normalizeRefSlice(card.Uses, root)
@@ -54,6 +60,15 @@ func normalizeCard(card *Card, root string) {
 		card.Pairs[i] = MovePair{
 			Old: normalizeRefIfPath(root, p.Old),
 			New: normalizeRefIfPath(root, p.New),
+		}
+	}
+	for i := range card.TargetGroups {
+		normalizeRefSlice(card.TargetGroups[i].Refs, root)
+		for j, p := range card.TargetGroups[i].Pairs {
+			card.TargetGroups[i].Pairs[j] = MovePair{
+				Old: normalizeRefIfPath(root, p.Old),
+				New: normalizeRefIfPath(root, p.New),
+			}
 		}
 	}
 }

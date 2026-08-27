@@ -51,4 +51,4 @@ Do not flag any of the following as a finding:
   Any new or changed doc comment follows `manifest/designs/code-comment-conventions.md`.
   This rubric points at that file and restates none of it.
 - **Per-card mechanical check.**
-  Confirm the card's Type-specific mechanical check actually ran and passed — the AST-script-plus-grep for a `Rename` card, `assert-no-callers` for a `Delete` card, per the per-type table in `manifest/designs/plan-card-format.md` — not merely that the diff compiles and its tests pass.
+  Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's — the AST-script-plus-grep for a `Rename` group, `assert-no-callers` for a `Delete` group, per the per-type table in `manifest/designs/plan-card-format.md` — not merely that the diff compiles and its tests pass.

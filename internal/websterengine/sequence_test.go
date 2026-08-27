@@ -122,7 +122,7 @@ func TestSequenceBatches_EdgeDerivation(t *testing.T) {
 			nCyc: 0,
 		},
 		{
-			name: "a Rename card's Pairs endpoints, already projected into Targets, order as targets",
+			name: "a Rename group's Pairs endpoints, already projected into Targets, order as targets",
 			in: []batcher.Batch{
 				oneCardBatch(1, "consumer", nil, []string{"pkg.New"}),
 				oneCardBatch(2, "rename", []string{"pkg.Old", "pkg.New"}, nil),

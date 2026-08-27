@@ -218,8 +218,8 @@ func TestPlanSpec_PromptStatesTypeLabelGrammar(t *testing.T) {
 	prompt := renderedPlanPrompt(t)
 
 	for _, want := range []string{
-		"exactly one bold type label from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`",
-		"sub-bullets are the card's targets",
+		"one or more bold type labels from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`",
+		"sub-bullets are the card's targets for that label",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("PlanSpec(...).Prompt does not contain %q; the type-label grammar must reach the agent", want)

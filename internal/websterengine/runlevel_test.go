@@ -169,8 +169,8 @@ var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 
 // seedRunPlanDir writes a syntactically complete, validation-clean
 // plan-format plan with numCards cards into a fresh temp plan directory:
-// each card is a format-4 Create card whose single target is the card's own
-// new-file path (so path-missing never fires — a Create card's targets stay
+// each card carries a format-4 Create group whose single target is the card's own
+// new-file path (so path-missing never fires — a Create group's targets stay
 // exempt from on-disk existence checking exactly as Creates: entries were).
 // The overview carries NO plan-level "## verify:" section — deliberately,
 // so ShouldRunIntegration(plan) is false and the integration stage

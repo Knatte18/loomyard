@@ -24,7 +24,7 @@ For EACH card file listed above, in the order listed:
 1. Read the card file.
    It is your whole instruction for that card.
    If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.
-2. A card names its targets under its own type label and what it reads under `**Uses:**`; see `contracts/specs/loom-plan-spec.md` for the full grammar. Make exactly the changes the card describes, in exactly the targets its type label names.
+2. A card names its targets under its own type label(s) and what it reads under `**Uses:**`; see `contracts/specs/loom-plan-spec.md` for the full grammar. Make exactly the changes the card describes, in exactly the targets its type labels name.
 3. Run `go build ./...` and this card's package's unit tests from `{{.worktree_root}}`.
    A failure here is the card's own build+unit gate — fix it before moving on;
    this gate is implicit in every card, never optional.

@@ -1,15 +1,15 @@
 // validate.go implements ValidateFormat and Validate, format-4 plan-format's machine check sets
 // (manifest/designs/plan-card-format.md), run in this fixed order.
-// ValidateFormat emits fifteen of the following distinct ValidationError.Check IDs, everything but
-// plan-unapproved; Validate emits all sixteen: format-unrecognized (checkFormatRecognized),
+// ValidateFormat emits sixteen of the following distinct ValidationError.Check IDs, everything but
+// plan-unapproved; Validate emits all seventeen: format-unrecognized (checkFormatRecognized),
 // plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing
-// (checkCardTypeMissing), card-retired-label (checkCardRetiredLabel), card-path-malformed
-// (checkCardPathMalformed), rename-format (checkRenameFormat), rename-mechanic-missing
-// (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty
-// (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), impact-summary-multiline
-// (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
-// (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch
-// (checkCommitSubjectMismatch).
+// (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label
+// (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), rename-format
+// (checkRenameFormat), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field
+// (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap
+// (checkCardFieldOverlap), impact-summary-multiline (checkImpactSummaryMultiline),
+// prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing
+// (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -53,14 +53,14 @@ func cardID(c Card) string {
 }
 
 // Validate runs every plan-format machine check against plan, including the plan-unapproved
-// approval gate, and returns every finding in fixed order: all sixteen check IDs documented in
+// approval gate, and returns every finding in fixed order: all seventeen check IDs documented in
 // this file's package comment, with plan-unapproved at position two.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return validate(plan, worktreeRoot, true)
 }
 
 // ValidateFormat runs every plan-format machine check against plan except the plan-unapproved
-// approval gate, and returns every finding in fixed order: fifteen of the sixteen check IDs
+// approval gate, and returns every finding in fixed order: sixteen of the seventeen check IDs
 // documented in this file's package comment, everything but plan-unapproved.
 // Approval is deliberately not ValidateFormat's business: the approved: flag is written after the
 // review segment settles, so a pre-review caller must not be told the plan is unapproved.
@@ -80,6 +80,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	}
 	findings = append(findings, checkIndexFileConsistency(plan)...)
 	findings = append(findings, checkCardTypeMissing(plan)...)
+	findings = append(findings, checkCustomNotAlone(plan)...)
 	findings = append(findings, checkCardRetiredLabel(plan)...)
 	findings = append(findings, checkCardPathMalformed(plan)...)
 	findings = append(findings, checkRenameFormat(plan)...)
@@ -170,23 +171,49 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkCardTypeMissing implements card-type-missing: every card must carry exactly one recognized type label.
+// checkCardTypeMissing implements card-type-missing: every card must carry at least one recognized
+// type label. Carrying more than one, or repeating the same label, is legal.
 func checkCardTypeMissing(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		switch {
-		case c.TypeLabelCount == 0:
+		if c.TypeLabelCount == 0 {
 			findings = append(findings, ValidationError{
 				Check:  "card-type-missing",
 				Card:   cardID(c),
 				Detail: fmt.Sprintf("card %d carries no recognized type label (Create/Edit/Delete/Rename/Move/Prosa/Custom)", c.Number),
 			})
-		case c.TypeLabelCount > 1:
+		}
+	}
+
+	return findings
+}
+
+// checkCustomNotAlone implements card-custom-not-alone: a card carrying a Custom TargetGroup
+// alongside a TargetGroup whose Type differs from CardTypeCustom is a defect, because Custom is
+// meant as a last-resort escape hatch, not a way to bundle an untyped target list onto an
+// otherwise ordinary card. Repetition of a label is legal for all seven labels including Custom,
+// so the predicate is "a Custom group coexists with a group whose Type differs", not "a Custom
+// group coexists with any other group" — a card carrying two Custom groups and nothing else is
+// unaffected. At most one finding is emitted per offending card, never one per offending group.
+func checkCustomNotAlone(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		hasCustom := false
+		hasOther := false
+		for _, g := range c.TargetGroups {
+			if g.Type == CardTypeCustom {
+				hasCustom = true
+			} else {
+				hasOther = true
+			}
+		}
+		if hasCustom && hasOther {
 			findings = append(findings, ValidationError{
-				Check:  "card-type-missing",
+				Check:  "card-custom-not-alone",
 				Card:   cardID(c),
-				Detail: fmt.Sprintf("card %d carries %d type labels; exactly one is required", c.Number, c.TypeLabelCount),
+				Detail: fmt.Sprintf("card %d carries a Custom group alongside a differently-typed group; Custom must stand alone", c.Number),
 			})
 		}
 	}
@@ -289,21 +316,24 @@ func checkRenameFormat(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkRenameMechanicMissing implements rename-mechanic-missing: a plan with at least one Rename card but an empty RenameMechanic section.
+// checkRenameMechanicMissing implements rename-mechanic-missing: a plan with at least one Rename
+// group but an empty RenameMechanic section. A Rename group on an otherwise multi-label card still
+// counts — the requirement is keyed on the group's own presence, not the card's first-label Type.
 func checkRenameMechanicMissing(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	hasRename := false
 	for _, c := range plan.Cards {
-		if c.Type == CardTypeRename {
-			hasRename = true
-			break
+		for _, g := range c.TargetGroups {
+			if g.Type == CardTypeRename {
+				hasRename = true
+			}
 		}
 	}
 	if hasRename && plan.RenameMechanic == "" {
 		findings = append(findings, ValidationError{
 			Check:  "rename-mechanic-missing",
-			Detail: `plan has at least one Rename card but no "## Rename mechanic" section`,
+			Detail: `plan has at least one Rename group but no "## Rename mechanic" section`,
 		})
 	}
 
@@ -316,7 +346,9 @@ type cardFieldLabel struct {
 	label   string
 }
 
-// checkCardMissingField implements card-missing-field: every card must carry Intent:, and a card of type Edit or Delete must also carry ImpactSummary:.
+// checkCardMissingField implements card-missing-field: every card must carry Intent:, and a card
+// carrying any Edit or Delete TargetGroup must also carry ImpactSummary: — the requirement is a
+// union over the card's own groups, not the card's first-label Type.
 func checkCardMissingField(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -324,7 +356,14 @@ func checkCardMissingField(plan *Plan) []ValidationError {
 		fields := []cardFieldLabel{
 			{c.HasIntent, "Intent:"},
 		}
-		if c.Type == CardTypeEdit || c.Type == CardTypeDelete {
+		needsImpactSummary := false
+		for _, g := range c.TargetGroups {
+			if g.Type == CardTypeEdit || g.Type == CardTypeDelete {
+				needsImpactSummary = true
+				break
+			}
+		}
+		if needsImpactSummary {
 			fields = append(fields, cardFieldLabel{c.HasImpactSummary, "ImpactSummary:"})
 		}
 		for _, f := range fields {
@@ -342,16 +381,26 @@ func checkCardMissingField(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkCardFieldEmpty implements card-field-empty: a label present with no content is distinct from an absent label.
+// groupBoldLabel returns a TargetGroup's own type label in its card-body bold form, e.g. "**Edit:**".
+func groupBoldLabel(typ CardType) string {
+	return fmt.Sprintf("**%s:**", typ)
+}
+
+// checkCardFieldEmpty implements card-field-empty: a label present with no content is distinct
+// from an absent label. Each of a card's own TargetGroups is checked independently, so a card
+// carrying a populated group alongside an empty one still gets a finding for the empty group.
 func checkCardFieldEmpty(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		if c.HasType && len(c.Targets) == 0 {
+		for _, g := range c.TargetGroups {
+			if len(g.Refs) > 0 {
+				continue
+			}
 			findings = append(findings, ValidationError{
 				Check:  "card-field-empty",
 				Card:   cardID(c),
-				Detail: fmt.Sprintf("card %d's type label carries no targets", c.Number),
+				Detail: fmt.Sprintf("card %d's %s label carries no targets", c.Number, groupBoldLabel(g.Type)),
 			})
 		}
 		if c.HasUses && len(c.Uses) == 0 {
@@ -436,26 +485,30 @@ func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkProsaSymbolTarget implements prosa-symbol-target: a Prosa card's target list must hold only file(s), never a symbol.
+// checkProsaSymbolTarget implements prosa-symbol-target: a Prosa group's own target list must
+// hold only file(s), never a symbol. A symbol in the same card's non-Prosa group is not flagged —
+// the rule is scoped to the Prosa group's own Refs, not the card's flat Targets union.
 func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		if c.Type != CardTypeProsa {
-			continue
-		}
-		for _, t := range c.Targets {
-			if isPathRef(t) {
+		for _, g := range c.TargetGroups {
+			if g.Type != CardTypeProsa {
 				continue
 			}
-			findings = append(findings, ValidationError{
-				Check: "prosa-symbol-target",
-				Card:  cardID(c),
-				Detail: fmt.Sprintf(
-					"card %d is a Prosa card but targets the symbol %q; Prosa cards may only target files",
-					c.Number, t,
-				),
-			})
+			for _, t := range g.Refs {
+				if isPathRef(t) {
+					continue
+				}
+				findings = append(findings, ValidationError{
+					Check: "prosa-symbol-target",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d's Prosa group targets the symbol %q; a Prosa group may only target files",
+						c.Number, t,
+					),
+				})
+			}
 		}
 	}
 
@@ -513,16 +566,20 @@ func pathExistsOnDisk(worktreeRoot, p string) bool {
 	return err == nil
 }
 
-// createTargetsUnion returns the union, across every card in plan, of every CardTypeCreate card's path-shaped Targets entries.
+// createTargetsUnion returns the union, across every card in plan, of every CardTypeCreate
+// TargetGroup's own path-shaped Refs entries — a card carrying a Create group alongside a
+// differently-typed group contributes only the Create group's own refs, never its other groups'.
 func createTargetsUnion(plan *Plan) map[string]bool {
 	union := make(map[string]bool)
 	for _, c := range plan.Cards {
-		if c.Type != CardTypeCreate {
-			continue
-		}
-		for _, t := range c.Targets {
-			if isPathRef(t) {
-				union[t] = true
+		for _, g := range c.TargetGroups {
+			if g.Type != CardTypeCreate {
+				continue
+			}
+			for _, t := range g.Refs {
+				if isPathRef(t) {
+					union[t] = true
+				}
 			}
 		}
 	}
@@ -543,10 +600,12 @@ func renameTargetsUnion(plan *Plan) map[string]bool {
 }
 
 // checkPathMissing implements path-missing: type-conditional, existence-dependent path checking.
-// Every card's path-shaped Uses entries are checked, including a Custom card's. A card's
-// path-shaped Targets are checked only when its Type is Edit, Delete, Move, or Prosa. A Rename
-// card's path-shaped Pairs.Old entries are checked, and its Targets are skipped entirely (so a
-// Rename's New side is never checked). Create and Custom cards' Targets are skipped. A path
+// Every card's path-shaped Uses entries are checked, including a Custom card's; this is a
+// card-level check, run once per card, not once per group. Within each card, its own
+// TargetGroups are then walked one at a time: a group's path-shaped Refs are checked only when
+// its own Type is Edit, Delete, Move, or Prosa. A Rename group's path-shaped Pairs.Old entries
+// are checked, read from that group's own Pairs, and its Refs are skipped entirely (so a
+// Rename's New side is never checked). Create and Custom groups' Refs are skipped. A path
 // otherwise reported missing is satisfied by existing on disk, by createTargetsUnion membership,
 // or by renameTargetsUnion membership.
 func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
@@ -578,24 +637,26 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 			report(c, u)
 		}
 
-		switch c.Type {
-		case CardTypeEdit, CardTypeDelete, CardTypeMove, CardTypeProsa:
-			for _, t := range c.Targets {
-				if !isPathRef(t) || satisfied(t) {
-					continue
+		for _, g := range c.TargetGroups {
+			switch g.Type {
+			case CardTypeEdit, CardTypeDelete, CardTypeMove, CardTypeProsa:
+				for _, t := range g.Refs {
+					if !isPathRef(t) || satisfied(t) {
+						continue
+					}
+					report(c, t)
 				}
-				report(c, t)
-			}
-		case CardTypeRename:
-			for _, p := range c.Pairs {
-				if !isPathRef(p.Old) || satisfied(p.Old) {
-					continue
+			case CardTypeRename:
+				for _, p := range g.Pairs {
+					if !isPathRef(p.Old) || satisfied(p.Old) {
+						continue
+					}
+					report(c, p.Old)
 				}
-				report(c, p.Old)
+			case CardTypeCreate, CardTypeCustom:
+				// Create's refs are new by definition, and Custom is an explicit escape hatch
+				// exempt from path-missing on its own refs.
 			}
-		case CardTypeCreate, CardTypeCustom:
-			// Create's targets are new by definition, and Custom is an explicit escape hatch
-			// exempt from path-missing on its own targets.
 		}
 	}
 

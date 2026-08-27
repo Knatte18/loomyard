@@ -44,9 +44,10 @@ func (c *websterCLI) validateCmd() *cobra.Command {
 		Use:   "validate",
 		Short: "lint the plan against the plan-format machine checks without running anything",
 		Long: `validate parses the plan at _lyx/plan and runs every plan-format machine
-check against it -- the 16 checks contracts/specs/loom-plan-spec.md's
+check against it -- the 17 checks contracts/specs/loom-plan-spec.md's
 "Validation checks" section pins: format and approval, Card Index <->
 card-file consistency, card type presence and retired-label detection,
+the Custom-must-not-stand-alongside-a-differently-typed-group check,
 card path well-formedness, the Rename pair grammar and its plan-level
 mechanic section, the per-card structural and field-presence checks, the
 card-numbering heading cross-check, and the existence-dependent path and

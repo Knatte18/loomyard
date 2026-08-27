@@ -6,10 +6,11 @@
 // Per-card content defects (a missing field, a malformed Rename: bullet) are recorded leniently
 // into the Card model instead, per the lenient-card-parse decision documented in doc.go.
 // The card body grammar itself is format-4's type-label model
-// (manifest/designs/plan-card-format.md): a card's own type label (Create/Edit/Delete/Rename/
-// Move/Prosa/Custom) carries its target list, Uses:/Intent:/ImpactSummary: are the remaining
-// recognized field labels, and the eight format-3 labels stay recognized but retired — they route
-// into Card.RetiredLabels instead of being silently discarded or swallowed into Intent:'s prose.
+// (manifest/designs/plan-card-format.md): a card's own body carries one or more bold type labels
+// (Create/Edit/Delete/Rename/Move/Prosa/Custom), each carrying its own target list and
+// contributing its own TargetGroup, Uses:/Intent:/ImpactSummary: are the remaining recognized
+// field labels, and the eight format-3 labels stay recognized but retired — they route into
+// Card.RetiredLabels instead of being silently discarded or swallowed into Intent:'s prose.
 
 package planparser
 
@@ -317,7 +318,8 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 
 // Bold-label prefixes for the seven type labels format-4 recognizes as a card's own target-list
 // key (manifest/designs/plan-card-format.md's "Card fields"). The type name is the key — there is
-// no separate "Type:" label.
+// no separate "Type:" label. A card body carries one or more of these labels, each contributing
+// its own TargetGroup.
 const (
 	createLabel = "**Create:**"
 	editLabel   = "**Edit:**"
@@ -329,7 +331,9 @@ const (
 )
 
 // typeLabels maps each of the seven type labels to the CardType it declares. parseCardBody's
-// switch and card-type resolution share this one table so the two never drift apart.
+// switch and card-type resolution share this one table so the two never drift apart. A card body
+// carrying more than one of these labels — even the same label twice — is the supported
+// one-or-more grammar, not a defect: each occurrence contributes its own TargetGroup.
 var typeLabels = map[string]CardType{
 	createLabel: CardTypeCreate,
 	editLabel:   CardTypeEdit,
@@ -490,7 +494,8 @@ func parseCardBody(card *Card, lines []string) error {
 // parseTypeLabelCase handles one type-label card-body case: it records the card's type-label
 // bookkeeping (TypeLabelCount, HasType, and, on the first type label seen, Type) and then collects
 // the label's bullets — via parseRenameField for renameLabel, appending both endpoints of every
-// pair to card.Targets in pair order, or via parseRefField for every other type label.
+// pair to card.Targets in pair order, or via parseRefField for every other type label — appending
+// exactly one new TargetGroup to card.TargetGroups for this call's own occurrence of label.
 func parseTypeLabelCase(card *Card, labelLine, label string, lines []string, start int) (next int, err error) {
 	card.TypeLabelCount++
 	card.HasType = true
@@ -498,21 +503,33 @@ func parseTypeLabelCase(card *Card, labelLine, label string, lines []string, sta
 		card.Type = typeLabels[label]
 	}
 
+	group := TargetGroup{Type: typeLabels[label]}
+
 	if label == renameLabel {
 		var pairs []MovePair
 		var raw []string
 		pairs, raw, next, err = parseRenameField(labelLine, lines, start)
 		card.Pairs = append(card.Pairs, pairs...)
 		card.RenameRaw = append(card.RenameRaw, raw...)
+		group.Pairs = pairs
+		group.RenameRaw = raw
+		// Refs starts as a non-nil empty slice so a **Rename:** label with zero well-formed
+		// pairs still yields a non-nil empty Refs, matching every other type label's own
+		// zero-bullets behavior.
+		group.Refs = []string{}
 		for _, p := range pairs {
 			card.Targets = append(card.Targets, p.Old, p.New)
+			group.Refs = append(group.Refs, p.Old, p.New)
 		}
+		card.TargetGroups = append(card.TargetGroups, group)
 		return next, err
 	}
 
 	var refs []string
 	refs, next, err = parseRefField(labelLine, label, lines, start)
 	card.Targets = append(card.Targets, refs...)
+	group.Refs = refs
+	card.TargetGroups = append(card.TargetGroups, group)
 	return next, err
 }
 

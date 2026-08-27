@@ -1,6 +1,6 @@
 # Loom plan-spec — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the sixteen checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the seventeen checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
 
 ## Producer and contract
 
@@ -72,8 +72,8 @@ Card Index ↔ card files are cross-checked mechanically (the `index-file-mismat
 Each card lives in its own file, and the file's content is:
 
 1. **Title heading** — `# Card N — <name>`, where `N` is the card's own flat number (see [Numbering and commit subject](#numbering-and-commit-subject) below).
-2. **Exactly one bold type label** from the set `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**` — the type name is the key, and there is no separate `Type:` field.
-   The label's own indented, backtick-wrapped sub-bullets are the card's own targets:
+2. **One or more bold type labels** from the set `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**` — the type name is the key, and there is no separate `Type:` field.
+   Each label's own indented, backtick-wrapped sub-bullets are that label's own targets:
 
    ```markdown
    **Edit:**
@@ -81,7 +81,18 @@ Each card lives in its own file, and the file's content is:
    - `list.go`
    ```
 
-   A `Rename` card's sub-bullets instead carry `` `old` -> `new` `` pairs — see [Rename and Move](#rename-and-move) below.
+   A card whose targets span two labels carries both groups, one after the other, each with its own sub-bullets:
+
+   ```markdown
+   **Edit:**
+   - `list.go`
+
+   **Create:**
+   - `list_json_test.go`
+   ```
+
+   A card carrying a `**Custom:**` group may carry no group of a different type — `Custom` groups may repeat, but never combine with any of the other six.
+   A `Rename` label's sub-bullets instead carry `` `old` -> `new` `` pairs — see [Rename and Move](#rename-and-move) below.
 3. Optionally, **`**Uses:**`** — what the card reads or depends on but does not change, in the same backtick-wrapped-bullet shape as a target list.
 4. A required, multi-line **`**Intent:**`** — what, and why (prose, may span multiple lines until the next field label).
 5. **`**ImpactSummary:**`**, required for `Edit` and `Delete` cards only, taking its value inline on the label line — a hard-capped one-line blast-radius conclusion, never the card's main content.
@@ -89,7 +100,7 @@ Each card lives in its own file, and the file's content is:
 
 **A field with no content is omitted entirely** — format 4 admits no `none` sentinel on any field.
 An optional field a card has nothing to say under simply does not appear in that card's file;
-a required field a card omits (its type label, `Intent:`, or `ImpactSummary:` on an `Edit`/`Delete` card) is a `card-missing-field` finding, and a label that is present but carries no bullets/prose under it is the distinct `card-field-empty` finding.
+a required field a card omits — every type label (a card must carry at least one), `Intent:`, or `ImpactSummary:` when any of the card's own groups is `Edit` or `Delete` — is a `card-missing-field` finding, and a label that is present but carries no bullets/prose under it is the distinct `card-field-empty` finding.
 
 **Uses:** names what the card reads but does not change — never a target.
 An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read? — flagged by the `card-field-overlap` check.
@@ -108,6 +119,15 @@ This is strictly **per-card**: across two cards of the same plan, one card's `Cr
 | Custom | either | none — explicit escape hatch | as applicable | — |
 
 `ImpactSummary` is required for `Edit` and `Delete` only — a `Create` card has no existing callers to have a blast radius over, which is why this spec resolves the design doc's table in favour of the design doc's own prose rather than its table row, a drafting slip the doc's prose does not carry.
+
+A multi-label card composes this table's four columns as follows, one rule per column:
+
+- **Target list holds** — per group, no composition: each label's own sub-bullets hold only that label's own kind of target, exactly as the table row states for that label alone.
+- **Mechanical check** — the union across the card's own groups: every group's own mechanical check runs, each against that group's own targets, never against another group's targets.
+  `Create`'s "none — check nothing equivalent exists first" cell is a real obligation that joins this union like any other, not a no-op that a multi-label card can skip past.
+- **`ImpactSummary`** — required whenever any of the card's own groups is `Edit` or `Delete`, and stays exactly one per card even when several of its groups require it: it states the blast radius across every `Edit`/`Delete` group's targets together, never a separate summary per group.
+- **Batchable?** — least permissive wins across the card's own groups: a card is batchable only when every one of its groups says `Yes`, and a single `No` group makes the whole card `No`.
+  `Prosa`/`Custom`'s "—" is never a vote in this computation — it neither forces `No` nor grants `Yes`, so a `Prosa`/`Custom` group's presence is transparent to the other groups' own answer.
 
 ## The shape classifier
 
@@ -191,6 +211,7 @@ The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape
 The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note; a file-list mismatch against this union is always informational, never blocking on its own) — is, under format 4: every path-shaped target entry across the batch's cards, plus the files holding every symbol-shaped target entry.
 `Uses:` is excluded from this union because it names what a card reads, not what it changes.
 See `internal/websterengine`'s package documentation for the verification semantics.
+This union is defined over each card's flat target set (the union across all of that card's own `TargetGroups`), so it is unchanged by multi-label: a card carrying two groups contributes both groups' targets exactly as it always contributed one group's.
 
 Symbol/path matching and SCC condensation into a deterministic topological order have shipped — see `internal/websterengine`'s package documentation under its "Execution order is derived, not declared" section.
 What remains deferred is continuous DAG update across waves and any parallel execution, both of which belong to the roadmap's Someday `webster: worktree-per-card parallel execution` item.
@@ -199,9 +220,9 @@ A parked, more aggressive parallel-execution idea also exists — see [../../man
 
 ## Validation checks (as implemented by `internal/planparser`)
 
-Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — sixteen rows, sixteen IDs.
+Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — seventeen rows, seventeen IDs.
 This figure counts distinct IDs rather than presentation rows, which resolves the row-count-versus-ID-count divergence the repo's former "14" carried (a 14-row list whose row 1 bundled two distinct IDs).
-The sixteen IDs are split across two entry points, `ValidateFormat` and `Validate`: fifteen of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 2 below) is additionally checked by `Validate`, the full entry point.
+The seventeen IDs are split across two entry points, `ValidateFormat` and `Validate`: sixteen of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 2 below) is additionally checked by `Validate`, the full entry point.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-two slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `4`); else refuse to run.
@@ -210,25 +231,34 @@ The rows below stay in one fixed order regardless of which entry point runs them
 3. `index-file-mismatch` — Card Index ↔ card files consistent (numbering, slugs, no gaps, no orphaned file on disk).
    This check covers the card count because there is no separate `(C cards)` segment to cross-check;
    the index itself IS the card list.
-4. `card-type-missing` — every card carries exactly one recognized type label; zero or more than one is flagged.
-5. `card-retired-label` — a card body carries a format-3 label (`**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**`, or the lowercase `**verify:**`); each occurrence is its own finding.
-6. `card-path-malformed` — every path-shaped target/`Uses` entry, once normalized (`root:`/`//` resolution applied), is non-empty, relative, clean, and free of `..` escapes.
-7. `rename-format` — every non-well-formed `Rename:` sub-bullet fails the `` `old` -> `new` `` grammar.
-8. `rename-mechanic-missing` — the plan has at least one `Rename` card but `00-overview.md` has no `## Rename mechanic` section (plan-level).
-9. `card-missing-field` — a card lacks its required type label, `Intent:`, or (on an `Edit`/`Delete` card) `ImpactSummary:`.
-10. `card-field-empty` — a label present on a card with no content under it (an empty target list, an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value).
-11. `card-field-overlap` — the same entry appears in both a single card's own target list and its own `Uses:` field (per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged).
-12. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
-13. `prosa-symbol-target` — a `Prosa` card's target list holds a symbol-shaped entry; `Prosa` cards may target only files.
-14. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
-15. `path-missing` — a path-shaped entry that does not exist on disk and is not satisfied by any card's `Create` target or `Rename` destination in the same plan.
-    `Custom` is exempt from this check on its own targets — and from the `prosa-symbol-target` rule above, and from nothing else: it remains bound by every other card-generic check.
-16. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix.
+4. `card-type-missing` — every card carries at least one recognized type label; zero is flagged.
+5. `card-custom-not-alone` — a card carrying a `Custom` group alongside a group whose `Type` differs from `Custom` is flagged, once per offending card regardless of how many differently-typed groups it carries.
+   Two `Custom` groups on one card, with nothing else, stays legal.
+6. `card-retired-label` — a card body carries a format-3 label (`**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**`, or the lowercase `**verify:**`); each occurrence is its own finding.
+7. `card-path-malformed` — this check is card-generic, not group-scoped.
+   Every path-shaped entry in a card's own flat `Targets`/`Uses`, once normalized (`root:`/`//` resolution applied), is non-empty, relative, clean, and free of `..` escapes, regardless of which group contributed it.
+8. `rename-format` — every non-well-formed `Rename:` sub-bullet fails the `` `old` -> `new` `` grammar, checked per `Rename` group.
+9. `rename-mechanic-missing` — the plan has at least one card carrying a `Rename` group but `00-overview.md` has no `## Rename mechanic` section (plan-level);
+   a `Rename` group on an otherwise multi-label card still counts.
+10. `card-missing-field` — a card lacks `Intent:` (card-generic), or lacks `ImpactSummary:` when any of its own groups is `Edit` or `Delete` (group-triggered, but the missing field itself is still one card-level field).
+11. `card-field-empty` — a label present with no content under it: an empty target list is checked per group, so a card carrying a populated group alongside an empty one is still flagged for the empty group, while an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value are each card-generic.
+12. `card-field-overlap` — the same entry appears in both a card's own flat target list and its own `Uses:` field; card-generic, per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged.
+13. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
+    Card-generic, since `ImpactSummary` is one field per card regardless of how many groups require it.
+14. `prosa-symbol-target` — a `Prosa` group's own target list holds a symbol-shaped entry; group-scoped, so a symbol in the same card's non-`Prosa` group is never flagged by this rule.
+15. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
+    Card-generic.
+16. `path-missing` — a path-shaped entry that does not exist on disk and is not satisfied by any card's `Create`-group target or `Rename`-group destination in the same plan.
+    A card's `Uses:` entries are checked card-generically, and within a card, its own groups are then walked one at a time, and a group's own path-shaped targets are checked only when that group's own `Type` is `Edit`, `Delete`, `Move`, or `Prosa`.
+    A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
+    `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
+17. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
 
 ## Worked example
 
 A complete plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent with the golden fixture `internal/planparser`'s own tests parse.
 Across its seven card files this example demonstrates every plan-format feature: all seven type labels are exercised across the suite of cards below (`Create`, `Edit`, `Custom`, `Delete`, `Rename`, `Move`, `Prosa`), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with `//`-escaped entries, a pinned `Commit:`/`Verify:` pair, and a `Rename` card with its plan-level `## Rename mechanic` section.
+Card 2 is additionally the multi-label example: it carries an `**Edit:**` group followed by a `**Create:**` group, for the implementation-plus-its-own-new-test-file shape.
 
 `_lyx/plan/00-overview.md`:
 
@@ -303,6 +333,9 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 - `boardcli.newListCmd`
 - `list.go`
 
+**Create:**
+- `list_json_test.go`
+
 **Uses:**
 - `//internal/output/envelope.go`
 
@@ -374,7 +407,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 **Intent:** Update the package doc comment and the standalone docs page describing `--json` output.
 ```
 
-`list.go`/`doc.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/doc.go`;
+`list.go`/`doc.go`/`list_json_test.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/doc.go`/`internal/boardcli/list_json_test.go`;
 the `//`-prefixed entries (`envelope.go`, `emit.go`, `legacyrows.go`, `rows.go`, `rowsjson.go`, `helppins.go`, `boardcli-json.md`) stay worktree-root-relative regardless of `root:`, escaping it for the files each card needs outside the shared prefix.
 `boardcli.newListCmd`, `boardcli.RowJSON`, `boardcli.emitJSON`, and `boardengine.MapRow`/`boardengine.MapRowJSON` are symbol-shaped entries and pass through every one of these resolution rules verbatim.
 
