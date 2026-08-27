@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// ShedPaths carries the four told values shedengine.Shed itself reads and no shedrecipe.Env
-// registry entry reads: StatusPath, LockPath, StatusLockPath, and MaxBounces.
+// ShedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env
+// registry entry reads: StatusPath, LockPath, StatusLockPath, MaxBounces, and CommitStatus.
 //
 // These four cannot travel in shedrecipe.Env: Env holds roots and run-wide values the registry
 // entries read, and no entry reads LockPath.
@@ -36,6 +36,9 @@ type ShedPaths struct {
 	// default", never "no bounces allowed" -- the budget it seeds is per-producer and
 	// episode-scoped, not run-wide. See shedengine.Shed.MaxBounces's own field doc.
 	MaxBounces int
+	// CommitStatus is copied verbatim onto the constructed shedengine.Shed. See
+	// shedengine.Shed.CommitStatus's own field doc.
+	CommitStatus func(producer, state string) error
 }
 
 // New parses recipes.LoomRecipe, builds it against env, and returns a *shedengine.Shed carrying
@@ -99,5 +102,6 @@ func New(env shedrecipe.Env, paths ShedPaths) (*shedengine.Shed, error) {
 		LockPath:       paths.LockPath,
 		StatusLockPath: paths.StatusLockPath,
 		MaxBounces:     paths.MaxBounces,
+		CommitStatus:   paths.CommitStatus,
 	}, nil
 }
