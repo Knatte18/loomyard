@@ -128,10 +128,18 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 func (c *loomCLI) wireStatusPathsOnly(location *lyxcwd.Location, cwd string) {
 	c.location = location
 	c.cwd = cwd
+	// CommitStatus is filled here too, even though wireStatusPathsOnly's own read-only verbs (status,
+	// pause) never call Run and so never invoke it: filling both literals keeps them structurally
+	// identical, so a future verb promoted from this path to wire()'s cannot silently lose the hook.
+	// loomCommitStatusDeps builds three closures and performs no I/O at build time, so it neither
+	// loads config nor opens a fabric -- this doc comment's own claim that wireStatusPathsOnly "loads
+	// no module config, constructs no engine, and can fail only if loomengine's own path accessors
+	// do" stays true with this fill in place.
 	c.shedPaths = loomrecipe.ShedPaths{
 		StatusPath:     loomengine.LoomStatusFile(location),
 		LockPath:       loomengine.LoomRunLock(location),
 		StatusLockPath: loomengine.LoomStatusLock(location),
+		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location)),
 	}
 }
 
@@ -337,6 +345,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// (which itself falls back to shedengine's internal default of ten), not a run-wide
 		// total -- the budget itself is per-producer and episode-scoped, counted from the
 		// persisted history rather than held in memory.
+		CommitStatus: newCommitStatusSeam(loomCommitStatusDeps(location)),
 	}
 
 	c.location = location
