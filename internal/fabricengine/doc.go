@@ -497,6 +497,12 @@
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.
+// `PushAnchored(l, opts)` and `MergeStateActive(l)` are two further vocabulary-neutral, `l`-in
+// entry points reachable the same way `CommitAnchoredPaths` is. `PushAnchored` is the synchronous,
+// rebase-free counterpart to `CommitAnchoredPaths`: a caller is expected to treat its returned
+// `gitrepo.ErrPushRejected` as a human-decidable condition rather than retrying. `MergeStateActive`
+// is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing —
+// distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
 //
 // # The mutation record
 //
