@@ -34,7 +34,7 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 - `internal/loomcli` — filling that closure with commit-then-push over loom's status path.
 - `internal/fabricengine` — a new `PushAnchored(l, opts)` beside the existing `CommitAnchoredPaths`.
 - `internal/fabricengine` — a new `MergeStateActive(l) (bool, error)`, the vocabulary-neutral merge-state probe the commit closure consults.
-- `CONSTRAINTS.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md` — docs, same commit. The `CONSTRAINTS.md` edit is ordered *after* a merge-in of `main`; see `constraints-gains-one-sentence`.
+- Docs, same commit: `CONSTRAINTS.md` (ordered *after* a merge-in of `main`; see `constraints-gains-one-sentence`), `manifest/designs/loom.md`, `manifest/designs/shed.md`, `internal/fabricengine/doc.go`, `internal/fabricengine/cleanup.go`'s package-level flag matrix and the `Protected` field comment, and the project `CLAUDE.md`'s `_lyx/raddle/` clause.
 
 **Out:**
 
@@ -42,7 +42,7 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 - **`internal/gitrepo`.** No new primitives are needed — skipping a side means not calling `MergeStart` on it.
 - **`internal/landingshed`.** No new deps, no new step, no `Publish` change. Both producers are untouched.
 - **Teardown as part of a loom run.** Deleting the weft branch cannot happen from inside the worktree it belongs to; it stays an outside verb.
-- **Raddle.** `_lyx/raddle/` does not exist, and building it would not reintroduce a fold-back concern: it would be weft content, so it is per-branch-local like the rest of `_lyx`. The placeholder gate is removed as structurally unnecessary, not deferred.
+- **Raddle.** `_lyx/raddle/` does not exist, and building it would not reintroduce a fold-back concern: raddle regenerates against the parent's HEAD and commits onto the parent pair directly, never by merging the child's copy. The placeholder gate is removed as structurally unnecessary, not deferred. See `raddle-gate-removed` for the precision this rests on.
 - **The millhouse repo.** `mill-merge`'s own `_mill`-hardcoded delete-then-restore is not generalized here; different repository, and this design needs no equivalent.
 - **Moving `status.json` to `.lyx/`.** PR #208's approach stays rejected.
 
@@ -53,6 +53,14 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 - Decision: `Fabric.Merge` and `Fabric.MergeIn` merge the warp side only. The weft side is not a merge participant in either direction.
 - Rationale: everything routed to the weft belongs to one worktree and one branch. It never describes another branch's state, so there is nothing a merge could usefully carry. Merging it produced conflicts on loom's own bookkeeping — the exact failure PR #208 was opened over.
 - Rejected: a per-path local-only set with delete-then-restore at the merge boundary (the wiki brief's design — solves one file's symptom while leaving every other weft file merging, and needs a delete that loom cannot safely perform on itself mid-run); leaving weft merging and accepting conflicts.
+
+### weft-guards-drop-with-it
+
+- Decision: the weft loses its power to block a merge, not only its participation in one. Four guards drop their weft arm to warp-only — `pairDirtyReason` (`mergeguards.go:137-152`), `syncedToUpstreamReason` via `sideNotSyncedToUpstream(f.weft, …)` (`:229-234`), `detachedHeadReason` (`:182-196`), and `resolveMergeSources`' weft arm (`:84-97`) — and `syncSideBeforeMerge(rec, f.weft, f.weftPath, "weft")` (`merge.go:447`) is not called at all.
+- Carve-out inside `resolveMergeSources`: the weft SHA **read** stays, because `mergestate-weft-fields-stay` needs a value for `WeftStart`/`WeftSource`. What is dropped is that arm's power to append `mergeReasonNotFabricManaged` or `mergeReasonSourceNotFound`; an unresolvable weft counterpart now leaves those fields best-effort or empty rather than refusing the merge.
+- Rationale: a non-participant's state cannot affect a warp-only merge's correctness, so checking it can only refuse a merge that would have been right. The sync guard is the load-bearing case: `commit-and-push-every-transition` warns and continues on a rejected push, which makes a locally-diverged weft a **routine, expected** state rather than an edge case — and a retained `syncedToUpstreamReason` weft arm would then refuse every subsequent landing with `mergeReasonNotSynced`. That is PR #208's blocked-landing failure relocated into a new refusal, not removed. All four guards currently OR the weft arm into the same aggregated reason as warp, unconditionally.
+- Rejected: narrowing only the sync guard and leaving dirty/detached/unresolvable weft blocking a merge it cannot affect; hard-erroring on push failure so the weft can never diverge — that contradicts `commit-hard-errors-push-warns`, whose whole point is that an offline laptop must not kill an autonomous run.
+- Test pins that change: `TestMerge_FetchedDivergedWeftRefuses` and `TestMerge_UnfetchedDivergedWeftRefuses` (`merge_target_integration_test.go:793`, `:817`) assert today's refusal and are rewritten to assert the merge now proceeds.
 
 ### no-api-change
 
@@ -81,8 +89,11 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 ### raddle-gate-removed
 
 - Decision: `raddleFoldedBack` (`internal/fabricengine/cleanup.go:93-95`) and the `Protected` branch it feeds are removed, along with the fold-back row of `Cleanup`'s documented flag matrix.
-- Rationale: it is a stub returning `false`, so today every fabric-managed orphan weft branch is protected unless `--force` — which makes routine teardown require the destructive flag. Raddle does not exist, and building it would not bring the gate back: `_lyx/raddle/` would be weft content, hence per-branch-local and never a merge participant, so there would be nothing to fold back and nothing for a gate to guard. `_lyx` has one category, not two.
-- Rejected: keeping the stub gate and routing teardown through it; keeping it warm as a placeholder for raddle.
+- Rationale: it is a stub returning `false`, so today every fabric-managed orphan weft branch is protected unless `--force` — which makes routine teardown require the destructive flag.
+- Why raddle does not bring it back: raddle's mechanism was never "merge the weft, carrying the child's `_lyx/raddle/` forward". `manifest/designs/raddle.md` has it regenerate **fresh** at merge time against the parent's actual current HEAD, committed directly onto the parent pair inside `Finalize`'s own critical section via `SyncWeft` — the "regenerate-don't-merge" property `manifest/designs/fabric-unified-view.md:228` names. It never depended on `Merge`/`MergeIn` touching the weft, so this task supersedes nothing in raddle's design and there is no fold-back for a gate to guard.
+- Precision the plan must preserve: raddle's *output* is genuinely meant to land in the parent's weft. What never travels is the child's copy of it, by git-merge. Do not restate this as "`_lyx/raddle/` is per-branch-local and never merged" — that flattens a regenerate-and-commit step into a merge and is what misled an earlier reviewer.
+- Doc correction in the same commit: the project `CLAUDE.md` directs durable notes to `_lyx/raddle/` as "anything versioned and merged into `main`". That clause is imprecise under this design and is corrected — a one-clause precision fix, not a redesign.
+- Rejected: keeping the stub gate and routing teardown through it; keeping it warm as a placeholder for raddle; declaring raddle's merge-time fold-back superseded, which misreads a design that never asked for one; leaving `CLAUDE.md` alone and deferring the trip to the next reader.
 
 ### commit-hook-lives-in-persist
 
@@ -113,7 +124,8 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
   `MergeStateActive` answers "is either side of the pair mid-merge at the git level", consulting exactly what the unexported `foreignMergeStatePresent` (`internal/fabricengine/mergestate.go:257-276`) already consults: `MergeHeadPresent()` and `ConflictedFiles()` on both sides. It takes an `l *lyxcwd.Location`, not an open `*Fabric`, matching `CommitAnchoredPaths`/`PushAnchored`'s shape.
 - Rationale: git refuses a path-scoped commit while `MERGE_HEAD` is live, and that state is reachable — `mergeresolve.mergeInErrorResult` (`internal/mergeresolve/mergeresolve.go:68-78`) deliberately leaves foreign merge state untouched and goes Stuck. Without the skip, every subsequent persist would hard-error and turn a recoverable Stuck into a dead run.
   `Fabric.MergeInProgress` cannot serve as the probe: it is `mergeRecordExists()`'s bare boolean and "never consults `foreignMergeStatePresent`" (`mergelifecycle.go:407-413`), so it is false in precisely the foreign-state case the skip exists for — and it needs an open `*Fabric`, which the closure does not hold.
-- Rejected: probing via `Fabric.MergeInProgress`; hard-erroring by design; falling back to a full-tree commit mid-merge.
+- Probe-error disposition: a non-nil error from `MergeStateActive` is treated exactly like `true` — warn and skip, no commit, no push, no error out of `persist`. An unreadable probe is the same category of "git state cannot be trusted right now" that the skip exists for, and arguably a stronger instance of it: probe I/O failures are most likely precisely when foreign merge machinery is touching the repo, which is the worst moment to attempt a path-scoped commit.
+- Rejected: probing via `Fabric.MergeInProgress`; hard-erroring by design; falling back to a full-tree commit mid-merge; hard-erroring on a probe error, which defeats the skip's own purpose; committing anyway on a probe error, which risks the git-refuses-mid-merge failure the skip was built to avoid.
 
 ### mergestate-weft-fields-stay
 
@@ -163,8 +175,17 @@ Existing push entry points: `Fabric.PushWeft` (`weftgit.go:299`, needs an open p
 **Where the weft merge happens.**
 `Fabric.Merge` — `internal/fabricengine/merge.go:344`. Its weft-side calls: `syncSideBeforeMerge(rec, f.weft, f.weftPath, "weft")` (line ~438), the post-sync `f.weft.CurrentSHA()`/`IsAncestor` probe, `f.weft.MergeStart(sources.weftSHA, opts.Squash)` (line 503), and `concludeMergeSides`' weft arm (`mergelifecycle.go:70-91`).
 `Fabric.MergeIn` — `merge.go:116` — has the same shape plus `unifyConflictPaths(warpConflicts, weftConflicts, ...)`.
-`mergeState` carries `WeftStart`, `WeftSource`, `WeftOutcome`, `WeftCommitted`; the plan decides whether those stay recorded as unmoved or are dropped.
-`resolveMergeSources` resolves both sides' source SHAs; `MergeAbort`/`resetMergeSides` restore both.
+`mergeState` carries `WeftStart`, `WeftSource`, `WeftOutcome`, `WeftCommitted`, kept and filled as unmoved per `mergestate-weft-fields-stay`.
+`MergeAbort`/`resetMergeSides` restore both sides.
+
+**The weft-side guards, which are not merge participation.**
+Four guards evaluate the weft unconditionally and OR its verdict into the same aggregated reason as warp, so none of them reveals which side failed:
+`pairDirtyReason` → `worktreeDirty(scopeTracked, f.weftPath)` (`mergeguards.go:137-152`),
+`detachedHeadReason` → `f.weft.HeadDetached()` (`:182-196`),
+`syncedToUpstreamReason` → `sideNotSyncedToUpstream(f.weft, f.weftPath)` (`:229-234`),
+and `resolveMergeSources`' weft arm (`:84-97`), which can append `mergeReasonNotFabricManaged` or `mergeReasonSourceNotFound`.
+Separately, `merge.go:447` calls `syncSideBeforeMerge(rec, f.weft, f.weftPath, "weft")` before the merge proper.
+`weft-guards-drop-with-it` disposes of all six sites.
 
 **Teardown.**
 `Topology.Cleanup` (`internal/fabricengine/cleanup.go:97-102`) finds weft branches with no warp worktree sibling and deletes them per a flag matrix; `raddleFoldedBack` at line 93 is the stub gate being removed.
@@ -201,7 +222,7 @@ Each entry below names the invariant heading verbatim:
 
 From the project `CLAUDE.md` and `docs/overview.md` (the trimmed `CONSTRAINTS.md`'s **Documentation Lifecycle** section is now only a pointer to `docs/overview.md#documentation-lifecycle`, so these are not CONSTRAINTS.md rules):
 
-- **Documentation lifecycle** — `CONSTRAINTS.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md` update in the same commit. `manifest/roadmap.md` does **not** move: this is a reopened bug, not a completed or newly added planned item.
+- **Documentation lifecycle** — the docs named in Scope-In update in the same commit. `internal/fabricengine/doc.go` is the module's authoritative narrative and asserts two-sided merge semantics throughout (`:858-880` on both-sides self-abort, `:1023-1046` on both-sides outcome flags); `cleanup.go:3-11,70-77,175-181` documents the `raddleFoldedBack` flag matrix being deleted. A plan writer who skips these leaves both asserting removed behaviour. `manifest/roadmap.md` does **not** move: this is a reopened bug, not a completed or newly added planned item.
 - **Markdown semantic line breaks** — one sentence per line, break at internal independent-clause boundaries, plain newlines only.
 
 Discovered during discussion:
@@ -220,6 +241,13 @@ Discovered during discussion:
 - `MergeIn` in the opposite direction: a parent's `_lyx/` never reaches the child, and the child's live content is unchanged.
 - Warp-side merging and warp-side conflict reporting are unchanged, including a genuine warp conflict still reaching `unifyConflictPaths` and `mergeresolve`.
 - `Cleanup` deletes an orphan weft branch without `--force`; the primary weft branch stays protected; a checked-out weft branch stays protected.
+- A dirty weft, a detached weft `HEAD`, and a weft diverged from its upstream each no longer refuse a merge that warp alone can complete. `TestMerge_FetchedDivergedWeftRefuses` and `TestMerge_UnfetchedDivergedWeftRefuses` (`merge_target_integration_test.go:793`, `:817`) invert. Warp-side dirty/detached/not-synced still refuse, unchanged.
+- An unresolvable weft counterpart leaves `WeftStart`/`WeftSource` empty and still merges, rather than appending `mergeReasonNotFabricManaged`/`mergeReasonSourceNotFound`.
+
+**`internal/fabricengine` — direct tests for the two new functions.**
+
+- `MergeStateActive` reports true for foreign merge state on either side (`MergeHeadPresent` or a non-empty `ConflictedFiles`), false for a clean pair, and surfaces a probe error rather than swallowing it — the closure, not the probe, decides that an error means skip.
+- `PushAnchored` honours `SkipGit`/`SkipPush` from `SyncOptions`, and surfaces `gitrepo.ErrPushRejected` unwrapped so the closure can warn-and-continue on exactly that error and not on others.
 
 **`internal/shedengine` — TDD candidate.**
 `persist` calls `CommitStatus` on every write path: resume write, running, paused (with `consumePause`), blocked, failed, stuck-bounce, done.
@@ -240,7 +268,7 @@ The closure commits then pushes; a push failure does not surface as an error whi
 - **Q:** How does loom's `status.json` survive a producer deleting the directory it lives in? **A:** It does not, which is why no deletion happens. `Finalize` is a producer inside the run and Shed persists again the moment it returns; any child-side delete is undone by the run's own next write, and in between the live FSM state is missing from the tree it is read from. Removing weft from merging removes the need for a delete at all.
 - **Q:** Does the merge-in from the parent need weft? **A:** No — warp only, same argument, same direction-independent reason.
 - **Q:** Does either verb gain a flag or option to express this? **A:** No. From outside there is one repo called Fabric; the behaviour changes inside `fabricengine` and no signature moves.
-- **Q:** What about the raddle fold-back gate on `Cleanup`? **A:** Removed outright, not deferred. The stub gate protects every orphan weft branch from ordinary teardown, and raddle would not resurrect it: `_lyx/raddle/` would be weft content, hence per-branch-local and never merged, so there is no fold-back for a gate to guard. `_lyx` has exactly one category — local, and never a merge participant.
+- **Q:** What about the raddle fold-back gate on `Cleanup`? **A:** Removed outright, not deferred. The stub gate protects every orphan weft branch from ordinary teardown, and raddle would not resurrect it — though not for the reason first written down. Raddle regenerates fresh against the parent's HEAD and commits onto the parent pair inside `Finalize`'s critical section, so it never depended on merging the child's weft and there is no fold-back to guard. Its output *does* reach the parent; only the child's copy of it never travels by merge. `CLAUDE.md`'s "`_lyx/raddle/` … merged into `main`" clause is corrected in the same commit.
 - **Q:** Who tears down the weft branch? **A:** An outside verb, after nothing is in the worktree any more. Teardown cannot run from inside the worktree it removes, so no loom producer does it.
 - **Q:** What happens to warp↔weft correspondence when weft never moves during a merge? **A:** Nothing changes. The index maps a warp SHA to the weft SHA current at that point, and `Merge` already records correspondence even when one side never moved.
 - **Q:** What about `fabric.yaml`'s `pathspec` key, which can route extra directories to weft? **A:** It defaults to empty and has no shipped use case — the only `_extra` occurrences are test fixtures. The rule takes no exception for it: anything routed to weft is per-branch-local.
@@ -255,4 +283,6 @@ The closure commits then pushes; a push failure does not surface as an error whi
 - **Q:** Which push primitive does `PushAnchored` use? **A:** `gitrepo.PushRebaseFree`, never `PushCoalesced`. `PushCoalesced`'s rebase-retry rewrites this side's SHAs on a rejected push and invalidates the correspondence index, and it takes a repo-root push lock that would contend with existing push paths on every transition.
 - **Q:** How does the closure detect that a merge is in progress? **A:** A new `fabricengine.MergeStateActive(l)`, consulting `MergeHeadPresent()` and `ConflictedFiles()` on both sides. `Fabric.MergeInProgress` cannot serve — it answers "does fabric have a merge record", is false for foreign merge state, and needs an open `*Fabric`.
 - **Q:** Is this branch's `CONSTRAINTS.md` the file the addition is written against? **A:** It is now. The branch predated the rules-only trim and carried the 659-line version, so `main` was merged in at `60d83a96` and the file here is the 259-line trimmed one. The trim commit `d66cefe5` is not yet on `origin/main`, so pushing this branch publishes it.
+- **Q:** Does the weft keep its power to *block* a merge once it stops participating in one? **A:** No — all four guards drop their weft arm and `syncSideBeforeMerge` skips the weft entirely. A non-participant's state cannot affect a warp-only merge's correctness, and keeping the sync guard would be decisive against the task: warn-and-continue on a rejected push makes a diverged weft a routine state, so `mergeReasonNotSynced` would refuse every subsequent landing — PR #208's failure relocated rather than removed. `resolveMergeSources` keeps its weft SHA *read* for the mergeState fields, losing only its power to refuse.
+- **Q:** And when the `MergeStateActive` probe itself errors? **A:** Warn and skip, same as `true`. An unreadable probe is the same "git state cannot be trusted" category the skip exists for, and probe failures cluster precisely when foreign merge machinery is touching the repo.
 - **Q:** What happens to `mergeState`'s weft fields when weft never merges? **A:** Kept and filled as unmoved. `mergeAttemptIncompleteReason` refuses a resume when `WeftOutcome == ""`, and keeping them leaves the persisted JSON schema compatible in both directions.
