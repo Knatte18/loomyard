@@ -335,9 +335,10 @@ Example:
 
 Flag matrix:
   (no flags)          dry-run: report orphaned weft branches only.
-  --apply             delete non-gate-protected orphan branches.
-  --apply --force     also delete gate-protected task branches.
-  --force (alone)     report only; --force does not imply --apply.
+  --apply             delete every orphan weft branch (primary weft branch
+                      and checked-out branches stay protected).
+  --force (alone)     report only; --force does not imply --apply, and today
+                      answers no cleanup gate.
 
 A dry run reports the same protected verdict the matching --apply run would
 act on, so "protected: false" in a dry run means "--apply would delete this".
@@ -366,8 +367,8 @@ weft remote, if it was ever pushed, is left untouched.`,
 			return runCleanupWithFlags(ctx, out, apply, force)
 		}),
 	}
-	cleanupCmd.Flags().Bool("apply", false, "delete non-gate-protected orphaned weft branches")
-	cleanupCmd.Flags().Bool("force", false, "also delete gate-protected task branches (requires --apply)")
+	cleanupCmd.Flags().Bool("apply", false, "delete orphaned weft branches (default is dry-run/report)")
+	cleanupCmd.Flags().Bool("force", false, "reserved; answers no cleanup gate today")
 	cmd.AddCommand(cleanupCmd)
 
 	cmd.AddCommand(&cobra.Command{
