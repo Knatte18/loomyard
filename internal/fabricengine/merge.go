@@ -171,14 +171,10 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	}
 
 	// Pre-lock already-up-to-date probe: no lock taken, no record written, empty mutation record —
-	// the degenerate no-op, mirroring Commit's own precedent. The two HEAD reads here serve this
+	// the degenerate no-op, mirroring Commit's own precedent. The HEAD read here serves this
 	// probe only; the record's starts are re-read under the lock below, where no concurrent writer
 	// can stale them.
 	warpStart, err := f.warp.CurrentSHA()
-	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
-	}
-	weftStart, err := f.weft.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
@@ -209,15 +205,16 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	// Re-read both starts under the lock, discarding the pre-lock reads: a concurrent writer that
+	// Re-read warpStart under the lock, discarding the pre-lock read: a concurrent writer that
 	// held this lock while this call waited (a Commit landing new tips, most plausibly) makes the
-	// pre-lock SHAs stale, and recording a stale start means MergeAbort would reset THROUGH that
-	// writer's landed commits.
+	// pre-lock SHA stale, and recording a stale start means MergeAbort would reset THROUGH that
+	// writer's landed commits. weftStart has no pre-lock read to discard — the weft is not a merge
+	// participant, so this is its only read.
 	warpStart, err = f.warp.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
-	weftStart, err = f.weft.CurrentSHA()
+	weftStart, err := f.weft.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
