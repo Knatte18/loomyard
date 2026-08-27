@@ -237,7 +237,6 @@ const (
 	pathOwnershipFreshlyCreatedWorktree
 	pathOwnershipWiredJunction
 	pathOwnershipDriftedWiredJunction
-	pathOwnershipWeftCheckout
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must
@@ -415,12 +414,6 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 	case pathOwnershipWarpCheckout:
 		if !isAnyWorktreeOf(own.repoDir, target) {
 			return false, fmt.Sprintf("%s is not a worktree of the warp repo at %s", target, own.repoDir)
-		}
-		return true, ""
-
-	case pathOwnershipWeftCheckout:
-		if !isAnyWorktreeOf(own.repoDir, target) {
-			return false, fmt.Sprintf("%s is not a worktree of the weft repo at %s", target, own.repoDir)
 		}
 		return true, ""
 
