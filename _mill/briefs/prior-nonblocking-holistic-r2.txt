@@ -1,0 +1,2 @@
+- "four told values" left uncorrected in two spots after card 27 widened ShedPaths to five: **Location:** `internal/loomrecipe/loomrecipe.go:19` and `internal/loomcli/wiring.go:334`
+- destroy.go retains a dead pathOwnershipWeftCheckout enum case after its sole constructor was deleted: **Location:** `internal/fabricengine/destroy.go:240,421-425`
