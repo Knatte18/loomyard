@@ -1,8 +1,8 @@
 // parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
 // parsing, framing extraction), its per-card file-parsing behavior (the title heading, the
-// format-4 type-label model, Uses:/Intent:/ImpactSummary:, retired-label routing, and
-// Commit:/Verify:), the label-present-vs-absent field distinction, and a full round-trip over the
-// format-4 golden fixture (testdata/goodplan).
+// format-4 one-or-more type-label model and its per-label TargetGroups, Uses:/Intent:/
+// ImpactSummary:, retired-label routing, and Commit:/Verify:), the label-present-vs-absent field
+// distinction, and a full round-trip over the format-4 golden fixture (testdata/goodplan).
 
 package planparser_test
 
@@ -292,9 +292,9 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_TypeLabelCount covers TypeLabelCount/Type/HasType bookkeeping for the two
-// defect shapes card-type-missing exists to catch: two recognized type labels on one card, and
-// none at all.
+// TestParsePlan_Card_TypeLabelCount covers TypeLabelCount/Type/HasType/TargetGroups bookkeeping.
+// Two recognized type labels on one card — even the same label twice — is the supported
+// one-or-more shape, not a defect; the zero-labels shape stays a defect card-type-missing catches.
 func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 	t.Parallel()
 
@@ -318,6 +318,27 @@ func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 		if card.Type != planparser.CardTypeEdit {
 			t.Errorf("card.Type = %q; want %q (the first type label seen)", card.Type, planparser.CardTypeEdit)
 		}
+		if len(card.TargetGroups) != 2 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+		}
+		if card.TargetGroups[0].Type != planparser.CardTypeEdit {
+			t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
+		}
+		if card.TargetGroups[1].Type != planparser.CardTypeDelete {
+			t.Errorf("card.TargetGroups[1].Type = %q; want %q", card.TargetGroups[1].Type, planparser.CardTypeDelete)
+		}
+		wantRefs0 := []string{"a.go"}
+		if !slices.Equal(card.TargetGroups[0].Refs, wantRefs0) {
+			t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, wantRefs0)
+		}
+		wantRefs1 := []string{"b.go"}
+		if !slices.Equal(card.TargetGroups[1].Refs, wantRefs1) {
+			t.Errorf("card.TargetGroups[1].Refs = %v; want %v", card.TargetGroups[1].Refs, wantRefs1)
+		}
+		wantTargets := []string{"a.go", "b.go"}
+		if !slices.Equal(card.Targets, wantTargets) {
+			t.Errorf("card.Targets = %v; want %v (concatenation of both groups' Refs, body order)", card.Targets, wantTargets)
+		}
 	})
 
 	t.Run("no type label", func(t *testing.T) {
@@ -339,6 +360,88 @@ func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 		}
 		if card.Type != planparser.CardTypeUnknown {
 			t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeUnknown)
+		}
+		if len(card.TargetGroups) != 0 {
+			t.Errorf("len(card.TargetGroups) = %d; want 0", len(card.TargetGroups))
+		}
+	})
+
+	t.Run("single-label card produces exactly one group", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writePlanFiles(t, map[string]string{
+			"00-overview.md": minimalOverview,
+			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+		})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		card := plan.Cards[0]
+
+		if len(card.TargetGroups) != 1 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+		}
+		if card.TargetGroups[0].Type != planparser.CardTypeEdit {
+			t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
+		}
+	})
+
+	t.Run("repeated label produces two groups whose union equals one merged group's refs", func(t *testing.T) {
+		t.Parallel()
+
+		body := "# Card 1 — repeated label\n\n**Edit:**\n- `a.go`\n**Edit:**\n- `b.go`\n**Intent:** placeholder.\n"
+		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		card := plan.Cards[0]
+
+		if len(card.TargetGroups) != 2 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+		}
+		var union []string
+		for _, g := range card.TargetGroups {
+			if g.Type != planparser.CardTypeEdit {
+				t.Errorf("group.Type = %q; want %q", g.Type, planparser.CardTypeEdit)
+			}
+			union = append(union, g.Refs...)
+		}
+		wantUnion := []string{"a.go", "b.go"}
+		if !slices.Equal(union, wantUnion) {
+			t.Errorf("union of both groups' Refs = %v; want %v (equal to one merged group's refs)", union, wantUnion)
+		}
+	})
+
+	t.Run("two Rename labels give each group its own Pairs", func(t *testing.T) {
+		t.Parallel()
+
+		body := "# Card 1 — two renames\n\n" +
+			"**Rename:**\n- `old1.Symbol` -> `new1.Symbol`\n" +
+			"**Rename:**\n- `old2.Symbol` -> `new2.Symbol`\n" +
+			"**Intent:** placeholder.\n"
+		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		card := plan.Cards[0]
+
+		if len(card.TargetGroups) != 2 {
+			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+		}
+		wantPairs0 := []planparser.MovePair{{Old: "old1.Symbol", New: "new1.Symbol"}}
+		if !slices.Equal(card.TargetGroups[0].Pairs, wantPairs0) {
+			t.Errorf("card.TargetGroups[0].Pairs = %+v; want %+v", card.TargetGroups[0].Pairs, wantPairs0)
+		}
+		wantPairs1 := []planparser.MovePair{{Old: "old2.Symbol", New: "new2.Symbol"}}
+		if !slices.Equal(card.TargetGroups[1].Pairs, wantPairs1) {
+			t.Errorf("card.TargetGroups[1].Pairs = %+v; want %+v", card.TargetGroups[1].Pairs, wantPairs1)
+		}
+		wantCardPairs := append(append([]planparser.MovePair{}, wantPairs0...), wantPairs1...)
+		if !slices.Equal(card.Pairs, wantCardPairs) {
+			t.Errorf("card.Pairs = %+v; want %+v (concatenation of both groups' Pairs, body order)", card.Pairs, wantCardPairs)
 		}
 	})
 }
@@ -625,7 +728,8 @@ func goodPlanDir() string {
 // framing, and every field of every one of the seven cards must match the fixture's own
 // byte-consistent content, including the root: internal/boardcli resolution and the // worktree-
 // root escape. It also pins this migration's sharpest possible regression: a symbol target must
-// survive normalization unmodified under the fixture's non-empty root:.
+// survive normalization unmodified under the fixture's non-empty root:. Card 2 additionally
+// round-trips a multi-label card: an **Edit:** group followed by a **Create:** group.
 func TestParsePlan_GoldenFixture(t *testing.T) {
 	t.Parallel()
 
@@ -654,6 +758,12 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		t.Fatalf("len(plan.Cards) = %d; want 7", len(plan.Cards))
 	}
 
+	// wantGroup pins one expected TargetGroup: its own Type and its own Refs.
+	type wantGroup struct {
+		typ  planparser.CardType
+		refs []string
+	}
+
 	type wantCard struct {
 		number           int
 		slug             string
@@ -661,6 +771,7 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		typ              planparser.CardType
 		typeLabelCount   int
 		targets          []string
+		groups           []wantGroup
 		pairs            []planparser.MovePair
 		uses             []string
 		hasUses          bool
@@ -677,14 +788,21 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 1, slug: "json-row-type", summary: "define the RowJSON struct",
 			typ: planparser.CardTypeCreate, typeLabelCount: 1,
 			targets: []string{"boardcli.RowJSON"},
-			intent:  "Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.",
-			commit:  "1: json-row-type", verify: "go build ./...", hasVerify: true,
+			groups: []wantGroup{
+				{typ: planparser.CardTypeCreate, refs: []string{"boardcli.RowJSON"}},
+			},
+			intent: "Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.",
+			commit: "1: json-row-type", verify: "go build ./...", hasVerify: true,
 		},
 		{
 			number: 2, slug: "json-flag", summary: "add the --json bool flag and wire list.go",
-			typ: planparser.CardTypeEdit, typeLabelCount: 1,
-			targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go"},
-			uses:    []string{"internal/output/envelope.go"}, hasUses: true,
+			typ: planparser.CardTypeEdit, typeLabelCount: 2,
+			targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go", "internal/boardcli/list_json_test.go"},
+			groups: []wantGroup{
+				{typ: planparser.CardTypeEdit, refs: []string{"boardcli.newListCmd", "internal/boardcli/list.go"}},
+				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli/list_json_test.go"}},
+			},
+			uses: []string{"internal/output/envelope.go"}, hasUses: true,
 			intent:           "Add the `--json` bool flag to `newListCmd` and branch its row output between the table writer and the JSON path.",
 			impactSummary:    "Adds a --json flag to the list command and branches its row-emission path on it.",
 			hasImpactSummary: true,
@@ -693,13 +811,19 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 3, slug: "json-emission", summary: "marshal each row through output.Ok when --json is set",
 			typ: planparser.CardTypeCustom, typeLabelCount: 1,
 			targets: []string{"boardcli.emitJSON", "internal/output/emit.go"},
-			uses:    []string{"internal/boardcli/list.go"}, hasUses: true,
+			groups: []wantGroup{
+				{typ: planparser.CardTypeCustom, refs: []string{"boardcli.emitJSON", "internal/output/emit.go"}},
+			},
+			uses: []string{"internal/boardcli/list.go"}, hasUses: true,
 			intent: "Introduce `emitJSON`, a new helper in a new file, marshaling each row through `output.Ok` when `--json` is set.",
 		},
 		{
 			number: 4, slug: "legacy-rows-delete", summary: "remove the superseded legacy row-conversion file",
 			typ: planparser.CardTypeDelete, typeLabelCount: 1,
-			targets:          []string{"internal/boardengine/legacyrows.go"},
+			targets: []string{"internal/boardengine/legacyrows.go"},
+			groups: []wantGroup{
+				{typ: planparser.CardTypeDelete, refs: []string{"internal/boardengine/legacyrows.go"}},
+			},
 			intent:           "Remove the legacy per-row conversion helper now that `boardengine.MapRowJSON` (card 5) supersedes it.",
 			impactSummary:    "Deletes the legacy row-conversion file; no remaining callers reference it.",
 			hasImpactSummary: true,
@@ -708,6 +832,9 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 5, slug: "rowmapper-rename", summary: "rename the row mapper ahead of a later extraction",
 			typ: planparser.CardTypeRename, typeLabelCount: 1,
 			targets: []string{"boardengine.MapRow", "boardengine.MapRowJSON", "internal/boardengine/rows.go", "internal/boardengine/rowsjson.go"},
+			groups: []wantGroup{
+				{typ: planparser.CardTypeRename, refs: []string{"boardengine.MapRow", "boardengine.MapRowJSON", "internal/boardengine/rows.go", "internal/boardengine/rowsjson.go"}},
+			},
 			pairs: []planparser.MovePair{
 				{Old: "boardengine.MapRow", New: "boardengine.MapRowJSON"},
 				{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"},
@@ -718,13 +845,19 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 			number: 6, slug: "helppins-move", summary: "relocate the pinned help-tree fixture",
 			typ: planparser.CardTypeMove, typeLabelCount: 1,
 			targets: []string{"cmd/lyx/helppins.go"},
-			intent:  "Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
+			groups: []wantGroup{
+				{typ: planparser.CardTypeMove, refs: []string{"cmd/lyx/helppins.go"}},
+			},
+			intent: "Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
 		},
 		{
 			number: 7, slug: "json-docs", summary: "update the package doc comment and the standalone docs page",
 			typ: planparser.CardTypeProsa, typeLabelCount: 1,
 			targets: []string{"internal/boardcli/doc.go", "docs/boardcli-json.md"},
-			intent:  "Update the package doc comment and the standalone docs page describing `--json` output.",
+			groups: []wantGroup{
+				{typ: planparser.CardTypeProsa, refs: []string{"internal/boardcli/doc.go", "docs/boardcli-json.md"}},
+			},
+			intent: "Update the package doc comment and the standalone docs page describing `--json` output.",
 		},
 	}
 
@@ -747,6 +880,18 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		}
 		if !slices.Equal(c.Pairs, w.pairs) {
 			t.Errorf("card %d Pairs = %+v; want %+v", w.number, c.Pairs, w.pairs)
+		}
+		if len(c.TargetGroups) != len(w.groups) {
+			t.Fatalf("card %d len(TargetGroups) = %d; want %d", w.number, len(c.TargetGroups), len(w.groups))
+		}
+		for gi, wg := range w.groups {
+			g := c.TargetGroups[gi]
+			if g.Type != wg.typ {
+				t.Errorf("card %d TargetGroups[%d].Type = %q; want %q", w.number, gi, g.Type, wg.typ)
+			}
+			if !slices.Equal(g.Refs, wg.refs) {
+				t.Errorf("card %d TargetGroups[%d].Refs = %v; want %v", w.number, gi, g.Refs, wg.refs)
+			}
 		}
 		if w.hasUses {
 			if !c.HasUses {

@@ -13,8 +13,8 @@ import (
 )
 
 // seedPlanValidateFixture writes a syntactically complete, one-card plan-format plan under
-// <anchorPath>/_lyx/plan/, approved or not per approved. The sole card is a Create card so
-// path-missing never fires regardless of worktreeRoot's contents — a Create card's targets stay
+// <anchorPath>/_lyx/plan/, approved or not per approved. The sole card carries a Create group so
+// path-missing never fires regardless of worktreeRoot's contents — a Create group's targets stay
 // exempt from on-disk existence checking.
 func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()

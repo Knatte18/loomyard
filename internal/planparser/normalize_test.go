@@ -4,12 +4,16 @@
 // and the malformed forms (a single-"/" prefix, a ".."
 // escape) that normalizeCardPath resolves but deliberately does not reject — that is Validate's
 // card-path-malformed check, not this package's job. It also covers normalizeCard's
-// classifier-gated application of that rule across Targets, Uses, and both endpoints of every
-// Rename Pairs entry, and the nil-vs-empty-non-nil preservation those slices must keep.
+// classifier-gated application of that rule across Targets, Uses, both endpoints of every Rename
+// Pairs entry, and every TargetGroups entry's own Refs/Pairs, and the nil-vs-empty-non-nil
+// preservation those slices must keep.
 
 package planparser
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestNormalizeCardPath(t *testing.T) {
 	t.Parallel()
@@ -109,11 +113,16 @@ func TestNormalizeCard_PairsBothEndpoints(t *testing.T) {
 }
 
 // TestNormalizeCard_NilSliceStaysNil proves normalizeCard preserves the nil-vs-empty-non-nil
-// distinction on both Targets and Uses.
+// distinction on Targets, Uses, and every TargetGroups entry's own Refs.
 func TestNormalizeCard_NilSliceStaysNil(t *testing.T) {
 	t.Parallel()
 
-	card := Card{}
+	card := Card{
+		TargetGroups: []TargetGroup{
+			{Type: CardTypeCustom, Refs: nil},
+			{Type: CardTypeEdit, Refs: []string{}},
+		},
+	}
 	normalizeCard(&card, "internal/boardcli")
 
 	if card.Targets != nil {
@@ -121,6 +130,74 @@ func TestNormalizeCard_NilSliceStaysNil(t *testing.T) {
 	}
 	if card.Uses != nil {
 		t.Errorf("card.Uses = %v; want nil", card.Uses)
+	}
+	if card.TargetGroups[0].Refs != nil {
+		t.Errorf("card.TargetGroups[0].Refs = %v; want nil", card.TargetGroups[0].Refs)
+	}
+	if card.TargetGroups[1].Refs == nil {
+		t.Errorf("card.TargetGroups[1].Refs = nil; want a non-nil, zero-length slice")
+	}
+	if len(card.TargetGroups[1].Refs) != 0 {
+		t.Errorf("card.TargetGroups[1].Refs = %v; want empty", card.TargetGroups[1].Refs)
+	}
+}
+
+// TestNormalizeCard_TargetGroupsPostCondition proves normalizeCard's stated post-condition under a
+// non-empty root: with a "//"-escaped entry and a symbol-shaped entry in a group: Card.Targets
+// equals the concatenation of TargetGroups[*].Refs in body order, Card.Pairs equals the
+// concatenation of TargetGroups[*].Pairs in body order, and the symbol-shaped entry passes through
+// verbatim on both sides.
+func TestNormalizeCard_TargetGroupsPostCondition(t *testing.T) {
+	t.Parallel()
+
+	card := Card{
+		Targets: []string{"list.go", "//cmd/lyx/main.go", "boardcli.RowJSON"},
+		TargetGroups: []TargetGroup{
+			{Type: CardTypeEdit, Refs: []string{"list.go", "//cmd/lyx/main.go"}},
+			{Type: CardTypeCreate, Refs: []string{"boardcli.RowJSON"}},
+		},
+	}
+	normalizeCard(&card, "internal/boardcli")
+
+	wantGroup0Refs := []string{"internal/boardcli/list.go", "cmd/lyx/main.go"}
+	if !slices.Equal(card.TargetGroups[0].Refs, wantGroup0Refs) {
+		t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, wantGroup0Refs)
+	}
+	wantGroup1Refs := []string{"boardcli.RowJSON"}
+	if !slices.Equal(card.TargetGroups[1].Refs, wantGroup1Refs) {
+		t.Errorf("card.TargetGroups[1].Refs = %v; want %v (symbol unmodified)", card.TargetGroups[1].Refs, wantGroup1Refs)
+	}
+
+	var wantTargets []string
+	for _, g := range card.TargetGroups {
+		wantTargets = append(wantTargets, g.Refs...)
+	}
+	if !slices.Equal(card.Targets, wantTargets) {
+		t.Errorf("card.Targets = %v; want %v (concatenation of TargetGroups[*].Refs, body order)", card.Targets, wantTargets)
+	}
+}
+
+// TestNormalizeCard_RenameGroupPairsRootJoined proves a Rename group's own Pairs.Old is
+// root-joined after normalizeCard, since that is the value the group-scoped path-missing check
+// stats — an un-normalized group pair would make it stat the unprefixed path.
+func TestNormalizeCard_RenameGroupPairsRootJoined(t *testing.T) {
+	t.Parallel()
+
+	card := Card{
+		TargetGroups: []TargetGroup{
+			{
+				Type: CardTypeRename,
+				Pairs: []MovePair{
+					{Old: "old.go", New: "//cmd/lyx/new.go"},
+				},
+			},
+		},
+	}
+	normalizeCard(&card, "internal/boardcli")
+
+	wantPair := MovePair{Old: "internal/boardcli/old.go", New: "cmd/lyx/new.go"}
+	if card.TargetGroups[0].Pairs[0] != wantPair {
+		t.Errorf("card.TargetGroups[0].Pairs[0] = %+v; want %+v", card.TargetGroups[0].Pairs[0], wantPair)
 	}
 }
 

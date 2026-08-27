@@ -61,7 +61,7 @@ Go-only, same as `quarry` V1; a lexer/AST approach cannot generalize by swapping
 - **(a) vs. (b), or both, and in what order.**
   The scout-vs-grep benchmark weakens the case for (a) specifically — see above — but has not measured (a) wired into `contracts/stencils/loom/loom-template-plan.md` itself, only bare subagents with/without tool access.
 - **Advisory vs. hard-fail.**
-  If symbol-derived checking ever becomes a validator check (whether via prompt convention or schema), does a mismatch halt plan approval outright, or just surface as a warning the human review gate weighs? `loom-plan-spec.md`'s existing 16 checks are all hard-fail;
+  If symbol-derived checking ever becomes a validator check (whether via prompt convention or schema), does a mismatch halt plan approval outright, or just surface as a warning the human review gate weighs? `loom-plan-spec.md`'s existing 17 checks are all hard-fail;
   this would be the first check whose ground truth is "what the code actually does" rather than "is the plan internally consistent."
 - **Symbol granularity.**
   A renamed function is a clean case;

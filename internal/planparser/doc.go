@@ -20,18 +20,23 @@
 //
 // A parsed plan is a Plan: the overview's frontmatter (Format, Approved, Root), its
 // task-framing paragraph (Framing), the flat ordered list of Cards, and the three
-// optional plan-level body sections (SharedDecisions, RenameMechanic, Verify). Each
-// Card carries its Card Index fields (Number, Slug, Summary), its own file's Title,
-// its own type label (Type, one of the seven CardType values) and flat target ref
-// list (Targets, symbols and paths mixed, with Pairs/RenameRaw holding the structured
-// and malformed halves of a Rename card's old -> new pairs), its Uses list (refs read
-// or depended on, not targeted), its Intent prose (what, and why) and inline
-// ImpactSummary (a hard-capped one-line blast-radius conclusion, with
-// ImpactSummaryTrailing capturing any lines that follow it — a multiline
-// ImpactSummary is itself a defect the validator reports), its per-label HasX
-// presence bits (HasType, HasUses, HasIntent, HasImpactSummary, HasVerify), its
-// RetiredLabels (one entry per format-3 label the card body still carried), and the
-// optional Commit and Verify fields.
+// optional plan-level body sections (SharedDecisions, RenameMechanic, Verify). A Card
+// carries one or more type labels: each label's own occurrence on the card is a
+// TargetGroup (TargetGroups), holding that label's own Refs and, for a Rename group,
+// its own Pairs and malformed RenameRaw bullets. The flat Targets, Pairs, and
+// RenameRaw fields are retained as the union across every one of the card's own
+// TargetGroups, in body order, for downstream consumers that read the card-level
+// shape rather than its per-label groups. Type (the first label seen) and
+// TypeLabelCount are retained for exported-field compatibility only — neither is
+// validation state, and a new check must key on TargetGroups, never on Type, or it
+// silently reintroduces first-label-wins. A Card also carries its Card Index fields
+// (Number, Slug, Summary), its own file's Title, its Uses list (refs read or depended
+// on, not targeted), its Intent prose (what, and why) and inline ImpactSummary (a
+// hard-capped one-line blast-radius conclusion, with ImpactSummaryTrailing capturing
+// any lines that follow it — a multiline ImpactSummary is itself a defect the
+// validator reports), its per-label HasX presence bits (HasType, HasUses, HasIntent,
+// HasImpactSummary, HasVerify), its RetiredLabels (one entry per format-3 label the
+// card body still carried), and the optional Commit and Verify fields.
 //
 // Only path-shaped Targets/Uses/Pairs entries are normalized (see below); a
 // symbol-shaped entry is stored verbatim. Classification is by shape alone, at
@@ -75,8 +80,8 @@
 // pass instead of stopping at the first one. ParsePlan fails loud only on
 // document-structure errors — a missing or undecodable overview file, an unparseable
 // Card Index line, a missing card file, an unparseable card heading, or an inline
-// value where a field admits only a bullet list. The plan format's 16 validation
-// checks (card type presence, path malformation, the Rename pair grammar, on-disk
-// existence, and so on) are implemented by Validate in validate.go, not by ParsePlan
-// itself.
+// value where a field admits only a bullet list. The plan format's 17 validation
+// checks (card type presence, card-custom-not-alone, path malformation, the Rename
+// pair grammar, on-disk existence, and so on) are implemented by Validate in
+// validate.go, not by ParsePlan itself.
 package planparser

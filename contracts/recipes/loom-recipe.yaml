@@ -168,7 +168,7 @@ producers:
             decisions and constraints it settles. The format authority is
             contracts/specs/loom-plan-spec.md, and the mechanical checks over that format are
             already enforced upstream by Plan-Validate for every check except plan-unapproved,
-            which now moves downstream to Plan-Revalidate, so re-deriving the other fifteen in
+            which now moves downstream to Plan-Revalidate, so re-deriving the other sixteen in
             this round is duplicated work. This round may never write the approved: key in the
             plan's overview file: a fixer that set the flag would be approving the very artifact
             the review round is judging, and this row already has write access to the overview
