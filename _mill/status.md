@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-push-and-mergestate-probe
+phase: approved-loom-transition-commit
 slug: weft-local-only-files
 branch: weft-local-only-files
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-shed-commitstatus-seam  '2026-08-27T08:41:29Z'
 approved-weft-guards-drop  '2026-08-27T09:02:54Z'
 approved-pull-non-fatal-weft  '2026-08-27T09:18:53Z'
 approved-push-and-mergestate-probe  '2026-08-27T09:27:23Z'
+approved-loom-transition-commit  '2026-08-27T09:32:17Z'
 ```
 
 ## Batches
@@ -71,8 +72,9 @@ batches:
     commit_sha: ad55d609328f72ce584af4739a1f1715d955b7a7
     verify_baseline_failures: []
   - name: loom-transition-commit
-    state: running
+    state: approved
     implementer_session: fd1d6dd7-2ece-49a0-b9eb-cb69148aadd0
     start_sha: bf61dac736ad87f345f2e4e0483de33e60f30f21
+    commit_sha: bf2fd48a9d6fea882815e8726a607324f3f5ccea
     verify_baseline_failures: []
 ```
