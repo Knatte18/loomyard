@@ -4,7 +4,8 @@
 // empty-commit machinery.
 // This file defines PullResult and *PartialPullError — the result and partial-failure contract
 // batches 3-4 (the CLI and docs layers) consume — mirroring PartialCommitError's shape (commit.go),
-// with the two sides' roles swapped to match Pull's weft-first ordering.
+// with the two sides' roles swapped: PartialPullError reports a call whose warp-side work did not
+// complete, regardless of whether the weft arm (now non-fatal) completed alongside it.
 
 package fabricengine
 
@@ -82,11 +83,15 @@ type PatternResidueEntry struct {
 	Paths   []string
 }
 
-// PartialPullError reports a Fabric.Pull call whose weft side completed cleanly but whose warp-side
-// work did not — mirroring PartialCommitError's shape (commit.go) with the two sides' roles
-// swapped, per the weft-first-ordering / report-not-rollback Shared Decision.
-// WeftPulled is always true for this type: a weft-side failure never produces a *PartialPullError
-// at all, since Fabric.Pull returns immediately on that path (see Fabric.Pull's doc comment).
+// PartialPullError reports a Fabric.Pull call whose warp-side work did not complete — mirroring
+// PartialCommitError's shape (commit.go) with the two sides' roles swapped, per the
+// weft-first-ordering / report-not-rollback Shared Decision.
+// WeftPulled faithfully reports whether the weft arm completed, which may now be false: since the
+// weft arm became non-fatal, a *PartialPullError can be returned with the weft side never having
+// pulled at all.
+// What has NOT changed: this type still never reports a weft-side failure on its own — a weft-side
+// failure alone is no longer an error at all (Fabric.Pull warns and continues), so *PartialPullError
+// is only ever constructed alongside a genuine warp-side failure.
 // Stage names which warp-side step failed (e.g. "fetch", "reset", "reanchor"), so a caller (or an
 // operator reading the error) knows exactly where the call stopped without re-deriving it from
 // Err's message.
@@ -96,10 +101,14 @@ type PartialPullError struct {
 	Err        error
 }
 
-// Error implements the error interface, stating that weft succeeded and naming the warp-side stage
-// that failed.
+// Error implements the error interface, naming the warp-side stage that failed and, depending on
+// WeftPulled, either confirming the weft pull succeeded alongside it or naming the weft pull as a
+// second failure.
 func (e *PartialPullError) Error() string {
-	return fmt.Sprintf("fabricengine: weft pull succeeded, warp %s failed: %v", e.Stage, e.Err)
+	if e.WeftPulled {
+		return fmt.Sprintf("fabricengine: weft pull succeeded, warp %s failed: %v", e.Stage, e.Err)
+	}
+	return fmt.Sprintf("fabricengine: weft pull did not complete, warp %s also failed: %v", e.Stage, e.Err)
 }
 
 // Unwrap returns the wrapped error, so errors.Is/errors.As reach it.
