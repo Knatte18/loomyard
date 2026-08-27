@@ -1052,8 +1052,17 @@
 // is not a merge participant, so a detached weft HEAD cannot produce the unreachable-commit shape
 // this precondition exists to prevent, and the guard set that used to evaluate both sides
 // unconditionally — pairDirtyReason, detachedHeadReason, syncedToUpstreamReason, and
-// resolveMergeSources' own refusal arm — now evaluates the warp side alone throughout; the weft has
-// lost its power to block a merge, on top of having already lost its participation in one.
+// resolveMergeSources' own refusal arm — now evaluates the warp side alone throughout. Drive all
+// four weft states at once and the merge still decides purely on warp state.
+//
+// Exactly two weft-reading refusals survive that narrowing, and they are kept on purpose rather than
+// missed. `foreignMergeStatePresent` still refuses MergeIn/Merge on weft-side git merge state fabric
+// did not start (mergestate.go says so at its own definition), and MergeContinue still refuses on a
+// weft-side conflicted index (see "The merge surface"). Both answer the same question — an operator
+// is running plain git inside the weft checkout right now — which is a reason to stop that no
+// narrowing of the ordinary guard set was meant to remove. So: the weft lost its power to block a
+// merge on ORDINARY state (dirt, detachment, upstream divergence, an unresolvable counterpart), not
+// on foreign in-flight git state.
 //
 // **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
 // merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found the warp side already
