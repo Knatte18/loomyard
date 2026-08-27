@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-merge-drops-weft
 slug: weft-local-only-files
 branch: weft-local-only-files
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-08-27T07:50:08Z'
 plan-review-r2  '2026-08-27T07:57:03Z'
 planned  '2026-08-27T07:57:25Z'
 implementing  '2026-08-27T07:57:56Z'
+approved-merge-drops-weft  '2026-08-27T08:30:09Z'
 ```
 
 ## Batches
@@ -29,9 +30,10 @@ implementing  '2026-08-27T07:57:56Z'
 ```yaml
 batches:
   - name: merge-drops-weft
-    state: running
+    state: approved
     implementer_session: c71b0080-aebc-4d32-ae8d-51b91cf9ad40
     start_sha: 89d72540692795868bde40fb0c612db9ba5f4932
+    commit_sha: f23616d0a60fa83a81ec082007ff4637bb2d5f19
     verify_baseline_failures: []
   - name: cleanup-raddle-gate
     state: pending
