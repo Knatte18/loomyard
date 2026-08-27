@@ -121,6 +121,46 @@ func TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly(t *testin
 	assertSoleGuardReason(t, "MergeIn(does-not-exist-anywhere)", err, "source branch not found")
 }
 
+// TestWeftGuards_EveryRecordThisBinaryWritesIsResumable pins the invariant that made the second,
+// redundant saveMergeState call in MergeIn/Merge worth removing: every merge-state record this
+// binary persists carries a non-empty WeftOutcome from its very first on-disk appearance, so
+// mergeAttemptIncompleteReason — which refuses a MergeContinue resume on an empty outcome — can
+// never fire on a record fabric wrote itself.
+// It asserts the property at the one observable moment: a conflicted MergeIn leaves the record in
+// place, and a MergeContinue over that record must refuse on the conflicts alone, never on
+// mergeReasonAttemptIncomplete.
+func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v; want nil with conflicts reported", err)
+	}
+	if len(res.Conflicts) == 0 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want at least one — the record only survives a conflicted attempt", res.Conflicts)
+	}
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (%+v, %v, %v); want (_, true, nil)", st, found, err)
+	}
+	if st.WeftOutcome != "up_to_date" {
+		t.Errorf("mergeState.WeftOutcome = %q; want %q — the weft is recorded as unmoved from the record's first write, never left empty", st.WeftOutcome, "up_to_date")
+	}
+
+	_, continueErr := f.MergeContinue("")
+	if continueErr == nil {
+		t.Fatal("MergeContinue() error = nil; want a guard refusal — the conflict is still unresolved")
+	}
+	assertSoleGuardReason(t, "MergeContinue() over an unresolved conflicted record", continueErr, "unresolved conflicts remain")
+
+	if _, err := f.MergeAbort(); err != nil {
+		t.Fatalf("MergeAbort() cleanup error = %v", err)
+	}
+}
+
 // TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact covers resetMergeSides' dropped
 // weft arm at MergeAbort: an attempt whose weft gains its own commits during the attempt window
 // (the shape a per-transition status push produces, independent of any merge in progress on the warp

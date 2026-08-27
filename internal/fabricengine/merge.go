@@ -221,21 +221,24 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
 
+	// WeftOutcome is filled in the literal, before the record's FIRST write, not by a second write
+	// straight after it. Both spellings satisfy mergestate.go's "written before any MergeStart call
+	// runs" rule, but writing it twice puts an empty-WeftOutcome record on disk for the duration of
+	// one extra file write — and an empty outcome is precisely what mergeAttemptIncompleteReason
+	// refuses a MergeContinue resume on. A crash in that window would leave an unresumable record
+	// for a state this code never intends to occupy.
 	st := &mergeState{
-		Verb:       "merge-in",
-		Source:     source,
-		Squash:     false,
-		Message:    "",
-		WarpStart:  warpStart,
-		WeftStart:  weftStart,
-		WarpSource: sources.warpSHA,
-		WeftSource: sources.weftSHA,
-		StartedAt:  time.Now(),
+		Verb:        "merge-in",
+		Source:      source,
+		Squash:      false,
+		Message:     "",
+		WarpStart:   warpStart,
+		WeftStart:   weftStart,
+		WarpSource:  sources.warpSHA,
+		WeftSource:  sources.weftSHA,
+		WeftOutcome: mergeOutcomeAlreadyUpToDate,
+		StartedAt:   time.Now(),
 	}
-	if err := f.saveMergeState(st); err != nil {
-		return MergeResult{}, err
-	}
-	st.WeftOutcome = mergeOutcomeAlreadyUpToDate
 	if err := f.saveMergeState(st); err != nil {
 		return MergeResult{}, err
 	}
@@ -441,21 +444,20 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 
 	// Pre-merge SHAs are captured after the sync step, so MergeAbort returns the pair to its synced
 	// state, never undoing a legitimate upstream advance.
+	// WeftOutcome is filled in the literal rather than by a second write — see MergeIn's own comment
+	// on the same line for why the intermediate empty-WeftOutcome record is worth not writing.
 	st := &mergeState{
-		Verb:       "merge",
-		Source:     source,
-		Squash:     opts.Squash,
-		Message:    opts.Message,
-		WarpStart:  warpStart,
-		WeftStart:  weftStart,
-		WarpSource: sources.warpSHA,
-		WeftSource: sources.weftSHA,
-		StartedAt:  time.Now(),
+		Verb:        "merge",
+		Source:      source,
+		Squash:      opts.Squash,
+		Message:     opts.Message,
+		WarpStart:   warpStart,
+		WeftStart:   weftStart,
+		WarpSource:  sources.warpSHA,
+		WeftSource:  sources.weftSHA,
+		WeftOutcome: mergeOutcomeAlreadyUpToDate,
+		StartedAt:   time.Now(),
 	}
-	if err := f.saveMergeState(st); err != nil {
-		return MergeResult{}, err
-	}
-	st.WeftOutcome = mergeOutcomeAlreadyUpToDate
 	if err := f.saveMergeState(st); err != nil {
 		return MergeResult{}, err
 	}
