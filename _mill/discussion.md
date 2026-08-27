@@ -137,8 +137,8 @@ Removing weft from merging entirely dissolves the problem PR #208 tried to work 
 
 - Decision: `CONSTRAINTS.md`'s Durable-vs-Ephemeral State Invariant gains a single rule — weft content is per-branch and is never a merge participant in either direction — with no third category introduced.
 - Rationale: the brief asked for a *tracked-but-merge-local* category because it assumed a per-path rule. There is no per-path rule: the split is structural, so the invariant states one more fact rather than growing a category. The file was trimmed to rules-only — no rationale, no narrative — by `d66cefe5` on `main`, and the addition matches that trimmed voice.
-- Ordering prerequisite: `d66cefe5` is **not** on this branch. Merge `main` in before editing `CONSTRAINTS.md`. This branch still carries the 659-line pre-trim file against `main`'s 259-line one, so editing the copy in place would land the new sentence inside text `main` has already deleted, and the landing merge would then surface a large conflict that has nothing to do with this task.
-- Sequencing caveat for the plan: at the time of writing `d66cefe5` exists only as an unpushed commit on the local `main` worktree — `origin/main` is at `2ac41110`. The plan must confirm it has been pushed before relying on the merge-in, rather than assuming a fetch will find it.
+- Ordering prerequisite, already discharged: `main` was merged into this branch at `60d83a96`, bringing `d66cefe5`. `CONSTRAINTS.md` here is now the 259-line trimmed file, so the addition is written against the shape `main` actually carries. Had the pre-trim 659-line copy been edited instead, the new sentence would have landed inside text `main` had already deleted, and the landing merge would have surfaced a large conflict unrelated to this task.
+- Caveat the plan must check: `d66cefe5` is not on `origin/main` (`2ac41110` at the time of writing) — it reached this branch from the local `main` ref only. Pushing this branch publishes it. If `main` is rebased or the commit is amended before it lands, re-verify the file's shape before editing.
 - Rejected: a third bullet-group category; a separate cross-referencing invariant section; editing this branch's pre-trim copy and letting the merge sort it out.
 
 ## Technical context
@@ -182,8 +182,9 @@ The primary weft branch is protected unconditionally by `primaryWeftBranch` and 
 
 ## Constraints
 
-From `CONSTRAINTS.md` as it stands on `main` after the rules-only trim (`d66cefe5`) — **not** as it stands on this branch, which predates that trim and is still the 659-line rationale-heavy version.
-Merge `main` in before reading or editing the file, and keep additions in the trimmed voice:
+From `CONSTRAINTS.md` as it stands on this branch after the rules-only trim (`d66cefe5`) was merged in — 259 lines, rules only, no rationale and no narrative.
+Keep the addition in that voice.
+Each entry below names the invariant heading verbatim:
 
 - **Durable-vs-Ephemeral State Invariant** — the invariant being extended. `_lyx` holds tracked content only; `.lyx` holds never-tracked content at the mirrored subpath; neither is read from `fabric.yaml`'s `pathspec`.
 - **Fabric Vocabulary Invariant** — warp/weft vocabulary is `fabricengine`-private. No new caller-facing identifier may contain `Weft` or `Warp`: `PushAnchored`, never `PushAnchoredWeft`.
@@ -194,8 +195,13 @@ Merge `main` in before reading or editing the file, and keep additions in the tr
 - **Fabric Destruction Chokepoint Invariant** — branch deletion and worktree removal go through the declared chokepoint; the `Cleanup` change must not route around it.
 - **hubforge Fabric-Fixture Invariant** — every hub fixture is built by `internal/hubforge` through `fabriccli.CloneAndWire`.
 - **gitrepo Client Boundary Invariant** / **gitexec Checked-Call Invariant** — not engaged: this task adds no `gitrepo` method and no checked call.
-- **Documentation Lifecycle** — `CONSTRAINTS.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md` update in the same commit. `manifest/roadmap.md` does **not** move: this is a reopened bug, not a completed or newly added planned item.
+- **Never Force-Add Invariant** — the per-transition commit passes a positive-only pathspec and never reaches for `git add -f`, even when the status path is excluded on the other side.
+- **Mutation Record Invariant** — every mutating result type embeds `MutationRecord`. `PushResult` already does (`internal/fabricengine/weftgit.go:269-271`), so `PushAnchored` returning one satisfies this without a `rec *Mutations` parameter — matching `PushWarpAt`/`PushWarpRebaseFreeAt`, neither of which takes a recorder.
 - **Markdown Link Integrity** — `loom.md`'s `#crash-recovery--resume-on-output-files-not-live-processes` heading is linked from `roadmap.md` and from within `loom.md`; the heading text stays exactly as written.
+
+From the project `CLAUDE.md` and `docs/overview.md` (the trimmed `CONSTRAINTS.md`'s **Documentation Lifecycle** section is now only a pointer to `docs/overview.md#documentation-lifecycle`, so these are not CONSTRAINTS.md rules):
+
+- **Documentation lifecycle** — `CONSTRAINTS.md`, `manifest/designs/loom.md`, `manifest/designs/shed.md` update in the same commit. `manifest/roadmap.md` does **not** move: this is a reopened bug, not a completed or newly added planned item.
 - **Markdown semantic line breaks** — one sentence per line, break at internal independent-clause boundaries, plain newlines only.
 
 Discovered during discussion:
@@ -248,5 +254,5 @@ The closure commits then pushes; a push failure does not surface as an error whi
 - **Q:** Does `CONSTRAINTS.md` gain a third state category? **A:** No. There is no per-path rule to describe, so the existing invariant gains one sentence: weft content is per-branch and never a merge participant.
 - **Q:** Which push primitive does `PushAnchored` use? **A:** `gitrepo.PushRebaseFree`, never `PushCoalesced`. `PushCoalesced`'s rebase-retry rewrites this side's SHAs on a rejected push and invalidates the correspondence index, and it takes a repo-root push lock that would contend with existing push paths on every transition.
 - **Q:** How does the closure detect that a merge is in progress? **A:** A new `fabricengine.MergeStateActive(l)`, consulting `MergeHeadPresent()` and `ConflictedFiles()` on both sides. `Fabric.MergeInProgress` cannot serve — it answers "does fabric have a merge record", is false for foreign merge state, and needs an open `*Fabric`.
-- **Q:** Is this branch's `CONSTRAINTS.md` the file the addition is written against? **A:** No. This branch predates the rules-only trim (`d66cefe5`) and still carries the 659-line version; `main` carries 259 lines. Merging `main` in is an ordered prerequisite of the edit, and the plan must confirm `d66cefe5` has been pushed first — at the time of writing it exists only locally.
+- **Q:** Is this branch's `CONSTRAINTS.md` the file the addition is written against? **A:** It is now. The branch predated the rules-only trim and carried the 659-line version, so `main` was merged in at `60d83a96` and the file here is the 259-line trimmed one. The trim commit `d66cefe5` is not yet on `origin/main`, so pushing this branch publishes it.
 - **Q:** What happens to `mergeState`'s weft fields when weft never merges? **A:** Kept and filled as unmoved. `mergeAttemptIncompleteReason` refuses a resume when `WeftOutcome == ""`, and keeping them leaves the persisted JSON schema compatible in both directions.
