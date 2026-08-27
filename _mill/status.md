@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: weft-local-only-files
 branch: weft-local-only-files
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-27T05:35:03Z'
+discussed  '2026-08-27T07:24:47Z'
 ```
