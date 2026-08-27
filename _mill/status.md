@@ -43,7 +43,9 @@ batches:
     commit_sha: b0bd510aa52878b2d39b6a880eb1aa42d4e506eb
     verify_baseline_failures: []
   - name: shed-commitstatus-seam
-    state: pending
+    state: running
+    implementer_session: e9a6ccbf-189e-4473-8a46-6cf2108c03f8
+    start_sha: 0e4f20b6eddf268064c0b0b0a0132d1708e7d13a
     verify_baseline_failures: []
   - name: weft-guards-drop
     state: pending
