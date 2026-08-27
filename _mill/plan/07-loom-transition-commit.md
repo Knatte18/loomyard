@@ -73,6 +73,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/loomcli/cli.go`
 - **Edits:**
   - `internal/loomcli/wiring.go`
+  - `internal/loomcli/cli.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
