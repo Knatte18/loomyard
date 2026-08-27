@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: weft-local-only-files
 branch: weft-local-only-files
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-pull-non-fatal-weft  '2026-08-27T09:18:53Z'
 approved-push-and-mergestate-probe  '2026-08-27T09:27:23Z'
 approved-loom-transition-commit  '2026-08-27T09:32:17Z'
 holistic-reviewing  '2026-08-27T09:32:51Z'
+holistic-fixing  '2026-08-27T09:37:33Z'
 ```
 
 ## Batches
