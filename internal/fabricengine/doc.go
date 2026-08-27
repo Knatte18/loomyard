@@ -1020,15 +1020,19 @@
 // a refusal there mutates nothing, while a refusal from the sync step can already have
 // fast-forwarded the other side.
 //
-// **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
-// `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
-// asymmetry is what makes this a precondition rather than a curiosity: a conclude-commit landed on a
-// detached HEAD is reachable from no ref and disappears at the next checkout, while the paired
-// repo's half of the same merge — whose own HEAD was on a branch — is already final, and the verb
-// has deleted its own record on the way out, so `MergeAbort` cannot put it back. Refusing before the
-// attempt starts is the only point at which that divergence is still recoverable. This matters in
-// practice because `Fabric.CheckoutDetached`/`RestoreBranch` exist and webster's integration bisect
-// drives them (`internal/websterengine/integration.go`).
+// **The warp checkout must be on a branch.** A merge verb refuses with the guard reason `checkout is
+// not on a branch` while the warp checkout has HEAD pointing straight at a commit. A conclude-commit
+// landed on a detached HEAD is reachable from no ref and disappears at the next checkout, and the
+// verb has already deleted its own record on the way out by the time that is discovered, so
+// `MergeAbort` cannot put it back — refusing before the attempt starts is the only point at which
+// that is still recoverable. This matters in practice because `Fabric.CheckoutDetached`/
+// `RestoreBranch` exist and webster's integration bisect drives them
+// (`internal/websterengine/integration.go`). The weft's own detachment no longer refuses anything: it
+// is not a merge participant, so a detached weft HEAD cannot produce the unreachable-commit shape
+// this precondition exists to prevent, and the guard set that used to evaluate both sides
+// unconditionally — pairDirtyReason, detachedHeadReason, syncedToUpstreamReason, and
+// resolveMergeSources' own refusal arm — now evaluates the warp side alone throughout; the weft has
+// lost its power to block a merge, on top of having already lost its participation in one.
 //
 // **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
 // merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found the warp side already
