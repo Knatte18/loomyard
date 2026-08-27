@@ -33,11 +33,12 @@ import (
 // warns, mid-merge skips -- is drivable in a Tier 1 test from stub closures, with no hub fixture and
 // no git spawn.
 type commitStatusDeps struct {
-	// MergeActive reports whether the weft sibling worktree is mid-merge at the git level.
+	// MergeActive reports whether the fabric sibling worktree that carries the status file is
+	// mid-merge at the git level.
 	MergeActive func() (bool, error)
 	// Commit commits loom's own status file with msg.
 	Commit func(msg string) error
-	// Push pushes the weft sibling's unpushed commits.
+	// Push pushes the fabric sibling worktree's unpushed commits.
 	Push func() error
 }
 
@@ -94,7 +95,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 			return nil
 		}
 		if active {
-			logger.Warn("loomcli: skip status commit, weft is mid-merge", "producer", producer, "state", state)
+			logger.Warn("loomcli: skip status commit, fabric sibling is mid-merge", "producer", producer, "state", state)
 			return nil
 		}
 
