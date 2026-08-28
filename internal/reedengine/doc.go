@@ -45,14 +45,32 @@
 // go. It boots alongside the session/initial pane on both Up and Resume, and
 // Engine.ValidateHeader runs eagerly on every boot path so a bad header
 // template surfaces loud before the pane is ever created, never silently.
-// A header whose keepalive process dies (pane_dead=1) is deliberately kept
-// as an enumerable corpse by reconcile — never killed there — and healed
-// (corpse killed, a fresh header split back in at the physical top) by
-// ensureHeaderPaneLocked on the next Up/Resume; planLayout only ever emits
-// a header cell for a pane actually present in the window, so a stale
-// HeaderPaneID can never put an absent pane's cell into select-layout's
-// string (which a real tmux accepts and misassigns positionally rather
-// than rejecting).
+// The header pane is created by a split-window call that carries the
+// keepalive command (`lyx reed header --blocking`) as its own trailing
+// shell-command argument, rather than by splitting a bare shell and typing
+// the command into it afterwards with send-keys: the pane runs that command
+// directly from birth, so it hosts no interactive shell for anything to echo
+// the launch line into or read ~/.bashrc from. This makes the corpse-and-heal
+// contract below actually work as documented: with the keepalive as the
+// pane's own process, "set-option -g remain-on-exit on" corpses the pane the
+// moment that process dies, where a surviving bash previously kept the pane
+// alive and a dead header was silently mistaken for a working one. Under
+// go test the pane still boots commandless — a bare shell, no split-window
+// trailing argument and no send-keys — because headerLaunchLine
+// (headerpane.go) returns "" whenever the boot decides to suppress the
+// launch, which prevents os.Executable() from re-exec'ing the test binary
+// and running its whole suite recursively; that decision now rides on
+// Engine.suppressHeaderLaunch, an unexported field New initialises from
+// testing.Testing(), rather than a testing.Testing() call hard-wired at the
+// boot site. A header whose keepalive process dies (pane_dead=1) is
+// deliberately kept as an enumerable corpse by reconcile — never killed
+// there — and healed (corpse killed, a fresh header split back in at the
+// physical top, carrying the same launch command on both the first attempt
+// and any even-vertical-retile retry) by ensureHeaderPaneLocked on the next
+// Up/Resume; planLayout only ever emits a header cell for a pane actually
+// present in the window, so a stale HeaderPaneID can never put an absent
+// pane's cell into select-layout's string (which a real tmux accepts and
+// misassigns positionally rather than rejecting).
 //
 // The live-geometry rule: the render box a layout is computed against is no
 // longer the config-pinned Width/Height. planLayout (apply.go) is always
