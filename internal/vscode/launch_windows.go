@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -17,7 +18,9 @@ func Launch(worktreeDir string) error {
 
 	proc.HideWindow(cmd)
 
+	logger.Info("vscode: spawning VS Code launch", "worktreeDir", worktreeDir)
 	if err := cmd.Start(); err != nil {
+		logger.Warn("vscode: VS Code launch spawn failed", "worktreeDir", worktreeDir, "cause", err)
 		return fmt.Errorf("launch code: %w", err)
 	}
 

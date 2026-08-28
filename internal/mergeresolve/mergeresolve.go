@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -98,6 +99,9 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 		if runResult.Outcome != shuttleengine.OutcomeDone {
 			// asking, died, timeout, or any outcome this package does not recognize: consult
 			// cancelErr first, then abort and report stuck; the conclude call is never reached.
+			// The Warn line lands before abortAndStuck so the diagnostic survives even when
+			// MergeAbort itself fails.
+			logger.Warn("mergeresolve: non-done conflict session outcome", "outcome", runResult.Outcome, "attempt", attempt, "sessionID", runResult.SessionID, "runDir", runResult.RunDir)
 			return r.abortAndStuck(ctx, fmt.Sprintf("conflict session outcome %q (attempt %d)", runResult.Outcome, attempt))
 		}
 
