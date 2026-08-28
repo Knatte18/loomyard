@@ -20,6 +20,9 @@ type Shell interface {
 	// WithEnv returns cmd prefixed with key=value set for execution.
 	// The implementations diverge in scope: POSIX command-scoped vs. pwsh session-wide (acceptable for per-run panes).
 	WithEnv(key, value, cmd string) string
+	// Touch returns the shell syntax that creates path as an empty file, truncating it if it
+	// already exists.
+	Touch(path string) string
 }
 
 // ForGOOS returns the Shell implementation for the current host (pwsh on Windows, posix elsewhere).

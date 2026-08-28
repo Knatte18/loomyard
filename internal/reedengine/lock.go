@@ -131,6 +131,63 @@ func (e *Engine) withOpLock(fn func() error) error {
 	return opErr
 }
 
+// withTryOpLock acquires the operation lock without blocking, runs fn while holding it if acquired,
+// and releases it before returning.
+//
+// A lock held by someone else is a DEFERRAL, not a failure: it is reported as (false, nil) with no
+// error, and fn is never called. The watcher needs this rather than withOpLock because
+// lock.AcquireWriteLock blocks with no timeout — this repo's own R5 measurement (opLockCompromisedError
+// above) records a second `lyx reed status` blocking for 11027ms behind a held lock, a state the
+// watcher's per-event retry contract cannot describe. Deferring is correct on the merits too, not just
+// convenient: whatever holds the lock is another reed op, and every reed op ends by re-applying the
+// layout itself, so the watcher's own re-apply would be redundant even if it could wait for its turn.
+//
+// It keeps both told-geometry pre-flight validations and the post-op lock-compromise check that
+// withOpLock runs, because those are the reason withOpLock is a chokepoint rather than a bare lock
+// acquisition — a non-blocking sibling that skipped them would let an unusable identity or a
+// compromised lock pass silently through the one caller most likely to run unattended.
+func (e *Engine) withTryOpLock(fn func() error) (acquired bool, err error) {
+	if err := validateToldTmuxIdentity(e.geom); err != nil {
+		return false, err
+	}
+	if err := validateToldAnchorPath(e.geom); err != nil {
+		return false, err
+	}
+
+	dotLyx := e.stateDir()
+	if err := os.MkdirAll(dotLyx, 0o755); err != nil {
+		return false, fmt.Errorf("create %s: %w", dotLyx, err)
+	}
+
+	lockPath := filepath.Join(dotLyx, reedLockFileName)
+	l, locked, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		return false, fmt.Errorf("try acquire reed op lock: %w", err)
+	}
+	if !locked {
+		return false, nil
+	}
+	defer l.Release()
+
+	heldLockFile, heldErr := os.Stat(lockPath)
+	if heldErr != nil {
+		logger.Debug("reed: could not identify the op lock file, skipping the post-op exclusion check",
+			"socket", e.Socket(), "lock", lockPath, "err", heldErr)
+	}
+
+	opErr := fn()
+	if heldErr != nil {
+		return true, opErr
+	}
+	if lockErr := opLockCompromisedError(lockPath, heldLockFile); lockErr != nil {
+		if opErr != nil {
+			return true, fmt.Errorf("%w — and the operation itself failed: %w", lockErr, opErr)
+		}
+		return true, lockErr
+	}
+	return true, opErr
+}
+
 // opLockCompromisedError reports an error when the file this op's lock was held on is no longer the
 // file at lockPath — meaning the exclusion the lock was supposed to provide did not hold for the
 // duration of the operation.

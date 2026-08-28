@@ -13,12 +13,16 @@
 package reedcli
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +32,14 @@ func blockForever() {
 		time.Sleep(time.Hour)
 	}
 }
+
+// headerWatch is the resize self-heal loop the blocking tail enters after painting
+// the header text. A package var so header_test.go can substitute a fake that
+// returns, and assert the tail still reaches headerPark.
+var headerWatch = func(ctx context.Context, eng *reedengine.Engine) error { return eng.Watch(ctx) }
+
+// headerPark is the keepalive park the blocking tail ends on, unconditionally.
+var headerPark = blockForever
 
 // headerBlockingPayload returns the exact bytes the --blocking mode writes to the pane before it
 // blocks forever: an ED 2 + ED 3 + cursor-home escape sequence, followed by text with its trailing
@@ -65,6 +77,10 @@ directly as the pane's command rather than typed into a shell that
 would survive it, and the one part of this command exempt from the
 JSON envelope (everything fallible still runs pre-flight, on the
 envelope).
+The blocking pane additionally runs reed's resize self-heal watch loop,
+which re-applies the planned layout after the terminal window is
+resized, and is turned off with "watchdog: off" in reed.yaml followed
+by "lyx reed down" + "up".
 
 The live header pane renders its text once, at pane launch: after editing
 header.template in reed.yaml, this verb previews the new rendering
@@ -93,7 +109,32 @@ Example:
 			if blocking {
 				// Display the rendered text once, then hold the pane open forever.
 				fmt.Fprint(out, headerBlockingPayload(text))
-				blockForever()
+
+				// The header pane's stdout/stderr is its visible screen: internal/logger's stderr half
+				// defaults to slog.LevelWarn, and the watch loop reaches already-shipped Warn call sites
+				// (liveBoxLocked on a failed or malformed window-size query, pinGeometryOptionsLocked on a
+				// failed pin), so without this rebind the first degraded tmux round trip paints a slog
+				// line over the operator console. Only the stderr half is discarded -- logger.SetOutput
+				// rebinds that half alone, and the durable handler is enabled unconditionally at Info and
+				// above, so nothing is lost for diagnosis, it just stops being drawn.
+				logger.SetOutput(io.Discard)
+
+				// A non-nil return is logged only: never output.Err, never fmt.Fprint, never anything
+				// written to stdout or stderr, because the pane's stdio is its screen.
+				if err := headerWatch(cmd.Context(), c.eng); err != nil {
+					logger.Warn("reed: header pane watch loop returned", "err", err)
+				}
+
+				// Deliberate redundancy, not dead code: Watch never returns while the pane must live, and
+				// this guarantees that no future edit to Watch can make RunE fall through and kill the
+				// keepalive pane -- the one failure this design must never permit.
+				headerPark()
+
+				// headerPark() itself must never return (it blocks forever), but if it ever does --
+				// e.g. under test via a substitutable stub -- this return prevents falling through to
+				// the unconditional output.Ok write below, which would leak a JSON envelope onto the
+				// pane's own screen in violation of the "pane's stdio is its screen" invariant above.
+				return nil
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{

@@ -28,6 +28,8 @@ type Config struct {
 
 	Mouse string `yaml:"mouse"`
 
+	Watchdog string `yaml:"watchdog"`
+
 	Header HeaderConfig `yaml:"header"`
 }
 

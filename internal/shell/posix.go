@@ -30,3 +30,9 @@ func (p posixShell) ReadFile(path string) string {
 func (p posixShell) WithEnv(key, value, cmd string) string {
 	return key + "=" + p.Quote(value) + " " + cmd
 }
+
+// Touch returns the POSIX `: > <quoted path>` idiom: the `:` no-op builtin plus an output
+// redirection, so the fragment creates or truncates path without spawning any process.
+func (p posixShell) Touch(path string) string {
+	return ": > " + p.Quote(path)
+}

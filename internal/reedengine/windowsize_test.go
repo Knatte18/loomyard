@@ -7,6 +7,9 @@ package reedengine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -48,12 +51,13 @@ func TestLiveBoxLocked(t *testing.T) {
 		err    error
 		wantW  int
 		wantH  int
+		wantOK bool
 	}{
-		{"WellFormedLivePair", "220 50", nil, 220, 50},
-		{"Garbage", "abc def", nil, 999, 111},
-		{"Empty", "", nil, 999, 111},
-		{"NonPositiveDimension", "220 0", nil, 999, 111},
-		{"RoundTripError", "", errors.New("boom"), 999, 111},
+		{"WellFormedLivePair", "220 50", nil, 220, 50, true},
+		{"Garbage", "abc def", nil, 999, 111, false},
+		{"Empty", "", nil, 999, 111, false},
+		{"NonPositiveDimension", "220 0", nil, 999, 111, false},
+		{"RoundTripError", "", errors.New("boom"), 999, 111, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -68,10 +72,10 @@ func TestLiveBoxLocked(t *testing.T) {
 				return "", nil
 			}
 
-			got := e.liveBoxLocked()
+			got, ok := e.liveBoxLocked()
 			want := render.Box{X: 0, Y: 0, W: tt.wantW, H: tt.wantH}
-			if got != want {
-				t.Errorf("liveBoxLocked() = %+v, want %+v", got, want)
+			if got != want || ok != tt.wantOK {
+				t.Errorf("liveBoxLocked() = (%+v, %v), want (%+v, %v)", got, ok, want, tt.wantOK)
 			}
 		})
 	}
@@ -235,6 +239,137 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPinGeometryOptionsLocked_HookLifecycle covers the window-resized hook install/unset lifecycle
+// pinGeometryOptionsLocked now owns, alongside the two pre-existing geometry pins.
+func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
+	t.Run("WatchdogOnPinsGeometryOptionsOnly", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "on"
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, append([]string{}, args...))
+			return "", nil
+		}
+
+		e.pinGeometryOptionsLocked()
+
+		// With the new resize-pin mechanism, pinGeometryOptionsLocked no longer installs the
+		// window-resized hook — that is now the job of installResizePinsLocked, called from
+		// apply.go and attach.go. This function only pins the geometry options.
+		var hookCall []string
+		for _, c := range calls {
+			if c[0] == "set-hook" {
+				hookCall = c
+			}
+		}
+		if hookCall != nil {
+			t.Fatalf("pinGeometryOptionsLocked calls = %v, want no set-hook call (hook installation moved to installResizePinsLocked)", calls)
+		}
+		// Verify that geometry options were pinned instead.
+		var setOptionCalls int
+		for _, c := range calls {
+			if c[0] == "set-option" {
+				setOptionCalls++
+			}
+		}
+		if setOptionCalls != 2 {
+			t.Errorf("pinGeometryOptionsLocked calls = %v, want 2 set-option calls (status and window-size)", calls)
+		}
+	})
+
+	t.Run("WatchdogOffUnsetsHookAndRemovesSignalFile", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "off"
+		signalPath := e.resizeSignalPath()
+		if err := os.MkdirAll(filepath.Dir(signalPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, append([]string{}, args...))
+			return "", nil
+		}
+
+		e.pinGeometryOptionsLocked()
+
+		wantTarget := exactSessionWindowTarget(e.SessionName())
+		want := []string{"set-hook", "-u", "-t", wantTarget, windowResizedHookName}
+		var hookCall []string
+		for _, c := range calls {
+			if c[0] == "set-hook" {
+				hookCall = c
+			}
+		}
+		if hookCall == nil {
+			t.Fatalf("pinGeometryOptionsLocked calls = %v, want a set-hook -u call", calls)
+		}
+		if len(hookCall) != len(want) {
+			t.Fatalf("set-hook argv = %v, want %v", hookCall, want)
+		}
+		for i := range want {
+			if hookCall[i] != want[i] {
+				t.Errorf("set-hook argv[%d] = %q, want %q (full argv %v)", i, hookCall[i], want[i], hookCall)
+			}
+		}
+		if _, err := os.Stat(signalPath); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("signal file stat err = %v, want fs.ErrNotExist (file should be removed)", err)
+		}
+	})
+
+	t.Run("InvalidWatchdogBehavesLikeOff", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "bogus"
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			return "", nil
+		}
+		// Must not panic and pinGeometryOptionsLocked returns nothing, so simply calling it and
+		// returning normally is the assertion.
+		e.pinGeometryOptionsLocked()
+	})
+
+	t.Run("SetHookErrorIsNonFatalWhenWatchdogOff", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "off"
+		var setOptionCalls int
+		var setHookErrors int
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			if args[0] == "set-option" {
+				setOptionCalls++
+				return "", nil
+			}
+			if args[0] == "set-hook" {
+				setHookErrors++
+				return "", errors.New("boom")
+			}
+			return "", nil
+		}
+
+		e.pinGeometryOptionsLocked()
+
+		if setOptionCalls != 2 {
+			t.Errorf("set-option calls = %d, want 2 (both preceding pins still attempted despite later set-hook error)", setOptionCalls)
+		}
+		if setHookErrors != 1 {
+			t.Errorf("set-hook errors = %d, want 1", setHookErrors)
+		}
+	})
+
+	t.Run("RemovingAnAbsentSignalFileIsSilent", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "off"
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			return "", nil
+		}
+		// The signal file's parent dir may not even exist yet; removeResizeSignalFileLocked must not
+		// panic or log anything above Warn-worthy for a genuinely absent file.
+		e.pinGeometryOptionsLocked()
+	})
 }
 
 // containsArg reports whether want appears verbatim anywhere in args.

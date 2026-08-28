@@ -29,3 +29,12 @@ func (p pwshShell) ReadFile(path string) string {
 func (p pwshShell) WithEnv(key, value, cmd string) string {
 	return "$env:" + key + " = " + p.Quote(value) + "; " + cmd
 }
+
+// Touch returns the `New-Item -ItemType File -Force -Path <quoted path> | Out-Null` idiom.
+// `-Force` is what makes an existing file be truncated rather than an error, and `| Out-Null`
+// suppresses the `FileInfo` object pwsh would otherwise emit.
+// Only the POSIX dialect is executed in practice today (see reedengine's resizeHookCommand,
+// which runs through tmux's `run-shell` on GOOS-selected pane shells).
+func (p pwshShell) Touch(path string) string {
+	return "New-Item -ItemType File -Force -Path " + p.Quote(path) + " | Out-Null"
+}

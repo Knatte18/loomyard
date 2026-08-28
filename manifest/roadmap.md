@@ -29,10 +29,9 @@ No build order is implied between these items.
 
 1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree.
 
-1. **reed: watchdog daemon** — a standalone per-worktree daemon that self-heals what `reed` today only notices reactively, on its next invocation: reaps a stray/operator-split pane automatically (event-driven tmux hooks preferred over polling, gated by a policy that distinguishes a bug-induced pane from an intentional scratch pane; prerequisite — cheapen the reap probe first, today it spawns a fresh pwsh + full `Win32_Process` WMI enumeration per poll), and re-renders reed's full layout policy after a live terminal resize.
-   A `window-resized` + `resize-pane` hook reaction is now SHIPPED and holds every fixed-height pane — the header band and each collapsed strip — at its budget across a live resize.
-   What remains for the daemon is re-rendering reed's FULL layout policy after a resize — the equal strand split with the remainder to the active pane, which tmux's round-robin redistribution leaves slightly uneven — since that needs an actor outside tmux, which a hook with no `run-shell` deliberately is not.
-   A shared daemon that already needs event-driven tmux hooks for the pane-reap job pays for that hook infrastructure and psmux verification once, not per job.
+1. **reed: watchdog daemon** — a watch loop hosted inside the existing per-worktree header pane, driven by a session-scoped `window-resized` tmux hook that touches a signal file, with a slow poll fallback where the hook cannot be verified to install (Windows/psmux), a trailing-edge debounce, and a `watchdog: on|off` key in `reed.yaml`.
+   The resize-geometry reconcile half is done: a resize while already attached now re-applies the planned layout, with no `lyx reed` op needed.
+   The pane-reap half remains, together with its stated prerequisite — cheapening the reap probe, today a fresh pwsh plus full `Win32_Process` WMI enumeration per poll — and its real open question is the policy distinguishing a bug-induced pane from an intentional scratch pane, which is unwritten.
    The self-heal core is worth building on its own merits, independent of the Slack-relay item below.
 
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
