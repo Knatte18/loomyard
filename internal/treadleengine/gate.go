@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // gateWaitDelay bounds Wait's read after the command exits.
@@ -28,25 +30,33 @@ func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, 
 	cmd.Dir = dir
 	cmd.WaitDelay = gateWaitDelay
 
+	logger.Info("treadleengine: spawning gate command", "argv", argv, "dir", dir, "timeout", timeout)
+	start := time.Now()
 	output, err := cmd.CombinedOutput()
 	if err == nil {
+		logger.Info("treadleengine: gate command exited", "argv", argv, "dir", dir, "exitZero", true, "durationMs", time.Since(start).Milliseconds())
 		return output, true, nil
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
+		logger.Info("treadleengine: gate command exited", "argv", argv, "dir", dir, "exitZero", false, "durationMs", time.Since(start).Milliseconds(), "timedOut", true)
 		note := fmt.Sprintf("\n(gate command timed out after %s and was killed)\n", timeout)
 		return append(output, []byte(note)...), false, nil
 	}
 
 	if errors.Is(err, exec.ErrWaitDelay) {
-		return output, cmd.ProcessState.Success(), nil
+		exitZero := cmd.ProcessState.Success()
+		logger.Info("treadleengine: gate command exited", "argv", argv, "dir", dir, "exitZero", exitZero, "durationMs", time.Since(start).Milliseconds())
+		return output, exitZero, nil
 	}
 
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
+		logger.Info("treadleengine: gate command exited", "argv", argv, "dir", dir, "exitZero", false, "durationMs", time.Since(start).Milliseconds())
 		return output, false, nil
 	}
 
+	logger.Warn("treadleengine: gate command failed to start", "argv", argv, "dir", dir, "durationMs", time.Since(start).Milliseconds(), "cause", err)
 	return nil, false, fmt.Errorf("gate command %v failed to start: %w", argv, err)
 }
 
