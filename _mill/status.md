@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: _mill/plan
@@ -26,4 +26,19 @@ plan-review-r1  '2026-08-28T06:23:59Z'
 plan-fix-r1  '2026-08-28T06:26:18Z'
 plan-review-r2  '2026-08-28T06:32:14Z'
 planned  '2026-08-28T06:32:35Z'
+implementing  '2026-08-28T06:33:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: summaryparser-leaf
+    state: pending
+  - name: retarget-callers
+    state: pending
+  - name: finalize-message
+    state: pending
+  - name: docs-and-specs
+    state: pending
 ```
