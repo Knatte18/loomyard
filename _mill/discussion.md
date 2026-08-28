@@ -35,6 +35,12 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
 - `internal/reedcli/smoke_panecwd_test.go` — see the affected-test enumeration below.
 - `internal/reedcli/smoke_lifecycle_test.go` — `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` and `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`, plus the two new regressions.
 - `internal/reedcli/smoke_teardown_test.go` — comment only (see enumeration).
+- **`planPaneTarget`'s no-panes error string**, currently `"session has no panes to adopt or split"` (`spawn.go:41`), becomes `"session has no panes to split"`.
+  It is a live operator-facing string, not a comment, and it is quoted verbatim in two places that must move with it: `internal/reedcli/smoke_lifecycle_test.go` (~line 217) and `tools/sandbox/SANDBOX-REED-SUITE.md` (~line 285).
+- `tools/sandbox/SANDBOX-REED-SUITE.md` — the **M16** and **M22** scenario specs.
+  Both assert the pre-fix behaviour and are the documents these two findings were graded against, so leaving them unchanged would make the next sandbox pass re-report the fixed behaviour as a regression.
+  M16's *Watch* says the foreign pane is reaped "after that add" — it is now reaped one verb earlier, on the follow-up `up`, and the surviving requirement is that `up` must still never wipe the pane set.
+  M22's *Watch* expects the rebuilt header "at the very top of the window with the strand stack below it" — after this change the orphaned strand pane is reaped along with the old header, so the correct expectation is the header alone, and the `FAIL` conditions must be restated accordingly.
 - Unit tests in `internal/reedengine/reconcile_test.go` and `internal/reedengine/spawn_test.go`.
 - Real-tmux smoke regressions in `internal/reedcli/smoke_lifecycle_test.go` for both M16 and M22.
 
@@ -143,7 +149,7 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
 
 ### no-new-CONSTRAINTS-entry
 
-- Decision: document the tightened rule in `internal/reedengine/doc.go` only.
+- Decision: document the tightened rule in `internal/reedengine/doc.go`, and restate the M16 and M22 scenario specs in `tools/sandbox/SANDBOX-REED-SUITE.md` to the post-fix expectations (see Scope → In).
   No new `CONSTRAINTS.md` invariant, no `docs/overview.md` change, no `manifest/roadmap.md` move.
 - Rationale: "every pane in a reed session is either the header or a bound strand's pane" is a module-internal invariant enforced inside one package, not a cross-cutting structural form other modules must take — which is what `CONSTRAINTS.md` is for.
   `docs/overview.md`'s module table and execution stack are unchanged.
@@ -262,6 +268,12 @@ Scenarios to cover:
 Assert that a reconcile which kills untracked panes emits an `Info` line naming those pane ids, and that a reconcile which kills nothing emits none.
 Keep this to one focused test — the point is that the destructive path is observable, not that the log's exact wording is pinned.
 
+**Unit — the reap-before-allocate ordering (untagged, `execHook` fake):**
+
+The chokepoint is this task's central structural fix and must not be pinned by the smoke tier alone — a smoke test proves the outcome on one backend, not the ordering, and it does not run on every `go test`.
+`newTestEngine`'s `e.tmux.execHook` fake (see `lifecycle_test.go`, which already drives `list-panes` and `split-window` deterministically and captures `splitArgs`) is enough to assert the ordering directly: record the sequence of tmux verbs `launchStrandLocked` issues against a fixture with an alive header, zero bound strands, and one untracked alive pane, then assert `kill-pane` for the untracked pane precedes `split-window`, that a second `list-panes` separates them (the kill → re-enumerate → plan → apply ordering the existing tail already treats as load-bearing), and that the `split-window` target is not the reaped pane's id.
+Add a companion case with nothing to reap, asserting no `kill-pane` is issued and no redundant re-enumeration happens.
+
 **Unit — `internal/reedengine/spawn_test.go` (untagged, pure):**
 
 - `planPaneTarget` never returns an adopt id, for every input shape the old adoption branch used to catch (sole alive non-header pane, zero strands bound).
@@ -302,6 +314,10 @@ Dispositions:
   What the test exists to pin — the header is never adopted and stays alive across `up`/`add`/`remove`/reconcile — is unchanged and must stay asserted.
 - `internal/reedcli/smoke_teardown_test.go` (~line 216, *"Keeper first (adopts the initial pane)"*) — **in scope, comment only.**
   The test's mechanics do not depend on which pane the keeper strand got; only the parenthetical is now false.
+- `internal/reedcli/smoke_lifecycle_test.go`'s `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` (~lines 138-167, psmux/Windows-only, skipped on tmux) — **in scope, comment and skip-message only.**
+  Its whole framing is *"the old adopt path bound the next strand to that corpse"*, and its skip string says the remove "never reaches an 'adopt a corpse or not' decision".
+  The mechanics still hold with adoption gone — the sole pane is corpsed by `kill-pane`, the corpse is not the header, and the next `add` splits rather than adopting — so what the test asserts (the new strand is live and stays live across the next reconciling verb) is unchanged and must stay asserted.
+  Only the adoption framing is rewritten.
 - `internal/reedengine/lifecycle_test.go` (~line 388, *"the new-session initial pane a fresh …"*) — **read and confirm, likely out.**
   It describes a fixture's pane set rather than asserting adoption; correct the wording only if it claims the initial pane is adopted or survives.
 - `internal/reedcli/smoke_resume_test.go` (~line 85) and `internal/reedengine/contract_integration_test.go` — **out.**
