@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: reed-attach-header-height-bug
 branch: reed-attach-header-height-bug
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussion-fix-r3  '2026-08-28T08:19:32Z'
 discussion-fix-r5  '2026-08-28T08:27:46Z'
 discussed  '2026-08-28T08:27:46Z'
 planning  '2026-08-28T08:34:45Z'
+plan-review-r1  '2026-08-28T08:44:06Z'
 ```
