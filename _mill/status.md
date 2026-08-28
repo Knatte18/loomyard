@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-review-r4
 slug: reed-watchdog-daemon
 branch: reed-watchdog-daemon
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-review-r2  '2026-08-28T10:08:32Z'
 plan-fix-r2  '2026-08-28T10:11:45Z'
 plan-review-r3  '2026-08-28T10:18:44Z'
 plan-fix-r3  '2026-08-28T10:19:16Z'
+plan-review-r4  '2026-08-28T10:30:30Z'
 ```
