@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: _mill/plan
@@ -24,4 +24,5 @@ discussed  '2026-08-28T06:07:46Z'
 planning  '2026-08-28T06:15:11Z'
 plan-review-r1  '2026-08-28T06:23:59Z'
 plan-fix-r1  '2026-08-28T06:26:18Z'
+plan-review-r2  '2026-08-28T06:32:14Z'
 ```
