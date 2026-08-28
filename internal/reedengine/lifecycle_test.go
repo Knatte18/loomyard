@@ -44,6 +44,59 @@ func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
 	}
 }
 
+// TestUp_InvalidWatchdogFailsBeforeAnyTmuxContact pins the boot-path watchdog validation this batch
+// adds: an invalid Config.Watchdog fails ensureServerAndSessionLocked (and therefore Up) with an
+// error naming the offending value, before any tmux round trip — following
+// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact's shape, the file's existing sibling validation
+// test for debug_log/mouse/header.
+func TestUp_InvalidWatchdogFailsBeforeAnyTmuxContact(t *testing.T) {
+	invalid := []string{"", "1", "yes"}
+	for _, watchdog := range invalid {
+		t.Run("Invalid_"+watchdog, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.cfg.DebugLog = "0"
+			e.cfg.Mouse = "off"
+			e.cfg.Watchdog = watchdog
+
+			var calls [][]string
+			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+				calls = append(calls, append([]string{}, args...))
+				return "", nil
+			}
+
+			_, err := e.Up()
+			if err == nil {
+				t.Fatal("Up() with an invalid watchdog value = nil error, want the eager validation error")
+			}
+			if !strings.Contains(err.Error(), "invalid watchdog value") {
+				t.Errorf("Up() error = %q, want it to name the invalid watchdog value", err)
+			}
+			if len(calls) != 0 {
+				t.Errorf("Up() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
+			}
+		})
+	}
+}
+
+// TestUp_ValidWatchdogValuesPassTheBootCheck pins the negative case: "on" and "off" do not trip the
+// watchdog validation (the fixture's nonexistent tmux binary is expected to fail Up() past this
+// point, so the assertion is only that the error is NOT the watchdog validation error).
+func TestUp_ValidWatchdogValuesPassTheBootCheck(t *testing.T) {
+	for _, watchdog := range []string{"on", "off"} {
+		t.Run(watchdog, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.cfg.DebugLog = "0"
+			e.cfg.Mouse = "off"
+			e.cfg.Watchdog = watchdog
+
+			_, err := e.Up()
+			if err != nil && strings.Contains(err.Error(), "invalid watchdog value") {
+				t.Errorf("Up() error = %q, want the watchdog check to pass for %q", err, watchdog)
+			}
+		})
+	}
+}
+
 // TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped before the tmux server
 // inherits the boot env (long-lived singleton).
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
