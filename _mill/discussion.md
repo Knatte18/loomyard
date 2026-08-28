@@ -75,6 +75,12 @@ The second half is a plain gap rather than a design problem: `Finalize` builds i
 - Rationale: git's subject / blank line / body convention. `Summary.Body` is already the artifact's remaining lines verbatim, so an appended `## Integration suite failed` section rides along into the landing commit exactly as it already rides into the PR body. Putting the join behind a method means it is tested once and a future Tenter inherits it.
 - Rejected: title only (discards the narrative that is the artifact's entire reason for existing); the file's raw bytes including the `# ` heading (a leading `# ` line is a comment to git's own message handling in some paths and reads wrong in `git log`); explicit `Subject`/`Body` fields on `fabricengine.MergeOptions` (a wider change touching the existing `Message` field, its precedence chain, and the persisted merge-state record, for no gain at one call site); inlining the join in `Finalize.Call`.
 
+### commitmessage-body-trim
+
+- Decision: `CommitMessage` trims leading whitespace from `Body` before joining, and returns the bare `Title` with no trailing blank line when `Body` is empty or whitespace-only. Written out, the exact output is: `Title` when `strings.TrimSpace(Body) == ""`, otherwise `Title + "\n\n" + strings.TrimLeft(Body, " \t\r\n")`. Trailing whitespace is left alone — git strips it from a commit message itself, so trimming it here would be a second implementation of a normalization that already happens.
+- Rationale: `Parse` sets `Body` to `strings.Join(lines[headingIdx+1:], "\n")`, so a conventionally formatted artifact — `# Title`, blank line, prose — yields a `Body` whose first character is `\n`. Without the trim, `CommitMessage` emits `Title\n\n\nprose`: a subject, then two blank lines, which reads as a malformed message in `git log` and is not the git subject/blank/body convention this composition exists to follow. Trimming inside `CommitMessage` rather than inside `Parse` is what keeps `Publish`'s PR body byte-identical to today.
+- Rejected: no trim at all (emits the double blank line described above); trimming inside `Parse` instead, which would silently change the PR body `Publish` has produced since the artifact shipped and is explicitly out of scope; trimming both ends, which duplicates git's own trailing-whitespace normalization.
+
 ### finalize-parse-fails-loud
 
 - Decision: a missing or malformed artifact at `Finalize` time is a hard error returned from `Call` — never `Stuck`, never a silent fallback to an unset `Message`.
@@ -158,7 +164,7 @@ The single `mergeOpts` value is reused by the step-5 retry, so no second assignm
 - `internal/shedengine` persists a producer's `OutputPointer.Path` into status history (`run.go:158`), so `finalize.go`'s header comment claiming the pointer is one "nobody persists" is inaccurate. This task does not depend on the pointer either way; do not correct that comment as a drive-by unless the change touches those lines anyway.
 - `websterengine` sits in the Told-Geometry Invariant's bound-package list, as does `landingshed`. The new leaf takes a told directory or a told path in every exported function and resolves nothing.
 - `hubgeom.WebsterDir`/`standalonegeom.WebsterDir` (`websterengine.Dir(...)`) are unchanged — the directory contract is untouched.
-- `Summary.Body` retains its leading newline when the artifact has a blank line after the heading, so `CommitMessage()` on a conventionally-formatted artifact yields `Title` + `\n\n` + `\n` + prose. Decide in the plan whether `CommitMessage` trims leading whitespace from `Body`; do not change `Parse`'s own `Body` semantics, which `Publish` already relies on for the PR body.
+- `Summary.Body` retains its leading newline when the artifact has a blank line after the heading, which is why `CommitMessage` trims leading whitespace from `Body` rather than joining it raw. The exact rule is settled in the **commitmessage-body-trim** Decision above and is not a plan-time choice. `Parse`'s own `Body` semantics are unchanged, because `Publish` relies on them for the PR body.
 
 ## Constraints
 
@@ -185,7 +191,7 @@ All Tier 1, untagged.
 
 - A table-driven `Parse` suite, moved from `internal/websterengine/summary_test.go` and re-pointed at the new package with the `summaryparser:` prefix. Scenarios that must be covered, each already exercised today: missing file; whitespace-only file; a first non-blank line that is not a `# ` heading; a `# ` heading with an empty title; leading blank lines before the heading; and a valid artifact whose `Body` is the remaining lines verbatim.
 - `Path` returns the told directory joined with the filename constant.
-- `CommitMessage` returns the title, a blank line, and the body — including the case where `Body` is empty, and the case where `Body` carries an appended `## Integration suite failed` section, which must survive into the message intact.
+- `CommitMessage` returns the title, a blank line, and the trimmed body, per the **commitmessage-body-trim** Decision. Cases that must be covered: a conventionally formatted artifact whose `Body` starts with a newline, asserting exactly one blank line between subject and body; a `Body` that is empty, and one that is whitespace-only, both yielding the bare title with no trailing blank line; a `Body` with no leading blank line at all, unchanged by the trim; trailing whitespace left in place; and a `Body` carrying an appended `## Integration suite failed` section, which must survive into the message intact.
 - `leaf_enforcement_test.go`, copied from `internal/discussionparser`, asserting the empty allowlist.
 
 **`internal/landingshed`.**

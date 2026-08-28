@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-27T19:26:46Z'
+discussion-fix-r1  '2026-08-28T05:47:31Z'
 ```
