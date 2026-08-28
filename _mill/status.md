@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-finalize-message  '2026-08-28T06:48:52Z'
 approved-docs-and-specs  '2026-08-28T06:55:51Z'
 holistic-reviewing  '2026-08-28T06:56:14Z'
 holistic-approved  '2026-08-28T06:58:48Z'
+done  '2026-08-28T07:00:18Z'
 ```
 
 ## Batches
