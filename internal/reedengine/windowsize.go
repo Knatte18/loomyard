@@ -8,6 +8,7 @@
 package reedengine
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -121,4 +122,63 @@ func (e *Engine) readWindowSizeLatestLocked() bool {
 		return false
 	}
 	return windowSizeAllowsChain(out)
+}
+
+// resizePinHookArgvs returns the full argv sequence rebuilding session's `window-resized` window-hook
+// array for pins. It performs no I/O and no logging.
+//
+// The first returned argv is always the clear — {"set-hook", "-u", "-w", "-t",
+// exactSessionWindowTarget(session), "window-resized"} — emitted even when pins is empty, per the
+// Shared Decision the-clear-is-unconditional-including-zero-pins. Then one argv per pin, in pins
+// order: {"set-hook", "-w", "-t", exactSessionWindowTarget(session), "window-resized", body} for the
+// first pin and {"set-hook", "-a", "-w", "-t", exactSessionWindowTarget(session), "window-resized",
+// body} for every subsequent pin, where body is the single string "resize-pane -t <pane> -y
+// <height>".
+//
+// The body is one whole argv element; this function never emits a bare ";" element, because
+// set-hook takes its body as a single argument and a separate ";" element would terminate the
+// set-hook command itself. The array encoding — rather than one ";"-separated command string — exists
+// for failure isolation: verified live on tmux 3.6, a resize-pane naming a destroyed pane aborts the
+// rest of a single command list, while array entries are independent. The header is always pin index
+// 0 so it fires before any strip pin can go wrong.
+func resizePinHookArgvs(session string, pins []render.Pin) [][]string {
+	target := exactSessionWindowTarget(session)
+	argvs := make([][]string, 0, len(pins)+1)
+	argvs = append(argvs, []string{"set-hook", "-u", "-w", "-t", target, "window-resized"})
+	for i, pin := range pins {
+		body := fmt.Sprintf("resize-pane -t %s -y %d", pin.PaneID, pin.Height)
+		if i == 0 {
+			argvs = append(argvs, []string{"set-hook", "-w", "-t", target, "window-resized", body})
+		} else {
+			argvs = append(argvs, []string{"set-hook", "-a", "-w", "-t", target, "window-resized", body})
+		}
+	}
+	return argvs
+}
+
+// installResizePinsLocked rebuilds this session's `window-resized` window-hook array from pins,
+// issuing each argv resizePinHookArgvs builds through e.tmux.run. It returns nothing.
+//
+// This follows the Shared Decision hook-failure-is-non-fatal-everywhere, which already governs
+// pinGeometryOptionsLocked in this same file: each failure is logged via logger.Warn naming the
+// socket, the session and the error, and then ignored, so a failed call never stops the calls after
+// it — a failed clear still lets the rebuild proceed, since the first (non-"-a") set-hook overwrites
+// the array from entry [0] regardless.
+//
+// The clear is unconditional because reaching a call site means reed has computed an opinion, and
+// with zero pins that opinion is "nothing is pinned" (Shared Decision
+// the-clear-is-unconditional-including-zero-pins). The whole array is a snapshot rebuilt on every
+// successful apply rather than something recomputed at fire time.
+//
+// Known limitation: a clamp-derived pin is computed for the box at install time, so an operator who
+// shrinks the terminal past a clamp threshold with no intervening reed op keeps a pre-shrink pin,
+// bounded by tmux's own one-row floor and self-correcting on the next reed op.
+//
+// Assumes the op lock is already held, like every other Locked method in this file.
+func (e *Engine) installResizePinsLocked(pins []render.Pin) {
+	for _, argv := range resizePinHookArgvs(e.SessionName(), pins) {
+		if err := e.tmux.run(argv...); err != nil {
+			logger.Warn("reed: failed to install resize-pane hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+	}
 }

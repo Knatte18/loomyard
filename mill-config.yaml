@@ -140,7 +140,7 @@ pipeline:
 roles:
   discussion-review:
     holistic:
-      rounds: 5
+      rounds: 6
       reviewer: opusmedium
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
@@ -151,7 +151,7 @@ roles:
       rounds: 0
       reviewer: null
     holistic:
-      rounds: 7
+      rounds: 6
       reviewer: sonnetxhigh
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)

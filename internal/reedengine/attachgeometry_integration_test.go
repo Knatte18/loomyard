@@ -6,6 +6,16 @@
 // passes after (the chained select-layout runs post-attach, once the window already matches the
 // client, so the string lands unchanged).
 //
+// Every case before this task's growth cases below drives a 100x30 client against the fixture's
+// 220x50 boot box — SHORTER than the boot box in both dimensions — so every one of them exercises a
+// window SHRINK at attach time and never the growth path this task is about. And the claim that the
+// chained select-layout running post-attach is what holds the header and collapsed-strip budgets is
+// incomplete on its own: it lands the layout string verbatim only at attach time. tmux has no
+// fixed-height pane concept and redistributes every later window-size delta evenly across the
+// vertical cells, so it is the window-resized resize-pin hook (windowsize.go), not the chain, that
+// holds the budgets across any resize that happens afterward — the growth cases below pin that
+// directly.
+//
 // Linux-only: the pty harness below is built directly on golang.org/x/sys/unix's /dev/ptmx ioctls
 // (TIOCSPTLCK, TIOCGPTN, TIOCSWINSZ), which have no portable equivalent, and psmux's behaviour under
 // a real pty is unverified anywhere in this repo — this file must not even attempt to compile off
@@ -175,12 +185,15 @@ func windowLayoutNow(t *testing.T, e *Engine) string {
 }
 
 // TestAttachGeometry_ExactLayoutAndRowBudgets is the assertion that fails before this task: with a
-// pty deliberately unequal to the configured boot size, it drives a real attach-session through the
-// chained argv AttachArgv builds and asserts, from OUTSIDE the pty, that the live window becomes
-// exactly the client's told size and that #{window_layout} equals the argv's own planned string byte
-// for byte — tmux's silent proportional rescale is what this pins against. It then asserts, from the
-// same attached session, that the header pane and the collapsed strip both landed at their configured,
-// unclamped row budgets.
+// pty deliberately unequal to the configured boot size — a 100x30 client, SHORTER in both dimensions
+// than the fixture's 220x50 boot box, so this is a window SHRINK at attach time, never the growth
+// path the cases below cover — it drives a real attach-session through the chained argv AttachArgv
+// builds and asserts, from OUTSIDE the pty, that the live window becomes exactly the client's told
+// size and that #{window_layout} equals the argv's own planned string byte for byte — tmux's silent
+// proportional rescale is what this pins against. It then asserts, from the same attached session,
+// that the header pane and the collapsed strip both landed at their configured, unclamped row
+// budgets — true here only at attach time; see the growth cases below for what holds those budgets
+// across a later resize.
 func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 	e := setupAttachGeometryFixture(t)
 
@@ -328,5 +341,193 @@ func TestAttachGeometry_StaleLayoutRaceIsSafe(t *testing.T) {
 	// added any further pane of its own.
 	if len(afterLive) != len(live) {
 		t.Errorf("listPanes after the stale-race attach = %d pane(s), want %d (unchanged from just before the attach)", len(afterLive), len(live))
+	}
+}
+
+// assertAttachGeometryRowBudgets asserts headerPaneID and parentPaneID are, respectively, at
+// e.cfg.Header.HeightRows and e.cfg.CollapsedStripRows in the live pane set, failing with step
+// prefixed onto every message so a caller checking the same budgets at two points in one test can
+// tell which point failed.
+func assertAttachGeometryRowBudgets(t *testing.T, e *Engine, headerPaneID, parentPaneID, step string) {
+	t.Helper()
+	live, err := e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes (%s): %v", step, err)
+	}
+	var sawHeader, sawParent bool
+	for _, p := range live {
+		switch p.ID {
+		case headerPaneID:
+			sawHeader = true
+			if p.Height != e.cfg.Header.HeightRows {
+				t.Errorf("(%s) header pane %s height = %d, want %d (cfg.Header.HeightRows)", step, p.ID, p.Height, e.cfg.Header.HeightRows)
+			}
+		case parentPaneID:
+			sawParent = true
+			if p.Height != e.cfg.CollapsedStripRows {
+				t.Errorf("(%s) collapsed parent pane %s height = %d, want %d (cfg.CollapsedStripRows)", step, p.ID, p.Height, e.cfg.CollapsedStripRows)
+			}
+		}
+	}
+	if !sawHeader {
+		t.Fatalf("(%s) header pane %s missing from live panes %+v", step, headerPaneID, live)
+	}
+	if !sawParent {
+		t.Fatalf("(%s) collapsed parent pane %s missing from live panes %+v", step, parentPaneID, live)
+	}
+}
+
+// TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets pins the fix this task ships: unlike
+// TestAttachGeometry_ExactLayoutAndRowBudgets above, whose 100x30 client is SHORTER than the fixture's
+// 220x50 boot box and so never exercises anything beyond attach time, this case resizes the pty AFTER
+// a healthy chained attach has already landed the header and collapsed-strip budgets, to a materially
+// TALLER size, and asserts both budgets still hold. This is the case that fails before this task: tmux
+// has no fixed-height pane concept and redistributes every window-size delta evenly across the
+// vertical cells with no intervention, and it is the window-resized resize-pin hook installed by this
+// task — not the chained select-layout, which only ever runs once, at attach time — that holds the
+// budgets across the resize.
+func TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets(t *testing.T) {
+	e := setupAttachGeometryFixture(t)
+
+	const cols, rows = 100, 30
+	argv := e.AttachArgv(cols, rows)
+	if len(argv) != 10 {
+		t.Fatalf("AttachArgv(%d, %d) = %v (%d argv elements), want the 10-element chained form", cols, rows, argv, len(argv))
+	}
+
+	pty := startInPTY(t, append([]string{e.cfg.Tmux}, argv...), cols, rows)
+	waitForClientAttached(t, e, 15*time.Second)
+
+	st, err := LoadState(e.stateDir())
+	if err != nil || st == nil {
+		t.Fatalf("LoadState = (%+v, %v), want a readable state", st, err)
+	}
+	if len(st.Strands) != 2 {
+		t.Fatalf("st.Strands = %+v, want exactly 2 (the shrink-when-waiting parent and its child)", st.Strands)
+	}
+	parentPaneID := st.Strands[0].PaneID
+	headerPaneID := st.HeaderPaneID
+
+	// Confirm the budgets landed at attach time, exactly as the exact-layout case above pins.
+	assertAttachGeometryRowBudgets(t, e, headerPaneID, parentPaneID, "after attach")
+
+	// Now drive a real client resize on the pty master — materially TALLER than the attach size, and
+	// taller than the 220x50 boot box's 50 rows too, so this is unambiguously the growth path, never
+	// a second shrink.
+	const resizedCols, resizedRows = 100, 90
+	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
+		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
+	}
+	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
+		_, h := windowSizeNow(t, e)
+		return h == resizedRows
+	})
+
+	assertAttachGeometryRowBudgets(t, e, headerPaneID, parentPaneID, "after resize")
+}
+
+// TestAttachGeometry_BareAttachFromTallClientStillHoldsHeaderBudget covers the path the originally
+// reported ~50-row threshold came from: a bare, unchained attach (AttachArgv(0, 0), the "no client
+// size known" argv) from a client TALLER than the fixture's 220x50 boot box's 50-row height. It
+// asserts the header pane still settles at e.cfg.Header.HeightRows once the attach settles.
+//
+// This case does NOT exercise an install of its own: AttachArgv(0, 0) returns the bare argv before
+// the op lock is even taken, so it installs no window-resized hook. What holds the header here is the
+// hook setupAttachGeometryFixture's own earlier AddStrand calls already installed via
+// applyLayoutLocked — this case passes on that pre-existing hook, not on anything AttachArgv(0, 0)
+// itself does, and must not be misread as proof that the no-client-size path installs one.
+func TestAttachGeometry_BareAttachFromTallClientStillHoldsHeaderBudget(t *testing.T) {
+	e := setupAttachGeometryFixture(t)
+
+	argv := e.AttachArgv(0, 0)
+	if len(argv) != 5 {
+		t.Fatalf("AttachArgv(0, 0) = %v (%d argv elements), want the 5-element bare form with no chained select-layout", argv, len(argv))
+	}
+
+	st, err := LoadState(e.stateDir())
+	if err != nil || st == nil {
+		t.Fatalf("LoadState = (%+v, %v), want a readable state", st, err)
+	}
+	headerPaneID := st.HeaderPaneID
+
+	const cols, rows = 100, 80 // taller than the 220x50 boot box's 50 rows
+	startInPTY(t, append([]string{e.cfg.Tmux}, argv...), cols, rows)
+	waitForClientAttached(t, e, 15*time.Second)
+
+	waitUntil(t, 15*time.Second, "header pane never settled at cfg.Header.HeightRows after the bare attach", func() bool {
+		live, err := e.tmux.listPanes(e.SessionName())
+		if err != nil {
+			return false
+		}
+		for _, p := range live {
+			if p.ID == headerPaneID {
+				return p.Height == e.cfg.Header.HeightRows
+			}
+		}
+		return false
+	})
+}
+
+// TestAttachGeometry_DeadStripPinDoesNotBreakHeaderPin pins the fire-time failure isolation the
+// window-resized hook's array encoding buys (Shared Decision hook-body-is-one-array-entry-per-pin):
+// after a healthy chained attach installs a hook pinning both the header and the collapsed parent
+// strip, this kills the strip's own pane out from under the hook, leaving its array entry naming a
+// destroyed pane id, then resizes and asserts the header still holds its budget — the header is
+// always pin index 0, and independent array entries mean a later entry's failure cannot take an
+// earlier one down with it (contract_integration_test.go's TestMultiplexerContract pins the same wire
+// fact directly, at the set-hook level, with no pty involved).
+func TestAttachGeometry_DeadStripPinDoesNotBreakHeaderPin(t *testing.T) {
+	e := setupAttachGeometryFixture(t)
+
+	const cols, rows = 100, 30
+	argv := e.AttachArgv(cols, rows)
+	if len(argv) != 10 {
+		t.Fatalf("AttachArgv(%d, %d) = %v (%d argv elements), want the 10-element chained form", cols, rows, argv, len(argv))
+	}
+
+	pty := startInPTY(t, append([]string{e.cfg.Tmux}, argv...), cols, rows)
+	waitForClientAttached(t, e, 15*time.Second)
+
+	st, err := LoadState(e.stateDir())
+	if err != nil || st == nil {
+		t.Fatalf("LoadState = (%+v, %v), want a readable state", st, err)
+	}
+	if len(st.Strands) != 2 {
+		t.Fatalf("st.Strands = %+v, want exactly 2 (the shrink-when-waiting parent and its child)", st.Strands)
+	}
+	headerPaneID := st.HeaderPaneID
+	parentPaneID := st.Strands[0].PaneID
+
+	// Kill the collapsed strip's own pane directly via e.tmux, bypassing RemoveStrand/reconcile
+	// entirely: the installed hook's strip-pin entry now names a destroyed pane id, exactly the state
+	// a stray operator kill or a crashed strand process would leave behind.
+	if err := e.tmux.run("kill-pane", "-t", parentPaneID); err != nil {
+		t.Fatalf("kill-pane -t %s: %v", parentPaneID, err)
+	}
+
+	const resizedCols, resizedRows = 100, 90
+	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
+		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
+	}
+	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
+		_, h := windowSizeNow(t, e)
+		return h == resizedRows
+	})
+
+	live, err := e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes: %v", err)
+	}
+	var sawHeader bool
+	for _, p := range live {
+		if p.ID == headerPaneID {
+			sawHeader = true
+			if p.Height != e.cfg.Header.HeightRows {
+				t.Errorf("header pane %s height = %d, want %d (cfg.Header.HeightRows) even though the strip pin's own pane was destroyed", p.ID, p.Height, e.cfg.Header.HeightRows)
+			}
+		}
+	}
+	if !sawHeader {
+		t.Fatalf("header pane %s missing from live panes %+v", headerPaneID, live)
 	}
 }
