@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // runLockName is the exclusive-lease file name inside the webster scratch
@@ -151,7 +152,7 @@ type RunResult struct {
 	// BatchesDone is the parsed outcome.yaml's batches_done, verbatim.
 	BatchesDone int
 	// SummaryTitle is the parsed summary.md's title heading. Always
-	// populated for Outcome == outcomeDone (ParseSummary is
+	// populated for Outcome == outcomeDone (summaryparser.Parse is
 	// required there — a missing or malformed summary is a hard error);
 	// populated best-effort for stuck/paused (empty when summary.md is
 	// itself missing or malformed, which is not an error on those two
@@ -461,7 +462,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve outcome path: %w", err)
 	}
-	summaryPath, err := filepath.Abs(SummaryPath(deps.Geom.WebsterDir))
+	summaryPath, err := filepath.Abs(summaryparser.Path(deps.Geom.WebsterDir))
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve summary path: %w", err)
 	}
@@ -635,7 +636,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		// Required: a done run with a missing or malformed summary.md is a
 		// hard error, never guessed — the artifact is the future
 		// loom-finalize PR-text source.
-		summary, err := ParseSummary(summaryPath)
+		summary, err := summaryparser.Parse(summaryPath)
 		if err != nil {
 			return RunResult{}, fmt.Errorf("webster: run reached outcome: done but summary.md is missing or malformed: %w", err)
 		}
@@ -653,7 +654,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		if err := runExitAuditCrossCheck(deps, outcomePath, summaryPath, result); err != nil {
 			return RunResult{}, err
 		}
-	} else if summary, err := ParseSummary(summaryPath); err == nil {
+	} else if summary, err := summaryparser.Parse(summaryPath); err == nil {
 		// summary.md's content is optional on stuck/paused: best-effort
 		// only, never a hard error, per discussion.md's summary-artifact
 		// decision.

@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -284,7 +285,7 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 // nil FabricBisector is never dereferenced.
 func TestBisectAndEscalate_EmptySHAsDegradesGracefully(t *testing.T) {
 	websterDir := t.TempDir()
-	summaryPath := websterengine.SummaryPath(websterDir)
+	summaryPath := summaryparser.Path(websterDir)
 	if err := os.WriteFile(summaryPath, []byte("# Batches shipped\n"), 0o644); err != nil {
 		t.Fatalf("seed summary.md: %v", err)
 	}
