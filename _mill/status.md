@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: _mill/plan
@@ -22,4 +22,5 @@ discussed  '2026-08-28T14:38:33Z'
 planning  '2026-08-28T14:47:45Z'
 plan-review-r1  '2026-08-28T14:57:13Z'
 plan-fix-r1  '2026-08-28T15:00:33Z'
+plan-review-r2  '2026-08-28T15:09:08Z'
 ```
