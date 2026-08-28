@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: reed-attach-header-height-bug
 branch: reed-attach-header-height-bug
-plan: null
+plan: _mill/plan
 parent: main
 task: 'reed: attach''s layout computation scales header pane height with terminal height'
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-08-28T08:09:04Z'
 discussion-fix-r3  '2026-08-28T08:19:32Z'
 discussion-fix-r5  '2026-08-28T08:27:46Z'
 discussed  '2026-08-28T08:27:46Z'
+planning  '2026-08-28T08:34:45Z'
 ```
