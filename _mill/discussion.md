@@ -62,7 +62,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 ### loop-body-lives-in-reedengine-header-pane-only-calls-it
 
 - Decision: the **loop body lives in `internal/reedengine`**, exposed as a single exported entry point — shape `Engine.Watch(ctx context.Context) error`.
-  `internal/reedcli/header.go`'s `--blocking` tail does nothing but call it.
+  `internal/reedcli/header.go`'s `--blocking` tail calls it and then, unconditionally, calls `blockForever()`.
+  **`Watch` never returns while the pane must live** — including the disabled cases (`watchdog: off`, or an invalid value), where it parks internally rather than returning early.
+  The trailing `blockForever()` is deliberate redundancy, not dead code: it guarantees that no future edit to `Watch` can make `RunE` fall through and kill the keepalive pane, which is the one failure this whole design must never permit.
+  A non-nil return from `Watch` is **logged only** — never `output.Err`, never anything written to stdout or stderr, since the pane's stdio is its screen (see `header-blocking-tail-discards-logger-output`).
   **`Engine.Watch` is the only exported symbol this task adds to the engine**;
   the re-apply op is package-internal (`reapplyLayout`), since nothing outside the package calls it.
 - Rationale: every seam the loop touches is unexported package state in `reedengine` — `e.tmux` and its `execHook` test seam (`overlay.go:37`), `stateDir()` (`lifecycle.go:33`), `e.cfg`, `liveBoxLocked`, `applyLayoutLocked`, and the op lock.
@@ -115,7 +118,7 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 - Rationale: the hook must do as little as possible because it fires once per resize step;
   a `touch`-equivalent is roughly a millisecond, while spawning `lyx` is orders of magnitude more.
   **In signal mode** the watcher's steady-state cost is then an `os.Stat` (microseconds) per 100ms tick and **zero** subprocesses — nothing is spawned until an actual resize happens.
-  **Poll mode is not free and is not claimed to be**: each 2s cycle calls `reapplyLayout`, and every `TmuxCmd` call is a real `exec.Command` (`overlay.go:54`, `overlay.go:70`), so that mode costs roughly one `display-message` plus one `show-hooks` round trip per cycle, permanently.
+  **Poll mode is not free and is not claimed to be**: each 2s cycle calls `reapplyLayout`, and every `TmuxCmd` call is a real `exec.Command` (`overlay.go:54`, `overlay.go:70`), so that mode costs roughly one `display-message` plus one `show-options` round trip per cycle on POSIX (one `display-message` on Windows, where no probe runs), permanently.
   That is a larger steady-state cost than the ~23ms geometry poll rejected in `window-resized-is-the-event-source`, and the difference is not a contradiction: what was rejected there was polling **as the primary mechanism on a platform where hooks work**, where it buys nothing.
   Poll mode is the fallback for the platform where hooks cannot be verified to work at all (psmux/Windows), where the only alternative is no self-heal — so it is the cheapest *available* option there, not a cheaper option chosen over a better one.
   Existence-as-signal is immune to filesystem mtime granularity, which a modification-time comparison is not.
@@ -128,6 +131,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 ### hook-set-in-pingeometryoptionslocked
 
 - Decision: the `window-resized` hook is installed in `Engine.pinGeometryOptionsLocked` (`windowsize.go`), alongside the existing `status off` and `window-size latest` pins, with the same non-fatal `logger.Warn`-and-continue treatment.
+  The install uses the **plain, replacing `set-hook` form — never `-a`** — which makes repeated installs idempotent.
+  This matters because that function runs on **every** `AttachArgv` pre-flight (`attach.go:80`) as well as at boot (`lifecycle.go:423`), so the hook is re-installed on every single attach.
+  Verified live: four identical plain `set-hook` calls yield exactly **one** fire per resize, while three additional `set-hook -a` appends yield **four** fires per resize — so the append form would mean N attaches costing N `run-shell` spawns on every resize for the life of the session.
+  Not installed at all on Windows (see `hook-availability-decides-poll-fallback`).
 - Rationale: that function already runs in exactly the two places this hook needs to be set — the boot path and the attach pre-flight — and the attach-pre-flight call exists precisely because boot options never re-apply to an already-up session (`ensureServerLocked` returns early on the healthy already-up path, above the `set-option` block).
   Installing the hook there means a session booted by an older `lyx` picks it up on the operator's next attach, instead of staying unhealed until a manual `down` + `up`.
   It is already the non-fatal, geometry-quality-option block, which is the right severity: `set-hook` and `run-shell` are **not** in `requiredSubcommands` (`probe.go`) and psmux support for both is unverified, so a failure to install must degrade rather than fail the op.
@@ -216,7 +223,12 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 ### hook-availability-decides-poll-fallback
 
-- Decision: the hook-availability probe is **not a separate op and takes no lock of its own** — it rides inside `reapplyLayout`, under that op's existing try-lock, and its answer comes back on the result: `ReapplyResult` carries `HookInstalled bool` and `HookKnown bool` alongside the box fields.
+- Decision: **on Windows the watcher is poll-only, unconditionally** — no probe, and `pinGeometryOptionsLocked` installs no hook there.
+  Mode selection by probe applies on non-Windows only, where tmux's hook behaviour is verified.
+  On that path the probe is **not a separate op and takes no lock of its own** — it rides inside `reapplyLayout`, under that op's existing try-lock, and its answer comes back on the result: `ReapplyResult` carries `HookInstalled bool` and `HookKnown bool` alongside the box fields.
+  **`HookInstalled` is an exact-match test against reed's own command string** for this worktree's signal path — the full `run-shell -b` string `pinGeometryOptionsLocked` would install — never merely "some `window-resized` hook exists".
+  The readback is `show-options -v -t '=<session>:' window-resized`, **not `show-hooks`**: in tmux 3.6 hooks are options, and `show-hooks` returns empty for a session-scoped hook that demonstrably fires (verified live — see the probe table).
+  `show-options` is absent from `requiredSubcommands`, which is acceptable precisely because this probe is non-fatal and non-Windows-only: any error, any unexpected value, or a mismatch yields `HookKnown`/`HookInstalled` false and therefore poll mode, so no capability-probe change is needed and no psmux risk is taken.
   The watcher's very first cycle is therefore an ordinary `reapplyLayout` call whose result also decides the mode.
   **When the try-lock is unavailable, `HookKnown` is false and the mode is not decided that cycle** — the watcher stays in (or defaults to) poll mode and re-decides on a later cycle;
   it never guesses signal mode on missing information.
@@ -229,12 +241,20 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 - Rationale: this is what makes the design correct on psmux without betting on it.
   `set-hook`/`run-shell` are absent from `requiredSubcommands` and unverified on the Windows port, so the capability must be discovered at runtime rather than assumed or required.
   Folding the probe into `reapplyLayout` is what keeps the design's own rule — "the watcher performs no unlocked tmux query" — true of the probe too.
-  A standalone probe op would need its own lock discipline, its own told-geometry validation, and its own post-op compromise check, all duplicating `withOpLock`'s chokepoint for one `show-hooks` round trip;
+  A standalone probe op would need its own lock discipline, its own told-geometry validation, and its own post-op compromise check, all duplicating `withOpLock`'s chokepoint for one `show-options` round trip;
   riding inside the op it already makes costs one extra round trip inside a lock already held.
   Poll mode defaulting on an undecided probe is the safe direction: poll mode works whether or not the hook exists, while signal mode chosen wrongly means no self-heal at all.
+  Making Windows poll-only unconditionally is what makes "signal mode never demotes" **safe** rather than merely convenient.
+  Hook *presence* is not hook *delivery*: on psmux — the very platform the fallback exists for, where `set-hook`/`run-shell` are unverified — a hook that installs but never fires would pin the watcher in signal mode forever with zero self-heal and no way back.
+  A heuristic escape (demote after a signal-less interval) cannot fix that, because a signal-less interval is also the entirely normal state of a session nobody is resizing;
+  any threshold long enough to avoid false demotions is long enough to leave the operator broken for that long.
+  Removing the guess on the only platform where it could be wrong is strictly better than tuning a threshold that has no correct value.
+  If psmux hook support is ever verified, enabling the probe there is a one-line follow-up with evidence behind it — the opposite of the bet this design otherwise avoids everywhere else.
   The alternative — always polling as a safety net — reintroduces the permanent per-session subprocess cost on the platform where hooks *do* work.
   The poll-mode re-probe is free for the same reason: that mode is already making a round trip per cycle, so checking hook presence alongside it costs nothing extra, and it closes a real hole in this design's own migration story — the hook is installed at attach pre-flight, so a watcher that started on a hook-less already-up session would otherwise sit in poll mode forever even after the operator attaches and the hook appears.
-  The reverse direction needs no handling: nothing in reed ever removes the hook except `watchdog: off`, which stops the watcher outright.
+  The reverse direction — a signal-mode watcher whose hook is later unset — needs no handling, but not because it cannot happen: `watchdog: off` unsets the hook while the already-running watcher keeps going until the next header-pane rebuild (see the take-effect boundary in `watchdog-single-toggle-no-tunables`), so a signal-mode watcher genuinely does keep running against an unset hook for a while.
+  That is the **intended** outcome rather than an unhandled case: the operator asked for `off`, and a signal-mode watcher with no hook receives no signals and therefore does nothing, which is exactly what they asked for.
+  Nothing else in reed ever removes the hook.
 - Rejected: adding `set-hook`/`run-shell` to `requiredSubcommands` (the capability probe would then refuse to boot reed at all on any multiplexer lacking them, i.e. betting the entire Windows path on unverified psmux behaviour, to gain nothing on Linux);
   always polling in addition to the hook (permanent cost for a case the startup probe can decide once);
   probing once and never again (leaves the attach-pre-flight migration path permanently stuck in the degraded mode).
@@ -362,7 +382,7 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 | Probe | Result |
 | --- | --- |
-| `set-hook`, `run-shell`, `show-hooks` in `list-commands` | present on tmux 3.6; **absent from `requiredSubcommands`**, psmux support unverified |
+| `set-hook`, `run-shell`, `show-hooks`, `show-options` in `list-commands` | all present on tmux 3.6; **all absent from `requiredSubcommands`**, psmux support unverified |
 | Attach at 127x50 with `window-size latest` | window becomes exactly 127x50 |
 | Live pty resize 127x50 → 100x65 | window follows to 100x65 (M7's premise reproduced) |
 | Hook order on that resize | `client-resized` (reports stale 127x50) → `window-layout-changed` (100x65) → `window-resized` (100x65) |
@@ -376,6 +396,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 | `select-layout` while attached, re-applying the identical current layout | exit 0, **0 fires** |
 | `select-layout` while **detached**, changing pane sizes | exit 0, **0 fires** |
 | `select-layout` while detached with an **over-budget** string (60-row layout into a 40-row window) | exit 0, window **grows** 120x40 → 120x60 and panes become 20/20/18 — and still **0 fires** |
+| Four identical plain `set-hook -t '=<session>:' window-resized <cmd>` calls, then one resize | **1** fire — the plain form **replaces**, so repeated installs are idempotent |
+| Three further `set-hook -a` appends of the same command, then one resize | **4** fires — the append form accumulates; `-a` must never be used here |
+| `show-hooks -t '=<session>:'` (and bare `show-hooks`) against a session hook that demonstrably fires | prints **nothing** — hooks are options in tmux 3.6, so `show-hooks` is the wrong readback |
+| `show-options -t '=<session>:' window-resized` | prints `window-resized[0] <command>`; `show-options -v` prints the bare command string — this is the readback the `HookInstalled` match uses |
 
 **Logging.**
 
@@ -464,7 +488,9 @@ Discovered during discussion:
 - The hook command string built for a given session, signal path, and shell dialect: assert the `=<session>:` exact-target form, the `-b` flag, and correct quoting for both `shell.Posix()` and `shell.Pwsh()`.
   **TDD candidate.**
 - The signal-file consume step: existence detected, file removed before the apply, a re-touch during the apply detected on the next tick.
-- The hook-availability decision: given scripted `show-hooks`-class output via `TmuxCmd.execHook`, assert the watcher selects signal-driven mode when the hook is present, poll mode when absent, and poll mode when the round trip errors.
+- The hook-availability decision: given scripted `show-options -v` output via `TmuxCmd.execHook`, assert signal mode only on an **exact** match of reed's own command string for this worktree's signal path, and poll mode for each of: absent hook, a `window-resized` hook belonging to something else, a different worktree's signal path, empty output, and a round-trip error.
+  **TDD candidate** — "some hook exists" is the wrong test and is what an obvious implementation writes.
+- Windows is poll-only unconditionally: assert no probe round trip and no hook install are issued on that GOOS, independent of config.
 - The `watchdog` config key: `on`/`off`/absent/empty/garbage against the `watchdogOption` validator, asserting a hard error for every non-`on`/`off` value exactly as `mouseOption`'s own test table does, plus the embedded-template default for both GOOS variants.
 - `watchdog: off` scope: assert the loop does not start, that `pinGeometryOptionsLocked` issues an **unset** rather than an install and removes the signal file, and that the unset failing is non-fatal — all drivable through `TmuxCmd.execHook` with no live server.
 - Per-consumer invalid-value behaviour, which is three different answers and therefore three assertions: the boot path returns an error naming the value;
@@ -474,6 +500,9 @@ Discovered during discussion:
 - The box-equality guard's degraded case: when `BoxIsLive` is false, assert the last-applied box is not updated and the comparison does not gate the next apply — neither a permanent skip nor a permanent re-apply.
   Assert it identically for both modes, since both now route through the same `reapplyLayout` call.
 - `ReapplyResult` on the two inherited guard-skip paths (`len(live) < 2`, `!anyPlacedStrand`): assert `Applied=false`, `BoxIsLive=false`, no `select-layout` issued, and no last-applied update.
+- `Watch`'s never-returns contract: assert it does not return on `watchdog: off` or an invalid value, and that the `--blocking` tail reaches `blockForever()` rather than falling out of `RunE` — the keepalive-survival assertion.
+  **TDD candidate.**
+- The hook install uses the replacing `set-hook` form with no `-a` argument, asserted on the argv through `TmuxCmd.execHook`.
 - The take-effect boundary: assert the loop does not re-read config mid-run — a `watchdog` flip on disk while the loop is running changes nothing until the process restarts.
 - Signal-file lifecycle: a stale file present at watcher start is removed before the loop begins.
 - The box-equality guard: a signal whose live box equals the last successfully-applied box issues no `select-layout`;
@@ -580,5 +609,13 @@ Attach with `lyx reed attach`, drag the terminal window larger and smaller, and 
   an unavailable lock means the mode is simply not decided that cycle, defaulting to poll. **Why:** a standalone probe op would duplicate `withOpLock`'s told-geometry validation and post-op compromise check for one round trip, and the design's own "no unlocked tmux query" rule has to hold for the probe as much as for the box query.
 - **Q:** Is "zero subprocesses in steady state" true? **A:** Only in signal mode — poll mode makes about two `exec.Command` round trips per 2s cycle, permanently, and the discussion now says so. **Why:** the earlier rejection was of polling as the *primary* mechanism where hooks work and buy the cost back;
   on the fallback platform the alternative is no self-heal at all, so it is the cheapest available option rather than a worse one chosen freely.
+- **Q:** Does `Watch` return, and what happens to the keepalive if it does? **A:** It never returns while the pane must live, including the disabled cases where it parks internally;
+  the tail calls `blockForever()` after it unconditionally, and a non-nil return is logged only, never printed. **Why:** "does nothing but call it" taken literally would let `RunE` fall through and exit the keepalive pane on `watchdog: off`;
+  the redundant `blockForever()` makes that unreachable even if `Watch` is later edited, and an `output.Err` there would paint over the rendered header.
+- **Q:** Is a present hook the same as a firing hook? **A:** No — so `HookInstalled` is an exact match against reed's own command string for this worktree's signal path, and Windows is poll-only unconditionally rather than probe-decided. **Why:** a hook that installs but never fires would pin the watcher in signal mode forever with no self-heal, on exactly the platform the fallback exists for;
+  a signal-less-interval demotion cannot distinguish that from a session nobody is resizing, so removing the guess where it could be wrong beats tuning a threshold with no correct value.
+- **Q:** The hook is re-installed on every attach — does that accumulate? **A:** No, provided the plain replacing `set-hook` is used and never `-a`. **Why:** verified live — four identical plain installs give one fire per resize, three `-a` appends give four;
+  the append form would cost N `run-shell` spawns per resize after N attaches.
+- **Q:** How is the hook read back? **A:** `show-options -v -t '=<session>:' window-resized`, not `show-hooks`. **Why:** verified live — hooks are options in tmux 3.6 and `show-hooks` prints nothing for a session-scoped hook that demonstrably fires, so the readback this design assumed for four rounds would have reported "no hook" every time and pinned every watcher into poll mode.
 - **Q:** Anything blocking the header pane from hosting the loop? **A:** Two things, both handled. **Why:** `testing.Testing()` gates the header launch line so no Go test can boot a real header-hosted watcher — the tier-2 test runs the loop in-process instead;
   and the pane's stderr is its screen, so the `--blocking` tail discards the logger's stderr half (the durable sink keeps everything) or the first degraded tmux round trip paints a slog line over the operator console.
