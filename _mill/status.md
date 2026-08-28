@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: reed-watchdog-daemon
 branch: reed-watchdog-daemon
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-watch-loop  '2026-08-28T11:11:34Z'
 approved-cli-tail-docs-and-live-proof  '2026-08-28T11:28:00Z'
 holistic-reviewing  '2026-08-28T11:28:34Z'
 holistic-fixing  '2026-08-28T11:34:14Z'
+holistic-reviewing  '2026-08-28T11:37:01Z'
 ```
 
 ## Batches
