@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: reed-attach-header-height-bug
 branch: reed-attach-header-height-bug
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-render-fixed-height-pins  '2026-08-28T08:58:19Z'
 approved-engine-hook-install  '2026-08-28T09:03:36Z'
 approved-integration-contract-docs  '2026-08-28T09:12:05Z'
 holistic-reviewing  '2026-08-28T09:12:42Z'
+holistic-approved  '2026-08-28T09:15:03Z'
 ```
 
 ## Batches
