@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-header-pane-runs-its-own-command
 slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-review-r4  '2026-08-28T09:09:35Z'
 plan-fix-r4  '2026-08-28T09:09:57Z'
 planned  '2026-08-28T09:10:12Z'
 implementing  '2026-08-28T09:10:37Z'
+approved-header-pane-runs-its-own-command  '2026-08-28T09:16:12Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-08-28T09:10:37Z'
 ```yaml
 batches:
   - name: header-pane-runs-its-own-command
-    state: running
+    state: approved
     implementer_session: 533ea1fa-1a09-498d-93f4-2af6b92cc169
     start_sha: 8345d70311519b873ace350435de1276e87fa459
+    commit_sha: bef2380d206a0f04ef9153f0016b131ffdcdb73a
     verify_baseline_failures: []
   - name: header-declines-the-stencil-seed-pass
     state: pending
