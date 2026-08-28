@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-render-fixed-height-pins
+phase: approved-engine-hook-install
 slug: reed-attach-header-height-bug
 branch: reed-attach-header-height-bug
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-review-r2  '2026-08-28T08:52:33Z'
 planned  '2026-08-28T08:52:52Z'
 implementing  '2026-08-28T08:53:20Z'
 approved-render-fixed-height-pins  '2026-08-28T08:58:19Z'
+approved-engine-hook-install  '2026-08-28T09:03:36Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     commit_sha: 67724ebda18296ddc15a226c289f63c807c4a3f2
     verify_baseline_failures: []
   - name: engine-hook-install
-    state: running
+    state: approved
     implementer_session: 71cfa9f2-280e-4403-9917-dda896e2e06b
     start_sha: 6be748ef39d9b9ce71f9a40a2a54cf00fd22dd3e
+    commit_sha: cb87930d179cef9d49ea9b3e700d590565a06380
     verify_baseline_failures: []
   - name: integration-contract-docs
     state: pending
