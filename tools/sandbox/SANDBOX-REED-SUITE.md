@@ -405,6 +405,7 @@ controlled exception, restore the name when done).
 `tmux -L <socket> ls` (controlled exception) must then show only the ORIGINAL session -- the refusal must not have deposited a second one -- and the strand's command must still be running exactly once, not twice.
 Running the `kill-session` the error names, then `lyx reed resume` again, must succeed normally.
 A silent success, two copies of the strand process, a second session left on the socket, or a refusal the operator cannot escape is a `FAIL`.
+After that successful `resume`, inspect the hub root: it must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`, since the whole point of the refusal is that nothing gets conjured under the old name.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -420,6 +421,8 @@ A silent success, two copies of the strand process, a second session left on the
 An `ok: true` with no `abandonedSession` key is a `FAIL` -- `down` deletes `reed.json`, so that key is the last thing that ever names the orphan.
 A `down` that kills the old session is also a `FAIL`.
 Then run an ordinary `lyx reed up` / `down` cycle in a normal worktree and confirm `abandonedSession` is ABSENT there -- the key must be signal, not noise.
+Inspect the hub root as well, but not immediately: wait well past the two-second watchdog poll cycle before checking, since `down` deliberately leaves the abandoned session running, and checking too early would mask a watcher that resumed leaking.
+Once that wait has elapsed, the hub root must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

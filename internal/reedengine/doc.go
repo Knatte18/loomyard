@@ -197,6 +197,18 @@
 //     (removalEmptiedSession, strand.go) only when the session is
 //     confirmed gone, rather than the fix mispredicting a corpse
 //     universally, as an earlier version of this assumption did.
+//   - Told-geometry lifetime and the vanished worktree root (server.go's
+//     validateToldWorktreeRootLive, lock.go's withOpLock/withTryOpLock): a
+//     told Geometry is resolved once per process and pinned for that
+//     process's whole life, so a long-lived process such as the header
+//     pane's keepalive holds a frozen WorktreeRoot that a `mv` of the
+//     worktree makes stale. Every operation therefore re-checks that told
+//     worktree root's liveness at the op-lock chokepoint, and refuses
+//     rather than creating substrate under a path that is no longer a
+//     worktree. One user-visible consequence is a deliberate behaviour
+//     change in standalone mode: a `--target-dir` naming a directory that
+//     does not exist is now refused at the first engine op, instead of
+//     proceeding and deriving a state directory for it.
 //   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
 //     tmux does not REJECT a session name containing '.' or ':' — it
 //     rewrites each to '_', creates the session under the rewritten name,
