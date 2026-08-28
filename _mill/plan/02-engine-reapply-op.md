@@ -29,6 +29,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - `internal/reedengine/render/types.go`
   - `internal/reedengine/lock.go`
   - `internal/reedengine/attach.go`
+  - `internal/reedengine/doc.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/reedengine/windowsize.go`

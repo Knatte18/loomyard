@@ -3,7 +3,7 @@
 ```yaml
 task: 'reed: watchdog daemon'
 slug: 'reed-watchdog-daemon'
-approved: false
+approved: true
 started: '20260828-093722'
 parent: 'main'
 root: ""
