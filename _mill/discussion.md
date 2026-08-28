@@ -136,6 +136,11 @@ it does not touch scrollback, which is precisely why the noise survives where th
   The preview verb is also the command an operator runs repeatedly while editing `header.template`, and making a preview command silently commit to the hub's git history is exactly the surprise this decision removes.
   Anyone who wants the seed pass runs any other lyx command, which is every other command there is.
   A per-flag gate was considered and rejected as strictly worse: cobra annotations are the declarative mechanism, a flag-conditional gate would have to live in imperative code inside the root pre-run, and there is no scenario in which the preview mode wants the pass while the keepalive does not.
+- **Only the header opts out.**
+  Strand panes also host lyx processes running through the same root pre-run, and they are deliberately **not** annotated.
+  A strand pane runs real work — producers that read stencils — so the seed pass is doing its job there, its warnings are information the operator wants, and a seeded/committed stencil is the intended outcome rather than a surprise.
+  The header is singled out because it is the one pane whose entire purpose is to display a fixed line, reads no stencils, and is expected to stay silent forever.
+  The generic phrasing "a git commit from a display pane" means exactly that: display pane, not every pane.
 - Rejected: hard-coding a `cmd.Name() == "header"` check in `seedStencils` — brittle (two commands could share a name in different subtrees) and not discoverable from the command definition.
   Also rejected: suppressing the logger's stderr sink from inside the header's `RunE` — the root `PersistentPreRunE` runs *before* any module hook or `RunE`, so the WARNs are already on stderr by then;
   it cannot work.
@@ -176,30 +181,42 @@ it does not touch scrollback, which is precisely why the noise survives where th
   With the command as the pane's own process, `remain-on-exit on` (set globally at boot) corpses the pane exactly as the documented design intends, and the existing heal path starts working as written.
 - Rejected: preserving the old masking behaviour by wrapping the command in a lingering shell — it would deliberately re-break the documented heal path.
 
-### under-go-test-behaviour-unchanged
+### under-go-test-behaviour-unchanged-but-overridable
 
-- Decision: `headerLaunchLine(sh, exe, testing.Testing())` keeps returning `""` under `go test`, and in that case the header pane is still created by a bare `split-window` with no command argument — a bare shell, exactly as today.
-- Rationale: the existing suppression exists because re-exec'ing `os.Executable()` from a test binary would recursively run the whole suite (`internal/reedengine/lifecycle.go:517-522`).
-  That reasoning is untouched by this change.
-  Every untagged `reedengine`/`reedcli` test that asserts header-pane geometry, id recording, or up/resume idempotence continues to see the same bare-shell pane it sees today.
-- Rejected: nothing — this is a no-change decision recorded so mill-plan does not "helpfully" unify the two paths.
+- Decision: the **default** under `go test` is unchanged — the header pane is still created by a bare `split-window` with no command argument, a bare shell, exactly as today.
+  What changes is that the suppression stops being a hard-wired `testing.Testing()` call at the boot site and becomes engine state a test in the same package can override: the `Engine` carries the suppression decision (an unexported field, or an unexported launch-line composer func), initialised from `testing.Testing()` at construction and settable by an in-package test helper.
+  No exported API changes;
+  nothing outside `internal/reedengine` can reach it.
+- Rationale: two requirements collide, and only a seam satisfies both.
+  The suppression must stay on by default, because re-exec'ing `os.Executable()` from a test binary would recursively run the whole suite (`internal/reedengine/lifecycle.go:517-522`) — that reasoning is untouched.
+  But P1 has to observe the **real** launch path, and today `lifecycle.go:515` calls `headerLaunchLine(shell.ForGOOS(), exe, testing.Testing())` with no injection point, so under `go test` `launchCmd` is always `""` and the boot site takes the branch that issues neither the command argument nor any `send-keys` — an untagged test can therefore neither see the new behaviour nor fail on the old one.
+  Overriding the flag makes the non-suppressed path drivable while the fake tmux records argv and nothing is ever executed: no process spawn, so the Test Tier Purity Invariant is untouched.
+  Every existing untagged `reedengine`/`reedcli` test that asserts header-pane geometry, id recording, or up/resume idempotence continues to see the same bare-shell pane, because they do not set the override.
+- Rejected: leaving `testing.Testing()` hard-wired and moving P1 to the smoke tier — it puts the one assertion that pins the core change into the slowest tier, and a fake-tmux argv assertion is exactly the kind of thing the hermetic tier exists for.
+  Also rejected: an exported setter or a package-level global — an unexported field on the engine (or a composer func supplied at construction, matching the "told, never derived" style the package already follows) keeps the seam invisible outside the package.
 
 ### verification-per-fix-not-per-symptom
 
 - Decision: each source fix gets its own regression pin that observes **that fix's own mechanism**, and the end-to-end scrollback assertion is explicitly demoted to a backstop check that pins no individual change.
   Three pins, one backstop:
   - **P1 — the pane runs the command, not a shell** (noise classes 1 and 2).
-    Untagged, hermetic, `internal/reedengine`: the recorded fake-tmux argv shows `split-window` carrying the launch command, and **zero** `send-keys` calls are issued against the header pane.
-    The negative half is the pin;
-    it fails on pre-fix code immediately and cannot be satisfied by anything the header later prints.
+    Untagged, hermetic, `internal/reedengine`, **driven with the launch-suppression override off** (see `under-go-test-behaviour-unchanged-but-overridable` — without that seam this test is impossible, since the suppressed path emits neither a command argument nor any `send-keys`): the recorded fake-tmux argv shows `split-window` carrying the launch command, and **zero** `send-keys` calls are issued against the header pane.
     The argv + zero-`send-keys` assertion **is** P1's pin;
     nothing else is required for it.
+    Its red condition needs stating precisely, because the seam and the fix are separate changes: on unmodified `main` the test cannot even be compiled, since the override does not exist.
+    The demonstrable pre-fix state is therefore the intermediate one — **seam landed, launch change not yet applied** — where the same test drives the real path and fails on both halves (no command on the split, two `send-keys` calls recorded).
+    That intermediate observation is the evidence of record for P1;
+    "red on unmodified `main`" is not achievable for this pin and must not be claimed.
     A `#{pane_current_command}` assertion was considered as a smoke-tier reinforcement and is **not** adopted as a pin: whether the pane's process ends up being lyx or the interpreting shell depends on that shell's last-command `exec` optimisation, which is shell-dependent — the same fact this discussion cites when rejecting an explicit `exec` prefix.
     If a plan wants it at all, it belongs as a best-effort observation that is allowed to see either value, never as an assertion that the value is the lyx binary.
   - **P2 — the header declines the stencil-seed pass** (noise class 3).
     Its own test, and deliberately **not** routed through tmux: run the binary as `lyx reed header` (non-blocking) against a hub arranged so the seed pass warns, capture the process's **stderr**, and assert it is empty.
     The pre-fix expectation is stated as "stderr is non-empty", not as a specific line count or a specific message: either WARN source is sufficient to fail it, and the test must not be written so that it only detects the dev-refusal one.
-    Arranging *both* is cheap and makes the pre-fix failure robust — build dev-stamped **and** plant a board copy that differs from both the shipped default and the worktree's `contracts/stencils` copy, which trips the dev-refusal warn and the port-back drift warn together.
+    Arranging **both** warns is the preferred shape, and it takes one extra fixture step that must be stated rather than assumed: a `hubforge` fixture worktree is a synthetic template (README, `backend/`, `nested/`, `wts/some-task/`) with **no `contracts/` directory at all**, and `seedStencilsAt` sets `sourceDir = ""` when `<worktree>/contracts/stencils` is absent (`cmd/lyx/stencilseed.go:87-92`), so `warnPortBackDrift` cannot fire in an untouched fixture.
+    The test must therefore **materialise a `contracts/stencils` tree inside the fixture worktree** — writing the registry's shipped defaults there with at least one body deliberately altered — before running the binary.
+    With that in place, dev-stamping the build trips the dev-refusal warn and the planted drift trips the port-back warn, in the same pass.
+    If materialising that tree proves awkward in practice, dev-refusal-only is an acceptable fallback: it alone makes stderr non-empty pre-fix, which is all the assertion requires.
+    What is **not** acceptable is silently ending up dev-refusal-only while the discussion claims both — hence this paragraph.
     Post-fix, stderr is silent because the pass does not run at all, which is the property being pinned;
     the test asserts that, not the absence of any particular sentence.
     No pane, no scrollback, no escape sequences — so `ED 3` is structurally incapable of masking it.
@@ -213,7 +230,9 @@ it does not touch scrollback, which is precisely why the noise survives where th
 - Rationale: the round-2 review is right that a single end-to-end scrollback assertion, in the presence of an `ED 3` that runs after everything else, is a test that cannot fail for the reasons this task cares about.
   Splitting the verification by mechanism rather than by symptom gives each change a test that goes red when *that* change is reverted, which is the property "verification of record" was supposed to mean.
   The bug's reported non-determinism is still removed the same way — dev-stamped build plus deliberately stale stencils — it is just applied to P2, where it belongs, instead of to a composite assertion.
-- Evidence that counts as a pre-fix failure, stated so it cannot be quietly skipped: P1 and P2 must each be observed **red on unmodified `main`** and green after their respective fix.
+- Evidence that counts as a pre-fix failure, stated so it cannot be quietly skipped, and stated separately for the two pins because their baselines differ:
+  P2 must be observed **red on unmodified `main`** and green once the seed-skip lands.
+  P1 must be observed red on the **seam-landed, launch-change-not-yet-applied** intermediate state and green once the launch change lands — it cannot run on unmodified `main` at all, because the override it needs does not exist there.
   A green full run at the end of the task is not that evidence, and neither is B going green.
 - Rejected: unit tests only — they cannot observe a real pane or a real process's stderr, and P2's whole value is that it runs the real binary.
   Also rejected: keeping the composite scrollback test as the sole verification (the round-2 BLOCKING finding).
@@ -328,17 +347,20 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
 
 - TDD candidate: the header split now issues `split-window` **with** the launch command as its trailing argument.
   Extend the existing fake-tmux-driven header tests (`lifecycle_test.go:273` `TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath` is the closest pattern) to assert the recorded argv carries the command, and that **no** `send-keys` call is issued for the header pane.
-  The negative half is the one that pins the fix.
-- The re-tile retry path (`lifecycle_test.go:371`'s one-row-top-pane recovery test) must assert the *retried* split also carries the command.
+  These assertions must turn the launch-suppression override **off** — with the default on, the boot site emits neither the command nor any `send-keys`, so both halves would pass vacuously.
+- Keep one test that exercises the **default** (suppressed) path and asserts the split is commandless and still records the pane id, so the `go test` behaviour this discussion deliberately preserves is itself pinned.
+- The re-tile retry path (`lifecycle_test.go:371`'s one-row-top-pane recovery test) must assert the *retried* split also carries the command, likewise with the override off.
 - `headerLaunchCmd`/`headerLaunchLine` coverage in `headerpane_test.go` stays as-is;
-  if the call site is refactored, the `underTest=""` branch must still produce a commandless split.
+  the `underTest=true` branch must still yield `""`, and `""` must still produce a commandless split.
 - Existing header geometry, corpse-heal, and idempotence tests must pass unchanged.
 
 **`cmd/lyx` (untagged, must not spawn git).**
 
 - TDD candidate: the seed-skip predicate.
   Assert it returns "skip" for a command carrying the annotation and "proceed" for one without it, driven directly rather than through `seedStencils`' `testing.Testing()` early return — mirroring how `stencilSeedTarget` was extracted to be assertable.
-- Assert the gate is evaluated before any geometry resolution, so an opted-out command spawns no `git rev-parse` (the Test Tier Purity guard in this package will catch a regression here, but an explicit test states the intent).
+- Assert the **ordering** inside the extracted predicate's call site — that the annotation check precedes the `stencilSeedTarget` call — as a pure, in-process assertion.
+  Do **not** write a test claiming to observe that "no `git rev-parse` is spawned": `seedStencils` returns unconditionally under `testing.Testing()` (`cmd/lyx/stencilseed.go:36-38`), so such a test passes whatever the ordering is, and is the same unfalsifiable shape the earlier review rounds rejected elsewhere.
+  The package's existing Test Tier Purity guard is what actually catches an accidental spawn.
 - A registration-level test that `reed header` actually carries the annotation — the gate is worthless if the annotation is silently dropped in a later refactor.
 - `helptree_test.go` and the other existing `cmd/lyx` guards must pass unchanged.
 
@@ -354,9 +376,10 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
 
 **`internal/reedcli` (`//go:build smoke`) — P2 and B.**
 
-- **P2 (pins the seed-skip fix, no tmux involved):** build a dev-stamped `lyx` (`-ldflags "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"`), forge a hub, plant a stale-but-untouched stencil so the dev WARN would fire, then run `lyx reed header` (non-blocking) as a real subprocess and assert its **stderr is empty**.
-  Pre-fix this yields five WARN lines;
+- **P2 (pins the seed-skip fix, no tmux involved):** build a dev-stamped `lyx` (`-ldflags "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"`), forge a hub, plant a stale-but-untouched board stencil so the dev-refusal WARN would fire, materialise a `contracts/stencils` tree in the fixture worktree with one drifted body so the port-back WARN would fire too (a `hubforge` fixture has no `contracts/` of its own, and without it `sourceDir` is empty and that WARN cannot fire at all), then run `lyx reed header` (non-blocking) as a real subprocess and assert its **stderr is empty**.
+  Pre-fix stderr is non-empty;
   post-fix it is silent.
+  Assert emptiness, never a line count or a particular message.
   This is the only test that observes noise class 3's suppression directly, and it is deliberately immune to `ED 3` because no terminal, pane, or escape sequence is in the picture.
 - **B (composite backstop):** build the same dev-stamped `lyx`, forge a hub with the same stale stencil, `lyx reed up`, resolve the header pane id, poll until the header line appears, then capture the pane's **entire** scrollback with `capture-pane -p -S -` and assert it holds the header line and no other non-empty line.
   Its file header must state plainly that it pins the composite end-to-end outcome and **not** any individual fix, because `ED 3` runs after everything else and would keep this green if a source fix regressed.
@@ -368,7 +391,8 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
 
 **Evidence discipline (applies to the whole task).**
 
-- P1 and P2 must each be observed **red on unmodified `main`** and green after their own fix lands.
+- P2 must be observed **red on unmodified `main`**, green after the seed-skip fix.
+- P1 must be observed red on the **seam-landed, launch-change-not-yet-applied** intermediate state, green after the launch change — never claimed as red on unmodified `main`, which is impossible for it.
   Record that observation;
   it is the pre-fix failure evidence this task is accountable for.
 - Run the `smoke` tag explicitly at the end, in addition to the untagged suite.
@@ -400,3 +424,7 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
   the Documentation Lifecycle rule does not allow that gap to persist, and punting the decision to an unnamed reviewer is not a decision.
 - **Q:** [round-3 gap] `stencilstore.Reconcile` has a second Warn emitter (`warnPortBackDrift`) that fires in either build mode — does that change the fix or only the explanation? **A:** [auto-pick] Only the explanation and P2's expectation;
   the fix (decline the pass) already covers both emitters. **Why:** the header declines the whole pass, so every Warn the pass can emit is suppressed by construction — but the discussion had to stop claiming a production build is quiet, and P2 must assert "stderr non-empty pre-fix" rather than counting dev-refusal lines.
+- **Q:** [round-4 gap] P1 cannot observe the fix untagged, because `testing.Testing()` suppresses the whole launch path with no injection point — add a seam, or move the pin to a slower tier? **A:** [auto-pick] Add an in-package override seam on the engine (suppression state initialised from `testing.Testing()`, settable by an in-package test helper) and keep P1 hermetic. **Why:** the fake-tmux argv assertion is exactly what the hermetic tier is for, the default behaviour every existing test depends on is unchanged, and nothing is exported;
+  the cost is that P1's red baseline becomes the seam-landed intermediate state rather than unmodified `main`, which is now stated explicitly.
+- **Q:** [round-4 gap] A `hubforge` fixture worktree has no `contracts/` at all, so `sourceDir` is empty and the port-back drift WARN cannot fire — how is P2's "both WARNs" arrangement achieved? **A:** [auto-pick] The test materialises a `contracts/stencils` tree inside the fixture worktree with one drifted body, in addition to dev-stamping the build;
+  dev-refusal-only is named as an acceptable fallback. **Why:** the assertion only needs stderr to be non-empty pre-fix, so either arrangement is sound — what was unacceptable was claiming both while the fixture could only ever produce one.
