@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-reapply-op
+phase: approved-watch-loop
 slug: reed-watchdog-daemon
 branch: reed-watchdog-daemon
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-08-28T10:40:44Z'
 implementing  '2026-08-28T10:41:17Z'
 approved-watchdog-foundations  '2026-08-28T10:47:17Z'
 approved-engine-reapply-op  '2026-08-28T10:59:08Z'
+approved-watch-loop  '2026-08-28T11:11:34Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     commit_sha: 7d5d926f9896c90698814aa388d66bdc210d51df
     verify_baseline_failures: []
   - name: watch-loop
-    state: running
+    state: approved
     implementer_session: f0a31b0a-bc9a-408c-aa9b-305a493695c6
     start_sha: 4d6eb92ef8fb7695c0d8a31dc001243e9f072db6
+    commit_sha: ec2fced872d43c76f5455e189cceae3dd30dfd04
     verify_baseline_failures: []
   - name: cli-tail-docs-and-live-proof
     state: pending
