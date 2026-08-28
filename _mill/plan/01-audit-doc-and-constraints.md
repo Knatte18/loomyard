@@ -45,6 +45,9 @@ Batch-local decision differing from `## Shared Decisions`: nothing in this batch
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/overlay.go`
   - `internal/reedcli/attach.go`
+  - `internal/reedengine/attach.go`
+  - `internal/reedengine/doc.go`
+  - `internal/githubclient/doc.go`
   - `internal/loomcli/run.go`
   - `internal/fabricengine/spawn.go`
   - `internal/gitexec/gitexec.go`
