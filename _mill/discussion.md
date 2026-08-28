@@ -32,15 +32,15 @@ The task is therefore a survey first: enumerate every production process-spawn s
   - `internal/shedadapters/singlellm.go` — `logger.Warn` on the `OutcomeDied`/`OutcomeTimeout` branch and on the `default` unrecognized-outcome branch, carrying the same field set the `OutcomeAsking` branch already carries.
   - `internal/websterengine/integration.go` — `logger.Info` spawn and teardown around `runVerifyCommand`'s `exec.Command`.
   - `internal/treadleengine/gate.go` — `logger.Info` spawn and teardown around the gate command's `exec.CommandContext`.
-  - `internal/boardengine/spawn.go` — `logger.Info` spawn and teardown around the `lyx board … sync` re-exec.
-  - `internal/vscode/launch_linux.go` / `launch_windows.go` — `logger.Info` on spawn, `logger.Warn` on spawn failure.
+  - `internal/boardengine/spawn.go` — `logger.Info` on spawn only, `logger.Warn` on `Start` failure. The `lyx board … sync` re-exec is detached (`cmd.Start()`, never `Wait`ed), so there is no teardown to log.
+  - `internal/vscode/launch_linux.go` / `launch_windows.go` — `logger.Info` on spawn only, `logger.Warn` on `Start` failure. Both launchers are detached, same as `boardengine`.
   - `internal/configengine/edit.go` — `logger.Info` spawn and teardown around the `$EDITOR` spawn (`configengine` already imports `logger`).
   - `internal/reedengine/proctree_windows.go` — `logger.Debug` on the two pwsh process-tree probes (polling path; `Info` would flood).
   - `internal/websterengine/runlevel.go` — `logger.Warn` on each of the four non-`Done` outcome branches (`Asking`, `Died`, `Timeout`, `default`) in the Master run switch at lines 567-615, which today return typed errors with no log line.
   - `internal/mergeresolve/mergeresolve.go` — `logger.Warn` before the `abortAndStuck` call on the `!= OutcomeDone` branch (line 98). The package does not import `logger` today; this adds the import.
   - `internal/selfreportengine` and `internal/landingshed/publish.go` — `logger.Warn` on GitHub API call failures in **both** of `internal/githubclient`'s production callers, since `githubclient` itself cannot import `logger` (see Decisions). `landingshed` already imports `logger` in `stuck.go`, so only `publish.go` gains the import.
 - A new tree-wide guard test, `cmd/lyx/spawnobservability_test.go`, following the established `cmd/lyx/*_test.go` guard convention: every production file containing `exec.Command`/`exec.CommandContext` must either import `internal/logger` or appear in an in-test allowlist with a written reason. Every site the audit marks `blocked` **or** `excluded` that lies inside the walk scope (`internal/`, `cmd/`) carries an allowlist entry — so `internal/hubforge/hub.go` and `cmd/testtiming/main.go` are allowlisted alongside the three `blocked` sites. `tools/` sites need no entry: they are outside the walk.
-- An entry for `cmd/lyx/spawnobservability_test.go` in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map (lines 28-41), with a written reason. The new guard carries `exec.Command`/`exec.CommandContext` as its own scan data, which is precisely what that map exists to permit — all nine sibling guards already have such an entry. This is an edit to an existing test file, listed here as its own deliverable so it is not discovered mid-implementation.
+- An entry for `cmd/lyx/spawnobservability_test.go` in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map (lines 28-42), with a written reason. The new guard carries `exec.Command`/`exec.CommandContext` as its own scan data, which is precisely what that map exists to permit — all thirteen existing entries are there for the same reason, so the new one is the fourteenth. This is an edit to an existing test file, listed here as its own deliverable so it is not discovered mid-implementation.
 - A CONSTRAINTS.md amendment sharpening **Live-Substrate Spawn Observability**'s *prose* — tightening the "for a round/strand/session" scope wording so the invariant states plainly which spawns it governs. Prose only: it must not name the guard file, the allowlist, or any test. See the `constraints-md-prose-only` decision.
 
 **Out:**
@@ -66,10 +66,10 @@ The task is therefore a survey first: enumerate every production process-spawn s
 ### error-universe
 
 - **Decision:** The audit enumerates two bounded universes, each with a mechanical selector — no judgment rule, so two plan writers produce the same table.
-  **Spawn sites:** every `exec.Command` / `exec.CommandContext` occurrence in production (non-`_test.go`) Go files under `internal/` and `cmd/`.
+  **Spawn sites:** every `exec.Command` / `exec.CommandContext` **call expression** — not substring occurrence — in production (non-`_test.go`) Go files under `internal/` and `cmd/`. Both the audit table and the guard resolve calls via `go/parser` + `go/ast`: walk for an `*ast.CallExpr` whose `Fun` is an `*ast.SelectorExpr` whose `X` matches the file's own `os/exec` import name and whose `Sel.Name` is `Command` or `CommandContext`. A prose mention in a doc comment is not a call and is invisible to both.
   **Hard-error-return sites:** every production site that switches on or compares `shuttleengine.Result.Outcome` — mechanically `grep -rn 'shuttleengine\.Outcome[A-Z]' --include=*.go internal/ | grep -v _test.go`, minus `doc.go` matches, which are comments. A site whose non-`Done` branch returns an error or maps to `Stuck` is in scope; a site whose non-`Done` branch returns normally for the caller to branch on is out.
 - **Rationale:** "Terminates an orchestration unit" was a judgment rule, not a selector — it named no sites, yielded no count, and left the audit's completeness uncheckable. The outcome-switch selector is mechanically enumerable, is exactly where the brief's own complaint lived (`singlellm.go`'s `Died`/`Timeout` branch), and covers the whole class rather than the one instance that happened to be noticed. It deliberately excludes generic `if err != nil` propagation: that carries no information the wrapped error does not already have.
-- **The selector's current yield** — run during exploration, nine production sites:
+- **The selector's current yield** — run during exploration, ten production sites. **Re-run both selectors at plan time and regenerate these tables rather than trusting the rows below.** They are a snapshot taken during discussion, and line numbers in particular drift with any intervening commit; the earlier draft of this table carried two transcription errors (a missed second `bouncer.go` site, and a `treadleengine/run.go` line number that pointed at the log call rather than the outcome comparison). The selectors are the authority; the tables are their output at one moment.
 
 | Site | Non-`Done` handling | Verdict |
 | --- | --- | --- |
@@ -77,8 +77,9 @@ The task is therefore a survey first: enumerate every production process-spawn s
 | `websterengine/runlevel.go:567-615` | `Asking`/`Died`/`Timeout`→typed errors; `default`→error | **add** — `Warn` on all four non-`Done` branches |
 | `mergeresolve/mergeresolve.go:98-102` | `!= Done` → `abortAndStuck` | **add** — `Warn` before `abortAndStuck`; package does not import `logger` today |
 | `shedadapters/burler.go:379-397, 448-466` | retry, then respawn | covered |
-| `shedadapters/bouncer.go:474` | seed run did not complete | covered |
-| `treadleengine/run.go:527` | retry on `Died`/`Timeout` | covered |
+| `shedadapters/bouncer.go:473` | seed run did not complete | covered |
+| `shedadapters/bouncer.go:593` | judge run did not complete | covered |
+| `treadleengine/run.go:483, 496` | retry on `Died`/`Timeout` (`Warn` at :527) | covered |
 | `treadleengine/judge.go:131, 193` | degrade to default verdict | covered |
 | `treadleengine/targeting.go:62` | degrade to no seed | covered |
 | `burlerengine/engine.go:164` | `!= Done` returns `result, nil` | excluded — a normal loop event, not a hard error; the caller branches |
@@ -114,27 +115,33 @@ The task is therefore a survey first: enumerate every production process-spawn s
 
 - **Decision:** Per-site verdicts for the remaining production spawn sites, as enumerated during exploration:
 
-| Site | Spawns | Verdict |
-| --- | --- | --- |
-| `internal/reedengine/lifecycle.go` | 1 | covered (31 logger lines) |
-| `internal/reedengine/attach.go` | 1 | covered |
-| `internal/reedengine/overlay.go` | 2 | covered |
-| `internal/reedcli/attach.go` | 1 | covered |
-| `internal/loomcli/run.go` | 2 | covered |
-| `internal/fabricengine/spawn.go` | 1 | covered |
-| `internal/websterengine/integration.go` | 1 | add — `Info` spawn + teardown (exit code) |
-| `internal/treadleengine/gate.go` | 1 | add — `Info` spawn + teardown (exit code, duration) |
-| `internal/boardengine/spawn.go` | 1 | add — `Info` spawn + teardown |
-| `internal/vscode/launch_linux.go` | 2 | add — `Info` spawn, `Warn` on spawn failure |
-| `internal/vscode/launch_windows.go` | 1 | add — `Info` spawn, `Warn` on spawn failure |
-| `internal/configengine/edit.go` | 1 | add — `Info` spawn + teardown |
-| `internal/reedengine/proctree_windows.go` | 2 | add — `Debug` only (polling probe) |
-| `internal/gitexec/gitexec.go` | 2 | blocked — import cycle (`gitexec-cycle`) |
-| `internal/gitkit/gitkit.go` | 3 | blocked — gitkit Leaf Invariant (`gitkit-leaf`) |
-| `internal/githubclient/token.go` | 1 | blocked — GitHub Auth leaf allowlist (`githubclient-leaf`) |
-| `internal/hubforge/hub.go` | 2 | excluded — test-fixture builder, not a production path |
-| `tools/deploy/main.go`, `tools/sandbox/*` | 7 | excluded — build/dev tooling, outside `internal/` and `cmd/` |
-| `cmd/testtiming/main.go` | 1 | excluded — test-timing harness |
+Counts below are **call expressions**, comment mentions excluded, per the AST selector in `error-universe`.
+
+| Site | Calls | Waits? | Verdict |
+| --- | --- | --- | --- |
+| `internal/reedengine/lifecycle.go` | 1 | — | covered (31 logger lines) |
+| `internal/reedengine/overlay.go` | 2 | — | covered |
+| `internal/reedcli/attach.go` | 1 | — | covered |
+| `internal/loomcli/run.go` | 2 | — | covered |
+| `internal/fabricengine/spawn.go` | 1 | — | covered |
+| `internal/websterengine/integration.go` | 1 | `Run` | add — `Info` spawn + teardown (exit code) |
+| `internal/treadleengine/gate.go` | 1 | `Run` | add — `Info` spawn + teardown (exit code, duration) |
+| `internal/configengine/edit.go` | 1 | `Run` | add — `Info` spawn + teardown |
+| `internal/boardengine/spawn.go` | 1 | **detached** (`Start`, never `Wait`) | add — `Info` **spawn only**, `Warn` on `Start` failure |
+| `internal/vscode/launch_linux.go` | 1 | **detached** (`Start`, never `Wait`) | add — `Info` **spawn only**, `Warn` on `Start` failure |
+| `internal/vscode/launch_windows.go` | 1 | **detached** (`Start`, never `Wait`) | add — `Info` **spawn only**, `Warn` on `Start` failure |
+| `internal/reedengine/proctree_windows.go` | 2 | `Output` | add — `Debug` only (polling probe) |
+| `internal/gitexec/gitexec.go` | 1 | `Run` | blocked — import cycle (`gitexec-cycle`) |
+| `internal/gitkit/gitkit.go` | 3 | `Run` | blocked — gitkit Leaf Invariant (`gitkit-leaf`) |
+| `internal/githubclient/token.go` | 1 | `Output` | blocked — GitHub Auth leaf allowlist (`githubclient-leaf`) |
+| `internal/hubforge/hub.go` | 1 | `Run` | excluded — test-fixture builder, not a production path |
+| `cmd/testtiming/main.go` | 1 | `Run` | excluded — test-timing harness |
+| `tools/deploy/main.go`, `tools/sandbox/*` | 7 | — | excluded — build/dev tooling, outside the `internal/`+`cmd/` walk; no allowlist entry needed |
+| `internal/githubclient/doc.go`, `internal/reedengine/doc.go`, `internal/reedengine/attach.go` | 0 | — | not sites — doc-comment prose only; invisible to the AST selector, so no allowlist entry |
+
+**Detached spawns are spawn-only.** `boardengine/spawn.go:30` (`return cmd.Start() // intentionally not Wait()ed`) and both `vscode` launchers call `Start` and never `Wait`. There is no teardown event to observe, so demanding a teardown log at those sites is unsatisfiable — the `Info` line records the spawn, and a `Warn` records a `Start` failure. The CONSTRAINTS.md replacement text in `constraints-md-prose-only` carries the matching carve-out; the two must stay in agreement.
+
+**`internal/reedengine/attach.go` is not a spawn site.** An earlier draft of this table listed it as `covered` with one spawn. Its only `exec.Command` is prose at line 35. It is listed above at zero to keep the correction visible rather than silently dropping the row.
 
 - **Rationale:** `Info` for real OS-process spawn/teardown is exactly what the package's level policy prescribes. `proctree_windows.go` is the one exception: both its spawns sit inside a polling probe called repeatedly against a live process tree, so `Info` would flood the durable sink — `Debug` keeps the trail without the volume. Excluded sites are excluded because they are not production paths, not because logging them would be wrong.
 - **Rejected:** `Info` uniformly including `proctree_windows.go` — floods the durable sink for a probe. Skipping the `vscode` and `configengine` sites as "just a UI launch" — they are real OS spawns whose failure is what an operator reports as "nothing happened", and they cost two lines each.
@@ -142,6 +149,7 @@ The task is therefore a survey first: enumerate every production process-spawn s
 ### enforcement-guard
 
 - **Decision:** A new `cmd/lyx/spawnobservability_test.go` walks production (non-`_test.go`) `.go` files under `internal/` and `cmd/` and fails any file containing `exec.Command` or `exec.CommandContext` that neither imports `internal/logger` nor appears in an in-test allowlist keyed by file path, each entry carrying a written reason.
+- **AST, not substring — and a deliberate divergence from the siblings.** Every existing `cmd/lyx/` guard is a raw-substring scan. This one must not be: three production files hit the substring with zero real calls — `internal/githubclient/doc.go:82`, `internal/reedengine/doc.go:315`, and `internal/reedengine/attach.go:35` — all prose in doc comments. A substring guard would fail all three and force permanent allowlist entries for files that spawn nothing, which reads as "these spawn without logging, and we accepted it" — the opposite of the truth. `internal/githubclient/leaf_enforcement_test.go` already establishes the `go/parser` precedent in this repo, so the divergence has an in-repo model. `tierpurity_test.go` deliberately does *not* strip comments, and that is correct for it: there a mention genuinely is the scan data. State this contrast in the new guard's header comment so a later reader does not "harmonise" it into a substring scan and silently reintroduce three phantom violations.
 - **Rationale:** `cmd/lyx/` is this repo's established home for tree-wide AST/substring guard tests — `tierpurity_test.go`, `checkedcall_test.go`, `rawgitmutation_test.go`, `cwdmutation_test.go`, `ghguard_test.go`, `uncontainedwrite_test.go`, `sandbox_coverage_test.go` all live there and all follow the same walk-plus-allowlist shape. The allowlist-with-reason form matches the Sandbox Suite Coverage invariant's own "exercised or explicitly excluded with a reason" pattern, and it is what converts this audit from a snapshot that rots into an invariant that holds: a new package reaching for `exec.Command` without logging fails the build, and the author must either log or write down why not.
 - **Rejected:** No guard, audit document only — the document is a snapshot of one afternoon; six months of new spawn sites erase it silently, which is precisely how this task's gaps accumulated. A guard covering only the four modules the brief names — leaves the rest of the tree exactly as unenforced as it is today.
 
@@ -155,14 +163,15 @@ The task is therefore a survey first: enumerate every production process-spawn s
   ```markdown
   ## Live-Substrate Spawn Observability
 
-  Every production code path starting a real OS process logs its spawn and its teardown via `internal/logger` — `Info` for a lifecycle spawn, `Debug` for a spawn inside a polling probe.
+  Every production code path starting a real OS process logs its spawn via `internal/logger`, and logs its teardown wherever it waits for one — `Info` for a lifecycle spawn, `Debug` for a spawn inside a polling probe.
 
+  - A detached spawn (`Start` with no `Wait`) logs the spawn alone; there is no teardown to observe.
   - A site structurally barred from importing `internal/logger` is exempt, and carries a written reason wherever the exemption is recorded.
   - Never re-exec `os.Executable()` under `go test`.
   - A retry loop around a real spawn caps attempt COUNT, not only elapsed time.
   ```
 
-  Three substantive changes from the current text: "for a round/strand/session" becomes "production", so the `vscode` launcher, the `$EDITOR` spawn, and the `lyx board … sync` re-exec are unambiguously in; the level split (`Info` vs `Debug`) is stated rather than left to the package doc; and the structural-exemption bullet is added so `gitexec`, `gitkit`, and `githubclient` are covered by the rule rather than silent violations of it. The two existing sub-bullets are carried over unchanged. No test file is named anywhere in it.
+  Four substantive changes from the current text: "for a round/strand/session" becomes "production", so the `vscode` launcher, the `$EDITOR` spawn, and the `lyx board … sync` re-exec are unambiguously in; the teardown clause is made conditional on the site actually waiting, and the detached-spawn bullet states that case explicitly — without it the amendment would be violated by this same task's own `boardengine`/`vscode` changes the moment it landed; the level split (`Info` vs `Debug`) is stated rather than left to the package doc; and the structural-exemption bullet is added so `gitexec`, `gitkit`, and `githubclient` are covered by the rule rather than silent violations of it. The two existing sub-bullets are carried over unchanged. No test file is named anywhere in it.
 - **Rationale:** `CONSTRAINTS.md`'s own opening blurb (line 4) states: *"Guides planning and review. Not a test-coverage index: a new constraint may get its own enforcing test in the same change, but which tests exist today is not tracked here."* That sentence is current and deliberate — commit `d66cefe5`, "CONSTRAINTS.md: strip to pure form rules", removed exactly this kind of "enforced by `<test>`" reference from the file. Naming the new guard inside the invariant's text would silently reintroduce the pattern that commit removed, two commits later, in the same branch. CONSTRAINTS.md answers *what form must code take*; the guard file answers *how that form is checked today*, and the file's own rule says the second question is not tracked there.
 - **Rejected:** Name the guard in the invariant text so the enforcement mechanism is discoverable from CONSTRAINTS.md — discoverability is real, but it is bought by reversing a convention established two commits ago, and the same discoverability already exists in the other direction: the guard's header comment cites the invariant by name, which is the direction the repo's seven sibling guards in `cmd/lyx/` already use. Carve an explicit exception into the "not a test-coverage index" rule for guard tests specifically — an exception broad enough to admit every one of those seven siblings, i.e. a repeal of the rule rather than an exception to it. Skip the CONSTRAINTS.md edit entirely — the scope wording genuinely is ambiguous today (see `error-universe`), and leaving it ambiguous is what let these gaps accumulate.
 
@@ -208,7 +217,7 @@ From `CONSTRAINTS.md`:
 - **Cwd Resolution Invariant** — `internal/lyxcwd`'s imports are pinned to "stdlib + `internal/gitexec` only". This is one half of the `gitexec` cycle and must not be relaxed.
 - **gitkit Leaf Invariant** — `internal/gitkit` imports only stdlib, `lyxcwd`, `weftname`, `configengine`, `lyxdirs`. Not widened.
 - **GitHub Auth Invariant** — all GitHub authentication goes through `internal/githubclient`; its leaf half is allowlist-enforced by `leaf_enforcement_test.go`. Not widened.
-- **Test Tier Purity Invariant** — untagged test files perform no expensive spawns; no `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `gitkit.Copy*`, `hubforge.NewHub` outside `integration`/`smoke`-tagged files. The new guard test is a source scan, not a spawner, so it stays untagged — but it necessarily *contains* the banned `exec.Command`/`exec.CommandContext` tokens as its own scan data. The sibling guards do not avoid these tokens; they are allowlisted. `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map (lines 28-41) lists all nine of them with written reasons, and the new guard needs a tenth entry. That edit is a Scope In deliverable, not an implementation detail.
+- **Test Tier Purity Invariant** — untagged test files perform no expensive spawns; no `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `gitkit.Copy*`, `hubforge.NewHub` outside `integration`/`smoke`-tagged files. The new guard test is a source scan, not a spawner, so it stays untagged — but it necessarily *contains* the banned `exec.Command`/`exec.CommandContext` tokens as its own scan data. The sibling guards do not avoid these tokens; they are allowlisted. `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map (lines 28-42) holds thirteen entries with written reasons, and the new guard needs a fourteenth. That edit is a Scope In deliverable, not an implementation detail.
 - **CONSTRAINTS.md is not a test-coverage index** — the file's own opening blurb (line 4): "a new constraint may get its own enforcing test in the same change, but which tests exist today is not tracked here." Established deliberately in commit `d66cefe5`. The CONSTRAINTS.md edit in this task is prose only; naming the guard file there is banned. See `constraints-md-prose-only`.
 - **Documentation Lifecycle** — cross-cutting infrastructure updates CONSTRAINTS.md in the same commit. The prose sharpening of Live-Substrate Spawn Observability satisfies this. `docs/overview.md` needs no change (no new module, no execution-stack change). `manifest/roadmap.md` does not move — hardening-shaped.
 - **Markdown Link Integrity** — every inline link in `manifest/`/`docs/` `.md` files must resolve, file part and `#anchor`. The new `manifest/designs/logger-coverage.md` and any link to it from CONSTRAINTS.md must satisfy this.
@@ -261,5 +270,8 @@ Discovered during exploration:
 - **Q:** [review r2, BLOCKING] What is the sharpened invariant's actual replacement wording? **A:** Stated verbatim in `constraints-md-prose-only`. **Why:** r1's fix said exhaustively what the edit must not contain and never said what it must say, leaving the plan writer to invent the substantive half. The new text replaces "for a round/strand/session" with "production", states the `Info`/`Debug` split, and adds a structural-exemption bullet so `gitexec`/`gitkit`/`githubclient` are covered by the rule instead of silently violating it. Heading kept — seven guards and the review briefs cite invariants by heading.
 - **Q:** [review r2, BLOCKING] How is the hard-error universe enumerated, rather than judged? **A:** Mechanical selector — every production match of `shuttleengine.Outcome[A-Z]` outside `_test.go` and `doc.go` — plus its nine-site yield, tabled in `error-universe`. **Why:** the previous "terminates an orchestration unit" phrasing was a judgment rule applied from memory; running it as a selector surfaced `websterengine/runlevel.go` and `mergeresolve/mergeresolve.go`, two uncovered sites the earlier draft missed entirely.
 - **Q:** [review r2, NIT] `internal/githubclient` has two production callers, not one — is Publish's own caller in scope? **A:** Yes; both `selfreportengine/selfreport.go` and `landingshed/publish.go` are in scope. **Why:** `publish.go` is the one carrying Publish's GitHub calls — the gap the brief actually named — so covering only `selfreportengine` would have closed the gap on paper while leaving it open.
-- **Q:** [review r2, NIT] Does the new guard need an existing test file edited? **A:** Yes — a tenth entry in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map, now a listed Scope In deliverable. **Why:** the earlier Constraints note said sibling guards avoid the banned tokens; they do not — all nine are allowlisted there, and the new guard carries the same tokens as scan data.
+- **Q:** [review r2, NIT] Does the new guard need an existing test file edited? **A:** Yes — a fourteenth entry in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map, now a listed Scope In deliverable. **Why:** the earlier Constraints note said sibling guards avoid the banned tokens; they do not — thirteen entries are allowlisted there, and the new guard carries the same tokens as scan data.
+- **Q:** [review r3, BLOCKING] Does the spawn selector — and the guard — distinguish a call from a doc-comment mention? **A:** Yes; both are AST-based (`go/parser` + `go/ast`, matching `*ast.CallExpr` on the file's `os/exec` import name), diverging deliberately from the substring-scanning sibling guards. **Why:** three production files hit the substring with zero real calls (`githubclient/doc.go:82`, `reedengine/doc.go:315`, `reedengine/attach.go:35`); a substring guard would demand permanent allowlist entries for files that spawn nothing, which misrepresents them as accepted violations. `githubclient/leaf_enforcement_test.go` is the in-repo `go/parser` precedent.
+- **Q:** [review r3, NIT] Can a detached spawn log a teardown? **A:** No — detached spawns are spawn-only, stated in both the verdict table and the CONSTRAINTS.md replacement text. **Why:** `boardengine/spawn.go:30` and both `vscode` launchers call `Start` and never `Wait`; the proposed invariant demanded a teardown log unconditionally, so this task's own code would have violated its own amendment on landing.
+- **Q:** [review r3, NIT] Are the tabled selector yields authoritative? **A:** No — both tables are snapshots; the selectors are the authority, and the plan re-runs them and regenerates the tables. **Why:** the transcribed rows already carried two errors (a missed second `bouncer.go` site, a `treadleengine/run.go` line pointing at the log call rather than the outcome comparison), and line numbers drift with any intervening commit.
 - **Q:** [review r2, NIT] Do `excluded` sites need guard allowlist entries, or only `blocked` ones? **A:** Both, whenever they lie inside the walk scope. **Why:** `internal/hubforge/hub.go` and `cmd/testtiming/main.go` are production non-test files under `internal/`/`cmd/`, so the walk reaches them regardless of why they are excluded. `tools/` sites are outside the walk and need no entry.
