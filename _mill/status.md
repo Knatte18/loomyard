@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-lock-stale-session-name
 branch: reed-lock-stale-session-name
 plan: _mill/plan
@@ -22,4 +22,15 @@ plan-review-r1  '2026-08-28T14:52:28Z'
 plan-fix-r1  '2026-08-28T14:54:42Z'
 plan-review-r2  '2026-08-28T15:02:48Z'
 planned  '2026-08-28T15:03:08Z'
+implementing  '2026-08-28T15:03:37Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: refuse-a-vanished-worktree-root
+    state: pending
+  - name: watch-loop-dormant-mode
+    state: pending
 ```
