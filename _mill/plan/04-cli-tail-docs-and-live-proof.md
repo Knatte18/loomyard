@@ -75,6 +75,10 @@ This is the smallest seam that makes the discussion's "the tail reaches `blockFo
   - `internal/reedcli/header.go`
   - `internal/reedcli/cli.go`
   - `internal/reedcli/cli_test.go`
+  - `internal/reedengine/lock.go`
+  - `internal/reedengine/config.go`
+  - `internal/reedengine/geometry.go`
+  - `internal/reedengine/header.go`
   - `internal/logger/logger.go`
   - `CONSTRAINTS.md`
 - **Edits:**
