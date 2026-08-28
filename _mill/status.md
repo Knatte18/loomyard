@@ -39,7 +39,9 @@ batches:
     commit_sha: 67724ebda18296ddc15a226c289f63c807c4a3f2
     verify_baseline_failures: []
   - name: engine-hook-install
-    state: pending
+    state: running
+    implementer_session: 71cfa9f2-280e-4403-9917-dda896e2e06b
+    start_sha: 6be748ef39d9b9ce71f9a40a2a54cf00fd22dd3e
     verify_baseline_failures: []
   - name: integration-contract-docs
     state: pending
