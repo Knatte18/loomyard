@@ -153,13 +153,15 @@ This is what keeps the loop's tests fast and inside the Test Tier Purity Invaria
      The zero `render.Box` is a deliberate "nothing applied yet" sentinel and needs no companion flag: a live box always has positive `W`/`H`, so it can never equal the zero box, and the first re-apply therefore always runs.
   5. Loop forever over a `time.Ticker`, selecting on `ctx.Done()` (return `ctx.Err()`) and the tick.
      The ticker's period is `t.SignalTick` in signal mode and `t.PollCycle` in poll mode; when the mode changes, stop the old ticker and start one at the new period rather than ticking at the wrong rate.
-  6. **Poll-mode tick:** call `e.reapplyLayout(lastApplied)` unconditionally and hand the outcome to the shared handler below.
+  6. **Poll-mode tick:** call `e.reapplyLayout(lastApplied, true)` unconditionally and hand the outcome to the shared handler below.
+     Poll mode always asks for the probe: re-probing each cycle is what lets a watcher that started on a hook-less already-up session promote itself once the operator's next attach installs the hook, and it costs nothing extra in a mode that is already making a round trip per cycle.
      Poll mode uses neither the debouncer nor the retry streak — the cycle interval is its own cadence, and this is the fallback platform's only self-heal, so a per-event cap that could stop it permanently must not apply here.
   7. **Signal-mode tick:** `os.Stat(e.resizeSignalPath())`.
      When it exists, **remove it first** (`os.Remove`, silent on `fs.ErrNotExist`, `logger.Warn` on anything else) and then call `state.Signal(now)`.
      Removing before the apply is what makes a resize arriving mid-apply re-signal rather than be swallowed.
      A stat error that is not `fs.ErrNotExist` is `logger.Warn`-ed and treated as "no signal".
-     Then, when `state.Plan(now) == watchPlanApply`, call `e.reapplyLayout(lastApplied)` and hand the outcome to the shared handler; otherwise do nothing this tick.
+     Then, when `state.Plan(now) == watchPlanApply`, call `e.reapplyLayout(lastApplied, false)` and hand the outcome to the shared handler; otherwise do nothing this tick.
+     Signal mode passes `false` because it never re-probes: the `probeHook` argument is what makes that rule literally true rather than merely suppressing the mode transition while still paying the `show-options` round trip on every resize.
   8. **Shared outcome handler**, applied identically in both modes, in this order:
      - `err != nil` → `logger.Warn` with the socket, session, and error.
        In signal mode, `abandoned := state.Failed(now)`; when `abandoned`, `logger.Warn` once that this resize event is being abandoned after `t.MaxAttempts` attempts and that the watcher remains running and responsive to the next signal.
@@ -220,6 +222,7 @@ This is what keeps the loop's tests fast and inside the Test Tier Purity Invaria
   - `internal/reedengine/lock.go`
   - `internal/reedengine/overlay.go`
   - `internal/reedengine/lifecycle.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/state.go`
   - `internal/reedengine/spawn.go`
   - `internal/reedengine/render/types.go`

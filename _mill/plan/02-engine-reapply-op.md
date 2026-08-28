@@ -16,7 +16,7 @@ It widens `applyLayoutLocked` so the apply path can hand back the box it used an
 
 It is one batch because every card either widens or consumes the same three functions (`liveBoxLocked`, `applyLayoutLocked`, `withOpLock`) inside one package, and `windowsize.go` is edited by two of them.
 
-**External interface batch 3 consumes:** `ReapplyResult` and `(*Engine).reapplyLayout(lastApplied render.Box) (ReapplyResult, error)`.
+**External interface batch 3 consumes:** `ReapplyResult` and `(*Engine).reapplyLayout(lastApplied render.Box, probeHook bool) (ReapplyResult, error)`.
 
 Batch-local decision: `applyLayoutLocked` keeps its exact current signature and behaviour as a thin wrapper, so no existing caller changes.
 All new capability lands on a new `applyLayoutLockedOpts` sibling.
@@ -59,6 +59,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
 - **Context:**
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/render/types.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/spawn.go`
   - `internal/reedengine/state.go`
 - **Edits:**
@@ -135,6 +136,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - `internal/reedengine/apply.go`
   - `internal/reedengine/lock.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/probe.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/watchdog.go`
@@ -174,6 +176,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   `ReapplyResult` is exported only because it is the return type of a method reachable from the exported `Engine.Watch` added in batch 3; `reapplyLayout` itself stays unexported.
 
   Add `func (e *Engine) hookInstalledLocked() (installed bool, known bool)` in this same file.
+  It is called only when the caller asks for a probe — see `reapplyLayout`'s `probeHook` parameter below.
   On `runtime.GOOS == "windows"` it returns `(false, false)` immediately, issuing **no** round trip — Windows is poll-only unconditionally, because `set-hook`/`run-shell` are absent from `requiredSubcommands` and psmux's support for them is unverified, and a hook that installs but never fires would pin the watcher in signal mode forever with zero self-heal.
   Otherwise it issues `e.tmux.output("show-options", "-v", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName)`.
   On error it `logger.Debug`s and returns `(false, false)`.
@@ -181,15 +184,19 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   Its godoc must record two live-verified facts: the readback is `show-options`, **not** `show-hooks`, because hooks are options in tmux 3.6 and `show-hooks` prints nothing for a session-scoped hook that demonstrably fires; and the match is exact against reed's own command string for this worktree's signal path, never merely "some `window-resized` hook exists", because a foreign hook or a sibling worktree's signal path would deliver nothing this watcher can consume.
   It must also state that `show-options` is absent from `requiredSubcommands` and that this is acceptable precisely because every failure shape here yields `known == false` and therefore poll mode, so no capability-probe change is needed and no psmux risk is taken.
 
-  Add `func (e *Engine) reapplyLayout(lastApplied render.Box) (ReapplyResult, error)`.
+  Add `func (e *Engine) reapplyLayout(lastApplied render.Box, probeHook bool) (ReapplyResult, error)`.
   Its body is:
 
   1. `acquired, err := e.withTryOpLock(func() error { ... })`.
-  2. Inside the closure, in order: `e.requireSessionLocked()`; `e.loadOrInitStateLocked()`; `e.tmux.listPanes(e.SessionName())` wrapped as `fmt.Errorf("list panes: %w", err)` exactly as `Status()` does; then `installed, known := e.hookInstalledLocked()` recorded onto the result; then `e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true, SkipWhenBoxEquals: &lastApplied})`, whose `applyResult` fields are copied onto the `ReapplyResult`.
+  2. Inside the closure, in order: `e.requireSessionLocked()`; `e.loadOrInitStateLocked()`; `e.tmux.listPanes(e.SessionName())` wrapped as `fmt.Errorf("list panes: %w", err)` exactly as `Status()` does; then, **only when `probeHook` is true**, `installed, known := e.hookInstalledLocked()` recorded onto the result; then `e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true, SkipWhenBoxEquals: &lastApplied})`, whose `applyResult` fields are copied onto the `ReapplyResult`.
   3. When `acquired` is false and `err` is nil, return `ReapplyResult{Deferred: true}` and `nil` — `HookKnown` stays false, so the mode is simply not decided this call.
   4. When `err` is non-nil, return whatever partial result was recorded together with `err`.
 
-  The probe runs **after** `listPanes` and **before** the apply so that a session the apply guards skip (fewer than two panes, or no strand owning a present pane) still decides the mode — otherwise a watcher on such a session could never promote out of poll mode.
+  `probeHook` is what keeps the design's "signal-driven mode never re-probes" rule literally true.
+  Without it the `show-options` round trip would fire on **every** re-apply in both modes, so a signal-mode watcher would re-probe once per resize — suppressing only the mode *transition*, not the round trip, which is not what the rule says and not what it is for.
+  Its godoc must say so, and must say that `probeHook == false` yields `HookInstalled == false` **and** `HookKnown == false`, meaning "not asked" rather than "asked and absent" — the same undecided shape a deferral produces, which is exactly right, since a caller that did not ask has learned nothing.
+
+  When `probeHook` is true, the probe runs **after** `listPanes` and **before** the apply so that a session the apply guards skip (fewer than two panes, or no strand owning a present pane) still decides the mode — otherwise a watcher on such a session could never promote out of poll mode.
 
   `reapplyLayout` persists nothing: it never calls `SaveState` and never writes `reed.json`.
   Its godoc must state that, must state that it inherits `applyLayoutLockedOpts`'s two session-survival guards rather than re-deriving them (which matters more here than anywhere else, since the watcher fires unattended with no operator watching the envelope), and must state that it owns the box-equality guard itself so the comparison happens under the same lock as the query that produced the box.
@@ -271,6 +278,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/lock.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/render/types.go`
   - `internal/lock/lock.go`
   - `CONSTRAINTS.md`
@@ -317,6 +325,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - `internal/reedengine/watchdog.go`
   - `internal/reedengine/overlay.go`
   - `internal/reedengine/lifecycle.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/spawn.go`
   - `internal/reedengine/state.go`
   - `internal/reedengine/render/types.go`
@@ -340,9 +349,11 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - **Deferral.** With `reed.lock` already held, `reapplyLayout` returns `ReapplyResult{Deferred: true}` and nil, issues **no** tmux call at all, and reports `HookKnown: false`.
   - **Box-equality guard.** A call whose scripted live box equals `lastApplied` issues no `select-layout` and returns `Applied: false, BoxIsLive: true`; a call whose box differs applies.
   - **Degraded box.** With `display-message` scripted to error, `reapplyLayout` returns `BoxIsLive: false` whether or not the fallback box happens to equal `lastApplied`, and — in the happens-to-equal case — still issues `select-layout`.
-  - **Hook probe, exact match only.** A table over the scripted `show-options -v` answer, asserting `(HookInstalled, HookKnown)` for each: reed's own exact command string for this worktree's signal path yields `(true, true)`; the empty string (no hook set) yields `(false, true)`; a `window-resized` hook belonging to something else yields `(false, true)`; reed's own command shape but naming a **different** worktree's signal path yields `(false, true)`; a round-trip error yields `(false, false)`.
+  - **Hook probe, exact match only** (every case with `probeHook: true`). A table over the scripted `show-options -v` answer, asserting `(HookInstalled, HookKnown)` for each: reed's own exact command string for this worktree's signal path yields `(true, true)`; the empty string (no hook set) yields `(false, true)`; a `window-resized` hook belonging to something else yields `(false, true)`; reed's own command shape but naming a **different** worktree's signal path yields `(false, true)`; a round-trip error yields `(false, false)`.
     "Some `window-resized` hook exists" is the wrong test and is what an obvious implementation writes.
-  - **Probe ordering.** On a session the apply guards skip (fewer than two panes), the probe still ran: `HookKnown` is true and `show-options` appears in the recorded argv.
+  - **Probe ordering.** With `probeHook: true` on a session the apply guards skip (fewer than two panes), the probe still ran: `HookKnown` is true and `show-options` appears in the recorded argv.
+  - **`probeHook: false` asks nothing.** The same fixture with `probeHook: false` issues **no** `show-options` round trip at all and returns `HookInstalled: false, HookKnown: false` — "not asked", indistinguishable from a deferral's undecided shape and deliberately so.
+    This is the assertion that pins "signal-driven mode never re-probes" as a real property rather than a comment.
   - **Persists nothing.** A successful re-apply leaves `reed.json`'s bytes byte-identical to what they were before the call.
 
   A GOOS-conditional Windows assertion is not written here — card 9's Windows branch is a `runtime.GOOS` check that an untagged test on Linux cannot exercise without a build-tagged file; assert instead that on the current GOOS the probe issued exactly one `show-options` round trip, and leave the Windows poll-only behaviour to the code path's own godoc.
