@@ -59,6 +59,13 @@ func chainedAttachArgv(socket, session, layout string) []string {
 // cols and rows are the attaching client's own terminal size, in columns and rows; a non-positive
 // value means no client size is known, and AttachArgv returns the bare argv immediately without
 // taking the lock.
+//
+// The pre-flight also refreshes the session's window-resized resize-pin hook, computed against the
+// same told box the chained layout is. This is what corrects a later client resize, and — on a
+// session whose earlier apply already installed the hook — a degraded bare attach too. A degrade
+// return installs nothing: the uncovered window is a session between "up" and its first placed
+// strand, which has nothing to pin anyway because a lone header pane takes render.Rules' sole-cell
+// branch.
 func (e *Engine) AttachArgv(cols, rows int) []string {
 	bare := bareAttachArgv(e.Socket(), e.SessionName())
 
@@ -128,10 +135,13 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		// because at argv-build time the live window is still the pre-attach size and would be exactly
 		// the wrong answer. The focus target is deliberately discarded: the chain carries select-layout
 		// only, never select-pane.
-		layout, _, err := e.planLayout(st, live, render.Box{X: 0, Y: 0, W: cols, H: rows - reserved})
+		box := render.Box{X: 0, Y: 0, W: cols, H: rows - reserved}
+		layout, _, err := e.planLayout(st, live, box)
 		if err != nil {
 			return err
 		}
+
+		e.installResizePinsLocked(e.fixedHeightPins(st, live, box))
 
 		chained = chainedAttachArgv(e.Socket(), e.SessionName(), layout)
 		return nil

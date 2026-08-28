@@ -224,6 +224,93 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("select-pane: %v", err)
 	}
 
+	// set-hook / resize-pane: reed's first deliberately OPTIONAL wire surface — absent from
+	// requiredSubcommands on purpose (doc.go's "Subcommand set" paragraph), so this section
+	// documents their semantics rather than gating the capability probe on them. Both wire
+	// behaviours the resize-pin hook (windowsize.go) rests on, and that no unit test can reach,
+	// are pinned here: array independence across set-hook -u / set-hook / set-hook -a, and a
+	// window-resized hook firing AFTER tmux has already resized the layout.
+	windowTarget := exactSessionWindowTarget(session)
+
+	// First: set-hook -u followed by set-hook and one set-hook -a yields INDEPENDENT array
+	// entries. Entry [0] deliberately names a pane id no session on this socket owns, so the
+	// live-firing half below can assert its failure does not take entry [1] down with it.
+	if err := reed.run("set-hook", "-u", "-w", "-t", windowTarget, "window-resized"); err != nil {
+		t.Fatalf("set-hook -u -w -t %q window-resized: %v", windowTarget, err)
+	}
+	if err := reed.run("set-hook", "-w", "-t", windowTarget, "window-resized", "resize-pane -t %99 -y 1"); err != nil {
+		t.Fatalf("set-hook -w -t %q window-resized (entry [0]): %v", windowTarget, err)
+	}
+	if err := reed.run("set-hook", "-a", "-w", "-t", windowTarget, "window-resized", fmt.Sprintf("resize-pane -t %s -y 1", initialPane.ID)); err != nil {
+		t.Fatalf("set-hook -a -w -t %q window-resized (entry [1]): %v", windowTarget, err)
+	}
+
+	// Read the array back: one line per entry, each naming its own pane id — the readback shape
+	// verified live on tmux 3.6.
+	hooksOut, err := reed.output("show-hooks", "-w", "-t", windowTarget)
+	if err != nil {
+		t.Fatalf("show-hooks -w -t %q: %v", windowTarget, err)
+	}
+	if !strings.Contains(hooksOut, "window-resized[0]") || !strings.Contains(hooksOut, "%99") {
+		t.Errorf("show-hooks -w -t %q = %q, want a window-resized[0] line naming pane %%99", windowTarget, hooksOut)
+	}
+	if !strings.Contains(hooksOut, "window-resized[1]") || !strings.Contains(hooksOut, initialPane.ID) {
+		t.Errorf("show-hooks -w -t %q = %q, want a window-resized[1] line naming pane %s", windowTarget, hooksOut, initialPane.ID)
+	}
+
+	// Second: a window-resized hook fires AFTER tmux has resized the layout, so a resize-pane -y
+	// inside it survives the resize that triggered it — and the dead entry [0] above does not
+	// take entry [1] down with it. window-size manual is required to make a DETACHED session
+	// resizable at all.
+	if err := reed.run("set-option", "-w", "-t", windowTarget, "window-size", "manual"); err != nil {
+		t.Fatalf("set-option -w -t %q window-size manual: %v", windowTarget, err)
+	}
+	if err := reed.run("resize-window", "-t", windowTarget, "-x", "80", "-y", "60"); err != nil {
+		t.Fatalf("resize-window -t %q -x 80 -y 60: %v", windowTarget, err)
+	}
+	waitUntil(t, 10*time.Second, "listPanes never reported the window fully laid out at 60 rows", func() bool {
+		live, err := reed.listPanes(session)
+		if err != nil {
+			return false
+		}
+		maxBottom := 0
+		for _, p := range live {
+			if bottom := p.Top + p.Height; bottom > maxBottom {
+				maxBottom = bottom
+			}
+		}
+		return maxBottom == 60
+	})
+	afterResizeLive, err := reed.listPanes(session)
+	if err != nil {
+		t.Fatalf("listPanes after resize-window: %v", err)
+	}
+	var pinnedHeight int
+	var pinnedFound bool
+	for _, p := range afterResizeLive {
+		if p.ID == initialPane.ID {
+			pinnedHeight = p.Height
+			pinnedFound = true
+		}
+	}
+	if !pinnedFound {
+		t.Fatalf("listPanes after resize-window = %+v, want pane %s still present", afterResizeLive, initialPane.ID)
+	}
+	if pinnedHeight != 1 {
+		t.Errorf("pane %s height after resize-window = %d, want exactly 1 (the resize-pane -y entry [1] fired after tmux's own resize and pinned it)", initialPane.ID, pinnedHeight)
+	}
+
+	// Leave the window as the later steps of this test expect to find it, using two named
+	// mechanisms and no ad-hoc readback-and-restore: clear the hook array, and drop the
+	// window-size override with the -u unset form rather than reading the prior value back and
+	// re-setting it.
+	if err := reed.run("set-hook", "-u", "-w", "-t", windowTarget, "window-resized"); err != nil {
+		t.Fatalf("set-hook -u -w -t %q window-resized (final clear): %v", windowTarget, err)
+	}
+	if err := reed.run("set-option", "-uw", "-t", windowTarget, "window-size"); err != nil {
+		t.Fatalf("set-option -uw -t %q window-size (unset): %v", windowTarget, err)
+	}
+
 	// (b) list-sessions: the subcommand serverPIDLocked's sibling reap
 	// helpers use to distinguish "no server" from "server up".
 	sessionsOut, err := reed.output("list-sessions", "-F", "#{session_name}")

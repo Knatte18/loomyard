@@ -20,6 +20,12 @@ import (
 type placement struct {
 	id     string
 	height int
+	// strip reports whether this cell's height came from the collapsed-strip
+	// budget (an absolute row budget, p.CollapsedStripRows post-clamp) rather
+	// than from the equal-split of whatever rows were left. buildStackBody
+	// must not read it — it exists for FixedHeightPins (rules.go) to identify
+	// which placements to report.
+	strip bool
 }
 
 // buildStackBody renders panes into a tmux window_layout body positioned

@@ -41,6 +41,7 @@ type attachRecorder struct {
 	sequence          []string
 	setOptionCalls    [][]string
 	mutationCalls     [][]string
+	setHookCalls      [][]string
 	windowSizeQueried bool
 	liveBoxQueried    bool
 }
@@ -112,6 +113,11 @@ func newAttachHook(script attachScript, rec *attachRecorder) func(capture bool, 
 			return script.listPanes, script.listPanesErr
 		case "select-layout", "select-pane", "kill-pane", "split-window":
 			rec.mutationCalls = append(rec.mutationCalls, append([]string{}, args...))
+			return "", nil
+		case "set-hook":
+			call := append([]string{}, args...)
+			rec.setHookCalls = append(rec.setHookCalls, call)
+			rec.sequence = append(rec.sequence, "set-hook")
 			return "", nil
 		default:
 			return "", nil
@@ -388,10 +394,12 @@ func TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback(t *testing.T) {
 	}
 }
 
-// TestAttachArgv_NeverMutatesTheSessionOrPersistsState pins that AttachArgv is read-only end to end:
-// no select-layout, select-pane, kill-pane, or split-window is ever issued (the chain carries
-// select-layout only inside the returned ARGV, never applies it), and reed.json is neither created
-// nor modified by the call.
+// TestAttachArgv_NeverMutatesTheSessionOrPersistsState pins that AttachArgv issues no pane-set
+// mutation: no select-layout, select-pane, kill-pane, or split-window is ever issued (the chain
+// carries select-layout only inside the returned ARGV, never applies it), and reed.json is neither
+// created nor modified by the call. AttachArgv deliberately does mutate a window OPTION now — the
+// resize-pin hook, alongside the two geometry pins it already set — so "never mutates" is scoped to
+// the pane set, not to every tmux call this builder makes.
 func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
 	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
 
@@ -414,5 +422,123 @@ func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
 	}
 	if len(after.Strands) != len(before.Strands) || after.HeaderPaneID != before.HeaderPaneID {
 		t.Errorf("reed.json changed across AttachArgv: before=%+v after=%+v", before, after)
+	}
+}
+
+// TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead pins the install statement's position in
+// AttachArgv's pre-flight: a known-good pre-flight issues the set-hook clear (and pin rebuild) after
+// the state and pane list are read, and before the argv is returned.
+func TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead(t *testing.T) {
+	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+
+	got := e.AttachArgv(80, 24)
+	if len(got) != 10 {
+		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", got)
+	}
+
+	listPanesIdx, firstSetHookIdx := -1, -1
+	for i, step := range rec.sequence {
+		if step == "list-panes" && listPanesIdx == -1 {
+			listPanesIdx = i
+		}
+		if step == "set-hook" && firstSetHookIdx == -1 {
+			firstSetHookIdx = i
+		}
+	}
+	if listPanesIdx == -1 {
+		t.Fatalf("sequence = %v, want a list-panes call", rec.sequence)
+	}
+	if firstSetHookIdx == -1 {
+		t.Fatalf("sequence = %v, want at least one set-hook call", rec.sequence)
+	}
+	if firstSetHookIdx <= listPanesIdx {
+		t.Errorf("sequence = %v, want the first set-hook call (index %d) after list-panes (index %d)", rec.sequence, firstSetHookIdx, listPanesIdx)
+	}
+	if len(rec.setHookCalls) == 0 {
+		t.Fatal("no set-hook calls recorded, want at least the clear")
+	}
+	if !containsArg(rec.setHookCalls[0], "-u") {
+		t.Errorf("first set-hook argv = %v, want the -u clear", rec.setHookCalls[0])
+	}
+}
+
+// TestAttachArgv_DegradedPathsInstallNoResizePinHook pins that every degraded path yielding the bare
+// argv issues no set-hook call at all — the guard-skip disposition
+// install-points-are-two-named-statements-no-guard-moves documents.
+func TestAttachArgv_DegradedPathsInstallNoResizePinHook(t *testing.T) {
+	t.Run("ZeroCols", func(t *testing.T) {
+		e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+		assertBareArgv(t, e, e.AttachArgv(0, 24))
+		if len(rec.setHookCalls) != 0 {
+			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
+		}
+	})
+	t.Run("HasSessionFails", func(t *testing.T) {
+		script := goodAttachScript()
+		script.hasSessionErr = errors.New("boom")
+		e, rec := newAttachTestEngine(t, script, goodAttachStrands())
+		assertBareArgv(t, e, e.AttachArgv(80, 24))
+		if len(rec.setHookCalls) != 0 {
+			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
+		}
+	})
+	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
+		script := goodAttachScript()
+		script.listPanes = "%1 0 0 40 20 4321\n"
+		e, rec := newAttachTestEngine(t, script, goodAttachStrands())
+		assertBareArgv(t, e, e.AttachArgv(80, 24))
+		if len(rec.setHookCalls) != 0 {
+			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
+		}
+	})
+	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
+		e, rec := newAttachTestEngine(t, goodAttachScript(), nil)
+		assertBareArgv(t, e, e.AttachArgv(80, 24))
+		if len(rec.setHookCalls) != 0 {
+			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
+		}
+	})
+	t.Run("PlanError_DeferredAnchorRejected", func(t *testing.T) {
+		strands := []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}}
+		e, rec := newAttachTestEngine(t, goodAttachScript(), strands)
+		assertBareArgv(t, e, e.AttachArgv(80, 24))
+		if len(rec.setHookCalls) != 0 {
+			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
+		}
+	})
+}
+
+// TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv pins hook-failure-is-non-fatal-everywhere on
+// the AttachArgv path: a set-hook returning an error neither suppresses the chain nor changes a
+// single element of the ten-element chained argv, compared element by element against the same argv
+// built with a non-failing hook.
+func TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv(t *testing.T) {
+	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+	baseHook := e.tmux.execHook
+
+	want := e.AttachArgv(80, 24)
+	if len(want) != 10 {
+		t.Fatalf("baseline AttachArgv() = %v, want the 10-element chained argv", want)
+	}
+
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		if args[0] == "set-hook" {
+			out, _ := baseHook(capture, args...)
+			return out, errors.New("boom")
+		}
+		return baseHook(capture, args...)
+	}
+
+	got := e.AttachArgv(80, 24)
+	if len(got) != len(want) {
+		t.Fatalf("AttachArgv() with failing set-hook = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("AttachArgv()[%d] = %q, want %q (a failing set-hook must not change the chained argv)", i, got[i], want[i])
+		}
+	}
+	if len(rec.setHookCalls) == 0 {
+		t.Fatal("no set-hook calls recorded despite the failing hook, want the install statement still attempted")
 	}
 }
