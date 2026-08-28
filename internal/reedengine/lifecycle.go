@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -512,7 +511,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		}
 	}
 
-	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, testing.Testing())
+	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, e.suppressHeaderLaunch)
 	if launchCmd == "" {
 		// Under go test the header pane stays a bare blocking shell — see
 		// headerLaunchLine: re-exec'ing exe here would run the test binary's
