@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-retarget-callers
+phase: approved-finalize-message
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: _mill/plan
@@ -29,6 +29,7 @@ planned  '2026-08-28T06:32:35Z'
 implementing  '2026-08-28T06:33:02Z'
 approved-summaryparser-leaf  '2026-08-28T06:36:46Z'
 approved-retarget-callers  '2026-08-28T06:44:23Z'
+approved-finalize-message  '2026-08-28T06:48:52Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     commit_sha: d2fa6dc86a94894f511ba1e3b0e225ab7323be61
     verify_baseline_failures: ["FAIL\t./internal/summaryparser/... [setup failed]"]
   - name: finalize-message
-    state: running
+    state: approved
     implementer_session: 1a82793e-b4bc-4351-a8b4-0cc019799e53
     start_sha: 864323d07c2e883b34882b03618e4c18f52edac5
+    commit_sha: fe48118b28410ea99bc263d278b696efbd0a23e4
     verify_baseline_failures: []
   - name: docs-and-specs
     state: pending
