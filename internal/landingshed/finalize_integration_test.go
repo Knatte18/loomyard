@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // finalizeConflictStencilFixture is a minimal, valid conflict stencil carrying exactly the two
@@ -54,6 +55,18 @@ func seedConflictStencil(t *testing.T) string {
 		t.Fatalf("WriteFile(conflict stencil): %v", err)
 	}
 	return root
+}
+
+// seedFinalSummary writes a well-formed final-summary artifact under a fresh t.TempDir() and returns
+// its path -- Call's own top-of-Call parse (finalize.go's step 1a) requires a real artifact on disk,
+// a plain non-empty path string is not enough here since this test drives a real fz.Call(ctx).
+func seedFinalSummary(t *testing.T) string {
+	t.Helper()
+	path := summaryparser.Path(t.TempDir())
+	if err := os.WriteFile(path, []byte("# A landing title\n\nA landing body.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(final summary): %v", err)
+	}
+	return path
 }
 
 // fakeResolutionShuttle is the model seam this file fakes: on every Run call it overwrites each of
@@ -168,6 +181,7 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 		WorktreeRoot:     taskWarp,
 		TaskBranch:       "task",
 		ParentBranch:     "parent",
+		FinalSummaryPath: seedFinalSummary(t),
 		StencilsDir:      seedConflictStencil(t),
 		ScratchDir:       scratchDir,
 		OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil },

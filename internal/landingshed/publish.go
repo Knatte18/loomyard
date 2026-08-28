@@ -64,6 +64,9 @@ func NewPublish(deps Deps) (*Publish, error) {
 	if deps.PushBranch == nil {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.PushBranch must not be nil")
 	}
+	if deps.FinalSummaryPath == "" {
+		return nil, fmt.Errorf("landingshed: NewPublish: Deps.FinalSummaryPath must not be empty")
+	}
 
 	fabricHandle, err := deps.OpenFabric()
 	if err != nil {

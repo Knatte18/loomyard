@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // recordingParentMerger is the in-package fake standing in for the unexported parentMerger seam. It
@@ -49,14 +50,19 @@ func (m *recordingParentMerger) Merge(source string, opts fabricengine.MergeOpti
 	return m.results[idx].result, m.results[idx].err
 }
 
-// newFinalizeDeps returns a minimal Deps for a Finalize test.
+// newFinalizeDeps returns a minimal Deps for a Finalize test, with a well-formed final-summary
+// artifact already written at FinalSummaryPath -- Call's own top-of-Call parse (see finalize.go's
+// step 1a) requires one to exist for every test that does not override this field itself.
 func newFinalizeDeps(t *testing.T) Deps {
 	t.Helper()
+	summaryPath := summaryparser.Path(t.TempDir())
+	writeSummary(t, summaryPath, "A landing title", "A landing body.")
 	return Deps{
-		WorktreeRoot: t.TempDir(),
-		TaskBranch:   "task-branch",
-		ParentBranch: "main",
-		ScratchDir:   filepath.Join(t.TempDir(), "scratch"),
+		WorktreeRoot:     t.TempDir(),
+		TaskBranch:       "task-branch",
+		ParentBranch:     "main",
+		FinalSummaryPath: summaryPath,
+		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
 			Squash:             true,
