@@ -96,7 +96,7 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 
 	placements := make([]placement, n)
 	for i, s := range stack {
-		placements[i] = placement{id: s.PaneID, height: heights[i]}
+		placements[i] = placement{id: s.PaneID, height: heights[i], strip: isStrip[i]}
 	}
 	return placements
 }
