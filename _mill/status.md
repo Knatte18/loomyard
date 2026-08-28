@@ -30,7 +30,11 @@ implementing  '2026-08-28T15:03:37Z'
 ```yaml
 batches:
   - name: refuse-a-vanished-worktree-root
-    state: pending
+    state: running
+    implementer_session: d3348678-9e17-409d-8827-4a66e7fd7cd7
+    start_sha: 005cb6e6aba0a9dadaa6b5b023c1f8ea280203ea
+    verify_baseline_failures: []
   - name: watch-loop-dormant-mode
     state: pending
+    verify_baseline_failures: []
 ```
