@@ -57,6 +57,8 @@ batches:
     commit_sha: ec2fced872d43c76f5455e189cceae3dd30dfd04
     verify_baseline_failures: []
   - name: cli-tail-docs-and-live-proof
-    state: pending
+    state: running
+    implementer_session: 343838bd-a6df-413c-982d-3a13d103d1d1
+    start_sha: b87ee90f3525291efd83f5155c09c3d88517b99f
     verify_baseline_failures: []
 ```
