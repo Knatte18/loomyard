@@ -8,7 +8,11 @@
 package reedengine
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -35,23 +39,27 @@ func parseWindowSize(out string) (w, h int, ok bool) {
 }
 
 // liveBoxLocked queries the live tmux window size for this engine's session and returns it as a
-// render.Box anchored at the origin.
+// render.Box anchored at the origin, plus whether that box was a real observation.
 // On a round-trip error or a malformed answer, it logs via logger.Warn and falls back to the
 // configured e.cfg.Width/e.cfg.Height — exactly today's pre-live-query value — so a degraded query
-// never blocks a caller.
+// never blocks a caller; the second return value is false on both fallback paths and true only when
+// the parse succeeded.
+// This method never reports failure through its box: a degraded query returns the configured
+// cfg.Width/cfg.Height pair, a perfectly plausible-looking box, so a caller comparing boxes across
+// calls must be told whether the box was an observation at all.
 // Assumes the op lock is already held.
-func (e *Engine) liveBoxLocked() render.Box {
+func (e *Engine) liveBoxLocked() (render.Box, bool) {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window_width} #{window_height}")
 	if err != nil {
 		logger.Warn("reed: failed to query live window size, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
+		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, false
 	}
 	w, h, ok := parseWindowSize(out)
 	if !ok {
 		logger.Warn("reed: malformed live window size answer, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "answer", out)
-		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
+		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, false
 	}
-	return render.Box{X: 0, Y: 0, W: w, H: h}
+	return render.Box{X: 0, Y: 0, W: w, H: h}, true
 }
 
 // reservedRowsFromStatus maps a `#{status}` readback to the number of window rows tmux's status line
@@ -81,12 +89,19 @@ func windowSizeAllowsChain(raw string) bool {
 	return strings.ToLower(strings.TrimSpace(raw)) == "latest"
 }
 
-// pinGeometryOptionsLocked pins this session's window to "status off" and "window-size latest".
-// Both pins are session/window-targeted rather than -g, because a session- or window-scoped value set
-// from the operator's own ~/.tmux.conf silently wins over a global set while set-option still exits
-// 0 — verified live. Each call's error is logged via logger.Warn and then ignored; the second pin is
-// attempted even when the first failed, per the Shared Decision
-// geometry-tmux-failures-are-non-fatal-everywhere.
+// pinGeometryOptionsLocked pins this session's window to "status off" and "window-size latest", and
+// owns the window-resized hook's whole install/unset lifecycle.
+// Both geometry pins are session/window-targeted rather than -g, because a session- or window-scoped
+// value set from the operator's own ~/.tmux.conf silently wins over a global set while set-option
+// still exits 0 — verified live. Each call's error is logged via logger.Warn and then ignored; every
+// later step, including the hook block, is attempted even when an earlier one failed, per the Shared
+// Decision geometry-tmux-failures-are-non-fatal-everywhere.
+//
+// This function is the right home for the hook lifecycle because it already runs both at boot
+// (lifecycle.go) and in the attach pre-flight (attach.go) — which is what lets a session booted by an
+// older lyx pick the hook up on the operator's next attach rather than staying unhealed until a manual
+// down + up. watchdog: off must reach the hook as well as the loop, because a kill-switch that leaves
+// the hook installed keeps spawning run-shell on every resize to write a signal file nobody reads.
 // Assumes the op lock is already held.
 func (e *Engine) pinGeometryOptionsLocked() {
 	target := exactSessionWindowTarget(e.SessionName())
@@ -95,6 +110,44 @@ func (e *Engine) pinGeometryOptionsLocked() {
 	}
 	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {
 		logger.Warn("reed: failed to pin window-size latest", "socket", e.Socket(), "session", e.SessionName(), "option", "window-size", "err", err)
+	}
+
+	// watchdogOption returns nothing and is all-non-fatal by contract, so an invalid value takes the
+	// unset side here rather than propagating; the boot path (ensureServerAndSessionLocked) is where
+	// an invalid value is loud.
+	enabled, err := watchdogOption(e.cfg.Watchdog)
+	if err != nil {
+		logger.Warn("reed: invalid watchdog value, treating the watchdog as off", "socket", e.Socket(), "session", e.SessionName(), "watchdog", e.cfg.Watchdog, "err", err)
+		enabled = false
+	}
+
+	if runtime.GOOS == "windows" {
+		// The hook is never installed on Windows — set-hook/run-shell are absent from
+		// requiredSubcommands and psmux's support for them is unverified — but the signal file is
+		// still removed when the watchdog is off, since nothing else will clean it up.
+		if !enabled {
+			e.removeResizeSignalFileLocked()
+		}
+		return
+	}
+
+	if !enabled {
+		// set-hook -u is idempotent and exits 0 whether or not a hook was set (verified live).
+		// This clears both old-style watchdog hooks (from prior sessions) and new-style resize-pin
+		// hooks (installed by the current code path), ensuring a fresh state for either mechanism.
+		if err := e.tmux.run("set-hook", "-u", "-t", target, windowResizedHookName); err != nil {
+			logger.Warn("reed: failed to unset window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+		e.removeResizeSignalFileLocked()
+	}
+}
+
+// removeResizeSignalFileLocked removes this worktree's resize signal file, if present.
+// An absent file is silent (errors.Is(err, fs.ErrNotExist)); any other error is logger.Warn-ed and
+// ignored, since this is always called from a non-fatal context.
+func (e *Engine) removeResizeSignalFileLocked() {
+	if err := os.Remove(e.resizeSignalPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger.Warn("reed: failed to remove resize signal file", "socket", e.Socket(), "session", e.SessionName(), "path", e.resizeSignalPath(), "err", err)
 	}
 }
 

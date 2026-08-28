@@ -142,17 +142,44 @@ func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
 	return false
 }
 
-// applyLayoutLocked renders the current strand table into a tmux
-// window_layout string and applies it via select-layout, then focuses the
-// resolved focus pane via select-pane. It assumes the op lock is already
-// held and that reconcile has already run against live (this function
-// makes no reconcile decisions of its own). When live has fewer than two
-// panes it skips both tmux calls entirely, since a single pane already
+// applyOpts tunes one applyLayoutLockedOpts call.
+type applyOpts struct {
+	// SkipFocus suppresses the trailing select-pane, applying the layout only.
+	//
+	// This exists because the trailing `select-pane -t focus` targets the strand carrying
+	// Display.Focus in the persisted table, not whichever pane is live-active, which is right for an
+	// operator-invoked op and wrong for an unattended watcher that would otherwise yank the
+	// operator's cursor out of the pane they are typing in on every window resize.
+	SkipFocus bool
+	// SkipWhenBoxEquals, when non-nil, suppresses select-layout entirely if the
+	// resolved live box is an observation and equals *SkipWhenBoxEquals.
+	SkipWhenBoxEquals *render.Box
+}
+
+// applyResult reports what one applyLayoutLockedOpts call did.
+type applyResult struct {
+	// Applied is true only when select-layout was actually issued.
+	Applied bool
+	// Box is the box the layout was planned against. Meaningful only when BoxIsLive.
+	Box render.Box
+	// BoxIsLive reports whether Box came from a successful live query rather than
+	// liveBoxLocked's configured fallback, or from no query at all.
+	BoxIsLive bool
+}
+
+// applyLayoutLockedOpts renders the current strand table into a tmux
+// window_layout string and applies it via select-layout, then optionally
+// focuses the resolved focus pane via select-pane. It assumes the op lock is
+// already held and that reconcile has already run against live (this
+// function makes no reconcile decisions of its own). When live has fewer than
+// two panes it skips both tmux calls entirely, since a single pane already
 // fills the window and select-layout/select-pane would be a needless round
 // trip. It also skips them when no strand owns a present pane: the layout
 // string would then enumerate zero panes, which tmux answers by destroying
 // the session's entire pane set (see anyPlacedStrand) — with nothing of
 // reed's to lay out, there is nothing worth destroying foreign panes over.
+// Both guards return a zero applyResult (Applied: false, BoxIsLive: false)
+// and nil, before any box query.
 //
 // The live box query (e.liveBoxLocked) runs only after both guards above have
 // passed, not as an argument evaluated up front: liveBoxLocked is a real
@@ -162,6 +189,11 @@ func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
 // paths this function skips. This also makes this call site agree with
 // AttachArgv's ordering (batch 2), which evaluates the same two guards before
 // it plans.
+//
+// Immediately after the box query, when opts.SkipWhenBoxEquals is non-nil and the queried box was a
+// real observation and equals *opts.SkipWhenBoxEquals, this returns without issuing select-layout or
+// select-pane at all — the box-is-live conjunct is load-bearing: a degraded query is not an
+// observation, so a fallback box must never satisfy the guard.
 //
 // select-layout with a layout string whose dimensions disagree with the live
 // window exits 0 and silently rescales the layout proportionally, so every
@@ -175,49 +207,49 @@ func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
 // client can end up taller than its configured boot height until the next
 // client attaches and snaps it back — a consequence of the live-box query,
 // not a bug.
-//
-// tmux redistributes every window-size delta evenly across the vertical cells and has no fixed-height
-// pane concept, so no absolute row budget survives a resize on its own. This function therefore
-// re-installs a window-resized hook re-pinning the fixed-height panes (the header band and every
-// collapsed strip) after each successful apply, so a later client resize is corrected without a
-// second reed operation.
-//
-// The guard-skip disposition is the opposite of the zero-pin one, and deliberately so: a path
-// returning at either guard above issues NOTHING — not even the clear — so a previously installed
-// array survives it, with no removal path. len(live) < 2 is harmless because resize-pane -y against a
-// window's sole pane is a silent no-op — verified live on tmux 3.6, exit 0 with the pane's height
-// unchanged — so the surviving header pin cannot contradict render.Rules' sole-cell branch even
-// though it now names the only pane in the window. !anyPlacedStrand is the reachable, long-lived one:
-// state.go documents an operator remedy that deletes reed.json while the session and its processes
-// keep running untracked, after which anyPlacedStrand is false forever, and there the surviving array
-// is a benefit — it keeps pinning the still-alive header and strips at the budgets reed last computed
-// for them. Clearing ahead of the guards was considered and rejected: it would strip the pins from
-// exactly that untracked-but-running session, and a clear with no rebuild behind it drifts on the
-// very next resize, which is strictly worse than a slightly stale array.
-func (e *Engine) applyLayoutLocked(st *ReedState, live []LivePane) error {
+func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts applyOpts) (applyResult, error) {
 	if len(live) < 2 {
-		return nil
+		return applyResult{}, nil
 	}
 	if !anyPlacedStrand(st.Strands, liveIDSet(live)) {
-		return nil
+		return applyResult{}, nil
 	}
 
-	box := e.liveBoxLocked()
+	box, boxIsLive := e.liveBoxLocked()
+	if opts.SkipWhenBoxEquals != nil && boxIsLive && box == *opts.SkipWhenBoxEquals {
+		return applyResult{Applied: false, Box: box, BoxIsLive: true}, nil
+	}
+
 	layout, focus, err := e.planLayout(st, live, box)
 	if err != nil {
-		return fmt.Errorf("plan layout: %w", err)
+		return applyResult{}, fmt.Errorf("plan layout: %w", err)
 	}
 
 	session := e.SessionName()
 	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), layout); err != nil {
-		return fmt.Errorf("select-layout: %w", err)
+		return applyResult{}, fmt.Errorf("select-layout: %w", err)
+	}
+	if opts.SkipFocus {
+		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
 	e.installResizePinsLocked(e.fixedHeightPins(st, live, box))
 	if focus == "" {
-		return nil
+		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
 	if err := e.tmux.run("select-pane", "-t", focus); err != nil {
-		return fmt.Errorf("select-pane: %w", err)
+		return applyResult{}, fmt.Errorf("select-pane: %w", err)
 	}
-	return nil
+	return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
+}
+
+// applyLayoutLocked renders the current strand table into a tmux
+// window_layout string and applies it via select-layout, then focuses the
+// resolved focus pane via select-pane.
+//
+// The body now lives in applyLayoutLockedOpts; the zero applyOpts passed here is exactly today's
+// behaviour — full focus half included — so reconcileApplyPersistLocked's (spawn.go) caller is
+// unchanged.
+func (e *Engine) applyLayoutLocked(st *ReedState, live []LivePane) error {
+	_, err := e.applyLayoutLockedOpts(st, live, applyOpts{})
+	return err
 }

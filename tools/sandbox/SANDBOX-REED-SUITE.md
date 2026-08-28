@@ -423,6 +423,25 @@ Then run an ordinary `lyx reed up` / `down` cycle in a normal worktree and confi
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M26 -- Resize self-heal (operator-assisted visual)
+
+**Covers:** reed
+
+**Goal:** "Prove a live terminal resize re-applies the planned layout on its own, in both directions, with no `lyx` command run."
+
+**Watch:** The agent pauses and instructs the operator to attach with `lyx reed attach` **in a second terminal** against a session holding a header pane and at least two strands.
+Confirm the header is exactly `header.height_rows` tall and the strand budgets look right.
+Then have the operator **drag the terminal window larger** and confirm the layout re-applies within about a second, with no `lyx` command run.
+Then have the operator **drag it smaller** and confirm the same.
+The shrink direction is the non-negotiable half of this scenario -- it is the one SIGWINCH misses entirely, and a watcher that only self-heals on growth must be reported as a `FAIL` here, not a `WARN`.
+A header that grows past its configured row count, or a bottom strand squeezed below `min_full_rows`, is also a `FAIL`.
+The operator must also confirm the cursor did NOT jump to another pane across either resize (the focus-steal regression), and that typing into a pane before a resize leaves that same pane focused after it.
+Rationale: the agent session owns the current terminal, so it cannot demonstrate or observe a live client resize itself.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -456,6 +475,8 @@ M21: <OK|WARN|FAIL> -- <one-line note if not OK>
 M22: <OK|WARN|FAIL> -- <one-line note if not OK>
 M23: <OK|WARN|FAIL> -- <one-line note if not OK>
 M24: <OK|WARN|FAIL> -- <one-line note if not OK>
+M25: <OK|WARN|FAIL> -- <one-line note if not OK>
+M26: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

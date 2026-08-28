@@ -159,7 +159,7 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, and header template before any tmux round trip.
+// capability, debug_log, mouse, watchdog, and header template before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -174,6 +174,14 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// or any spawn attempt, not partway through a boot.
 	mouse, err := mouseOption(e.cfg.Mouse)
 	if err != nil {
+		return false, nil, err
+	}
+
+	// The boolean is discarded here: this is the one consumer of watchdogOption with an error
+	// channel, and its only job is to make a typo fail `lyx reed up` loudly and by name — the hook
+	// install (pinGeometryOptionsLocked) and the watch loop each read the key again and fail safe
+	// toward "no watchdog" instead.
+	if _, err := watchdogOption(e.cfg.Watchdog); err != nil {
 		return false, nil, err
 	}
 
