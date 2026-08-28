@@ -34,7 +34,7 @@ var landingshedAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/shedengine":    true,
 	"github.com/Knatte18/loomyard/internal/githubclient":  true,
 	"github.com/Knatte18/loomyard/internal/gitrepo":       true,
-	"github.com/Knatte18/loomyard/internal/websterengine": true,
+	"github.com/Knatte18/loomyard/internal/summaryparser": true,
 	"github.com/google/go-github/v75/github":              true,
 	"gopkg.in/yaml.v3":                                    true,
 }

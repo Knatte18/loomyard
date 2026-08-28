@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -106,7 +107,7 @@ Example:
 				Geom:        c.geom,
 				RefMatcher:  c.refMatcher,
 				OutcomePath: websterengine.OutcomePath(c.geom.WebsterDir),
-				SummaryPath: websterengine.SummaryPath(c.geom.WebsterDir),
+				SummaryPath: summaryparser.Path(c.geom.WebsterDir),
 				Sleeper:     realSleeper{},
 			}
 

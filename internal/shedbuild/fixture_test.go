@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -114,7 +115,7 @@ func testLandingDeps(dir string) landingshed.Deps {
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
-		WebsterDir:       dir,
+		FinalSummaryPath: summaryparser.Path(dir),
 		StencilsDir:      dir,
 		ScratchDir:       filepath.Join(dir, "landing-scratch"),
 		OriginURL:        "https://example.invalid/fixture/fixture.git",

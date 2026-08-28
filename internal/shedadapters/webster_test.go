@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -48,7 +49,7 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 	if outcome != shedengine.Done {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
 	}
-	wantPath := websterengine.SummaryPath(dir)
+	wantPath := summaryparser.Path(dir)
 	if ptr.Path != wantPath {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
 	}
@@ -229,7 +230,7 @@ func TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds(t *testing.
 	if outcome != shedengine.Done {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
 	}
-	wantPath := websterengine.SummaryPath(dir)
+	wantPath := summaryparser.Path(dir)
 	if ptr.Path != wantPath {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
 	}

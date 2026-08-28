@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // failingShuttle fails the test outright if Run is ever called -- this scenario stages no conflict,
@@ -95,11 +95,11 @@ func (s *publishIntegrationGitHubServer) install(t *testing.T) {
 	t.Cleanup(func() { landingshed.NewGitHubClient = orig })
 }
 
-// writeSummaryLanding writes a well-formed summary.md into websterDir -- this package's own local
-// copy of the in-package unit tier's identically-shaped helper.
-func writeSummaryLanding(t *testing.T, websterDir, title, body string) {
+// writeSummaryLanding writes a well-formed summary artifact at path -- this package's own local copy
+// of the in-package unit tier's identically-shaped helper.
+func writeSummaryLanding(t *testing.T, path, title, body string) {
 	t.Helper()
-	if err := os.WriteFile(websterengine.SummaryPath(websterDir), []byte(fmt.Sprintf("# %s\n\n%s\n", title, body)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(fmt.Sprintf("# %s\n\n%s\n", title, body)), 0o644); err != nil {
 		t.Fatalf("write summary.md: %v", err)
 	}
 }
@@ -120,24 +120,24 @@ func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 	commitOnCurrentBranchLanding(t, taskWorktree, "parent-progress.txt", "parent progress\n", "main: progress")
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
 
-	websterDir := t.TempDir()
-	writeSummaryLanding(t, websterDir, "Task summary", "Task body.")
+	finalSummaryPath := summaryparser.Path(t.TempDir())
+	writeSummaryLanding(t, finalSummaryPath, "Task summary", "Task body.")
 
 	server := newPublishIntegrationGitHubServer(t, taskWorktree)
 	server.install(t)
 
 	var pushed bool
 	deps := landingshed.Deps{
-		WorktreeRoot: taskWorktree,
-		TaskBranch:   "task-branch",
-		ParentBranch: "main",
-		WebsterDir:   websterDir,
-		StencilsDir:  t.TempDir(),
-		ScratchDir:   filepath.Join(t.TempDir(), "scratch"),
-		OriginURL:    "https://github.com/acme/proj.git",
-		PushBranch:   func() error { pushed = true; return nil },
-		OpenFabric:   func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWorktree), nil },
-		Shuttle:      failingShuttle{t: t},
+		WorktreeRoot:     taskWorktree,
+		TaskBranch:       "task-branch",
+		ParentBranch:     "main",
+		FinalSummaryPath: finalSummaryPath,
+		StencilsDir:      t.TempDir(),
+		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
+		OriginURL:        "https://github.com/acme/proj.git",
+		PushBranch:       func() error { pushed = true; return nil },
+		OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWorktree), nil },
+		Shuttle:          failingShuttle{t: t},
 		Config: landingshed.Config{
 			RequirePRToBase:    []string{"main"},
 			Conflict:           "claude:test-model",

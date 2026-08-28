@@ -211,6 +211,10 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 
 `internal/discussionparser` is the sole reader of `_lyx/discussion/`'s on-disk format. Imports the standard library only.
 
+## Summaryparser Sole-Parser Invariant
+
+In production code, `internal/summaryparser` is the sole declarer of the final-summary artifact's filename and the sole parser of its format. Imports the standard library only.
+
 ## Gate Self-Check Parity Invariant
 
 A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode.
