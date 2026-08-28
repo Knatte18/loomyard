@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: planned
 slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: _mill/plan
@@ -27,4 +27,5 @@ plan-review-r3  '2026-08-28T09:01:13Z'
 plan-fix-r3  '2026-08-28T09:02:12Z'
 plan-review-r4  '2026-08-28T09:09:35Z'
 plan-fix-r4  '2026-08-28T09:09:57Z'
+planned  '2026-08-28T09:10:12Z'
 ```
