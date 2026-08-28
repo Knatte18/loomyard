@@ -3,7 +3,7 @@
 ```yaml
 task: "Producer-agnostic final-summary artifact + wire Finalize"
 slug: "final-summary-artifact"
-approved: false
+approved: true
 started: "20260828-061025"
 parent: "main"
 root: ""
