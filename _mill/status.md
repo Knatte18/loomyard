@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: reed-lock-stale-session-name
 branch: reed-lock-stale-session-name
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-28T13:45:18Z'
 discussion-fix-r4  '2026-08-28T14:27:40Z'
+discussed  '2026-08-28T14:34:24Z'
 ```
