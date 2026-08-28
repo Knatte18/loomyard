@@ -48,7 +48,9 @@ batches:
     commit_sha: 566d9739b05de04ce63acde5c9fdab9f8209cc86
     verify_baseline_failures: []
   - name: spawn-site-log-lines
-    state: pending
+    state: running
+    implementer_session: 39429a70-600b-4af4-b7bd-57be329c9136
+    start_sha: 060feebb60438a0d38a410dc68ea3774e9e68cbb
     verify_baseline_failures: []
   - name: github-caller-warn-lines
     state: pending
