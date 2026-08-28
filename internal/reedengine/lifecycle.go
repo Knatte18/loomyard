@@ -495,7 +495,20 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		return fmt.Errorf("resolve lyx binary path: %w", err)
 	}
 
-	paneID, err := e.splitHeaderPaneAtTopLocked(session, live)
+	// Computed above the split so it can be passed straight into split-window as its own trailing
+	// shell-command argument: the pane then runs launchCmd directly from birth, hosting no
+	// interactive shell for anything to echo the command into or read ~/.bashrc from.
+	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, e.suppressHeaderLaunch)
+	if launchCmd == "" {
+		// Under go test the header pane stays a bare blocking shell — see
+		// headerLaunchLine: re-exec'ing exe here would run the test binary's
+		// entire suite recursively. The pane still exists and its id is still
+		// recorded below, so layout geometry and up/resume idempotence are
+		// unchanged.
+		logger.Info("reed: header re-exec suppressed under go test, pane left as bare shell", "socket", e.Socket(), "exe", exe)
+	}
+
+	paneID, err := e.splitHeaderPaneAtTopLocked(session, live, launchCmd)
 	if err != nil {
 		return fmt.Errorf("split header pane: %w", err)
 	}
@@ -508,28 +521,6 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		// the trace level without upgrading routine cleanup to a Warn.
 		if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
 			logger.Debug("reed: best-effort kill of header corpse pane failed", "socket", e.Socket(), "pane", corpseID, "err", err)
-		}
-	}
-
-	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, e.suppressHeaderLaunch)
-	if launchCmd == "" {
-		// Under go test the header pane stays a bare blocking shell — see
-		// headerLaunchLine: re-exec'ing exe here would run the test binary's
-		// entire suite recursively. The pane still exists and its id is still
-		// recorded below, so layout geometry and up/resume idempotence are
-		// unchanged.
-		logger.Info("reed: header re-exec suppressed under go test, pane left as bare shell", "socket", e.Socket(), "pane", paneID, "exe", exe)
-	} else {
-		// Same literal send-keys mechanics launchStrandLocked (spawn.go) uses:
-		// -l so tmux never reinterprets any part of the launch line, then a
-		// separate Enter to submit it.
-		if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
-			logger.Warn("reed: failed to send header launch command", "socket", e.Socket(), "pane", paneID, "err", err)
-			return fmt.Errorf("send header launch command: %w", err)
-		}
-		if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
-			logger.Warn("reed: failed to submit header launch command", "socket", e.Socket(), "pane", paneID, "err", err)
-			return fmt.Errorf("submit header launch command: %w", err)
 		}
 	}
 
@@ -579,8 +570,8 @@ func topmostPaneID(live []LivePane) string {
 // On a failed retry the FIRST error is returned, not the retry's: it describes the state the
 // operator actually has, and the re-tile is an internal repair attempt rather than something they
 // asked for.
-func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane) (string, error) {
-	paneID, firstErr := e.splitPaneAboveLocked(topmostPaneID(live), live)
+func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane, launchCmd string) (string, error) {
+	paneID, firstErr := e.splitPaneAboveLocked(topmostPaneID(live), live, launchCmd)
 	if firstErr == nil {
 		return paneID, nil
 	}
@@ -595,7 +586,9 @@ func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane) (st
 		logger.Warn("reed: could not re-enumerate panes after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
 		return "", firstErr
 	}
-	paneID, err = e.splitPaneAboveLocked(topmostPaneID(retiled), retiled)
+	// The retry carries launchCmd too — a retried header must never boot commandless, or it would
+	// be left hosting an interactive shell exactly like the noise this batch removes.
+	paneID, err = e.splitPaneAboveLocked(topmostPaneID(retiled), retiled, launchCmd)
 	if err != nil {
 		logger.Warn("reed: header split still had no room after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
 		return "", firstErr
@@ -622,8 +615,17 @@ func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane) (st
 // header would bind the header to a strand's pane — the next layout string would then carry a
 // duplicate pane number, destroying the session's panes wholesale (see
 // validateSplitCreatedNewPane).
-func (e *Engine) splitPaneAboveLocked(target string, preSplitLive []LivePane) (string, error) {
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+func (e *Engine) splitPaneAboveLocked(target string, preSplitLive []LivePane, launchCmd string) (string, error) {
+	argv := []string{"split-window", "-b", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}"}
+	if launchCmd != "" {
+		// A single trailing shell-command argument, exactly like an interactive `tmux split-window`
+		// invocation's own trailing-command syntax: the pane then runs launchCmd directly rather than
+		// an interactive shell, so nothing types it, echoes it, or reads a shell rc file for it. Empty
+		// launchCmd leaves the argv exactly as it was before this parameter existed — the go test
+		// default (see Engine.suppressHeaderLaunch).
+		argv = append(argv, launchCmd)
+	}
+	out, err := e.tmux.output(argv...)
 	if err != nil {
 		return "", err
 	}
