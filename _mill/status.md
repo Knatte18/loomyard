@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: _mill/plan
@@ -28,4 +28,17 @@ plan-fix-r3  '2026-08-28T09:02:12Z'
 plan-review-r4  '2026-08-28T09:09:35Z'
 plan-fix-r4  '2026-08-28T09:09:57Z'
 planned  '2026-08-28T09:10:12Z'
+implementing  '2026-08-28T09:10:37Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: header-pane-runs-its-own-command
+    state: pending
+  - name: header-declines-the-stencil-seed-pass
+    state: pending
+  - name: scrollback-backstop-and-composite-smoke
+    state: pending
 ```
