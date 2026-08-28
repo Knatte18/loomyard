@@ -69,7 +69,9 @@ it does not touch scrollback, which is precisely why the noise survives where th
 **In:**
 
 - `internal/reedengine`: replace the header pane's split-then-`send-keys` boot with a `split-window` that carries the launch command as its own shell-command argument, so no interactive shell ever exists in that pane.
+- `internal/clihelp`: one new exported annotation-key constant naming the seed-skip opt-out. No behaviour change in that package.
 - `cmd/lyx`: give the root pre-run a way to skip the stencil-seed pass for commands that opt out, and opt `reed header` out.
+  This includes a signature change to `seedStencils` so it can see the command's annotations (see Technical context).
 - `internal/reedcli`: extend the `--blocking` clear sequence to clear scrollback as well as the visible screen, as a backstop against any future stray write, and extract the written bytes into a pure helper so that sequence is assertable without entering the blocking path.
 - Tests: hermetic unit coverage for the new launch composition, the seed-skip gate, and the payload helper, plus smoke coverage that pins the seed-skip effect directly (real dev-stamped binary, stderr assertion) and one composite scrollback backstop against a real reed session.
 - Docs: `internal/reedengine/doc.go`'s header-pane section, and `internal/reedcli/header.go`'s `Long`/file header where they describe the boot mechanics.
@@ -153,6 +155,12 @@ it does not touch scrollback, which is precisely why the noise survives where th
   The three source fixes above address the three observed noise classes;
   `ED 3` guarantees the pane is clean at the moment the header renders regardless of what any future code path, shell, or terminal wrote before it.
   It costs one escape byte sequence, is emitted by the same single `Fprint` that already exists, and needs no new tmux verb.
+- Asserted, not verified — same disposition as the psmux command-form parity: `ED 3` (`CSI 3 J`) is honoured by tmux's emulator and, by assumption, by psmux's.
+  If a multiplexer does not implement it, the backstop is a silent no-op — and nothing in the test plan would reveal that, because B goes green anyway once the source fixes land.
+  The one observation that would confirm `ED 3` actually works is running B **before** the source fixes, while the noise is still being written: a green B at that point proves the clear took effect, a red one proves it did not.
+  That observation is available for free given `ordering-lands-source-fixes-before-the-backstop` already records the pre-fix pane content at the start of the task;
+  take it then, and record the result.
+  On a Windows/psmux host it remains unverified for the same reason every Windows claim here is.
 - Consequence that must be planned around: `ED 3` runs **after** anything the shell or the pre-run wrote, so once it is in place the pane's scrollback comes up clean whether or not the source fixes exist.
   It therefore masks the source fixes from any end-to-end scrollback assertion.
   That is not a reason to drop it — it is exactly the property that makes it a backstop — but it means the scrollback assertion cannot be the regression pin for the source fixes.
@@ -358,9 +366,11 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
 
 - TDD candidate: the seed-skip predicate.
   Assert it returns "skip" for a command carrying the annotation and "proceed" for one without it, driven directly rather than through `seedStencils`' `testing.Testing()` early return — mirroring how `stencilSeedTarget` was extracted to be assertable.
-- Assert the **ordering** inside the extracted predicate's call site — that the annotation check precedes the `stencilSeedTarget` call — as a pure, in-process assertion.
-  Do **not** write a test claiming to observe that "no `git rev-parse` is spawned": `seedStencils` returns unconditionally under `testing.Testing()` (`cmd/lyx/stencilseed.go:36-38`), so such a test passes whatever the ordering is, and is the same unfalsifiable shape the earlier review rounds rejected elsewhere.
-  The package's existing Test Tier Purity guard is what actually catches an accidental spawn.
+- No ordering assertion.
+  The annotation check must still be placed before `stencilSeedTarget` in the source (so an opted-out command resolves no geometry), but that ordering is **not** independently testable here and no test should pretend otherwise: `seedStencils` returns under `testing.Testing()` (`cmd/lyx/stencilseed.go:36-38`) before either step runs, so an in-process test cannot observe their relative order, and the one observable form — "no `git rev-parse` was spawned" — is exactly the unfalsifiable shape the earlier rounds rejected.
+  The `cmd/lyx` pin is therefore, in full: the predicate returns skip for an annotated command and proceed for an unannotated one, and `reed header` carries the annotation.
+  Accidental spawning stays covered by the package's existing Test Tier Purity guard, which is a real guard rather than a test written to look like one.
+  If a plan wants the ordering genuinely observable it must first introduce a seam that makes it so — a single decision function consulting the annotation and resolving the target, callable outside `seedStencils`' `testing.Testing()` return — and that is optional, not required by this task.
 - A registration-level test that `reed header` actually carries the annotation — the gate is worthless if the annotation is silently dropped in a later refactor.
 - `helptree_test.go` and the other existing `cmd/lyx` guards must pass unchanged.
 
