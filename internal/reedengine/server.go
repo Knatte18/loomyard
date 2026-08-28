@@ -15,12 +15,26 @@ package reedengine
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 )
+
+// errWorktreeRootGone is the ONE signal the resize watch loop uses to decide the told
+// Geometry.WorktreeRoot is provably gone rather than merely unreadable.
+// It is matched with errors.Is, never by substring — the refusal messages that wrap it are
+// operator-facing prose, free to be reworded, and a substring match would silently couple the
+// watch loop's cadence decision to that prose. Only validateToldWorktreeRootLive's two terminal
+// cases wrap it: os.Stat failing with fs.ErrNotExist, and the path existing but not being a
+// directory. Every other refusal from that function — an empty or relative value, or any other
+// stat failure such as EACCES or EIO — is a plain error that does not match it, so a momentary
+// stat blip or a caller bug cannot strand a healthy session in the watch loop's dormant cadence.
+var errWorktreeRootGone = errors.New("told worktree root is gone")
 
 // ServerName returns the deterministic tmux server name for the hub: "lyx-<basename>-<hash>", where
 // hash ensures distinct hubs are distinct.
@@ -231,6 +245,40 @@ func validateToldAnchorPath(geom Geometry) error {
 		return fmt.Errorf(
 			"told anchor path %q is relative: reed joins its state directory onto it and passes it as tmux's -c, so a relative value silently resolves against whatever working directory the caller happens to have (worktree %q)",
 			geom.AnchorPath, geom.WorktreeRoot)
+	}
+	return nil
+}
+
+// validateToldWorktreeRootLive reports an error when the told WorktreeRoot is not a live
+// directory, promoting WorktreeRoot from a decorative field (used only to derive the tmux
+// session name and to stamp Strand.Worktree) to a load-bearing control-flow predicate: the
+// op-lock chokepoint refuses to proceed, rather than conjuring state under a path that is no
+// longer a worktree.
+//
+// A shape violation — empty or relative — is a caller bug, not proof the world changed, so
+// neither wraps errWorktreeRootGone; only the two terminal liveness outcomes below do, matching
+// the only-proven-gone-carries-the-sentinel contract the sentinel's own doc comment states.
+func validateToldWorktreeRootLive(geom Geometry) error {
+	if geom.WorktreeRoot == "" {
+		return fmt.Errorf("told geometry has an empty worktree root")
+	}
+	if !filepath.IsAbs(geom.WorktreeRoot) {
+		return fmt.Errorf(
+			"told worktree root %q is relative: a relative value silently stats against whatever working directory the process happens to have",
+			geom.WorktreeRoot)
+	}
+
+	info, statErr := os.Stat(geom.WorktreeRoot)
+	if statErr != nil {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			return fmt.Errorf(
+				"%w: told worktree root %q does not exist — reed never creates its worktree root, so either a hub worktree was removed or renamed, or (in standalone mode) --target-dir names a directory that does not exist",
+				errWorktreeRootGone, geom.WorktreeRoot)
+		}
+		return fmt.Errorf("could not determine whether told worktree root %q exists: %w", geom.WorktreeRoot, statErr)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: told worktree root %q is a file, not a directory", errWorktreeRootGone, geom.WorktreeRoot)
 	}
 	return nil
 }

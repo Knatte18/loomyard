@@ -8,9 +8,11 @@
 package reedengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -277,6 +279,113 @@ func TestValidateToldAnchorPath(t *testing.T) {
 				t.Errorf("validateToldAnchorPath(AnchorPath=%q) error = %v; want error: %v", tt.anchorPath, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestValidateToldWorktreeRootLive is the table test for the new liveness validator, modelled on
+// TestValidateToldAnchorPath's shape but I/O-aware: each row stats a real filesystem entry rather
+// than only checking shape.
+// The relative-value row points at a name that exists relative to this package's own source
+// directory (server_test.go, which is always present) rather than an absolute path made relative,
+// so the assertion holds regardless of the test process's actual working directory — the row
+// exists to prove the refusal fires on shape alone, not on the target's existence.
+func TestValidateToldWorktreeRootLive(t *testing.T) {
+	dir := t.TempDir()
+	existingDir := filepath.Join(dir, "worktree")
+	if err := os.Mkdir(existingDir, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	regularFile := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(regularFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	vanished := filepath.Join(dir, "does-not-exist")
+
+	tests := []struct {
+		name         string
+		worktreeRoot string
+		wantErr      bool
+		wantSentinel bool
+	}{
+		{"existing directory", existingDir, false, false},
+		{"empty value", "", true, false},
+		{"relative value", "server_test.go", true, false},
+		{"path that does not exist", vanished, true, true},
+		{"existing regular file", regularFile, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: tt.worktreeRoot})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateToldWorktreeRootLive(WorktreeRoot=%q) error = %v; want error: %v", tt.worktreeRoot, err, tt.wantErr)
+			}
+			if got := errors.Is(err, errWorktreeRootGone); got != tt.wantSentinel {
+				t.Errorf("validateToldWorktreeRootLive(WorktreeRoot=%q) errors.Is(err, errWorktreeRootGone) = %v; want %v", tt.worktreeRoot, got, tt.wantSentinel)
+			}
+		})
+	}
+
+	t.Run("vanished path message names both causes and asserts neither", func(t *testing.T) {
+		err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: vanished})
+		if err == nil {
+			t.Fatalf("validateToldWorktreeRootLive(WorktreeRoot=%q) = nil; want an error", vanished)
+		}
+		if !strings.Contains(err.Error(), vanished) {
+			t.Errorf("error = %q; want it to quote the path %q", err, vanished)
+		}
+		if !strings.Contains(err.Error(), "--target-dir") {
+			t.Errorf("error = %q; want it to mention --target-dir", err)
+		}
+		if strings.Contains(err.Error(), "the worktree was renamed") {
+			t.Errorf("error = %q; want it to assert neither cause outright rather than claim a rename happened", err)
+		}
+	})
+
+	t.Run("not-a-directory message carries no rename remedy", func(t *testing.T) {
+		err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: regularFile})
+		if err == nil {
+			t.Fatalf("validateToldWorktreeRootLive(WorktreeRoot=%q) = nil; want an error", regularFile)
+		}
+		if strings.Contains(err.Error(), "renamed") || strings.Contains(err.Error(), "--target-dir") {
+			t.Errorf("error = %q; want no rename remedy for a not-a-directory refusal", err)
+		}
+	})
+}
+
+// TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel provokes a real non-fs.ErrNotExist
+// stat failure — EACCES on the parent directory — and asserts it refuses without matching the
+// sentinel, per the only-proven-gone-carries-the-sentinel contract.
+// Skipped on Windows, where a directory mode bit does not gate traversal the same way, and when
+// running as root, since root ignores the permission bit entirely.
+func TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permission bits do not gate traversal on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the permission bit")
+	}
+
+	parent := t.TempDir()
+	worktreeRoot := filepath.Join(parent, "worktree")
+	if err := os.Mkdir(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	if err := os.Chmod(parent, 0o000); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() {
+		// Restore the mode so t.TempDir's own cleanup can traverse and remove parent.
+		if err := os.Chmod(parent, 0o755); err != nil {
+			t.Fatalf("restore parent mode: %v", err)
+		}
+	})
+
+	err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: worktreeRoot})
+	if err == nil {
+		t.Fatal("validateToldWorktreeRootLive with an unreadable parent = nil; want an error")
+	}
+	if errors.Is(err, errWorktreeRootGone) {
+		t.Errorf("validateToldWorktreeRootLive with an unreadable parent matched errWorktreeRootGone; want a plain non-sentinel refusal")
 	}
 }
 
