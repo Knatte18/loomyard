@@ -38,7 +38,7 @@ The task is therefore a survey first: enumerate every production process-spawn s
   - `internal/reedengine/proctree_windows.go` — `logger.Debug` on the two pwsh process-tree probes (polling path; `Info` would flood).
   - `internal/selfreportengine` — `logger.Warn` on GitHub API call failures, since `internal/githubclient` itself cannot import `logger` (see Decisions).
 - A new tree-wide guard test, `cmd/lyx/spawnobservability_test.go`, following the established `cmd/lyx/*_test.go` guard convention: every production file containing `exec.Command`/`exec.CommandContext` must either import `internal/logger` or appear in an in-test allowlist with a written reason.
-- A CONSTRAINTS.md amendment sharpening **Live-Substrate Spawn Observability** to name the guard and its allowlist, so the invariant stops being review-discipline-only.
+- A CONSTRAINTS.md amendment sharpening **Live-Substrate Spawn Observability**'s *prose* — tightening the "for a round/strand/session" scope wording so the invariant states plainly which spawns it governs. Prose only: it must not name the guard file, the allowlist, or any test. See the `constraints-md-prose-only` decision.
 
 **Out:**
 
@@ -129,10 +129,16 @@ The task is therefore a survey first: enumerate every production process-spawn s
 
 **Known blind spot to document in the guard's own header comment,** matching the candour of `checkedcall_test.go`'s: file-level import presence is coarse. A file that imports `logger` for an unrelated line and spawns a process unlogged still passes. The guard catches the regression shape that actually occurs — a brand-new spawn in a package with no logging at all — and does not claim more.
 
+### constraints-md-prose-only
+
+- **Decision:** The CONSTRAINTS.md edit sharpens **Live-Substrate Spawn Observability**'s prose and nothing else. It does not name `cmd/lyx/spawnobservability_test.go`, does not describe the allowlist, and does not link to `manifest/designs/logger-coverage.md`. The guard's own header comment is where the mechanism, the allowlist, and the blind spot are documented; the audit document is where the call-site table lives.
+- **Rationale:** `CONSTRAINTS.md`'s own opening blurb (line 4) states: *"Guides planning and review. Not a test-coverage index: a new constraint may get its own enforcing test in the same change, but which tests exist today is not tracked here."* That sentence is current and deliberate — commit `d66cefe5`, "CONSTRAINTS.md: strip to pure form rules", removed exactly this kind of "enforced by `<test>`" reference from the file. Naming the new guard inside the invariant's text would silently reintroduce the pattern that commit removed, two commits later, in the same branch. CONSTRAINTS.md answers *what form must code take*; the guard file answers *how that form is checked today*, and the file's own rule says the second question is not tracked there.
+- **Rejected:** Name the guard in the invariant text so the enforcement mechanism is discoverable from CONSTRAINTS.md — discoverability is real, but it is bought by reversing a convention established two commits ago, and the same discoverability already exists in the other direction: the guard's header comment cites the invariant by name, which is the direction the repo's seven sibling guards in `cmd/lyx/` already use. Carve an explicit exception into the "not a test-coverage index" rule for guard tests specifically — an exception broad enough to admit every one of those seven siblings, i.e. a repeal of the rule rather than an exception to it. Skip the CONSTRAINTS.md edit entirely — the scope wording genuinely is ambiguous today (see `error-universe`), and leaving it ambiguous is what let these gaps accumulate.
+
 ### audit-doc-location
 
-- **Decision:** `manifest/designs/logger-coverage.md`, a new design document. `docs/overview.md` gains no new row (no new module); CONSTRAINTS.md's **Live-Substrate Spawn Observability** section gains a pointer to it and to the new guard.
-- **Rationale:** `manifest/designs/` already holds cross-cutting design documents that are not per-module (`review-finding-classification.md`, `curation-triage.md`, `code-comment-conventions.md`), which is the shape this is. The Documentation Lifecycle requires cross-cutting infrastructure to update CONSTRAINTS.md in the same commit, and the guard plus the sharpened invariant wording are that update.
+- **Decision:** `manifest/designs/logger-coverage.md`, a new design document. `docs/overview.md` gains no new row (no new module). CONSTRAINTS.md's **Live-Substrate Spawn Observability** section gains no pointer to it and no pointer to the guard — only the prose sharpening described in `constraints-md-prose-only`.
+- **Rationale:** `manifest/designs/` already holds cross-cutting design documents that are not per-module (`review-finding-classification.md`, `curation-triage.md`, `code-comment-conventions.md`), which is the shape this is. The Documentation Lifecycle requires cross-cutting infrastructure to update CONSTRAINTS.md in the same commit, and the prose sharpening is that update — a cross-reference is not required to satisfy it.
 - **Rejected:** `docs/reference/` — that tree is user-facing reference, not design rationale. Inline in CONSTRAINTS.md — CONSTRAINTS.md is a short authoritative list of forms, not a table of call sites; a twenty-row table there would drown it.
 
 ## Technical context
@@ -172,7 +178,8 @@ From `CONSTRAINTS.md`:
 - **gitkit Leaf Invariant** — `internal/gitkit` imports only stdlib, `lyxcwd`, `weftname`, `configengine`, `lyxdirs`. Not widened.
 - **GitHub Auth Invariant** — all GitHub authentication goes through `internal/githubclient`; its leaf half is allowlist-enforced by `leaf_enforcement_test.go`. Not widened.
 - **Test Tier Purity Invariant** — untagged test files perform no expensive spawns; no `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `gitkit.Copy*`, `hubforge.NewHub` outside `integration`/`smoke`-tagged files. The new guard test is a source scan, not a spawner, so it stays untagged — but it must not be written in a way that trips `tierpurity_test.go`'s own token scan of `cmd/lyx/`. Check how the sibling guards that mention these same tokens in their allowlists avoid this before writing.
-- **Documentation Lifecycle** — cross-cutting infrastructure updates CONSTRAINTS.md in the same commit. The guard plus the sharpened invariant text satisfy this. `docs/overview.md` needs no change (no new module, no execution-stack change). `manifest/roadmap.md` does not move — hardening-shaped.
+- **CONSTRAINTS.md is not a test-coverage index** — the file's own opening blurb (line 4): "a new constraint may get its own enforcing test in the same change, but which tests exist today is not tracked here." Established deliberately in commit `d66cefe5`. The CONSTRAINTS.md edit in this task is prose only; naming the guard file there is banned. See `constraints-md-prose-only`.
+- **Documentation Lifecycle** — cross-cutting infrastructure updates CONSTRAINTS.md in the same commit. The prose sharpening of Live-Substrate Spawn Observability satisfies this. `docs/overview.md` needs no change (no new module, no execution-stack change). `manifest/roadmap.md` does not move — hardening-shaped.
 - **Markdown Link Integrity** — every inline link in `manifest/`/`docs/` `.md` files must resolve, file part and `#anchor`. The new `manifest/designs/logger-coverage.md` and any link to it from CONSTRAINTS.md must satisfy this.
 
 Project conventions (`CLAUDE.md`):
@@ -198,7 +205,7 @@ Discovered during exploration:
 
 **Cross-compile check.** `cmd/lyx/crosscompile_test.go` must pass after the Windows-tagged edits to `internal/vscode/launch_windows.go` and `internal/reedengine/proctree_windows.go`. This is the only check that sees those files if the work is done on Linux.
 
-**Documentation checks.** `manifest/designs/logger-coverage.md` must satisfy the Markdown Link Integrity guard, and the CONSTRAINTS.md amendment must not break any existing link. Run whatever test enforces that invariant (locate it — likely a `manifest/`-scanning test) rather than assuming.
+**Documentation checks.** `manifest/designs/logger-coverage.md` must satisfy the Markdown Link Integrity guard, and the CONSTRAINTS.md prose edit must not break any existing link. Run whatever test enforces that invariant (locate it — likely a `manifest/`-scanning test) rather than assuming. Re-read the edited CONSTRAINTS.md section before committing and confirm it names no test file — the `constraints-md-prose-only` decision is the kind that erodes under a later "helpful" addition.
 
 **Whole-tree gate.** `go build ./... && go test ./...` must pass. The `logger` imports added across seven packages are the kind of change that trips an unrelated import-allowlist test in a package nobody thought to check, so the full suite is the real verification, not the per-package runs.
 
@@ -215,3 +222,4 @@ Discovered during exploration:
 - **Q:** Add an enforcement mechanism, or is the document the record? **A:** [auto-pick] Add `cmd/lyx/spawnobservability_test.go`, allowlist-with-reason. **Why:** a document is a snapshot that rots — that rot is exactly how these gaps accumulated. `cmd/lyx/` is the established home for tree-wide guards, and the allowlist form matches the Sandbox Suite Coverage invariant's own pattern.
 - **Q:** Where does the audit document live? **A:** [auto-pick] `manifest/designs/logger-coverage.md`. **Why:** that directory already holds cross-cutting, non-per-module design documents; `docs/reference/` is user-facing, and a twenty-row table in CONSTRAINTS.md would drown a file whose value is brevity.
 - **Q:** Does `manifest/roadmap.md` move? **A:** [auto-pick] No. **Why:** hardening-shaped, per the project's own roadmap convention, and the brief says so explicitly.
+- **Q:** [review r1, BLOCKING] Should the CONSTRAINTS.md amendment name the new guard test and its allowlist? **A:** No — prose sharpening only, no test reference, no design-doc pointer. **Why:** CONSTRAINTS.md's own line 4 declares it is "not a test-coverage index", and commit `d66cefe5` stripped exactly these references out of the file two commits ago; naming the guard there would reintroduce the pattern that commit removed. Recorded as the `constraints-md-prose-only` decision.
