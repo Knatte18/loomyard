@@ -14,6 +14,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // descendantClosurePIDs expands roots to transitive descendants via Win32_Process.
@@ -36,6 +38,7 @@ foreach($r in $roots){[void]$acc.Add([int]$r)}
 $changed=$true
 while($changed){$changed=$false;foreach($p in $all){if($acc.Contains([int]$p.ParentProcessId) -and -not $acc.Contains([int]$p.ProcessId)){[void]$acc.Add([int]$p.ProcessId);$changed=$true}}}
 $acc`, strings.Join(rootLiterals, ","))
+	logger.Debug("reedengine: spawning process-tree probe", "shell", e.cfg.Shell, "roots", roots)
 	out, err := exec.Command(e.cfg.Shell, "-NoProfile", "-NonInteractive", "-Command", script).Output()
 	if err != nil {
 		return roots
@@ -64,6 +67,7 @@ func (e *Engine) serverProcessesOnSocket() []int {
 		tmuxProcessName(e.cfg.Tmux),
 		e.Socket(),
 	)
+	logger.Debug("reedengine: spawning process-tree probe", "shell", e.cfg.Shell, "socket", e.Socket())
 	out, err := exec.Command(e.cfg.Shell, "-NoProfile", "-NonInteractive", "-Command", script).Output()
 	if err != nil {
 		return nil

@@ -1,6 +1,7 @@
 package shedadapters
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -9,9 +10,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// captureLogOutput redirects logger output into a buffer for the duration of one test, restoring
+// os.Stderr via t.Cleanup -- the same pattern internal/loomshed/gatefindings_test.go uses.
+func captureLogOutput(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	return &buf
+}
 
 // fakeShuttle records the Spec it was handed and returns a caller-configured Result/error.
 // An optional duringRun hook lets a test cancel the context (or otherwise act) as if it happened
@@ -112,13 +124,20 @@ func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 	}{
 		{"Died", shuttleengine.OutcomeDied},
 		{"Timeout", shuttleengine.OutcomeTimeout},
+		{"Unrecognized", shuttleengine.Outcome("bogus-outcome")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-			shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: tt.outcome}}
+			shuttle := &fakeShuttle{result: shuttleengine.Result{
+				Outcome:    tt.outcome,
+				SessionID:  "session-1",
+				StrandGUID: "strand-1",
+				RunDir:     dir,
+			}}
 			p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
+			buf := captureLogOutput(t)
 
 			_, _, err := p.Call(context.Background())
 			if err == nil {
@@ -130,7 +149,44 @@ func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 			if !strings.Contains(err.Error(), "loom") {
 				t.Errorf("Call() error %q does not contain producer name %q", err.Error(), "loom")
 			}
+			logged := buf.String()
+			if !strings.Contains(logged, "WARN") {
+				t.Errorf("captured log %q does not contain level token %q", logged, "WARN")
+			}
+			for _, key := range []string{"sessionID", "strandGUID", "runDir", "outcome"} {
+				if !strings.Contains(logged, key) {
+					t.Errorf("captured log %q does not contain field key %q", logged, key)
+				}
+			}
 		})
+	}
+}
+
+// TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn pins the ordering the
+// died/timeout and default branches share with the cancellation guard: a cancelled context still
+// returns the cancellation error, and the log line before the fmt.Errorf return must never fire on
+// that path.
+func TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn(t *testing.T) {
+	dir := t.TempDir()
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	shuttle := &fakeShuttle{
+		result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
+		duringRun: cancel,
+	}
+	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
+	buf := captureLogOutput(t)
+
+	_, _, err := p.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want non-nil context error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("captured log buffer = %q; want empty on the cancellation path", buf.String())
 	}
 }
 

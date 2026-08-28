@@ -79,13 +79,17 @@ Example:
 			// failure (tmux's own stderr already reached the operator's
 			// terminal), but the child's exit code still propagates so a
 			// failed attach is not reported as success.
+			logger.Info("reedcli: spawning tmux attach", "tmux", c.eng.TmuxPath(), "cols", cols, "rows", rows)
 			if err := attach.Run(); err != nil {
 				exitCode := 1
 				var exitErr *exec.ExitError
 				if errors.As(err, &exitErr) {
 					exitCode = exitErr.ExitCode()
 				}
+				logger.Info("reedcli: tmux attach exited", "tmux", c.eng.TmuxPath(), "exitCode", exitCode)
 				clihelp.SetExit(cmd.Context(), exitCode)
+			} else {
+				logger.Info("reedcli: tmux attach exited", "tmux", c.eng.TmuxPath(), "exitCode", 0)
 			}
 			return nil
 		},

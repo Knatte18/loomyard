@@ -39,6 +39,7 @@ var allowedSpawners = map[string]string{
 	"cmd/lyx/checkedcall_test.go":             "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data and resolves its scan root via `go env GOMOD` (gitexec Checked-Call Invariant guard)",
 	"cmd/lyx/cwdmutation_test.go":             "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned t.Chdir(/os.Chdir( tokens as scan data (Cwd Resolution Invariant chdir-mutation guard)",
 	"cmd/lyx/configstrictness_test.go":        "resolves its scan root via `go env GOMOD` (contains `exec.Command`) (Config Strictness Invariant guard)",
+	"cmd/lyx/spawnobservability_test.go":      "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data and resolves its scan root via `go env GOMOD` (Live-Substrate Spawn Observability guard)",
 }
 
 // knownTierTags are the `//go:build` constraint substrings that mark a *_test.go file

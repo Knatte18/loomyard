@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -146,14 +147,18 @@ func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
 
 	cmd := exec.Command(shell, flag, verifyCmd)
 	cmd.Dir = worktree
+	logger.Info("websterengine: spawning verify command", "shell", shell, "verifyCmd", verifyCmd, "worktree", worktree)
 	if err := cmd.Run(); err != nil {
 		// *exec.ExitError is a failed verify (expected); other errors propagate.
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
+			logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", exitErr.ExitCode())
 			return false, nil
 		}
+		logger.Warn("websterengine: verify command failed to spawn", "verifyCmd", verifyCmd, "worktree", worktree, "cause", err)
 		return false, fmt.Errorf("webster: bisect: run verify command %q: %w", verifyCmd, err)
 	}
+	logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", 0)
 	return true, nil
 }
 

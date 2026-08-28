@@ -12,6 +12,7 @@
 package landingshed
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-github/v75/github"
@@ -28,10 +30,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
+
+// captureLogOutput redirects logger output into a buffer for the duration of
+// one test, restoring os.Stderr via t.Cleanup -- the test-log-capture-pattern
+// shared decision's inline shape, modeled on
+// internal/loomshed/gatefindings_test.go.
+func captureLogOutput(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	return &buf
+}
 
 // recordingResolver is the in-package fake standing in for the unexported resolver seam: it records
 // whether Resolve was called and what source it was called with, and returns a scripted result/err.
@@ -351,6 +366,113 @@ func TestPublish_OriginURLUnusable_NoGitHubCall(t *testing.T) {
 			}
 			readStuckFile(t, deps.ScratchDir)
 		})
+	}
+}
+
+// TestPublish_GitHubClientUnavailable_WarnsWithActionAndCause covers the NewGitHubClient factory
+// failure site: Call must still reach its usual stuck verdict, and the site's own logger.Warn line
+// must carry the action and cause field keys.
+func TestPublish_GitHubClientUnavailable_WarnsWithActionAndCause(t *testing.T) {
+	deps := newTestDeps(t)
+	deps.PushBranch = func() error { return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+
+	installFailingGitHubClientFactory(t, errors.New("boom"))
+	buf := captureLogOutput(t)
+
+	outcome, _, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	readStuckFile(t, deps.ScratchDir)
+
+	logged := buf.String()
+	if !strings.Contains(logged, "WARN") {
+		t.Errorf("log output = %q; want a WARN line", logged)
+	}
+	for _, field := range []string{"action=", "cause="} {
+		if !strings.Contains(logged, field) {
+			t.Errorf("log output = %q; want a %s field", logged, field)
+		}
+	}
+}
+
+// TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause covers the
+// client.PullRequests.List failure site: Call must still reach its usual stuck verdict, driven by
+// publishGitHubErrorReason, and the site's own logger.Warn line must carry action, owner, repo, and
+// cause -- the reason-classification behaviour itself stays covered by
+// TestPublishGitHubErrorReason_ClassifiesDistinctly, unchanged here.
+func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
+	deps := newTestDeps(t)
+	var order []string
+	deps.PushBranch = func() error { order = append(order, "push"); return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+
+	srv := newPublishGitHubServer(t, &order)
+	srv.listStatus = http.StatusInternalServerError
+	srv.listBody = `{"message":"server exploded"}`
+	srv.install(t)
+	buf := captureLogOutput(t)
+
+	outcome, _, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	readStuckFile(t, deps.ScratchDir)
+
+	logged := buf.String()
+	if !strings.Contains(logged, "WARN") {
+		t.Errorf("log output = %q; want a WARN line", logged)
+	}
+	for _, field := range []string{"action=", "owner=", "repo=", "cause="} {
+		if !strings.Contains(logged, field) {
+			t.Errorf("log output = %q; want a %s field", logged, field)
+		}
+	}
+}
+
+// TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause covers the
+// client.PullRequests.Create failure site: Call must still reach its usual stuck verdict, and the
+// site's own logger.Warn line must carry action, owner, repo, and cause.
+func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
+	deps := newTestDeps(t)
+	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	var order []string
+	deps.PushBranch = func() error { order = append(order, "push"); return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+
+	srv := newPublishGitHubServer(t, &order)
+	srv.createStatus = http.StatusInternalServerError
+	srv.createBody = `{"message":"server exploded"}`
+	srv.install(t)
+	buf := captureLogOutput(t)
+
+	outcome, _, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	readStuckFile(t, deps.ScratchDir)
+
+	logged := buf.String()
+	if !strings.Contains(logged, "WARN") {
+		t.Errorf("log output = %q; want a WARN line", logged)
+	}
+	for _, field := range []string{"action=", "owner=", "repo=", "cause="} {
+		if !strings.Contains(logged, field) {
+			t.Errorf("log output = %q; want a %s field", logged, field)
+		}
 	}
 }
 

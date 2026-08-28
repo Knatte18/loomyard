@@ -310,13 +310,17 @@ Example:
 			attach.Stdin = os.Stdin
 			attach.Stdout = os.Stdout
 			attach.Stderr = os.Stderr
+			logger.Info("loomcli: spawning tmux attach", "tmux", c.reed.TmuxPath(), "cols", cols, "rows", rows)
 			if err := attach.Run(); err != nil {
 				exitCode := 1
 				var exitErr *exec.ExitError
 				if errors.As(err, &exitErr) {
 					exitCode = exitErr.ExitCode()
 				}
+				logger.Info("loomcli: tmux attach exited", "tmux", c.reed.TmuxPath(), "exitCode", exitCode)
 				clihelp.SetExit(ctx, exitCode)
+			} else {
+				logger.Info("loomcli: tmux attach exited", "tmux", c.reed.TmuxPath(), "exitCode", 0)
 			}
 			return nil
 		},
