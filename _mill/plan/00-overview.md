@@ -3,7 +3,7 @@
 ```yaml
 task: "Audit internal/logger coverage across spawn/hard-error paths"
 slug: "logger-coverage-audit"
-approved: false
+approved: true
 started: "20260828-061252"
 parent: "main"
 root: ""
