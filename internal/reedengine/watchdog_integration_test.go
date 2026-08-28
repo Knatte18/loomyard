@@ -174,49 +174,49 @@ func TestWatchdogSelfHeal_ShrinksBackToPlannedLayout(t *testing.T) {
 	assertLayoutSelfHeals(t, fx, 100, 16)
 }
 
-// TestWatchdogSelfHeal_BurstCoalesces drives a rapid succession of resizes and asserts the layout
-// converges to the final size while the number of distinct #{window_layout} values observed across
-// the burst stays far below one per resize event — the live counterpart of the debounce's
-// trailing-edge coalescing.
+// TestWatchdogSelfHeal_BurstCoalesces drives a rapid succession of resizes and asserts (a) the layout
+// converges to the final size and (b) the watch loop itself issues select-layout only a handful of
+// times across the whole burst — the live counterpart of the debounce's trailing-edge coalescing.
+//
+// Sampling raw #{window_layout} throughout the burst is not a valid proxy for that second half: tmux
+// rescales every live pane's cell geometry on its own, natively, on EACH actual client resize — that
+// native rescale is exactly the M7 defect this whole feature exists to correct after the fact, and it
+// happens whether or not a watcher is even running. A burst of N distinct client sizes therefore
+// produces close to N distinct native #{window_layout} strings by itself, regardless of how well the
+// debounce coalesces the watcher's OWN re-applies — so counting distinct sampled layouts conflates
+// tmux's native per-resize retiling with the watcher's corrective applies and can never demonstrate
+// coalescing either way.
+// What the debounce actually promises is bounded on the watcher's own select-layout calls, so this
+// counts those directly: real is a plain TmuxCmd bound to the same binary and socket with no execHook
+// of its own, and the spy installed on e.tmux forwards every call through it — so every tmux round
+// trip still hits the live server exactly as before, with select-layout invocations tallied on the
+// way past.
 func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 	timing := fastWatchTiming()
 	fx := bootWatchdogFixture(t, 100, 30)
 	e := fx.e
+
+	real := NewTmuxCmd(e.tmux.tmuxPath, e.tmux.socket)
+	var mu sync.Mutex
+	selectLayoutCalls := 0
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		if len(args) > 0 && args[0] == "select-layout" {
+			mu.Lock()
+			selectLayoutCalls++
+			mu.Unlock()
+		}
+		if capture {
+			return real.output(args...)
+		}
+		return "", real.run(args...)
+	}
+
 	startWatchLoop(t, e, timing)
 
 	sizes := []struct{ cols, rows int }{
 		{100, 32}, {100, 34}, {100, 36}, {100, 38}, {100, 40}, {100, 42}, {100, 44}, {100, 46},
 	}
 	finalCols, finalRows := sizes[len(sizes)-1].cols, sizes[len(sizes)-1].rows
-
-	// Sample #{window_layout} throughout the burst and the settle window, counting distinct values
-	// seen. The sampling goroutine never touches t beyond the read-only closure variables it
-	// captures — a failing sample is simply not counted, never a fatal test failure, since Fatal must
-	// only ever be called from the test's own goroutine.
-	var mu sync.Mutex
-	seen := map[string]bool{}
-	stopSampling := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		ticker := time.NewTicker(15 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-stopSampling:
-				return
-			case <-ticker.C:
-				out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window_layout}")
-				if err != nil {
-					continue
-				}
-				mu.Lock()
-				seen[strings.TrimSpace(out)] = true
-				mu.Unlock()
-			}
-		}
-	}()
 
 	for _, s := range sizes {
 		resizePTY(t, fx.pty, s.cols, s.rows)
@@ -232,14 +232,11 @@ func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 		return ok && height == e.cfg.Header.HeightRows
 	})
 
-	close(stopSampling)
-	wg.Wait()
-
 	mu.Lock()
-	distinct := len(seen)
+	calls := selectLayoutCalls
 	mu.Unlock()
-	if distinct > len(sizes)/2 {
-		t.Errorf("observed %d distinct #{window_layout} values across the burst, want far fewer than the %d resize events driven — the debounce should have coalesced them into a small number of settled applies", distinct, len(sizes))
+	if calls > len(sizes)/2 {
+		t.Errorf("watch loop issued select-layout %d times across the burst, want far fewer than the %d resize events driven — the debounce should have coalesced them into a small number of settled applies", calls, len(sizes))
 	}
 }
 
