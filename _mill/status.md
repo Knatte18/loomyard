@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-scrollback-backstop-and-composite-smoke  '2026-08-28T09:26:07Z'
 holistic-reviewing  '2026-08-28T09:26:32Z'
 holistic-approved  '2026-08-28T09:29:28Z'
 done  '2026-08-28T09:30:58Z'
+pr-pending  '2026-08-28T09:32:41Z'
 ```
 
 ## Batches
