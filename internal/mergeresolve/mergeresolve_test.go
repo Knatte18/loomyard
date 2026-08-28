@@ -1,17 +1,30 @@
 package mergeresolve
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// captureLogOutput redirects logger output into a buffer for the duration of one test, restoring
+// os.Stderr via t.Cleanup -- the same pattern internal/loomshed/gatefindings_test.go uses.
+func captureLogOutput(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	return &buf
+}
 
 // fakeMergeSurface implements MergeSurface, recording call order and returning caller-configured
 // results/errors.
@@ -358,12 +371,13 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 			deps := newTestDeps(t, fake, nil)
 			writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
-			shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: tt.outcome}}}
+			shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: tt.outcome, SessionID: "session-1", RunDir: "/run/dir"}}}
 			deps.Shuttle = shuttle
 			r, err := New(deps)
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
 			}
+			buf := captureLogOutput(t)
 
 			res, err := r.Resolve(context.Background(), "source")
 			if err != nil {
@@ -375,7 +389,47 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 			if fake.calledAny("MergeContinue") {
 				t.Error("MergeContinue was called; want it never reached")
 			}
+			logged := buf.String()
+			if !strings.Contains(logged, "WARN") {
+				t.Errorf("captured log %q does not contain level token %q", logged, "WARN")
+			}
+			for _, key := range []string{"outcome", "attempt", "sessionID", "runDir"} {
+				if !strings.Contains(logged, key) {
+					t.Errorf("captured log %q does not contain field key %q", logged, key)
+				}
+			}
 		})
+	}
+}
+
+// TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure pins the placement guarantee: the Warn line
+// lands before abortAndStuck's own MergeAbort call, so a subsequent MergeAbort failure does not
+// erase the diagnostic.
+func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
+	paths := []string{"a.txt"}
+	abortErr := errors.New("abort failed")
+	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}, abortErr: abortErr}
+	deps := newTestDeps(t, fake, nil)
+	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
+
+	shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDied, SessionID: "session-1", RunDir: "/run/dir"}}}
+	deps.Shuttle = shuttle
+	r, err := New(deps)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	buf := captureLogOutput(t)
+
+	_, err = r.Resolve(context.Background(), "source")
+	if err == nil {
+		t.Fatal("Resolve() error = nil; want non-nil (MergeAbort failed)")
+	}
+	if !errors.Is(err, abortErr) {
+		t.Errorf("Resolve() error = %v; want it to wrap %v", err, abortErr)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, "WARN") {
+		t.Errorf("captured log %q does not contain level token %q; want the warn line to survive the abort failure", logged, "WARN")
 	}
 }
 
