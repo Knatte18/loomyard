@@ -31,7 +31,7 @@
 //     producer: a decorator runs before Call and therefore before the probe, which is the same
 //     archive-before-probe hazard stated above, reintroduced one layer up.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
-//     (websterengine.SummaryPath) as the pointer's path.
+//     (summaryparser.Path) as the pointer's path.
 //     Webster's own "stuck" outcome, and a websterengine.ErrMasterAsking error, both map to Stuck
 //     with an empty pointer.
 //     Webster's own "paused" outcome reaching Call out of band is an engine-level error.

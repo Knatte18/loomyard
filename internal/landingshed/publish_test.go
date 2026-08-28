@@ -30,7 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // recordingResolver is the in-package fake standing in for the unexported resolver seam: it records
@@ -49,17 +49,18 @@ func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergere
 }
 
 // newTestDeps returns a minimal Deps with sane defaults for a Publish test: a base-branch list
-// requiring a pull request, a webster dir with no summary.md yet, and a scratch dir under t.TempDir().
+// requiring a pull request, a told FinalSummaryPath pointing at a directory with no summary.md yet,
+// and a scratch dir under t.TempDir().
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()
 	return Deps{
-		WorktreeRoot: t.TempDir(),
-		TaskBranch:   "task-branch",
-		ParentBranch: "main",
-		WebsterDir:   t.TempDir(),
-		StencilsDir:  t.TempDir(),
-		ScratchDir:   filepath.Join(t.TempDir(), "scratch"),
-		OriginURL:    "https://github.com/acme/proj.git",
+		WorktreeRoot:     t.TempDir(),
+		TaskBranch:       "task-branch",
+		ParentBranch:     "main",
+		FinalSummaryPath: summaryparser.Path(t.TempDir()),
+		StencilsDir:      t.TempDir(),
+		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
+		OriginURL:        "https://github.com/acme/proj.git",
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
 			Squash:             true,
@@ -69,10 +70,10 @@ func newTestDeps(t *testing.T) Deps {
 	}
 }
 
-// writeSummary writes a well-formed summary.md into websterDir.
-func writeSummary(t *testing.T, websterDir, title, body string) {
+// writeSummary writes a well-formed summary artifact at path.
+func writeSummary(t *testing.T, path, title, body string) {
 	t.Helper()
-	if err := os.WriteFile(websterengine.SummaryPath(websterDir), []byte(fmt.Sprintf("# %s\n\n%s\n", title, body)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(fmt.Sprintf("# %s\n\n%s\n", title, body)), 0o644); err != nil {
 		t.Fatalf("write summary.md: %v", err)
 	}
 }
@@ -174,6 +175,16 @@ func TestNewPublish_RejectsNilPushBranch(t *testing.T) {
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	if _, err := NewPublish(deps); err == nil {
 		t.Fatal("NewPublish() error = nil; want an error naming Deps.PushBranch")
+	}
+}
+
+func TestNewPublish_RejectsEmptyFinalSummaryPath(t *testing.T) {
+	deps := newTestDeps(t)
+	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
+	deps.PushBranch = func() error { return nil }
+	deps.FinalSummaryPath = ""
+	if _, err := NewPublish(deps); err == nil {
+		t.Fatal("NewPublish() error = nil; want an error naming Deps.FinalSummaryPath")
 	}
 }
 
@@ -345,7 +356,7 @@ func TestPublish_OriginURLUnusable_NoGitHubCall(t *testing.T) {
 
 func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
 	deps := newTestDeps(t)
-	writeSummary(t, deps.WebsterDir, "My PR Title", "My PR body.")
+	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}

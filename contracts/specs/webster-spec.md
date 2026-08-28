@@ -36,15 +36,16 @@ The file is strictly decoded — unknown fields are rejected — and follows arc
 
 ## The summary artifact — `_lyx/webster/summary.md`
 
-The prose summary artifact: first line `# <title>`, then free-form prose narrating what was actually built, including deviations from the original task.
-It is required and fail-loud — presence, non-empty, and a `# <title>` first non-blank line with a non-empty title — only when `outcome: done`, and follows the same archive-never-refuse discipline as every other stale artifact.
-It is Finalize's PR-text source, because a long-lived Master session is the only party with full oversight of what actually shipped.
+The artifact's format, validation, and consumers are pinned producer-agnostically in [final-summary-spec.md](final-summary-spec.md); this section states only webster's own writer-side additions.
+It is required and fail-loud only when `outcome: done`, and follows the same archive-never-refuse discipline as every other stale artifact.
+See [final-summary-spec.md](final-summary-spec.md) for both of its consumers, because a long-lived Master session is the only party with full oversight of what actually shipped.
 
-A `summary.md` may additionally carry an appended `## Integration suite failed` section naming the bisect-localized offending card and its commit SHA — `internal/websterengine`'s `AppendIntegrationFailure` writes it as the document half of an integration-failure escalation, and because Finalize dumps `summary.md` verbatim into the PR body, that section reaches the consumer.
+A `summary.md` may additionally carry an appended `## Integration suite failed` section naming the bisect-localized offending card and its commit SHA — `internal/websterengine`'s `AppendIntegrationFailure` writes it as the document half of an integration-failure escalation, and it reaches the consumer because Publish passes the parsed body, appended section included, as the pull request's own body field.
 The bisect mechanism that produces it stays webster-internal and is not described here.
 
 ## See also
 
+- [final-summary-spec.md](final-summary-spec.md) — the producer-agnostic read contract for `summary.md`'s format, validation, and consumers.
 - `contracts/stencils/loom/loom-template-plan.md` — the flat-card format webster consumes via `internal/planparser`, pinned in the Plan producer's own stencil rather than a separate doc.
 - [llm-model-spec.md](llm-model-spec.md) — the model-spec notation webster's roles resolve against.
 - [loom-status-spec.md](loom-status-spec.md) — loom's own status file, the analogous contract for loom's orchestration state.

@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // fakeLandingShuttle is a minimal mergeresolve.Shuttle fake satisfying NewPublish's and
@@ -44,7 +45,7 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
-		WebsterDir:       dir,
+		FinalSummaryPath: summaryparser.Path(dir),
 		StencilsDir:      dir,
 		ScratchDir:       dir,
 		OriginURL:        "https://example.invalid/fixture/fixture.git",

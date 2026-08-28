@@ -95,7 +95,7 @@ Two doc classes, opposite lifecycles:
 - **Module-design docs** (`manifest/designs/<module>.md`) are mechanical per-module design drafts for **planned, not-yet-built** modules — deleted when their module lands;
   the implementation and tests become the source of truth.
   A module's purpose and key design rationale then live in its Go package header comment, next to the code it documents.
-- **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
+- **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `final-summary-spec.md`, `loom-plan-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
 
 The other durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the weft contract,
 and this lifecycle convention).
@@ -306,6 +306,9 @@ User-facing modules each get one `lyx <module>` namespace:
 - **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections and the support log's existence);
   it takes told absolute paths and declares no location of its own — deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location`, which this stdlib-only leaf may not import.
   Consumed by `loomshed.discussionValidate` and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
+- **summaryparser** — the sole declarer of the final-summary artifact's filename and the sole parser of its format (see [final-summary-spec.md](../contracts/specs/final-summary-spec.md));
+  it takes told paths and declares no directory of its own, and is stdlib-only so neither consumer depends on a producer.
+  Consumed by `internal/landingshed`'s `Publish` and `Finalize` and by `internal/websterengine` (`internal/summaryparser`). ✅ Implemented.
 - **batcher** — the name-keyed batchifier registry that groups a plan's flat card list into webster's execution batches, selected by `batcher.yaml`'s `active:` config key (default: identity, one card per batch); its own standalone configreg module, separate from webster's (`internal/batcher`). ✅ Implemented.
 - **stencil** — the operator surface over the hub's producer-prompt stencils (`internal/stencilcli` + `internal/stencilstore`; `lyx stencil list|validate|diff|sync|promote`): `list` reports every registered stencil's board-copy path and edit state, `validate` reports marker mismatches between a board copy and its shipped default, `diff` shows upstream changes not yet taken or (`--all`/`--exit-code`) board edits not yet ported back, `sync` force-refreshes every stencil against the shipped registry even from a `-dev` build, and `promote` copies a board-copy edit back into the worktree's `contracts/stencils/` source tree. ✅ Implemented.
 - **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe`; `lyx loom run|drive|status|pause|validate-discussion|validate-plan`, plus the `run` verb registered a second time as the bare root alias `lyx run`).
@@ -442,7 +445,9 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub` + `Render` over `internal/stencil`), consumed by reed's header pipeline and, later, loom's prompt templates;
   a leaf, not a phased module (as-built;
   module doc deleted per the documentation lifecycle).
-- [webster-spec.md](../contracts/specs/webster-spec.md) — webster's cross-module contract: the `_lyx/webster/` boundary, `outcome.yaml`, and the `summary.md` artifact Finalize consumes (as-built;
+- [webster-spec.md](../contracts/specs/webster-spec.md) — webster's cross-module contract: the `_lyx/webster/` boundary, `outcome.yaml`, and `summary.md`'s writer-side additions (as-built;
+  kept as a durable contract doc, not deleted on landing).
+- [final-summary-spec.md](../contracts/specs/final-summary-spec.md) — the producer-agnostic final-summary artifact contract: its format, its validation, and its two consumers, `internal/landingshed`'s `Publish` and `Finalize` (as-built;
   kept as a durable contract doc, not deleted on landing).
 - `internal/reedengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built;
   module doc deleted per the documentation lifecycle).

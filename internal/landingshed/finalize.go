@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // finalizeName is the producer name Finalize's log lines, error text, and stuck-reason filename
@@ -73,6 +74,9 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 	if deps.OpenParentFabric == nil {
 		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.OpenParentFabric must not be nil")
 	}
+	if deps.FinalSummaryPath == "" {
+		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.FinalSummaryPath must not be empty")
+	}
 
 	fabricHandle, err := deps.OpenFabric()
 	if err != nil {
@@ -112,6 +116,15 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, err
 	}
 
+	// Step 1a: parse the final-summary artifact before any commit, any catch-up merge-in, and any
+	// parent-side mutation, so a missing or malformed artifact returns an error and the run never
+	// half-lands. This is never Stuck and never a silent fallback to an unset MergeOptions.Message --
+	// the composed message below is load-bearing for step 4's conclude commit.
+	summary, err := summaryparser.Parse(fz.deps.FinalSummaryPath)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse summary artifact: %w", finalizeName, err)
+	}
+
 	// Step 1b: commit the product's own status file, so the pair carries no tracked modification
 	// when the merge guard below runs. This must happen inside Call rather than once at bootstrap:
 	// Shed rewrites that file on every transition, including the persist a resumed run makes
@@ -138,8 +151,10 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.stuckOrCancelled(ctx, fmt.Sprintf("no live pair for parent branch %q: %v", fz.deps.ParentBranch, err), "error", err)
 	}
 
-	// Step 4: the parent-side merge, this producer's own merge critical section.
-	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash}
+	// Step 4: the parent-side merge, this producer's own merge critical section. Message is set
+	// whether or not Config.Squash is true -- it is the conclude-commit message for both merge
+	// shapes, so gating it on Squash would leave the non-squash landing commit with an unset message.
+	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: summary.CommitMessage()}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
 		return shedengine.Done, shedengine.OutputPointer{}, nil

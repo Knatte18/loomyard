@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **producer-agnostic final-summary artifact** — generalize webster's own `_lyx/webster/summary.md` (title+body prose, the PR-text source `landingshed`'s Publish producer already reads via `websterengine.ParseSummary`/`SummaryPath`) into a shed-level told path rather than a websterengine-owned one, so a future last-content-producer (e.g. Tenter) can satisfy the same contract without `Finalize`/`Publish` needing to know which producer wrote it. Wire `Finalize`'s squash-merge `MergeOptions.Message` to read it too — today it is left unset (`internal/landingshed/finalize.go`), so a squash-merged landing commit carries no composed message even though the content to compose one from already exists on disk.
-   See `internal/websterengine/summary.go`, `internal/landingshed/publish.go`, `internal/landingshed/finalize.go`.
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -119,6 +116,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **loom: review segments resolve `_lyx` paths against the wrong root and don't clear their Bouncer run directory on re-entry** — both defects are fixed across all three review segments: the segments' `_lyx` paths now resolve against the anchor path their commit seam already anchored at, and a `Bouncer` re-entered after approving now archives its run directory and re-judges rather than replaying a settled verdict.
    See [designs/loom.md](designs/loom.md#the-gate).
+
+1. **producer-agnostic final-summary artifact** — the read contract is now a producer-agnostic leaf, `internal/summaryparser`, and `landingshed` takes a told path rather than reaching into a producer's own directory; `Finalize`'s squash-merge `MergeOptions.Message` is now wired to the composed title and body.
+   See [final-summary-spec.md](../contracts/specs/final-summary-spec.md).
 
 ## Maintenance
 
