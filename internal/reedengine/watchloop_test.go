@@ -823,8 +823,11 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 	}
 
 	// Hold the lock across (well beyond) the whole quiet period: every tick's try-lock fails, so no
-	// tmux call of any kind can happen.
-	time.Sleep(2 * timing.Quiet)
+	// tmux call of any kind can happen. Hardcoded to double watchdogTestTiming's fixed 5ms Quiet
+	// rather than the timing.Quiet field itself, so the literal duration below stays visible to
+	// cmd/lyx's tiersleep_test.go static check (a non-constant field expression reads as
+	// unresolvable there and fails closed).
+	time.Sleep(10 * time.Millisecond)
 	if got := hook.count("list-panes"); got != beforeLock {
 		t.Errorf("list-panes calls = %d while reed.lock was held across the quiet period, want unchanged at %d", got, beforeLock)
 	}
