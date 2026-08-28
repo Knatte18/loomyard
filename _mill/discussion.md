@@ -45,8 +45,9 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
 - A pure entry point in `internal/reedengine/render` that reports those fixed-height pins for the same strand set and box `Rules` was given, so the hook is derived from reed's own policy rather than from raw config.
 - Hook installation/refresh at two named statements: in `applyLayoutLocked`, immediately after the `select-layout` call returns without error and before the `select-pane` call; and in `AttachArgv`, inside the `withOpLock` closure immediately after `planLayout` returns without error and before `chained` is assigned.
   Every guard and degrade return at both sites precedes its install statement, and none of them is changed — see `hook-install-points-are-named-statements`.
-- Documentation additions at three named sites in `internal/reedengine` — two `doc.go` bullets and `attachgeometry_integration_test.go`'s file comment — plus one narrowing edit to `manifest/roadmap.md`'s watchdog-daemon item.
-  See `doc-work-is-additions-at-three-named-sites` and `roadmap-watchdog-item-is-narrowed`.
+- Documentation work at four named sites in `internal/reedengine` — two `doc.go` geometry bullets, `attachgeometry_integration_test.go`'s file comment, and `doc.go`'s "Subcommand set" paragraph plus its closing psmux-risk sentence — plus one narrowing edit to `manifest/roadmap.md`'s watchdog-daemon item.
+  See `doc-work-is-additions-at-four-named-sites`, `set-hook-and-resize-pane-are-optional-wire-surface`, and `roadmap-watchdog-item-is-narrowed`.
+- A new `TestMultiplexerContract` case in `contract_integration_test.go` for the two tmux verbs this task adds to reed's wire surface.
 - Tests: unit tests for the pure pin computation and the pure hook-argv construction, plus a real-tmux/real-pty integration case that resizes the client after attach.
 
 **Out:**
@@ -82,6 +83,9 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
 
 ### pins-come-from-render-policy-not-raw-config
 
+- Decision (engine seam): the pins are produced from the **same mapping `planLayout` already performs** — one call site, not a second one.
+  `planLayout` (`apply.go`) owns `toRenderStrands`, the present-pane filtering, and the `HeaderPaneID` blanking the zero-pin case depends on; a second mapping site would be free to diverge from it silently, and the zero-pin disposition would then be computed from a different header id than the layout was.
+  Whether that surfaces as an extra return from `planLayout` or as a small shared helper both it and the pin path call is left to the plan; what is fixed here is that the mapping happens once.
 - Decision: the pinned heights are the ones `render.Rules` actually placed the cells at — the header's height *after* `clampHeaderHeight`, and each strip's height *after* `clampToFit`, never `cfg.Header.HeightRows` or `cfg.CollapsedStripRows` read raw.
   A new pure function in `internal/reedengine/render` reports them, sharing `Rules`' policy composition rather than duplicating it, and returns the strip pins from the same `placements` slice `stackHeights` produced.
 - Rationale: `render` is the single owner of reed's height policy, and both budgets yield under pressure.
@@ -174,12 +178,25 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
 - Rejected: deleting the item — the pane-reap job and the full-policy resize re-render are untouched by this fix.
   Leaving it unedited and noting the overlap only in `doc.go` — the plan of record is the roadmap, and a reader planning the daemon would start from the stale rejection.
 
-### doc-work-is-additions-at-three-named-sites
+### set-hook-and-resize-pane-are-optional-wire-surface
 
-- Decision: the documentation work is additions, not corrections — nothing in the existing geometry comments is false.
-  Three named sites: (1) `doc.go`'s geometry bullet list gains a bullet for the window-resize round-robin and the hook that answers it, stating that tmux distributes a resize delta one row at a time across the vertical cells and that no absolute row budget survives a resize without the hook;
+- Decision: `set-hook` and `resize-pane` are the first tmux verbs reed uses **without** probing for them.
+  `requiredSubcommands` (`probe.go`) does not grow, and `doc.go`'s "Subcommand set" paragraph gains a sentence splitting the surface in two: the required verbs, whose absence makes a multiplexer binary unusable, and these two optional ones, whose absence costs only the header pin.
+- Rationale: both verbs are new to `internal/` — neither appears anywhere in the package today — so this task genuinely widens the wire contract, and `doc.go`'s current closing sentence ("`requiredSubcommands` … add no capability-probe change and no new psmux risk") stops being true the moment the hook ships.
+  But adding them to `requiredSubcommands` would make a psmux lacking `set-hook` fail the *whole* capability probe at server-ensure, taking down every reed verb over a quality-only option that is already designed to degrade silently — the exact trade `geometry-tmux-failures-are-non-fatal-everywhere` settles the other way for `status`/`window-size`.
+  So the honest disposition is to widen the doc, not the gate.
+- `contract_integration_test.go`'s `TestMultiplexerContract` gains a case, since it is the named canary for precisely this wire surface and the fix's correctness rests on two behaviours no unit test can assert: that a `set-hook -u` / `set-hook` / `set-hook -a` sequence produces independent array entries readable back through `show-hooks`, and that a `window-resized` hook fires *after* tmux has resized the layout (which `client-resized` does not — measured).
+  It self-skips when the configured binary is absent, so adding the case costs psmux nothing.
+- Rejected: adding the two verbs to `requiredSubcommands` — see above.
+  Leaving `TestMultiplexerContract` alone with an "not covered, because non-fatal" note — non-fatal describes what happens when the verb is missing, not whether its semantics are what reed assumed, and the latter is the whole reason this file exists.
+
+### doc-work-is-additions-at-four-named-sites
+
+- Decision: the documentation work is additions, not corrections — with one exception, `doc.go`'s closing "no new psmux risk" sentence, which this task falsifies and which is rewritten rather than extended (see `set-hook-and-resize-pane-are-optional-wire-surface`).
+  Four named sites: (1) `doc.go`'s geometry bullet list gains a bullet for the window-resize round-robin and the hook that answers it, stating that tmux distributes a resize delta one row at a time across the vertical cells and that no absolute row budget survives a resize without the hook;
   (2) `doc.go`'s chained-attach bullet gains one sentence noting that "lands verbatim with no rescale" holds only until the next window resize, and pointing at the hook;
-  (3) `attachgeometry_integration_test.go`'s file-level comment gains a note that its `100x30` client is shorter than the 220x50 boot box, so the existing cases exercise a shrink and never the growth path this task is about.
+  (3) `attachgeometry_integration_test.go`'s file-level comment gains a note that its `100x30` client is shorter than the 220x50 boot box, so the existing cases exercise a shrink and never the growth path this task is about;
+  (4) `doc.go`'s "Subcommand set" paragraph gains the required-versus-optional split, and its closing "`requiredSubcommands` … no new psmux risk" sentence is rewritten to say the probe still does not grow *and why that is now a deliberate choice* rather than a free consequence.
 - Rationale: `doc.go`'s existing rescale bullet is about a mismatched layout *string*, a different mechanism from a window *resize*, and its chained-attach bullet's verbatim-landing claim was confirmed true by this task's own live measurements — so a reader who takes either as a promise that the header stays at its budget is filling in a gap, not reading a wrong sentence.
   Naming the three sites keeps the plan writer from hunting for a falsehood that is not there.
 - Also record in `doc.go`, in the same bullet: the ~50-row threshold in the original report is `reed.yaml`'s `height: 50` boot size showing through the *bare* attach path, not evidence of a miscomputed layout.
@@ -275,6 +292,11 @@ Say so in the test's comment, or the next reader will misread it as proof the no
 A third case should pin the fire-time isolation the array encoding buys: kill a strand pane so its strip pin names a destroyed id, resize the pty, and assert the header is still at its budget.
 Correct `TestAttachGeometry_ExactLayoutAndRowBudgets`' file-level comment while there: its claim that the chained `select-layout` runs post-attach is not what makes the current assertions pass, and its `100x30` client is shorter than the boot box, so it never exercised growth.
 
+**`internal/reedengine` — `//go:build integration`, in `contract_integration_test.go`.**
+One new `TestMultiplexerContract` case for the two verbs this task adds to reed's wire surface, on the file's own scratch socket like every other case there.
+It must pin the two behaviours the fix's correctness rests on and that no unit test can reach: that `set-hook -u` followed by `set-hook` and one `set-hook -a` yields independent array entries, readable back through `show-hooks -w` as `window-resized[0]` and `[1]`; and that a `window-resized` hook fires after tmux has resized the layout, so a `resize-pane -y` inside it survives the resize that triggered it.
+The file self-skips when the configured binary is absent, which is what keeps this from becoming a psmux gate.
+
 **Manual verification (record the numbers in the commit or the task result).**
 `lyx reed up`, two `lyx reed add --cmd 'sleep 999'`, attach from a terminal taller than 50 rows, then resize that terminal at least twice.
 The header must read 1 row at every step, and its visible content must be the ` hub: <path>` line — not scrollback.
@@ -287,6 +309,8 @@ The header must read 1 row at every step, and its visible content must be the ` 
 - **Q:** Which panes does the hook pin? **A:** [auto-pick] The header and every collapsed strip, at the heights `render` actually computed. **Why:** those are reed's only absolute row budgets; full panes have no fixed budget, so tmux's even redistribution among them is acceptable.
 - **Q:** Does `render.Rules` change shape to expose those heights? **A:** [auto-pick] No — add a second pure entry point in `render` sharing `Rules`' policy composition. **Why:** keeps both existing call sites and their tests untouched while keeping policy single-owned.
 - **Q:** How is a multi-pin hook body encoded? **A:** [auto-pick] One hook-array entry per pin — `set-hook -u`, then `set-hook`, then `set-hook -a` per extra pin — never one `";"`-separated string. **Why:** verified live that a `resize-pane` naming a destroyed pane aborts the rest of a single command list (header ballooned to 25 rows with a dead id placed first), while array entries are independent (same arrangement, header still pinned at 1); a separate `";"` argv element would also terminate `set-hook` itself, since it takes its body as one argument.
+- **Q:** Do `set-hook` and `resize-pane` join `requiredSubcommands`? **A:** [auto-pick] No — they become reed's first deliberately *optional* wire surface, documented as such. **Why:** both verbs are new to `internal/`, so the contract genuinely widens and `doc.go`'s "no new psmux risk" sentence must be rewritten; but gating the capability probe on them would take every reed verb down on a psmux lacking `set-hook`, over an option already designed to degrade silently.
+- **Q:** How does the engine reach the pins? **A:** [auto-pick] From the same mapping `planLayout` already performs, once. **Why:** `planLayout` owns `toRenderStrands`, the present-pane filter, and the `HeaderPaneID` blanking the zero-pin disposition depends on; a second mapping site could silently diverge and compute the pins from a different header id than the layout used.
 - **Q:** What does an apply that computes zero pins issue? **A:** [auto-pick] The `set-hook -u` clear on its own — never nothing. **Why:** reaching the install statement means `render` has an opinion, and here the opinion is "nothing is pinned"; skipping the clear would leave an earlier strip pin clamping a pane now placed as a full pane on every resize, and that state is reachable whenever `planLayout` blanks a header pane id that is no longer live.
 - **Q:** Which reed verb first installs the hook? **A:** [auto-pick] The first `add`, or a `resume` that places a strand — not `up`. **Why:** `lifecycle.go` clears every pane binding and blanks `HeaderPaneID` on boot, so the apply that follows a fresh `up` hits `!anyPlacedStrand` and installs nothing; there is also nothing to pin there, since a lone header pane takes `render.Rules`' sole-cell branch.
 - **Q:** What happens when an installed hook fires against a pane that no longer exists? **A:** [auto-pick] Accepted and self-healing, with the header pinned as entry `[0]` so it fires first. **Why:** reed has no return value to inspect from inside the tmux server; the array encoding contains the failure to the one dead entry, pane ids are never reused within a server incarnation, and every way a pane disappears routes back through `applyLayoutLocked`, which rebuilds the array.
