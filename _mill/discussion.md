@@ -33,6 +33,10 @@ Established by reading the code, not inferred:
    Same root cause: the pane hosts a real interactive `bash`, which reads the operator's shell RC files.
    Those errors are the operator's own RC failing;
    reed's only fault is having put an RC-reading interactive shell into a pane that needs no shell at all.
+   One qualification, stated rather than glossed: removing the *interactive* shell removes the interactive/login RC paths (`~/.bashrc`, `~/.bash_profile`), which is where an `env`-sourcing line of this shape normally lives.
+   It does **not** categorically remove every RC path — a non-interactive `bash -c` still sources whatever `$BASH_ENV` names.
+   The captured lines are consistent with either, and this worktree cannot inspect the operator's environment to settle which.
+   So the honest claim is: the interactive/login RC route is closed by construction, and a residual `BASH_ENV`-style write is covered by the `ED 3` backstop rather than by the shell change.
 
 3. **The five `stencilstore: dev build does not refresh an untouched stencil` WARN lines.**
    These are emitted by the header keepalive process itself, on its own stderr, before it prints anything.
@@ -58,9 +62,10 @@ it does not touch scrollback, which is precisely why the noise survives where th
 
 - `internal/reedengine`: replace the header pane's split-then-`send-keys` boot with a `split-window` that carries the launch command as its own shell-command argument, so no interactive shell ever exists in that pane.
 - `cmd/lyx`: give the root pre-run a way to skip the stencil-seed pass for commands that opt out, and opt `reed header` out.
-- `internal/reedcli`: extend the `--blocking` clear sequence to clear scrollback as well as the visible screen, as a backstop against any future stray write.
-- Tests: hermetic unit coverage for the new launch composition and the seed-skip gate, plus one smoke test that reproduces the noise deterministically against a real reed session and a real dev-stamped `lyx` binary.
+- `internal/reedcli`: extend the `--blocking` clear sequence to clear scrollback as well as the visible screen, as a backstop against any future stray write, and extract the written bytes into a pure helper so that sequence is assertable without entering the blocking path.
+- Tests: hermetic unit coverage for the new launch composition, the seed-skip gate, and the payload helper, plus smoke coverage that pins the seed-skip effect directly (real dev-stamped binary, stderr assertion) and one composite scrollback backstop against a real reed session.
 - Docs: `internal/reedengine/doc.go`'s header-pane section, and `internal/reedcli/header.go`'s `Long`/file header where they describe the boot mechanics.
+- `CONSTRAINTS.md`: amend the Stencil Ownership Invariant's seed/refresh bullet to record the annotation opt-out (exact substance decided under Constraints below).
 
 **Out:**
 
@@ -97,7 +102,7 @@ it does not touch scrollback, which is precisely why the noise survives where th
 - Decision: pass the launch line as **one** trailing argument to `split-window`, keeping the existing `shell.Shell`-composed string from `headerLaunchCmd` unchanged (`'<exe>' 'reed' 'header' '--blocking'` on POSIX, `& '<exe>' 'reed' 'header' '--blocking'` on pwsh).
   Do not switch to a multi-argument `argv` form.
 - Rationale: a single shell-command argument is the form tmux has always accepted and the form `new-session ... e.cfg.Shell` (`internal/reedengine/lifecycle.go:314`) already relies on in this codebase, so it is the shape most likely to be supported identically by psmux, the Windows tmux port reed targets.
-  tmux runs a single-argument shell-command through a **non-interactive** shell, which reads no RC files — so noise class 2 is gone even though a shell is technically still in the chain.
+  tmux runs a single-argument shell-command through a **non-interactive** shell, which reads no interactive or login RC files — so noise class 2's observed shape is closed even though a shell is technically still in the chain (with the `BASH_ENV` qualification recorded in Mechanism §2).
   Keeping the `shell.Shell` composition also means `headerLaunchCmd`/`headerLaunchLine` and their existing table tests (`internal/reedengine/headerpane_test.go`) survive intact;
   only the call site changes.
 - Rejected: multi-argument `argv` form (`split-window ... <exe> reed header --blocking`), which tmux 3.x execs directly with no shell at all.
@@ -112,6 +117,12 @@ it does not touch scrollback, which is precisely why the noise survives where th
   The header keepalive reads no stencils (`HeaderText` renders the embedded `console-header.md` through `tokenvocab`, deliberately outside the stencil mechanism — see `internal/reedengine/headertemplate.go`), so skipping the pass costs it nothing.
   An annotation rather than a name check keeps the gate declarative and greppable, and gives any future quiet/long-lived command the same opt-out without touching `cmd/lyx` again.
   The pass still runs for `lyx reed up`, `lyx reed resume`, and every other command, so nothing about when stencils get seeded in practice changes.
+- Both header modes opt out, deliberately.
+  A cobra annotation is per-command, not per-flag, so plain `lyx reed header` — the ordinary JSON-envelope preview verb — declines the seed pass too, not just `--blocking`.
+  That is accepted rather than worked around: the two modes render the identical `HeaderText` output and neither reads a stencil, so neither has any reason to seed one.
+  The preview verb is also the command an operator runs repeatedly while editing `header.template`, and making a preview command silently commit to the hub's git history is exactly the surprise this decision removes.
+  Anyone who wants the seed pass runs any other lyx command, which is every other command there is.
+  A per-flag gate was considered and rejected as strictly worse: cobra annotations are the declarative mechanism, a flag-conditional gate would have to live in imperative code inside the root pre-run, and there is no scenario in which the preview mode wants the pass while the keepalive does not.
 - Rejected: hard-coding a `cmd.Name() == "header"` check in `seedStencils` — brittle (two commands could share a name in different subtrees) and not discoverable from the command definition.
   Also rejected: suppressing the logger's stderr sink from inside the header's `RunE` — the root `PersistentPreRunE` runs *before* any module hook or `RunE`, so the WARNs are already on stderr by then;
   it cannot work.
@@ -124,8 +135,24 @@ it does not touch scrollback, which is precisely why the noise survives where th
   The three source fixes above address the three observed noise classes;
   `ED 3` guarantees the pane is clean at the moment the header renders regardless of what any future code path, shell, or terminal wrote before it.
   It costs one escape byte sequence, is emitted by the same single `Fprint` that already exists, and needs no new tmux verb.
+- Consequence that must be planned around: `ED 3` runs **after** anything the shell or the pre-run wrote, so once it is in place the pane's scrollback comes up clean whether or not the source fixes exist.
+  It therefore masks the source fixes from any end-to-end scrollback assertion.
+  That is not a reason to drop it — it is exactly the property that makes it a backstop — but it means the scrollback assertion cannot be the regression pin for the source fixes.
+  See `verification-per-fix-not-per-symptom` for how each fix is pinned independently, and `ordering-lands-source-fixes-before-the-backstop` for the landing order that keeps the pre-fix failure demonstrable.
 - Rejected: issuing `tmux clear-history -t <pane>` from reed after launching — it introduces a new tmux verb into reed's surface (`internal/reedengine/probe.go`'s verb list and `doc.go`'s enumerated command set both track this), it races the keepalive's own first write, and it would have to be re-issued on every heal.
   Also rejected: relying on `ED 3` *alone* and leaving the source noise in place — the task's own framing is that this pane should never accumulate unrelated output in the first place.
+
+### blocking-payload-extracted-to-a-pure-helper
+
+- Decision: extract the `--blocking` mode's written bytes into a pure, unexported helper in `internal/reedcli` — a function taking the rendered header text and returning the exact string `RunE` prints (clear sequence + trimmed text).
+  `RunE` becomes `fmt.Fprint(out, headerBlockingPayload(text))` followed by `blockForever()`;
+  the untagged test asserts on the helper's return value, never on `RunE`.
+- Rationale: the `--blocking` path calls `blockForever()` immediately after its single `fmt.Fprint` (`internal/reedcli/header.go:64-71`), and `internal/reedcli/header_test.go` records in its own file header that it "never invokes the `--blocking` path, since that path blocks forever".
+  Any untagged test that drives `RunCLI` with `--blocking` hangs the suite forever;
+  the writer seam does not help, because the process never returns to the test.
+  A pure helper is the same shape `internal/reedengine/headerpane.go` already uses for exactly this reason (composition split from the blocking/side-effecting call site so the composition stays host-testable), so it is the established idiom in this area rather than a new pattern.
+- Rejected: asserting the clear sequence only through the smoke path — it would leave the byte sequence untested in the fast suite and make a one-character escape-sequence typo a smoke-only failure.
+  Also rejected: running `RunCLI --blocking` in a goroutine with a timeout — a deliberately leaked goroutine per test run, and a timing-dependent assertion for something that is pure string composition.
 
 ### dead-header-detection-improves-deliberately
 
@@ -144,16 +171,43 @@ it does not touch scrollback, which is precisely why the noise survives where th
   Every untagged `reedengine`/`reedcli` test that asserts header-pane geometry, id recording, or up/resume idempotence continues to see the same bare-shell pane it sees today.
 - Rejected: nothing — this is a no-change decision recorded so mill-plan does not "helpfully" unify the two paths.
 
-### verification-is-a-real-deterministic-smoke-test
+### verification-per-fix-not-per-symptom
 
-- Decision: the primary verification is a new `//go:build smoke` test in `internal/reedcli` that builds a **dev-stamped** `lyx` binary, plants a stale-but-untouched stencil in a real hub fixture so the dev WARN fires with certainty, boots a real reed session, and asserts the header pane's **full scrollback** — `capture-pane -p -S - -t <headerPaneID>` — contains the header line and nothing else.
-- Rationale: the finding's own note is that the bug is non-deterministic from the outside and "verification needs several repeat cycles".
-  It is only non-deterministic because noise class 3 depends on build channel and stencil staleness (see Mechanism).
-  Controlling both makes it fire every time, which turns "run it a few more times and hope" into a test that fails before the fix and passes after it.
-  Classes 1 and 2 are deterministic already — the echo lands on every boot, and the RC errors land whenever the operator's RC is broken (the test does not depend on the operator's RC;
-  the echoed line alone is enough to fail the pre-fix assertion).
-- Rejected: unit tests only — they cannot observe a tmux pane's scrollback, which is the whole defect.
-  Also rejected: manual repeat cycles as the verification of record — unrepeatable, and the finding already shows the bug hiding for several cycles in a row.
+- Decision: each source fix gets its own regression pin that observes **that fix's own mechanism**, and the end-to-end scrollback assertion is explicitly demoted to a backstop check that pins no individual change.
+  Three pins, one backstop:
+  - **P1 — the pane runs the command, not a shell** (noise classes 1 and 2).
+    Untagged, hermetic, `internal/reedengine`: the recorded fake-tmux argv shows `split-window` carrying the launch command, and **zero** `send-keys` calls are issued against the header pane.
+    The negative half is the pin;
+    it fails on pre-fix code immediately and cannot be satisfied by anything the header later prints.
+    Optionally strengthened in the smoke test by asserting `#{pane_current_command}` for the header pane is the lyx binary rather than a shell — an observation `ED 3` cannot affect, because it is about the process, not the buffer.
+  - **P2 — the header declines the stencil-seed pass** (noise class 3).
+    Its own test, and deliberately **not** routed through tmux: run the dev-stamped binary as `lyx reed header` (non-blocking) against a hub whose stencils are deliberately stale, capture the process's **stderr**, and assert it is empty.
+    Pre-fix this emits five WARN lines and fails;
+    post-fix it is silent.
+    No pane, no scrollback, no escape sequences — so `ED 3` is structurally incapable of masking it.
+    Pair it with the untagged `cmd/lyx` gate tests (annotation present on the command;
+    predicate returns skip) so the wiring is pinned in the fast suite and the observable effect is pinned in the slow one.
+  - **P3 — the clear sequence itself.**
+    Untagged assertion on the pure payload helper's return value (see `blocking-payload-extracted-to-a-pure-helper`).
+  - **B — the backstop check.**
+    The `capture-pane -p -S - -t <headerPaneID>` scrollback assertion stays, as the one test that answers the operator-facing question "is the pane actually clean end to end".
+    It is documented in its own file header as pinning the *composite* outcome and none of the individual fixes, precisely because `ED 3` runs last and would keep it green if a source fix regressed.
+- Rationale: the round-2 review is right that a single end-to-end scrollback assertion, in the presence of an `ED 3` that runs after everything else, is a test that cannot fail for the reasons this task cares about.
+  Splitting the verification by mechanism rather than by symptom gives each change a test that goes red when *that* change is reverted, which is the property "verification of record" was supposed to mean.
+  The bug's reported non-determinism is still removed the same way — dev-stamped build plus deliberately stale stencils — it is just applied to P2, where it belongs, instead of to a composite assertion.
+- Evidence that counts as a pre-fix failure, stated so it cannot be quietly skipped: P1 and P2 must each be observed **red on unmodified `main`** and green after their respective fix.
+  A green full run at the end of the task is not that evidence, and neither is B going green.
+- Rejected: unit tests only — they cannot observe a real pane or a real process's stderr, and P2's whole value is that it runs the real binary.
+  Also rejected: keeping the composite scrollback test as the sole verification (the round-2 BLOCKING finding).
+  Also rejected: dropping `ED 3` so the composite test regains its diagnostic power — that trades a real runtime guarantee for test convenience, which is backwards.
+
+### ordering-lands-source-fixes-before-the-backstop
+
+- Decision: the source fixes and their pins (P1, P2) land **before** the `ED 3` backstop and B in the batch order, and B is written only once `ED 3` exists.
+- Rationale: this keeps the pre-fix demonstration honest and cheap.
+  While `ED 3` is not yet in the tree, the composite scrollback state is still observable, so the task can record the actual pre-fix pane content once, at the start, as the artifact matching the original finding.
+  Landing `ED 3` first would erase that observation before it was ever made.
+- Rejected: landing everything in one batch — it makes "did this specific fix work" unanswerable, which is precisely the failure mode the round-2 review caught.
 
 ## Technical context
 
@@ -212,11 +266,15 @@ From `CONSTRAINTS.md`, the ones this task can actually trip:
 - **Told-Geometry Invariant.**
   `reedengine` is a bound package: it is handed absolute paths and derives none.
   The header launch keeps using the told `e.geom.PaneCwd` and the `os.Executable()` value resolved at the boot site — no new path derivation, and no direct `internal/lyxcwd` import.
-- **Stencil Ownership Invariant.**
-  "Seed/refresh runs once per process pre-run, never lazily inside `Read`."
-  The annotation opt-out does not violate this: it makes one command decline the pass entirely, it does not move the pass elsewhere or make it lazy.
-  Record the opt-out in the invariant's wording if review judges it a change to that invariant's meaning;
-  the discussion's position is that it is not, because no seeding is deferred — it simply does not happen for a command that reads no stencils.
+- **Stencil Ownership Invariant — `CONSTRAINTS.md` IS edited in this task's commit.**
+  Decided here rather than punted: the invariant's current bullet reads "Seed/refresh runs once per process pre-run, never lazily inside `Read`", which is unconditional, and this task makes it conditional on an annotation.
+  Leaving it unamended would make `CONSTRAINTS.md` describe behaviour the code no longer has, which the Documentation Lifecycle rule forbids.
+  The amended bullet reads:
+  "Seed/refresh runs once per process pre-run, never lazily inside `Read`.
+  A command that reads no stencils may decline the pass entirely by carrying the skip annotation;
+  declining is all-or-nothing per command and never defers seeding to a later or lazier point."
+  The second sentence is the whole change — the first is preserved verbatim, because the property that matters (no lazy seeding inside `Read`) is untouched.
+  Exact final wording is mill-plan's to place in the file, but the substance above is decided, not open.
 - **Test Tier Purity Invariant.**
   Untagged `reedcli`/`reedengine` tests must not spawn processes.
   The new scrollback test is `//go:build smoke`, like every other real-substrate test in the package.
@@ -263,22 +321,32 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
 - A registration-level test that `reed header` actually carries the annotation — the gate is worthless if the annotation is silently dropped in a later refactor.
 - `helptree_test.go` and the other existing `cmd/lyx` guards must pass unchanged.
 
-**`internal/reedcli` (untagged).**
+**`internal/reedcli` (untagged) — P3.**
 
-- Assert the `--blocking` output begins with the `ED 2` + `ED 3` + cursor-home sequence and then the trimmed header text.
-  A plain string assertion on the written buffer;
-  `RunCLI` already exposes the writer seam.
-- Assert non-blocking mode still returns the JSON envelope unchanged.
+- TDD candidate: assert the pure payload helper's return value is exactly the `ED 2` + `ED 3` + cursor-home sequence followed by the trimmed header text (see `blocking-payload-extracted-to-a-pure-helper`).
+  Assert on the **helper**, never by driving `RunCLI` with `--blocking`: that path calls `blockForever()` right after its single `fmt.Fprint`, so a test that reaches it never returns and hangs the untagged suite — `internal/reedcli/header_test.go`'s own file header already records why the existing tests avoid it.
+- Assert non-blocking mode still returns the JSON envelope unchanged, driven through `RunCLI` as today.
 
-**`internal/reedcli` (`//go:build smoke`, the verification of record).**
+**`internal/reedcli` (`//go:build smoke`) — P2 and B.**
 
-- One test: build a dev-stamped `lyx`, forge a hub, plant a stale-untouched stencil so the dev WARN is guaranteed, `lyx reed up`, resolve the header pane id, poll until the header line appears, then capture the pane's **entire** scrollback with `-S -` and assert it contains the header line and no other non-empty line.
-- The assertion should name what it found when it fails — the whole point is that a future regression is diagnosable from the failure output alone, since the original bug was only ever caught by an operator eyeballing a pane.
+- **P2 (pins the seed-skip fix, no tmux involved):** build a dev-stamped `lyx` (`-ldflags "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"`), forge a hub, plant a stale-but-untouched stencil so the dev WARN would fire, then run `lyx reed header` (non-blocking) as a real subprocess and assert its **stderr is empty**.
+  Pre-fix this yields five WARN lines;
+  post-fix it is silent.
+  This is the only test that observes noise class 3's suppression directly, and it is deliberately immune to `ED 3` because no terminal, pane, or escape sequence is in the picture.
+- **B (composite backstop):** build the same dev-stamped `lyx`, forge a hub with the same stale stencil, `lyx reed up`, resolve the header pane id, poll until the header line appears, then capture the pane's **entire** scrollback with `capture-pane -p -S -` and assert it holds the header line and no other non-empty line.
+  Its file header must state plainly that it pins the composite end-to-end outcome and **not** any individual fix, because `ED 3` runs after everything else and would keep this green if a source fix regressed.
+- Both assertions should name what they found when they fail — a future regression must be diagnosable from the failure output alone, since the original bug was only ever caught by an operator eyeballing a pane.
 - Scenarios worth covering in the same file if cheap: the header survives a `reed resume` with its scrollback still clean, and a healed header (corpse killed, fresh pane split) is equally clean.
   The heal path is the one most likely to regress, because it re-runs the same launch code from a different entry point.
-- Run the smoke tag explicitly at the end of the task;
-  a green untagged run is not sufficient evidence for this task, and neither is a single smoke run that never asserted the pre-fix failure.
-  Confirm the new smoke test **fails on the pre-fix code** before accepting it as passing on the post-fix code.
+- If the smoke tier can cheaply observe it, add the P1 reinforcement here too: `#{pane_current_command}` for the header pane names the lyx binary, not a shell.
+
+**Evidence discipline (applies to the whole task).**
+
+- P1 and P2 must each be observed **red on unmodified `main`** and green after their own fix lands.
+  Record that observation;
+  it is the pre-fix failure evidence this task is accountable for.
+- Run the `smoke` tag explicitly at the end, in addition to the untagged suite.
+  A green untagged run is not sufficient evidence for this task, and neither is B going green — B cannot fail for the reasons this task cares about once `ED 3` exists.
 
 ## Q&A log
 
@@ -298,3 +366,9 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
   a test that fails pre-fix and passes post-fix is worth more than any number of manual repeat cycles.
 - **Q:** Is Windows/psmux behaviour verified as part of this task? **A:** [auto-pick] No — the design picks the most conservative, already-proven command form, and live Windows verification is a follow-up. **Why:** this worktree is Linux and cannot execute a Windows run;
   claiming verification that did not happen would be worse than flagging the gap.
+- **Q:** [round-2 gap] `ED 3` runs after everything else, so an end-to-end scrollback assertion stays green even if the source fixes regress — how is each fix pinned? **A:** [auto-pick] Split verification by mechanism: P1 pins the pane-command change on the recorded tmux argv plus a zero-`send-keys` assertion, P2 pins the seed-skip on the real binary's stderr with no tmux in the picture, P3 pins the escape sequence on a pure helper, and the scrollback test is demoted to a composite backstop that pins nothing individually. **Why:** a test that cannot go red for the reasons the task cares about is not verification;
+  observing each fix's own mechanism restores that property without giving up the runtime guarantee `ED 3` provides.
+- **Q:** [round-2 gap] The proposed untagged assertion on `--blocking` output would hang the suite, since that path blocks forever. Which seam makes the clear sequence assertable? **A:** [auto-pick] Extract the written bytes into a pure helper in `internal/reedcli` and assert on the helper;
+  `RunE` prints its result and then blocks as before. **Why:** it is the same composition-split-from-side-effecting-call-site idiom `internal/reedengine/headerpane.go` already uses for exactly this reason, and it keeps the byte sequence covered in the fast suite instead of smoke-only.
+- **Q:** [round-2] Is `CONSTRAINTS.md`'s Stencil Ownership Invariant amended in this task's commit, or left to a later judgement? **A:** [auto-pick] Amended in the same commit, with the existing sentence preserved verbatim and one sentence added for the all-or-nothing per-command opt-out. **Why:** the invariant currently reads unconditionally and this task makes it conditional;
+  the Documentation Lifecycle rule does not allow that gap to persist, and punting the decision to an unnamed reviewer is not a decision.
