@@ -8,11 +8,16 @@
 package reedengine
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // parseWindowSize parses a `display-message -p '#{window_width} #{window_height}'` answer into a
@@ -84,12 +89,19 @@ func windowSizeAllowsChain(raw string) bool {
 	return strings.ToLower(strings.TrimSpace(raw)) == "latest"
 }
 
-// pinGeometryOptionsLocked pins this session's window to "status off" and "window-size latest".
-// Both pins are session/window-targeted rather than -g, because a session- or window-scoped value set
-// from the operator's own ~/.tmux.conf silently wins over a global set while set-option still exits
-// 0 — verified live. Each call's error is logged via logger.Warn and then ignored; the second pin is
-// attempted even when the first failed, per the Shared Decision
-// geometry-tmux-failures-are-non-fatal-everywhere.
+// pinGeometryOptionsLocked pins this session's window to "status off" and "window-size latest", and
+// owns the window-resized hook's whole install/unset lifecycle.
+// Both geometry pins are session/window-targeted rather than -g, because a session- or window-scoped
+// value set from the operator's own ~/.tmux.conf silently wins over a global set while set-option
+// still exits 0 — verified live. Each call's error is logged via logger.Warn and then ignored; every
+// later step, including the hook block, is attempted even when an earlier one failed, per the Shared
+// Decision geometry-tmux-failures-are-non-fatal-everywhere.
+//
+// This function is the right home for the hook lifecycle because it already runs both at boot
+// (lifecycle.go) and in the attach pre-flight (attach.go) — which is what lets a session booted by an
+// older lyx pick the hook up on the operator's next attach rather than staying unhealed until a manual
+// down + up. watchdog: off must reach the hook as well as the loop, because a kill-switch that leaves
+// the hook installed keeps spawning run-shell on every resize to write a signal file nobody reads.
 // Assumes the op lock is already held.
 func (e *Engine) pinGeometryOptionsLocked() {
 	target := exactSessionWindowTarget(e.SessionName())
@@ -98,6 +110,51 @@ func (e *Engine) pinGeometryOptionsLocked() {
 	}
 	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {
 		logger.Warn("reed: failed to pin window-size latest", "socket", e.Socket(), "session", e.SessionName(), "option", "window-size", "err", err)
+	}
+
+	// watchdogOption returns nothing and is all-non-fatal by contract, so an invalid value takes the
+	// unset side here rather than propagating; the boot path (ensureServerAndSessionLocked) is where
+	// an invalid value is loud.
+	enabled, err := watchdogOption(e.cfg.Watchdog)
+	if err != nil {
+		logger.Warn("reed: invalid watchdog value, treating the watchdog as off", "socket", e.Socket(), "session", e.SessionName(), "watchdog", e.cfg.Watchdog, "err", err)
+		enabled = false
+	}
+
+	if runtime.GOOS == "windows" {
+		// The hook is never installed on Windows — set-hook/run-shell are absent from
+		// requiredSubcommands and psmux's support for them is unverified — but the signal file is
+		// still removed when the watchdog is off, since nothing else will clean it up.
+		if !enabled {
+			e.removeResizeSignalFileLocked()
+		}
+		return
+	}
+
+	if enabled {
+		// The plain, REPLACING set-hook form is mandatory and -a must never appear: verified live,
+		// four identical plain installs yield exactly one fire per resize while three additional -a
+		// appends yield four, and this function runs on every AttachArgv pre-flight as well as at
+		// boot, so the append form would cost N run-shell spawns per resize after N attaches.
+		if err := e.tmux.run("set-hook", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())); err != nil {
+			logger.Warn("reed: failed to install window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+		return
+	}
+
+	// set-hook -u is idempotent and exits 0 whether or not a hook was set (verified live).
+	if err := e.tmux.run("set-hook", "-u", "-t", target, windowResizedHookName); err != nil {
+		logger.Warn("reed: failed to unset window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+	}
+	e.removeResizeSignalFileLocked()
+}
+
+// removeResizeSignalFileLocked removes this worktree's resize signal file, if present.
+// An absent file is silent (errors.Is(err, fs.ErrNotExist)); any other error is logger.Warn-ed and
+// ignored, since this is always called from a non-fatal context.
+func (e *Engine) removeResizeSignalFileLocked() {
+	if err := os.Remove(e.resizeSignalPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger.Warn("reed: failed to remove resize signal file", "socket", e.Socket(), "session", e.SessionName(), "path", e.resizeSignalPath(), "err", err)
 	}
 }
 
