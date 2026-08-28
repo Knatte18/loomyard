@@ -18,7 +18,7 @@ It stops being invisible the moment anything reveals more of the buffer: the att
 
 **Why now:** the noise was captured live during the M19/M22 sandbox-suite investigation and recurred twice without any deliberate attempt to trigger it, so it is a real and reasonably common occurrence rather than a one-off.
 It is worth closing independently of the sizing bugs: a single-purpose status pane should never accumulate unrelated output in the first place, regardless of whether the pane is ever resized.
-The non-determinism reported in the finding is fully explained by the mechanism analysis below — it is not a timing race in reed, it is one noise source (the stencil WARN) that only fires under a dev-stamped binary with a stale on-disk stencil.
+The non-determinism reported in the finding is fully explained by the mechanism analysis below — it is not a timing race in reed, it is one noise source (the stencil-seed WARNs) whose firing depends on build channel and on how far the board's stencils have drifted from the shipped defaults and the worktree source.
 
 ## Mechanism — where each of the three noise classes comes from
 
