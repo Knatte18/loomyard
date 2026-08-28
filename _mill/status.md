@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: reed-lock-stale-session-name
 branch: reed-lock-stale-session-name
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-08-28T14:34:24Z'
 planning  '2026-08-28T14:43:29Z'
 plan-review-r1  '2026-08-28T14:52:28Z'
 plan-fix-r1  '2026-08-28T14:54:42Z'
+plan-review-r2  '2026-08-28T15:02:48Z'
 ```
