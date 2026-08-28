@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -147,6 +148,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	client, err := NewGitHubClient()
 	if err != nil {
+		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "new github client", "cause", err)
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("github client unavailable: %v", err), "error", err)
 	}
 
@@ -161,6 +163,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		Direction: "desc",
 	})
 	if err != nil {
+		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
 		return p.stuckOrCancelled(ctx, publishGitHubErrorReason("query existing pull request", err))
 	}
 
@@ -180,6 +183,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			Head:  &p.deps.TaskBranch,
 			Base:  &p.deps.ParentBranch,
 		}); err != nil {
+			logger.Warn("landingshed: github call failed", "producer", publishName, "action", "create pull request", "owner", owner, "repo", repo, "cause", err)
 			return p.stuckOrCancelled(ctx, publishGitHubErrorReason("create pull request", err))
 		}
 
