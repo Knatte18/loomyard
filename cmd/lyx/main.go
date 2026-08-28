@@ -83,7 +83,7 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 				logger.Arm()
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
-			seedStencils(cmd.Context())
+			seedStencils(cmd)
 			return nil
 		},
 	}
