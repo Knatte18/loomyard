@@ -77,6 +77,17 @@ batches:
   Continuing past a failed clear is right because the first (non-`-a`) `set-hook` overwrites the array from entry `[0]` regardless.
 - **Applies to:** batch 2, batch 3
 
+### Decision: guard-skip-leaves-a-stale-array-deliberately
+
+- **Decision:** the two guard-skip states — `applyLayoutLocked` returning at `len(live) < 2` or at `!anyPlacedStrand` — leave a previously installed hook array in place, with no clear and no removal path.
+  This is the opposite disposition from `the-clear-is-unconditional-including-zero-pins` above, and deliberately so: a guard-skip never reaches an install statement at all, so reed has computed no opinion to write, whereas an install statement reached with zero pins has computed one and the opinion is "nothing is pinned".
+- **Rationale:** `len(live) < 2` is harmless — `resize-pane -y` against a window's sole pane is a silent no-op, re-verified live on tmux 3.6 during this plan's round-1 review (a `resize-pane -t %0 -y 1` on a one-pane 24-row window exits 0 and leaves the pane at 24 rows), so the stale header pin cannot express itself against `render.Rules`' sole-cell branch.
+  `!anyPlacedStrand` is the reachable, long-lived one: `internal/reedengine/state.go` documents an operator remedy that deletes `reed.json` while the session and its processes keep running untracked, after which `anyPlacedStrand` is false forever.
+  There the stale array is a benefit — it keeps pinning the still-alive header and strips at the budgets reed last computed for them, which is what an operator would want from a session reed has stepped back from managing.
+- **Rejected:** moving the `set-hook -u` clear ahead of the guards so every call site clears.
+  It would strip the pins from exactly that untracked-but-running session, and a clear with no rebuild behind it is strictly worse than a slightly stale array — a cleared hook drifts on the very next resize, while a stale one keeps working for every pin whose pane is still alive.
+- **Applies to:** batch 2, batch 3
+
 ### Decision: set-hook-and-resize-pane-stay-out-of-requiredSubcommands
 
 - **Decision:** `set-hook` and `resize-pane` are reed's first deliberately optional wire surface.

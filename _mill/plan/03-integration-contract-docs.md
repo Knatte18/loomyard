@@ -28,6 +28,7 @@ Verified live on tmux 3.6 in this worktree: with `window-size manual` set on the
   - `internal/reedengine/attach.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/config.go`
   - `internal/reedengine/state.go`
   - `internal/reedengine/mouse_boot_integration_test.go`
@@ -61,6 +62,7 @@ Verified live on tmux 3.6 in this worktree: with `window-size manual` set on the
 - **Context:**
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/probe.go`
 - **Edits:**
   - `internal/reedengine/contract_integration_test.go`
@@ -83,7 +85,11 @@ Verified live on tmux 3.6 in this worktree: with `window-size manual` set on the
   Measured live on tmux 3.6 in this worktree with exactly this sequence: an 80x24 two-pane session at heights 12 and 11 resized to 60 rows leaves the pinned pane at 1 and the other at 58, with entry `[0]`'s dead-pane command failing harmlessly.
   Assert the pinned height, not the sibling's exact value.
 
-  Clear the hook array again with `set-hook -u` at the end of the section, and restore `window-size` to its prior value, so the later steps of `TestMultiplexerContract` run against an unhooked, unpinned window exactly as they do today.
+  Leave the window as the later steps of `TestMultiplexerContract` expect to find it, using two named mechanisms and no ad-hoc readback-and-restore.
+  Clear the hook array with `set-hook -u -w -t <window target> window-resized`.
+  Drop the `window-size` override with `set-option -uw -t <window target> window-size` — the `-u` unset form, which removes the window-scoped value and lets the inherited one apply again, rather than reading the prior value back and re-setting it.
+  Verified live on tmux 3.6 in this worktree: after `set-option -w window-size manual`, `set-option -uw window-size` exits 0 and `display-message -p '#{window-size}'` reads back `latest`, the inherited default.
+  Do not add a capture-then-restore idiom; no test in this package has one.
   Comment the section stating that these two verbs are reed's first deliberately OPTIONAL wire surface — absent from `requiredSubcommands` on purpose — so this case documents their semantics rather than gating on their presence.
 - **Commit:** `test(reedengine): pin set-hook array independence and window-resized firing order`
 
@@ -94,6 +100,7 @@ Verified live on tmux 3.6 in this worktree: with `window-size manual` set on the
   - `internal/reedengine/attach.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/probe.go`
+  - `internal/reedengine/state.go`
   - `internal/reedengine/render/rules.go`
   - `internal/reedengine/render/height.go`
   - `internal/reedengine/template_posix.yaml`
@@ -110,6 +117,9 @@ Verified live on tmux 3.6 in this worktree: with `window-size manual` set on the
   It states that tmux has no fixed-height pane concept and hands out a window-size delta one row at a time, round-robin across the vertical cells, so no absolute row budget reed computes survives a resize on its own — measured live on tmux 3.6, a healthy attached session's header went from 1 row to 6 across a 76-to-90-row client resize and to 16 across a further 90-to-120 one.
   It names the answer: a `window-resized` window hook holding one `resize-pane -y` array entry per fixed-height pane, installed by reed and executed by the tmux server, refreshed on every successful apply and in `AttachArgv`'s pre-flight, with the pinned heights coming from `render.FixedHeightPins` — the heights `render` actually placed the cells at, after `clampHeaderHeight` and `clampToFit` — never the raw configured budgets.
   It records that `client-resized` was measured firing BEFORE the layout is resized and so cannot work, and that `window-layout-changed` also fires on reed's own `select-layout`, inviting re-entrancy for no benefit.
+  It also records what happens on the paths that install nothing: an apply returning at either of `applyLayoutLocked`'s guards, and every `AttachArgv` degrade return, issue no `set-hook` at all — not even the clear — so a previously installed array survives them deliberately, since a clear with no rebuild behind it would drift on the very next resize.
+  Name why that is safe in both guard cases: `resize-pane -y` against a window's sole pane is a verified silent no-op (exit 0, height unchanged), so the `len(live) < 2` case's surviving header pin cannot contradict `render.Rules`' sole-cell branch;
+  and in the `!anyPlacedStrand` case — reachable for good via the operator remedy `internal/reedengine/state.go` documents, which deletes `reed.json` while the session keeps running untracked — the surviving array is a benefit, still holding the live header and strips at the budgets reed last computed for them.
   In the same bullet, record that the ~50-row threshold in the original bug report is `template_posix.yaml`'s `height: 50` boot box showing through the BARE (unchained) attach path, not evidence of a miscomputed layout — a synthetic bare attach reproduces the reported table exactly, with 40 and 50 rows leaving the header at 1 and 76 rows taking it to 10 — so a future reader does not re-derive that from scratch.
 
   Second, add one sentence to the existing "The chained attach" bullet noting that "the layout string lands verbatim with no rescale" holds only until the next window resize, and pointing at the resize-hook bullet above for what holds the budgets afterwards.

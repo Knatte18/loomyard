@@ -25,6 +25,7 @@ Batch-local decision, differing from nothing in the overview: the pure `set-hook
 
 - **Context:**
   - `internal/reedengine/state.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/config.go`
   - `internal/reedengine/render/rules.go`
   - `internal/reedengine/render/types.go`
@@ -53,7 +54,9 @@ Batch-local decision, differing from nothing in the overview: the pure `set-hook
 
 - **Context:**
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/lock.go`
   - `internal/reedengine/render/rules.go`
+  - `internal/reedengine/render/types.go`
   - `internal/reedengine/apply.go`
 - **Edits:**
   - `internal/reedengine/windowsize.go`
@@ -80,7 +83,11 @@ Batch-local decision, differing from nothing in the overview: the pure `set-hook
 
 - **Context:**
   - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/lock.go`
+  - `internal/reedengine/parse.go`
+  - `internal/reedengine/state.go`
   - `internal/reedengine/render/rules.go`
+  - `internal/reedengine/render/types.go`
   - `internal/reedengine/apply_test.go`
 - **Edits:**
   - `internal/reedengine/apply.go`
@@ -94,7 +101,15 @@ Batch-local decision, differing from nothing in the overview: the pure `set-hook
   Do not move, reorder, weaken or add to either of this function's two existing guards (`len(live) < 2` and `!anyPlacedStrand(...)`), and do not change the `liveBoxLocked` call's position.
   Both guards, a failed `planLayout`, and a failed `select-layout` must all continue to return before the new statement is reached.
 
-  Extend `applyLayoutLocked`'s doc comment with a short paragraph stating that tmux redistributes every window-size delta evenly across the vertical cells and has no fixed-height pane concept, so no absolute row budget survives a resize on its own; that this function therefore re-installs a `window-resized` hook re-pinning the fixed-height panes after each successful apply; and that a path returning at either guard installs nothing, which is deliberate — reed has applied no layout there, so it has no pins to assert.
+  Extend `applyLayoutLocked`'s doc comment with a short paragraph stating that tmux redistributes every window-size delta evenly across the vertical cells and has no fixed-height pane concept, so no absolute row budget survives a resize on its own, and that this function therefore re-installs a `window-resized` hook re-pinning the fixed-height panes after each successful apply.
+
+  The same paragraph must state the guard-skip disposition explicitly, since it is the opposite of the zero-pin one and a reader will otherwise assume the clear is universal.
+  A path returning at either guard issues NOTHING — not even the clear — so a previously installed array survives it, deliberately and with no removal path.
+  Give both halves of the reason.
+  `len(live) < 2` is harmless because `resize-pane -y` against a window's sole pane is a silent no-op — verified live on tmux 3.6, exit 0 with the pane's height unchanged — so the surviving header pin cannot contradict `render.Rules`' sole-cell branch even though it now names the only pane in the window.
+  `!anyPlacedStrand` is the reachable, long-lived one: `internal/reedengine/state.go` documents an operator remedy that deletes `reed.json` while the session and its processes keep running untracked, after which `anyPlacedStrand` is false forever, and there the surviving array is a benefit — it keeps pinning the still-alive header and strips at the budgets reed last computed for them.
+  Record that clearing ahead of the guards was considered and rejected: it would strip the pins from exactly that untracked-but-running session, and a clear with no rebuild behind it drifts on the very next resize, which is strictly worse than a slightly stale array.
+  Do not implement that rejected alternative.
 - **Commit:** `fix(reedengine): re-pin fixed-height panes via a window-resized hook after each apply`
 
 ### Card 6: Install the hook from AttachArgv's pre-flight
@@ -102,7 +117,10 @@ Batch-local decision, differing from nothing in the overview: the pure `set-hook
 - **Context:**
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/apply.go`
+  - `internal/reedengine/lock.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/render/rules.go`
+  - `internal/reedengine/render/types.go`
   - `internal/reedengine/attach_test.go`
 - **Edits:**
   - `internal/reedengine/attach.go`
@@ -129,7 +147,9 @@ Batch-local decision, differing from nothing in the overview: the pure `set-hook
   - `internal/reedengine/apply.go`
   - `internal/reedengine/attach.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/lock.go`
   - `internal/reedengine/lock_test.go`
+  - `internal/reedengine/parse.go`
   - `internal/reedengine/render/rules.go`
   - `internal/reedengine/render/types.go`
   - `internal/reedengine/state.go`
@@ -147,7 +167,10 @@ Batch-local decision, differing from nothing in the overview: the pure `set-hook
   Cover: zero pins, asserting exactly one argv — the `set-hook -u` clear — and nothing after it, never an empty hook body and never an empty slice; one pin, asserting the clear followed by exactly one `set-hook` argv carrying no `-a`; three pins, asserting the clear, then a non-`-a` `set-hook`, then exactly two `-a` `set-hook` argvs, in the input pin order.
   Assert on every case that each argv carries `-w` and the `exactSessionWindowTarget` form of the session name, that each body element is exactly `resize-pane -t %N -y <n>` for its pin, and that no argv anywhere in the returned sequence contains an element equal to `";"`.
 
-  In `internal/reedengine/apply_test.go`, extend the existing hermetic fixtures to record `set-hook` calls through `execHook` and add tests asserting: a successful apply issues the `set-hook -u` clear and the pin rebuild after the `select-layout` call and before the `select-pane` call, discriminating on the recorded call sequence rather than on call count alone; an apply whose plan yields zero pins — reachable by giving the state a `HeaderPaneID` absent from the live pane set, with no strip strand present, so the mapping blanks the header id — still issues the clear and nothing after it; neither of `applyLayoutLocked`'s two guards reaches any `set-hook` call at all; and a `set-hook` returning an error does not make `applyLayoutLocked` return an error.
+  In `internal/reedengine/apply_test.go`, ADD a new call-recording fixture — `apply_test.go` has none today, so this is built from scratch, not extended; its existing tests either install no `execHook` or install a single-purpose closure.
+  Model the new recorder on `attach_test.go`'s `attachRecorder`/`newAttachHook` pair, which this card already edits and can be pattern-matched against: a struct holding an ordered `sequence []string` of the calls made plus the full argv of each `set-hook` call, and a constructor returning the `execHook` closure that writes into it and answers `select-layout`/`select-pane`/`set-hook` with success.
+
+  Using that fixture, add tests asserting: a successful apply issues the `set-hook -u` clear and the pin rebuild after the `select-layout` call and before the `select-pane` call, discriminating on the recorded call sequence rather than on call count alone; an apply whose plan yields zero pins — reachable by giving the state a `HeaderPaneID` absent from the live pane set, with no strip strand present, so the mapping blanks the header id — still issues the clear and nothing after it; neither of `applyLayoutLocked`'s two guards reaches any `set-hook` call at all, INCLUDING no clear, so a previously installed array survives a guard-skip; and a `set-hook` returning an error does not make `applyLayoutLocked` return an error.
 
   In `internal/reedengine/attach_test.go`, extend `newAttachHook` and `attachRecorder` to record `set-hook` calls and add tests asserting: a known-good pre-flight issues the clear and the pin rebuild after the state and pane list are read and before the argv is returned; every degraded path that yields the bare argv issues no `set-hook` call at all; and a `set-hook` returning an error neither suppresses the chain nor changes a single element of the ten-element chained argv, compared element by element against the same argv built with a non-failing hook.
   While there, correct the doc comment of `TestAttachArgv_NeverMutatesTheSessionOrPersistsState` and, if its assertion is now too broad to be honest, narrow it: `AttachArgv` deliberately does mutate a window option now (the resize-pin hook, alongside the two geometry pins it already set), so the property that test pins is that it issues no pane-set mutation — no `select-layout`, `select-pane`, `kill-pane` or `split-window` — and never writes `reed.json`.
