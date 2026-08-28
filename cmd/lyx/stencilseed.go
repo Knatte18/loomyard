@@ -15,8 +15,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/buildinfo"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -26,7 +29,7 @@ import (
 
 // seedStencils is the thin pre-run wrapper newRoot's PersistentPreRunE calls: it resolves this
 // process' seed target via stencilSeedTarget and delegates to seedStencilsAt when one is found.
-func seedStencils(ctx context.Context) {
+func seedStencils(cmd *cobra.Command) {
 	// Return immediately under go test, before resolving anything: lyxcwd.Resolve spawns `git
 	// rev-parse --show-toplevel`, and cobra runs this root PersistentPreRunE for every Runnable
 	// command -- every parent group included, since each carries RunE: clihelp.GroupRunE. Without
@@ -37,11 +40,32 @@ func seedStencils(ctx context.Context) {
 		return
 	}
 
-	hub, worktree, ok := stencilSeedTarget(ctx)
+	// A command that carries the skip annotation reads no stencils, so the pass is pure waste for
+	// it -- and skipping also keeps a long-lived pane process (e.g. reed header's keepalive) from
+	// ever reaching fabricengine.CommitSeededStencils and performing a git commit in the hub. This
+	// early return sits ahead of stencilSeedTarget so an opted-out command resolves no geometry and
+	// spawns no `git rev-parse`.
+	if skipStencilSeed(cmd) {
+		return
+	}
+
+	hub, worktree, ok := stencilSeedTarget(cmd.Context())
 	if !ok {
 		return
 	}
 	seedStencilsAt(hub, worktree)
+}
+
+// skipStencilSeed reports whether cmd carries clihelp.SkipStencilSeedAnnotation set to
+// clihelp.AnnotationEnabled, and is therefore declining the root pre-run's stencil-seed pass.
+// It is extracted as its own directly-assertable function rather than inlined into seedStencils, for
+// the reason stencilSeedTarget's own comment already records: seedStencils returns immediately under
+// testing.Testing(), so a test can never observe the gate through it.
+func skipStencilSeed(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	return cmd.Annotations[clihelp.SkipStencilSeedAnnotation] == clihelp.AnnotationEnabled
 }
 
 // stencilSeedTarget decides whether this process should seed stencils and, when it should, against

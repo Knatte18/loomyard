@@ -1,6 +1,12 @@
 // header_test.go covers the `header` verb's pure command construction: Use, Short, and the
 // --blocking flag registration, plus the blocking tail's keepalive-survival contract, exercised
-// with headerWatch and headerPark both stubbed via card 19's package vars.
+// with headerWatch and headerPark both stubbed via package vars, and headerBlockingPayload's
+// clear-sequence bytes. It never runs RunE/PreRunE and never invokes the full --blocking path in
+// most tests, since that path blocks forever by design — the payload and contract are pinned
+// instead by driving the pure helpers directly and stubbing the blocking-tail components.
+// It also never drives the enveloped default through RunCLI: that reaches reed's PersistentPreRunE
+// and therefore lyxcwd.Resolve, which spawns "git rev-parse", banned in the untagged suite by the
+// Test Tier Purity Invariant.
 // The enveloped default's end-to-end PreRunE -> HeaderText round trip is covered by the reed smoke
 // suite (batch 4), not here.
 
@@ -170,3 +176,37 @@ type errHeaderWatchStub struct{}
 
 // Error implements the error interface with a fixed, test-only message.
 func (errHeaderWatchStub) Error() string { return "stub watch failure for test" }
+
+func TestHeaderBlockingPayload(t *testing.T) {
+	const clearSeq = "\x1b[2J\x1b[3J\x1b[H"
+
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			name: "TrailingCRLFTrimmed",
+			text: "hub: /some/path\r\n",
+			want: clearSeq + "hub: /some/path",
+		},
+		{
+			name: "NoTrailingNewlineUnchanged",
+			text: "hub: /some/path",
+			want: clearSeq + "hub: /some/path",
+		},
+		{
+			name: "InteriorNewlinesPreserved",
+			text: "line one\nline two\n\n",
+			want: clearSeq + "line one\nline two",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := headerBlockingPayload(tt.text)
+			if got != tt.want {
+				t.Errorf("headerBlockingPayload(%q) = %q; want %q", tt.text, got, tt.want)
+			}
+		})
+	}
+}

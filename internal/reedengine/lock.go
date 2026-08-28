@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -34,6 +35,13 @@ type Engine struct {
 	cfg  Config
 	geom Geometry
 	tmux TmuxCmd
+	// suppressHeaderLaunch decides whether ensureHeaderPaneLocked leaves the header pane as a bare
+	// shell instead of passing it a launch command. It is initialised from testing.Testing() because
+	// re-exec'ing os.Executable() from a test binary would run the whole suite recursively — but it
+	// lives as a field, not a hard-wired testing.Testing() call at the boot site, so an in-package
+	// test can flip it back on (see enableHeaderLaunch, lifecycle_test.go) and drive the real launch
+	// path against a fake tmux.
+	suppressHeaderLaunch bool
 }
 
 // New builds an Engine for the given Config and Geometry.
@@ -41,9 +49,10 @@ type Engine struct {
 // hubgeom.ReedGeometry is the hub-mode answer.
 func New(cfg Config, geom Geometry) *Engine {
 	return &Engine{
-		cfg:  cfg,
-		geom: geom,
-		tmux: NewTmuxCmd(cfg.Tmux, geom.SocketKey),
+		cfg:                  cfg,
+		geom:                 geom,
+		tmux:                 NewTmuxCmd(cfg.Tmux, geom.SocketKey),
+		suppressHeaderLaunch: testing.Testing(),
 	}
 }
 

@@ -6,6 +6,7 @@ package reedengine
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -375,4 +376,107 @@ func containsArg(args []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestResizePinHookArgvs pins the pure argv shape resizePinHookArgvs builds for zero, one, and
+// several pins: the unconditional clear always leads, every argv carries -w and the exact-match
+// window target, each body is exactly "resize-pane -t <pane> -y <height>", the "-a" flag appears on
+// every entry after the first pin, and no argv anywhere in the sequence carries a bare ";" element.
+func TestResizePinHookArgvs(t *testing.T) {
+	const session = "myproj"
+	target := exactSessionWindowTarget(session)
+
+	assertCommon := func(t *testing.T, argvs [][]string) {
+		t.Helper()
+		if len(argvs) == 0 {
+			t.Fatal("resizePinHookArgvs() = empty slice, want at least the clear")
+		}
+		for i, argv := range argvs {
+			if argv[0] != "set-hook" {
+				t.Errorf("argv[%d][0] = %q, want %q", i, argv[0], "set-hook")
+			}
+			if !containsArg(argv, "-w") {
+				t.Errorf("argv[%d] = %v, want -w", i, argv)
+			}
+			if !containsArg(argv, target) {
+				t.Errorf("argv[%d] = %v, want the exact-match window target %q", i, argv, target)
+			}
+			if !containsArg(argv, "window-resized") {
+				t.Errorf("argv[%d] = %v, want the window-resized hook name", i, argv)
+			}
+			for _, elem := range argv {
+				if elem == ";" {
+					t.Errorf("argv[%d] = %v, want no bare \";\" element", i, argv)
+				}
+			}
+		}
+	}
+
+	t.Run("ZeroPins", func(t *testing.T) {
+		argvs := resizePinHookArgvs(session, nil)
+		assertCommon(t, argvs)
+		if len(argvs) != 1 {
+			t.Fatalf("resizePinHookArgvs(zero pins) = %v, want exactly one argv (the clear)", argvs)
+		}
+		want := []string{"set-hook", "-u", "-w", "-t", target, "window-resized"}
+		if len(argvs[0]) != len(want) {
+			t.Fatalf("argv[0] = %v, want %v", argvs[0], want)
+		}
+		for i := range want {
+			if argvs[0][i] != want[i] {
+				t.Errorf("argv[0][%d] = %q, want %q", i, argvs[0][i], want[i])
+			}
+		}
+	})
+
+	t.Run("OnePin", func(t *testing.T) {
+		pins := []render.Pin{{PaneID: "%1", Height: 3}}
+		argvs := resizePinHookArgvs(session, pins)
+		assertCommon(t, argvs)
+		if len(argvs) != 2 {
+			t.Fatalf("resizePinHookArgvs(1 pin) = %v, want 2 argvs (clear + 1)", argvs)
+		}
+		if containsArg(argvs[0], "-a") {
+			t.Errorf("clear argv = %v, want no -a", argvs[0])
+		}
+		if containsArg(argvs[1], "-a") {
+			t.Errorf("first-pin argv = %v, want no -a on the non-a set-hook", argvs[1])
+		}
+		wantBody := "resize-pane -t %1 -y 3"
+		if argvs[1][len(argvs[1])-1] != wantBody {
+			t.Errorf("first-pin body = %q, want %q", argvs[1][len(argvs[1])-1], wantBody)
+		}
+	})
+
+	t.Run("ThreePins", func(t *testing.T) {
+		pins := []render.Pin{
+			{PaneID: "%1", Height: 3},
+			{PaneID: "%2", Height: 2},
+			{PaneID: "%3", Height: 4},
+		}
+		argvs := resizePinHookArgvs(session, pins)
+		assertCommon(t, argvs)
+		if len(argvs) != 4 {
+			t.Fatalf("resizePinHookArgvs(3 pins) = %v, want 4 argvs (clear + 3)", argvs)
+		}
+		if containsArg(argvs[0], "-a") {
+			t.Errorf("clear argv = %v, want no -a", argvs[0])
+		}
+		if containsArg(argvs[1], "-a") {
+			t.Errorf("first-pin argv = %v, want no -a", argvs[1])
+		}
+		for i, want := range []struct {
+			pane   string
+			height int
+		}{{"%1", 3}, {"%2", 2}, {"%3", 4}} {
+			argv := argvs[i+1]
+			if i > 0 && !containsArg(argv, "-a") {
+				t.Errorf("argv for pin %d = %v, want -a", i, argv)
+			}
+			wantBody := fmt.Sprintf("resize-pane -t %s -y %d", want.pane, want.height)
+			if argv[len(argv)-1] != wantBody {
+				t.Errorf("argv for pin %d body = %q, want %q", i, argv[len(argv)-1], wantBody)
+			}
+		}
+	})
 }

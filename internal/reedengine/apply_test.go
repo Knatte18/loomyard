@@ -462,6 +462,187 @@ func TestAnyPlacedStrand(t *testing.T) {
 	}
 }
 
+// applyHookRecorder captures every call applyLayoutLocked issues through the execHook seam, in order,
+// so a test can discriminate on the recorded call sequence rather than on call count alone. setHookArgvs
+// holds the full argv of every set-hook call, in call order, alongside sequence's "set-hook" entries.
+type applyHookRecorder struct {
+	sequence     []string
+	setHookArgvs [][]string
+}
+
+// newApplyRecordingHook builds the execHook closure a test installs on e.tmux, recording every call
+// into rec and answering select-layout/select-pane/set-hook with success — the fixture apply_test.go
+// lacked before this card, built from scratch rather than extending an existing single-purpose
+// closure.
+func newApplyRecordingHook(rec *applyHookRecorder) func(capture bool, args ...string) (string, error) {
+	return func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "select-layout":
+			rec.sequence = append(rec.sequence, "select-layout")
+			return "", nil
+		case "select-pane":
+			rec.sequence = append(rec.sequence, "select-pane")
+			return "", nil
+		case "set-hook":
+			rec.sequence = append(rec.sequence, "set-hook")
+			rec.setHookArgvs = append(rec.setHookArgvs, append([]string{}, args...))
+			return "", nil
+		default:
+			return "", nil
+		}
+	}
+}
+
+// TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout pins the install statement's position: a
+// successful apply issues the set-hook clear and pin rebuild after select-layout and before
+// select-pane, discriminated on the recorded call sequence.
+func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Width, e.cfg.Height = 100, 21
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.Header.HeightRows = 1
+
+	rec := &applyHookRecorder{}
+	e.tmux.execHook = newApplyRecordingHook(rec)
+
+	st := &ReedState{
+		HeaderPaneID: "%9",
+		Strands: []Strand{
+			{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
+			{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
+		},
+	}
+	live := []LivePane{{ID: "%9", Top: 0}, {ID: "%1", Top: 2}, {ID: "%2", Top: 4}}
+
+	if err := e.applyLayoutLocked(st, live); err != nil {
+		t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
+	}
+
+	wantMinLen := 3 // select-layout, at least the set-hook clear, select-pane
+	if len(rec.sequence) < wantMinLen {
+		t.Fatalf("sequence = %v, want at least %d entries", rec.sequence, wantMinLen)
+	}
+	if rec.sequence[0] != "select-layout" {
+		t.Fatalf("sequence[0] = %q, want select-layout", rec.sequence[0])
+	}
+	if rec.sequence[1] != "set-hook" {
+		t.Fatalf("sequence[1] = %q, want set-hook (the install statement right after select-layout)", rec.sequence[1])
+	}
+	if rec.sequence[len(rec.sequence)-1] != "select-pane" {
+		t.Fatalf("sequence tail = %q, want select-pane after every set-hook call", rec.sequence[len(rec.sequence)-1])
+	}
+	for _, step := range rec.sequence[1 : len(rec.sequence)-1] {
+		if step != "set-hook" {
+			t.Errorf("sequence = %v, want only set-hook calls between select-layout and select-pane", rec.sequence)
+		}
+	}
+
+	if len(rec.setHookArgvs) == 0 {
+		t.Fatal("no set-hook calls recorded, want at least the clear")
+	}
+	clear := rec.setHookArgvs[0]
+	if containsArg(clear, "-u") == false {
+		t.Errorf("first set-hook argv = %v, want the -u clear", clear)
+	}
+}
+
+// TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear pins the-clear-is-unconditional-including-zero-pins:
+// an apply whose plan yields zero pins — a HeaderPaneID absent from the live set, no strip strand
+// present — still issues the clear and nothing after it.
+func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Width, e.cfg.Height = 100, 21
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.Header.HeightRows = 1
+
+	rec := &applyHookRecorder{}
+	e.tmux.execHook = newApplyRecordingHook(rec)
+
+	st := &ReedState{
+		HeaderPaneID: "%9", // absent from live below, so the mapping blanks it
+		Strands: []Strand{
+			{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		},
+	}
+	live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 11}}
+
+	if err := e.applyLayoutLocked(st, live); err != nil {
+		t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
+	}
+
+	setHookCount := 0
+	for _, step := range rec.sequence {
+		if step == "set-hook" {
+			setHookCount++
+		}
+	}
+	if setHookCount != 1 {
+		t.Fatalf("recorded %d set-hook calls, want exactly 1 (the unconditional clear): %v", setHookCount, rec.setHookArgvs)
+	}
+	if !containsArg(rec.setHookArgvs[0], "-u") {
+		t.Errorf("sole set-hook argv = %v, want the -u clear", rec.setHookArgvs[0])
+	}
+}
+
+// TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall pins guard-skip-leaves-a-stale-array-deliberately:
+// neither of applyLayoutLocked's two guards reaches any set-hook call at all, INCLUDING no clear, so a
+// previously installed array survives a guard-skip.
+func TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall(t *testing.T) {
+	e := newTestEngine(t)
+
+	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
+		rec := &applyHookRecorder{}
+		e.tmux.execHook = newApplyRecordingHook(rec)
+		st := &ReedState{Strands: []Strand{{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}}}
+
+		if err := e.applyLayoutLocked(st, []LivePane{{ID: "%1"}}); err != nil {
+			t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
+		}
+		if len(rec.sequence) != 0 {
+			t.Errorf("sequence = %v, want zero calls (including no clear)", rec.sequence)
+		}
+	})
+
+	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
+		rec := &applyHookRecorder{}
+		e.tmux.execHook = newApplyRecordingHook(rec)
+		st := &ReedState{}
+
+		if err := e.applyLayoutLocked(st, []LivePane{{ID: "%1"}, {ID: "%2"}}); err != nil {
+			t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
+		}
+		if len(rec.sequence) != 0 {
+			t.Errorf("sequence = %v, want zero calls (including no clear)", rec.sequence)
+		}
+	})
+}
+
+// TestApplyLayoutLocked_SetHookErrorDoesNotFailApply pins hook-failure-is-non-fatal-everywhere: a
+// set-hook returning an error does not make applyLayoutLocked return an error.
+func TestApplyLayoutLocked_SetHookErrorDoesNotFailApply(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Width, e.cfg.Height = 100, 21
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		if args[0] == "set-hook" {
+			return "", errors.New("boom")
+		}
+		return "", nil
+	}
+
+	st := &ReedState{Strands: []Strand{
+		{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}}
+	live := []LivePane{{ID: "%1"}, {ID: "%2"}}
+
+	if err := e.applyLayoutLocked(st, live); err != nil {
+		t.Fatalf("applyLayoutLocked() = %v, want nil even when set-hook fails", err)
+	}
+}
+
 func TestPaneIDsByTop_SortsByVerticalPosition(t *testing.T) {
 	live := []LivePane{
 		{ID: "%3", Top: 32},

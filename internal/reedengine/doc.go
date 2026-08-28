@@ -45,14 +45,32 @@
 // go. It boots alongside the session/initial pane on both Up and Resume, and
 // Engine.ValidateHeader runs eagerly on every boot path so a bad header
 // template surfaces loud before the pane is ever created, never silently.
-// A header whose keepalive process dies (pane_dead=1) is deliberately kept
-// as an enumerable corpse by reconcile — never killed there — and healed
-// (corpse killed, a fresh header split back in at the physical top) by
-// ensureHeaderPaneLocked on the next Up/Resume; planLayout only ever emits
-// a header cell for a pane actually present in the window, so a stale
-// HeaderPaneID can never put an absent pane's cell into select-layout's
-// string (which a real tmux accepts and misassigns positionally rather
-// than rejecting).
+// The header pane is created by a split-window call that carries the
+// keepalive command (`lyx reed header --blocking`) as its own trailing
+// shell-command argument, rather than by splitting a bare shell and typing
+// the command into it afterwards with send-keys: the pane runs that command
+// directly from birth, so it hosts no interactive shell for anything to echo
+// the launch line into or read ~/.bashrc from. This makes the corpse-and-heal
+// contract below actually work as documented: with the keepalive as the
+// pane's own process, "set-option -g remain-on-exit on" corpses the pane the
+// moment that process dies, where a surviving bash previously kept the pane
+// alive and a dead header was silently mistaken for a working one. Under
+// go test the pane still boots commandless — a bare shell, no split-window
+// trailing argument and no send-keys — because headerLaunchLine
+// (headerpane.go) returns "" whenever the boot decides to suppress the
+// launch, which prevents os.Executable() from re-exec'ing the test binary
+// and running its whole suite recursively; that decision now rides on
+// Engine.suppressHeaderLaunch, an unexported field New initialises from
+// testing.Testing(), rather than a testing.Testing() call hard-wired at the
+// boot site. A header whose keepalive process dies (pane_dead=1) is
+// deliberately kept as an enumerable corpse by reconcile — never killed
+// there — and healed (corpse killed, a fresh header split back in at the
+// physical top, carrying the same launch command on both the first attempt
+// and any even-vertical-retile retry) by ensureHeaderPaneLocked on the next
+// Up/Resume; planLayout only ever emits a header cell for a pane actually
+// present in the window, so a stale HeaderPaneID can never put an absent
+// pane's cell into select-layout's string (which a real tmux accepts and
+// misassigns positionally rather than rejecting).
 //
 // The live-geometry rule: the render box a layout is computed against is no
 // longer the config-pinned Width/Height. planLayout (apply.go) is always
@@ -121,6 +139,16 @@
 // therefore issued through TmuxCmd, carrying reed's own -L socket, so the
 // probe can never start a server on the operator's GLOBAL DEFAULT socket
 // — see probeCapabilityLocked for what that cost while it did.
+// Every verb named above is REQUIRED: a binary missing any of them is
+// unusable, and requiredSubcommands (probe.go) fails the capability probe
+// on it.
+// set-hook and resize-pane are different: they are reed's first
+// deliberately OPTIONAL verbs, absent from requiredSubcommands on purpose,
+// because gating the capability probe on them would take every reed verb
+// down on a psmux lacking set-hook, over a quality-only option
+// (the resize-pin hook documented below, under "The resize round-robin
+// and the resize-pin hook") that is already designed to degrade silently
+// — their absence costs only the resize pin, never a working session.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it
 // load-bearing:
@@ -309,13 +337,54 @@
 //     configured boot height until the next attach snaps it back; with a
 //     client attached, the "window-size latest" pin holds the window at the
 //     client's size and tmux rescales the cells into it instead.
+//   - The resize round-robin and the resize-pin hook (windowsize.go,
+//     apply.go, attach.go): tmux has no fixed-height pane concept, and a
+//     window-size delta arriving after attach time is handed out one row at
+//     a time, round-robin across every vertical cell in the stack — so no
+//     absolute row budget reed computes survives a resize on its own.
+//     Measured live on tmux 3.6: a healthy attached session's header went
+//     from 1 row to 6 across a 76-to-90-row client resize, and to 16 across
+//     a further 90-to-120 one.
+//     The answer is a window-resized window hook holding one
+//     "resize-pane -y" array entry per fixed-height pane — the header band
+//     and every collapsed strip — installed by reed and executed by the
+//     tmux server itself, refreshed on every successful apply
+//     (applyLayoutLocked) and again in AttachArgv's pre-flight, with the
+//     pinned heights coming from render.FixedHeightPins: the heights render
+//     actually placed the cells at, after clampHeaderHeight and
+//     clampToFit, never the raw configured budgets.
+//     Two candidate hooks were measured and rejected: client-resized fires
+//     BEFORE the layout is resized, so a resize-pane inside it cannot work,
+//     and window-layout-changed also fires on reed's own select-layout,
+//     inviting re-entrancy for no benefit.
+//     The paths that install nothing are deliberate: an apply returning at
+//     either of applyLayoutLocked's guards, and every AttachArgv degrade
+//     return, issue no set-hook at all — not even the clear — so a
+//     previously installed array survives them on purpose, since a clear
+//     with no rebuild behind it would drift on the very next resize.
+//     That is safe in both guard cases. resize-pane -y against a window's
+//     sole pane is a verified silent no-op (exit 0, height unchanged), so
+//     the len(live) < 2 case's surviving header pin cannot contradict
+//     render.Rules' sole-cell branch.
+//     And in the !anyPlacedStrand case — reachable for good via the
+//     operator remedy state.go documents, which deletes reed.json while the
+//     session keeps running untracked — the surviving array is a benefit,
+//     still holding the live header and strips at the budgets reed last
+//     computed for them.
+//     The ~50-row threshold in the original bug report is
+//     template_posix.yaml's "height: 50" boot box showing through the BARE
+//     (unchained) attach path, not evidence of a miscomputed layout — a
+//     synthetic bare attach reproduces the reported table exactly, with 40
+//     and 50 rows leaving the header at 1 row and 76 rows taking it to 10.
 //   - The chained attach (attach.go): AttachArgv's argv is
 //     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
 //     separator a literal one-character ";" argv element — never "\;",
 //     since exec.Command passes argv directly to the child and no shell ever
 //     sees it to unescape. The chained select-layout runs only after the
 //     client has attached and tmux has already resized the window to it, so
-//     the layout string lands verbatim with no rescale. attach-session is
+//     the layout string lands verbatim with no rescale — but only until the
+//     next window resize; see the resize round-robin bullet above for what
+//     holds the fixed-height budgets afterward. attach-session is
 //     first in the chain, so a failing or unsupported select-layout still
 //     leaves the operator attached — strictly no worse than before this
 //     task. The window between building the string and applying it is not
@@ -395,8 +464,14 @@
 //     booting a header pane, which is why the tier-2 proof runs the loop
 //     in-process against a real session instead.
 //
-// requiredSubcommands (probe.go) did not grow for any of this: display-message,
-// select-layout, set-option, and list-panes were already spent by the engine
-// before this task, so the live-geometry rule, the attach chain, and the two
-// option pins add no capability-probe change and no new psmux risk.
+// requiredSubcommands (probe.go) still does not grow for the live-geometry
+// rule, the attach chain, or the two option pins: display-message,
+// select-layout, set-option, and list-panes were already spent by the
+// engine before this task.
+// set-hook and resize-pane are not the same story: both are new to
+// internal/, so the wire contract this package assumes genuinely widens,
+// and that widening costing nothing at the probe is now a deliberate
+// trade, not a free consequence — the non-fatal degrade the two Optional
+// verbs above are wired for (Shared Decision
+// hook-failure-is-non-fatal-everywhere) is what pays for it.
 package reedengine
