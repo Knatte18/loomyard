@@ -50,7 +50,9 @@ batches:
     commit_sha: 7d5d926f9896c90698814aa388d66bdc210d51df
     verify_baseline_failures: []
   - name: watch-loop
-    state: pending
+    state: running
+    implementer_session: f0a31b0a-bc9a-408c-aa9b-305a493695c6
+    start_sha: 4d6eb92ef8fb7695c0d8a31dc001243e9f072db6
     verify_baseline_failures: []
   - name: cli-tail-docs-and-live-proof
     state: pending
