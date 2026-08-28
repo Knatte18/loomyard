@@ -32,9 +32,14 @@ implementing  '2026-08-28T08:53:20Z'
 ```yaml
 batches:
   - name: render-fixed-height-pins
-    state: pending
+    state: running
+    implementer_session: d9dc07e3-f1ef-4b36-9ea7-63603cb42dbb
+    start_sha: 2e03a7ec72aef4952f1c9bf44d40843eb50e5a01
+    verify_baseline_failures: []
   - name: engine-hook-install
     state: pending
+    verify_baseline_failures: []
   - name: integration-contract-docs
     state: pending
+    verify_baseline_failures: []
 ```
