@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-watchdog-daemon
 branch: reed-watchdog-daemon
 plan: _mill/plan
@@ -28,4 +28,19 @@ plan-fix-r4  '2026-08-28T10:32:25Z'
 plan-review-r5  '2026-08-28T10:39:57Z'
 plan-fix-r5  '2026-08-28T10:40:33Z'
 planned  '2026-08-28T10:40:44Z'
+implementing  '2026-08-28T10:41:17Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: watchdog-foundations
+    state: pending
+  - name: engine-reapply-op
+    state: pending
+  - name: watch-loop
+    state: pending
+  - name: cli-tail-docs-and-live-proof
+    state: pending
 ```
