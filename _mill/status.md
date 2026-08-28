@@ -55,7 +55,9 @@ batches:
     commit_sha: 2172585cea2ffb21135388a87762cbd33a289f1b
     verify_baseline_failures: []
   - name: github-caller-warn-lines
-    state: pending
+    state: running
+    implementer_session: 68658e5d-9b2a-44d8-ae92-3be271cf1a71
+    start_sha: 81865546d27a71011d2a25db609265f8caa24170
     verify_baseline_failures: []
   - name: spawn-observability-guard
     state: pending
