@@ -3,6 +3,11 @@
 // The default mode returns the rendered text through the normal JSON envelope;
 // --blocking prints the text then blocks forever, the one envelope-exempt tail this command has —
 // the header pane boots "lyx reed header --blocking" as its keepalive.
+// Both modes carry clihelp.SkipStencilSeedAnnotation, declining cmd/lyx's root pre-run stencil-seed
+// pass: this is deliberate rather than a --blocking-only gate, because a cobra annotation is
+// per-command and neither mode reads a stencil. Declining is what keeps the keepalive's stderr — and
+// therefore the header pane's scrollback — free of stencilstore warnings, and the hub free of a
+// preview command's git commits.
 
 package reedcli
 
@@ -49,6 +54,9 @@ next rebuilt (a server restart, a dead-header heal, or "lyx reed down" +
 Example:
   lyx reed header
   lyx reed header --blocking`,
+		Annotations: map[string]string{
+			clihelp.SkipStencilSeedAnnotation: clihelp.AnnotationEnabled,
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
