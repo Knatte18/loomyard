@@ -38,6 +38,8 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
 - **Context:**
   - `internal/reedcli/smoke_lifecycle_test.go`
+  - `internal/stencilstore/stencilstore.go`
+  - `internal/buildinfo/buildinfo.go`
 - **Edits:**
   - `internal/reedcli/smoke_test.go`
 - **Creates:** none
