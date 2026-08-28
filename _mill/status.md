@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: logger-coverage-audit
 branch: logger-coverage-audit
 plan: _mill/plan
@@ -25,4 +25,21 @@ plan-review-r2  '2026-08-28T06:39:45Z'
 plan-fix-r2  '2026-08-28T06:43:01Z'
 plan-review-r3  '2026-08-28T06:48:51Z'
 planned  '2026-08-28T06:49:11Z'
+implementing  '2026-08-28T06:49:46Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: audit-doc-and-constraints
+    state: pending
+  - name: hard-error-warn-lines
+    state: pending
+  - name: spawn-site-log-lines
+    state: pending
+  - name: github-caller-warn-lines
+    state: pending
+  - name: spawn-observability-guard
+    state: pending
 ```
