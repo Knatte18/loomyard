@@ -31,7 +31,8 @@ The second half is a plain gap rather than a design problem: `Finalize` builds i
 - `internal/landingshed/seam_enforcement_test.go`'s `landingshedAllowedImports` drops `internal/websterengine` and gains `internal/summaryparser`. Dropping that entry is this task's own enforcement of producer-agnosticism: the allowlist is a positive membership list, so leaving `websterengine` in it would compile and pass while still authorising the exact producer import the task exists to eliminate.
 - `Finalize` parses the artifact at the top of `Call` (after `entryErr`, before the status commit) and sets `MergeOptions.Message` to `summary.CommitMessage()`, unconditionally — for both the squash and non-squash merge shape, and on the step-5 retry merge as well, which reuses the same `mergeOpts` value.
 - New `contracts/specs/final-summary-spec.md` pinning the artifact producer-agnostically; `contracts/specs/webster-spec.md`'s summary section reduced to a pointer plus webster's own writer-side additions.
-- `docs/overview.md` and `CONSTRAINTS.md` updated in the same commit; `manifest/roadmap.md`'s "producer-agnostic final-summary artifact" Planned item marked complete.
+- `docs/overview.md` at two named sites: the kept-durable-contract-docs enumeration (`docs/overview.md:98`, today `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`) gains `final-summary-spec.md`, and the module list gains a `summaryparser` row beside the existing `planparser` and `discussionparser` rows (`docs/overview.md:303-306`).
+- `CONSTRAINTS.md` updated in the same commit; `manifest/roadmap.md`'s "producer-agnostic final-summary artifact" Planned item marked complete.
 - Tests: Tier 1 only (see **Testing**).
 
 **Out:**
@@ -100,7 +101,7 @@ The second half is a plain gap rather than a design problem: `Finalize` builds i
 - Decision: `Message` is set whether or not `Config.Squash` is true.
 - Rationale: `opts.Message` is the conclude-commit message for both merge shapes in `fabricengine`, so gating on `Squash` would leave the non-squash landing commit with today's unset message and create a second code path to reason about for no benefit.
 - Rejected: setting it only when `Config.Squash`.
-- Accepted consequence: the message lands on *both* sides of the pair, not only the warp commit. `fabricengine`'s `concludeMergeSides` (`mergelifecycle.go:46-80`) computes one `effectiveMsg` and passes it to `MergeConclude` for warp and weft alike, so the weft conclude commit carries the same composed title and body. That is accepted rather than worked around: the weft side's conclude commit records the same landing event, so the same prose describes it correctly, and suppressing it would mean adding a per-side message parameter to `fabricengine` — a wider change this task explicitly rules out.
+- Reach: the composed message lands on the **warp** conclude commit only. `concludeMergeSides` (`mergelifecycle.go`) does compute one `effectiveMsg` for both arms, but `Merge` writes `WeftOutcome: mergeOutcomeAlreadyUpToDate` into the merge-state record's initial literal (`merge.go:449-460`), and the weft arm's own `st.WeftOutcome != mergeOutcomeAlreadyUpToDate` guard therefore skips it on every record this binary produces — the arm is retained solely for cross-binary compatibility with records a pre-change binary left behind, as `mergelifecycle.go`'s own header states verbatim. This is stated so no one plans around a weft-side commit that is never produced; it must not be restated as an "accepted consequence" in `final-summary-spec.md`, which should say nothing about pair sides at all.
 
 ### construction-time-validation
 
@@ -210,6 +211,12 @@ All Tier 1, untagged.
 - `NewFinalize` and `NewPublish` each reject an empty `FinalSummaryPath` with their own error, alongside the existing nil-closure rejection tests.
 - `publish_test.go` / `publish_integration_test.go` update to the new field and the new package; behaviour is unchanged there, so these are mechanical.
 - `seam_enforcement_test.go`'s `landingshedAllowedImports` is edited, not merely left to pass: `internal/websterengine` out, `internal/summaryparser` in. Nothing asserts this happened, so it is a plan-level checklist item rather than a test to write.
+
+**Existing fixtures the two changes break — carried by the plan, not discovered at `go test` time.**
+The top-of-`Call` parse plus the constructors' empty-`FinalSummaryPath` rejection together make an artifact mandatory on paths that never needed one:
+
+- `internal/landingshed/finalize_test.go` builds `&Finalize{...}` by struct literal in nine tests, bypassing `NewFinalize` but not the parse. Each needs a real artifact written to a `t.TempDir()` path assigned to `deps.FinalSummaryPath`, except the two new cases that assert the missing- and malformed-artifact errors.
+- `internal/shedrecipe/entries_simple_test.go:43`, `internal/shedbuild/fixture_test.go:113`, and `internal/loomrecipe/fixture_test.go:160` each build a `landingshed.Deps` fixture that reaches `NewPublish`/`NewFinalize`, so all three must set a non-empty `FinalSummaryPath` or the constructors reject them. These three packages need no artifact on disk — they never call `Call` — so a non-empty path string is enough.
 
 **`internal/loomcli`.**
 
