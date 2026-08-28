@@ -100,6 +100,12 @@ Example:
 				// this guarantees that no future edit to Watch can make RunE fall through and kill the
 				// keepalive pane -- the one failure this design must never permit.
 				headerPark()
+
+				// headerPark() itself must never return (it blocks forever), but if it ever does --
+				// e.g. under test via a substitutable stub -- this return prevents falling through to
+				// the unconditional output.Ok write below, which would leak a JSON envelope onto the
+				// pane's own screen in violation of the "pane's stdio is its screen" invariant above.
+				return nil
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{

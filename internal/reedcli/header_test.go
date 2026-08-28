@@ -119,10 +119,12 @@ func TestHeaderCmd_BlockingTailParksAfterWatchError(t *testing.T) {
 	}
 
 	// This is the keepalive-survival assertion: an obvious implementation propagates the error and
-	// kills the pane, which would show up here as a JSON envelope or error text in buf beyond the
-	// rendered header text.
+	// kills the pane, or falls through to the unconditional output.Ok write, either of which would
+	// append a JSON envelope (output.Ok emits `"ok":true` plus the caller's own "text" key -- never
+	// "status") to buf after the rendered header text. Check for the envelope's actual shape rather
+	// than a "status" key it never uses.
 	out := buf.String()
-	if strings.Contains(out, `"status"`) || strings.Contains(out, `"error"`) {
+	if strings.Contains(out, `"ok":true`) || strings.Contains(out, `"error"`) {
 		t.Errorf("blocking output = %q; want only the rendered header text, no JSON envelope or error text", out)
 	}
 }
