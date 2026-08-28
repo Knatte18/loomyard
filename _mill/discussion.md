@@ -59,6 +59,21 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 ## Decisions
 
+### loop-body-lives-in-reedengine-header-pane-only-calls-it
+
+- Decision: the **loop body lives in `internal/reedengine`**, exposed as a single exported entry point — shape `Engine.Watch(ctx context.Context) error`.
+  `internal/reedcli/header.go`'s `--blocking` tail does nothing but call it.
+  **`Engine.Watch` is the only exported symbol this task adds to the engine**;
+  the re-apply op is package-internal (`reapplyLayout`), since nothing outside the package calls it.
+- Rationale: every seam the loop touches is unexported package state in `reedengine` — `e.tmux` and its `execHook` test seam (`overlay.go:37`), `stateDir()` (`lifecycle.go:33`), `e.cfg`, `liveBoxLocked`, `applyLayoutLocked`, and the op lock.
+  `reedcli` cannot reach any of them: `PersistentPreRunE` resolves the config into a **local** and keeps only `c.eng` (`cli.go:89` and `:97`), so even the `watchdog` value is not available cli-side without a new accessor.
+  Hosting the loop in `reedcli` would mean exporting the tmux overlay, the state directory, the config, and the lock discipline — inverting the CLI/Cobra Invariant's direction of knowledge, which has `<module>cli` importing `<module>engine` and the engine knowing nothing of the CLI.
+  The test plan independently forces the same answer: the tier-1 cases are specified as drivable through `TmuxCmd.execHook`, an unexported white-box seam, and the tier-2 test reuses the pty harness that lives in package `reedengine` — neither is reachable from `reedcli`.
+  Note the consequence for the CLI/Cobra Invariant: `reed header --blocking` remains a thin verb whose fallible work is engine-side, exactly as the invariant wants.
+- Rejected: the loop body in `reedcli/header.go` (needs a large unexported surface exported for no reason, and puts untestable logic where the harness cannot reach it);
+  a new `internal/reedwatch` package (same access problem as `reedcli`, plus a new package boundary between two halves of one engine's own behaviour);
+  exporting `ReapplyLayout` publicly as well (nothing outside the package calls it — `Watch` is the whole public contract, and a smaller exported surface is the point).
+
 ### watchdog-lives-in-the-header-pane-process
 
 - Decision: the watch loop runs inside the existing per-session header-pane process, replacing `blockForever()` in `internal/reedcli/header.go`'s `--blocking` tail.
@@ -99,7 +114,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
     No teardown code is added for it.
 - Rationale: the hook must do as little as possible because it fires once per resize step;
   a `touch`-equivalent is roughly a millisecond, while spawning `lyx` is orders of magnitude more.
-  The watcher's steady-state cost is then an `os.Stat` (microseconds) per tick and **zero** subprocesses — nothing is spawned until an actual resize happens.
+  **In signal mode** the watcher's steady-state cost is then an `os.Stat` (microseconds) per 100ms tick and **zero** subprocesses — nothing is spawned until an actual resize happens.
+  **Poll mode is not free and is not claimed to be**: each 2s cycle calls `reapplyLayout`, and every `TmuxCmd` call is a real `exec.Command` (`overlay.go:54`, `overlay.go:70`), so that mode costs roughly one `display-message` plus one `show-hooks` round trip per cycle, permanently.
+  That is a larger steady-state cost than the ~23ms geometry poll rejected in `window-resized-is-the-event-source`, and the difference is not a contradiction: what was rejected there was polling **as the primary mechanism on a platform where hooks work**, where it buys nothing.
+  Poll mode is the fallback for the platform where hooks cannot be verified to work at all (psmux/Windows), where the only alternative is no self-heal — so it is the cheapest *available* option there, not a cheaper option chosen over a better one.
   Existence-as-signal is immune to filesystem mtime granularity, which a modification-time comparison is not.
   The file is ephemeral and per-worktree, so `.lyx/` (via the existing `Engine.stateDir()`) is its only correct home under the Durable-vs-Ephemeral State Invariant, and one signal file per worktree means sibling worktrees on the shared server cannot collide.
   `run-shell` must carry `-b`: without it the tmux **server** blocks while the command runs.
@@ -133,9 +151,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 - Rejected: leading-edge plus rate limiting (first frame corrects fast, but every mid-drag apply is wasted work);
   a fixed-interval reconcile that applies whenever the observed box differs from the last applied one (simplest, but couples correction latency to the tick and reintroduces the geometry poll).
 
-### reapply-layout-is-a-new-public-engine-op
+### reapply-layout-is-a-new-engine-op
 
-- Decision: a new public `Engine` method — shape `ReapplyLayout(lastApplied render.Box) (ReapplyResult, error)` — that re-plans and re-applies the layout against the live window.
+- Decision: a new **package-internal** `Engine` method — shape `reapplyLayout(lastApplied render.Box) (ReapplyResult, error)` — that re-plans and re-applies the layout against the live window.
+  It is unexported because `Engine.Watch` is its only caller and lives in the same package (see `loop-body-lives-in-reedengine-header-pane-only-calls-it`).
   **It takes the caller's last-applied box and owns the box-equality guard itself**, so the comparison happens *inside* the op, under the lock, against a box queried under that same lock.
   The watcher never queries geometry on its own in either mode: signal mode calls this on a debounced signal, poll mode calls it once per cycle, and both get identical semantics from one code path.
   This is what keeps `liveBoxLocked`'s documented "assumes the op lock is already held" contract intact — an unlocked watcher-side query would violate it.
@@ -172,7 +191,7 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
   So `window-resized` tracks *client-driven* window size changes, not layout-driven ones, which is precisely the property that makes it usable and `window-layout-changed` unusable.
   The box-equality guard is kept anyway, and cheaply: it costs one `display-message` the apply path already performs, it breaks any self-trigger loop on a future tmux or on psmux without depending on this probe holding there, and it also suppresses the redundant re-apply when two signals coalesce imperfectly.
   It must compare against the last **successfully-applied** box, never the last observed one, or a failed apply would be skipped on retry.
-  The guard lives **inside** `ReapplyLayout`, which is told the caller's last-applied box and returns the concrete `ReapplyResult{Applied bool, Box render.Box, BoxIsLive bool}`.
+  The guard lives **inside** `reapplyLayout`, which is told the caller's last-applied box and returns the concrete `ReapplyResult{Applied bool, Box render.Box, BoxIsLive bool}`.
   The watcher never performs a geometry query of its own, in either mode.
   On the two inherited guard-skip paths — `len(live) < 2` and `!anyPlacedStrand(...)`, both of which return before any box is computed — the result is `Applied=false, BoxIsLive=false`, and the watcher leaves its last-applied box untouched.
   Propagating the box out therefore needs `applyLayoutLocked` itself to return it, not only the `liveBoxLocked` sibling below: the apply path is where the box is resolved, so its signature grows to hand back the box it used and whether that box was live.
@@ -197,17 +216,23 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 ### hook-availability-decides-poll-fallback
 
-- Decision: at startup the watcher determines whether its hook is installed with a single `show-hooks`-class round trip.
-  If it is, the watcher runs signal-file-driven with no geometry polling.
-  If it is not, the watcher falls back to a slow poll that simply calls `ReapplyLayout(lastApplied)` once per cycle and lets the op's own box-equality guard decide whether anything is applied.
+- Decision: the hook-availability probe is **not a separate op and takes no lock of its own** — it rides inside `reapplyLayout`, under that op's existing try-lock, and its answer comes back on the result: `ReapplyResult` carries `HookInstalled bool` and `HookKnown bool` alongside the box fields.
+  The watcher's very first cycle is therefore an ordinary `reapplyLayout` call whose result also decides the mode.
+  **When the try-lock is unavailable, `HookKnown` is false and the mode is not decided that cycle** — the watcher stays in (or defaults to) poll mode and re-decides on a later cycle;
+  it never guesses signal mode on missing information.
+  If the hook is installed, the watcher runs signal-file-driven with no geometry polling.
+  If it is not, the watcher falls back to a slow poll that simply calls `reapplyLayout(lastApplied)` once per cycle and lets the op's own box-equality guard decide whether anything is applied.
   Poll mode performs **no** geometry query of its own: the same in-op, under-lock comparison governs it, so a non-live box means no apply and no last-applied update there exactly as on the signal path, and the `cfg.Width`/`cfg.Height` fallback can no more cause a permanent re-apply loop in poll mode than in signal mode.
   **The mode is not fixed for the process's life.**
   While in poll mode the watcher re-probes hook availability as part of each poll cycle and promotes itself to signal-driven mode the moment the hook appears;
   signal-driven mode never re-probes and never demotes itself.
 - Rationale: this is what makes the design correct on psmux without betting on it.
   `set-hook`/`run-shell` are absent from `requiredSubcommands` and unverified on the Windows port, so the capability must be discovered at runtime rather than assumed or required.
-  One round trip at startup is free;
-  the alternative — always polling as a safety net — reintroduces the permanent per-session subprocess cost on the platform where hooks *do* work.
+  Folding the probe into `reapplyLayout` is what keeps the design's own rule — "the watcher performs no unlocked tmux query" — true of the probe too.
+  A standalone probe op would need its own lock discipline, its own told-geometry validation, and its own post-op compromise check, all duplicating `withOpLock`'s chokepoint for one `show-hooks` round trip;
+  riding inside the op it already makes costs one extra round trip inside a lock already held.
+  Poll mode defaulting on an undecided probe is the safe direction: poll mode works whether or not the hook exists, while signal mode chosen wrongly means no self-heal at all.
+  The alternative — always polling as a safety net — reintroduces the permanent per-session subprocess cost on the platform where hooks *do* work.
   The poll-mode re-probe is free for the same reason: that mode is already making a round trip per cycle, so checking hook presence alongside it costs nothing extra, and it closes a real hole in this design's own migration story — the hook is installed at attach pre-flight, so a watcher that started on a hook-less already-up session would otherwise sit in poll mode forever even after the operator attaches and the hook appears.
   The reverse direction needs no handling: nothing in reed ever removes the hook except `watchdog: off`, which stops the watcher outright.
 - Rejected: adding `set-hook`/`run-shell` to `requiredSubcommands` (the capability probe would then refuse to boot reed at all on any multiplexer lacking them, i.e. betting the entire Windows path on unverified psmux behaviour, to gain nothing on Linux);
@@ -222,7 +247,8 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
   The poll fallback is part of the loop and is disabled with it.
   The unset is non-fatal like every other call in that function.
   **An invalid value is a hard error on exactly one path, and treated as `off` on the other two.**
-  The validator itself is a pure `watchdogOption(raw) (bool, error)` mirroring `mouseOption` (`mouse.go:14`) exactly — trimmed, lowercased, `on`/`off` only, everything else including the empty string returning an error — but its three consumers cannot all react the same way, because two of them have no error channel:
+  The validator is a pure `watchdogOption(raw) (bool, error)`, following `mouseOption` (`mouse.go:15`) in **behaviour** — trimmed, lowercased, `on`/`off` only, everything else including the empty string returning an error, no I/O — but deliberately **not** in return type: `mouseOption` returns `(string, error)` because its value is passed straight through to `set-option` as a tmux option string, whereas `watchdog` is never sent to tmux and every consumer wants a boolean enable, so returning `bool` avoids each caller re-comparing a string.
+  Its three consumers cannot all react the same way, because two of them have no error channel:
   - `ensureServerAndSessionLocked` (`lifecycle.go:176`), the boot path that already validates `mouse` — **hard error**, so `lyx reed up` fails loudly and names the bad value.
     This is the one place an operator reliably sees it.
   - `pinGeometryOptionsLocked` (`windowsize.go:90`), reached from boot and from `AttachArgv`'s pre-flight (`attach.go:80`) — the function returns nothing and is all-non-fatal by contract, so it **takes the unset side**: an invalid value is treated as `off`, the hook is unset rather than installed, and a `logger.Warn` records why.
@@ -319,7 +345,8 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
   The watcher's try-lock path must keep both pre-flight validations and the post-op compromise check, since those are the reason `withOpLock` is a chokepoint rather than a bare lock acquisition.
 - `applyLayoutLocked`'s trailing `select-pane -t focus` (`apply.go:162`) targets the strand carrying `Display.Focus` in the persisted table (resolved by `render/focus.go`, bottom-most wins on ties), which is unrelated to whichever pane is live-active.
   Splitting the layout half from the focus half is what lets the watcher re-apply without moving the operator's cursor.
-- `mouseOption` (`mouse.go:14`) is the shape the new `watchdog` validator copies: a pure, I/O-free `(string) (T, error)` that trims, lowercases, accepts exactly two values, and errors on everything else including the empty string, with the caller performing the tmux round trip.
+- `mouseOption` (`mouse.go:15`) is `func mouseOption(raw string) (string, error)` — the *behavioural* shape the new `watchdog` validator copies (pure, I/O-free, trims, lowercases, exactly two accepted values, errors on everything else including the empty string, caller performs any tmux round trip).
+  The new validator returns `bool` rather than `string`, deliberately: unlike `mouse`, the `watchdog` value is never handed to tmux.
 - `Engine.stateDir()` (`lifecycle.go:33`) returns `<AnchorPath>/.lyx` — the home for `reed.lock`, `reed.json`, and now the resize signal file.
 - `Engine.liveBoxLocked` (`windowsize.go:42`) is `display-message -p -t '=<session>:' '#{window_width} #{window_height}'` with a fallback to `cfg.Width`/`cfg.Height`;
   `parseWindowSize` is its pure half and is the model for any new parse the poll fallback needs.
@@ -385,7 +412,9 @@ From `CONSTRAINTS.md`:
   No new `internal/lyxcwd` import.
 - **Durable-vs-Ephemeral State Invariant** — the signal file is never-tracked state and belongs under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to, reached via the existing `Engine.stateDir()` accessor.
   No module derives its own `.lyx` path.
-- **Live-Substrate Spawn Observability** — the watch loop spawns no OS process in steady state;
+- **Live-Substrate Spawn Observability** — the watch loop spawns no OS process in steady state **in signal mode**;
+  in poll mode it makes roughly two `TmuxCmd` round trips per 2s cycle, each a real `exec.Command`, which is an accepted permanent cost on the fallback platform (see `hook-touches-a-signal-file`).
+  Those spawns sit inside a polling probe, so they are `Debug`-level spawn logs under this constraint's own "`Debug` for a spawn inside a polling probe" rule, not `Info`.
   any tmux round trip it adds goes through `TmuxCmd`, which is already covered.
   A retry/backoff loop must cap attempt **count**, not only elapsed time — satisfied by the per-event attempt cap defined in `watch-loop-failures-are-never-fatal`, which bounds the retries for one debounced re-apply while leaving the watcher itself running.
   The constraint is treated as applying here rather than argued away, even though the loop spawns no process of its own.
@@ -443,7 +472,7 @@ Discovered during discussion:
   the header tail declines to start the loop and does **not** return an error.
   **TDD candidate** — the header-tail case is the one where an obvious implementation propagates the error and kills the keepalive.
 - The box-equality guard's degraded case: when `BoxIsLive` is false, assert the last-applied box is not updated and the comparison does not gate the next apply — neither a permanent skip nor a permanent re-apply.
-  Assert it identically for both modes, since both now route through the same `ReapplyLayout` call.
+  Assert it identically for both modes, since both now route through the same `reapplyLayout` call.
 - `ReapplyResult` on the two inherited guard-skip paths (`len(live) < 2`, `!anyPlacedStrand`): assert `Applied=false`, `BoxIsLive=false`, no `select-layout` issued, and no last-applied update.
 - The take-effect boundary: assert the loop does not re-read config mid-run — a `watchdog` flip on disk while the loop is running changes nothing until the process restarts.
 - Signal-file lifecycle: a stale file present at watcher start is removed before the loop begins.
@@ -452,10 +481,11 @@ Discovered during discussion:
   **TDD candidate** — this is the loop-breaker, and the failed-apply case is the one an obvious implementation gets wrong.
 - Focus preservation: assert the watcher's apply path issues `select-layout` and **no** `select-pane`, while every existing caller of the full path still issues both.
 - The try-lock discipline: with the op lock already held, assert the watcher issues no tmux call, leaves the attempt counter and backoff delay untouched, and reconsiders on the next tick rather than blocking.
-- Mode promotion: a watcher started in poll mode promotes itself to signal-driven on the cycle where the hook first appears;
-  a signal-driven watcher never demotes.
+- Mode promotion: a watcher started in poll mode promotes itself to signal-driven on the cycle where `HookInstalled` first comes back true;
+  a signal-driven watcher never demotes;
+  and a cycle whose try-lock was unavailable (`HookKnown` false) leaves the mode unchanged rather than demoting or guessing.
 - `shell.Touch` for both `shell.Posix()` and `shell.Pwsh()`, including quoting of a path containing spaces.
-- `ReapplyLayout`'s guard inheritance: with fewer than two live panes, and with no strand owning a present pane, assert no `select-layout` is issued.
+- `reapplyLayout`'s guard inheritance: with fewer than two live panes, and with no strand owning a present pane, assert no `select-layout` is issued.
   This is the guard that keeps an unattended watcher from destroying a session's entire pane set.
   **TDD candidate.**
 - The retry/backoff contract from `watch-loop-failures-are-never-fatal`, which is now a real contract to assert against: a re-apply that keeps failing is attempted exactly N times and no more;
@@ -509,8 +539,8 @@ Attach with `lyx reed attach`, drag the terminal window larger and smaller, and 
   `applyLayoutLocked` already resolves the live box and already carries both session-destruction guards, which matters most for a caller that fires unattended.
 - **Q:** How is the resize burst handled? **A:** Trailing-edge debounce, 200ms quiet period, coalescing. **Why:** a 20-step drag was measured to fire 20 hook events in one second;
   applying on each would serialise 20 immediately-invalidated layouts through `reed.lock`.
-- **Q:** Poll mode was defined as the watcher observing the box itself, but the guard was defined as consuming the box `ReapplyLayout` returns — which is it, and under what lock? **A:** Neither mode queries geometry itself;
-  `ReapplyLayout(lastApplied)` owns the guard internally, under its own lock. **Why:** `liveBoxLocked` documents "assumes the op lock is already held", which an unlocked watcher-side poll would violate;
+- **Q:** Poll mode was defined as the watcher observing the box itself, but the guard was defined as consuming the box `reapplyLayout` returns — which is it, and under what lock? **A:** Neither mode queries geometry itself;
+  `reapplyLayout(lastApplied)` owns the guard internally, under its own lock. **Why:** `liveBoxLocked` documents "assumes the op lock is already held", which an unlocked watcher-side poll would violate;
   folding the comparison into the op gives both modes one code path and one answer for the degraded-box case.
 - **Q:** Does `watchdog: off` stop an already-running watcher? **A:** No — config is read once per process, so `off` takes effect at the next header-pane rebuild (`down` + `up`, a server restart, or a dead-header heal), stated in the template comment exactly as `mouse`/`debug_log` state theirs. **Why:** re-reading config per tick would make this the only live-reloaded key in the reed config file, an inconsistency with every sibling, for a switch flipped at most once.
 - **Q:** What are the loop constants? **A:** Fixed values, not ranges — debounce 200ms, signal tick 100ms, poll cycle 2s, retry cap 3 — with tests referencing the constants rather than literals. **Why:** the tier-1 synthetic-clock tests assert against exactly these, so a range is not a specification.
@@ -543,5 +573,12 @@ Attach with `lyx reed attach`, drag the terminal window larger and smaller, and 
   at `Down` the file is meaningless without a session and lives in the ephemeral tree, so adding teardown code for it would be ceremony.
 - **Q:** Does `manifest/roadmap.md` move? **A:** No section move — the Someday entry's prose is amended in place. **Why:** CLAUDE.md limits roadmap movement to Planned items, this is a Someday entry, and only one of its two halves ships;
   the entry's "standalone per-worktree daemon" wording is corrected, since the shape that shipped is the opposite of standalone and the remaining half will be built on it.
+- **Q:** Where does the loop body actually live, given it was placed in `reedcli/header.go`? **A:** In `internal/reedengine`, behind a single exported `Engine.Watch(ctx)` that the `--blocking` tail calls;
+  the re-apply op stays unexported. **Why:** every seam the loop needs is unexported engine state (`e.tmux`/`execHook`, `stateDir()`, `e.cfg`, the op lock), and `reedcli` keeps only `c.eng` — hosting it cli-side would mean exporting all of that and inverting the CLI/Cobra Invariant's direction of knowledge;
+  the tier-1 `execHook` seam and the tier-2 pty harness are both in-package too.
+- **Q:** What lock does the hook-availability probe take? **A:** None of its own — it rides inside `reapplyLayout`'s existing try-lock and returns `HookInstalled`/`HookKnown` on the result;
+  an unavailable lock means the mode is simply not decided that cycle, defaulting to poll. **Why:** a standalone probe op would duplicate `withOpLock`'s told-geometry validation and post-op compromise check for one round trip, and the design's own "no unlocked tmux query" rule has to hold for the probe as much as for the box query.
+- **Q:** Is "zero subprocesses in steady state" true? **A:** Only in signal mode — poll mode makes about two `exec.Command` round trips per 2s cycle, permanently, and the discussion now says so. **Why:** the earlier rejection was of polling as the *primary* mechanism where hooks work and buy the cost back;
+  on the fallback platform the alternative is no self-heal at all, so it is the cheapest available option rather than a worse one chosen freely.
 - **Q:** Anything blocking the header pane from hosting the loop? **A:** Two things, both handled. **Why:** `testing.Testing()` gates the header launch line so no Go test can boot a real header-hosted watcher — the tier-2 test runs the loop in-process instead;
   and the pane's stderr is its screen, so the `--blocking` tail discards the logger's stderr half (the durable sink keeps everything) or the first degraded tmux round trip paints a slog line over the operator console.
