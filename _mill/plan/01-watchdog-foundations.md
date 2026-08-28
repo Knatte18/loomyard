@@ -74,6 +74,7 @@ The tmux-side wrapping (`run-shell -b <tmux-quoted fragment>`) lives in `reedeng
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/reedengine/config.go`
+  - `internal/reedengine/template.go`
   - `internal/reedengine/template_posix.yaml`
   - `internal/reedengine/template_windows.yaml`
 - **Creates:** none
@@ -85,6 +86,10 @@ The tmux-side wrapping (`run-shell -b <tmux-quoted fragment>`) lives in `reedeng
   The comment must state, in one line in the same voice as `mouse`'s: that it accepts `on`/`off`, that it enables the header pane's resize self-heal watch loop and the session's `window-resized` hook, that an invalid value fails `lyx reed up` loudly, that it takes effect on the next header-pane rebuild only (a server restart, a dead-header heal, or `lyx reed down` + `up`) so flipping it does not stop an already-running watcher, and that an already-materialized `reed.yaml` keeps whatever value it holds since reconcile is key-based and never rewrites a value.
   Config Strictness Invariant: reed is a `LoadOrTemplate` adopter, so the key MUST exist in both templates — a hub whose `reed.yaml` predates this key resolves the template default `on`.
   Do not add a `Watchdog` default anywhere in Go code; the template is the only default.
+
+  Update `ConfigTemplate`'s godoc in `internal/reedengine/template.go`, which currently reads "Exactly four keys use the `${env:VAR:-default}` syntax … the two machine tool paths (tmux, shell) plus debug_log and mouse".
+  Adding `watchdog` in the same shape makes it five: change the count and add `watchdog` to the enumeration.
+  Leave the rest of that godoc — the layout-tuning-keys sentence, the Shuttle Provider-Seam note, and the per-GOOS tmux/shell paragraph — untouched.
 - **Commit:** `feat(reed): add the watchdog config key to Config and both templates`
 
 ### Card 4: add watchdog.go with the validator, constants, signal path, and hook command builder
@@ -131,6 +136,9 @@ The tmux-side wrapping (`run-shell -b <tmux-quoted fragment>`) lives in `reedeng
   - `internal/reedengine/mouse_test.go`
   - `internal/reedengine/config_test.go`
   - `internal/reedengine/config.go`
+  - `internal/reedengine/lock.go`
+  - `internal/reedengine/geometry.go`
+  - `internal/reedengine/lock_test.go`
   - `internal/reedengine/template.go`
   - `internal/reedengine/template_posix.go`
   - `internal/reedengine/template_windows.go`
@@ -157,6 +165,7 @@ The tmux-side wrapping (`run-shell -b <tmux-quoted fragment>`) lives in `reedeng
   - `resizeHookCommand` for a path containing a space, on both dialects, asserting the path survives as one shell argument.
   - `tmuxQuoteValue` directly: a value containing `"`, a value containing `\`, and a value containing `$` are each backslash-escaped inside the surrounding double quotes.
   - `(*Engine).resizeSignalPath` against a hand-built `Engine` with a known `Geometry.AnchorPath`: assert it equals `<AnchorPath>/.lyx/reed-resize.signal`, and assert it is built from `stateDir()` by asserting `filepath.Dir` of the result equals `e.stateDir()`.
+    Build the engine with `New(Config{}, Geometry{AnchorPath: <t.TempDir()-derived path>})` — `Engine` and `New` are declared in `internal/reedengine/lock.go`, `Geometry` in `internal/reedengine/geometry.go`, and `lock_test.go`'s `newTestEngine` is the in-package precedent for the fixture shape; reuse `newTestEngine` and override `e.geom.AnchorPath` if that reads more naturally than a fresh literal.
 - **Commit:** `test(reed): cover the watchdog validator, constants, and hook command string`
 
 ## Batch Tests

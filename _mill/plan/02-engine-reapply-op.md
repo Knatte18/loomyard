@@ -23,24 +23,36 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
 
 ## Cards
 
-### Card 6: expose liveBoxLocked's ok flag via a sibling
+### Card 6: widen liveBoxLocked to report whether its box was an observation
 
 - **Context:**
   - `internal/reedengine/render/types.go`
   - `internal/reedengine/lock.go`
+  - `internal/reedengine/attach.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/apply.go`
+  - `internal/reedengine/windowsize_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Split `(*Engine).liveBoxLocked` into a flag-returning sibling plus a delegating wrapper.
-  Add `func (e *Engine) liveBoxLockedOK() (render.Box, bool)` carrying today's exact body, returning `false` on both fallback paths (the `display-message` round-trip error and the `parseWindowSize` malformed answer) and `true` only when the parse succeeded.
-  Keep both `logger.Warn` calls exactly as they are, unmoved and unreworded.
-  Reduce `func (e *Engine) liveBoxLocked() render.Box` to `box, _ := e.liveBoxLockedOK(); return box`, keeping its existing godoc and adding one line stating that it deliberately discards the flag so no existing caller changes.
-  Give `liveBoxLockedOK` a godoc stating why the flag matters: this method never reports failure through its box, because a degraded query returns the configured `cfg.Width`/`cfg.Height` pair — a perfectly plausible-looking box — so a caller comparing boxes across calls must be told whether the box was an observation at all.
-  Do not change the tmux argv, the format string, or the fallback box.
-- **Commit:** `refactor(reed): expose liveBoxLocked's ok flag via liveBoxLockedOK`
+- **Requirements:** Widen `(*Engine).liveBoxLocked` **in place** to `func (e *Engine) liveBoxLocked() (render.Box, bool)`.
+  Keep today's exact body, both `logger.Warn` calls unmoved and unreworded, the same tmux argv, the same format string, and the same `cfg.Width`/`cfg.Height` fallback box.
+  Return `false` on both fallback paths — the `display-message` round-trip error and the `parseWindowSize` malformed answer — and `true` only when the parse succeeded.
+
+  Widening in place rather than adding a flag-returning sibling beside a delegating wrapper is deliberate.
+  The wrapper's only stated purpose would be "so no existing caller changes", and that premise does not hold: `applyLayoutLocked` (`apply.go`) is `liveBoxLocked`'s sole production caller and card 7 of this same batch rewrites the very line that calls it, so the wrapper would be production-dead the moment this batch lands.
+  One method also keeps every existing doc comment that names `liveBoxLocked` — in `apply.go`, `attach.go`, and `doc.go` — accurate without a rename.
+
+  Update the two call sites this card is responsible for, minimally, so the tree compiles at this card's own commit:
+  - `internal/reedengine/apply.go`'s `applyLayoutLocked`: change `box := e.liveBoxLocked()` to `box, _ := e.liveBoxLocked()`.
+    Card 7 is what consumes the flag; this card only keeps the build green.
+  - `internal/reedengine/windowsize_test.go`'s existing `liveBoxLocked` assertion: change it to receive both return values, keeping its current box expectations unchanged.
+
+  Extend the method's godoc with the sentence that makes the second return value load-bearing: this method never reports failure through its box, because a degraded query returns the configured `cfg.Width`/`cfg.Height` pair — a perfectly plausible-looking box — so a caller comparing boxes across calls must be told whether the box was an observation at all.
+  Do not touch `parseWindowSize`, `reservedRowsFromStatus`, `windowSizeAllowsChain`, or either readback method.
+- **Commit:** `refactor(reed): widen liveBoxLocked to report whether its box was observed`
 
 ### Card 7: let the apply path report its box and skip the focus half
 
@@ -83,7 +95,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   Add `func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts applyOpts) (applyResult, error)` carrying today's `applyLayoutLocked` body with four changes, in this order:
 
   1. The two existing skip guards (`len(live) < 2` and `!anyPlacedStrand(...)`) return `applyResult{}` — that is `Applied: false`, `BoxIsLive: false`, zero `Box` — and `nil`, before any box query, exactly as they return `nil` today.
-  2. Replace `box := e.liveBoxLocked()` with `box, boxIsLive := e.liveBoxLockedOK()`.
+  2. Replace card 6's placeholder `box, _ := e.liveBoxLocked()` with `box, boxIsLive := e.liveBoxLocked()`.
   3. Immediately after that call, when `opts.SkipWhenBoxEquals != nil` **and** `boxIsLive` **and** `box == *opts.SkipWhenBoxEquals`, return `applyResult{Applied: false, Box: box, BoxIsLive: true}, nil` without issuing `select-layout` or `select-pane`.
      The `boxIsLive` conjunct is load-bearing: a degraded query is not an observation, so a fallback box must never satisfy the guard.
   4. After a successful `select-layout`, when `opts.SkipFocus` is true, return `applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil` without issuing `select-pane`; otherwise keep today's `focus == ""` early return and `select-pane` call and return the same `applyResult` at both exits.
@@ -242,6 +254,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   ```
 
   Precede it with a short comment in the voice of its two neighbours, stating that the boolean is discarded here because this is the one consumer with an error channel and its only job is to make a typo fail `lyx reed up` loudly and by name — the hook install and the watch loop each read the key again and fail safe toward "no watchdog" instead.
+  Also update the function's own doc comment, which currently reads "validates capability, debug_log, mouse, and header template before any tmux round trip", so its enumeration names `watchdog` too.
   Do not change the `debugLogArgs`, `mouseOption`, `ValidateHeader`, or `probeCapabilityLocked` calls, and do not move the block.
 
   Then repair the shared untagged fixture this check would otherwise break.
@@ -279,8 +292,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - The existing `applyLayoutLocked` assertions in this file stay green unchanged; add one asserting the wrapper still issues both `select-layout` and `select-pane`.
 
   In `windowsize_test.go`:
-  - `liveBoxLockedOK` returns `(box, true)` on a well-formed scripted answer, and `(configured-fallback, false)` on both a round-trip error and a malformed answer.
-  - `liveBoxLocked` returns the same box as `liveBoxLockedOK` in all three cases.
+  - `liveBoxLocked` returns `(box, true)` on a well-formed scripted answer, and `(configured-fallback, false)` on both a round-trip error and a malformed answer — extend the existing assertion card 6 already adapted to the two-value signature rather than adding a parallel one.
   - `pinGeometryOptionsLocked` with `Watchdog: "on"` issues a `set-hook` whose argv is exactly `["set-hook", "-t", "=<session>:", "window-resized", <resizeHookCommand>]` — assert the argv contains no `-a` token anywhere.
   - `pinGeometryOptionsLocked` with `Watchdog: "off"` issues `["set-hook", "-u", "-t", "=<session>:", "window-resized"]` and removes a signal file that exists on disk beforehand, and issues no install.
   - `pinGeometryOptionsLocked` with an invalid `Watchdog` value behaves identically to `"off"` and returns normally (no panic, no error — the function returns nothing).
@@ -294,7 +306,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - A told-geometry validation failure reports `(false, err)` without touching the lock file.
 
   Every new test stays untagged and spawns nothing: drive tmux through `TmuxCmd.execHook` and use `t.TempDir()` for the lock and signal paths.
-- **Commit:** `test(reed): cover the widened apply path, liveBoxLockedOK, the hook pin, and withTryOpLock`
+- **Commit:** `test(reed): cover the widened apply path, liveBoxLocked, the hook pin, and withTryOpLock`
 
 ### Card 13: tier-1 tests for reapplyLayout and the hook probe
 

@@ -75,6 +75,7 @@ This is the smallest seam that makes the discussion's "the tail reaches `blockFo
   - `internal/reedcli/header.go`
   - `internal/reedcli/cli.go`
   - `internal/reedcli/cli_test.go`
+  - `internal/logger/logger.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/reedcli/header_test.go`
@@ -84,6 +85,9 @@ This is the smallest seam that makes the discussion's "the tail reaches `blockFo
 - **Requirements:** Extend `internal/reedcli/header_test.go` (untagged), keeping its two existing tests unchanged.
 
   Substitute `headerWatch` and `headerPark` in each new test and restore both via `t.Cleanup`, recording how many times each ran.
+
+  Every test that drives the blocking path must **also** restore the logger's stderr sink, because card 19's tail calls `logger.SetOutput(io.Discard)` and that rebind is process-global — left unrestored it would silence the discarding sink for the rest of the `internal/reedcli` test binary.
+  Add `t.Cleanup(func() { logger.SetOutput(os.Stderr) })` to each such test, matching the pairing every other `logger.SetOutput` call site in this repo already uses.
 
   Cover:
 
@@ -141,7 +145,7 @@ This is the smallest seam that makes the discussion's "the tail reaches `blockFo
     In tmux 3.6 hooks are options, and `show-hooks` prints nothing for a session-scoped hook that demonstrably fires — a `show-hooks`-based probe would report "no hook" every time and pin every watcher into poll mode.
   - **`run-shell` without `-b` blocks the tmux server** (`watchdog.go`).
   - **`liveBoxLocked` never reports failure through its box** (`windowsize.go`, `reapply.go`).
-    A degraded query returns the configured `cfg.Width`/`cfg.Height` pair, which is a perfectly plausible-looking box, so any caller comparing boxes across calls must consume `liveBoxLockedOK`'s flag instead — otherwise a fallback that happens to equal the last applied box skips forever and one that differs re-applies forever.
+    A degraded query returns the configured `cfg.Width`/`cfg.Height` pair, which is a perfectly plausible-looking box, so any caller comparing boxes across calls must consume the method's second return value — otherwise a fallback that happens to equal the last applied box skips forever and one that differs re-applies forever.
   - **The header pane's stdout/stderr is its screen** (`reedcli/header.go`).
     The `--blocking` tail rebinds the logger's stderr sink to a discarding writer before entering the loop; the durable sink is untouched.
   - **`testing.Testing()` gates the header launch line** (`headerpane.go`, `lifecycle.go`).

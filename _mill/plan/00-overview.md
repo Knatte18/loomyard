@@ -135,6 +135,7 @@ Batch-local decisions live in each batch file._
 - `internal/reedengine/lock_test.go`
 - `internal/reedengine/reapply.go`
 - `internal/reedengine/reapply_test.go`
+- `internal/reedengine/template.go`
 - `internal/reedengine/template_posix.yaml`
 - `internal/reedengine/template_windows.yaml`
 - `internal/reedengine/watchdog.go`
