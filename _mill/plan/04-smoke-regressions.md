@@ -72,8 +72,11 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Two existing tests in `internal/reedcli/smoke_lifecycle_test.go` keep asserting what they exist to assert, but describe it in terms of a seam that no longer exists.
-  In `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`, the comment before the first `add` claims the header is excluded from adoption so the strand "lands on the session's other (pre-header) pane".
-  The new gate reaps that pane on the preceding `up`, so the strand now lands on a pane split off the header.
+  `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile` carries four stale sites, not three.
+  Its function doc comment says the header must survive the cycle "never adopted/reaped as a strand's pane" — rewrite that clause;
+  the header is now never a strand's pane because a strand's pane is always a fresh split, and the header is exempt from both halves of reconcile's kill schedule.
+  The comment before the first `add` claims the header is excluded from adoption so the strand "lands on the session's other (pre-header) pane";
+  the new gate reaps that pane on the preceding `up`, so the strand now lands on a pane split off the header.
   Rewrite that comment and the two later ones that repeat the adoption framing (before the second `add`, and the `t.Errorf` message asserting the header "must never be adopted").
   What the test exists to pin is unchanged and must stay asserted: the header is never a strand's pane and stays alive across `up`, `add`, `remove` and reconcile, including while the strand table is momentarily empty.
   Keep every `requireHeaderAlive` call, both liveness assertions, and the non-header-pane-id assertion exactly as they are.

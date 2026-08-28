@@ -36,7 +36,7 @@ batches:
     name: smoke-regressions
     file: 04-smoke-regressions.md
     depends-on: [2]
-    verify: go test -tags smoke -timeout 20m ./internal/reedcli/ -run 'TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable|TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile|TestSmokeForeignPaneIsReapedNotAdoptedByAdd|TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader|TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd|TestSmokeRemoveLastStrandThenAddRunsTheNewCommand'
+    verify: go test -tags smoke -timeout 20m ./internal/reedcli/ -run 'TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable|TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile|TestSmokeForeignPaneIsReapedNotAdoptedByAdd|TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader|TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp|TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd|TestSmokeRemoveLastStrandThenAddRunsTheNewCommand'
 ```
 
 ## Shared Decisions
@@ -56,10 +56,14 @@ Batch-local decisions live in each batch file._
 
 ### Decision: planPaneTarget collapses to a single split-target return
 
-- **Decision:** with adoption deleted, `planPaneTarget`'s signature becomes `planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (splitTargetID string, err error)` — the `adoptID` return is removed rather than retained as a permanently-empty value.
+- **Decision:** with adoption deleted, `planPaneTarget`'s signature becomes `planPaneTarget(live []LivePane, headerPaneID string) (splitTargetID string, err error)`.
+  The `adoptID` return is removed rather than retained as a permanently-empty value, and the `strands` parameter is dropped along with it.
 - **Rationale:** discussion.md's drop-pane-adoption-entirely explicitly leaves this choice to mill-plan.
   A retained always-empty return is a seam that reads as "adoption may come back", which is the half-updated state discussion.md's Scope section names as the hazard;
   there is exactly one call site (`launchStrandLocked`), so call-site stability buys nothing.
+  `strands` goes for the same reason and by the same test: its only use in the function is the `anyBound` loop that gates adoption, so once adoption is gone the parameter is read nowhere.
+  Go compiles an unused parameter without complaint, which is exactly what makes a vestigial one worth removing deliberately — a split-target planner that still asks for the strand table reads as though the strand bindings influence the choice, and they no longer do.
+  The split-target rules are a pure function of the live pane set and the header id.
 - **Applies to:** all batches
 
 ### Decision: the header anchor is aliveness, never presence

@@ -50,6 +50,10 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   Rewrite the bullet so it documents that mechanism and its consequences without asserting an adoption rule: retitle it, and replace the "must never adopt such a corpse" clause with the fact that a corpse is never a strand's pane because a strand's pane is always freshly split.
   Third, the duplicate-binding paragraph asserting that nothing reed constructs can produce a duplicate-owner table because "planPaneTarget never adopts or splits the header and validateSplitCreatedNewPane guarantees a fresh id".
   The conclusion still holds and must stay — restate its first half as `planPaneTarget` always yielding a split whose result `validateSplitCreatedNewPane` proves genuinely new.
+  Fourth, the set-hook bullet's `!anyPlacedStrand` paragraph, which calls that case "reachable for good via the operator remedy state.go documents, which deletes reed.json while the session keeps running untracked".
+  That durability claim is the same one card 9 corrects in `state.go` itself, and neither of card 12's grep terms reaches it, so it must be caught here.
+  Restate it to the new limit: the remedy still reaches the `!anyPlacedStrand` case, but the session keeps running untracked only until the next mutating verb reaps it.
+  The paragraph's actual conclusion — that the surviving hook array is a benefit there, still holding the live header and strips at the budgets reed last computed — is unaffected and stays.
   Then add new prose documenting the tightened rule this task establishes, in the same voice and structure as the surrounding load-bearing-assumption bullets: every pane in a reed session is either the header or a bound strand's pane;
   the untracked reap is authorized by `anyBoundPresent || headerAlive` where the header anchor requires aliveness rather than mere presence, because `launchStrandLocked` makes the gate fire from `AddStrand` and `UpdateStrand`, which never heal a header corpse;
   and the reap runs before pane allocation at one chokepoint inside `launchStrandLocked` so the property holds by construction on every realization path rather than requiring two call sites to stay in sync.
@@ -163,6 +167,12 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   - `internal/reedengine/generation_test.go`
   - `internal/reedengine/server.go`
   - `internal/reedcli/up.go`
+  - `internal/reedcli/smoke_lifecycle_test.go`
+  - `internal/reedcli/smoke_panecwd_test.go`
+  - `internal/reedcli/smoke_teardown_test.go`
+  - `internal/reedengine/attach_test.go`
+  - `internal/reedengine/reapply_test.go`
+  - `internal/reedengine/contract_integration_test.go`
   - `tools/sandbox/SANDBOX-REED-SUITE.md`
   - `tools/sandbox/SANDBOX-FABRIC-SUITE.md`
 - **Edits:** none
@@ -174,7 +184,7 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   its output is a judgement, and any hit it cannot justify means an earlier card in this batch (or batch 2, or batch 4) left prose asserting something that no longer exists.
   Run `grep -rn "adopt" internal/reedengine/*.go internal/reedcli/*.go tools/sandbox/*.md` and `grep -rni "untracked reap\|bound present pane\|reap.*does not fire" internal/reedengine/*.go tools/sandbox/*.md`, then give every hit a disposition.
   A hit is a legitimate survivor only when "adopt" means something other than pane adoption.
-  The survivors are: the server-rebirth generation probe — `adoptPaneGenerationLocked` itself and the prose around it in `generation.go`, `server.go` and `generation_test.go`, plus, in `state.go`, the `PaneGeneration` field comment alone and never the `HeaderPaneID` one card 9 rewrites;
+  The survivors are: the server-rebirth generation probe — `adoptPaneGenerationLocked` itself and the prose around it in `generation.go`, `server.go`, `generation_test.go`, `attach_test.go`, `reapply_test.go`, `contract_integration_test.go`, and `spawn_test.go`'s `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims` doc comment, whose "the guard adopts rather than clears" sentence is about the generation stamp and not about pane adoption — plus, in `state.go`, the `PaneGeneration` field comment alone and never the `HeaderPaneID` one card 9 rewrites;
   `internal/reedcli/up.go`'s config-key wording about adopting a key;
   `doc.go`'s session-name-rewrite bullet, whose "each adopt the other's panes" clause describes two worktrees colliding on one session name rather than `planPaneTarget`;
   and `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s merge-adoption prose, which belongs to fabric and not to reed.

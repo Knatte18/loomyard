@@ -33,8 +33,10 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Change `planPaneTarget`'s signature from `func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (adoptID, splitTargetID string, err error)` to `func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (splitTargetID string, err error)`.
+- **Requirements:** Change `planPaneTarget`'s signature from `func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (adoptID, splitTargetID string, err error)` to `func planPaneTarget(live []LivePane, headerPaneID string) (splitTargetID string, err error)`.
   Delete the `anyBound` computation and the `if !anyBound { if sole, ok := soleAliveNonHeaderPane(...); ok { return sole, "", nil } }` branch entirely — `planPaneTarget` now always returns a split target.
+  Dropping the `strands` parameter is part of this card, not a follow-up: the `anyBound` loop is its only reader, so after that deletion the function no longer consults the strand table at all.
+  The surviving split-target rules are a pure function of `live` and `headerPaneID`.
   Delete the function `soleAliveNonHeaderPane` and its doc comment.
   Keep the three surviving split-target rules exactly as they are: prefer the tallest alive non-header pane, fall back to any present non-header pane (a corpse), and fall back to `live[0]` (the header itself) when no non-header pane exists at all.
   Change the no-panes error string from `"session has no panes to adopt or split"` to `"session has no panes to split"`.
@@ -42,7 +44,7 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
   leave those two files untouched from this card.
   Rewrite `planPaneTarget`'s doc comment rather than merely trimming it.
   The replacement states that the function always yields a split target and never adopts an existing pane, and records why the seam was removed: the sole-alive-non-header-pane heuristic could not distinguish reed's own initial pane from a foreign one and produced two live findings (R4-F5, adopting the previous header pane after a `reed.json` scrub; M16, adopting an operator's `split-window`), and once the untracked reap is authorized by an alive header the initial pane is disposed of like any other untracked pane, so a fresh split — idle by construction — costs one `kill-pane` plus one `split-window` and buys correctness.
-  Update the call site in `launchStrandLocked` to the new single-value signature: bind `splitTargetID, err := planPaneTarget(...)`, delete the `paneID := adoptID` assignment and the `if paneID == ""` guard that wrapped the split, and make the `split-window` call plus its `validateSplitCreatedNewPane` check unconditional.
+  Update the call site in `launchStrandLocked` to the new signature: bind `splitTargetID, err := planPaneTarget(live, st.HeaderPaneID)`, dropping the `st.Strands` argument, delete the `paneID := adoptID` assignment and the `if paneID == ""` guard that wrapped the split, and make the `split-window` call plus its `validateSplitCreatedNewPane` check unconditional.
   Keep `-c e.geom.PaneCwd` on the `split-window` argv and keep the comment explaining why that pin is load-bearing.
   Keep `validateSplitCreatedNewPane` at this call site.
 - **Commit:** `fix(reedengine): never adopt an existing pane when realizing a strand`
@@ -57,13 +59,17 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `TestPlanPaneTarget`, delete the `wantAdoptID` field from the table struct and update the call and assertion bodies to the single-return signature from card 4.
+- **Requirements:** In `TestPlanPaneTarget`, delete both the `wantAdoptID` and the `strands` fields from the table struct — card 4 removed the `strands` parameter, so no case can still supply one — and update the call and assertion bodies to the new signature `planPaneTarget(tt.live, tt.headerPaneID)`.
   Convert every case that asserted adoption to assert the split target the new code picks instead: `FreshSession_AdoptsTheAliveInitialPane`, `AllStrandsPaneless_AdoptsFirstAlivePane`, `HeaderPresentNoStrandBound_HeaderNeverAdopted`, and `SeveralAlivePanesButOnlyOneNonHeaderAlive_StillAdopts`.
   Rename each of those cases so its name states the split-only contract rather than the deleted one, and rewrite each one's comment for the same reason.
-  Between them they must still cover every input shape the old adoption branch used to catch — a sole alive non-header pane, zero strands bound, and a sole alive non-header pane alongside a corpse — now asserting that a split target is returned and no adoption occurs.
-  Keep `SoleCorpseUnbound_NeverAdopted_SplitOffTheCorpse`, `OneStrandHoldsAPane_SplitsTheTallestAlive`, `TinyActiveBand_SplitTargetsTheTallestNotTheFirst`, `DeadPaneNeverTheSplitTargetWhileAnyAlive`, `NoPanesAtAll_Errors`, `HeaderPresentWithStrand_HeaderNeverTheSplitTarget`, `SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt`, and `HeaderIsSolePane_SplitTargetFallsBackToHeader` with their current expectations — the split-target policy is unchanged, and these are what pin it.
+  Between them they must still cover every pane-set shape the old adoption branch used to catch — a sole alive non-header pane with no header set, a sole alive non-header pane beside a live header, and a sole alive non-header pane beside a corpse — now asserting that a split target is returned.
+  Dropping the `strands` field collapses two pairs of cases into literal duplicates, since each pair differed only in the strand table it supplied.
+  Merge each pair into one case rather than leaving two identical rows: `FreshSession_AdoptsTheAliveInitialPane` with `AllStrandsPaneless_AdoptsFirstAlivePane` (both reduce to a single alive pane and no header), and `OneStrandHoldsAPane_SplitsTheTallestAlive` with `TinyActiveBand_SplitTargetsTheTallestNotTheFirst` (both reduce to a 2-row pane beside a 47-row pane and no header).
+  Carry the surviving case's comment forward from whichever of the pair explains the rule better — for the second pair that is `TinyActiveBand_SplitTargetsTheTallestNotTheFirst`, whose comment records the session-target split defect this planner replaces.
+  Keep `SoleCorpseUnbound_NeverAdopted_SplitOffTheCorpse`, `DeadPaneNeverTheSplitTargetWhileAnyAlive`, `NoPanesAtAll_Errors`, `HeaderPresentWithStrand_HeaderNeverTheSplitTarget`, `SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt`, and `HeaderIsSolePane_SplitTargetFallsBackToHeader` with their current expectations — the split-target policy is unchanged, and these are what pin it.
   Rename `SoleCorpseUnbound_NeverAdopted_SplitOffTheCorpse` and `SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt` only if their names assert adoption semantics that no longer exist;
   their expectations must not change either way.
+  After the merges the table must still contain a case for every surviving rule, and no two cases may share an identical `live` plus `headerPaneID` pair.
   Rewrite the file-header comment of `internal/reedengine/spawn_test.go`: it currently describes an adopt-vs-split decision, a header exclusion from adoption, and a sole-candidate narrowing on adoption, all of which are gone.
   The replacement describes the split-target policy the table now pins (tallest alive non-header, present-corpse fallback, header-as-last-resort) and the header's exclusion from being the *preferred* split target.
   Do not touch `TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity`, `TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity`, `TestSendKeysLiteralArg`, `TestValidateSplitCreatedNewPane`, or `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims` in this card — none of them depends on adoption.
@@ -89,7 +95,11 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
   Rewrite `launchStrandLocked`'s doc comment: it currently says the helper adopts the initial pane or splits the tallest alive one.
   The replacement states that it reconciles first, then always splits, and that it sets only `s.PaneID` with `Live` derived from pane binding downstream.
   Add a comment recording two things the discussion settled.
-  First, why reaping here is safe for the strand being launched: it is appended with `PaneID == ""` before this helper runs, so reconcile never clears or kills anything belonging to it, and during `Resume`'s per-strand loop the already-relaunched strands are bound and therefore exempt.
+  First, why reaping here is safe for the strand being launched, stated per path rather than as one universal claim.
+  On the `AddStrand` and `UpdateStrand` paths the strand reaches this helper with `PaneID == ""`, so reconcile can neither clear nor kill anything belonging to it.
+  On `Resume` that is not universally true — `planResumeLaunches` selects strands whose pane is absent from `aliveIDSet`, which includes a strand still bound to a dead-but-present pane — and the comment must say so rather than overstate.
+  It is harmless there: that binding names a corpse, so reconcile either kills it as a dead pane and clears the binding, or spares it as the kept dead pane, and either way the helper overwrites `s.PaneID` with the freshly split pane a few lines later.
+  Also record that during `Resume`'s per-strand loop the already-relaunched strands are bound to alive panes and are therefore exempt from the untracked reap.
   Second, the accepted destructive-then-unpersisted window: `AddStrand` and `UpdateStrand` reach `SaveState` only after this helper returns nil, so a `split-window` or `send-keys` failure now returns with panes already killed and other strands' binding clears living only in memory.
   That is accepted rather than closed because it is self-healing — `reed.json` is left exactly as it was, `Status` and `toRenderStrands` derive liveness from the live pane set rather than the persisted binding, and the next mutating verb's reconcile clears the stale bindings — whereas calling `SaveState` here would persist the half-added strand record on the `add` path and turn a clean failure into a phantom strand `Resume` would later try to launch.
   State in that comment that the right shape, if this window ever matters, is reaping before the strand record is appended, not persisting a partial one.

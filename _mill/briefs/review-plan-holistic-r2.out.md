@@ -1,0 +1,58 @@
+MILL_REVIEW_BEGIN
+# Review: reed: pane reap isn't applied consistently across up/add's mutating paths — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-opus-5 (Anthropic)
+reviewed_file: plan/
+date: 2026-08-28
+```
+
+## Findings
+
+### [BLOCKING:consistency] Overview's batch-4 verify drops the R4-F4 guard
+**Location:** `00-overview.md` Batch Index, batch 4 vs `04-smoke-regressions.md` frontmatter
+**Issue:** The overview's `-run` filter omits `TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp`, which the batch file's own `verify:` includes and whose Batch Tests section says is listed there because "smoke is outside `pipeline.done_gate` ... if this filter does not run it, nothing does".
+**Fix:** Mirror the batch file's filter verbatim in the overview's authoritative `batches:` block.
+
+### [BLOCKING:decision] planPaneTarget's `strands` parameter left with no disposition
+**Location:** Shared Decision "planPaneTarget collapses to a single split-target return"; batch 2 card 4
+**Issue:** Card 4 deletes the `anyBound` loop, which is `strands`' only use in `planPaneTarget`, yet the pinned new signature retains the parameter — the same vestigial-seam objection the decision itself raises against a retained always-empty `adoptID`.
+**Fix:** State explicitly whether `strands` is dropped or retained, and why.
+
+### [BLOCKING:scope] Card 12 sweeps reedcli files its Context does not list
+**Location:** batch 3 card 12
+**Issue:** Requirements run `grep -rn "adopt" ... internal/reedcli/*.go` and demand a disposition per hit, but Context lists only `internal/reedcli/up.go`; the actual hits live in `smoke_lifecycle_test.go`, `smoke_panecwd_test.go` and `smoke_teardown_test.go`, none of which the implementer may read.
+**Fix:** Add those three files to card 12's `Context:`.
+
+### [BLOCKING:scope] Card 14 misses a fourth adoption site in the same test
+**Location:** batch 4 card 14
+**Issue:** `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`'s doc comment (`smoke_lifecycle_test.go:348-354`) says the header is "never adopted/reaped as a strand's pane"; card 14 enumerates only the three inline sites (the pre-first-`add` comment, the pre-second-`add` comment, the `t.Errorf`).
+**Fix:** Add the function doc comment to card 14's enumeration; card 12 will otherwise report it as an unfixed missed rewrite.
+
+### [NIT:consistency] Card 2 calls a case falsified that is not
+**Location:** batch 1 card 2
+**Issue:** `UntrackedPanesUntouchedWhenNothingBound` sets no `headerPaneID`, so `headerAlive` is false and its "nothing reaped" expectation is unchanged post-fix — it is in fact the very "absent header, no strand bound" case card 2 also asks to add.
+**Fix:** Say the case's *comment* needs the new gate stated, not its expectation, and drop the duplicate new case.
+
+### [NIT:consistency] Card 6's mandated safety comment overstates the Resume path
+**Location:** batch 2 card 6
+**Issue:** The comment card 6 dictates asserts the launching strand "is appended with `PaneID == ""` before this helper runs"; on `Resume`, `planResumeLaunches` selects strands bound to a dead-but-present pane, so the strand can arrive bound (benign — the binding is cleared then overwritten — but the claim is not universal).
+**Fix:** Qualify the comment to the Add/Update paths and state why the Resume case is harmless.
+
+### [NIT:scope] Card 12's survivor enumeration is incomplete
+**Location:** batch 3 card 12
+**Issue:** Its grep also returns `adoptPaneGenerationLocked` prose in `attach_test.go:106`, `reapply_test.go:50`, `contract_integration_test.go:472` and `spawn_test.go:279`, none named as survivors; the discussion's own list named `reapply_test.go` and `attach_test.go`.
+**Fix:** Extend the enumerated survivor list to match the discussion's.
+
+### [NIT:scope] doc.go's !anyPlacedStrand bullet carries the premise card 9 narrows
+**Location:** batch 3 cards 8 / 12
+**Issue:** `doc.go:369-373` describes the `!anyPlacedStrand` case as "reachable for good via the operator remedy state.go documents, which deletes reed.json while the session keeps running untracked" — the same durability claim card 9 corrects — and neither card-12 grep term ("adopt", "untracked reap"/"bound present pane") reaches it.
+**Fix:** Add that bullet to card 8's enumerated passages.
+
+## Verdict
+
+REQUEST_CHANGES
+Verify-mirror drift, an undisposed parameter, and two enumeration gaps need closing.
+MILL_REVIEW_END

@@ -64,10 +64,15 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   Leave `boundPaneIDs`, `anyBoundPresent`, and `exemptPaneIDs` computed exactly as they are today — `headerAlive` is a third, separate local, never folded into any of them, so the header stays exempt from being killed by presence (a header corpse is still never killed) while only an *alive* header authorizes killing anything else.
   Rewrite the untracked-reap block's comment to state the new rule and why aliveness rather than presence: the reap fires from `AddStrand`/`UpdateStrand` once batch 2's chokepoint lands, and those paths never call `ensureHeaderPaneLocked`, so a dead-but-present header must not be allowed to authorize reaping the session's only alive pane.
   Do not change the dead-pane kill loop, the `keptDeadPane` rule, or the header's exemption from the dead-pane kill.
-  In `internal/reedengine/reconcile_test.go`, rewrite the case named `UntrackedPanesUntouchedWhenNothingBound` — its premise is falsified — and rewrite `HeaderAloneNeverMakesAnyBoundPresentTrue`, whose comment asserts the old policy while its expectation of no kills is now wrong.
+  In `internal/reedengine/reconcile_test.go`, two existing cases need opposite treatment;
+  do not conflate them.
+  `UntrackedPanesUntouchedWhenNothingBound` sets no `headerPaneID`, so `headerAlive` is false and its "nothing reaped" expectation is correct both before and after this change — it is in fact the absent-header case this card would otherwise add.
+  Keep its expectation exactly as it is, rewrite only its comment (which today justifies the outcome by "reed has nothing to lay out", not by the absent anchor), and rename it if its name reads as a general no-strand rule rather than the absent-header one.
+  `HeaderAloneNeverMakesAnyBoundPresentTrue` is the one whose expectation is now wrong: its header is alive, so the reap fires and its untracked pane is killed.
+  Rewrite both its expectation and its comment, keeping the point its comment exists to make — `anyBoundPresent` is still derived from `boundPaneIDs` alone and is still false here;
+  the kill comes from the new `headerAlive` disjunct beside it, never from folding the header into `boundPaneIDs`.
   Add table cases covering: an alive header with zero strands and one untracked alive pane, where that pane is killed as an *untracked* kill and the header is not;
   an alive header with zero strands and several untracked panes (an old header pane plus an orphaned strand pane, M22's shape), where all of them are killed and the current header is spared;
-  an absent header (`headerPaneID == ""`) with no strand bound, where nothing is reaped;
   a header present but `Dead: true` with no strand bound and one alive untracked pane, where nothing is reaped;
   a dead header alongside a strand bound to a present pane, where the reap fires anyway via `anyBoundPresent` and the header corpse is still spared;
   and an alive header alongside a bound strand, where both stay exempt and a third foreign pane is still reaped.
