@@ -158,12 +158,21 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 ### watch-loop-failures-are-never-fatal
 
-- Decision: every failure inside the watch loop is logged and swallowed, with backoff on repeated failure.
+- Decision: every failure inside the watch loop is logged and swallowed.
   The loop never exits, never returns an error to the pane, and never lets the header process die.
+  **What is bounded is one event's retries, never the watcher.**
+  A single debounced re-apply gets at most a small fixed number of attempts (N, on the order of 3) with an escalating delay between them;
+  once those N are spent the event is abandoned with one log line and the watcher goes straight back to waiting for the next signal.
+  Both the attempt counter and the escalating delay reset on any successful apply **and** on the arrival of the next resize signal, so the cap is per failure-streak, not cumulative over the process's life.
 - Rationale: this is the `geometry-tmux-failures-are-non-fatal-everywhere` Shared Decision applied to the same surface it was written for, and the header pane's entire reason for existing is to be an always-on keepalive that keeps the session (and the substrate the next `add` needs) alive no matter what.
   A watchdog that can kill the header pane would convert a cosmetic layout failure into a session-survival failure — strictly worse than the bug being fixed.
-- Rejected: stopping the loop after N consecutive failures and falling back to `blockForever()` (the pane survives, but self-heal silently stops with no way for the operator to notice);
-  exiting the process on error (corpses the header pane, which is then only healed on the next `up`/`resume`, deliberately breaking the keepalive).
+  The per-event cap is what satisfies the Live-Substrate Spawn Observability rule that a retry loop "caps attempt COUNT, not only elapsed time" **literally**, without the cap ever halting self-heal: an unbounded retry on a persistently-failing tmux would spin against the substrate forever, while a bounded one costs at most N attempts and then falls back to the next resize event, which is itself a retry trigger.
+  This is what reconciles the cap with "the loop never exits" — the two counters govern different things, and nothing about exhausting a streak stops the watcher from acting on the next signal.
+- Rejected: stopping the **loop** after N consecutive failures and falling back to `blockForever()` (the pane survives, but self-heal silently stops for the rest of the session with no way for the operator to notice — this is the alternative the per-event cap above is deliberately not);
+  exiting the process on error (corpses the header pane, which is then only healed on the next `up`/`resume`, deliberately breaking the keepalive);
+  no retry at all, i.e. a cap of exactly 1 (simplest and constraint-satisfying, but a transient tmux hiccup would then leave the layout wrong until the next resize or reed op, where a bounded retry recovers within seconds);
+  capping only the growth of the backoff delay while retrying indefinitely (this is precisely the "only elapsed time" reading CONSTRAINTS.md forbids);
+  declaring the constraint inapplicable on the grounds that the watch loop spawns no process (arguable, since it issues only `TmuxCmd` round trips, but weakening an enforced constraint to avoid defining a three-attempt cap is a bad trade).
 
 ### header-blocking-tail-discards-logger-output
 
@@ -273,7 +282,8 @@ From `CONSTRAINTS.md`:
   No module derives its own `.lyx` path.
 - **Live-Substrate Spawn Observability** — the watch loop spawns no OS process in steady state;
   any tmux round trip it adds goes through `TmuxCmd`, which is already covered.
-  A retry/backoff loop must cap attempt **count**, not only elapsed time.
+  A retry/backoff loop must cap attempt **count**, not only elapsed time — satisfied by the per-event attempt cap defined in `watch-loop-failures-are-never-fatal`, which bounds the retries for one debounced re-apply while leaving the watcher itself running.
+  The constraint is treated as applying here rather than argued away, even though the loop spawns no process of its own.
 - **Shell Mechanics Seam** — the hook's shell command string is built only via `internal/shell` (`Quote`/`Invoke`), stdlib-only.
   If a file-touch primitive is needed it is added to that interface with both a POSIX and a pwsh implementation, not hand-rolled at the call site.
 - **Config Strictness Invariant** — reed is a `LoadOrTemplate` (degrading) adopter;
@@ -312,7 +322,11 @@ Discovered during discussion:
 - `ReapplyLayout`'s guard inheritance: with fewer than two live panes, and with no strand owning a present pane, assert no `select-layout` is issued.
   This is the guard that keeps an unattended watcher from destroying a session's entire pane set.
   **TDD candidate.**
-- The backoff: assert attempt **count** is capped, per the Live-Substrate Spawn Observability rule.
+- The retry/backoff contract from `watch-loop-failures-are-never-fatal`, which is now a real contract to assert against: a re-apply that keeps failing is attempted exactly N times and no more;
+  the delay between attempts escalates;
+  the attempt counter and the delay both reset after a successful apply, and again on the arrival of a fresh resize signal;
+  and — the load-bearing assertion — the loop is still running and still responsive to the next signal **after** a streak has been exhausted.
+  **TDD candidate** — this is what separates the per-event cap from the rejected "stop the loop after N failures".
 
 **Tier 2 (`//go:build integration && linux`, live tmux, real pty).**
 
@@ -364,5 +378,7 @@ Attach with `lyx reed attach`, drag the terminal window larger and smaller, and 
 - **Q:** Failure policy in the loop? **A:** Log-and-continue, always non-fatal, with backoff. **Why:** matches the `geometry-tmux-failures-are-non-fatal-everywhere` Shared Decision, and the header pane exists to stay alive as a keepalive — a watchdog able to kill it would turn a cosmetic failure into a session-survival failure.
 - **Q:** What is the acceptance evidence? **A:** Tier 1 for the pure parts, plus a live pty test reproducing M7 in both directions, plus a new sandbox scenario. **Why:** M7 was only ever caught by running the reed suite live, so operator-acceptance-only would repeat the exact gap that let it go unnoticed;
   the sandbox scenario also satisfies the Sandbox Suite Coverage constraint directly.
+- **Q:** What does the "capped attempt count" actually bound, given the loop is also said never to exit? **A:** Bounded retries per debounced event — at most N attempts with escalating delay, counter and delay resetting on a successful apply or on the next resize signal — while the watcher itself never exits. **Why:** it satisfies the Live-Substrate Spawn Observability rule literally (a bounded count, not merely bounded elapsed time) without self-heal ever silently stopping;
+  what ends after N is this event's retries, not the watcher, which is exactly what distinguishes it from the rejected "stop the loop after N consecutive failures".
 - **Q:** Anything blocking the header pane from hosting the loop? **A:** Two things, both handled. **Why:** `testing.Testing()` gates the header launch line so no Go test can boot a real header-hosted watcher — the tier-2 test runs the loop in-process instead;
   and the pane's stderr is its screen, so the `--blocking` tail discards the logger's stderr half (the durable sink keeps everything) or the first degraded tmux round trip paints a slog line over the operator console.
