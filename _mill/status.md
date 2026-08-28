@@ -44,7 +44,9 @@ batches:
     commit_sha: bef2380d206a0f04ef9153f0016b131ffdcdb73a
     verify_baseline_failures: []
   - name: header-declines-the-stencil-seed-pass
-    state: pending
+    state: running
+    implementer_session: 3fd11504-86c8-4a3c-8067-820031ea0b1f
+    start_sha: 075ffa60665b8192cad8dd0683af06e6a6f0ed00
     verify_baseline_failures: []
   - name: scrollback-backstop-and-composite-smoke
     state: pending
