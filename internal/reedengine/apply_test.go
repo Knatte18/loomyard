@@ -219,6 +219,194 @@ func TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane(t *testing.T) {
 	})
 }
 
+// TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult pins that applyLayoutLockedOpts' two inherited
+// guard-skip paths return a zero applyResult (Applied false, BoxIsLive false), issue no
+// select-layout, and return nil — exactly like applyLayoutLocked did before this batch.
+func TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult(t *testing.T) {
+	e := newTestEngine(t)
+	hookCalled := false
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		hookCalled = true
+		return "", errors.New("must not be called")
+	}
+
+	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
+		hookCalled = false
+		st := &ReedState{Strands: []Strand{
+			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		}}
+		got, err := e.applyLayoutLockedOpts(st, []LivePane{{ID: "%1"}}, applyOpts{})
+		if err != nil {
+			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+		}
+		if got != (applyResult{}) {
+			t.Errorf("applyLayoutLockedOpts() = %+v, want the zero applyResult", got)
+		}
+		if hookCalled {
+			t.Error("applyLayoutLockedOpts() issued a tmux call, want none")
+		}
+	})
+
+	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
+		hookCalled = false
+		st := &ReedState{}
+		got, err := e.applyLayoutLockedOpts(st, []LivePane{{ID: "%1"}, {ID: "%2"}}, applyOpts{})
+		if err != nil {
+			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+		}
+		if got != (applyResult{}) {
+			t.Errorf("applyLayoutLockedOpts() = %+v, want the zero applyResult", got)
+		}
+		if hookCalled {
+			t.Error("applyLayoutLockedOpts() issued a tmux call, want none")
+		}
+	})
+}
+
+// TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane pins the focus-preservation contract:
+// SkipFocus issues select-layout and no select-pane, while the zero applyOpts on the same fixture
+// issues both.
+func TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane(t *testing.T) {
+	newFixture := func(t *testing.T) (*Engine, *ReedState, []LivePane, *[]string) {
+		e := newTestEngine(t)
+		e.cfg.Width, e.cfg.Height = 100, 21
+		var calls []string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, args[0])
+			if args[0] == "display-message" {
+				return "100 21", nil
+			}
+			return "", nil
+		}
+		st := &ReedState{Strands: []Strand{
+			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
+		}}
+		live := []LivePane{{ID: "%1"}, {ID: "%2"}}
+		return e, st, live, &calls
+	}
+
+	t.Run("SkipFocusTrue", func(t *testing.T) {
+		e, st, live, calls := newFixture(t)
+		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true})
+		if err != nil {
+			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+		}
+		if !got.Applied {
+			t.Errorf("applyLayoutLockedOpts() Applied = false, want true")
+		}
+		if !containsArg(*calls, "select-layout") {
+			t.Errorf("calls = %v, want select-layout", *calls)
+		}
+		if containsArg(*calls, "select-pane") {
+			t.Errorf("calls = %v, want no select-pane", *calls)
+		}
+	})
+
+	t.Run("ZeroOptsIssuesBoth", func(t *testing.T) {
+		e, st, live, calls := newFixture(t)
+		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{})
+		if err != nil {
+			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+		}
+		if !got.Applied {
+			t.Errorf("applyLayoutLockedOpts() Applied = false, want true")
+		}
+		if !containsArg(*calls, "select-layout") {
+			t.Errorf("calls = %v, want select-layout", *calls)
+		}
+		if !containsArg(*calls, "select-pane") {
+			t.Errorf("calls = %v, want select-pane", *calls)
+		}
+	})
+}
+
+// TestApplyLayoutLockedOpts_SkipWhenBoxEquals pins the box-equality guard: an equal, live-observed
+// box suppresses select-layout and reports Applied: false with the observed box; a differing box
+// still applies.
+func TestApplyLayoutLockedOpts_SkipWhenBoxEquals(t *testing.T) {
+	newFixture := func(t *testing.T, answer string) (*Engine, *ReedState, []LivePane, *[]string) {
+		e := newTestEngine(t)
+		e.cfg.Width, e.cfg.Height = 999, 111
+		var calls []string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, args[0])
+			if args[0] == "display-message" {
+				return answer, nil
+			}
+			return "", nil
+		}
+		st := &ReedState{Strands: []Strand{
+			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		}}
+		live := []LivePane{{ID: "%1"}, {ID: "%2"}}
+		return e, st, live, &calls
+	}
+
+	t.Run("EqualBoxSkips", func(t *testing.T) {
+		e, st, live, calls := newFixture(t, "100 21")
+		box := render.Box{X: 0, Y: 0, W: 100, H: 21}
+		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipWhenBoxEquals: &box})
+		if err != nil {
+			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+		}
+		if got.Applied {
+			t.Errorf("applyLayoutLockedOpts() Applied = true, want false")
+		}
+		if !got.BoxIsLive || got.Box != box {
+			t.Errorf("applyLayoutLockedOpts() = %+v, want BoxIsLive true and Box %+v", got, box)
+		}
+		if containsArg(*calls, "select-layout") {
+			t.Errorf("calls = %v, want no select-layout", *calls)
+		}
+	})
+
+	t.Run("DifferingBoxApplies", func(t *testing.T) {
+		e, st, live, calls := newFixture(t, "80 24")
+		box := render.Box{X: 0, Y: 0, W: 100, H: 21}
+		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipWhenBoxEquals: &box})
+		if err != nil {
+			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+		}
+		if !got.Applied || !got.BoxIsLive {
+			t.Errorf("applyLayoutLockedOpts() = %+v, want Applied true and BoxIsLive true", got)
+		}
+		if !containsArg(*calls, "select-layout") {
+			t.Errorf("calls = %v, want select-layout", *calls)
+		}
+	})
+
+	// The degraded case: a fallback box is not an observation and must never satisfy the guard, even
+	// when it happens to equal SkipWhenBoxEquals.
+	t.Run("DegradedFallbackBoxNeverSatisfiesGuard", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Width, e.cfg.Height = 100, 21
+		var calls []string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, args[0])
+			if args[0] == "display-message" {
+				return "", errors.New("boom")
+			}
+			return "", nil
+		}
+		st := &ReedState{Strands: []Strand{
+			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		}}
+		live := []LivePane{{ID: "%1"}, {ID: "%2"}}
+		box := render.Box{X: 0, Y: 0, W: 100, H: 21}
+
+		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipWhenBoxEquals: &box})
+		if err != nil {
+			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+		}
+		if got.BoxIsLive {
+			t.Errorf("applyLayoutLockedOpts() BoxIsLive = true, want false (a fallback box is not an observation)")
+		}
+		if !containsArg(calls, "select-layout") {
+			t.Errorf("calls = %v, want select-layout still issued (the guard must not fire on a degraded box)", calls)
+		}
+	})
+}
+
 // TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane pins that applyLayoutLocked,
 // now a thin wrapper over applyLayoutLockedOpts, keeps its exact pre-batch-2 behaviour: the full
 // focus half, unabbreviated.

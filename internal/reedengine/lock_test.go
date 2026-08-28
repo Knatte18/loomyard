@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // newTestEngine builds an Engine rooted at a fresh t.TempDir(), suitable
@@ -268,5 +270,110 @@ func TestWithOpLock_QuietWhenTheLockFileSurvives(t *testing.T) {
 
 	if err := e.withOpLock(func() error { return nil }); err != nil {
 		t.Errorf("withOpLock on an undisturbed lock file = %v; want nil", err)
+	}
+}
+
+// TestWithTryOpLock_RunsFnOnAFreeLock pins the acquired path: fn runs and (true, nil) is reported.
+func TestWithTryOpLock_RunsFnOnAFreeLock(t *testing.T) {
+	e := newTestEngine(t)
+
+	ran := false
+	acquired, err := e.withTryOpLock(func() error {
+		ran = true
+		return nil
+	})
+	if !acquired {
+		t.Error("withTryOpLock() acquired = false, want true (lock was free)")
+	}
+	if err != nil {
+		t.Errorf("withTryOpLock() err = %v, want nil", err)
+	}
+	if !ran {
+		t.Error("withTryOpLock() did not run fn")
+	}
+}
+
+// TestWithTryOpLock_DefersWithoutTouchingTmuxWhenAlreadyHeld pins the deferral contract: with
+// reed.lock already held by a second acquisition, withTryOpLock reports (false, nil), never calls
+// fn, and issues no tmux call — deferral is not a failure.
+func TestWithTryOpLock_DefersWithoutTouchingTmuxWhenAlreadyHeld(t *testing.T) {
+	e := newTestEngine(t)
+
+	dotLyx := e.stateDir()
+	if err := os.MkdirAll(dotLyx, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	lockPath := filepath.Join(dotLyx, reedLockFileName)
+	held, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("AcquireWriteLock: %v", err)
+	}
+	defer held.Release()
+
+	fnCalled := false
+	acquired, err := e.withTryOpLock(func() error {
+		fnCalled = true
+		return nil
+	})
+	if acquired {
+		t.Error("withTryOpLock() acquired = true, want false (lock already held)")
+	}
+	if err != nil {
+		t.Errorf("withTryOpLock() err = %v, want nil (a deferral is not a failure)", err)
+	}
+	if fnCalled {
+		t.Error("withTryOpLock() called fn while the lock was held, want it never called")
+	}
+}
+
+// TestWithTryOpLock_PropagatesFnErrorWithAcquiredTrue pins that a real acquisition still reports
+// acquired == true even when fn itself fails.
+func TestWithTryOpLock_PropagatesFnErrorWithAcquiredTrue(t *testing.T) {
+	e := newTestEngine(t)
+
+	fnErr := errors.New("fn's own failure")
+	acquired, err := e.withTryOpLock(func() error { return fnErr })
+	if !acquired {
+		t.Error("withTryOpLock() acquired = false, want true")
+	}
+	if !errors.Is(err, fnErr) {
+		t.Errorf("withTryOpLock() err = %v, want it to wrap fn's error", err)
+	}
+}
+
+// TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched pins that a
+// told-geometry pre-flight failure reports (false, err) without ever touching the lock file.
+func TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched(t *testing.T) {
+	hub := t.TempDir()
+	worktreeRoot := filepath.Join(hub, "worktree")
+	geom := Geometry{
+		SocketKey:    ServerName(hub),
+		SessionName:  "", // empty session name fails validateToldTmuxIdentity
+		AnchorPath:   filepath.Join(worktreeRoot, "anchor"),
+		PaneCwd:      filepath.Join(hub, "pane"),
+		WorktreeRoot: worktreeRoot,
+		LogsDir:      filepath.Join(hub, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hub,
+	}
+	e := New(Config{
+		Tmux:  filepath.Join(hub, "does-not-exist-tmux.exe"),
+		Shell: filepath.Join(hub, "does-not-exist-shell.exe"),
+	}, geom)
+
+	acquired, err := e.withTryOpLock(func() error {
+		t.Fatal("withTryOpLock() called fn despite a told-geometry validation failure")
+		return nil
+	})
+	if acquired {
+		t.Error("withTryOpLock() acquired = true, want false")
+	}
+	if err == nil {
+		t.Fatal("withTryOpLock() err = nil, want a validation error")
+	}
+
+	lockPath := filepath.Join(e.stateDir(), reedLockFileName)
+	if _, statErr := os.Stat(lockPath); !os.IsNotExist(statErr) {
+		t.Errorf("lock file stat err = %v, want IsNotExist (validation must fail before the lock file is ever touched)", statErr)
 	}
 }
