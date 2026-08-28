@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 func TestParseWindowSize(t *testing.T) {
@@ -245,7 +244,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 // TestPinGeometryOptionsLocked_HookLifecycle covers the window-resized hook install/unset lifecycle
 // pinGeometryOptionsLocked now owns, alongside the two pre-existing geometry pins.
 func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
-	t.Run("WatchdogOnInstallsAPlainReplacingHook", func(t *testing.T) {
+	t.Run("WatchdogOnPinsGeometryOptionsOnly", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.cfg.Watchdog = "on"
 		var calls [][]string
@@ -256,27 +255,27 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 
 		e.pinGeometryOptionsLocked()
 
+		// With the new resize-pin mechanism, pinGeometryOptionsLocked no longer installs the
+		// window-resized hook — that is now the job of installResizePinsLocked, called from
+		// apply.go and attach.go. This function only pins the geometry options.
 		var hookCall []string
 		for _, c := range calls {
 			if c[0] == "set-hook" {
 				hookCall = c
 			}
 		}
-		if hookCall == nil {
-			t.Fatalf("pinGeometryOptionsLocked calls = %v, want a set-hook call", calls)
+		if hookCall != nil {
+			t.Fatalf("pinGeometryOptionsLocked calls = %v, want no set-hook call (hook installation moved to installResizePinsLocked)", calls)
 		}
-		wantTarget := exactSessionWindowTarget(e.SessionName())
-		want := []string{"set-hook", "-t", wantTarget, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())}
-		if len(hookCall) != len(want) {
-			t.Fatalf("set-hook argv = %v, want %v", hookCall, want)
-		}
-		for i := range want {
-			if hookCall[i] != want[i] {
-				t.Errorf("set-hook argv[%d] = %q, want %q (full argv %v)", i, hookCall[i], want[i], hookCall)
+		// Verify that geometry options were pinned instead.
+		var setOptionCalls int
+		for _, c := range calls {
+			if c[0] == "set-option" {
+				setOptionCalls++
 			}
 		}
-		if containsArg(hookCall, "-a") {
-			t.Errorf("set-hook argv = %v, want no -a token anywhere", hookCall)
+		if setOptionCalls != 2 {
+			t.Errorf("pinGeometryOptionsLocked calls = %v, want 2 set-option calls (status and window-size)", calls)
 		}
 	})
 
@@ -334,16 +333,18 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 		e.pinGeometryOptionsLocked()
 	})
 
-	t.Run("SetHookErrorIsNonFatal", func(t *testing.T) {
+	t.Run("SetHookErrorIsNonFatalWhenWatchdogOff", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.cfg.Watchdog = "on"
+		e.cfg.Watchdog = "off"
 		var setOptionCalls int
+		var setHookErrors int
 		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
 			if args[0] == "set-option" {
 				setOptionCalls++
 				return "", nil
 			}
 			if args[0] == "set-hook" {
+				setHookErrors++
 				return "", errors.New("boom")
 			}
 			return "", nil
@@ -352,7 +353,10 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 		e.pinGeometryOptionsLocked()
 
 		if setOptionCalls != 2 {
-			t.Errorf("set-option calls = %d, want 2 (both preceding pins still attempted)", setOptionCalls)
+			t.Errorf("set-option calls = %d, want 2 (both preceding pins still attempted despite later set-hook error)", setOptionCalls)
+		}
+		if setHookErrors != 1 {
+			t.Errorf("set-hook errors = %d, want 1", setHookErrors)
 		}
 	})
 

@@ -18,7 +18,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // parseWindowSize parses a `display-message -p '#{window_width} #{window_height}'` answer into a
@@ -132,22 +131,15 @@ func (e *Engine) pinGeometryOptionsLocked() {
 		return
 	}
 
-	if enabled {
-		// The plain, REPLACING set-hook form is mandatory and -a must never appear: verified live,
-		// four identical plain installs yield exactly one fire per resize while three additional -a
-		// appends yield four, and this function runs on every AttachArgv pre-flight as well as at
-		// boot, so the append form would cost N run-shell spawns per resize after N attaches.
-		if err := e.tmux.run("set-hook", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())); err != nil {
-			logger.Warn("reed: failed to install window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+	if !enabled {
+		// set-hook -u is idempotent and exits 0 whether or not a hook was set (verified live).
+		// This clears both old-style watchdog hooks (from prior sessions) and new-style resize-pin
+		// hooks (installed by the current code path), ensuring a fresh state for either mechanism.
+		if err := e.tmux.run("set-hook", "-u", "-t", target, windowResizedHookName); err != nil {
+			logger.Warn("reed: failed to unset window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		}
-		return
+		e.removeResizeSignalFileLocked()
 	}
-
-	// set-hook -u is idempotent and exits 0 whether or not a hook was set (verified live).
-	if err := e.tmux.run("set-hook", "-u", "-t", target, windowResizedHookName); err != nil {
-		logger.Warn("reed: failed to unset window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-	}
-	e.removeResizeSignalFileLocked()
 }
 
 // removeResizeSignalFileLocked removes this worktree's resize signal file, if present.
