@@ -25,7 +25,7 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
 
 **In:**
 
-- `internal/reedengine/reconcile.go` — `planReconcile`'s untracked-pane reap authorization.
+- `internal/reedengine/reconcile.go` — `planReconcile`'s untracked-pane reap authorization, and a `logger.Info` line in `reconcileLocked`'s `kill-pane` loop.
 - `internal/reedengine/spawn.go` — `planPaneTarget` (drop pane adoption), `soleAliveNonHeaderPane` (delete), and `launchStrandLocked` (reap-before-allocate chokepoint).
 - `internal/reedengine/doc.go` — the package-doc paragraphs describing the deterministic untracked-reap policy and the header's exclusion seams, which currently document the behaviour being changed.
 - Unit tests in `internal/reedengine/reconcile_test.go` and `internal/reedengine/spawn_test.go`.
@@ -87,6 +87,20 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
   `descendantClosurePIDs` + `reapPaneChildren(…, reapExitTimeout)` is a synchronous, saturation-tolerant wait, and reconcile runs on every mutating verb and once per strand inside `Resume`'s launch loop — putting that wait there would add seconds to routine `add`s.
   Subtree reaping stays where destruction is deliberate and the operator is already waiting for it: `RemoveStrand` and `Down`.
 - Rejected: reaping subtrees in reconcile (hot-path cost, for a case where `kill-pane`'s SIGHUP already terminates the ordinary pane process).
+
+### the-reap-logs-what-it-destroys
+
+- Decision: `reconcileLocked` emits a `logger.Info` line when it kills panes, carrying the existing `"socket"`/`"session"` key shape plus the killed pane ids.
+  One line per `reconcileLocked` call that killed anything, not one per pane — the killed set is the interesting unit and a per-pane line would be noise during `Resume`'s launch loop.
+  Whether the line distinguishes dead-pane kills from untracked-pane kills (e.g. two id lists, or a `reason` key) is mill-plan's call, but the untracked reap must be identifiable in the log, since that is the destructive half.
+- Rationale: `reconcile.go` has no `logger` call today at all — the only nearby one is `spawn.go`'s `clearConflictingPaneBindings` warning.
+  That was tolerable while the untracked reap essentially never fired without a bound strand;
+  this task deliberately makes it fire on exactly the zero-strand precondition M16 and M22 share, so the reap goes from near-dormant to routine, and it destroys panes an operator may have created.
+  A pane vanishing with no trace in the log is the worst possible shape for the class of bug this task exists to fix — M22 was only diagnosable because the operator watched it happen live.
+  `Info` rather than `Debug` per the Live-Substrate Spawn Observability invariant's lifecycle-vs-probe split: this is a lifecycle teardown, not a polling probe.
+- Rejected: declaring `kill-pane` out of the Spawn Observability invariant's scope on the grounds that it destroys rather than starts a process — defensible as a reading of the invariant, but it answers the letter of the rule while ignoring why the observability matters here;
+  a silent reap is precisely what made these two findings expensive to characterise.
+  Also rejected: a per-pane log line (noisy inside `Resume`'s per-strand loop) and a `Warn` level (the reap is designed behaviour, not an anomaly).
 
 ### zero-strand-sessions-end-up-header-only
 
@@ -192,7 +206,9 @@ From `CONSTRAINTS.md`:
 Discovered during discussion:
 
 - The reap must never run from a read-only verb or from the unattended watcher.
-- `logger` calls in reed carry `"socket"` and `"session"` keys; a new reap log line should follow that shape.
+- `logger` calls in reed carry `"socket"` and `"session"` keys;
+  the reap log line committed to by the-reap-logs-what-it-destroys follows that shape.
+  `reedengine` already imports `internal/logger`, so no import change and no Spawn Observability exemption note is needed.
 
 ## Testing
 
@@ -207,6 +223,12 @@ Scenarios to cover:
 - Header **absent** (`headerPaneID == ""`) and no strand bound → nothing reaped (the gate must still refuse without an anchor).
 - Header present and a strand bound → unchanged behaviour, both exempt.
 - The dead-pane rules are untouched: `keptDeadPane` still spares one dead pane when nothing is alive, and a dead header is still never killed.
+
+**Unit — the reap log line:**
+
+`reconcileLocked` is the composing half, not the pure one, so this needs the existing fake-tmux harness `reconcile_test.go`/`lifecycle_test.go` already use plus `logger.SetOutput(&buf)` (with a `t.Cleanup` restoring it — `internal/reedengine` has no logger-capture helper today, so one may need adding beside the fake).
+Assert that a reconcile which kills untracked panes emits an `Info` line naming those pane ids, and that a reconcile which kills nothing emits none.
+Keep this to one focused test — the point is that the destructive path is observable, not that the log's exact wording is pinned.
 
 **Unit — `internal/reedengine/spawn_test.go` (untagged, pure):**
 
