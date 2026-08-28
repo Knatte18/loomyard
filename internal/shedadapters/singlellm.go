@@ -175,12 +175,14 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
+		logger.Warn("shedadapters: shuttle run died or timed out", "producer", p.name, "engine", singleLLMEngineLabel, "sessionID", result.SessionID, "strandGUID", result.StrandGUID, "runDir", result.RunDir, "outcome", result.Outcome)
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s", p.name, singleLLMEngineLabel, result.Outcome)
 
 	default:
 		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
+		logger.Warn("shedadapters: unrecognized shuttle outcome", "producer", p.name, "engine", singleLLMEngineLabel, "sessionID", result.SessionID, "strandGUID", result.StrandGUID, "runDir", result.RunDir, "outcome", result.Outcome)
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): unrecognized shuttle outcome %q", p.name, singleLLMEngineLabel, result.Outcome)
 	}
 }
