@@ -46,6 +46,8 @@ batches:
     commit_sha: cb87930d179cef9d49ea9b3e700d590565a06380
     verify_baseline_failures: []
   - name: integration-contract-docs
-    state: pending
+    state: running
+    implementer_session: 886dd527-68d7-4adf-9e6f-482b1d604dbc
+    start_sha: 45f2c4a0838aece471bf1890031f0cdd7b72663a
     verify_baseline_failures: []
 ```
