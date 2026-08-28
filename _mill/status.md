@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-watchdog-foundations
 slug: reed-watchdog-daemon
 branch: reed-watchdog-daemon
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r5  '2026-08-28T10:39:57Z'
 plan-fix-r5  '2026-08-28T10:40:33Z'
 planned  '2026-08-28T10:40:44Z'
 implementing  '2026-08-28T10:41:17Z'
+approved-watchdog-foundations  '2026-08-28T10:47:17Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-08-28T10:41:17Z'
 ```yaml
 batches:
   - name: watchdog-foundations
-    state: running
+    state: approved
     implementer_session: cdf284f2-ea90-46ad-b00d-71094317be7c
     start_sha: 4845167235c297763a1975417c1c8cf4e82e42ac
+    commit_sha: f32ccc27ffa44b9e5e961720505eb23cb9f1a8a0
     verify_baseline_failures: []
   - name: engine-reapply-op
     state: pending
