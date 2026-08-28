@@ -5,7 +5,7 @@ task: 'reed: pane reap isn''t applied consistently across up/add''s mutating pat
 batch: 'smoke-regressions'
 number: 4
 cards: 6
-verify: go test -tags smoke -timeout 20m ./internal/reedcli/ -run 'TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable|TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile|TestSmokeForeignPaneIsReapedNotAdoptedByAdd|TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader|TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd|TestSmokeRemoveLastStrandThenAddRunsTheNewCommand'
+verify: go test -tags smoke -timeout 20m ./internal/reedcli/ -run 'TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable|TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile|TestSmokeForeignPaneIsReapedNotAdoptedByAdd|TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader|TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp|TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd|TestSmokeRemoveLastStrandThenAddRunsTheNewCommand'
 depends-on: [2]
 ```
 
@@ -15,7 +15,7 @@ This batch delivers the real-tmux tier: the two new regressions for M16 and M22,
 It is one batch because all six cards live in `internal/reedcli`'s smoke files, share one harness (`hubforge.NewHub` + `t.Chdir` + a `down` cleanup + the `smoke_test.go` helper set), and are graded by the same `-tags smoke` run.
 
 It depends on batch 2 because both new regressions are written against the fixed behaviour, and because three of the existing tests only start failing once the chokepoint lands.
-It is parallel-safe with batch 3, which touches only `internal/reedengine` and `tools/sandbox` — a disjoint set.
+Batch 3 in turn depends on this batch, and runs last: its closing sweep card greps `internal/reedcli/*.go`, so it is only meaningful once the three smoke files this batch rewrites have landed.
 
 Batch-local decisions beyond `## Shared Decisions`:
 
@@ -44,7 +44,14 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
 - **Moves:** none
 - **Requirements:** Rewrite `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`, whose premise is now false: with the header alive and zero strands, the reap fires on that test's second `lyx reed up` and kills both the unadopted initial pane and the foreign pane, while its comments assert the opposite ("the foreign panes survive an up", "Every pane must survive it").
   Its surviving `len(panes) == 0` assertion is loose enough to keep passing while its stated premise is false, which is worse than a failure.
-  Rewrite the comments — the doc comment above the function and the two inline comments naming the pre-fix expectation — to the new behaviour.
+  Rewrite all four stale sites to the new behaviour;
+  the test carries more falsified text than the two headline comments.
+  First, the function's doc comment, whose closing sentences claim apply is skipped so "the foreign panes survive an up".
+  Second, the inline comment before the second `up` calling that `up` "the trap" and demanding that "Every pane must survive it".
+  Third and fourth, the two inline comments describing "the not-yet-adopted initial pane" — one before the foreign `split-window` stating the session holds 2 panes and 0 strands, one after it stating the session now has 3 panes.
+  Both pane counts are wrong post-fix: the reap fires on the *first* `up`, so the initial pane is already gone and those counts become 1 and 2.
+  The doc comment also quotes the old error string `"session has no panes to adopt or split"` verbatim, describing the zero-pane-husk symptom;
+  card 4 changed that string to `"session has no panes to split"` and deferred this quote to this batch, so correct it here.
   Tighten the post-`up` assertion from "not empty" to the exact expected pane set: after the second `up` the session holds exactly one pane, and it is the persisted `HeaderPaneID` the test already reads out of `reedengine.LoadState`.
   Use the existing `listPaneLines` and `paneLiveOnSession` helpers.
   What the test exists to pin is unchanged and must stay pinned, in both the code and the rewritten comments: `up` with zero placeable strands must never emit a zero-cell layout string, because tmux answers that by destroying every pane and wedging the session.
@@ -132,7 +139,13 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
   Use `smokeReapLaunchCmd()` for the strand's command and the same harness shape as the neighbouring tests (`hubforge.NewHub`, `t.Chdir`, `deferHubRelease`, `down` cleanup, `tmuxBinaryPath`, `socketAndSession`, `listPaneLines`, `addStrand`, `statusStrand`).
   Delete the state file with `os.Remove` against `filepath.Join(h.PrimeWorktree(), ".lyx", "reed.json")`;
   both packages are already imported by this file.
-  This test asserts a header-only, full-height end state, which is the accepted outcome rather than a layout defect — `applyLayoutLockedOpts` deliberately skips `select-layout` when no strand owns a present pane.
+  One neighbouring test drives the same scrub reproduction and must keep passing: `TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp`, the R4-F4 guard, whose observable pane set after its recovering `up` goes from three panes to one under the new reap.
+  Its load-bearing assertion is only that the rebuilt header lands at `pane_top` 0, which a sole full-height header still satisfies, and its following `add` still succeeds by splitting the header — so it is expected to pass unchanged.
+  Read it and confirm that.
+  Correct its comments only where they state a pane set or a layout precondition the reap has made false;
+  leave its assertions alone.
+  It is in this batch's `verify:` filter for exactly this reason, since smoke is outside `pipeline.done_gate` and nothing else would run it.
+  The new test asserts a header-only, full-height end state, which is the accepted outcome rather than a layout defect — `applyLayoutLockedOpts` deliberately skips `select-layout` when no strand owns a present pane.
   Say so in the doc comment so a future reader does not mistake it for a regression and "fix" it by synthesising a spacer pane.
 - **Commit:** `test(reedcli): add the M22 regression for scrubbed-state convergence`
 
@@ -174,7 +187,10 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
 
 ## Batch Tests
 
-`verify:` runs the `smoke`-tagged suite in `internal/reedcli` filtered to exactly the six tests this batch touches: the two rewritten in cards 13 and 14 (`TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`, `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`), the second card-14 test whose comments and skip string change (`TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` — Windows-only, so it skips on this host and is listed to catch a compile break rather than to run), the two new regressions from cards 15 and 16, and card 17's rewritten `TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd`.
+`verify:` runs the `smoke`-tagged suite in `internal/reedcli` filtered to exactly the six tests this batch touches: the two rewritten in cards 13 and 14 (`TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`, `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`), the second card-14 test whose comments and skip string change (`TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` — Windows-only, so it skips on this host and is listed to catch a compile break rather than to run), the two new regressions from cards 15 and 16, card 17's rewritten `TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd`, and `TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp`.
+
+That last one this batch does not rewrite, but its observable pane set changes under the new reap (three panes to one after its recovering `up`) and it shares a file with cards 13-16, so card 16 requires it read and confirmed.
+Smoke is outside `pipeline.done_gate`, so if this filter does not run it, nothing does.
 
 Card 18 touches only a comment in `smoke_teardown_test.go` and adds no test to the filter;
 `go test -tags smoke` builds the whole package before applying `-run`, so a mis-scoped edit there still fails this gate.

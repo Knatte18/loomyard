@@ -6,7 +6,7 @@ batch: 'doc-surface-sweep'
 number: 3
 cards: 5
 verify: go test ./internal/reedengine/
-depends-on: [2]
+depends-on: [2, 4]
 ```
 
 ## Batch Scope
@@ -18,7 +18,10 @@ Two premises are falsified, not one, so the sweep is two greps rather than one: 
 
 It depends on batch 2 because both premises are only false once adoption is deleted and the chokepoint exists;
 writing the replacement prose earlier would document code that is not there yet.
-It is parallel-safe with batch 4, which touches only `internal/reedcli`'s smoke test files — a disjoint set.
+It also depends on batch 4, and runs last of the four for that reason.
+Card 12's closing sweep spans `internal/reedcli/*.go`, which includes the three smoke test files batch 4 rewrites;
+were batch 4 a parallel sibling rather than a dependency, card 12 would run against a tree still holding batch 4's un-rewritten adoption comments and would have to report every one of them as a missed rewrite.
+The sweep is only meaningful as the last thing that happens.
 
 Batch-local decision beyond `## Shared Decisions`: the half-updated state is the hazard here, so a comment left asserting `planPaneTarget` "never adopts the header" is worse than no comment — it implies adoption still exists and merely excludes the header.
 Card 12 exists to make that failure detectable rather than trusting the enumeration below.
@@ -52,7 +55,10 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   and the reap runs before pane allocation at one chokepoint inside `launchStrandLocked` so the property holds by construction on every realization path rather than requiring two call sites to stay in sync.
   Record the two consequences the discussion accepted: an `up` against a session with zero tracked strands ends up header-only and full-height, because `applyLayoutLockedOpts` deliberately skips `select-layout` when no strand owns a present pane, and the header snaps back to its configured height the moment a strand pane exists;
   and `RemoveStrand`'s own code is unchanged but its `reconcileApplyPersistLocked` tail inherits the new gate, so removing the last strand now reaps any untracked alive pane in the same verb.
-  Do not touch the `adoptPaneGenerationLocked` server-rebirth prose (the paragraph about two engines adopting each other's panes) — it shares the word, not the concept.
+  Leave the session-name-rewrite bullet alone — its closing clause, about substituting separators mapping sibling worktrees onto one session and having "each adopt the other's panes", is about a session-name collision between two worktrees, not about `planPaneTarget`.
+  It shares the word, not the concept.
+  This is the only "adopt" hit in the file beyond the three passages above;
+  `doc.go` carries no `adoptPaneGenerationLocked` prose at all, so do not go looking for a generation-probe paragraph to spare.
 - **Commit:** `docs(reedengine): document the deterministic reap policy and drop the adoption seam`
 
 ### Card 9: Restate the corrupt-state remedy's promise to its new limit
@@ -76,7 +82,13 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   Restate it so the operator reads the real limit: the panes keep running untracked but are reaped by the next mutating verb, so `attach` is the way back to that work.
   Getting this wrong is an operator-facing correctness bug, not a doc nicety — the string is what someone reads while holding running work they can no longer see.
   Keep the string's existing shape: it still names the file, still names both remedies, and still leads with `lyx reed down`.
-  Do not change `unreadableStateError`'s signature, and do not touch the `ReedState` field comments mentioning "adoption" and "adopted" near the top of the file — those describe `adoptPaneGenerationLocked`'s generation stamp, which is untouched.
+  Do not change `unreadableStateError`'s signature.
+  Two `ReedState` field comments near the top of the same file also carry the word, and they need opposite treatment — handle each explicitly rather than as one group.
+  The `HeaderPaneID` field comment says the header "is excluded from every strand accounting, adoption, reconcile, and layout path a Strand would otherwise be subject to".
+  That is pane adoption — the same seam `doc.go`'s header-invariant sentence names, and card 8's twin — so rewrite it: with adoption deleted the header is excluded from strand accounting, from being the preferred split target, and from both halves of reconcile's kill schedule.
+  Keep the rest of that comment (the header-is-not-a-strand decision, and what an empty value means) unchanged.
+  The `PaneGeneration` field comment's closing sentence — a zero value "is adopted rather than treated as a mismatch" — belongs to `adoptPaneGenerationLocked`'s generation stamp, which this task does not touch.
+  Leave that one exactly as it is.
 - **Commit:** `docs(reedengine): state the reap limit on the scrubbed-state remedy`
 
 ### Card 10: Correct the stray adoption-referencing comments outside spawn.go
@@ -146,6 +158,7 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   - `internal/reedengine/strand.go`
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/spawn_test.go`
+  - `internal/reedengine/lifecycle_test.go`
   - `internal/reedengine/generation.go`
   - `internal/reedengine/generation_test.go`
   - `internal/reedengine/server.go`
@@ -160,8 +173,16 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   This card changes no file;
   its output is a judgement, and any hit it cannot justify means an earlier card in this batch (or batch 2, or batch 4) left prose asserting something that no longer exists.
   Run `grep -rn "adopt" internal/reedengine/*.go internal/reedcli/*.go tools/sandbox/*.md` and `grep -rni "untracked reap\|bound present pane\|reap.*does not fire" internal/reedengine/*.go tools/sandbox/*.md`, then give every hit a disposition.
-  A hit is a legitimate survivor only when "adopt" means something other than pane adoption: the server-rebirth generation probe (`adoptPaneGenerationLocked` and the surrounding prose in `generation.go`, `state.go`, `server.go`, and `generation_test.go`), `internal/reedcli/up.go`'s config-key wording about adopting a key, and `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s merge-adoption prose, which belongs to fabric and not to reed.
+  A hit is a legitimate survivor only when "adopt" means something other than pane adoption.
+  The survivors are: the server-rebirth generation probe — `adoptPaneGenerationLocked` itself and the prose around it in `generation.go`, `server.go` and `generation_test.go`, plus, in `state.go`, the `PaneGeneration` field comment alone and never the `HeaderPaneID` one card 9 rewrites;
+  `internal/reedcli/up.go`'s config-key wording about adopting a key;
+  `doc.go`'s session-name-rewrite bullet, whose "each adopt the other's panes" clause describes two worktrees colliding on one session name rather than `planPaneTarget`;
+  and `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s merge-adoption prose, which belongs to fabric and not to reed.
   Anything else — any surviving text describing `planPaneTarget`'s pane-adoption seam, the initial-pane-adoption behaviour, or the reap gate needing a bound present pane — is a missed rewrite.
+  Close one further enumeration item the two greps cannot reach, because its comment contains neither sweep term: `internal/reedengine/lifecycle_test.go`'s fixture comment describing a pane as "the new-session initial pane a fresh boot leaves".
+  Read it and confirm it merely labels a scripted fixture's pane set rather than asserting that the initial pane is adopted or survives an `up`;
+  it is expected to stand as written, and the disposition to record is "confirmed out".
+  Report it as a missed rewrite only if it does make either claim.
   Report each such hit with its file, line, and the batch card that should have covered it, rather than fixing it silently here, so the gap is visible in review.
   Report the disposition of every hit in the round's output.
   If both sweeps come back clean apart from the legitimate survivors above, state that explicitly.

@@ -30,7 +30,7 @@ batches:
   - number: 3
     name: doc-surface-sweep
     file: 03-doc-surface-sweep.md
-    depends-on: [2]
+    depends-on: [2, 4]
     verify: go test ./internal/reedengine/
   - number: 4
     name: smoke-regressions

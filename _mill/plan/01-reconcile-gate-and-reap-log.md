@@ -81,6 +81,8 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   - `internal/logger/logger.go`
   - `internal/logger/sink.go`
   - `internal/reedengine/lock_test.go`
+  - `internal/reedengine/overlay.go`
+  - `internal/reedengine/lifecycle_test.go`
 - **Edits:**
   - `internal/reedengine/reconcile.go`
   - `internal/reedengine/reconcile_test.go`
@@ -99,7 +101,10 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   Both calls are required: `internal/logger`'s stderr half defaults to the Warn threshold and its durable half is disabled outright under `testing.Testing()`, so `SetOutput` alone captures nothing and an Info-asserting test would fail inexplicably.
   `os.Stderr` is the restore target because `internal/logger` exports no getter for its current writer and `os.Stderr` is that package's own declared default.
   Give the file a header comment saying exactly that.
-  In `internal/reedengine/reconcile_test.go`, add one focused test driving `reconcileLocked` through the `newTestEngine` fixture with an `e.tmux.execHook` that answers `kill-pane` successfully, asserting that a reconcile which kills untracked panes emits an `Info` line naming those pane ids, and that a reconcile which kills nothing emits no output at all.
+  In `internal/reedengine/reconcile_test.go`, add one focused test driving `reconcileLocked` through the `newTestEngine` fixture with an `e.tmux.execHook` that answers `kill-pane` successfully.
+  `execHook` is the field declared in `internal/reedengine/overlay.go` that replaces the real subprocess exec for both the run and capture paths;
+  `internal/reedengine/lifecycle_test.go` shows the switch-on-`args[0]` shape to follow.
+  Assert that a reconcile which kills untracked panes emits an `Info` line naming those pane ids, and that a reconcile which kills nothing emits no output at all.
   Assert on the pane ids' presence, not on the message's exact wording — the point is that the destructive path is observable.
 - **Commit:** `feat(reedengine): log the panes a reconcile reaps`
 
