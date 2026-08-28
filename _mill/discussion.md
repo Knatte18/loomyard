@@ -89,6 +89,14 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 - Decision: the hook command is the cheapest possible thing — a backgrounded `run-shell -b` that creates/truncates a signal file at `<stateDir()>/reed-resize.signal`.
   The watch loop consumes the signal by **removing the file**, so existence alone is the signal and no timestamp comparison is involved.
   The removal happens *before* the re-apply, so a resize arriving mid-apply re-signals rather than being swallowed.
+  **Full lifecycle**, so nothing about the file is left to inference:
+  - **At watcher start:** any pre-existing file is removed before the loop begins.
+    A stale file is either a leftover from a previous watcher in this session or a resize that happened while none was running;
+    both are already answered by the fact that the session boot which starts the watcher applies the layout itself, so consuming the stale signal would only buy a redundant apply.
+    Removing it makes the loop's initial state deterministic.
+  - **On `watchdog: off`:** `pinGeometryOptionsLocked` removes the file in the same non-fatal block where it unsets the hook, so turning the watchdog off leaves neither a hook that writes nor a file that lingers.
+  - **At `Down`:** left alone, and harmless — the file is meaningless without a live session, it lives under the ephemeral `.lyx` tree that the Durable-vs-Ephemeral State Invariant already designates as disposable, and the next watcher start removes it regardless.
+    No teardown code is added for it.
 - Rationale: the hook must do as little as possible because it fires once per resize step;
   a `touch`-equivalent is roughly a millisecond, while spawning `lyx` is orders of magnitude more.
   The watcher's steady-state cost is then an `os.Stat` (microseconds) per tick and **zero** subprocesses — nothing is spawned until an actual resize happens.
@@ -156,6 +164,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
   So `window-resized` tracks *client-driven* window size changes, not layout-driven ones, which is precisely the property that makes it usable and `window-layout-changed` unusable.
   The box-equality guard is kept anyway, and cheaply: it costs one `display-message` the apply path already performs, it breaks any self-trigger loop on a future tmux or on psmux without depending on this probe holding there, and it also suppresses the redundant re-apply when two signals coalesce imperfectly.
   It must compare against the last **successfully-applied** box, never the last observed one, or a failed apply would be skipped on retry.
+  The box the guard compares is the one `ReapplyLayout` **returns**, not one the watcher queries for itself — so the result type is concrete: `ReapplyResult{Applied bool, Box render.Box, BoxIsLive bool}`.
+  `BoxIsLive` is load-bearing, because `liveBoxLocked` (`windowsize.go:42`) never reports failure: on a round-trip error or a malformed answer it `logger.Warn`s and returns the configured `cfg.Width`/`cfg.Height` pair, which is a perfectly plausible-looking box.
+  A degraded query is therefore **not an observation**: when `BoxIsLive` is false the watcher neither updates its last-applied box nor treats the comparison as meaningful, so a fallback box can cause neither a spurious permanent skip (fallback happens to equal the last applied box) nor a spurious re-apply loop (fallback differs from it forever).
+  This needs `liveBoxLocked` to expose the `ok` it already computes internally — a sibling returning `(render.Box, bool)`, with today's method delegating to it and discarding the flag, so no existing caller changes.
 - Rejected: relying on the probe alone with no guard (correct on tmux 3.6 today, unverified on psmux, and a silent infinite loop is the worst possible failure mode for an unattended loop inside the session keepalive);
   clearing the signal file again after each apply to swallow self-fired signals (would also swallow a genuine resize that arrived during the apply).
 
@@ -197,7 +209,19 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
   **`off` disables the whole mechanism, not just the loop**, in all three of its parts: the watch loop does not start, `pinGeometryOptionsLocked` does not install the hook, and — because `pinGeometryOptionsLocked` is an `*Engine` method and already holds `e.cfg` — it actively **unsets** any hook already present on the session, so flipping to `off` and running any op that reaches that function (a boot, or an attach pre-flight) leaves no orphan hook writing signal files nobody consumes.
   The poll fallback is part of the loop and is disabled with it.
   The unset is non-fatal like every other call in that function.
-  **An invalid value is a hard error**, not a silent degrade: a pure `watchdogOption(raw) (bool, error)` validator mirrors `mouseOption` (`mouse.go:14`) exactly — trimmed, lowercased, `on`/`off` only, everything else including the empty string returning an error — and is called from the same boot path that validates `mouse`, so a typo fails `lyx reed up` loudly.
+  **An invalid value is a hard error on exactly one path, and treated as `off` on the other two.**
+  The validator itself is a pure `watchdogOption(raw) (bool, error)` mirroring `mouseOption` (`mouse.go:14`) exactly — trimmed, lowercased, `on`/`off` only, everything else including the empty string returning an error — but its three consumers cannot all react the same way, because two of them have no error channel:
+  - `ensureServerAndSessionLocked` (`lifecycle.go:176`), the boot path that already validates `mouse` — **hard error**, so `lyx reed up` fails loudly and names the bad value.
+    This is the one place an operator reliably sees it.
+  - `pinGeometryOptionsLocked` (`windowsize.go:90`), reached from boot and from `AttachArgv`'s pre-flight (`attach.go:80`) — the function returns nothing and is all-non-fatal by contract, so it **takes the unset side**: an invalid value is treated as `off`, the hook is unset rather than installed, and a `logger.Warn` records why.
+    This path is only reachable with an invalid value at all when the operator edits `reed.yaml` *after* the session booted, since boot itself would have refused;
+    unsetting is the conservative half, because it stops signals rather than starting them, and the operator's next `up` delivers the loud error.
+  - the header-pane watch loop in `reedcli/header.go`'s `--blocking` tail — **declines to start**, logs, and falls through to the plain block-forever keepalive.
+    It never errors out of the pane.
+- Rationale for the split: a hard error in the header tail would kill the keepalive the header pane exists to provide, directly contradicting `watch-loop-failures-are-never-fatal` — a config typo would take down the pane that keeps the session alive, which is far worse than self-heal being off.
+  Meanwhile `pinGeometryOptionsLocked` cannot report an error even if it wanted to.
+  So exactly one consumer is loud, and it is the one the operator is watching;
+  the other two fail safe toward "no watchdog" and say so in the log.
 - Rationale: this is new always-on background infrastructure that touches every session on the box, which is a materially different risk profile from the status-line pin whose "no requirement behind it — YAGNI" rejection would otherwise be the governing precedent.
   An operator who hits a watchdog bug needs a way to turn it off that is not "downgrade `lyx`".
   `mouse` is the precedent for a reed behaviour pinned explicitly in both directions with an env override, and it is the precedent for the invalid-value behaviour too: a sibling key in the same file validated two different ways would be the inconsistency, and a silently-ignored typo in a self-heal kill-switch is exactly the failure an operator would not notice until the layout stopped healing.
@@ -360,7 +384,10 @@ From `CONSTRAINTS.md`:
 - **Sandbox Suite Coverage** — a new scenario carrying a `**Covers:** reed` tag.
 - **Documentation Lifecycle / task-completion rule** (`CLAUDE.md`) — `internal/reedengine/doc.go` is where this package records its load-bearing behavioural assumptions;
   the resize self-heal, the hook, and the SIGWINCH rejection belong there, in the same commit.
-  `manifest/roadmap.md` moves for this item because it completes part of a planned entry — the entry must be updated to reflect that the resize half shipped and the pane-reap half remains.
+  `manifest/roadmap.md`: **no section move.**
+  `reed: watchdog daemon` is a **Someday** entry (`roadmap.md:32`), not a Planned one, and CLAUDE.md restricts roadmap movement to completing or adding a *Planned* item;
+  roadmap Maintenance documents Planned/Someday → Done on ship, which this is not, since only one of the entry's two halves ships.
+  What changes is the entry's **prose, amended in place**: the resize-geometry half is done, the pane-reap half (and its reap-probe prerequisite) remains, and the description "a standalone per-worktree daemon" is corrected — the shape that shipped is a watch loop hosted in the existing header pane, which is the opposite of standalone, and leaving that wording would misdescribe the thing the remaining half must now be built on.
 
 Discovered during discussion:
 
@@ -390,7 +417,13 @@ Discovered during discussion:
 - The signal-file consume step: existence detected, file removed before the apply, a re-touch during the apply detected on the next tick.
 - The hook-availability decision: given scripted `show-hooks`-class output via `TmuxCmd.execHook`, assert the watcher selects signal-driven mode when the hook is present, poll mode when absent, and poll mode when the round trip errors.
 - The `watchdog` config key: `on`/`off`/absent/empty/garbage against the `watchdogOption` validator, asserting a hard error for every non-`on`/`off` value exactly as `mouseOption`'s own test table does, plus the embedded-template default for both GOOS variants.
-- `watchdog: off` scope: assert the loop does not start, that `pinGeometryOptionsLocked` issues an **unset** rather than an install, and that the unset failing is non-fatal — all three drivable through `TmuxCmd.execHook` with no live server.
+- `watchdog: off` scope: assert the loop does not start, that `pinGeometryOptionsLocked` issues an **unset** rather than an install and removes the signal file, and that the unset failing is non-fatal — all drivable through `TmuxCmd.execHook` with no live server.
+- Per-consumer invalid-value behaviour, which is three different answers and therefore three assertions: the boot path returns an error naming the value;
+  `pinGeometryOptionsLocked` unsets rather than installs and returns normally;
+  the header tail declines to start the loop and does **not** return an error.
+  **TDD candidate** — the header-tail case is the one where an obvious implementation propagates the error and kills the keepalive.
+- The box-equality guard's degraded case: when `BoxIsLive` is false, assert the last-applied box is not updated and the comparison does not gate the next apply — neither a permanent skip nor a permanent re-apply.
+- Signal-file lifecycle: a stale file present at watcher start is removed before the loop begins.
 - The box-equality guard: a signal whose live box equals the last successfully-applied box issues no `select-layout`;
   a signal after a *failed* apply is not skipped even though the observed box is unchanged.
   **TDD candidate** — this is the loop-breaker, and the failed-apply case is the one an obvious implementation gets wrong.
@@ -473,5 +506,14 @@ Attach with `lyx reed attach`, drag the terminal window larger and smaller, and 
 - **Q:** Is an invalid `watchdog` value a hard error or a silent degrade? **A:** Hard error, validated exactly like `mouse`. **Why:** two sibling keys in the same config file validated differently is the inconsistency, and a silently-ignored typo in a self-heal kill-switch surfaces only when self-heal has already stopped working.
 - **Q:** Does the shell seam need extending for the hook string? **A:** Yes — commit to a `Touch` primitive with POSIX and pwsh implementations, dialect selected by `shell.ForGOOS()`. **Why:** the interface has no file-touch today and hand-rolling at the call site is what the Shell Mechanics Seam forbids;
   note that `run-shell` runs under the tmux server's shell, not the pane shell, and that only the POSIX dialect executes in practice since Windows runs in poll mode.
+- **Q:** The `watchdog` key has three consumers but only one has an error channel — what does an invalid value do on the other two? **A:** Hard error on the boot path only;
+  `pinGeometryOptionsLocked` treats it as `off` and unsets the hook;
+  the header tail declines to start the loop and keeps blocking. **Why:** a hard error in the header tail would kill the keepalive the pane exists to provide, contradicting `watch-loop-failures-are-never-fatal`, and `pinGeometryOptionsLocked` returns nothing and cannot report one — so the loud path is the one the operator is watching, and the other two fail safe toward "no watchdog".
+- **Q:** `liveBoxLocked` never reports failure — it returns the configured box on a degraded query. Does that break the box-equality guard? **A:** Yes, so the guard consumes the box from `ReapplyResult{Applied, Box, BoxIsLive}` and treats a fallback box as *not an observation*. **Why:** otherwise a fallback that happens to equal the last applied box would skip forever, and one that differs would re-apply forever;
+  `liveBoxLocked` already computes the `ok` flag internally and only needs to expose it.
+- **Q:** What is the signal file's lifecycle outside the consume step? **A:** Removed at watcher start, removed alongside the hook unset on `watchdog: off`, left alone at `Down`. **Why:** removing at start makes the loop's initial state deterministic and costs nothing, since the boot that starts the watcher applies the layout anyway;
+  at `Down` the file is meaningless without a session and lives in the ephemeral tree, so adding teardown code for it would be ceremony.
+- **Q:** Does `manifest/roadmap.md` move? **A:** No section move — the Someday entry's prose is amended in place. **Why:** CLAUDE.md limits roadmap movement to Planned items, this is a Someday entry, and only one of its two halves ships;
+  the entry's "standalone per-worktree daemon" wording is corrected, since the shape that shipped is the opposite of standalone and the remaining half will be built on it.
 - **Q:** Anything blocking the header pane from hosting the loop? **A:** Two things, both handled. **Why:** `testing.Testing()` gates the header launch line so no Go test can boot a real header-hosted watcher — the tier-2 test runs the loop in-process instead;
   and the pane's stderr is its screen, so the `--blocking` tail discards the logger's stderr half (the durable sink keeps everything) or the first degraded tmux round trip paints a slog line over the operator console.
