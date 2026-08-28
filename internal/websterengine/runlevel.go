@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -601,15 +602,19 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return runResult, nil
 
 	case shuttleengine.OutcomeAsking:
+		logger.Warn("websterengine: master run is asking", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir, "lastAssistantMessage", result.LastAssistantMessage)
 		return RunResult{}, &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
 
 	case shuttleengine.OutcomeDied:
+		logger.Warn("websterengine: master run died", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir)
 		return RunResult{}, &MasterDiedError{SessionID: result.SessionID, RunDir: result.RunDir}
 
 	case shuttleengine.OutcomeTimeout:
+		logger.Warn("websterengine: master run timed out", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir)
 		return RunResult{}, &MasterTimeoutError{SessionID: result.SessionID, RunDir: result.RunDir}
 
 	default:
+		logger.Warn("websterengine: master run returned unrecognized shuttle outcome", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir)
 		return RunResult{}, fmt.Errorf("webster: master run returned unrecognized shuttle outcome %q", result.Outcome)
 	}
 }
