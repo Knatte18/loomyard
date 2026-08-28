@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-28T07:45:31Z'
+discussion-fix-r1  '2026-08-28T08:10:50Z'
 ```

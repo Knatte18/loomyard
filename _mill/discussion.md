@@ -42,8 +42,11 @@ Established by reading the code, not inferred:
    This explains the reported non-determinism exactly: the WARN fires only for a `deploy-dev`-stamped binary (`buildinfo.Channel == "dev"`) whose board stencils are stale relative to the working tree, and stops firing the moment those stencils are refreshed (`lyx stencil sync`) or the binary is a production build.
    It is not a timing window.
 
-A fourth, related side effect falls out of the same reading: because the header keepalive runs the full root pre-run, it can also reach `fabricengine.CommitSeededStencils` (`cmd/lyx/stencilseed.go:105`) and perform a **git commit in the hub** from a tmux pane process.
-That is undesirable independently of the noise.
+A separate exposure — independently discovered by reading the same pre-run code path, and **not** something that co-occurs with the WARN above — is that the header keepalive can reach `fabricengine.CommitSeededStencils` (`cmd/lyx/stencilseed.go:105`) at all and perform a **git commit in the hub** from a tmux pane process.
+The two never fire together: `reconcileOne`'s `StateUntouched` dev-mode branch logs the WARN and returns `wrote = false` (`internal/stencilstore/reconcile.go:100-108`), so a warned-about stencil is never added to `written`, and `seedStencilsAt` returns early when `written` is empty (`cmd/lyx/stencilseed.go:101-103`).
+A commit fires only from the other classifications — a `StateAbsent` seed, a `StateReconciled` restamp, or a production-mode `StateUntouched` refresh — none of which produce the WARN.
+The commit exposure is undesirable on its own terms, in its own scenarios, and is a second reason to keep the header out of the seed pass;
+it is not evidence for the noise, and this distinction must not be blurred when `internal/reedengine/doc.go` is updated.
 
 Note also that `headerCmd`'s `--blocking` path already prints `\x1b[2J\x1b[H` before the text (`internal/reedcli/header.go:70`).
 `ED 2` clears the visible screen only;
