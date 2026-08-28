@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-attach-header-height-bug
 branch: reed-attach-header-height-bug
 plan: _mill/plan
@@ -24,4 +24,17 @@ plan-review-r1  '2026-08-28T08:44:06Z'
 plan-fix-r1  '2026-08-28T08:46:46Z'
 plan-review-r2  '2026-08-28T08:52:33Z'
 planned  '2026-08-28T08:52:52Z'
+implementing  '2026-08-28T08:53:20Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: render-fixed-height-pins
+    state: pending
+  - name: engine-hook-install
+    state: pending
+  - name: integration-contract-docs
+    state: pending
 ```
