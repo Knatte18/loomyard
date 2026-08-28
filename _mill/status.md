@@ -41,7 +41,9 @@ batches:
     commit_sha: 6e2e9d36e35b8030200c7a702f32f49bcc724925
     verify_baseline_failures: []
   - name: hard-error-warn-lines
-    state: pending
+    state: running
+    implementer_session: ef70df03-7a4f-4985-8bc8-93967ebd6408
+    start_sha: af6b379b3e2c804c905f3530b7e30386ec1fbf74
     verify_baseline_failures: []
   - name: spawn-site-log-lines
     state: pending
