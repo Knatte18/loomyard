@@ -48,7 +48,9 @@ batches:
     commit_sha: d2fa6dc86a94894f511ba1e3b0e225ab7323be61
     verify_baseline_failures: ["FAIL\t./internal/summaryparser/... [setup failed]"]
   - name: finalize-message
-    state: pending
+    state: running
+    implementer_session: 1a82793e-b4bc-4351-a8b4-0cc019799e53
+    start_sha: 864323d07c2e883b34882b03618e4c18f52edac5
     verify_baseline_failures: []
   - name: docs-and-specs
     state: pending
