@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: reed-watchdog-daemon
 branch: reed-watchdog-daemon
-plan: null
+plan: _mill/plan
 parent: main
 task: 'reed: watchdog daemon'
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-28T08:07:59Z'
 discussed  '2026-08-28T09:31:41Z'
+planning  '2026-08-28T09:46:00Z'
 ```
