@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-spawn-observability-guard
+phase: holistic-reviewing
 slug: logger-coverage-audit
 branch: logger-coverage-audit
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-hard-error-warn-lines  '2026-08-28T07:12:29Z'
 approved-spawn-site-log-lines  '2026-08-28T07:18:33Z'
 approved-github-caller-warn-lines  '2026-08-28T07:23:15Z'
 approved-spawn-observability-guard  '2026-08-28T07:27:51Z'
+holistic-reviewing  '2026-08-28T07:28:14Z'
 ```
 
 ## Batches
