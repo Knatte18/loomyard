@@ -50,6 +50,12 @@ func newTestEngine(t *testing.T) *Engine {
 		CollapsedStripRows: 2,
 		MinFullRows:        3,
 		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",
+		// A valid value so every caller of this shared fixture that reaches
+		// ensureServerAndSessionLocked (watchdogOption's boot-path validation)
+		// does not start failing on "invalid watchdog value" instead of on
+		// what it actually asserts. A test that wants an invalid value
+		// overrides e.cfg.Watchdog itself.
+		Watchdog: "on",
 	}
 	return New(cfg, geom)
 }
