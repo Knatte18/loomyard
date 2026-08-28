@@ -29,7 +29,6 @@ The interface batch 3 consumes is `Deps.FinalSummaryPath` plus `summaryparser.Pa
 - **Context:**
   - `internal/summaryparser/summary.go`
   - `internal/websterengine/geometry.go`
-  - `internal/shedrecipe/recipe.go`
 - **Edits:**
   - `internal/landingshed/deps.go`
   - `internal/landingshed/publish.go`
@@ -38,6 +37,7 @@ The interface batch 3 consumes is `Deps.FinalSummaryPath` plus `summaryparser.Pa
   - `internal/landingshed/seam_enforcement_test.go`
   - `internal/loomcli/landingdeps.go`
   - `internal/loomcli/landingdeps_test.go`
+  - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/entries_simple_test.go`
   - `internal/shedbuild/fixture_test.go`
   - `internal/loomrecipe/fixture_test.go`
@@ -48,7 +48,10 @@ The interface batch 3 consumes is `Deps.FinalSummaryPath` plus `summaryparser.Pa
   In `internal/landingshed/deps.go`, delete the `WebsterDir string` field and its doc comment from `Deps`, and add `FinalSummaryPath string` in the same position.
   Its doc comment states that it is the told absolute path to the final-summary artifact itself — not a directory, and not a producer's directory — and that the caller resolves it, so neither producer in this package knows which producer wrote the file.
   Do not add a second field alongside it; carrying both would be the derived near-duplicate `ScratchDir`'s own comment already argues against.
-  `Deps`' field count is unchanged, so `internal/shedrecipe/recipe.go`'s "fourteen fields" comment and `internal/loomcli/landingdeps_test.go`'s "fifteenth field" comment both stay accurate — leave both alone.
+
+  `Deps`' field count is unchanged by this swap — one field out, one field in — but two comments that state that count are already wrong today, before this task touches anything: `internal/shedrecipe/recipe.go` says `landingshed.Deps` "already carries fourteen fields" and `internal/loomcli/landingdeps_test.go` says the reflection guard catches "a fifteenth field added later", while the struct in fact carries fifteen fields.
+  Correct both counts as a drive-by — `internal/loomcli/landingdeps_test.go` is already being edited by this card, and `internal/shedrecipe/recipe.go`'s comment is about the exact struct whose field set this card changes, so leaving a knowingly-wrong count behind while editing around it would make the next reader trust neither comment.
+  Do not claim in the commit message or anywhere else that the counts were accurate; they were not.
 
   In `internal/landingshed/publish.go`, replace the `websterengine.ParseSummary(websterengine.SummaryPath(p.deps.WebsterDir))` call in step 8 with `summaryparser.Parse(p.deps.FinalSummaryPath)`, and replace the `internal/websterengine` import with `internal/summaryparser`.
   Keep the existing `landingshed: %s: parse summary artifact: %w` wrapping and the existing disposition — a returned error, not `Stuck` — unchanged.
@@ -68,6 +71,9 @@ The interface batch 3 consumes is `Deps.FinalSummaryPath` plus `summaryparser.Pa
   In `internal/shedrecipe/entries_simple_test.go`'s `validLandingDeps`, `internal/shedbuild/fixture_test.go`'s `testLandingDeps`, and `internal/loomrecipe/fixture_test.go`'s `testLandingDeps`, replace `WebsterDir: dir` with a non-empty `FinalSummaryPath` derived from the same `dir`.
   None of these three packages ever calls `Call`, so no artifact is written to disk here — a told path string is enough.
 - **Commit:** `refactor(landingshed): replace Deps.WebsterDir with a told FinalSummaryPath`
+
+_The `internal/shedrecipe/recipe.go` edit in this card is a one-word field-count comment correction only.
+Do not change `Env.Landing`'s type, its whole-struct passthrough shape, or any other line in that file._
 
 ### Card 6: Delete the four websterengine summary names and retarget the rest
 
@@ -104,7 +110,7 @@ The interface batch 3 consumes is `Deps.FinalSummaryPath` plus `summaryparser.Pa
   Add the `internal/summaryparser` import.
   Do not touch `ArchiveStaleSummary`'s or `AppendIntegrationFailure`'s call sites in this file — those functions keep their names and signatures.
 
-  In `internal/webstercli/recordbatch.go`, change the `SummaryPath: websterengine.SummaryPath(c.geom.WebsterDir)` assignment filling `websterengine.RecordBatchDeps.SummaryPath` to `summaryparser.Path(c.geom.WebsterDir)`, and add the `internal/summaryparser` import.
+  In `internal/webstercli/recordbatch.go`, change the `SummaryPath: websterengine.SummaryPath(c.geom.WebsterDir)` assignment filling `websterengine.RecordDeps.SummaryPath` to `summaryparser.Path(c.geom.WebsterDir)`, and add the `internal/summaryparser` import.
   `RecordBatchDeps.SummaryPath` is a told string field and keeps its own name — do not rename it.
 
   In `internal/shedadapters/webster.go`, change the `Done` outcome's `shedengine.OutputPointer{Path: websterengine.SummaryPath(p.deps.Geom.WebsterDir)}` to use `summaryparser.Path`, adding the `internal/summaryparser` import alongside the existing `internal/websterengine` one, which this package legitimately keeps.
@@ -116,7 +122,7 @@ The interface batch 3 consumes is `Deps.FinalSummaryPath` plus `summaryparser.Pa
 
   In `internal/websterengine/integration_test.go`, replace `websterengine.SummaryPath(websterDir)` with `summaryparser.Path(websterDir)` and add the import.
   This file is `//go:build integration`-tagged and must keep compiling under that tag.
-  In `internal/shedadapters/webster_test.go`, replace the `wantPath := websterengine.SummaryPath(dir)` assertion with `summaryparser.Path(dir)` and add the import.
+  In `internal/shedadapters/webster_test.go`, replace each occurrence of `wantPath := websterengine.SummaryPath(dir)` — there are two, one in `TestWebsterProducer_OutcomeDone` and one in `TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds` — with `summaryparser.Path(dir)`, and add the import.
 
   Leave the bare `"summary.md"` literals in `internal/websterengine/recordbatch_test.go`, `internal/websterengine/runlevel_test.go`, and `internal/webstercli/smoke_test.go` exactly as they are — the Summaryparser Sole-Parser Invariant is scoped to production code, and a fixture writing the literal filename is the clearer test.
 - **Commit:** `refactor(websterengine): delete the summary read contract in favour of summaryparser`

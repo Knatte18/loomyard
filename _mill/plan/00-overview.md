@@ -26,7 +26,7 @@ batches:
     name: retarget-callers
     file: 02-retarget-callers.md
     depends-on: [1]
-    verify: go vet ./... && go test ./internal/summaryparser/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shedadapters/... ./internal/landingshed/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/... ./internal/loomrecipe/...
+    verify: go vet ./... && go vet -tags integration ./... && go test ./internal/summaryparser/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shedadapters/... ./internal/landingshed/... ./internal/loomcli/... ./internal/shedrecipe/... ./internal/shedbuild/... ./internal/loomrecipe/...
   - number: 3
     name: finalize-message
     file: 03-finalize-message.md
@@ -143,6 +143,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/shedadapters/webster.go`
 - `internal/shedadapters/webster_test.go`
 - `internal/shedbuild/fixture_test.go`
+- `internal/shedrecipe/recipe.go`
 - `internal/shedrecipe/entries_simple_test.go`
 - `internal/summaryparser/doc.go`
 - `internal/summaryparser/leaf_enforcement_test.go`
