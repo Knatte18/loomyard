@@ -50,6 +50,8 @@ Batch-local decision beyond the overview's Shared Decisions: cards 14 and 15 sha
 
 - **Context:**
   - `internal/reedcli/header.go`
+  - `internal/reedcli/cli.go`
+  - `internal/lyxcwd/lyxcwd.go`
 - **Edits:**
   - `internal/reedcli/header_test.go`
 - **Creates:** none

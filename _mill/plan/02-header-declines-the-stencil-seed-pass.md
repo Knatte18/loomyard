@@ -104,6 +104,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Context:**
   - `internal/clihelp/annotations.go`
   - `internal/stencilstore/reconcile.go`
+  - `internal/fabricengine/stencilcommit.go`
 - **Edits:**
   - `cmd/lyx/stencilseed.go`
   - `cmd/lyx/main.go`
@@ -128,6 +129,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Context:**
   - `internal/clihelp/annotations.go`
   - `cmd/lyx/stencilseed.go`
+  - `internal/reedcli/smoke_headerseed_test.go`
 - **Edits:**
   - `internal/reedcli/header.go`
 - **Creates:** none

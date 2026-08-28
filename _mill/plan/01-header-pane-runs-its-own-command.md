@@ -74,6 +74,7 @@ Batch-local decision beyond the overview's Shared Decisions: the retry path gets
   - `internal/reedengine/spawn.go`
   - `internal/reedengine/headerpane.go`
   - `internal/reedengine/lock.go`
+  - `internal/reedengine/lifecycle_test.go`
 - **Edits:**
   - `internal/reedengine/lifecycle.go`
 - **Creates:** none
