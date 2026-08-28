@@ -51,6 +51,8 @@ batches:
     commit_sha: a546d2c39cf201fb9c92a8f9b5364609789350af
     verify_baseline_failures: []
   - name: scrollback-backstop-and-composite-smoke
-    state: pending
+    state: running
+    implementer_session: 9211818a-ceaa-44a7-915e-0a014d59f884
+    start_sha: 45abe306a117194352110780ffa87fced911004d
     verify_baseline_failures: []
 ```
