@@ -31,6 +31,10 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
   Specifically including the load-bearing-assumption bullet on dead-pane adoption (`doc.go` "Dead-pane adoption via remain-on-exit (spawn.go)", the paragraph asserting *"`planPaneTarget` must never adopt such a corpse"*) and the package-invariant sentence naming adoption as one of the header's three exclusion seams — both describe a seam this task deletes, so both must be rewritten rather than left standing.
 - **Adoption-describing comments elsewhere**, in-scope as doc surface even though their surrounding logic is untouched: `internal/reedengine/spawn.go`'s file-header comment (*"create (or adopt) a tmux pane"*) and `internal/reedengine/strand.go`'s `RemoveStrand` kill-loop comment (*"planPaneTarget never adopts a corpse"*, ~`strand.go:497`).
   Neither may be left asserting a behaviour that no longer exists.
+- `internal/reedengine/spawn_test.go` — its file-header comment and its whole `planPaneTarget` adopt-vs-split table (the `wantAdoptID` column, the sole-candidate-narrowing cases) are built on adoption and go with it.
+- `internal/reedcli/smoke_panecwd_test.go` — see the affected-test enumeration below.
+- `internal/reedcli/smoke_lifecycle_test.go` — `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` and `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`, plus the two new regressions.
+- `internal/reedcli/smoke_teardown_test.go` — comment only (see enumeration).
 - Unit tests in `internal/reedengine/reconcile_test.go` and `internal/reedengine/spawn_test.go`.
 - Real-tmux smoke regressions in `internal/reedcli/smoke_lifecycle_test.go` for both M16 and M22.
 
@@ -88,7 +92,18 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
 - Rationale: `AddStrand` and `UpdateStrand` today launch the pane inside `addStrandLocked`/`updateStrandLocked` and reconcile only afterwards, in the `reconcileApplyPersistLocked` tail — so on those paths a foreign pane is guaranteed to still be there when the target is chosen.
   `Resume` happens to reconcile before its launches, which is why the bug is invisible there.
   Putting the reap inside the one shared realization helper makes "reap before allocate" true by construction on every path, present and future, which is exactly the property the task brief names as missing.
-  It is safe in every caller: the new strand is appended with `PaneID == ""` before `launchStrandLocked` runs, so reconcile never clears or kills anything belonging to the strand being launched, and during `Resume`'s per-strand loop the already-relaunched strands are bound and therefore exempt.
+  It is safe with respect to the strand being launched: it is appended with `PaneID == ""` before `launchStrandLocked` runs, so reconcile never clears or kills anything belonging to it, and during `Resume`'s per-strand loop the already-relaunched strands are bound and therefore exempt.
+- **Accepted consequence — a destructive-then-unpersisted window on a failing launch.** `AddStrand`/`UpdateStrand` reach `SaveState` only after `launchStrandLocked` returns nil, so a `split-window` or `send-keys` failure now returns with panes already killed and other strands' binding clears living only in memory.
+  This window does not exist today, where reconcile always runs immediately ahead of `SaveState` in the tail.
+  It is accepted rather than closed, because it is self-healing and the obvious fix is worse:
+  - Self-healing: `reed.json` is left exactly as it was before the failed verb, naming strands bound to panes that no longer exist.
+    Nothing reads that as truth — `Status` and `toRenderStrands` derive liveness from the live pane set (`aliveIDSet`/`liveIDSet`), not from the persisted binding — so no consumer is misled in the interim, and the next mutating verb's reconcile clears the stale bindings on its own.
+    Pane-id reuse across a server rebirth, the one way a stale binding could name someone else's pane, is already handled upstream by `adoptPaneGenerationLocked` and `clearAllPaneBindings`.
+  - Why not persist first: calling `SaveState` inside `launchStrandLocked` after the reap would write the *whole* state, which on the `add` path includes the half-added strand record that has not yet acquired a pane.
+    A failed `add` would then leave a phantom strand in `reed.json` that `Resume` would later try to launch — turning a clean failure into persistent corruption.
+    Trading a benign, self-healing stale binding for that is a bad exchange.
+  - mill-plan must not "fix" this by adding a `SaveState` inside the helper.
+    If a future change makes the window matter, the right shape is reaping before the strand record is appended, not persisting a partial one.
 - Rejected: duplicating a reconcile call into `AddStrand` and `UpdateStrand` (two call sites to keep in sync, and a future third realization path would silently miss it);
   leaving the ordering alone and relying on the tail (this is the defect).
 
@@ -144,7 +159,7 @@ There is no `manifest/designs/reed.md` — `internal/reedengine/doc.go` (477 lin
 
 - `planReconcile(strands, live, headerPaneID) (clearedGUIDs, panesToKill, keptDeadPane)` is pure and unit-testable.
   It computes `boundPaneIDs` from strand bindings, then `anyBoundPresent` (is any bound pane present in `live`), then `exemptPaneIDs` = bound panes + the header.
-  The untracked reap is the `if anyBoundPresent { … }` block near the end — this is the single line to change.
+  The untracked reap is the `if anyBoundPresent { … }` block near the end — that condition is the gate flip, but it is **not** the whole edit to this function: `planReconcile` returns one merged `panesToKill` slice, and the-reap-logs-what-it-destroys requires the untracked kills to be distinguishable from the dead-pane kills, so its return shape changes too.
   Note the existing comment on `exemptPaneIDs`: it gates only *which* panes escape the reap, while `anyBoundPresent` stays derived from real strand bindings — preserve that separation.
 - The header is exempt from the dead-pane kill too, for a documented reason (a killed dead header leaves the session headerless with a stale `HeaderPaneID` until the next `up`/`resume`).
 - `reconcileLocked(st, live)` composes the plan with `kill-pane` I/O and clears bindings for cleared GUIDs.
@@ -267,6 +282,30 @@ Keep this to one focused test — the point is that the destructive path is obse
   Its surviving `len(panes) == 0` assertion is loose enough to keep passing while its stated premise is false, which is worse than a failure — so the comments must be rewritten to the new behaviour and the `up` assertion tightened to the exact expected pane set (the header alone) rather than merely non-empty.
   What the test exists to pin is unchanged and must stay pinned: `up` with zero placeable strands must never emit a zero-cell layout string, because tmux answers that by destroying every pane and wedging the session.
   The post-`add` assertion (exactly the strand pane and the header pane) still holds.
+
+**Affected-test enumeration.**
+
+Two premises this task falsifies are asserted across the existing suite: *"the first strand adopts the session's initial pane"* and *"an untracked/pre-header pane survives an `up`"*.
+The sweep is `grep -rn "adopt\|initial pane" internal/reedcli/*_test.go internal/reedengine/*_test.go`, then reading each hit to separate real dependencies from unrelated uses of the word (`adoptPaneGenerationLocked` — the server-rebirth generation probe — accounts for most hits in `generation_test.go`, `reapply_test.go` and `attach_test.go` and is untouched by this task).
+mill-plan should re-run that sweep rather than trusting this list, since it must also catch hits added after this discussion was written.
+Dispositions:
+
+- `internal/reedengine/spawn_test.go` — **in scope, substantially rewritten.**
+  Its header comment and its whole table are organised around the adopt-vs-split decision, including the sole-candidate narrowing.
+  The `wantAdoptID` column and every adoption case go; what survives is the split-target policy (tallest alive non-header, corpse fallback, header-as-last-resort).
+- `internal/reedcli/smoke_panecwd_test.go` — **in scope, premise rewritten, coverage preserved.**
+  `TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd` builds its two-case table on the contrast between an adopted first pane (correct by construction, since `new-session` carried `-c`) and a split second pane (the path the `-c` defect broke).
+  After this change both strands are splits, so the control/exercise contrast silently collapses into two identical cases — the test would still pass while no longer testing what its comment claims.
+  It must be rewritten: drop the adoption framing, keep both cases (a first-and-subsequent split pair is still worth asserting, since they take different `planPaneTarget` branches — header-as-split-target versus tallest-alive-non-header), and restate the header comment so the `-c` regression it guards is still the stated subject.
+- `internal/reedcli/smoke_lifecycle_test.go`'s `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile` — **in scope, comment and expectation corrected.**
+  Its comment asserts the first strand "lands on the session's other (pre-header) pane"; the new gate reaps that pane on the preceding `up`, so the strand now lands on a pane split off the header.
+  What the test exists to pin — the header is never adopted and stays alive across `up`/`add`/`remove`/reconcile — is unchanged and must stay asserted.
+- `internal/reedcli/smoke_teardown_test.go` (~line 216, *"Keeper first (adopts the initial pane)"*) — **in scope, comment only.**
+  The test's mechanics do not depend on which pane the keeper strand got; only the parenthetical is now false.
+- `internal/reedengine/lifecycle_test.go` (~line 388, *"the new-session initial pane a fresh …"*) — **read and confirm, likely out.**
+  It describes a fixture's pane set rather than asserting adoption; correct the wording only if it claims the initial pane is adopted or survives.
+- `internal/reedcli/smoke_resume_test.go` (~line 85) and `internal/reedengine/contract_integration_test.go` — **out.**
+  Both concern the reborn session's initial pane and the raw multiplexer contract, neither of which this task changes.
 
 **Also run:** the rest of `internal/reedengine` (untagged), `internal/reedcli` smoke, and the `integration`-tagged `contract_integration_test.go`, since the reap change alters which tmux calls are issued and in what order.
 
