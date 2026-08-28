@@ -25,9 +25,12 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
 
 **In:**
 
-- `internal/reedengine/reconcile.go` — `planReconcile`'s untracked-pane reap authorization, and a `logger.Info` line in `reconcileLocked`'s `kill-pane` loop.
+- `internal/reedengine/reconcile.go` — `planReconcile`'s untracked-pane reap authorization, its return shape (the untracked kills must be distinguishable from the dead-pane kills — see the-reap-logs-what-it-destroys), and a `logger.Info` line in `reconcileLocked`'s `kill-pane` loop.
 - `internal/reedengine/spawn.go` — `planPaneTarget` (drop pane adoption), `soleAliveNonHeaderPane` (delete), and `launchStrandLocked` (reap-before-allocate chokepoint).
 - `internal/reedengine/doc.go` — the package-doc paragraphs describing the deterministic untracked-reap policy and the header's exclusion seams, which currently document the behaviour being changed.
+  Specifically including the load-bearing-assumption bullet on dead-pane adoption (`doc.go` "Dead-pane adoption via remain-on-exit (spawn.go)", the paragraph asserting *"`planPaneTarget` must never adopt such a corpse"*) and the package-invariant sentence naming adoption as one of the header's three exclusion seams — both describe a seam this task deletes, so both must be rewritten rather than left standing.
+- **Adoption-describing comments elsewhere**, in-scope as doc surface even though their surrounding logic is untouched: `internal/reedengine/spawn.go`'s file-header comment (*"create (or adopt) a tmux pane"*) and `internal/reedengine/strand.go`'s `RemoveStrand` kill-loop comment (*"planPaneTarget never adopts a corpse"*, ~`strand.go:497`).
+  Neither may be left asserting a behaviour that no longer exists.
 - Unit tests in `internal/reedengine/reconcile_test.go` and `internal/reedengine/spawn_test.go`.
 - Real-tmux smoke regressions in `internal/reedcli/smoke_lifecycle_test.go` for both M16 and M22.
 
@@ -38,20 +41,30 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
   No change to `planLayout`, `anyPlacedStrand`, or the box resolution.
 - Process-subtree reaping (`descendantClosurePIDs` / `reapPaneChildren`) — stays confined to `RemoveStrand` and `Down`.
 - The read-only verbs: `Status`, `CapturePane`, `SendText`/`SendKey`, and the unattended watcher (`Watch` → `reapply.go`) never reconcile today and must not start.
-- `RemoveStrand`, `Down`, generation/foreign-session refusal (`generation.go`), `clearConflictingPaneBindings` — untouched.
+- `RemoveStrand`, `Down`, generation/foreign-session refusal (`generation.go`), `clearConflictingPaneBindings` — logic untouched;
+  `RemoveStrand`'s adoption-referencing comment is in scope as doc surface per the In list, but no code in it changes.
 - `manifest/roadmap.md` — this is a bugfix, not a planned-item completion.
 
 ## Decisions
 
-### reap-gate-accepts-the-header-as-survival-anchor
+### reap-gate-accepts-an-alive-header-as-survival-anchor
 
-- Decision: in `planReconcile`, change the untracked-reap authorization from `anyBoundPresent` alone to `anyBoundPresent || headerPresent`, where `headerPresent` means `headerPaneID != ""` and that id is **present** in `live` (presence, not aliveness).
+- Decision: in `planReconcile`, change the untracked-reap authorization from `anyBoundPresent` alone to `anyBoundPresent || headerAlive`, where `headerAlive` means `headerPaneID != ""` and that id is present in `live` **and not dead** — aliveness, not mere presence.
+  One rule for every call site; the gate is not parameterised per caller.
   `anyBoundPresent` itself keeps being computed from real strand bindings alone, exactly as its current comment demands; the new disjunct is added beside it, not folded into it.
+  The header's exemption from being killed (`exemptPaneIDs`, and the separate dead-pane-kill exemption) is a different question and stays keyed on presence — a header corpse is still never killed by reconcile, it just no longer *authorizes* reaping anything else.
 - Rationale: the reap is gated at all only to guarantee the session survives it — killing every pane would end the session.
-  The header pane is already unconditionally exempt from the reap (`exemptPaneIDs`) and is a permanent, first-class per-session construct, so whenever it is present it is exactly the survival anchor the gate is looking for.
+  The header pane is already unconditionally exempt from the reap and is a permanent, first-class per-session construct, so whenever it is alive it is exactly the survival anchor the gate is looking for.
   With zero strands bound the current gate is false, which is precisely M22's and M16's shared precondition.
-  Presence rather than aliveness is the right test because `remain-on-exit` keeps a dead header enumerable, and an enumerable pane keeps the session alive; a header corpse is separately healed by `ensureHeaderPaneLocked` on the next `up`/`resume`.
-- Rejected: reaping unconditionally whenever ≥2 panes are present (loses the explicit survival reasoning the current code is built around and would reap with no anchor at all when the header is missing);
+  **Aliveness rather than presence** because the reap-before-allocate chokepoint makes this gate fire from `add` and `update`, which never call `ensureHeaderPaneLocked` — so the "a corpse header is healed on the next `up`/`resume`" argument that would justify presence does not hold on those paths.
+  Under presence, a dead-but-present header could authorize reaping the session's only *alive* pane, leaving a session of nothing but corpses and sending `planPaneTarget` down its "no alive non-header pane" fallback to split a corpse.
+  Aliveness costs nothing where the reap is actually needed: `Up` and `Resume` both call `ensureHeaderPaneLocked` immediately before they reconcile, so the header is guaranteed alive by then (this is exactly why M22 is fixed), and on the `add`/`update` paths a corpse header simply defers the reap by one verb rather than authorizing a destructive one.
+- Behaviour when the anchor is absent (corpse header, no strand bound, one alive foreign pane, on the `add` path): nothing is reaped, `planPaneTarget` splits the alive foreign pane, and `validateSplitCreatedNewPane` still guarantees the strand gets a genuinely new, reed-owned pane.
+  The tail reconcile then has a bound present strand, so `anyBoundPresent` is true and the foreign pane is reaped within the same verb.
+  Convergence is preserved; only the destructive-with-no-anchor case is refused.
+- Rejected: presence rather than aliveness (unsafe on the launch path, per above);
+  parameterising the anchor's strength per call site — presence for `Up`/`Resume`, aliveness for `launchStrandLocked` — which buys nothing, since `Up`/`Resume` always have an alive header at that point anyway, and costs a second reap policy to keep in sync;
+  reaping unconditionally whenever ≥2 panes are present (loses the explicit survival reasoning the current code is built around and would reap with no anchor at all);
   adding an ad-hoc reap call inside `Up` only (leaves the same hole on every other verb, which is the defect being fixed).
 
 ### drop-pane-adoption-entirely
@@ -92,7 +105,8 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
 
 - Decision: `reconcileLocked` emits a `logger.Info` line when it kills panes, carrying the existing `"socket"`/`"session"` key shape plus the killed pane ids.
   One line per `reconcileLocked` call that killed anything, not one per pane — the killed set is the interesting unit and a per-pane line would be noise during `Resume`'s launch loop.
-  Whether the line distinguishes dead-pane kills from untracked-pane kills (e.g. two id lists, or a `reason` key) is mill-plan's call, but the untracked reap must be identifiable in the log, since that is the destructive half.
+  **Distinguishing untracked-pane kills from dead-pane kills is required, not optional**: only the mechanism (two id lists, a `reason` key, a small struct) is mill-plan's call.
+  `planReconcile` today returns one merged `panesToKill` slice, so satisfying this means its return shape changes to carry the two reasons apart — that change is in scope, and the unit tests below assert on the untracked half specifically.
 - Rationale: `reconcile.go` has no `logger` call today at all — the only nearby one is `spawn.go`'s `clearConflictingPaneBindings` warning.
   That was tolerable while the untracked reap essentially never fired without a bound strand;
   this task deliberately makes it fire on exactly the zero-strand precondition M16 and M22 share, so the reap goes from near-dormant to routine, and it destroys panes an operator may have created.
@@ -218,10 +232,13 @@ Discovered during discussion:
 Those cases encode the old policy and must be updated, not merely added to.
 Scenarios to cover:
 
-- Header present, zero strands, one untracked alive pane → the untracked pane is killed, the header is not.
-- Header present, zero strands, several untracked panes (M22's shape: an old header corpse-or-alive pane plus an orphaned strand pane) → all of them killed, the current header spared.
+- Header alive, zero strands, one untracked alive pane → the untracked pane is killed, the header is not, and the kill is reported as an *untracked* kill rather than a dead-pane kill.
+- Header alive, zero strands, several untracked panes (M22's shape: an old header pane plus an orphaned strand pane) → all of them killed, the current header spared.
 - Header **absent** (`headerPaneID == ""`) and no strand bound → nothing reaped (the gate must still refuse without an anchor).
-- Header present and a strand bound → unchanged behaviour, both exempt.
+- Header **present but dead**, no strand bound, one alive untracked pane → nothing reaped.
+  This is the case the BLOCKING finding in review round 2 identified: a corpse must not authorize destroying the session's only alive pane on a path that never heals the header.
+- Header dead **and** a strand bound to a present pane → the reap fires anyway (via `anyBoundPresent`), and the header corpse is still spared.
+- Header alive and a strand bound → unchanged behaviour, both exempt.
 - The dead-pane rules are untouched: `keptDeadPane` still spares one dead pane when nothing is alive, and a dead header is still never killed.
 
 **Unit — the reap log line:**
@@ -245,8 +262,11 @@ Keep this to one focused test — the point is that the destructive path is obse
 - **M22 regression.** `up`, `add` a strand, delete `.lyx/reed.json` while the session is live, `up`.
   Assert the session holds exactly one pane, that it is the newly persisted `HeaderPaneID`, that the old header id and old strand pane id are both gone, and that the old strand's process is gone.
   Asserting *on that `up`* — with no intervening verb — is the point of the test.
-- **Non-regression.** `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` must keep passing unchanged: `up` with zero placeable strands must still not destroy the pane set, and the post-`add` session must still hold exactly the strand pane and the header pane.
-  Verify it still asserts what it means to after the reap change (it will now reap the initial pane as well as the foreign one during the `add`).
+- **`TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` must be rewritten, not merely re-run.**
+  Its premise changes: with the header alive and zero strands, the reap now fires on that test's **second `up`**, killing both the unadopted initial pane and the foreign pane, where today's comments assert the opposite (*"the foreign panes survive an up"*, *"Every pane must survive it"*).
+  Its surviving `len(panes) == 0` assertion is loose enough to keep passing while its stated premise is false, which is worse than a failure — so the comments must be rewritten to the new behaviour and the `up` assertion tightened to the exact expected pane set (the header alone) rather than merely non-empty.
+  What the test exists to pin is unchanged and must stay pinned: `up` with zero placeable strands must never emit a zero-cell layout string, because tmux answers that by destroying every pane and wedging the session.
+  The post-`add` assertion (exactly the strand pane and the header pane) still holds.
 
 **Also run:** the rest of `internal/reedengine` (untagged), `internal/reedcli` smoke, and the `integration`-tagged `contract_integration_test.go`, since the reap change alters which tmux calls are issued and in what order.
 
@@ -255,7 +275,8 @@ The smoke regressions should also be written first and confirmed red against the
 
 ## Q&A log
 
-- **Q:** How should the untracked reap be authorized when no strand is bound to a present pane? **A:** [auto-pick] Gate on `anyBoundPresent || headerPresent`. **Why:** the gate exists only to guarantee session survival, and the header is already a permanent, reap-exempt pane — it is exactly the anchor the gate is looking for, and its absence from the condition is the shared precondition of both findings.
+- **Q:** How should the untracked reap be authorized when no strand is bound to a present pane? **A:** [auto-pick] Gate on `anyBoundPresent || headerAlive`. **Why:** the gate exists only to guarantee session survival, and the header is already a permanent, reap-exempt pane — it is exactly the anchor the gate is looking for, and its absence from the condition is the shared precondition of both findings.
+  Aliveness rather than presence because the launch-path chokepoint makes the gate fire from verbs that never heal a header corpse, where a corpse must not be allowed to authorize reaping the last alive pane.
 - **Q:** What happens to `planPaneTarget`'s sole-alive-non-header pane adoption? **A:** [auto-pick] Drop adoption entirely; always split. **Why:** the heuristic cannot distinguish reed's own initial pane from a foreign one and has now caused two live findings (R4-F5, M16);
   once the reap gate is fixed the initial pane is disposed of like any other untracked pane, so adoption buys nothing a fresh split does not.
 - **Q:** Where does the reap-before-allocate ordering fix belong? **A:** [auto-pick] Inside `launchStrandLocked`, as a single chokepoint. **Why:** it makes the property true by construction for `AddStrand`, `UpdateStrand`, `Resume` and any future realization path, rather than requiring two call sites to stay in sync — which is exactly the "not guaranteed on every code path" gap the brief names.
