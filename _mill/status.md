@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-specs
+phase: holistic-reviewing
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-summaryparser-leaf  '2026-08-28T06:36:46Z'
 approved-retarget-callers  '2026-08-28T06:44:23Z'
 approved-finalize-message  '2026-08-28T06:48:52Z'
 approved-docs-and-specs  '2026-08-28T06:55:51Z'
+holistic-reviewing  '2026-08-28T06:56:14Z'
 ```
 
 ## Batches
