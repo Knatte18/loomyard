@@ -178,6 +178,16 @@ func TestNewPublish_RejectsNilPushBranch(t *testing.T) {
 	}
 }
 
+func TestNewPublish_RejectsEmptyFinalSummaryPath(t *testing.T) {
+	deps := newTestDeps(t)
+	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
+	deps.PushBranch = func() error { return nil }
+	deps.FinalSummaryPath = ""
+	if _, err := NewPublish(deps); err == nil {
+		t.Fatal("NewPublish() error = nil; want an error naming Deps.FinalSummaryPath")
+	}
+}
+
 // TestNewPublish_RejectsNilShuttle asserts the constructor rejects a Deps whose told session-runner
 // seam is nil, with a distinct error naming that field. deps.OpenFabric returns a typed-nil
 // *fabricengine.Fabric: mergeresolve.New checks its Fabric field for a nil interface, which a
