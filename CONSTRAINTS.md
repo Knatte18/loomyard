@@ -101,6 +101,8 @@ Every producer prompt is read at call time from a told, absolute stencils direct
 - `//go:embed` in `contracts/stencils` is seed defaults only.
 - `internal/stencilstore` is sole owner of seeding/hashing/reading/validation. A hash-mismatched file is never overwritten.
 - Seed/refresh runs once per process pre-run, never lazily inside `Read`.
+  A command that reads no stencils may decline the pass entirely by carrying the skip annotation;
+  declining is all-or-nothing per command and never defers seeding to a later or lazier point.
 
 ## CLI / Cobra Invariant
 
