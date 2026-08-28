@@ -23,10 +23,10 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 
 **In:**
 
-- A new liveness check on the told `Geometry.AnchorPath` at reed's operation-lock chokepoint (`internal/reedengine/lock.go`: `withOpLock` and `withTryOpLock`), refusing the op when the anchor directory no longer exists — BEFORE the `os.MkdirAll` that creates the stray.
-- The refusal predicate itself, as a new I/O-touching validator alongside the existing pure `validateToldAnchorPath` in `internal/reedengine/server.go`.
-- Terminating the resize watch loop (`internal/reedengine/watchloop.go`) when its anchor is proven gone, instead of retrying and log-spamming forever against a worktree that no longer exists.
-- Test-fixture update: `newTestEngine` (`internal/reedengine/lock_test.go`) must materialize its `AnchorPath` on disk, since every op-running test in the package now depends on it.
+- A new liveness check on the told `Geometry.WorktreeRoot` at reed's operation-lock chokepoint (`internal/reedengine/lock.go`: `withOpLock` and `withTryOpLock`), refusing the op when that directory no longer exists — BEFORE the `os.MkdirAll` that creates the stray.
+- The refusal predicate itself, as a new I/O-touching validator alongside the existing pure `validateToldAnchorPath` in `internal/reedengine/server.go`, with a package-level sentinel error for the terminal (proven-gone) cases.
+- Terminating the resize watch loop (`internal/reedengine/watchloop.go`) when its worktree root is proven gone, instead of retrying and log-spamming forever against a worktree that no longer exists.
+- Test-fixture update: `newTestEngine` (`internal/reedengine/lock_test.go`) must materialize its `WorktreeRoot` on disk, since every op-running test in the package now depends on it.
 - Unit coverage for the refusal at both lock helpers, for "no directory created", and for the watch loop's termination.
 - Sandbox suite text (`tools/sandbox/SANDBOX-REED-SUITE.md`, M24 and M25): assert that no new hub-level directory appears after the escape routes run.
 - Package-doc note in `internal/reedengine/doc.go` recording the geometry-lifetime rule this fix establishes.
@@ -36,7 +36,9 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 - Any cleanup or sweeping of already-leaked stray directories. Reed never deletes hub-level directories; the operator removes the one-off stray by hand.
 - `internal/state.ReadJSON`'s `MkdirAll` on a pure read path (`internal/state/state.go:62`). It is a genuine co-defect — a read materializing `<dir>/reed.json.lock` is what produced the second of the two stray files — but it is a different module with four other consumers (webster, treadle, shed, loomshed). Recorded as a follow-up below; not fixed here.
 - Re-deriving geometry inside the engine. Banned by the Told-Geometry Invariant.
-- The `window-resized` hook's baked absolute signal path going stale after a rename. With this fix the stale `.lyx` is never recreated, so the hook's `touch` simply fails and produces nothing; no separate change needed.
+- Any change to either `Geometry` teller (`internal/hubgeom/hubgeom.go`, `internal/standalonegeom/reedgeom.go`) or to the standalone wiring (`internal/burlercli/wiring.go:157`, `internal/webstercli/wiring.go:153`). The chosen predicate works against both tellers as they already are.
+- Any new `Geometry` field. The struct's eight fields are unchanged.
+- The `window-resized` signal hook's baked absolute path going stale after a rename. It is never installed today, and even if it were, with this fix the stale `.lyx` is never recreated so its `touch` (a bare `: > 'path'` redirection) would fail and produce nothing. No separate change needed.
 - Any change to the existing renamed-worktree refusal machinery (`generation.go`, `refuseLiveForeignSessionLocked`), which already behaves as M24/M25 specify.
 
 ## Decisions
@@ -53,14 +55,14 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
   Why now: the watchdog daemon (`8002cf976`) is the newest reed commit and the first long-lived in-session process that runs engine ops on a timer.
 - Rejected: a stale recorded session name read out of `reed.json` — no code path joins a recorded session name or `Strand.Worktree` onto a filesystem path; `state.Worktree`/`Strand.Worktree` are stamped (`strand.go:177`) and declared (`state.go:25`) but never read outside tests, and `Down`'s abandonment report reads `st.PaneGeneration.SessionName` purely as message text (`lifecycle.go:900-904`).
   Rejected: `lyxcwd` returning a stale worktree root — verified empirically that `git rev-parse --show-toplevel` returns the NEW path after `mv`, with or without `git worktree repair`; and `readRecordedAnchor` yields a worktree-relative `AnchorRel`, never a sibling worktree name.
-  Rejected: the tmux resize hook creating it — `posixShell.Touch` is `: > 'path'` (`internal/shell/posix.go:36`), a redirection with no `mkdir`, and the hook is never installed at all (see the follow-up below).
+  Rejected: the tmux resize hook creating it — `posixShell.Touch` is `: > 'path'` (`internal/shell/posix.go:36`), a redirection with no `mkdir`, and the signal hook that would run it is never installed anyway (see the follow-up below).
   Rejected: `fabricengine` junction wiring (`junction.go:149`) — that `MkdirAll`s `_lyx` (`lyxdirs.LyxDirName`), not `.lyx` (`DotLyxDirName`).
 
 ### the-leak-is-continuous-not-per-event
 
 - Decision: Treat the leak as a 2-second poll loop that recreates the stray indefinitely, not as a one-shot artifact of the verb that ran.
 - Rationale: `watchLoop` starts in `watchModePoll` (`watchloop.go:180`) and poll mode calls `reapplyLayout` every `watchdogPollCycle` = 2s with no gating.
-  Promotion to `watchModeSignal` requires `hookInstalledLocked()` to see the `window-resized` hook — which has no install site anywhere in the repo — so every watcher is pinned in poll mode permanently.
+  Promotion to `watchModeSignal` requires `hookInstalledLocked()` to see an exact match on `resizeHookCommand` in the `window-resized` option — and that signal hook has no install site, while the option itself is occupied by `installResizePinsLocked`'s `resize-pane` pin array — so the probe reports "not installed" every time and every watcher is pinned in poll mode permanently (see the follow-up Decision below).
   This matters for two reasons.
   First, under M25 `down` is documented to leave the abandoned session running (`lifecycle.go:806-813`), so its stale-anchored watcher keeps recreating the stray every 2s for as long as that pane lives: deleting the lock files by hand does not stick until the session dies, which matches the manual recovery the suite run needed.
   Second, it means the watchdog-termination decision below is load-bearing, not cosmetic — without it, refusing at the lock chokepoint converts a filesystem leak into a `Warn` every 2 seconds forever.
@@ -70,22 +72,38 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 
 ### refuse-at-the-op-lock-chokepoint
 
-- Decision: Refuse the operation when the told `AnchorPath` does not exist as a directory, checked in `withOpLock` and `withTryOpLock` immediately after the existing `validateToldAnchorPath` call and before the `os.MkdirAll(dotLyx)`.
+- Decision: Refuse the operation when the told `WorktreeRoot` does not exist as a directory, checked in `withOpLock` and `withTryOpLock` immediately after the existing `validateToldAnchorPath` call and before the `os.MkdirAll(dotLyx)`.
+  (See the next Decision for why the predicate is `WorktreeRoot` and not `AnchorPath`.)
 - Rationale: those two helpers are the single chokepoint every public engine op passes, and the existing refusal ordering (identity → anchor shape → MkdirAll → lock) already exists precisely so a bad geometry cannot create substrate.
   This slots one more predicate into an established sequence and fixes every verb — `up`, `add`, `remove`, `status`, `attach`, `resume`, `down`, and the watchdog's `reapplyLayout` — with one change.
   It does not derive anything, so the Told-Geometry Invariant is untouched: reed still only refuses a geometry it was told.
+- **Stat-error semantics:** only `errors.Is(statErr, fs.ErrNotExist)` — plus the exists-but-is-not-a-directory case — yields the terminal, watchdog-parking sentinel.
+  Any OTHER `Stat` failure (EACCES, EIO, a stalled network mount) is a plain retryable error: it refuses this one op, and it must NOT match the sentinel.
+  This matters because the sentinel makes `watchLoop` park permanently (next Decision but one).
+  A transient stat blip on a healthy session must not silently kill that session's self-heal for the rest of the header pane's life on the strength of one `Warn`.
+  The distinction is the difference between "the world proved this worktree root is gone" and "reed could not find out", and only the first is permanent.
 - Rejected: re-resolving geometry per op (violates the Told-Geometry Invariant outright — `reedengine` may not import `lyxcwd`).
-  Rejected: having the watchdog alone re-derive its anchor (leaves every other verb able to leak, and puts cwd resolution inside an engine).
+  Rejected: treating every `Stat` error as the terminal sentinel (turns a momentary NFS hiccup into a dead watchdog).
+  Rejected: having the watchdog alone re-derive its own geometry (leaves every other verb able to leak, and puts cwd resolution inside an engine).
   Rejected: making `stateDir()` refuse (it is a pure path join used by non-mutating callers such as `resizeSignalPath`; a refusal there has nowhere to go).
 
-### the-anchor-must-pre-exist-but-dot-lyx-need-not
+### the-predicate-is-worktreeroot-exists-not-anchorpath-exists
 
-- Decision: The check is `AnchorPath` exists and is a directory. The `os.MkdirAll` that creates `.lyx` under it stays.
-- Rationale: a brand-new worktree's first reed op legitimately has no `.lyx` yet — that is exactly why the `MkdirAll` is there.
-  What reed must never do is conjure the *worktree/anchor directory itself*, which is the act that produced the landmine.
-  Checking the anchor rather than `.lyx` keeps first-op creation working while making the stray impossible.
-- Rejected: requiring `.lyx` to pre-exist (breaks every first run).
-  Rejected: checking `WorktreeRoot` instead (`AnchorPath` is what `stateDir` joins onto and can be a committed subpath under a non-`.` `AnchorRel`; checking the wrong one leaves a gap).
+- Decision: The check is that **`Geometry.WorktreeRoot`** exists and is a directory — NOT `AnchorPath`.
+  The `os.MkdirAll(e.stateDir())` that creates `AnchorPath/.lyx` stays exactly as it is.
+- Rationale: `AnchorPath` is the wrong field to gate on, because reed has two `Geometry` tellers and they mean different things by it.
+  In hub mode `AnchorPath` is inside a worktree that must pre-exist (`hubgeom.ReedGeometry`: `AnchorPath = l.AnchorPath()`, `WorktreeRoot = l.WorktreePath()`).
+  In standalone mode `AnchorPath` is a *derived state directory* reed legitimately owns and creates (`standalonegeom.ReedGeometry`: `AnchorPath = stateDir` from `standalonestate.Derive`, `WorktreeRoot = target`).
+  `standalonestate.Derive` creates nothing on disk, and neither `burlercli/wiring.go:157` nor `webstercli/wiring.go:153` `MkdirAll`s `stateDir` — `withOpLock`'s existing `MkdirAll` is what materializes it on standalone first run.
+  Gating on `AnchorPath` would therefore break standalone first-run outright, and would report "this worktree was renamed" about a path that is not a worktree at all.
+  `WorktreeRoot` is the one field both tellers agree on: it is `<hub>/<name>` in hub mode — precisely the directory that vanishes on rename and precisely the one the stray conjured out of nothing — and it is the operator's own target repository in standalone mode, which always exists by the time reed runs.
+  One predicate, both modes, no new `Geometry` field, no change to either wiring, and nothing derived.
+- Rejected: gating on `AnchorPath` (breaks standalone first-run — this is what the round-2 review caught).
+  Rejected: requiring `.lyx` to pre-exist (breaks every first run in both modes).
+  Rejected: adding a told `AnchorMustExist bool` to `Geometry` so each teller declares its own answer.
+  It would work and would not violate the Told-Geometry Invariant, but it adds a field, two teller changes, and a new way for a future teller to get it wrong, to express something `WorktreeRoot` already expresses correctly in both modes.
+  Rejected: having the standalone wiring `MkdirAll` its `stateDir` before constructing the engine, so the `AnchorPath` gate could stand — it relies on every future standalone teller remembering, and the hub/standalone asymmetry stays unexpressed in the engine.
+- Note for the plan: a non-`.` `AnchorRel` makes `AnchorPath` a committed subdirectory *inside* `WorktreeRoot`. That subpath is tracked content, so it cannot be missing while the worktree exists, and the two vanish together on a rename. Gating on `WorktreeRoot` leaves no gap there.
 
 ### a-separate-live-validator-keeps-the-pure-one-pure
 
@@ -96,14 +114,19 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 
 ### the-error-names-the-vanished-path-and-the-remedy
 
-- Decision: The refusal error states that the anchor path no longer exists, quotes the path, and tells the operator that this worktree was renamed or removed and that reed must be run from the worktree's current path.
-- Rationale: this error is reachable in two very different situations — an operator standing in a deleted worktree, and an abandoned session's own header pane logging it — so it has to be self-describing without any surrounding context.
+- Decision: Two distinct messages, not one.
+  **Vanished** (`fs.ErrNotExist`): states that the worktree root no longer exists, quotes the path, and tells the operator this worktree was renamed or removed and that reed must be run from the worktree's current path.
+  **Not a directory** (the path exists but `Stat` reports a non-directory): states that the told worktree root is a file rather than a directory and quotes the path — no rename remedy, because nothing was renamed.
+  A third, non-sentinel case — any other `Stat` failure — reports the underlying error verbatim and says reed could not determine whether the worktree root exists.
+- Rationale: these errors are reachable in two very different situations — an operator standing in a deleted worktree, and an abandoned session's own header pane logging into a serverlog — so each has to be self-describing with no surrounding context.
+  Sharing one message across them would make the not-a-directory case tell the operator to fix a rename that never happened, sending them looking for the wrong thing.
   It matches the house style already set by `validateToldTmuxIdentity` and `validateToldAnchorPath`, both of which name the offending value and the corrective action.
 - Rejected: a bare "anchor path not found".
+  Rejected: one shared message for all three cases (misdiagnoses two of them).
 
 ### the-watch-loop-terminates-when-its-anchor-is-gone
 
-- Decision: When `reapplyLayout` returns the anchor-gone refusal, `watchLoop` stops looping: log one `Warn` naming the vanished anchor and the session, then park on `ctx.Done()` exactly as the `watchdog: off` branch already does, returning `ctx.Err()`.
+- Decision: When `reapplyLayout` returns the proven-gone sentinel, `watchLoop` stops looping: log one `Warn` naming the vanished worktree root and the session, then park on `ctx.Done()` exactly as the `watchdog: off` branch already does, returning `ctx.Err()`.
   The header pane process itself is NOT killed.
 - Rationale: the condition is permanent, not transient — the anchor string is frozen for this process's lifetime, so every subsequent tick would refuse identically.
   Current `handleWatchOutcome` treats every error as retryable, and since every watcher is pinned in poll mode (see above) that is a `Warn` every 2s forever, indefinitely, on every abandoned session `down` leaves behind.
@@ -131,10 +154,14 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 ### window-resized-hook-has-no-install-site
 
 - Decision: Record, do not fix. Out of scope for this task; worth its own wiki task.
-- Rationale: exploration turned up that `windowResizedHookName` (`internal/reedengine/watchdog.go:59`) appears in exactly three places — the const, the `show-options` read-back in `reapply.go:59`, and a `set-hook -u` UNSET in `windowsize.go:138`.
-  There is no `set-hook` install site anywhere in the repo.
-  So `watchModeSignal`, `watchdogSignalTick`, and the whole debounce/retry state machine are dead in production — every watcher runs poll-only, forever — while `contracts/.../template_posix.yaml:10` advertises that it "enables ... the session's window-resized hook".
-  This may be deliberate batch staging, but the config text and the shipped behaviour disagree, and it is what makes the leak continuous rather than event-driven.
+- Rationale: the *signal* hook — `resizeHookCommand` (`watchdog.go`), the `run-shell -b` that touches `reed-resize.signal` — has no install site anywhere in the repo.
+  The `window-resized` option itself is NOT unused, though: `resizePinHookArgvs` / `installResizePinsLocked` (`internal/reedengine/windowsize.go:197-237`) issue `set-hook -w -t <window> window-resized "resize-pane …"` on every successful apply (`apply.go:235`) and every attach (`attach.go:144`), building a pin array on exactly the same window-scoped option that `hookInstalledLocked` reads back (`reapply.go:59`).
+  So the two contend for one option, and the pin array wins: it clears and rebuilds `window-resized` unconditionally on every apply, which would wipe a signal hook even if one were installed.
+  Meanwhile the probe demands an exact match on `resizeHookCommand`, which the pin bodies never satisfy, so it reports "not installed" every time.
+  The conclusion stands — `watchModeSignal`, `watchdogSignalTick`, and the whole debounce/retry state machine are dead in production and every watcher runs poll-only, forever — but by contention plus a missing install site, not by the option being untouched.
+  `contracts/.../template_posix.yaml:10` still advertises that it "enables ... the session's window-resized hook", which the shipped behaviour does not deliver.
+  This may be deliberate batch staging, but the config text and the code disagree, and it is what makes this leak continuous rather than event-driven.
+  Whoever picks up the follow-up must resolve the contention, not merely add the missing `set-hook`: appending the signal touch to the pin array (or moving one of the two off `window-resized`) is the actual design question.
 - Rejected: installing the hook as part of this task.
   It is a feature-completion change to the watchdog with its own live-tmux verification burden, entirely separable from the stray-directory defect, and bundling it would make this fix impossible to review or revert on its own.
   The fix here is correct whether the watcher polls or waits on a signal.
@@ -148,9 +175,12 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 - `internal/reedengine/server.go` — home of `validateToldTmuxIdentity` and `validateToldAnchorPath`, with long doc comments explaining why each refusal is a contract backstop.
   The new validator belongs beside them and should follow the same commenting depth.
 - `internal/reedengine/geometry.go` — `Geometry`'s documented contract: `New` validates no field, and no method recomputes one. Preserve this.
-- `internal/hubgeom/hubgeom.go:34` — `ReedGeometry(l)` sets `AnchorPath = l.AnchorPath()`. Not a defect site; listed so the plan does not go looking for one.
+- `internal/hubgeom/hubgeom.go:18-30` — hub-mode `ReedGeometry(l)`: `AnchorPath = l.AnchorPath()`, `WorktreeRoot = l.WorktreePath()` (i.e. `<hub>/<name>`). Not a defect site; listed so the plan does not go looking for one, and because `WorktreeRoot`'s value here is what makes the chosen predicate work.
+- `internal/standalonegeom/reedgeom.go:19-31` — standalone `ReedGeometry(target, stateDir, hash8)`: `AnchorPath = stateDir`, `WorktreeRoot = target`, and the doc comment states outright that the two "deliberately diverge". This is the second teller the predicate has to survive.
+- `internal/standalonestate/standalonestate.go:31` — `Derive` computes `stateDir` and creates nothing on disk. Confirmed: no production `MkdirAll` of `stateDir` exists in `internal/burlercli/wiring.go` or `internal/webstercli/wiring.go`, so `withOpLock`'s `MkdirAll` is what materializes it on standalone first run. That `MkdirAll` must keep working — a plan that gates it on `AnchorPath` breaks standalone.
+- `internal/reedengine/windowsize.go:197-237` — `resizePinHookArgvs` / `installResizePinsLocked` write the `window-resized` window-hook array. Relevant only as context for the hook follow-up below; not a change site in this task.
 - `internal/reedengine/watchloop.go:159` — `watchLoop`. The `watchdog: off` branch (`<-ctx.Done(); return ctx.Err()`) is the parking pattern to reuse.
-  `handleWatchOutcome` (same file) is where an error is currently classified as retryable; the anchor-gone case has to be distinguishable there, which argues for a package-level sentinel error (`errors.Is`-matchable) rather than a string match.
+  `handleWatchOutcome` (same file) is where an error is currently classified as retryable; the proven-gone case has to be distinguishable there, which is why the plan needs a package-level sentinel error (`errors.Is`-matchable) rather than a string match — a non-`ErrNotExist` stat failure must NOT match it.
 - `internal/reedengine/reapply.go:90` — `reapplyLayout` calls `withTryOpLock` and returns `(ReapplyResult, error)`; the refusal surfaces through that `error`.
 - `internal/reedengine/lifecycle.go:1134,1148` — `requireSessionLocked` is what calls `LoadState` on the failure path, creating the second lock file. Not a change site: once `withTryOpLock` refuses, it is never reached.
 - `internal/reedcli/cli.go:63-98` — `PersistentPreRunE`, where geometry is resolved once per process and pinned into the `Engine`. This is correct for one-shot verbs and is the origin of the frozen anchor for the header pane. Not a change site under the chosen fix, but the plan should not "fix" it by re-resolving per op.
@@ -179,23 +209,26 @@ From `CONSTRAINTS.md`:
 
 Unit, `internal/reedengine` (TDD candidates — write these first, they fail against `main`):
 
-- `withOpLock` refuses when `AnchorPath` names a directory that does not exist: the op body never runs, the error names the vanished path, and neither the anchor directory, nor `.lyx`, nor `reed.lock` is created afterwards.
+- `withOpLock` refuses when `WorktreeRoot` names a directory that does not exist: the op body never runs, the error names the vanished path, and neither the worktree directory, nor `AnchorPath`, nor `.lyx`, nor `reed.lock` is created afterwards.
   Mirror `TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState`'s shape.
 - The same for `withTryOpLock` — separately, not as a shared subtest, since the leak lived on this branch and a regression that fixes only one helper must fail.
-- `AnchorPath` exists but is a regular file, not a directory: also refused.
-- `AnchorPath` exists as a directory with no `.lyx`: the op SUCCEEDS and creates `.lyx` — the first-run path must not regress.
-- The anchor-gone error is matchable by the watch loop (whatever sentinel the plan chooses), asserted directly rather than by substring.
-- `validateAnchorPathLive` (or whatever it is named) gets its own focused test; the existing `validateToldAnchorPath` table test must remain I/O-free and unchanged.
+- `WorktreeRoot` exists but is a regular file, not a directory: also refused, with the not-a-directory message rather than the vanished-path one.
+- **The standalone shape:** `WorktreeRoot` exists as a directory and `AnchorPath` is a DIFFERENT path that does not exist yet (`newTestEngine`'s fixture already has them diverge). The op must SUCCEED and `MkdirAll` must create `AnchorPath/.lyx`. This is the regression guard for standalone first-run, and it is the test that fails if a later change re-gates the predicate on `AnchorPath`.
+- Hub-shaped first run: `WorktreeRoot` exists, `AnchorPath` equals it, no `.lyx` yet — op SUCCEEDS and creates `.lyx`.
+- The proven-gone error is matchable by the watch loop via the package sentinel, asserted with `errors.Is` rather than by substring.
+- A non-`ErrNotExist` stat failure does NOT match the sentinel. If a portable way to provoke one is awkward, inject at the stat seam rather than skipping the case — the whole point of the distinction is that it is invisible until it misfires.
+- `validateToldAnchorPath`'s existing table test must remain I/O-free and unchanged; the new validator gets its own focused test.
 
 Unit, watch loop:
 
-- `watchLoop` in poll mode, given an anchor-gone refusal from `reapplyLayout`, stops issuing further reconcile attempts and does not return until ctx is cancelled. Assert a call-count that stays flat after the first refusal — `watchloop_test.go` already has hook-call-count fixtures to model on.
+- `watchLoop` in poll mode, given a proven-gone refusal from `reapplyLayout`, stops issuing further reconcile attempts and does not return until ctx is cancelled. Assert a call-count that stays flat after the first refusal — `watchloop_test.go` already has hook-call-count fixtures to model on.
 - The same in signal mode, so the retry-streak machinery cannot swallow the termination.
-- A transient (non-anchor) error still retries exactly as today — the regression guard on the narrowing.
+- A transient error — including a non-`ErrNotExist` stat failure — still retries exactly as today. This is the regression guard on the narrowing, and the reason the sentinel is matched rather than "any error from the anchor check".
 
 Fixture:
 
-- `newTestEngine` creates its `AnchorPath`. Run the whole `internal/reedengine` package afterwards; any test that was silently relying on the anchor being absent is a real finding, not something to paper over.
+- `newTestEngine` creates its `WorktreeRoot`, and deliberately does NOT create `AnchorPath` — preserving the fixture's existing intent that the fields are distinct values so a mix-up surfaces, while now also standing in for the standalone shape.
+  Run the whole `internal/reedengine` package afterwards; any test that was silently relying on the worktree root being absent is a real finding, not something to paper over.
 
 Sandbox (manual, live tmux — the suite is an agent-driven black box, so this is doc text, not code):
 
@@ -206,11 +239,15 @@ Sandbox (manual, live tmux — the suite is an agent-driven black box, so this i
 ## Q&A log
 
 - **Q:** What actually creates the stray — the invoked verb, or something else? **A:** [auto-pick] The old session's still-running header-pane watchdog, whose `Engine` geometry is frozen at the pre-rename `AnchorPath`. **Why:** it is the only mechanism that accounts for all of the observed evidence simultaneously — a real (not symlinked) directory, both lock files with no `reed.json`, birth timestamps matching geometry-changing verbs only, no stray from read-only `status`, a name that varies with which rename step the process booted under, and the fact that this surfaced immediately after the watchdog daemon landed.
-- **Q:** Where does the fix live? **A:** [auto-pick] Refuse at the op-lock chokepoint (`withOpLock` + `withTryOpLock`) when the told `AnchorPath` no longer exists. **Why:** one chokepoint covers every verb including the watchdog, it slots into an existing refusal sequence built for exactly this purpose, and it refuses a told value rather than deriving one, so the Told-Geometry Invariant holds.
+- **Q:** Where does the fix live? **A:** [auto-pick] Refuse at the op-lock chokepoint (`withOpLock` + `withTryOpLock`) when the told worktree root no longer exists. **Why:** one chokepoint covers every verb including the watchdog, it slots into an existing refusal sequence built for exactly this purpose, and it refuses a told value rather than deriving one, so the Told-Geometry Invariant holds.
+- **Q:** Gate on `AnchorPath` or `WorktreeRoot`? **A:** `WorktreeRoot`. **Why:** raised as BLOCKING by discussion review round 2, and correct — reed has two `Geometry` tellers, and gating on `AnchorPath` breaks standalone mode, where `AnchorPath` is a derived state directory `standalonestate.Derive` never creates and `withOpLock`'s own `MkdirAll` is what materializes on first run. `WorktreeRoot` is `<hub>/<name>` in hub mode (exactly what the stray conjured) and the operator's real target repo in standalone mode (always present), so one predicate serves both tellers with no new field and no wiring change.
+- **Q:** Does a non-`ErrNotExist` stat failure (EACCES, EIO, stalled mount) also mean "gone"? **A:** No — only `fs.ErrNotExist` and the exists-but-not-a-directory case yield the terminal sentinel; every other stat error is retryable. **Why:** raised as BLOCKING by round 2. The sentinel parks the watchdog permanently, so mapping a momentary stat blip onto it would kill a healthy session's self-heal for the rest of that header pane's life on the strength of one `Warn`.
+- **Q:** Does the not-a-directory case share the vanished-path error message? **A:** No, it gets its own. **Why:** the vanished-path message tells the operator to fix a rename; saying that about a path that exists as a regular file sends them looking for the wrong thing.
 - **Q:** Check the anchor's existence, or also pin its identity (dev+inode) so a REUSED name is caught too? **A:** [auto-pick] Existence only. **Why:** the reported defect and the landmine both come from the anchor vanishing; pinning inode identity would add per-op state to `Engine`, which `New` is contractually forbidden from populating, for a case (a new worktree created under the abandoned name while the old header pane still runs) that the recorded-session generation check already degrades safely on. Recorded here so a later reviewer sees it was considered, not missed.
 - **Q:** Extend `validateToldAnchorPath`, or add a separate validator? **A:** [auto-pick] A separate, I/O-touching validator beside it. **Why:** the existing one is a documented pure shape check with a table test; mixing a `Stat` in would make that test I/O-dependent and merge two diagnoses that deserve distinct messages.
-- **Q:** What should the watchdog do once it learns its anchor is gone? **A:** [auto-pick] Log one `Warn` and park on `ctx.Done()`, without killing the header pane. **Why:** the condition is permanent, so retrying is pure log spam; and the abandoned session may still host the operator's live strands, which M25 requires `down` to leave running.
+- **Q:** What should the watchdog do once it learns its worktree root is gone? **A:** [auto-pick] Log one `Warn` and park on `ctx.Done()`, without killing the header pane. **Why:** the condition is permanent, so retrying is pure log spam; and the abandoned session may still host the operator's live strands, which M25 requires `down` to leave running.
 - **Q:** Should reed clean up strays that already exist? **A:** [auto-pick] No. **Why:** hub-level deletion is chokepointed by design, and an empty hub directory is indistinguishable from a legitimate one; a single manual `rmdir` clears the historical case.
 - **Q:** Is `internal/state.ReadJSON`'s `MkdirAll` on a read path in scope? **A:** [auto-pick] Out of scope, recorded as a follow-up. **Why:** it is a genuine defect in a different module with four other consumers, and once reed refuses at the chokepoint no reed path reaches it with a bogus directory — so it is defense-in-depth, not part of this fix.
 - **Q:** Do the other verbs (`up`, `add`, `remove`, `status`, `attach`) need their own handling? **A:** [auto-pick] No — they inherit the fix. **Why:** all of them pass through `withOpLock`, which is the single chokepoint the check is added to. Strictly, none of them leaks on its own either: every CLI invocation resolves a fresh, correct anchor. The leak belongs to whichever `up`/`resume` created the header pane that is still running.
-- **Q:** The `window-resized` hook has no install site, so signal mode is dead and every watcher polls every 2s — fix that here too? **A:** [auto-pick] No, record it as a follow-up. **Why:** it is a separable watchdog feature-completion change with its own live-tmux verification burden; bundling it would make this fix unreviewable and unrevertable on its own, and the anchor refusal is correct under either watch mode.
+- **Q:** The signal hook is never installed, so signal mode is dead and every watcher polls every 2s — fix that here too? **A:** [auto-pick] No, record it as a follow-up. **Why:** it is a separable watchdog feature-completion change with its own live-tmux verification burden; bundling it would make this fix unreviewable and unrevertable on its own, and the refusal is correct under either watch mode.
+- **Q:** Is the claim "no `set-hook` install site anywhere" accurate? **A:** No — corrected. **Why:** round 2 caught it. `installResizePinsLocked` does install `window-resized`, with `resize-pane` pin bodies, on every apply and attach. What has no install site is the signal `touch` (`resizeHookCommand`), and the two contend for the same window-scoped option — the pin array rebuilds it unconditionally, so it would wipe a signal hook even if one were added. The poll-only conclusion survives; the inventory behind it did not, and the follow-up now names the contention as the real design question.
