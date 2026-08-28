@@ -41,7 +41,9 @@ batches:
     commit_sha: b2f5cd24e47caa9453fb1496627b7939c0c280fe
     verify_baseline_failures: ["FAIL\t./internal/summaryparser/... [setup failed]"]
   - name: retarget-callers
-    state: pending
+    state: running
+    implementer_session: 9205023e-6124-42ff-8e09-9bc5b4f5ef33
+    start_sha: 42b8a7c103ef432a388e6f7c13d6719abc34e5bf
     verify_baseline_failures: ["FAIL\t./internal/summaryparser/... [setup failed]"]
   - name: finalize-message
     state: pending
