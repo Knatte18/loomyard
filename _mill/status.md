@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: final-summary-artifact
 branch: final-summary-artifact
-plan: null
+plan: _mill/plan
 parent: main
 task: Producer-agnostic final-summary artifact + wire Finalize
 task_description: |
@@ -21,4 +21,5 @@ discussion-fix-r3  '2026-08-28T06:00:50Z'
 discussion-fix-r4  '2026-08-28T06:03:34Z'
 discussion-fix-r5  '2026-08-28T06:07:46Z'
 discussed  '2026-08-28T06:07:46Z'
+planning  '2026-08-28T06:15:11Z'
 ```
