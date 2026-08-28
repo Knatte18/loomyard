@@ -79,6 +79,10 @@ Card 3 turns the predicate on (green, because card 2 already landed).
   - `internal/reedengine/geometry.go`
   - `internal/reedengine/contract_integration_test.go`
   - `internal/reedengine/mouse_boot_integration_test.go`
+  - `internal/reedengine/watchdog_integration_test.go`
+  - `internal/reedengine/attachgeometry_integration_test.go`
+  - `internal/reedengine/header_test.go`
+  - `internal/reedengine/server_test.go`
 - **Edits:**
   - `internal/reedengine/lock_test.go`
 - **Creates:** none
@@ -94,7 +98,16 @@ Card 3 turns the predicate on (green, because card 2 already landed).
   Do not migrate this test onto `newTestEngine` — it exists precisely to make `AnchorPath` diverge from `WorktreeRoot`, and the shared fixture would erase the distinction it was written to observe.
 
   Sweep the rest of the package for any other in-package test that reaches `withOpLock` or `withTryOpLock` through an inline `Geometry` literal, INCLUDING the `integration`-tagged files, and materialize its worktree root in place if it does not already.
-  Two facts to verify rather than assume, both expected to need no change: `newIntegrationEngine` in `internal/reedengine/mouse_boot_integration_test.go` already creates its worktree directory, and both inline literals in `internal/reedengine/contract_integration_test.go` use a `t.TempDir()` that already exists.
+  The sweep is a verification of a known inventory rather than an open-ended hunt.
+  Grepping this package for the token `Geometry{` finds inline literals in exactly five files, and every one is listed in this card's `Context:` or `Edits:`: `internal/reedengine/lock_test.go`, `internal/reedengine/server_test.go`, `internal/reedengine/header_test.go`, `internal/reedengine/contract_integration_test.go`, and `internal/reedengine/mouse_boot_integration_test.go`.
+  Re-run that grep to confirm the inventory has not drifted before concluding the sweep, and report any sixth file as a finding rather than editing it blind.
+  Four facts to verify rather than assume, all four expected to need no change:
+  - `newIntegrationEngine` in `internal/reedengine/mouse_boot_integration_test.go` already creates its worktree directory with `os.MkdirAll`, and its inline literal points `WorktreeRoot` at that created directory.
+  - Both inline literals in `internal/reedengine/contract_integration_test.go` set `WorktreeRoot` to a `t.TempDir()` that already exists.
+  - `internal/reedengine/watchdog_integration_test.go` contains no `Geometry` literal at all: it builds every engine through `setupAttachGeometryFixture`, which routes to `newIntegrationEngine`, so it inherits that helper's already-created worktree directory and needs no change.
+  - `internal/reedengine/attachgeometry_integration_test.go` likewise contains no `Geometry` literal and builds through `newIntegrationEngine`, so it is not an inline site either.
+  The literal in `internal/reedengine/header_test.go` sets only `RepoName` and `HubPath` and reaches neither lock helper, so it is out of the sweep's criterion and stays untouched.
+  The three literals in `internal/reedengine/server_test.go` are table-test rows that call the told-geometry validators directly rather than either lock helper, so they are out of the sweep's criterion too — card 1 and card 3 own that file's changes, and this card must not edit it.
   If a test in this package was silently relying on its worktree root being absent, that is a real finding to report rather than something to paper over.
   Leave `TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched` and `TestEngine_SocketAndSessionName` alone: the first refuses at the tmux-identity check before the new predicate is ever reached, and the second acquires no lock.
 - **Commit:** `test(reed): materialize WorktreeRoot in the reedengine lock fixtures`
@@ -137,14 +150,15 @@ Card 3 turns the predicate on (green, because card 2 already landed).
   - The refusal error from `withOpLock` is matchable with `errors.Is(err, errWorktreeRootGone)`, asserted with `errors.Is` and never by substring.
   Reuse the existing `fileExists` helper in this file rather than adding a second one.
 
-  In `internal/reedengine/doc.go`, add a geometry-lifetime bullet to the package doc's existing "verified live" list, recording two things.
+  In `internal/reedengine/doc.go`, add a geometry-lifetime bullet to the package doc's existing bullet list introduced by the line "Load-bearing behavioral assumptions, each with the rationale that makes it", recording two things.
   First the rule this fix establishes: a told `Geometry` is resolved once per process and pinned for that process's whole life, so a long-lived process such as the header pane's keepalive holds a frozen `WorktreeRoot` that a `mv` of the worktree makes stale; every operation therefore re-checks that told worktree root's liveness at the op-lock chokepoint, and refuses rather than creating substrate under a path that is no longer a worktree.
   Second the user-visible standalone consequence: a `--target-dir` naming a directory that does not exist is now refused at the first engine op instead of proceeding and deriving a state directory for it.
 
   In `tools/sandbox/SANDBOX-REED-SUITE.md`, extend the M24 and M25 "Watch:" text.
   M24 gains an assertion that after the `kill-session` and `resume` in the renamed worktree, the hub root contains no directory named after the pre-rename worktree.
   M25 gains the same assertion, plus the instruction to re-check the hub root after waiting well past the two-second watchdog poll cycle — because `down` deliberately leaves the abandoned session running, checking too early would mask a watcher that resumed leaking.
-  Both gain a line asking the checker to confirm the abandoned session's header pane stopped logging reconcile failures rather than spinning.
+  Add the no-stray-directory assertions only.
+  Do not add any wording about the abandoned session's header pane quieting down: that is batch 2's dormancy behaviour, this card's commit does not implement it, and card 4 adds that line to the same two milestones in the commit that does.
   Follow the file's existing prose conventions and the repo's semantic-line-break markdown rule.
   Do not add a new milestone, do not renumber existing milestones, and do not change the verdict-summary block at the end of the file.
 - **Commit:** `fix(reed): refuse a vanished told worktree root at the op-lock chokepoint`

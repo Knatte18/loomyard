@@ -41,6 +41,7 @@ Any non-sentinel outcome means the stat succeeded and the worktree root is a dir
   - `internal/reedengine/watchloop.go`
   - `internal/reedengine/watchloop_test.go`
   - `internal/reedengine/doc.go`
+  - `tools/sandbox/SANDBOX-REED-SUITE.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -69,7 +70,12 @@ Any non-sentinel outcome means the stat succeeded and the worktree root is a dir
   - Add a test that a NON-sentinel failure does not go dormant: script the recording hook to fail, and assert the loop keeps re-applying at its existing cadence exactly as it does today. This is the regression guard on the narrowing, and the reason the sentinel is matched rather than "any error from the anchor check".
   - Keep every timing in this file in single- or low-double-digit milliseconds, and add no sleep of a second or longer — the Test Tier Purity Invariant binds these untagged tests.
 
-  In `internal/reedengine/doc.go`, extend the geometry-lifetime bullet card 3 added, recording what the watcher does once it learns its told worktree root is gone: one warning, then a sixty-second dormant cadence rather than the two-second poll, automatic return to its previous mode when the directory comes back, and no teardown of the header pane, because the session reed walked away from may still be hosting live strands.
+  In `internal/reedengine/doc.go`, extend the geometry-lifetime bullet card 3 added to the bullet list introduced by the line "Load-bearing behavioral assumptions, each with the rationale that makes it", recording what the watcher does once it learns its told worktree root is gone: one warning, then a sixty-second dormant cadence rather than the two-second poll, automatic return to its previous mode when the directory comes back, and no teardown of the header pane, because the session reed walked away from may still be hosting live strands.
+
+  In `tools/sandbox/SANDBOX-REED-SUITE.md`, add one line to each of the M24 and M25 "Watch:" sections asking the checker to confirm the abandoned session's header pane stopped logging reconcile failures rather than spinning at the two-second poll cadence.
+  This line lands here rather than with card 3's no-stray-directory assertions because dormancy is this card's behaviour, and a milestone must not ask a checker to observe something the commit under test does not yet do.
+  Do not restate or reword card 3's no-stray-directory assertions, do not add a new milestone, do not renumber existing milestones, and do not change the verdict-summary block at the end of the file.
+  Follow the file's existing prose conventions and the repo's semantic-line-break markdown rule.
 - **Commit:** `fix(reed): drop the resize watcher to a dormant cadence on a vanished worktree root`
 
 ## Batch Tests
@@ -79,4 +85,4 @@ The new coverage all lands in `internal/reedengine/watchloop_test.go`: the six-c
 
 Running the `integration`-tagged tests for real is deliberately NOT part of `verify:`, for the reason recorded in the overview's `a-pre-existing-integration-failure-will-trip-the-done-gate` Decision.
 The implementer should run `go test -tags integration ./internal/reedengine/...` once by hand after this card and confirm that `TestWatchdogSelfHeal_HookProbeMatchesLiveTmux` is the ONLY failure — a second failure would be a real regression from this batch.
-The live-tmux behaviour this batch changes is covered by the sandbox suite's M24 and M25 text card 3 updated, not by a Go test: dormancy over a real abandoned session is an operator-observable, agent-driven check.
+The live-tmux behaviour this batch changes is covered by the M24 and M25 sandbox-suite line this card adds, not by a Go test: dormancy over a real abandoned session is an operator-observable, agent-driven check.

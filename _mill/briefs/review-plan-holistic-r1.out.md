@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: reed: resume/down leak lock directories at the stale pre-rename session-name path — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-28
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 2's fixture sweep omits a known integration-tagged file from Context
+**Location:** Batch 1, Card 2 (`01-refuse-a-vanished-worktree-root.md`)
+**Issue:** Card 2's Requirements mandate sweeping "the rest of the package for any other in-package test that reaches `withOpLock` or `withTryOpLock` through an inline `Geometry` literal, INCLUDING the `integration`-tagged files," naming only `contract_integration_test.go` and `mouse_boot_integration_test.go` as the two facts to verify. `internal/reedengine/watchdog_integration_test.go` is a third integration-tagged file in this same package — named elsewhere in the overview's own `a-pre-existing-integration-failure-will-trip-the-done-gate` Decision as hosting `TestWatchdogSelfHeal_HookProbeMatchesLiveTmux`, which exercises `hookInstalledLocked`/the watchdog path — yet it is absent from Card 2's `Context:` list and from the manifest given to this review. Per the Context-completeness rule the implementer may only read files in `Context:`/`Edits:`, so the mandated sweep cannot reliably cover this file.
+**Fix:** Add `internal/reedengine/watchdog_integration_test.go` to Card 2's `Context:` list and state explicitly whether it contains an inline `Geometry` literal reaching the lock helpers that needs its `WorktreeRoot` materialized.
+
+### [BLOCKING:consistency] Batch 1's sandbox-doc edit documents Batch 2's not-yet-implemented dormancy behaviour
+**Location:** Batch 1, Card 3 (`01-refuse-a-vanished-worktree-root.md`) vs. Batch 2, Card 4 (`02-watch-loop-dormant-mode.md`)
+**Issue:** Card 3's `SANDBOX-REED-SUITE.md` edit asks the M24/M25 checker to "confirm the abandoned session's header pane stopped logging reconcile failures rather than spinning." That behaviour (one warning, then a 60s dormant cadence) is introduced only by Batch 2's Card 4 — Card 3 alone leaves the poll loop calling `reapplyLayout` and logging "resize re-apply failed" every 2 seconds forever, i.e. still spinning. Batch 2's own "Batch Tests" section confirms this directly: "The live-tmux behaviour this batch changes is covered by the sandbox suite's M24 and M25 text card 3 updated." This violates the `docs-land-in-the-commit-that-changes-behaviour` Decision — Card 3's commit documents a behaviour Card 3's commit does not implement.
+**Fix:** Move the "stopped logging reconcile failures rather than spinning" line (and any other dormancy-specific wording) from Card 3's `SANDBOX-REED-SUITE.md` edit into Card 4, which should itself edit that file; leave only the "no stray directory" assertion in Card 3.
+
+### [NIT:consistency] "existing 'verified live' list" in doc.go is not an actual named list
+**Location:** Batch 1, Card 3 (`01-refuse-a-vanished-worktree-root.md`)
+**Issue:** Card 3 instructs adding a geometry-lifetime bullet to "the package doc's existing 'verified live' list," but `doc.go` has no section titled that — the closest match is the large untitled "Load-bearing behavioral assumptions" bullet list, where individual entries are annotated "verified live" inline.
+**Fix:** Reword to reference the "Load-bearing behavioral assumptions" list by its actual heading so the implementer places the new bullet unambiguously.
+
+## Verdict
+
+REQUEST_CHANGES
+Two BLOCKING findings: an unreliable Context sweep in Card 2, and a doc/behaviour commit mismatch between Cards 3 and 4.
+MILL_REVIEW_END
