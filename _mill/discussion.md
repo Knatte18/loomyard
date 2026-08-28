@@ -43,6 +43,7 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
 - Pins for the header pane (at `header.height_rows`, as clamped by `render.clampHeaderHeight`) and for every collapsed strip pane (at `collapsed_strip_rows`) — the two row budgets reed treats as absolute.
 - A pure entry point in `internal/reedengine/render` that reports those fixed-height pins for the same strand set and box `Rules` was given, so the hook is derived from reed's own policy rather than from raw config.
 - Hook installation/refresh at the two sites that already know the strand table: `applyLayoutLocked` (after a successful `select-layout`) and `AttachArgv`'s pre-flight.
+  Both of those sites have an early return that precedes hook installation, and neither is changed — see the accepted limitation under `pins-are-a-snapshot-refreshed-at-every-apply`.
 - Correcting `internal/reedengine/doc.go` and `internal/reedengine/attach.go`/`attachgeometry_integration_test.go` doc comments where they claim the chained `select-layout` is what keeps the header at its budget.
 - Tests: unit tests for the pure pin computation and the pure hook-argv construction, plus a real-tmux/real-pty integration case that resizes the client after attach.
 
@@ -93,6 +94,12 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
   Installing once at boot in `pinGeometryOptionsLocked` — that function has no access to the strand table or the header pane id, and the header pane can be recreated with a new `%N` id.
 - Known limitation to document: an operator configuring a large `header.height_rows` and then shrinking the terminal below the clamp threshold, with no intervening reed op, keeps the pre-shrink pin.
   `resize-pane` cannot starve the stack below tmux's own one-row floor, so the degradation is bounded and self-corrects on the next reed op.
+- Second known limitation, also accepted rather than coded around: both install sites early-return before the hook would be installed — `applyLayoutLocked` returns at `len(live) < 2` (`apply.go`), and `AttachArgv` returns the bare argv at `cols <= 0 || rows <= 0` (`attach.go`) without ever taking the op lock.
+  A session that has never held two live panes and is then attached with no readable terminal size therefore carries no hook until its next reed op.
+  Neither branch should install one.
+  With a single live pane `render.Rules` takes its sole-cell branch and gives the header the entire box (`rules.go`), so there is no fixed-height budget to pin — pinning 1 row there would contradict reed's own policy.
+  And `AttachArgv`'s no-size early return is deliberately lock-free by contract; installing a hook there would mean taking the op lock, loading state, and listing panes on exactly the path built to skip all three.
+  The gap is bounded and self-healing: the first `add`, `remove`, or `resume` reaches `applyLayoutLocked` with two or more panes and installs the hook, as does any attach with a readable size.
 
 ### hook-failure-is-non-fatal-everywhere
 
