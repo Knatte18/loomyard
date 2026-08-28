@@ -658,6 +658,20 @@ func capturePane(t *testing.T, tmuxPath, socket, target string) string {
 	return string(out)
 }
 
+// capturePaneScrollback returns the target pane's full scrollback (via -S -), not merely its
+// visible viewport.
+// This is deliberately a separate helper from capturePane rather than an edit to it: capturePane
+// passes no -S and captures the visible viewport only, which is what its existing callers assert
+// against, whereas the header-noise assertions need the full scrollback that -S - reaches.
+func capturePaneScrollback(t *testing.T, tmuxPath, socket, target string) string {
+	t.Helper()
+	out, err := exec.Command(tmuxPath, "-L", socket, "capture-pane", "-p", "-S", "-", "-t", target).Output()
+	if err != nil {
+		t.Fatalf("capture-pane -S - -t %s: %v", target, err)
+	}
+	return string(out)
+}
+
 // sendKeysLine types text literally into the target pane and submits it with Enter.
 func sendKeysLine(t *testing.T, tmuxPath, socket, target, text string) {
 	t.Helper()
@@ -691,12 +705,27 @@ var _, smokeTestFile, _, _ = runtime.Caller(0)
 // buildLyxBinary compiles cmd/lyx into a temp dir and returns its path.
 func buildLyxBinary(t *testing.T) string {
 	t.Helper()
+	return buildLyxBinaryWithLDFlags(t, "")
+}
+
+// buildLyxBinaryWithLDFlags compiles cmd/lyx into a temp dir with the given -ldflags value (omitted
+// from the build argv entirely when ldflags is empty) and returns its path.
+// The dev channel stamp -X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev is what makes
+// stencilstore.ModeFor(buildinfo.IsDev()) return ModeDev: buildinfo.Channel is "" for a plain `go
+// build`, so an unstamped binary is production mode and never emits the dev-refusal warn.
+func buildLyxBinaryWithLDFlags(t *testing.T, ldflags string) string {
+	t.Helper()
 	repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(smokeTestFile), "..", ".."))
 	if err != nil {
 		t.Fatalf("resolve repo root: %v", err)
 	}
 	lyxExe := filepath.Join(t.TempDir(), "lyx.exe")
-	cmd := exec.Command("go", "build", "-o", lyxExe, "./cmd/lyx")
+	args := []string{"build", "-o", lyxExe}
+	if ldflags != "" {
+		args = append(args, "-ldflags", ldflags)
+	}
+	args = append(args, "./cmd/lyx")
+	cmd := exec.Command("go", args...)
 	cmd.Dir = repoRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build ./cmd/lyx: %v\n%s", err, out)
