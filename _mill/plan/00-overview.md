@@ -3,7 +3,7 @@
 ```yaml
 task: 'reed: resume/down leak lock directories at the stale pre-rename session-name path'
 slug: 'reed-lock-stale-session-name'
-approved: false
+approved: true
 started: '20260828-144005'
 parent: 'main'
 root: ""
