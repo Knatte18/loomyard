@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -35,15 +36,15 @@ func landingDeps(
 	cfg landingshed.Config,
 ) landingshed.Deps {
 	return landingshed.Deps{
-		WorktreeRoot: l.WorktreePath(),
-		TaskBranch:   taskBranch,
-		ParentBranch: parentBranch,
-		WebsterDir:   geom.WebsterDir,
-		StencilsDir:  geom.StencilsDir,
-		ScratchDir:   loomengine.LoomScratchDir(l),
-		OriginURL:    originURL,
-		PushSkipped:  pushSkipped,
-		PushBranch:   pushBranch,
+		WorktreeRoot:     l.WorktreePath(),
+		TaskBranch:       taskBranch,
+		ParentBranch:     parentBranch,
+		FinalSummaryPath: summaryparser.Path(geom.WebsterDir),
+		StencilsDir:      geom.StencilsDir,
+		ScratchDir:       loomengine.LoomScratchDir(l),
+		OriginURL:        originURL,
+		PushSkipped:      pushSkipped,
+		PushBranch:       pushBranch,
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},

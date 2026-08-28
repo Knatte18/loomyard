@@ -76,7 +76,7 @@ type Env struct {
 	// shedadapters.NewWebsterProducer.
 	WebsterDeps websterengine.RunDeps
 	// Landing is a whole-struct passthrough handed to landingshed.NewPublish/NewFinalize
-	// unchanged, rather than flattened, because landingshed.Deps already carries fourteen fields
+	// unchanged, rather than flattened, because landingshed.Deps already carries fifteen fields
 	// told wholesale through shedrecipe.Env.Landing now, filled by whichever caller invokes the
 	// registry.
 	Landing landingshed.Deps

@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // publishName is the producer name Publish's log lines, error text, and stuck-reason filename
@@ -166,7 +166,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	// Step 8: branch on what the query found.
 	if len(prs) == 0 {
-		summary, err := websterengine.ParseSummary(websterengine.SummaryPath(p.deps.WebsterDir))
+		summary, err := summaryparser.Parse(p.deps.FinalSummaryPath)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse summary artifact: %w", publishName, err)
 		}

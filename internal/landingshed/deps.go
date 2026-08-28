@@ -39,9 +39,12 @@ type Deps struct {
 	// base branch, and the branch Finalize's merge-in and parent-side merge both target. Told by
 	// the caller.
 	ParentBranch string
-	// WebsterDir is the absolute path to webster's own directory, the location Publish reads the
-	// summary artifact (websterengine.SummaryPath) from. Told by the caller.
-	WebsterDir string
+	// FinalSummaryPath is the told absolute path to the final-summary artifact itself -- not a
+	// directory, and not a producer's directory. The caller resolves it, so neither producer in
+	// this package knows which producer wrote the file. Do not add a second field alongside it;
+	// carrying both would be the derived near-duplicate ScratchDir's own comment already argues
+	// against.
+	FinalSummaryPath string
 	// StencilsDir is the absolute directory the conflict-resolution stencil is read from, passed
 	// through unchanged to the resolver both producers construct. Told by the caller.
 	StencilsDir string
