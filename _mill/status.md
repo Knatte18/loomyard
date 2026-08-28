@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hard-error-warn-lines
+phase: approved-spawn-site-log-lines
 slug: logger-coverage-audit
 branch: logger-coverage-audit
 plan: _mill/plan
@@ -29,6 +29,7 @@ planned  '2026-08-28T06:49:11Z'
 implementing  '2026-08-28T06:49:46Z'
 approved-audit-doc-and-constraints  '2026-08-28T07:04:27Z'
 approved-hard-error-warn-lines  '2026-08-28T07:12:29Z'
+approved-spawn-site-log-lines  '2026-08-28T07:18:33Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     commit_sha: 566d9739b05de04ce63acde5c9fdab9f8209cc86
     verify_baseline_failures: []
   - name: spawn-site-log-lines
-    state: running
+    state: approved
     implementer_session: 39429a70-600b-4af4-b7bd-57be329c9136
     start_sha: 060feebb60438a0d38a410dc68ea3774e9e68cbb
+    commit_sha: 2172585cea2ffb21135388a87762cbd33a289f1b
     verify_baseline_failures: []
   - name: github-caller-warn-lines
     state: pending
