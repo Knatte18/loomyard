@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-finalize-message
+phase: approved-docs-and-specs
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: _mill/plan
@@ -30,6 +30,7 @@ implementing  '2026-08-28T06:33:02Z'
 approved-summaryparser-leaf  '2026-08-28T06:36:46Z'
 approved-retarget-callers  '2026-08-28T06:44:23Z'
 approved-finalize-message  '2026-08-28T06:48:52Z'
+approved-docs-and-specs  '2026-08-28T06:55:51Z'
 ```
 
 ## Batches
@@ -55,8 +56,9 @@ batches:
     commit_sha: fe48118b28410ea99bc263d278b696efbd0a23e4
     verify_baseline_failures: []
   - name: docs-and-specs
-    state: running
+    state: approved
     implementer_session: bc636ef4-5e78-4e20-a55d-652b8fa87546
     start_sha: 3aa1a7b4d409d34b4173ed384ff7a868e2aedd80
+    commit_sha: 719a8d2af599d392cccf18e980148cf5ccecbc63
     verify_baseline_failures: []
 ```
