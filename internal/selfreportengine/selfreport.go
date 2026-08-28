@@ -19,6 +19,7 @@ import (
 	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // targetRepo is the hardcoded "owner/repo" GitHub repository that all issues
@@ -53,6 +54,7 @@ func CreateIssue(title string, body *string, labels []string) (url string, numbe
 		// unresolvable token: there is no authenticated client to even
 		// attempt the request with, so surface it the same way rather than
 		// risking a nil-client panic below.
+		logger.Warn("selfreportengine: github call failed", "action", "new github client", "cause", err)
 		return "", 0, fmt.Errorf("github client unavailable: %w", err)
 	}
 
@@ -80,6 +82,11 @@ func CreateIssue(title string, body *string, labels []string) (url string, numbe
 
 	issue, _, createErr := client.Issues.Create(ctx, owner, repo, req)
 	if createErr != nil {
+		// A single Warn covers all three classified returns below, rather
+		// than one per branch, since they share the same action/owner/repo
+		// context and only the cause differs.
+		logger.Warn("selfreportengine: github call failed", "action", "create issue", "owner", owner, "repo", repo, "cause", createErr)
+
 		// A token that could not be resolved (env, cache, and gh CLI all
 		// exhausted) surfaces distinctly from a generic network problem so
 		// the operator knows to fix credentials rather than investigate
