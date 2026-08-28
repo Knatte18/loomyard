@@ -28,6 +28,7 @@ The second half is a plain gap rather than a design problem: `Finalize` builds i
 - `landingshed.Deps`: `WebsterDir string` replaced by `FinalSummaryPath string`, a told absolute path to the artifact. `NewPublish` and `NewFinalize` each reject an empty value with a distinct error.
 - `internal/loomcli/landingdeps.go` fills the new field from `summaryparser.Path(geom.WebsterDir)`.
 - `Publish` reads `summaryparser.Parse(p.deps.FinalSummaryPath)` instead of the webster-rooted call.
+- `internal/landingshed/seam_enforcement_test.go`'s `landingshedAllowedImports` drops `internal/websterengine` and gains `internal/summaryparser`. Dropping that entry is this task's own enforcement of producer-agnosticism: the allowlist is a positive membership list, so leaving `websterengine` in it would compile and pass while still authorising the exact producer import the task exists to eliminate.
 - `Finalize` parses the artifact at the top of `Call` (after `entryErr`, before the status commit) and sets `MergeOptions.Message` to `summary.CommitMessage()`, unconditionally — for both the squash and non-squash merge shape, and on the step-5 retry merge as well, which reuses the same `mergeOpts` value.
 - New `contracts/specs/final-summary-spec.md` pinning the artifact producer-agnostically; `contracts/specs/webster-spec.md`'s summary section reduced to a pointer plus webster's own writer-side additions.
 - `docs/overview.md` and `CONSTRAINTS.md` updated in the same commit; `manifest/roadmap.md`'s "producer-agnostic final-summary artifact" Planned item marked complete.
@@ -84,8 +85,9 @@ The second half is a plain gap rather than a design problem: `Finalize` builds i
 ### finalize-parse-fails-loud
 
 - Decision: a missing or malformed artifact at `Finalize` time is a hard error returned from `Call` — never `Stuck`, never a silent fallback to an unset `Message`.
-- Rationale: `contracts/specs/webster-spec.md` already makes the artifact required and fail-loud on `outcome: done`, and `Publish` already treats a parse failure as a returned error rather than a stuck verdict. A run that reaches `Finalize` without the artifact is broken, not blocked on something a human resolves by editing the branch — which is the distinction `landingshed`'s existing stuck-vs-error split turns on.
-- Rejected: `Stuck` with a written reason; falling back to today's unset `Message`.
+- Rationale: `contracts/specs/webster-spec.md` already makes the artifact required and fail-loud on `outcome: done`, and a run that reaches `Finalize` without the artifact is broken, not blocked on something a human resolves by editing the branch — which is the distinction `landingshed`'s existing stuck-vs-error split turns on.
+- This is a deliberate tightening, not parity with `Publish`. `Publish` reaches its parse only on a narrow path: the parent branch must be in `Config.RequirePRToBase` (`publish.go:98` returns `Done` immediately otherwise) *and* the existing-PR query must come back empty (`publish.go:168`). `Finalize`'s parse is unconditional and at the top of `Call`, so the artifact becomes mandatory on task-to-task landings where nothing reads it today. That is intended: `Finalize` is the last row of every landing, PR-gated or not, and a landing commit with no composed message is the gap this task exists to close. Only the *disposition* on failure — a returned error rather than `Stuck` — is borrowed from `Publish`.
+- Rejected: `Stuck` with a written reason; falling back to today's unset `Message`; gating the parse on `Config.RequirePRToBase` to match `Publish`'s reachability exactly, which would leave the non-PR landing path with the unset message this task is fixing.
 
 ### finalize-parse-position
 
@@ -98,6 +100,7 @@ The second half is a plain gap rather than a design problem: `Finalize` builds i
 - Decision: `Message` is set whether or not `Config.Squash` is true.
 - Rationale: `opts.Message` is the conclude-commit message for both merge shapes in `fabricengine`, so gating on `Squash` would leave the non-squash landing commit with today's unset message and create a second code path to reason about for no benefit.
 - Rejected: setting it only when `Config.Squash`.
+- Accepted consequence: the message lands on *both* sides of the pair, not only the warp commit. `fabricengine`'s `concludeMergeSides` (`mergelifecycle.go:46-80`) computes one `effectiveMsg` and passes it to `MergeConclude` for warp and weft alike, so the weft conclude commit carries the same composed title and body. That is accepted rather than worked around: the weft side's conclude commit records the same landing event, so the same prose describes it correctly, and suppressing it would mean adding a per-side message parameter to `fabricengine` — a wider change this task explicitly rules out.
 
 ### construction-time-validation
 
@@ -120,9 +123,12 @@ The second half is a plain gap rather than a design problem: `Finalize` builds i
 
 ### summaryparser-invariant
 
-- Decision: `CONSTRAINTS.md` gains a short "Summaryparser Sole-Parser Invariant" — `internal/summaryparser` is the sole declarer of the summary filename and the sole parser of its format; stdlib-only leaf. Kept to the length of the existing `Discussionparser Sole-Parser Invariant` entry, which is two lines.
+- Decision: `CONSTRAINTS.md` gains a short "Summaryparser Sole-Parser Invariant" — in **production code**, `internal/summaryparser` is the sole declarer of the summary filename and the sole parser of its format; stdlib-only leaf. Kept to the length of the existing `Discussionparser Sole-Parser Invariant` entry, which is two lines.
 - Rationale: this is what stops the next producer re-deriving the path or re-implementing the parse, which is the failure mode the whole task exists to prevent. It matches the `planparser`/`discussionparser` precedent.
-- Rejected: appending a sentence to the existing parser invariants instead; no invariant at all.
+- The production-only scope is load-bearing, not boilerplate. Bare `"summary.md"` literals already exist across the test tree — `internal/websterengine/recordbatch_test.go:156`, `internal/webstercli/smoke_test.go`, and roughly a dozen sites in `internal/websterengine/runlevel_test.go` — where a fixture writing the literal filename is the clearer test. An unscoped invariant would declare every one of those a violation. This matches how the Lyxdirs Single-Declarer Invariant already scopes itself to "no other production file".
+- No declarer-scan test is added. The one enforcing test is the leaf import allowlist (`summaryparser/leaf_enforcement_test.go`), which polices imports, not string literals; the sole-declarer half is review discipline, exactly as it is for `discussionparser` today.
+- Decision: `internal/summaryparser` is **not** added to the Told-Geometry Invariant's bound-package list. That list contains `planparser` but not `discussionparser`, and `summaryparser` follows `discussionparser`: its own invariant's stdlib-only leaf rule is strictly stronger than the bound-package rule — no `lyxcwd` import is possible at all, not merely discouraged — and it ships a test enforcing that, so a second listing would be redundant.
+- Rejected: appending a sentence to the existing parser invariants instead; no invariant at all; adding `summaryparser` to the Told-Geometry bound-package list.
 
 ## Technical context
 
@@ -147,6 +153,8 @@ The two helpers that stay — `ArchiveStaleSummary` and `AppendIntegrationFailur
 - `internal/loomcli/landingdeps.go:41` — `WebsterDir: geom.WebsterDir`.
 
 Test files referencing the moved names: `internal/websterengine/summary_test.go`, `internal/websterengine/recordbatch_test.go`, `internal/websterengine/integration_test.go`, `internal/landingshed/publish_test.go`, `internal/landingshed/publish_integration_test.go`, `internal/shedadapters/webster_test.go`, `internal/webstercli/smoke_test.go`.
+
+**The import allowlist that must move with the code.** `internal/landingshed/seam_enforcement_test.go` declares `landingshedAllowedImports`, a positive membership map that currently lists `internal/websterengine` among eleven permitted non-stdlib imports. Removing the `websterengine` entry and adding `internal/summaryparser` is what makes the package's producer-agnosticism enforced rather than merely intended — the test passes either way if the entry is left behind, so this is easy to miss and the reason it is called out in Scope. Its sibling `internal/shedadapters` has no equivalent allowlist to update; `shedadapters` legitimately keeps its `websterengine` import.
 
 **`Finalize`'s current shape** (`internal/landingshed/finalize.go`). `Call` runs: `entryErr` → step 1b `deps.CommitStatus()` (nil-tolerant) → step 2 `mergeInStep` (catch-up against the parent branch) → step 3 `parentOpener()` → step 4 `parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)` where `mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash}` → step 5 on `*fabricengine.ErrMergeInRequired`, re-run `mergeInStep` and retry the same `mergeOpts` once → steps 6-7 stuck dispositions.
 The parse is inserted between `entryErr` and step 1b; `mergeOpts` gains `Message: summary.CommitMessage()`.
@@ -181,7 +189,7 @@ From `CONSTRAINTS.md`:
 
 New, introduced by this task:
 
-- **Summaryparser Sole-Parser Invariant** — `internal/summaryparser` is the sole declarer of the summary artifact's filename and the sole parser of its format; imports the standard library only. Recorded in `CONSTRAINTS.md` in the same commit, kept to the length of the existing `Discussionparser Sole-Parser Invariant` entry.
+- **Summaryparser Sole-Parser Invariant** — in production code, `internal/summaryparser` is the sole declarer of the summary artifact's filename and the sole parser of its format; imports the standard library only. Recorded in `CONSTRAINTS.md` in the same commit, kept to the length of the existing `Discussionparser Sole-Parser Invariant` entry. See the **summaryparser-invariant** Decision for the production-only scope, the absence of a declarer-scan test, and why `summaryparser` is not added to the Told-Geometry bound-package list.
 
 ## Testing
 
@@ -201,6 +209,7 @@ All Tier 1, untagged.
 - The step-5 retry path (`ErrMergeInRequired` then a successful retry) asserts the retry merge carries the same composed message.
 - `NewFinalize` and `NewPublish` each reject an empty `FinalSummaryPath` with their own error, alongside the existing nil-closure rejection tests.
 - `publish_test.go` / `publish_integration_test.go` update to the new field and the new package; behaviour is unchanged there, so these are mechanical.
+- `seam_enforcement_test.go`'s `landingshedAllowedImports` is edited, not merely left to pass: `internal/websterengine` out, `internal/summaryparser` in. Nothing asserts this happened, so it is a plan-level checklist item rather than a test to write.
 
 **`internal/loomcli`.**
 
