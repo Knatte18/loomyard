@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -50,7 +51,13 @@ func DefaultEditor(path string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return cmd.Run()
+	logger.Info("configengine: spawning editor", "editor", editorCmd, "path", path)
+	if err := cmd.Run(); err != nil {
+		logger.Warn("configengine: editor spawn failed", "editor", editorCmd, "path", path, "cause", err)
+		return err
+	}
+	logger.Info("configengine: editor exited", "editor", editorCmd, "path", path)
+	return nil
 }
 
 // scaffoldIfMissing writes template to path (creating configDir first) when

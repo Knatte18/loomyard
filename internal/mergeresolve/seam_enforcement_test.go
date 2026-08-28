@@ -23,13 +23,17 @@ import (
 // mergeresolveAllowedImports are the only non-stdlib import paths production code in this package
 // may use: the fabric engine (the merge seam), the shuttle engine (the conflict-session seam), the
 // model-spec package (resolving the conflict session's model), the stencil store (reading the
-// conflict prompt off disk), and the stencil filler (rendering it).
+// conflict prompt off disk), the stencil filler (rendering it), and the logger.
+// internal/logger carries no geometry and opens no seam, so admitting it leaves the Told-Geometry
+// Invariant's actual property intact -- the same call CONSTRAINTS.md's Treadle Runner-Seam
+// Invariant allowlist already makes.
 var mergeresolveAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/fabricengine":  true,
 	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
 	"github.com/Knatte18/loomyard/internal/modelspec":     true,
 	"github.com/Knatte18/loomyard/internal/stencilstore":  true,
 	"github.com/Knatte18/loomyard/internal/stencil":       true,
+	"github.com/Knatte18/loomyard/internal/logger":        true,
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package

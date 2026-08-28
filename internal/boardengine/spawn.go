@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -27,5 +28,10 @@ func spawnSync(boardPath string) error {
 	cmd := exec.Command(exe, "board", "--board-path", abs, "sync")
 	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
-	return cmd.Start() // intentionally not Wait()ed
+	logger.Info("boardengine: spawning detached board sync", "exe", exe, "boardPath", abs)
+	if err := cmd.Start(); err != nil { // intentionally not Wait()ed
+		logger.Warn("boardengine: board sync spawn failed", "exe", exe, "boardPath", abs, "cause", err)
+		return err
+	}
+	return nil
 }
