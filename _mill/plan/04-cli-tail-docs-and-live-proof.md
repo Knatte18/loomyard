@@ -93,7 +93,12 @@ This is the smallest seam that makes the discussion's "the tail reaches `blockFo
   - The non-blocking mode is unaffected: `headerWatch` and `headerPark` both ran zero times and the JSON envelope is emitted as before.
   - `Long` mentions the self-heal behaviour: assert the string contains `watchdog`.
 
-  Build the command the way `cli_test.go` already builds one; if the existing header tests reach the command without a resolved `c.eng`, keep that shape and make the substituted `headerWatch` ignore its `eng` argument rather than adding new fixture machinery.
+  **The `c.eng` fixture is mandatory, not optional.** `headerCmd`'s `RunE` calls `c.eng.HeaderText()` unconditionally, before the `if blocking` branch is reached at all, and `HeaderText` dereferences `e.cfg` immediately — so the two existing tests' `&reedCLI{}` shape, which never runs `RunE`, cannot be carried into these new tests: every one of them would panic on a nil `*Engine` before `headerWatch` or `headerPark` was ever called.
+  Build each new test's CLI as `&reedCLI{eng: reedengine.New(reedengine.Config{}, reedengine.Geometry{RepoName: "test-repo", HubPath: t.TempDir()})}`.
+  An empty `Config.Header.Template` makes `HeaderText` fall back to the embedded default template, and `RepoName`/`HubPath` are the only two `Geometry` fields `tokenvocab.Ctx` consumes, so this renders cleanly with no filesystem or process I/O.
+  Drive the command with `cmd.SetOut(buf)`, `cmd.SetArgs([]string{"--blocking"})`, and `cmd.Execute()`; `clihelp.ShouldAbort` and `clihelp.SetExit` are both nil-safe on a bare `context.Background()`, so no `clihelp` context seeding is needed.
+  Leave `TestHeaderCmd_UseAndShort` and `TestHeaderCmd_BlockingFlagRegistered` on their existing `&reedCLI{}` shape — they still never run `RunE`.
+  Update the file-header comment, which currently states the file "never runs RunE/PreRunE and never invokes the --blocking path, since that path blocks forever by design": that is no longer true now that `headerPark` is substitutable, so reword it to say the blocking path is exercised with both function vars stubbed.
 - **Commit:** `test(reed): assert the header tail always parks, even when the watch loop errors`
 
 ### Card 21: record the watchdog's load-bearing assumptions in doc.go
@@ -104,6 +109,8 @@ This is the smallest seam that makes the discussion's "the tail reaches `blockFo
   - `internal/reedengine/reapply.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/apply.go`
+  - `internal/reedengine/headerpane.go`
+  - `internal/reedengine/lifecycle.go`
   - `internal/reedcli/header.go`
   - `CLAUDE.md`
   - `CONSTRAINTS.md`

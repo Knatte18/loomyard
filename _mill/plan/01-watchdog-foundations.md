@@ -146,8 +146,11 @@ The tmux-side wrapping (`run-shell -b <tmux-quoted fragment>`) lives in `reedeng
   Cover:
 
   - `watchdogOption` as a table, mirroring `mouse_test.go`'s own table: `"on"`, `"ON"`, `" on "` yield `(true, nil)`; `"off"`, `"OFF"`, `" off "` yield `(false, nil)`; `""`, `"1"`, `"true"`, `"yes"`, `"onn"` each yield an error whose message contains the offending value.
-  - The embedded-template default for **both** GOOS variants: parse each of `template_posix.yaml` and `template_windows.yaml` and assert each declares a `watchdog` key whose resolved default is `on`.
-    Use whatever mechanism `config_test.go` already uses to reach the two templates and resolve `${env:...}` defaults; do not invent a second one, and do not read the `.yaml` files by hand-rolled path if the package already exposes them.
+  - The embedded-template default for **both** GOOS variants.
+    `ConfigTemplate()` cannot serve this assertion: `template_posix.go` carries `!windows` and `template_windows.go` carries `windows`, so exactly one `.yaml` is embedded per build and the accessor exposes only that one — `config_test.go`'s `TestLoadConfig_UninitializedFallsBackToTemplate` records the same limit in its own comment.
+    Read both `template_posix.yaml` and `template_windows.yaml` directly by relative path with `os.ReadFile` in this one test — that is the only way to reach the other GOOS's file in a single run — and assert each declares a `watchdog:` line whose `${env:LYX_REED_WATCHDOG:-...}` default is `on`.
+    A plain string/regex assertion over the file bytes is sufficient and preferred here; do not build a second template-resolution mechanism.
+    Add one further assertion against `ConfigTemplate()` itself, so the accessor this build actually ships is covered too: its bytes declare the same `watchdog:` line.
   - `resizeHookCommand` for `shell.Posix()`: assert the result starts with the literal `run-shell -b `, that the remainder is double-quoted, and that the whole string equals `run-shell -b ": > '/tmp/wt/.lyx/reed-resize.signal'"` for `signalPath = "/tmp/wt/.lyx/reed-resize.signal"`.
     Assert there is no `-a` anywhere in the string.
   - `resizeHookCommand` for `shell.Pwsh()`: assert the pwsh fragment is present and correctly tmux-quoted for the same path.

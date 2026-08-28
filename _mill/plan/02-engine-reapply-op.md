@@ -123,6 +123,7 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
   - `internal/reedengine/apply.go`
   - `internal/reedengine/lock.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/probe.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/watchdog.go`
   - `internal/reedengine/spawn.go`
@@ -225,8 +226,10 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
 - **Context:**
   - `internal/reedengine/watchdog.go`
   - `internal/reedengine/mouse.go`
+  - `internal/reedengine/lifecycle_test.go`
 - **Edits:**
   - `internal/reedengine/lifecycle.go`
+  - `internal/reedengine/lock_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -240,6 +243,12 @@ All new capability lands on a new `applyLayoutLockedOpts` sibling.
 
   Precede it with a short comment in the voice of its two neighbours, stating that the boolean is discarded here because this is the one consumer with an error channel and its only job is to make a typo fail `lyx reed up` loudly and by name — the hook install and the watch loop each read the key again and fail safe toward "no watchdog" instead.
   Do not change the `debugLogArgs`, `mouseOption`, `ValidateHeader`, or `probeCapabilityLocked` calls, and do not move the block.
+
+  Then repair the shared untagged fixture this check would otherwise break.
+  `newTestEngine` (`internal/reedengine/lock_test.go:27`) builds its `Config` literal without a `Watchdog` value, leaving it at Go's zero `""`, which `watchdogOption` rejects — so every existing untagged test that reaches `ensureServerAndSessionLocked` through that fixture would start failing on "invalid watchdog value" instead of on what it asserts.
+  `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact` (`internal/reedengine/lifecycle_test.go`) is the sharpest case: it pins that header validation runs before any tmux contact, and it already sets `e.cfg.DebugLog` and `e.cfg.Mouse` per-test to dodge exactly this trap for the two earlier keys.
+  Add `Watchdog: "on"` to `newTestEngine`'s `Config` literal in `internal/reedengine/lock_test.go` rather than to each test, so one line covers every caller of the shared fixture; a test that wants an invalid value overrides `e.cfg.Watchdog` itself, as card 14's does.
+  Leave the second, local `Config` literal further down `lock_test.go` alone — its test only exercises `withOpLock` and never reaches the boot path.
 - **Commit:** `feat(reed): fail the boot loudly on an invalid watchdog value`
 
 ### Card 12: tier-1 tests for the widened apply path and the try-lock
