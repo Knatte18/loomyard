@@ -219,6 +219,39 @@ func TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane(t *testing.T) {
 	})
 }
 
+// TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane pins that applyLayoutLocked,
+// now a thin wrapper over applyLayoutLockedOpts, keeps its exact pre-batch-2 behaviour: the full
+// focus half, unabbreviated.
+func TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Width, e.cfg.Height = 100, 21
+
+	var calls []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		calls = append(calls, args[0])
+		if args[0] == "display-message" {
+			return "100 21", nil
+		}
+		return "", nil
+	}
+
+	st := &ReedState{Strands: []Strand{
+		{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
+	}}
+	live := []LivePane{{ID: "%1"}, {ID: "%2"}}
+
+	if err := e.applyLayoutLocked(st, live); err != nil {
+		t.Fatalf("applyLayoutLocked() = %v, want nil", err)
+	}
+
+	if !containsArg(calls, "select-layout") {
+		t.Errorf("applyLayoutLocked() calls = %v, want select-layout", calls)
+	}
+	if !containsArg(calls, "select-pane") {
+		t.Errorf("applyLayoutLocked() calls = %v, want select-pane", calls)
+	}
+}
+
 func TestAnyPlacedStrand(t *testing.T) {
 	present := map[string]bool{"%1": true, "%2": true}
 	cases := []struct {
