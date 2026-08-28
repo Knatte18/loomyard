@@ -344,6 +344,56 @@
 //     options whose absence degrades to a working session, and psmux's
 //     support for them is unverified anywhere in this repo (Shared Decision
 //     geometry-tmux-failures-are-non-fatal-everywhere).
+//   - window-resized is the only usable resize event source (windowsize.go,
+//     watchdog.go): on a client resize the hooks fire client-resized ->
+//     window-layout-changed -> window-resized; client-resized reports the
+//     STALE pre-resize window size, so it cannot plan a correct layout, and
+//     window-layout-changed is self-triggering, so reed's own select-layout
+//     would re-enter the watcher in an infinite loop. window-resized fires
+//     exactly once per settled size, after the window already has the new
+//     geometry, on both growth and shrink.
+//   - SIGWINCH is not a substitute (reedcli/header.go's blocking tail): with
+//     the header pinned to one row, growing the window delivers SIGWINCH
+//     every time — and that growth IS the layout bug — but SHRINKING
+//     delivers nothing while the strand budgets below are silently violated
+//     (at 30 rows the bottom strand had been squeezed from 15 rows to 2). A
+//     watcher that self-heals only on growth is worse than none, because the
+//     operator learns to trust it.
+//   - select-layout does not fire window-resized (apply.go, reapply.go):
+//     verified in all four cases — attached, detached, re-applying an
+//     identical layout, and the documented detached over-budget apply that
+//     genuinely grew the window 40 -> 60 rows — zero fires each time. So
+//     window-resized tracks CLIENT-DRIVEN size changes, not layout-driven
+//     ones, which is exactly the property that makes it usable where
+//     window-layout-changed is not. The box-equality guard inside
+//     reapplyLayout is kept anyway: the probe settles tmux 3.6 but not
+//     psmux, and a silent infinite loop inside the session keepalive is the
+//     worst available failure mode.
+//   - The plain set-hook form replaces; -a accumulates (windowsize.go): four
+//     identical plain installs yield exactly one fire per resize; three
+//     further -a appends yield four. pinGeometryOptionsLocked runs on every
+//     AttachArgv pre-flight as well as at boot, so -a would cost N run-shell
+//     spawns per resize after N attaches.
+//   - The hook readback is show-options, not show-hooks (reapply.go): in
+//     tmux 3.6 hooks are options, and show-hooks prints nothing for a
+//     session-scoped hook that demonstrably fires — a show-hooks-based probe
+//     would report "no hook" every time and pin every watcher into poll
+//     mode.
+//   - run-shell without -b blocks the tmux server (watchdog.go).
+//   - liveBoxLocked never reports failure through its box (windowsize.go,
+//     reapply.go): a degraded query returns the configured
+//     cfg.Width/cfg.Height pair, which is a perfectly plausible-looking box,
+//     so any caller comparing boxes across calls must consume the method's
+//     second return value — otherwise a fallback that happens to equal the
+//     last applied box skips forever and one that differs re-applies
+//     forever.
+//   - The header pane's stdout/stderr is its screen (reedcli/header.go): the
+//     --blocking tail rebinds the logger's stderr sink to a discarding
+//     writer before entering the loop; the durable sink is untouched.
+//   - testing.Testing() gates the header launch line (headerpane.go,
+//     lifecycle.go): no Go test can exercise a header-hosted watch loop by
+//     booting a header pane, which is why the tier-2 proof runs the loop
+//     in-process against a real session instead.
 //
 // requiredSubcommands (probe.go) did not grow for any of this: display-message,
 // select-layout, set-option, and list-panes were already spent by the engine
