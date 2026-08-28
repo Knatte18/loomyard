@@ -45,7 +45,8 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
 - A pure entry point in `internal/reedengine/render` that reports those fixed-height pins for the same strand set and box `Rules` was given, so the hook is derived from reed's own policy rather than from raw config.
 - Hook installation/refresh at two named statements: in `applyLayoutLocked`, immediately after the `select-layout` call returns without error and before the `select-pane` call; and in `AttachArgv`, inside the `withOpLock` closure immediately after `planLayout` returns without error and before `chained` is assigned.
   Every guard and degrade return at both sites precedes its install statement, and none of them is changed — see `hook-install-points-are-named-statements`.
-- Correcting `internal/reedengine/doc.go` and `internal/reedengine/attach.go`/`attachgeometry_integration_test.go` doc comments where they claim the chained `select-layout` is what keeps the header at its budget.
+- Documentation additions at three named sites in `internal/reedengine` — two `doc.go` bullets and `attachgeometry_integration_test.go`'s file comment — plus one narrowing edit to `manifest/roadmap.md`'s watchdog-daemon item.
+  See `doc-work-is-additions-at-three-named-sites` and `roadmap-watchdog-item-is-narrowed`.
 - Tests: unit tests for the pure pin computation and the pure hook-argv construction, plus a real-tmux/real-pty integration case that resizes the client after attach.
 
 **Out:**
@@ -137,8 +138,14 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
 - Fire-time failure, the separate case: an installed hook runs inside the tmux server, where reed has no return value to inspect and nothing to log.
   The reachable failure is a pinned `%N` naming a pane destroyed since the last install — a snapshot hook makes that reachable by design, and reconcile does destroy panes.
   Disposition: the array encoding (`hook-body-is-one-array-entry-per-pin`) contains the blast radius to the one entry that failed, so a dead strip pin can no longer take the header pin down with it, and the header is entry `[0]` so it fires before any strip pin can go wrong.
-  Beyond that it is accepted and self-healing: a pane can only disappear through reconcile, `remove`, or a dead process, and every one of those routes back through `applyLayoutLocked`, which rebuilds the array.
+  Beyond that it is accepted, and self-healing on the paths that reach the install statement: a pane disappears through reconcile, `remove`, or a dead process, and each of those routes back through `applyLayoutLocked` — which rebuilds the array *provided* neither of its guards fires first.
   A pane id is never reused within a tmux server incarnation, so a stale pin can only fail, never hit the wrong pane; across a server restart reed already discards every binding minted against a different pane generation.
+- The two guard-skip states leave a stale array installed, deliberately, with no removal path.
+  `len(live) < 2` leaves pins naming panes that are mostly gone, and a header pin that now contradicts `render.Rules`' sole-cell branch — but `resize-pane -y` against the only pane in a window is a verified silent no-op (exit 0, height unchanged), so the contradiction cannot express itself.
+  `!anyPlacedStrand` is the reachable, long-lived one: `state.go` documents an operator remedy that deletes `reed.json` while the session and its processes keep running untracked, and `anyPlacedStrand` is then false forever.
+  There the stale array is a benefit, not a hazard — it keeps pinning the still-alive header and strips at the budgets reed last computed for them, which is what the operator would want from a session reed has stepped back from managing.
+- Rejected: moving the `set-hook -u` clear ahead of the guards so every call site clears.
+  It would strip the pins from exactly that untracked-but-running session, and a clear with no rebuild behind it is strictly worse than a slightly stale array — a cleared hook drifts on the very next resize, while a stale one keeps working for every pin whose pane is still alive.
 
 ### attach-chain-is-kept-and-its-docs-corrected
 
@@ -147,12 +154,31 @@ The inflated pane is also what makes `reed-header-pane-boot-noise` visible: the 
   Deleting a working, integration-tested mechanism is not this bugfix's job.
 - Rejected: deleting the chain and its pre-flight in favour of hook-only — smaller code, but it drops the one place reed's complete layout policy is reasserted for a new client, and it churns a large tested surface for a defect the chain does not cause.
 
-### threshold-attribution-is-corrected-in-writing
+### roadmap-watchdog-item-is-narrowed
 
-- Decision: record in `doc.go` that the ~50-row threshold is `reed.yaml`'s `height: 50` boot size showing through the *bare* attach path, not evidence of a miscomputed layout.
-- Rationale: the original finding's root-cause note points the next reader at `render/{rules.go,height.go}` and at the chain.
-  Both are correct as written; leaving the misattribution in the record costs the next investigator the same day.
+- Decision: edit `manifest/roadmap.md`'s **reed: watchdog daemon** item in this task's commit, narrowing its resize clause to what this fix does not deliver, and recording that a `window-resized` + `resize-pane` reaction is now shipped.
+  The item stays on the roadmap; only its resize half shrinks.
+- Rationale: that item currently owns "reconciles session geometry after a live terminal resize" and explicitly records that an earlier task's discussion *rejected* a one-off tmux `set-hook`+`run-shell` reaction, on the grounds that a shared daemon needing event-driven hooks for the pane-reap job would pay for hook infrastructure and psmux verification once rather than per job.
+  This task ships a `set-hook` resize reaction, so leaving the item as written would put a shipped mechanism and a documented rejection of it side by side in the plan of record.
+  The daemon rationale survives in narrowed form: this fix pays only for `window-resized` + `resize-pane`, a hook with no `run-shell` and no out-of-tmux actor, while the pane-reap job still needs its own hook class, its intentional-vs-bug-induced policy, and the cheaper reap probe named as its prerequisite — and the resize job's remaining half, re-rendering reed's *full* layout policy (the strand split, which tmux leaves uneven), still needs an actor outside tmux.
+- Rationale for moving the roadmap at all: CLAUDE.md holds `manifest/roadmap.md` still for bugfixes, hardening, and polish passes.
+  This commit is a bugfix, but it also changes the scope of a planned item, which is the case that rule leaves open.
+  Silently shipping a mechanism a roadmap item rejects is the failure the rule exists to prevent, not an instance of it.
+- Rejected: deleting the item — the pane-reap job and the full-policy resize re-render are untouched by this fix.
+  Leaving it unedited and noting the overlap only in `doc.go` — the plan of record is the roadmap, and a reader planning the daemon would start from the stale rejection.
+
+### doc-work-is-additions-at-three-named-sites
+
+- Decision: the documentation work is additions, not corrections — nothing in the existing geometry comments is false.
+  Three named sites: (1) `doc.go`'s geometry bullet list gains a bullet for the window-resize round-robin and the hook that answers it, stating that tmux distributes a resize delta one row at a time across the vertical cells and that no absolute row budget survives a resize without the hook;
+  (2) `doc.go`'s chained-attach bullet gains one sentence noting that "lands verbatim with no rescale" holds only until the next window resize, and pointing at the hook;
+  (3) `attachgeometry_integration_test.go`'s file-level comment gains a note that its `100x30` client is shorter than the 220x50 boot box, so the existing cases exercise a shrink and never the growth path this task is about.
+- Rationale: `doc.go`'s existing rescale bullet is about a mismatched layout *string*, a different mechanism from a window *resize*, and its chained-attach bullet's verbatim-landing claim was confirmed true by this task's own live measurements — so a reader who takes either as a promise that the header stays at its budget is filling in a gap, not reading a wrong sentence.
+  Naming the three sites keeps the plan writer from hunting for a falsehood that is not there.
+- Also record in `doc.go`, in the same bullet: the ~50-row threshold in the original report is `reed.yaml`'s `height: 50` boot size showing through the *bare* attach path, not evidence of a miscomputed layout.
+  The original root-cause note points the next reader at `render/{rules.go,height.go}` and at the chain; both are correct as written, and leaving the misattribution in the record costs the next investigator the same day.
 - Rejected: leaving it to the commit message — `doc.go` is where this package's geometry reasoning lives, and CLAUDE.md requires the module doc to move in the same commit.
+  Rewriting the existing bullets rather than extending them — they are accurate, and churning them would lose the mismatched-string mechanism they do document.
 
 ## Technical context
 
@@ -212,7 +238,9 @@ From `CONSTRAINTS.md`:
 - **Test Tier Purity Invariant** — no `exec.Command` and no `time.Sleep` of a second or more in an untagged test file.
   Everything that drives a real tmux server or a real pty belongs in an `integration`-tagged file.
 - **Documentation Lifecycle** (CLAUDE.md) — `internal/reedengine/doc.go` is this module's doc and must move in the same commit.
-  `docs/overview.md` needs no change (no module-table or execution-stack change), and `manifest/roadmap.md` must not move: this is a bugfix.
+  `docs/overview.md` needs no change: no module-table or execution-stack change.
+  `manifest/roadmap.md` gets exactly one edit — narrowing the **reed: watchdog daemon** item's resize clause — which is not the bugfix-moves-the-roadmap case that rule forbids but the planned-item-changes-scope case it leaves open; see `roadmap-watchdog-item-is-narrowed`.
+  No other roadmap line moves.
 - **Markdown** (CLAUDE.md) — semantic line breaks, one sentence per line, in every `.md` touched.
 
 Discovered during discussion:
