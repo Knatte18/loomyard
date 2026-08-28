@@ -62,6 +62,8 @@ batches:
     commit_sha: 2f93f8b9f5d96f8e4f63cc450cca73343f416d60
     verify_baseline_failures: []
   - name: spawn-observability-guard
-    state: pending
+    state: running
+    implementer_session: 351d9073-7b59-453d-bbb4-a0fedc6d7ff2
+    start_sha: de5e0f8245d614187e13a9ea3ddbe3573e37831f
     verify_baseline_failures: []
 ```
