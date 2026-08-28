@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-audit-doc-and-constraints
+phase: approved-hard-error-warn-lines
 slug: logger-coverage-audit
 branch: logger-coverage-audit
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-review-r3  '2026-08-28T06:48:51Z'
 planned  '2026-08-28T06:49:11Z'
 implementing  '2026-08-28T06:49:46Z'
 approved-audit-doc-and-constraints  '2026-08-28T07:04:27Z'
+approved-hard-error-warn-lines  '2026-08-28T07:12:29Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     commit_sha: 6e2e9d36e35b8030200c7a702f32f49bcc724925
     verify_baseline_failures: []
   - name: hard-error-warn-lines
-    state: running
+    state: approved
     implementer_session: ef70df03-7a4f-4985-8bc8-93967ebd6408
     start_sha: af6b379b3e2c804c905f3530b7e30386ec1fbf74
+    commit_sha: 566d9739b05de04ce63acde5c9fdab9f8209cc86
     verify_baseline_failures: []
   - name: spawn-site-log-lines
     state: pending
