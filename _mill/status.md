@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: logger-coverage-audit
 branch: logger-coverage-audit
-plan: null
+plan: _mill/plan
 parent: main
 task: Audit internal/logger coverage across spawn/hard-error paths
 task_description: |
@@ -18,4 +18,5 @@ discussing  '2026-08-27T19:26:55Z'
 discussion-fix-r4  '2026-08-28T05:59:04Z'
 discussion-fix-r6  '2026-08-28T06:08:42Z'
 discussed  '2026-08-28T06:08:42Z'
+planning  '2026-08-28T06:18:32Z'
 ```
