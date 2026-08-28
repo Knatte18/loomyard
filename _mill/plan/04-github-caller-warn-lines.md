@@ -18,11 +18,11 @@ It is one batch because both cards add the same shape of line — a `logger.Warn
 Batches 3 and 5 consume nothing from this batch; it is parallel to them under the DAG root.
 Neither file in this batch is a spawn site, so batch 5's guard never walks either for a `logger` import.
 
-Batch-local decision differing from `## Shared Decisions`: none beyond the `publish-warn-overlaps-reportstuck` decision recorded in the overview, which applies to card 13 only.
+Batch-local decision differing from `## Shared Decisions`: none beyond the `publish-warn-overlaps-reportstuck` decision recorded in the overview, which applies to card 14 only.
 
 ## Cards
 
-### Card 12: Warn on GitHub failures in selfreportengine
+### Card 13: Warn on GitHub failures in selfreportengine
 
 - **Context:**
   - `internal/githubclient/token.go`
@@ -49,7 +49,7 @@ Batch-local decision differing from `## Shared Decisions`: none beyond the `publ
   Assert on field keys and the level token, never on an exact rendered line.
 - **Commit:** `feat(selfreportengine): warn on github client and issue-create failures`
 
-### Card 13: Warn on GitHub failures in landingshed Publish
+### Card 14: Warn on GitHub failures in landingshed Publish
 
 - **Context:**
   - `internal/landingshed/stuck.go`
@@ -87,8 +87,8 @@ Batch-local decision differing from `## Shared Decisions`: none beyond the `publ
 
 What each run covers:
 
-- `./internal/selfreportengine/` runs card 12's extended cases in `internal/selfreportengine/selfreport_test.go`. The package's `NewGitHubClient` seam is a package-level `var`, so both failure sites are reachable from an in-package test by swapping it: a factory that returns an error drives the first, and a client whose `Issues.Create` fails drives the second. The package has no import-allowlist test of its own, so the new `logger` import carries no enforcement risk here.
-- `./internal/landingshed/` runs card 13's extended cases in `internal/landingshed/publish_test.go` — which is `package landingshed`, in-package, so it can drive `NewGitHubClient` the same way — and, importantly, `TestToldGeometryInvariant_AllowlistOnly` in `internal/landingshed/seam_enforcement_test.go`. That test already admits `internal/logger`, so it is expected to stay green; it runs here so a mistaken import (of `githubclient`'s own internals, say, while chasing a field) fails at this batch rather than at the repo-wide gate.
+- `./internal/selfreportengine/` runs card 13's extended cases in `internal/selfreportengine/selfreport_test.go`. The package's `NewGitHubClient` seam is a package-level `var`, so both failure sites are reachable from an in-package test by swapping it: a factory that returns an error drives the first, and a client whose `Issues.Create` fails drives the second. The package has no import-allowlist test of its own, so the new `logger` import carries no enforcement risk here.
+- `./internal/landingshed/` runs card 14's extended cases in `internal/landingshed/publish_test.go` — which is `package landingshed`, in-package, so it can drive `NewGitHubClient` the same way — and, importantly, `TestToldGeometryInvariant_AllowlistOnly` in `internal/landingshed/seam_enforcement_test.go`. That test already admits `internal/logger`, so it is expected to stay green; it runs here so a mistaken import (of `githubclient`'s own internals, say, while chasing a field) fails at this batch rather than at the repo-wide gate.
 
 Both cards are TDD candidates: every failure site is behind a swappable seam, so the `WARN` assertions can be written and observed to fail before the log calls exist.
 

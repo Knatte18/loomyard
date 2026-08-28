@@ -20,7 +20,7 @@ Batch-local decision differing from `## Shared Decisions`: this batch adds no pr
 
 ## Cards
 
-### Card 14: Add the spawn-observability guard and its tier-purity allowlist entry
+### Card 15: Add the spawn-observability guard and its tier-purity allowlist entry
 
 - **Context:**
   - `cmd/lyx/checkedcall_test.go`

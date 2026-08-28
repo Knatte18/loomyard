@@ -4,19 +4,21 @@
 task: "Audit internal/logger coverage across spawn/hard-error paths"
 batch: "spawn-site-log-lines"
 number: 3
-cards: 6
-verify: go test ./internal/websterengine/ ./internal/treadleengine/ ./internal/configengine/ ./internal/boardengine/ ./internal/vscode/ ./internal/reedengine/ && go test -tags integration -run TestRunVerifyCommand ./internal/websterengine/
+cards: 7
+verify: go test ./internal/websterengine/ ./internal/treadleengine/ ./internal/configengine/ ./internal/boardengine/ ./internal/vscode/ ./internal/reedengine/ ./internal/fabricengine/ ./internal/reedcli/ ./internal/loomcli/ && go test -tags integration -run TestRunVerifyCommand ./internal/websterengine/
 depends-on: [1]
 ```
 
 ## Batch Scope
 
-This batch implements every `add` verdict from the audit's spawn-site table: the seven production files that call `exec.Command`/`exec.CommandContext` and today import `internal/logger` nowhere in that file.
+This batch implements every `add` verdict from the audit's spawn-site table: the seven production files that call `exec.Command`/`exec.CommandContext` and today import `internal/logger` nowhere in that file, plus (card 12) the three call sites in files that DO import `logger` but never log the spawn itself.
 It is one batch because every card is the same two-or-three-line insertion around an existing spawn call, differing only in level (`Info` for a lifecycle spawn, `Debug` for the polling probe) and in whether the site waits (a waiting site logs teardown, a detached site logs the spawn alone and warns on `Start` failure).
-Splitting it would put seven near-identical edits behind seven batch boundaries for no review benefit.
+Splitting it would put near-identical edits behind separate batch boundaries for no review benefit.
 
 The external interface batch 5 consumes is exactly this batch's file-level effect: after it lands, every walked production file containing a spawn call either imports `internal/logger` or is one of the five sites batch 5 allowlists.
 Batch 5's guard cannot go green before this batch lands, which is why it depends on it.
+Card 12 is the exception to that framing and is here deliberately: its three sites already satisfy the guard's file-level check and would pass it unchanged, but they do not satisfy the sharpened invariant text card 2 lands, which is a per-call rule.
+Without card 12 this task would ship an invariant three of its own `covered` rows silently violate.
 
 Batch-local decision differing from `## Shared Decisions`: card 11's two lines are `Debug`, not `Info`. `Debug` never reaches the durable trace file, so those two probes are deliberately outside the bug-report trail — the alternative floods the durable sink, because both sit inside a polling probe run repeatedly against a live process tree.
 
@@ -169,14 +171,41 @@ Batch-local decision differing from `## Shared Decisions`: card 11's two lines a
   The file carries an implicit `windows` build constraint via its `_windows.go` suffix and is never compiled by a native `go test` on Linux; the module-wide `GOOS=windows go build ./...` in the overview's `verify:` is what proves it still compiles.
 - **Commit:** `feat(reedengine): debug-log the windows process-tree probes`
 
+### Card 12: Log the three spawn sites in files that import logger but never log the spawn
+
+- **Context:**
+  - `internal/reedengine/lifecycle.go`
+  - `internal/proc/`
+  - `internal/logger/logger.go`
+  - `manifest/designs/logger-coverage.md`
+  - `CONSTRAINTS.md`
+- **Edits:**
+  - `internal/fabricengine/spawn.go`
+  - `internal/reedcli/attach.go`
+  - `internal/loomcli/run.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  Each of these three files already imports `github.com/Knatte18/loomyard/internal/logger`, so no import changes anywhere in this card — the gap is that the spawn call itself is unlogged, which the sharpened invariant card 2 lands makes a violation and which batch 5's file-level guard structurally cannot see.
+  `internal/reedengine/lifecycle.go`'s `spawnSession` closure is the in-repo model for the shape wanted at every site: a `logger.Info` naming the spawn after a successful `Start`, and a `logger.Warn` on the failure path.
+
+  - In `internal/fabricengine/spawn.go`, in `SpawnDetachedPush`, add a `logger.Info` immediately after a successful `cmd.Start()` — that is, on the path that reaches the final `return nil // intentionally not Wait()ed` — carrying `exe`, `args`, and `pid` (`cmd.Process.Pid`), with a package-prefixed message naming the detached both-sides push spawn. Log no teardown: the child is started and never `Wait`ed. Leave the existing `logger.Warn("fabricengine: spawn detached push failed", …)` on the `Start`-failure path exactly as it is — do not reword it, do not change its `error` key to `cause`, and do not renumber its fields; the `additive-only` shared decision forbids touching an existing line even to bring it to the majority spelling.
+  - In `internal/reedcli/attach.go`, around the `attach := exec.Command(c.eng.TmuxPath(), …)` tmux-attach handover, add a `logger.Info` immediately before `attach.Run()` carrying `tmux` (`c.eng.TmuxPath()`), `cols`, and `rows`, and a `logger.Info` teardown line after `attach.Run()` returns carrying `tmux` and `exitCode`. The teardown line must be emitted on both the success and the non-zero-exit paths, and must not change the existing `clihelp.SetExit` behaviour or the documented no-JSON-envelope terminal-handover exception. Do not touch the existing terminal-size `logger.Warn` above it.
+  - In `internal/loomcli/run.go`, apply the identical treatment to the `attach := exec.Command(c.reed.TmuxPath(), …)` tmux-attach handover only. Do not touch the `driveCmd := exec.Command(exe, "loom", "drive")` spawn or its existing `logger.Info("loom: spawned detached driver", …)` line — that site is already covered and is what the audit's `covered` half of this file's row refers to.
+
+  Change no control flow, no error text, and no return value at any of the three sites.
+- **Commit:** `feat(spawn): log the three unlogged spawn call sites`
+
 ## Batch Tests
 
 `verify:` has two halves.
 
-The first, `go test ./internal/websterengine/ ./internal/treadleengine/ ./internal/configengine/ ./internal/boardengine/ ./internal/vscode/ ./internal/reedengine/`, runs the untagged suite of every package this batch edits.
-Its job is regression, not assertion of the new lines: five of the six cards add log calls around existing, already-tested spawn calls and get no dedicated test of their own, per `_mill/discussion.md`'s Testing section — a per-site log-content test at each would be test-for-test's-sake.
+The first, `go test ./internal/websterengine/ ./internal/treadleengine/ ./internal/configengine/ ./internal/boardengine/ ./internal/vscode/ ./internal/reedengine/ ./internal/fabricengine/ ./internal/reedcli/ ./internal/loomcli/`, runs the untagged suite of every package this batch edits.
+Its job is regression, not assertion of the new lines: six of the seven cards add log calls around existing, already-tested spawn calls and get no dedicated test of their own, per `_mill/discussion.md`'s Testing section — a per-site log-content test at each would be test-for-test's-sake.
 What this half genuinely catches is the risk that actually exists here: a new `logger` import tripping a package's own leaf or seam-enforcement test.
 `internal/treadleengine/seam_enforcement_test.go` is the one such test in scope, and it runs in this half.
+Card 12 adds no import at all — all three of its files already import `logger` — so it carries none of that risk; the three packages are in the list to catch a behavioural regression from restructuring a spawn's surrounding statements, particularly `internal/reedcli`'s and `internal/loomcli`'s exit-code propagation through `clihelp.SetExit`.
 
 The second, `go test -tags integration -run TestRunVerifyCommand ./internal/websterengine/`, is the one dedicated test this batch adds: card 6's `internal/websterengine/runverify_test.go`.
 It needs the `integration` tag because it spawns real processes, and it is `-run`-scoped to `TestRunVerifyCommand` so the batch's verify does not drag in the rest of webster's tagged suite (real scratch git repos, whole-run fixtures) on every implementer and fixer round.

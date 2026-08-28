@@ -120,6 +120,14 @@ Batch-local decisions live in each batch file._
 - **Rationale:** `_mill/discussion.md`'s `error-universe` decision instructs the plan to re-run both selectors rather than trust the transcribed rows. Cards below therefore name functions and branches, not line numbers, so a further drift before implementation cannot mislead the implementer.
 - **Applies to:** all batches
 
+### Decision: covered-is-a-per-call-claim
+
+- **Decision:** A spawn site's `covered` verdict means the spawn call itself is logged, not merely that the enclosing file imports `internal/logger` somewhere.
+  Read against that stricter measure, three sites `_mill/discussion.md`'s `spawn-site-verdicts` table records as `covered` are not: `internal/fabricengine/spawn.go` (a `Warn` on `Start` failure, no spawn announcement), `internal/reedcli/attach.go` (its only `logger` line is an unrelated terminal-size warning), and one of `internal/loomcli/run.go`'s two sites (the `loom drive` spawn is logged, the tmux-attach spawn is not).
+  All three are re-verdicted `add` and implemented by card 12; the audit document records both the correction and the measure.
+- **Rationale:** card 2 lands a sharpened invariant reading "Every code path reachable from a `lyx` command that starts a real OS process logs its spawn via `internal/logger`" — a per-call rule. Left as `covered`, these three sites would violate the invariant this task itself sharpens, from the moment it landed, and batch 5's guard could never catch them because it checks file-level import presence only. `_mill/discussion.md`'s `error-universe` decision instructs the plan to re-run the selectors and regenerate the tables rather than trust the transcribed rows; this is that regeneration finding a third defect, alongside the two line-number drifts already recorded in `selector-reruns-are-the-authority`.
+- **Applies to:** audit-doc-and-constraints, spawn-site-log-lines
+
 ## All Files Touched
 
 _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across every batch, sorted alphabetically (Move **source** paths are excluded — they disappear, like `Deletes:` tokens).
@@ -131,11 +139,14 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `cmd/lyx/tierpurity_test.go`
 - `internal/boardengine/spawn.go`
 - `internal/configengine/edit.go`
+- `internal/fabricengine/spawn.go`
 - `internal/landingshed/publish.go`
 - `internal/landingshed/publish_test.go`
 - `internal/mergeresolve/mergeresolve.go`
 - `internal/mergeresolve/mergeresolve_test.go`
+- `internal/loomcli/run.go`
 - `internal/mergeresolve/seam_enforcement_test.go`
+- `internal/reedcli/attach.go`
 - `internal/reedengine/proctree_windows.go`
 - `internal/selfreportengine/selfreport.go`
 - `internal/selfreportengine/selfreport_test.go`

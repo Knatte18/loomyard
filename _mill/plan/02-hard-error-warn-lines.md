@@ -69,7 +69,7 @@ Batch-local decision differing from `## Shared Decisions`: `internal/websterengi
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  In `internal/mergeresolve/mergeresolve.go`, add the import `github.com/Knatte18/loomyard/internal/logger`, and inside `(*Resolver).Resolve` add one `logger.Warn` call on the `if runResult.Outcome != shuttleengine.OutcomeDone` branch, placed immediately BEFORE the existing `return r.abortAndStuck(...)` call so the diagnostic survives even when `MergeAbort` itself fails.
+  In `internal/mergeresolve/mergeresolve.go`, add the import `github.com/Knatte18/loomyard/internal/logger`, and inside `(*Resolver).resolveConflicts` — the unexported helper `Resolve` calls, which is where the branch and the `abortAndStuck` call actually live — add one `logger.Warn` call on the `if runResult.Outcome != shuttleengine.OutcomeDone` branch, placed immediately BEFORE the existing `return r.abortAndStuck(...)` call so the diagnostic survives even when `MergeAbort` itself fails.
   The call carries the fields `outcome` (`runResult.Outcome`), `attempt` (the loop's `attempt` variable), `sessionID` (`runResult.SessionID`), and `runDir` (`runResult.RunDir`), with a package-prefixed message naming a non-done conflict-session outcome.
 
   In `internal/mergeresolve/seam_enforcement_test.go`, add `"github.com/Knatte18/loomyard/internal/logger": true` to the `mergeresolveAllowedImports` map, and extend that map's doc comment with one clause giving the reason: `internal/logger` carries no geometry and opens no seam, so admitting it leaves the Told-Geometry Invariant's actual property intact — the same call CONSTRAINTS.md's Treadle Runner-Seam Invariant allowlist already makes.
