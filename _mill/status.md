@@ -6,6 +6,7 @@ slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'reed: header pane''s boot sometimes leaves shell/log noise in its scrollback'
 task_description: |
   reed: header pane's boot sometimes leaves shell/log noise in its scrollback
@@ -36,9 +37,14 @@ implementing  '2026-08-28T09:10:37Z'
 ```yaml
 batches:
   - name: header-pane-runs-its-own-command
-    state: pending
+    state: running
+    implementer_session: 533ea1fa-1a09-498d-93f4-2af6b92cc169
+    start_sha: 8345d70311519b873ace350435de1276e87fa459
+    verify_baseline_failures: []
   - name: header-declines-the-stencil-seed-pass
     state: pending
+    verify_baseline_failures: []
   - name: scrollback-backstop-and-composite-smoke
     state: pending
+    verify_baseline_failures: []
 ```
