@@ -2,10 +2,10 @@
 // It supports eight subcommands: "build" (default, clones the Hub), "suite" (runs the embedded
 // SANDBOX-CORE-SUITE agent), "reed-suite" (runs the embedded SANDBOX-REED-SUITE agent),
 // "shuttle-suite" (runs the embedded SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the
-// embedded SANDBOX-BURLER-SUITE agent), "webster-suite" (runs
-// the embedded SANDBOX-WEBSTER-SUITE agent), "fabric-suite" (clones the dedicated fabric hub if
-// absent, then runs the embedded SANDBOX-FABRIC-SUITE agent), and "fetch" (collects the
-// agent-written report into .scratch).
+// embedded SANDBOX-BURLER-SUITE agent), "webster-suite" (runs the embedded SANDBOX-WEBSTER-SUITE
+// agent), "fabric-suite" (runs the embedded SANDBOX-FABRIC-SUITE agent), and "fetch" (collects
+// the agent-written report into .scratch). fabric-suite runs against the same shared Hub every
+// other suite uses -- it has no dedicated hub or clone step of its own, matching the other five.
 // Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
 // suite/reed-suite/shuttle-suite/burler-suite/webster-suite/fabric-suite
@@ -26,44 +26,11 @@ const (
 	warpURL = "https://github.com/Knatte18/lyx-test"
 	weftURL = "https://github.com/Knatte18/lyx-test-weft"
 	hubName = "lyx-test-HUB"
-
-	// fabric-suite runs against its own dedicated hub, never the shared
-	// lyx-test-HUB above -- the dedicated hub carries fabric's stricter
-	// "main-weft"-suffixed branch-naming suite, which the shared hub's fixtures
-	// do not exercise.
-	fabricWarpURL   = "https://github.com/Knatte18/lyx-fabric-test"
-	fabricWeftURL   = "https://github.com/Knatte18/lyx-fabric-test-weft"
-	fabricHubName   = "lyx-fabric-test-HUB"
-	fabricWarpDir   = "lyx-fabric-test"
-	fabricSuiteFile = "SANDBOX-FABRIC-SUITE.md"
-	fabricSuiteAsk  = "Read ./SANDBOX-FABRIC-SUITE.md and follow the instructions in it exactly."
 )
-
-//go:embed SANDBOX-FABRIC-SUITE.md
-var fabricSandboxSuiteMD string
 
 // cloneRun is a testability seam for executing the clone command.
 var cloneRun = func(parentDir, lyxPath string) error {
 	cmd := exec.Command(lyxPath, "fabric", "clone", weftURL, warpURL)
-	cmd.Dir = parentDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		if _, isExitError := err.(*exec.ExitError); isExitError {
-			// Subprocess printed its own error; just propagate the exit code
-			return err
-		}
-		// Startup error (resolved binary vanished, permission denied, etc.); add
-		// context pointing at deploy-dev as an alternative to the resolved path.
-		return fmt.Errorf("failed to start resolved lyx binary %s (deploy it, or run deploy-dev): %w", lyxPath, err)
-	}
-	return nil
-}
-
-// fabricCloneRun is a testability seam for executing `lyx fabric clone`
-// against the dedicated fabric sandbox repos.
-var fabricCloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "fabric", "clone", fabricWeftURL, fabricWarpURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -108,89 +75,6 @@ func decideClone(hubPath string, reset bool) error {
 	// Run the clone command
 	parentDir := filepath.Dir(hubPath)
 	return cloneRun(parentDir, lyxPath)
-}
-
-// decideFabricClone materializes the dedicated fabric sandbox hub if it does
-// not already exist. No -reset flag: reuses existing hub state.
-func decideFabricClone(hubPath string) error {
-	if _, err := os.Stat(hubPath); err == nil {
-		fmt.Printf("Fabric hub already exists at %s\n", hubPath)
-		return nil
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("stat fabric hub path: %w", err)
-	}
-
-	lyxPath, _, err := resolveLyx()
-	if err != nil {
-		return err
-	}
-
-	parentDir := filepath.Dir(hubPath)
-	return fabricCloneRun(parentDir, lyxPath)
-}
-
-// runFabricSuite fingerprints lyx, writes SANDBOX-FABRIC-SUITE.md into the
-// fabric hub, and launches an interactive Claude session.
-func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
-	warpRepoDir := filepath.Join(parentDir, fabricHubName, fabricWarpDir)
-
-	if _, err := os.Stat(warpRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("fabric hub warp repo not found at %s -- run sandbox/fabric-suite.cmd, which clones it first", warpRepoDir)
-	} else if err != nil {
-		return fmt.Errorf("stat fabric warp repo %s: %w", warpRepoDir, err)
-	}
-
-	lyxPath, source, err := resolveLyx()
-	if err != nil {
-		return err
-	}
-
-	info, err := binaryFingerprint(lyxPath, source)
-	if err != nil {
-		return fmt.Errorf("fingerprint lyx binary: %w", err)
-	}
-
-	suitePath := filepath.Join(warpRepoDir, fabricSuiteFile)
-	if err := os.WriteFile(suitePath, []byte(renderScheme(info, fabricSandboxSuiteMD)), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", fabricSuiteFile, err)
-	}
-
-	if err := ensureGitExclude(warpRepoDir, fabricSuiteFile); err != nil {
-		return fmt.Errorf("ensure git exclude: %w", err)
-	}
-
-	reportPath := filepath.Join(warpRepoDir, reportFileName)
-	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove stale %s: %w", reportFileName, err)
-	}
-	if err := ensureGitExclude(warpRepoDir, reportFileName); err != nil {
-		return fmt.Errorf("ensure git exclude: %w", err)
-	}
-
-	claudePath := claudeOverride
-	if claudePath == "" {
-		claudePath, err = lookPath("claude")
-		if err != nil {
-			return fmt.Errorf("claude not found on PATH: %w", err)
-		}
-	}
-
-	instruction := promptOverride
-	if instruction == "" {
-		instruction = fabricSuiteAsk
-	}
-
-	binDir := ""
-	if source == sourceDev {
-		binDir = filepath.Dir(lyxPath)
-	}
-
-	code := launchAgent(warpRepoDir, claudePath, instruction, binDir)
-	fmt.Fprintf(os.Stderr,
-		"sandbox: agent session ended (exit code %d). Run sandbox/fetch.cmd to collect findings into .scratch.\n",
-		code)
-
-	return nil
 }
 
 // run is the testable entry point. Parses argv, resolves -parent, and
@@ -333,13 +217,7 @@ func run(argv []string) int {
 			return 1
 		}
 
-		fabricHubPath := filepath.Join(absParent, fabricHubName)
-		if err := decideFabricClone(fabricHubPath); err != nil {
-			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
-			return 1
-		}
-
-		if err := runFabricSuite(absParent, *claudeFlag, *promptFlag); err != nil {
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, fabricSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

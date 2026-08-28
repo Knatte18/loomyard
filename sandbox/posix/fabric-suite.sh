@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Launcher for the lyx SANDBOX-FABRIC-SUITE: runs the interactive fabric
-# black-box agent session against the dedicated lyx-fabric-test(-weft) repos.
+# black-box agent session against the same shared Hub the other suites use
+# (run sandbox/build.sh first if it does not exist yet).
 # The machine-specific parent directory is hardcoded HERE (the base under
 # which sandbox Hubs are created, mirroring the win/ launcher's C:\Code) --
 # the Go tool stays general.

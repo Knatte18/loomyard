@@ -778,20 +778,17 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 }
 
 // TestRun_FabricSuiteRoutesToLaunch tests that the "fabric-suite" positional routes to the
-// fabric-suite path and ultimately invokes launchAgent with the correct dedicated fabric warp repo
-// directory and the fabric default instruction, mirroring TestRun_MuxSuiteRoutesToLaunch for the
-// "fabric-suite" dispatch.
-// The dedicated fabric hub warp repo dir is pre-created so decideFabricClone finds the hub already
-// present and skips fabricCloneRun.
+// fabric-suite path and ultimately invokes launchAgent with the shared Hub's warp repo directory
+// and the fabric default instruction, mirroring TestRun_BurlerSuiteRoutesToLaunch -- fabric-suite
+// has no dedicated hub or clone step of its own; it runs against the same shared Hub every other
+// suite uses.
 func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the dedicated fabric Hub warp repo directory that runFabricSuite
-	// requires; decideFabricClone sees the fabric hub already exists (this
-	// directory is nested inside it) and skips the clone step.
-	warpRepoDir := filepath.Join(tmpDir, fabricHubName, fabricWarpDir)
+	// Create the Hub warp repo directory that runSuite requires.
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
 	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create fabric warp repo dir: %v", err)
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
@@ -820,15 +817,6 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 		}
 	}
 
-	// fabricCloneRun must not be invoked: the hub already exists.
-	fabricCloneRunCalled := false
-	oldFabricCloneRun := fabricCloneRun
-	defer func() { fabricCloneRun = oldFabricCloneRun }()
-	fabricCloneRun = func(parentDir, lyxPath string) error {
-		fabricCloneRunCalled = true
-		return nil
-	}
-
 	launchAgentCalled := false
 	var gotInstruction string
 	oldLaunchAgent := launchAgent
@@ -846,14 +834,11 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
-	if fabricCloneRunCalled {
-		t.Error("fabricCloneRun was called even though the fabric hub already existed")
-	}
 	if !launchAgentCalled {
 		t.Error("launchAgent was not called for fabric-suite subcommand")
 	}
-	if gotInstruction != fabricSuiteAsk {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, fabricSuiteAsk)
+	if gotInstruction != fabricSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, fabricSuite.instruction)
 	}
 }
 

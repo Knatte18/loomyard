@@ -44,8 +44,11 @@ var burlerSandboxSuiteMD string
 //go:embed SANDBOX-WEBSTER-SUITE.md
 var websterSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the five supported suites (main,
-// reed, shuttle, burler, and webster): the file written into
+//go:embed SANDBOX-FABRIC-SUITE.md
+var fabricSandboxSuiteMD string
+
+// suiteSpec parameterizes runSuite over the six supported suites (main,
+// reed, shuttle, burler, webster, and fabric): the file written into
 // the Hub warp repo, the embedded doc body rendered into it, the default
 // prompt handed to claude when the operator supplies no -prompt override, and
 // whether the suite boots a live reed substrate that must be torn down after
@@ -113,6 +116,20 @@ var websterSuite = suiteSpec{
 	doc:          websterSandboxSuiteMD,
 	instruction:  "Read ./SANDBOX-WEBSTER-SUITE.md and follow the instructions in it exactly.",
 	reedTeardown: true,
+}
+
+// fabricSuite is the SANDBOX-FABRIC-SUITE spec: the dedicated scheme exercising
+// fabric's stricter "main-weft"-suffixed branch-naming behavior. It runs
+// against the same shared Hub every other suite uses -- fabric's own
+// destructive verbs (clone --reset, prune --apply, cleanup --apply) are
+// exactly what a sandbox Hub exists to absorb, and re-running sandbox/build.cmd
+// -reset is the recovery path if a run leaves the Hub in a state another
+// suite would trip on. No live reed/tmux substrate is involved, so no
+// teardown is needed.
+var fabricSuite = suiteSpec{
+	fileName:    "SANDBOX-FABRIC-SUITE.md",
+	doc:         fabricSandboxSuiteMD,
+	instruction: "Read ./SANDBOX-FABRIC-SUITE.md and follow the instructions in it exactly.",
 }
 
 // lookPath is a testability seam over exec.LookPath.
