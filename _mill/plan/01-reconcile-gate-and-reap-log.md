@@ -1,0 +1,111 @@
+# Batch: reconcile-gate-and-reap-log
+
+```yaml
+task: 'reed: pane reap isn''t applied consistently across up/add''s mutating paths'
+batch: 'reconcile-gate-and-reap-log'
+number: 1
+cards: 3
+verify: go test ./internal/reedengine/ -run 'TestPlanReconcile|TestReconcileLocked'
+depends-on: []
+```
+
+## Batch Scope
+
+This batch delivers the whole of `reconcile.go`'s share of the fix: the untracked-reap authorization gains an alive-header disjunct, `planReconcile`'s return shape splits the two kill reasons apart, and `reconcileLocked` gains the `logger.Info` line that makes a destructive reap observable.
+It is one batch because all three changes land in one function pair (`planReconcile` / `reconcileLocked`) in one file, and the return-shape split exists only to serve the log line — separating them would mean writing an intermediate shape nothing consumes.
+
+The external interface batch 2 consumes is behavioural, not structural: `reconcileLocked`'s signature is unchanged, but after this batch a reconcile fires the untracked reap whenever the header is alive, which is what makes batch 2's reap-before-allocate chokepoint do anything.
+
+This batch deliberately leaves `internal/reedcli`'s smoke tests failing.
+`TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` and `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile` both encode the pre-fix premise and are rewritten in batch 4;
+neither is in this batch's `verify:` scope nor in `pipeline.done_gate` (which carries no `smoke` tag), so this is a known, planned interval rather than a regression.
+
+Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are logged under distinct keys rather than merged into one, so the log line satisfies the-reap-logs-what-it-destroys' distinguishability requirement without a caller having to cross-reference the struct.
+
+## Cards
+
+### Card 1: Split planReconcile's return into a named reconcilePlan struct
+
+- **Context:**
+  - `internal/reedengine/apply.go`
+  - `internal/reedengine/state.go`
+- **Edits:**
+  - `internal/reedengine/reconcile.go`
+  - `internal/reedengine/reconcile_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Introduce an unexported struct type `reconcilePlan` in `internal/reedengine/reconcile.go` with exactly four fields: `clearedGUIDs []string`, `deadPanesToKill []string`, `untrackedPanesToKill []string`, `keptDeadPane string`.
+  Change `planReconcile`'s signature from `func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clearedGUIDs []string, panesToKill []string, keptDeadPane string)` to `func planReconcile(strands []Strand, live []LivePane, headerPaneID string) reconcilePlan`.
+  Inside `planReconcile`, the existing dead-pane kill loop appends to `deadPanesToKill` and the existing `if anyBoundPresent` untracked-reap block appends to `untrackedPanesToKill`;
+  the shared local `killSet` map keeps its current role of preventing a pane from being scheduled twice and must keep being written by both loops.
+  This card is a pure refactor: no pane that is killed today may stop being killed, and no pane that is spared today may start being killed.
+  In `reconcileLocked`, replace the tuple destructuring with a single `plan := planReconcile(...)`, then run the `kill-pane` loop over `plan.deadPanesToKill` first and `plan.untrackedPanesToKill` second — that order reproduces today's single merged slice exactly, and the existing `killed` accumulator and its error-wrapping (`fmt.Errorf("kill pane %s: %w", id, err)`) stay as they are.
+  Update the binding-clear loop to read `plan.clearedGUIDs`.
+  Update `planReconcile`'s own doc comment to describe the struct and to state why the two kill reasons are carried apart (the reap log line distinguishes them).
+  In `internal/reedengine/reconcile_test.go`, rewrite `TestPlanReconcile`'s table so each case carries `wantDeadPanesToKill` and `wantUntrackedPanesToKill` in place of the single `wantPanesToKill` field, and update the assertion body to compare all three slices plus `keptDeadPane` against the struct's fields via the existing `equalStringSlices` helper.
+  Every existing case keeps its current expected outcome — assign each existing `wantPanesToKill` entry to whichever of the two new fields matches the reason that case exercises (`NonSoleDeadPaneScheduledForKillAndBindingCleared`, `AllDeadKeepsFirstPaneAndKillsTheRest` and `DeadHeaderExemptWhileDeadStrandPaneStillKilled` are dead-pane kills; `UntrackedAlivePaneKilledWhileBoundContentPresent` and `HeaderPaneNeverReapedAsUntrackedWhileStrandBound` are untracked kills).
+  Do not change any case's behavioural expectation in this card.
+- **Commit:** `refactor(reedengine): return planReconcile's kill schedule as a named struct`
+
+### Card 2: Authorize the untracked reap on an alive header as well as a bound present pane
+
+- **Context:**
+  - `internal/reedengine/apply.go`
+  - `internal/reedengine/lifecycle.go`
+- **Edits:**
+  - `internal/reedengine/reconcile.go`
+  - `internal/reedengine/reconcile_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `planReconcile`, compute a new local `headerAlive` next to the existing `anyBoundPresent`: it is true only when `headerPaneID != ""` and some entry of `live` has `ID == headerPaneID` and `Dead == false`.
+  Change the untracked-reap block's condition from `if anyBoundPresent {` to `if anyBoundPresent || headerAlive {`.
+  Leave `boundPaneIDs`, `anyBoundPresent`, and `exemptPaneIDs` computed exactly as they are today — `headerAlive` is a third, separate local, never folded into any of them, so the header stays exempt from being killed by presence (a header corpse is still never killed) while only an *alive* header authorizes killing anything else.
+  Rewrite the untracked-reap block's comment to state the new rule and why aliveness rather than presence: the reap fires from `AddStrand`/`UpdateStrand` once batch 2's chokepoint lands, and those paths never call `ensureHeaderPaneLocked`, so a dead-but-present header must not be allowed to authorize reaping the session's only alive pane.
+  Do not change the dead-pane kill loop, the `keptDeadPane` rule, or the header's exemption from the dead-pane kill.
+  In `internal/reedengine/reconcile_test.go`, rewrite the case named `UntrackedPanesUntouchedWhenNothingBound` — its premise is falsified — and rewrite `HeaderAloneNeverMakesAnyBoundPresentTrue`, whose comment asserts the old policy while its expectation of no kills is now wrong.
+  Add table cases covering: an alive header with zero strands and one untracked alive pane, where that pane is killed as an *untracked* kill and the header is not;
+  an alive header with zero strands and several untracked panes (an old header pane plus an orphaned strand pane, M22's shape), where all of them are killed and the current header is spared;
+  an absent header (`headerPaneID == ""`) with no strand bound, where nothing is reaped;
+  a header present but `Dead: true` with no strand bound and one alive untracked pane, where nothing is reaped;
+  a dead header alongside a strand bound to a present pane, where the reap fires anyway via `anyBoundPresent` and the header corpse is still spared;
+  and an alive header alongside a bound strand, where both stay exempt and a third foreign pane is still reaped.
+  Keep every existing dead-pane case's expectation unchanged — this card must not alter `keptDeadPane` behaviour or the dead-header exemption.
+- **Commit:** `fix(reedengine): let an alive header authorize the untracked pane reap`
+
+### Card 3: Log the reap, and add the logger-capture test helper it needs
+
+- **Context:**
+  - `internal/reedengine/spawn.go`
+  - `internal/logger/logger.go`
+  - `internal/logger/sink.go`
+  - `internal/reedengine/lock_test.go`
+- **Edits:**
+  - `internal/reedengine/reconcile.go`
+  - `internal/reedengine/reconcile_test.go`
+- **Creates:**
+  - `internal/reedengine/logcapture_test.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/reedengine/reconcile.go`, add `"github.com/Knatte18/loomyard/internal/logger"` to the import block and emit exactly one `logger.Info` call at the end of `reconcileLocked`, only when at least one pane was killed.
+  The call carries the `"socket"`/`"session"` key shape `loadOrInitStateLocked` already uses in `spawn.go` (`e.Socket()` and `e.SessionName()` as values) plus two further keys carrying `plan.deadPanesToKill` and `plan.untrackedPanesToKill` separately, so the untracked half is distinguishable in the log without cross-referencing anything.
+  One line per `reconcileLocked` call, never one per pane.
+  A reconcile that killed nothing must emit nothing.
+  Place the call after the kill loop and after the binding-clear loop, on the success path only — an early `return killed, err` from a failing `kill-pane` must not log.
+  Add a comment above it recording why this is `Info` and not `Debug` (CONSTRAINTS.md's Live-Substrate Spawn Observability lifecycle-vs-probe split: this is a lifecycle teardown) and why the reap needs a trace at all (card 2 makes it fire on the zero-strand precondition, so it goes from near-dormant to routine, and it destroys panes an operator may have created).
+  Create `internal/reedengine/logcapture_test.go` — an untagged test file in package `reedengine` — holding a single helper `captureLogOutput(t *testing.T) *bytes.Buffer`.
+  It must call both `logger.SetOutput(&buf)` and `logger.SetVerbosity(1)`, and register one `t.Cleanup` restoring `logger.SetVerbosity(0)` and `logger.SetOutput(os.Stderr)`.
+  Both calls are required: `internal/logger`'s stderr half defaults to the Warn threshold and its durable half is disabled outright under `testing.Testing()`, so `SetOutput` alone captures nothing and an Info-asserting test would fail inexplicably.
+  `os.Stderr` is the restore target because `internal/logger` exports no getter for its current writer and `os.Stderr` is that package's own declared default.
+  Give the file a header comment saying exactly that.
+  In `internal/reedengine/reconcile_test.go`, add one focused test driving `reconcileLocked` through the `newTestEngine` fixture with an `e.tmux.execHook` that answers `kill-pane` successfully, asserting that a reconcile which kills untracked panes emits an `Info` line naming those pane ids, and that a reconcile which kills nothing emits no output at all.
+  Assert on the pane ids' presence, not on the message's exact wording — the point is that the destructive path is observable.
+- **Commit:** `feat(reedengine): log the panes a reconcile reaps`
+
+## Batch Tests
+
+`verify: go test ./internal/reedengine/ -run 'TestPlanReconcile|TestReconcileLocked'` covers `internal/reedengine/reconcile_test.go`'s `TestPlanReconcile` (the pure gate and kill-schedule table, including every new case card 2 adds), `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux` (the existing composing-half test, which must keep passing across card 1's signature change), and card 3's new `TestReconcileLocked_*` log-line test.
+
+The scope is deliberately narrower than the package: every symbol this batch changes is private to `reconcile.go` and has exactly one caller (`reconcileLocked`), so no other test file in the package can be affected except by a compile error, which `verify` surfaces anyway because `go test` builds the whole package before running the `-run` filter.
+The overview's module-wide `verify:` (`go build ./... && go vet ...`) then catches anything outside the package.
