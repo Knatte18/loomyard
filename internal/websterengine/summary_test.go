@@ -1,6 +1,7 @@
-// summary_test.go exercises ParseSummary's accept/reject table and ArchiveStaleSummary's
-// rename/preserve/no-op/collision behavior, the same archive-never-refuse coverage shape
-// outcome.go's own tests apply, here applied to summary.md instead of outcome.yaml.
+// summary_test.go exercises ArchiveStaleSummary's rename/preserve/no-op/collision behavior, the
+// same archive-never-refuse coverage shape outcome.go's own tests apply, here applied to the
+// final-summary artifact instead of outcome.yaml. ParseSummary's own accept/reject coverage moved
+// to internal/summaryparser/summary_test.go, the artifact's read contract's sole owner.
 
 package websterengine_test
 
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -23,101 +25,6 @@ func writeSummaryFile(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q): %v", path, err)
-	}
-}
-
-// TestParseSummary_ValidParsesTitleAndBody asserts a well-formed summary.md (a "# <title>" heading
-// followed by free-form narrative) parses into its Title and Body exactly, with the heading line
-// itself excluded from Body.
-func TestParseSummary_ValidParsesTitleAndBody(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, websterengine.SummaryFileName)
-	writeSummaryFile(t, path, "# Added the frobnicator\n\nThe frobnicator now handles widgets.\nIt deviates from the plan by also handling gadgets.\n")
-
-	got, err := websterengine.ParseSummary(path)
-	if err != nil {
-		t.Fatalf("ParseSummary() error = %v; want nil", err)
-	}
-	if got.Title != "Added the frobnicator" {
-		t.Errorf("ParseSummary() Title = %q; want %q", got.Title, "Added the frobnicator")
-	}
-	wantBody := "\nThe frobnicator now handles widgets.\nIt deviates from the plan by also handling gadgets.\n"
-	if got.Body != wantBody {
-		t.Errorf("ParseSummary() Body = %q; want %q", got.Body, wantBody)
-	}
-}
-
-// TestParseSummary_LeadingBlankLinesSkipped asserts a heading preceded by blank lines still parses
-// — the first NON-BLANK line is what must be the heading, not necessarily the file's first line.
-func TestParseSummary_LeadingBlankLinesSkipped(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, websterengine.SummaryFileName)
-	writeSummaryFile(t, path, "\n\n# Title after blank lines\nBody text.\n")
-
-	got, err := websterengine.ParseSummary(path)
-	if err != nil {
-		t.Fatalf("ParseSummary() error = %v; want nil", err)
-	}
-	if got.Title != "Title after blank lines" {
-		t.Errorf("ParseSummary() Title = %q; want %q", got.Title, "Title after blank lines")
-	}
-}
-
-// TestParseSummary_MissingFile asserts a missing summary.md is a wrapped error, never a guessed nil
-// result.
-func TestParseSummary_MissingFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, websterengine.SummaryFileName)
-
-	if _, err := websterengine.ParseSummary(path); err == nil {
-		t.Fatalf("ParseSummary() error = nil; want an error for a missing file")
-	}
-}
-
-// TestParseSummary_EmptyFile asserts a present-but-empty (or blank-only) summary.md is rejected
-// loud rather than parsed as a title-less summary.
-func TestParseSummary_EmptyFile(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-	}{
-		{"zero bytes", ""},
-		{"blank lines only", "\n\n   \n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := filepath.Join(dir, websterengine.SummaryFileName)
-			writeSummaryFile(t, path, tt.content)
-
-			if _, err := websterengine.ParseSummary(path); err == nil {
-				t.Fatalf("ParseSummary() error = nil; want an error for %q", tt.name)
-			}
-		})
-	}
-}
-
-// TestParseSummary_NoHeadingFirstLine asserts a file whose first non-blank line is not a "# "
-// heading is rejected loud rather than silently treating the whole file as an untitled body.
-func TestParseSummary_NoHeadingFirstLine(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, websterengine.SummaryFileName)
-	writeSummaryFile(t, path, "Just some narrative with no heading at all.\n")
-
-	if _, err := websterengine.ParseSummary(path); err == nil {
-		t.Fatalf("ParseSummary() error = nil; want an error for a missing heading")
-	}
-}
-
-// TestParseSummary_EmptyTitle asserts a "# " heading whose title is blank (or whitespace-only) is
-// rejected loud.
-func TestParseSummary_EmptyTitle(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, websterengine.SummaryFileName)
-	writeSummaryFile(t, path, "#    \nBody text.\n")
-
-	if _, err := websterengine.ParseSummary(path); err == nil {
-		t.Fatalf("ParseSummary() error = nil; want an error for an empty title")
 	}
 }
 
@@ -147,7 +54,7 @@ func TestArchiveStaleSummary_AbsentFileIsNoOp(t *testing.T) {
 // its content preserved byte-for-byte, and the original path no longer exists.
 func TestArchiveStaleSummary_RenamesAndPreservesContent(t *testing.T) {
 	dir := t.TempDir()
-	original := filepath.Join(dir, websterengine.SummaryFileName)
+	original := filepath.Join(dir, summaryparser.FileName)
 	content := "# Shipped the frobnicator\n\nDetails.\n"
 	writeSummaryFile(t, original, content)
 
@@ -182,7 +89,7 @@ func TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix(t *testing.T) {
 	dir := t.TempDir()
 	clk := summaryFixedClock(time.Date(2026, 7, 11, 13, 45, 0, 0, time.UTC))
 
-	writeSummaryFile(t, filepath.Join(dir, websterengine.SummaryFileName), "# First\n")
+	writeSummaryFile(t, filepath.Join(dir, summaryparser.FileName), "# First\n")
 	first, err := websterengine.ArchiveStaleSummary(dir, clk)
 	if err != nil {
 		t.Fatalf("first ArchiveStaleSummary() error = %v; want nil", err)
@@ -190,7 +97,7 @@ func TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix(t *testing.T) {
 
 	// A fresh summary.md, written after the first was archived away, is
 	// itself archived a second time within the same clock-second.
-	writeSummaryFile(t, filepath.Join(dir, websterengine.SummaryFileName), "# Second\n")
+	writeSummaryFile(t, filepath.Join(dir, summaryparser.FileName), "# Second\n")
 	second, err := websterengine.ArchiveStaleSummary(dir, clk)
 	if err != nil {
 		t.Fatalf("second ArchiveStaleSummary() error = %v; want nil", err)
