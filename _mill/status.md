@@ -36,11 +36,17 @@ implementing  '2026-08-28T10:41:17Z'
 ```yaml
 batches:
   - name: watchdog-foundations
-    state: pending
+    state: running
+    implementer_session: cdf284f2-ea90-46ad-b00d-71094317be7c
+    start_sha: 4845167235c297763a1975417c1c8cf4e82e42ac
+    verify_baseline_failures: []
   - name: engine-reapply-op
     state: pending
+    verify_baseline_failures: []
   - name: watch-loop
     state: pending
+    verify_baseline_failures: []
   - name: cli-tail-docs-and-live-proof
     state: pending
+    verify_baseline_failures: []
 ```
