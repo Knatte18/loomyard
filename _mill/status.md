@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: final-summary-artifact
 branch: final-summary-artifact
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-docs-and-specs  '2026-08-28T06:55:51Z'
 holistic-reviewing  '2026-08-28T06:56:14Z'
 holistic-approved  '2026-08-28T06:58:48Z'
 done  '2026-08-28T07:00:18Z'
+pr-pending  '2026-08-28T07:01:54Z'
 ```
 
 ## Batches
