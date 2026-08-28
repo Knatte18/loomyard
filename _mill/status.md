@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: logger-coverage-audit
 branch: logger-coverage-audit
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-spawn-observability-guard  '2026-08-28T07:27:51Z'
 holistic-reviewing  '2026-08-28T07:28:14Z'
 holistic-approved  '2026-08-28T07:35:39Z'
 done  '2026-08-28T07:37:38Z'
+pr-pending  '2026-08-28T07:40:14Z'
 ```
 
 ## Batches
