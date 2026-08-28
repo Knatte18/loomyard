@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: logger-coverage-audit
 branch: logger-coverage-audit
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussed  '2026-08-28T06:08:42Z'
 planning  '2026-08-28T06:18:32Z'
 plan-review-r1  '2026-08-28T06:27:53Z'
 plan-fix-r1  '2026-08-28T06:28:42Z'
+plan-review-r2  '2026-08-28T06:39:45Z'
 ```
