@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-refuse-a-vanished-worktree-root
 slug: reed-lock-stale-session-name
 branch: reed-lock-stale-session-name
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-08-28T14:54:42Z'
 plan-review-r2  '2026-08-28T15:02:48Z'
 planned  '2026-08-28T15:03:08Z'
 implementing  '2026-08-28T15:03:37Z'
+approved-refuse-a-vanished-worktree-root  '2026-08-28T15:10:27Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-08-28T15:03:37Z'
 ```yaml
 batches:
   - name: refuse-a-vanished-worktree-root
-    state: running
+    state: approved
     implementer_session: d3348678-9e17-409d-8827-4a66e7fd7cd7
     start_sha: 005cb6e6aba0a9dadaa6b5b023c1f8ea280203ea
+    commit_sha: a4a58b573b7083fafbbfab497c559977d9a970a7
     verify_baseline_failures: []
   - name: watch-loop-dormant-mode
     state: pending
