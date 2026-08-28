@@ -113,6 +113,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `cmd/lyx/stencilseed.go`, add `skipStencilSeed(cmd *cobra.Command) bool`, returning true when `cmd` is non-nil and its `Annotations` map holds `clihelp.SkipStencilSeedAnnotation` with the value `clihelp.AnnotationEnabled`.
+  Add `github.com/spf13/cobra` and `github.com/Knatte18/loomyard/internal/clihelp` to that file's import block — it imports neither today — and keep its existing `context` import, which `stencilSeedTarget` still needs.
   Extract it as its own directly-assertable function rather than inlining it, for the reason `stencilSeedTarget`'s own comment already records: `seedStencils` returns immediately under `testing.Testing()`, so a test can never observe the gate through it.
   Change `seedStencils(ctx context.Context)` to `seedStencils(cmd *cobra.Command)`, deriving the context it needs from `cmd.Context()` at the `stencilSeedTarget` call.
   The signature change is not optional: today the function never sees the `*cobra.Command` and cannot read its annotations.

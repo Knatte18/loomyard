@@ -3,7 +3,7 @@
 ```yaml
 task: "reed: header pane's boot sometimes leaves shell/log noise in its scrollback"
 slug: "reed-header-pane-boot-noise"
-approved: false
+approved: true
 started: "20260828-083416"
 parent: "main"
 root: ""
