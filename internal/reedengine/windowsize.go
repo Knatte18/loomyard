@@ -34,23 +34,27 @@ func parseWindowSize(out string) (w, h int, ok bool) {
 }
 
 // liveBoxLocked queries the live tmux window size for this engine's session and returns it as a
-// render.Box anchored at the origin.
+// render.Box anchored at the origin, plus whether that box was a real observation.
 // On a round-trip error or a malformed answer, it logs via logger.Warn and falls back to the
 // configured e.cfg.Width/e.cfg.Height — exactly today's pre-live-query value — so a degraded query
-// never blocks a caller.
+// never blocks a caller; the second return value is false on both fallback paths and true only when
+// the parse succeeded.
+// This method never reports failure through its box: a degraded query returns the configured
+// cfg.Width/cfg.Height pair, a perfectly plausible-looking box, so a caller comparing boxes across
+// calls must be told whether the box was an observation at all.
 // Assumes the op lock is already held.
-func (e *Engine) liveBoxLocked() render.Box {
+func (e *Engine) liveBoxLocked() (render.Box, bool) {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window_width} #{window_height}")
 	if err != nil {
 		logger.Warn("reed: failed to query live window size, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
+		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, false
 	}
 	w, h, ok := parseWindowSize(out)
 	if !ok {
 		logger.Warn("reed: malformed live window size answer, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "answer", out)
-		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
+		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, false
 	}
-	return render.Box{X: 0, Y: 0, W: w, H: h}
+	return render.Box{X: 0, Y: 0, W: w, H: h}, true
 }
 
 // reservedRowsFromStatus maps a `#{status}` readback to the number of window rows tmux's status line

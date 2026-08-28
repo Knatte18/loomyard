@@ -47,12 +47,13 @@ func TestLiveBoxLocked(t *testing.T) {
 		err    error
 		wantW  int
 		wantH  int
+		wantOK bool
 	}{
-		{"WellFormedLivePair", "220 50", nil, 220, 50},
-		{"Garbage", "abc def", nil, 999, 111},
-		{"Empty", "", nil, 999, 111},
-		{"NonPositiveDimension", "220 0", nil, 999, 111},
-		{"RoundTripError", "", errors.New("boom"), 999, 111},
+		{"WellFormedLivePair", "220 50", nil, 220, 50, true},
+		{"Garbage", "abc def", nil, 999, 111, false},
+		{"Empty", "", nil, 999, 111, false},
+		{"NonPositiveDimension", "220 0", nil, 999, 111, false},
+		{"RoundTripError", "", errors.New("boom"), 999, 111, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,10 +68,10 @@ func TestLiveBoxLocked(t *testing.T) {
 				return "", nil
 			}
 
-			got := e.liveBoxLocked()
+			got, ok := e.liveBoxLocked()
 			want := render.Box{X: 0, Y: 0, W: tt.wantW, H: tt.wantH}
-			if got != want {
-				t.Errorf("liveBoxLocked() = %+v, want %+v", got, want)
+			if got != want || ok != tt.wantOK {
+				t.Errorf("liveBoxLocked() = (%+v, %v), want (%+v, %v)", got, ok, want, tt.wantOK)
 			}
 		})
 	}

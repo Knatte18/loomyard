@@ -146,7 +146,7 @@ func (e *Engine) applyLayoutLocked(st *ReedState, live []LivePane) error {
 		return nil
 	}
 
-	box := e.liveBoxLocked()
+	box, _ := e.liveBoxLocked()
 	layout, focus, err := e.planLayout(st, live, box)
 	if err != nil {
 		return fmt.Errorf("plan layout: %w", err)
