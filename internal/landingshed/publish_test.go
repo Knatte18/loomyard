@@ -444,7 +444,7 @@ func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testin
 // site's own logger.Warn line must carry action, owner, repo, and cause.
 func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	deps := newTestDeps(t)
-	writeSummary(t, deps.WebsterDir, "My PR Title", "My PR body.")
+	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
