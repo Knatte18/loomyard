@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: null
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-08-28T13:45:09Z'
 discussion-fix-r1  '2026-08-28T14:13:25Z'
 discussion-fix-r4  '2026-08-28T14:29:44Z'
+discussion-fix-r6  '2026-08-28T14:38:33Z'
+discussed  '2026-08-28T14:38:33Z'
 ```
