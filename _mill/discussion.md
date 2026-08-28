@@ -1,0 +1,368 @@
+# Discussion: reed: watchdog daemon
+
+```yaml
+task: 'reed: watchdog daemon'
+slug: reed-watchdog-daemon
+status: discussing
+parent: main
+```
+
+## Problem
+
+reed computes a correct layout — fixed one-row header, proportional strand stack, `collapsed_strip_rows`/`min_full_rows` budgets, mother/child collapse — and applies it on every reed op.
+The moment the operator resizes or moves their terminal window while attached, tmux's own proportional rescale takes over and reed's layout is abandoned, permanently, with nothing watching to re-apply it.
+`lyx reed up` from a second connection restores it, so the layout computation is fine;
+what is missing is automatic re-application.
+
+**Why now:** the reed sandbox suite's M7 scenario verified the gap live and reproducibly.
+Attach at 127x50 gives a correct layout (header height 1);
+resizing the client to 100x65 pushes the header to height 6 and stretches the strands to fill;
+waiting 4+ seconds changes nothing;
+`lyx reed up` restores it;
+resizing again to 150x70 breaks it again (header height 3).
+Resizing a terminal window is an extremely common operator action, so reed's layout is wrong most of the time in practice.
+
+This activates `manifest/roadmap.md`'s existing **reed: watchdog daemon** Someday item, whose stated scope is two self-heal jobs — automatic pane-reap and resize-geometry reconciliation.
+Only the resize half is built here (see **Scope: Out** and the `resize-self-heal-only` decision).
+
+## Scope
+
+**In:**
+
+- A watch loop hosted inside the existing header-pane process (`lyx reed header --blocking`), which today runs `blockForever()` and nothing else.
+- A session-scoped tmux `window-resized` hook, set alongside the two existing geometry option pins, whose only job is to touch a signal file.
+- A signal file under the worktree's ephemeral `.lyx/` directory, created by the hook and consumed by the watch loop.
+- A trailing-edge debounce that coalesces a drag's burst of resize events into a single re-apply.
+- A new public engine op that re-plans and re-applies the layout against the live window, under the existing `reed.lock`.
+- A polling fallback for multiplexers where the hook could not be installed (psmux).
+- A single `watchdog: on|off` key in `reed.yaml`, defaulting to `on`.
+- Suppressing the header process's own stderr logging so the watch loop can never paint over the rendered header text.
+- Tier-1 tests for every pure part, a `integration && linux` pty test that reproduces M7 end to end, and a new sandbox-suite scenario.
+
+**Out:**
+
+- **Automatic pane-reap**, the roadmap item's other half.
+  `planReconcile` already reaps deterministically on every reed op;
+  the roadmap's added value there is a policy distinguishing a bug-induced pane from an intentional scratch pane, which does not exist yet and is a design task of its own.
+- **Cheapening the reap probe** (the pwsh + `Win32_Process` WMI enumeration the roadmap names as that half's prerequisite).
+  It is Windows-only work, unverifiable from this Linux box, and nothing in the resize path calls it.
+- **A standalone supervised daemon process** — no PID file, no liveness check, no restart policy, no `Down` teardown change.
+  The watcher's whole lifecycle is the header pane's lifecycle.
+- **Any new CLI command.**
+  No `lyx reed watch`, no `lyx reed watchd`.
+  `cmd/lyx/helptree_test.go` and `seamsignature_test.go` must stay green unchanged.
+- **The Slack relay** (`reed: daemon Slack relay`, a separate roadmap item explicitly split out so it never blocks the self-heal work).
+- **`internal/reedengine/render`'s layout algebra.**
+  The watcher changes *when* `render.Rules` is invoked, never what it computes.
+- **Reacting to anything but a resize** — no strand-death watching, no focus following, no CC-hook integration.
+- **Changing `window-size`, the status-line pin, `mouse`, or `remain-on-exit`.**
+
+## Decisions
+
+### watchdog-lives-in-the-header-pane-process
+
+- Decision: the watch loop runs inside the existing per-session header-pane process, replacing `blockForever()` in `internal/reedcli/header.go`'s `--blocking` tail.
+  No new process, no new command, no new lifecycle.
+- Rationale: reed already boots exactly one permanent, always-on `lyx` process per session — the header pane, whose entire body today is a sleep loop.
+  It is created and healed by `ensureHeaderPaneLocked`, is exempt from every strand-accounting, adoption, split-target and reconcile path, dies with the session, and is already a registered holder of the CLI/Cobra Invariant's interactive-handoff exception.
+  It also already holds a fully-resolved `*reedengine.Engine` from `reedcli`'s `PersistentPreRunE`, so it needs nothing told to it.
+  A supervised daemon would be a genuine architectural first for this repo (`internal/boardengine` is documented as "one-shot, daemonless", and the `reed-attach-geometry-reconcile` discussion rejected a standalone watcher on the grounds that it is "a daemon reed has deliberately never been") and would owe a PID file, liveness probing, restart policy, teardown in `Down`, and its own sandbox coverage — all to host a loop that the header pane hosts for free.
+- Rejected: a separate detached daemon spawned by `Up` (all of the above cost, no behavioural gain);
+  no long-lived process at all, with the hook running `lyx reed <verb>` directly (see `debounce-in-the-watcher`).
+
+### window-resized-is-the-event-source
+
+- Decision: the event source is a **session-scoped** tmux hook on `window-resized`, set with `set-hook -t '=<session>:'`.
+  Not `client-resized`, not `window-layout-changed`, not SIGWINCH, not a geometry poll.
+- Rationale: all four alternatives were probed live on this box (tmux 3.6, real pty, real attaching client).
+  On a client resize the hooks fire in the order `client-resized` → `window-layout-changed` → `window-resized`, and `client-resized` reports the **stale** pre-resize window size (127x50 when the client had already become 100x65), so it cannot plan a correct layout.
+  `window-layout-changed` is self-triggering: reed's own `select-layout` would re-fire it, giving an infinite loop.
+  `window-resized` fires exactly once per settled size, after the window already has the new geometry, on both growth and shrink.
+  The hook is session-scoped rather than `-g` on purpose — the tmux server is shared per hub across sibling worktrees, so a global hook would fire every worktree's watcher for every other worktree's resize.
+- Rejected: **SIGWINCH in the header process** — attractive because it needs no tmux surface at all and no psmux risk, but disproved live.
+  With the header pinned to one row, growing the window (50 → 51, 52, 55, 60) resizes the header (1 → 2, 3, 4, 6 rows — this *is* the M7 bug) and delivers SIGWINCH every time, but **shrinking** (60 → 59, 58, 55, 45, 30) leaves the header at one row and delivers nothing, while the strand budgets below it are silently violated (at 30 rows the bottom strand had been squeezed to 2 rows).
+  A watcher that self-heals only on growth is worse than none, because the operator would learn to trust it.
+  Also rejected: a `display-message` geometry poll as the *primary* source (a permanent subprocess spawn per session per tick, roughly 23ms per call, for an event that fires a handful of times a day).
+
+### hook-touches-a-signal-file
+
+- Decision: the hook command is the cheapest possible thing — a backgrounded `run-shell -b` that creates/truncates a signal file at `<stateDir()>/reed-resize.signal`.
+  The watch loop consumes the signal by **removing the file**, so existence alone is the signal and no timestamp comparison is involved.
+  The removal happens *before* the re-apply, so a resize arriving mid-apply re-signals rather than being swallowed.
+- Rationale: the hook must do as little as possible because it fires once per resize step;
+  a `touch`-equivalent is roughly a millisecond, while spawning `lyx` is orders of magnitude more.
+  The watcher's steady-state cost is then an `os.Stat` (microseconds) per tick and **zero** subprocesses — nothing is spawned until an actual resize happens.
+  Existence-as-signal is immune to filesystem mtime granularity, which a modification-time comparison is not.
+  The file is ephemeral and per-worktree, so `.lyx/` (via the existing `Engine.stateDir()`) is its only correct home under the Durable-vs-Ephemeral State Invariant, and one signal file per worktree means sibling worktrees on the shared server cannot collide.
+  `run-shell` must carry `-b`: without it the tmux **server** blocks while the command runs.
+- Rejected: the hook invoking `lyx reed <relayout verb>` directly (a 20-step drag was measured to fire 20 hook events in one second, so this would spawn 20 `lyx` processes all contending for `reed.lock`);
+  a unix socket or FIFO the watcher listens on (fully event-driven and no tick at all, but adds an IPC endpoint to `.lyx/` and owes a named-pipe story for Windows, for no measurable gain over a microsecond stat);
+  the hook writing a tmux user option the watcher reads back (reading it costs a `display-message` round trip per tick, i.e. exactly the polling cost the signal file exists to avoid).
+
+### hook-set-in-pingeometryoptionslocked
+
+- Decision: the `window-resized` hook is installed in `Engine.pinGeometryOptionsLocked` (`windowsize.go`), alongside the existing `status off` and `window-size latest` pins, with the same non-fatal `logger.Warn`-and-continue treatment.
+- Rationale: that function already runs in exactly the two places this hook needs to be set — the boot path and the attach pre-flight — and the attach-pre-flight call exists precisely because boot options never re-apply to an already-up session (`ensureServerLocked` returns early on the healthy already-up path, above the `set-option` block).
+  Installing the hook there means a session booted by an older `lyx` picks it up on the operator's next attach, instead of staying unhealed until a manual `down` + `up`.
+  It is already the non-fatal, geometry-quality-option block, which is the right severity: `set-hook` and `run-shell` are **not** in `requiredSubcommands` (`probe.go`) and psmux support for both is unverified, so a failure to install must degrade rather than fail the op.
+- Rejected: the fresh-boot path only, beside `remain-on-exit`/`mouse` (leaves every already-running session unhealed);
+  the watcher installing its own hook at startup (appealing, since the consumer would own its event source, but it puts a tmux write outside the op lock).
+
+### debounce-in-the-watcher
+
+- Decision: trailing-edge debounce with a fixed quiet period in the 150–250ms range, coalescing.
+  Every signal restarts the quiet timer;
+  the re-apply fires once, after the resizing stops.
+  Both the tick interval and the debounce window are compile-time constants, not config.
+- Rationale: measured live — a 20-step drag (one size change per 50ms) fires 20 `window-resized` events in one second.
+  Applying on each would mean 20 layouts, each immediately invalidated by the next resize and each fighting tmux's own rescale, all serialised through `reed.lock`.
+  Trailing-edge collapses that to one apply after the drag settles, and the layout is only wrong *during* the drag, which is when the operator is still dragging and not reading.
+- Rejected: leading-edge plus rate limiting (first frame corrects fast, but every mid-drag apply is wasted work);
+  a fixed-interval reconcile that applies whenever the observed box differs from the last applied one (simplest, but couples correction latency to the tick and reintroduces the geometry poll).
+
+### reapply-layout-is-a-new-public-engine-op
+
+- Decision: a new public `Engine` method — shape `ReapplyLayout() (<result>, error)` — that re-plans and re-applies the layout against the live window.
+  Its body is the existing composition, in the existing order: `withOpLock` → `requireSessionLocked` → `loadOrInitStateLocked` → `tmux.listPanes` → `applyLayoutLocked`.
+  It persists nothing.
+- Rationale: every piece already exists and the op is structurally identical to `Status()` (`lifecycle.go:1154`), which is the same lock-then-load-then-list shape.
+  `applyLayoutLocked` (`apply.go:141`) already queries the live box itself via `liveBoxLocked` and already carries both session-destruction guards — the `len(live) < 2` skip and the `anyPlacedStrand` refusal that stops a zero-pane layout string from destroying every pane in the session.
+  Reusing it means the watcher inherits those guards rather than re-deriving them, which matters more here than anywhere else: the watcher fires unattended, without an operator watching the envelope.
+  `applyLayoutLocked` mutates no state, so no `SaveState` and no `reed.json` write is involved — the watcher is read-only with respect to persisted state.
+- Rejected: shelling out to `lyx reed up` (re-execs the binary, re-probes capability, and re-boots substrate on every resize, from a process that already holds a live engine);
+  running `Up`'s full body in-process (does far more work per resize, including `ensureHeaderPaneLocked` on the very pane the watcher is running in);
+  exporting `applyLayoutLocked` directly (it documents "assumes the op lock is already held", so an unlocked caller would violate its contract).
+
+### hook-availability-decides-poll-fallback
+
+- Decision: at startup the watcher determines whether its hook is installed with a single `show-hooks`-class round trip.
+  If it is, the watcher runs signal-file-driven with no geometry polling.
+  If it is not, the watcher falls back to a slow `liveBoxLocked`-style geometry poll, re-applying only when the observed box differs from the last applied one.
+- Rationale: this is what makes the design correct on psmux without betting on it.
+  `set-hook`/`run-shell` are absent from `requiredSubcommands` and unverified on the Windows port, so the capability must be discovered at runtime rather than assumed or required.
+  One round trip at startup is free;
+  the alternative — always polling as a safety net — reintroduces the permanent per-session subprocess cost on the platform where hooks *do* work.
+- Rejected: adding `set-hook`/`run-shell` to `requiredSubcommands` (the capability probe would then refuse to boot reed at all on any multiplexer lacking them, i.e. betting the entire Windows path on unverified psmux behaviour, to gain nothing on Linux);
+  always polling in addition to the hook (permanent cost for a case the startup probe can decide once).
+
+### watchdog-single-toggle-no-tunables
+
+- Decision: one new `reed.yaml` key, `watchdog`, accepting `on`/`off` and defaulting to `on`, added to both `template_posix.yaml` and `template_windows.yaml` with an `${env:LYX_REED_WATCHDOG:-on}` default in the same shape as `mouse`.
+  Debounce window and tick interval stay constants in code.
+- Rationale: this is new always-on background infrastructure that touches every session on the box, which is a materially different risk profile from the status-line pin whose "no requirement behind it — YAGNI" rejection would otherwise be the governing precedent.
+  An operator who hits a watchdog bug needs a way to turn it off that is not "downgrade `lyx`".
+  `mouse` is the precedent for a reed behaviour pinned explicitly in both directions with an env override.
+  Note the existing reconcile semantics: an already-materialised `reed.yaml` keeps whatever value it holds, since config reconcile is key-based and never rewrites a value, so existing hubs adopt the key via `lyx config reconcile` exactly as `debug_log` and `mouse` documented before it.
+- Rejected: no key at all (no kill-switch for new always-on infrastructure);
+  a `watchdog:` block with `enabled` + `debounce_ms` + tick (two of the three keys have no requirement behind them, and a wrong `debounce_ms` is a support burden with no upside).
+
+### watch-loop-failures-are-never-fatal
+
+- Decision: every failure inside the watch loop is logged and swallowed, with backoff on repeated failure.
+  The loop never exits, never returns an error to the pane, and never lets the header process die.
+- Rationale: this is the `geometry-tmux-failures-are-non-fatal-everywhere` Shared Decision applied to the same surface it was written for, and the header pane's entire reason for existing is to be an always-on keepalive that keeps the session (and the substrate the next `add` needs) alive no matter what.
+  A watchdog that can kill the header pane would convert a cosmetic layout failure into a session-survival failure — strictly worse than the bug being fixed.
+- Rejected: stopping the loop after N consecutive failures and falling back to `blockForever()` (the pane survives, but self-heal silently stops with no way for the operator to notice);
+  exiting the process on error (corpses the header pane, which is then only healed on the next `up`/`resume`, deliberately breaking the keepalive).
+
+### header-blocking-tail-discards-logger-output
+
+- Decision: before entering the watch loop, the `--blocking` tail rebinds the logger's stderr sink to a discarding writer via `logger.SetOutput`.
+  The durable log sink is unaffected.
+- Rationale: the header pane's stdout/stderr **is** its visible screen — `--blocking` paints the rendered header text there and then must never write to it again.
+  `internal/logger`'s default stderr threshold is `Warn` (`logger.go`'s `init` sets `levelVar` to `slog.LevelWarn`), and the watcher will reach `Warn` call sites in *already-shipped* code: `liveBoxLocked` logs `Warn` on a failed or malformed window-size query, and `pinGeometryOptionsLocked` logs `Warn` on a failed pin.
+  Without this, the first degraded tmux round trip paints a slog line over the operator console.
+  Discarding only the stderr half is the right cut: the durable handler is enabled unconditionally at `Info` and above and writes to the hub log file, so nothing is lost for diagnosis — it just stops being *drawn*.
+- Rejected: restricting the watch loop to `Debug`/`Info` levels only (does not help, because the offending `Warn` calls are in shipped engine code the watcher calls into);
+  appending a shell redirect to the header launch command (shell-dialect-dependent, and `headerLaunchCmd` builds a portable string via `internal/shell`).
+
+### resize-self-heal-only
+
+- Decision: this task ships the resize half of the roadmap item and the host the pane-reap half will later occupy.
+  Pane-reap and the reap-probe cheapening are not in scope.
+- Rationale: the resize defect is verified, reproducible on demand, and unmitigated.
+  Pane-reap is already deterministic on every reed op via `planReconcile` (`reconcile.go`), so the roadmap's added value there is specifically the *policy* distinguishing a bug-induced pane from an intentional scratch pane — a design question with no answer written down anywhere, which would be decided badly if bolted onto this task.
+  Its stated prerequisite, cheapening the reap probe, is Windows-only (`proctree_windows.go`'s `Win32_Process` enumeration) and cannot be measured or validated from this Linux box;
+  the Linux seam already reads `/proc` directly and is cheap.
+  Nothing in the resize path calls the reap probe, so no ordering dependency is violated by deferring it.
+- Rejected: shipping both halves per the roadmap item (bundles an unverifiable Windows prerequisite and an unwritten policy into a task whose own half is ready);
+  shipping pane-reap without the probe-cheapening prerequisite (knowingly ships the per-poll pwsh + WMI cost the roadmap names as the blocker).
+
+## Technical context
+
+**The header pane, and why it is the host.**
+
+- `internal/reedengine/headerpane.go` builds the launch line: `headerLaunchCmd` composes `<exe> reed header --blocking` through `internal/shell`, and `headerLaunchLine` returns `""` when `underTest` is true.
+- `internal/reedengine/lifecycle.go:515` passes `testing.Testing()` as `underTest`, so under **any** `go test` the header pane is left as a bare shell.
+  This is deliberate — CONSTRAINTS.md's "Never re-exec `os.Executable()` under `go test`" — and it means **no Go test can exercise a header-hosted watch loop by booting a header pane.**
+  The tier-2 test therefore drives the loop in-process (see **Testing**), which needs no re-exec at all.
+- `internal/reedcli/header.go` holds the `--blocking` tail: it prints `"\x1b[2J\x1b[H" + text` and calls `blockForever()`, which sleeps in an hour-long loop rather than `select {}` to avoid Go's deadlock detector.
+  This is the one envelope-exempt tail the command has;
+  everything fallible already runs pre-flight, on the envelope.
+- `ensureHeaderPaneLocked` (`lifecycle.go:448`) is the only rebuild path: a header whose keepalive dies is deliberately kept as an enumerable corpse by `planReconcile` and healed — corpse killed, fresh header split back in at the physical top — on the next `Up`/`Resume`.
+  So a crashed watcher self-heals on the next reed op, with no supervision code.
+- `reedcli`'s `PersistentPreRunE` (`cli.go`) already resolves cwd → location → config → `hubgeom.ReedGeometry` → `*reedengine.Engine` for every verb including `header`, so the watcher needs nothing told to it that the command does not already hold.
+
+**The engine seam the watcher calls.**
+
+- `Engine.applyLayoutLocked` (`apply.go:141`) is the whole re-apply: it skips both tmux calls when `len(live) < 2` or when `!anyPlacedStrand(...)`, then resolves the live box via `e.liveBoxLocked()`, plans via `planLayout`, and issues `select-layout` followed by `select-pane`.
+  Both skips are session-survival guards, documented in place as verified live: a layout string enumerating zero panes is accepted by tmux (exit 0) and answered by destroying every pane in the session.
+- `Engine.Status()` (`lifecycle.go:1154`) is the structural template for the new op: `withOpLock` → `requireSessionLocked` → `loadOrInitStateLocked` → `tmux.listPanes(session)`.
+- `Engine.withOpLock` (`lock.go`) is non-reentrant and is the single chokepoint carrying the told-geometry pre-flight (`validateToldTmuxIdentity`, `validateToldAnchorPath`) plus the post-op lock-compromise check.
+  The watcher must acquire it exactly once per re-apply, never nest.
+- `Engine.stateDir()` (`lifecycle.go:33`) returns `<AnchorPath>/.lyx` — the home for `reed.lock`, `reed.json`, and now the resize signal file.
+- `Engine.liveBoxLocked` (`windowsize.go:42`) is `display-message -p -t '=<session>:' '#{window_width} #{window_height}'` with a fallback to `cfg.Width`/`cfg.Height`;
+  `parseWindowSize` is its pure half and is the model for any new parse the poll fallback needs.
+- `Engine.pinGeometryOptionsLocked` (`windowsize.go:90`) is where the hook install belongs.
+  Note its existing shape: each `set-option` error is `logger.Warn`-ed and then ignored, and the second pin is attempted even when the first failed.
+- `exactSessionWindowTarget(session)` builds the `=<name>:` form. This is load-bearing and not stylistic — tmux prefix-matches a bare `-t` name when no exact match exists, so on the shared per-hub server a bare name issued from one worktree can silently address a prefix-sharing sibling's session (verified live, tmux 3.6).
+  The hook's `set-hook -t` must use this form.
+- `TmuxCmd.run`/`TmuxCmd.output` (`overlay.go`) are the only exec paths and both auto-prefix `-L <socket>`.
+  Every new tmux call goes through them, never a fresh `exec.Command`.
+  `TmuxCmd.execHook` is the white-box seam a tier-1 test stubs to drive a composed engine call site against scripted tmux output with no live server.
+
+**Live tmux facts established for this task (tmux 3.6, Linux, real pty, real attaching client).**
+
+| Probe | Result |
+| --- | --- |
+| `set-hook`, `run-shell`, `show-hooks` in `list-commands` | present on tmux 3.6; **absent from `requiredSubcommands`**, psmux support unverified |
+| Attach at 127x50 with `window-size latest` | window becomes exactly 127x50 |
+| Live pty resize 127x50 → 100x65 | window follows to 100x65 (M7's premise reproduced) |
+| Hook order on that resize | `client-resized` (reports stale 127x50) → `window-layout-changed` (100x65) → `window-resized` (100x65) |
+| Session-scoped `set-hook -t '=<session>:' window-resized` | fires; no `-g` needed, so sibling worktrees on the shared server do not cross-trigger |
+| `run-shell -b -c <dir> <cmd>` | honours the start-directory (verified via `pwd`) |
+| 20-step drag, one size change per 50ms | **20** `window-resized` fires in ~1s |
+| Header pinned to 1 row, window grows 50 → 51/52/55/60 | header becomes 2/3/4/6 rows — the M7 bug — and SIGWINCH reaches the header process every time |
+| Header pinned to 1 row, window shrinks 60 → 59/58/55/45/30 | header stays 1 row, **no SIGWINCH**, while the bottom strand is squeezed from 15 rows to 2 |
+| A hand-built layout string with no checksum prefix | `select-layout` rejects it (`invalid layout`) — layout strings carry a leading checksum |
+
+**Logging.**
+
+- `internal/logger` (`logger.go`) runs a dual handler: an stderr half gated by `levelVar`, defaulting to `slog.LevelWarn`, and a durable half whose `Enabled` is unconditional at `Info` and above.
+  `logger.SetOutput` rebinds the stderr half only.
+- The Live-Substrate Spawn Observability constraint applies to the hook install if it is treated as a spawn site;
+  the `run-shell` command is executed by the tmux server, not by `lyx`, so the observable lyx-side event is the `set-hook` round trip, not a process spawn.
+  The watch loop itself spawns no processes in steady state.
+
+**Config.**
+
+- `LoadConfig` (`config.go`) uses `configengine.LoadOrTemplate`, so reed is on the degrading side of the Config Strictness Invariant — an absent key resolves from the embedded template.
+- The two templates (`template_posix.yaml`, `template_windows.yaml`) are separate embedded files selected by build tag (`template_posix.go` uses `!windows`, deliberately not a `_linux` suffix).
+  A new key must be added to **both**, in the same `${env:LYX_REED_*:-default}` shape.
+
+**Sandbox suite.**
+
+- `tools/sandbox/SANDBOX-REED-SUITE.md` is an agent-driven scenario document, `M0`–`M25`, run via `sandbox/posix/reed-suite.sh` → `go run ./tools/sandbox reed-suite`.
+  M7 (attach) and M14 (attach visual) are the existing operator-assisted visual scenarios and are the shape a new resize scenario should follow.
+  `sandbox_coverage_test.go` enforces the Sandbox Suite Coverage constraint via `**Covers:**` tags.
+
+## Constraints
+
+From `CONSTRAINTS.md`:
+
+- **CLI / Cobra Invariant** — no new command is added, so `Short` text, help-tree tests (`cmd/lyx/helptree_test.go`), and seam signatures (`seamsignature_test.go`) are untouched.
+  `reed header --blocking` is already a registered interactive-handoff exception;
+  its `Long` text should state that the pane also self-heals the layout.
+  `reedcli` imports `reedengine`;
+  the engine never imports cli or cobra.
+- **Told-Geometry Invariant** — `reedengine` is a bound package.
+  The watcher derives no coordinates;
+  it uses the `Geometry` the engine was already told.
+  No new `internal/lyxcwd` import.
+- **Durable-vs-Ephemeral State Invariant** — the signal file is never-tracked state and belongs under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to, reached via the existing `Engine.stateDir()` accessor.
+  No module derives its own `.lyx` path.
+- **Live-Substrate Spawn Observability** — the watch loop spawns no OS process in steady state;
+  any tmux round trip it adds goes through `TmuxCmd`, which is already covered.
+  A retry/backoff loop must cap attempt **count**, not only elapsed time.
+- **Shell Mechanics Seam** — the hook's shell command string is built only via `internal/shell` (`Quote`/`Invoke`), stdlib-only.
+  If a file-touch primitive is needed it is added to that interface with both a POSIX and a pwsh implementation, not hand-rolled at the call site.
+- **Config Strictness Invariant** — reed is a `LoadOrTemplate` (degrading) adopter;
+  the new key must exist in both embedded templates.
+- **Test Tier Purity Invariant** — no `exec.Command` and no `time.Sleep` ≥ 1s in untagged test files.
+  Everything touching a live tmux is `integration`- or `smoke`-tagged.
+- **Hermetic Git Test Environment Invariant** — any new test package spawning git calls `gitkit.HermeticGitEnv()` in `TestMain`.
+- **Sandbox Suite Coverage** — a new scenario carrying a `**Covers:** reed` tag.
+- **Documentation Lifecycle / task-completion rule** (`CLAUDE.md`) — `internal/reedengine/doc.go` is where this package records its load-bearing behavioural assumptions;
+  the resize self-heal, the hook, and the SIGWINCH rejection belong there, in the same commit.
+  `manifest/roadmap.md` moves for this item because it completes part of a planned entry — the entry must be updated to reflect that the resize half shipped and the pane-reap half remains.
+
+Discovered during discussion:
+
+- **The header pane's stdout/stderr is its screen.** Anything written there after `--blocking` paints the header text corrupts the operator console.
+- **`testing.Testing()` gates the header launch line**, so no Go test can boot a real header-hosted watcher.
+- **`window-layout-changed` is self-triggering** — hooking it would make reed's own `select-layout` re-enter the watcher.
+- **tmux prefix-matches bare `-t` session names**, so every session target the hook uses must be the exact `=<name>:` form.
+- **`run-shell` without `-b` blocks the tmux server.**
+
+## Testing
+
+**Tier 1 (untagged, no substrate).**
+
+- The debounce/coalesce state machine, as a pure function of (signal events, clock) → (apply decisions).
+  Drive a synthetic clock: a single signal fires one apply after the quiet period;
+  20 signals at 50ms intervals fire exactly one apply;
+  a signal arriving during the quiet period restarts it;
+  a signal arriving during an in-flight apply schedules exactly one follow-up, not a queue.
+  **TDD candidate** — pure decision logic, many edges, no substrate.
+- The hook command string built for a given session, signal path, and shell dialect: assert the `=<session>:` exact-target form, the `-b` flag, and correct quoting for both `shell.Posix()` and `shell.Pwsh()`.
+  **TDD candidate.**
+- The signal-file consume step: existence detected, file removed before the apply, a re-touch during the apply detected on the next tick.
+- The hook-availability decision: given scripted `show-hooks`-class output via `TmuxCmd.execHook`, assert the watcher selects signal-driven mode when the hook is present, poll mode when absent, and poll mode when the round trip errors.
+- The `watchdog` config key: present/absent/`on`/`off`/garbage, and the embedded-template default for both GOOS variants.
+- `ReapplyLayout`'s guard inheritance: with fewer than two live panes, and with no strand owning a present pane, assert no `select-layout` is issued.
+  This is the guard that keeps an unattended watcher from destroying a session's entire pane set.
+  **TDD candidate.**
+- The backoff: assert attempt **count** is capped, per the Live-Substrate Spawn Observability rule.
+
+**Tier 2 (`//go:build integration && linux`, live tmux, real pty).**
+
+The acceptance evidence is a live reproduction of M7, not source review.
+`internal/reedengine/attachgeometry_integration_test.go` already carries a `/dev/ptmx`-based pty harness (`startInPTY`, built on `golang.org/x/sys/unix`'s `TIOCSPTLCK`/`TIOCGPTN`/`TIOCSWINSZ`) in this same package — reuse it rather than writing a second one.
+The `testing.Testing()` obstacle is sidestepped by running the watch loop **in-process**, as a goroutine in the test against a real session, rather than by booting a header pane that would re-exec the test binary.
+
+The test must:
+
+1. Boot a real reed session with a header pane and at least two strands.
+2. Attach a pty client of a known size and let the layout settle to the correct, planned string.
+3. Start the watch loop against that session.
+4. **Grow** the window via `TIOCSWINSZ` + `SIGWINCH` and assert the layout self-heals to the string planned for the new box within a bounded wait — specifically that the header returns to `header.height_rows`.
+5. **Shrink** the window and assert the same.
+   This case is non-negotiable: it is the one SIGWINCH misses entirely, and a watcher that passes only the grow case is the failure mode this task must not ship.
+6. Drive a burst of size changes in rapid succession and assert the layout converges to the final size, with the apply count consistent with coalescing rather than one-per-event.
+7. Cover the degraded path: with the hook uninstallable, the poll fallback still converges.
+8. Assert the loop survives an induced tmux failure (e.g. a round trip against a killed session) without exiting.
+
+Platform gating follows the existing file's precedent — Linux-only, with a stated reason, since the pty harness has no portable equivalent and psmux's behaviour under a real pty is unverified anywhere in this repo.
+
+**Sandbox suite.**
+
+Add a scenario to `tools/sandbox/SANDBOX-REED-SUITE.md` in M7/M14's operator-assisted shape, carrying a `**Covers:** reed` tag: attach, confirm the layout, resize the terminal window by hand in both directions, and confirm the layout re-applies without running any `lyx` command.
+This is the check that would have caught M7, and it is the one that keeps catching it.
+
+**Operator acceptance (outside the suite).**
+
+Attach with `lyx reed attach`, drag the terminal window larger and smaller, and confirm the header stays one row and the strand budgets hold, with no manual `lyx reed up`.
+
+## Q&A log
+
+- **Q:** Where does the watchdog live — inside the existing header-pane process, a separate detached daemon, or no long-lived process at all? **A:** Inside the existing header-pane process. **Why:** reed already boots exactly one permanent `lyx` process per session whose entire body is a sleep loop, with lifecycle, healing, and a resolved engine already in place;
+  a supervised daemon would be an architectural first for this repo and would owe a PID file, liveness, restart policy, and `Down` teardown for no behavioural gain.
+- **Q:** How does the watchdog learn about a resize — tmux hook, polling, or hooks made mandatory? **A:** A session-scoped `window-resized` hook, with polling as the fallback where the hook cannot be installed. **Why:** `client-resized` reports stale geometry and `window-layout-changed` is self-triggering (both verified live);
+  making hooks mandatory would bet the entire Windows path on unverified psmux behaviour, since `set-hook`/`run-shell` are absent from `requiredSubcommands`.
+- **Q:** Could the header process just use its own SIGWINCH and avoid tmux hooks entirely? **A:** No — rejected on live evidence. **Why:** with the header pinned to one row, growing the window delivers SIGWINCH every time but **shrinking never does**, while the strand budgets below are silently violated;
+  a watcher that self-heals only on growth is worse than none.
+- **Q:** Does the task ship both roadmap halves (resize + pane-reap), or resize only? **A:** Resize only, with the host built so pane-reap can land on it later. **Why:** `planReconcile` already reaps deterministically on every reed op, so the roadmap's added value there is an unwritten intent policy;
+  and its stated prerequisite — cheapening the pwsh + WMI reap probe — is Windows-only work unverifiable from this Linux box.
+- **Q:** What does the watchdog do on a resize — a new in-process engine op, shell out to `lyx reed up`, or a full reconcile? **A:** A new public engine op composing existing pieces. **Why:** verified that every part already exists and the op is structurally identical to `Status()`;
+  `applyLayoutLocked` already resolves the live box and already carries both session-destruction guards, which matters most for a caller that fires unattended.
+- **Q:** How is the resize burst handled? **A:** Trailing-edge debounce, ~150–250ms quiet period, coalescing. **Why:** a 20-step drag was measured to fire 20 hook events in one second;
+  applying on each would serialise 20 immediately-invalidated layouts through `reed.lock`.
+- **Q:** How does the hook reach the in-pane watcher? **A:** The hook touches a signal file in `.lyx/`; the watcher consumes it by removing it, on a cheap stat tick. **Why:** near-zero steady-state cost with no subprocess until an actual resize;
+  a hook that invokes `lyx` directly would race `reed.lock` once per drag step, and a socket/FIFO owes a Windows named-pipe story for no measurable gain.
+- **Q:** Where is the hook set? **A:** In `pinGeometryOptionsLocked`, alongside the two existing pins. **Why:** it is already the non-fatal geometry-option block, and it already runs both at boot and in the attach pre-flight — which is exactly the established migration path for the "session booted by an older lyx" case, since boot options never re-apply to an already-up session.
+- **Q:** Config surface? **A:** A single `watchdog: on|off` key, default `on`, no tunables. **Why:** new always-on infrastructure touching every session warrants an operator kill-switch — a different risk profile from the status-line pin's YAGNI rejection — while `debounce_ms` and tick have no requirement behind them.
+- **Q:** Failure policy in the loop? **A:** Log-and-continue, always non-fatal, with backoff. **Why:** matches the `geometry-tmux-failures-are-non-fatal-everywhere` Shared Decision, and the header pane exists to stay alive as a keepalive — a watchdog able to kill it would turn a cosmetic failure into a session-survival failure.
+- **Q:** What is the acceptance evidence? **A:** Tier 1 for the pure parts, plus a live pty test reproducing M7 in both directions, plus a new sandbox scenario. **Why:** M7 was only ever caught by running the reed suite live, so operator-acceptance-only would repeat the exact gap that let it go unnoticed;
+  the sandbox scenario also satisfies the Sandbox Suite Coverage constraint directly.
+- **Q:** Anything blocking the header pane from hosting the loop? **A:** Two things, both handled. **Why:** `testing.Testing()` gates the header launch line so no Go test can boot a real header-hosted watcher — the tier-2 test runs the loop in-process instead;
+  and the pane's stderr is its screen, so the `--blocking` tail discards the logger's stderr half (the durable sink keeps everything) or the first degraded tmux round trip paints a slog line over the operator console.
