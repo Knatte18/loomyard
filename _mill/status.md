@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-header-pane-runs-its-own-command
+phase: approved-header-declines-the-stencil-seed-pass
 slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r4  '2026-08-28T09:09:57Z'
 planned  '2026-08-28T09:10:12Z'
 implementing  '2026-08-28T09:10:37Z'
 approved-header-pane-runs-its-own-command  '2026-08-28T09:16:12Z'
+approved-header-declines-the-stencil-seed-pass  '2026-08-28T09:21:20Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: bef2380d206a0f04ef9153f0016b131ffdcdb73a
     verify_baseline_failures: []
   - name: header-declines-the-stencil-seed-pass
-    state: running
+    state: approved
     implementer_session: 3fd11504-86c8-4a3c-8067-820031ea0b1f
     start_sha: 075ffa60665b8192cad8dd0683af06e6a6f0ed00
+    commit_sha: a546d2c39cf201fb9c92a8f9b5364609789350af
     verify_baseline_failures: []
   - name: scrollback-backstop-and-composite-smoke
     state: pending
