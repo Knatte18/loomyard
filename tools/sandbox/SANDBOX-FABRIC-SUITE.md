@@ -2,8 +2,8 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx fabric` against **dedicated** GitHub test repos (`Knatte18/lyx-fabric-test` as warp, `Knatte18/lyx-fabric-test-weft` as weft) -- never the shared `lyx-test`/`lyx-test-weft` repos the main and per-module suites use.
-This suite proves fabric's stricter `main-weft`-suffixed branch-naming scheme holds up on its own dedicated hub, whose fixtures the shared hub does not exercise.
+A structured test-loop for exercising `lyx fabric` against the same shared GitHub test repos (`Knatte18/lyx-test` as warp, `Knatte18/lyx-test-weft` as weft) the main and per-module suites use.
+This suite proves fabric's stricter `main-weft`-suffixed branch-naming scheme holds up under real use -- including this suite's own destructive scenarios (re-clone, `--reset`, `prune --apply`, `cleanup --apply`), which a sandbox Hub exists to absorb; `sandbox/build.cmd -reset` is the recovery path if a run leaves the Hub in a state another suite would trip on.
 
 Like the other suites, the value is a Claude session driving `lyx fabric` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
 
@@ -14,22 +14,14 @@ Before starting a session:
 1. **Deploy a fresh binary.**
    Run `deploy.cmd` so `lyx.exe` on PATH is current source.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
-2. **Materialize the fabric hub.**
-   Run `sandbox/fabric-suite.cmd`.
-   Unlike the main and per-module suites (which assume `sandbox/build.cmd` already ran), this launcher clones the dedicated fabric hub itself via `lyx fabric clone` -- idempotently: if `lyx-fabric-test-HUB` already exists it is reused as-is, never reset or re-cloned.
-   The very first run on a machine performs the real clone;
-   every run after that starts from whatever state the previous session left the hub in.
+2. **Materialize the hub.**
+   Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) -- the same operating model as the main and per-module suites, which this suite now shares rather than materializing its own dedicated hub.
 
    **Re-clone adoption.**
    When a clone runs against a weft remote that already carries the suffixed primary branch (a fresh machine, or `clone --reset`), the weft prime adopts `origin/main-weft` as a tracking branch — inheriting the previously synced weft state — rather than forking a new, untracked `main-weft` at `main`'s HEAD.
    After any re-clone, confirm the weft prime's `main-weft` has an upstream (`git -C <weft-prime> branch -vv`) and contains the previously synced `_lyx/` content.
 3. **`lyx` on PATH.**
    Confirm `lyx --help` works from any directory.
-4. **Weft `_lyx/` must be seeded before `lyx fabric clone`.** `lyx init` is gone;
-   `lyx fabric clone` now wires the warp `_lyx` junction to the weft worktree's `_lyx/` directory via fabricengine as part of clone itself.
-   On a truly empty weft repo that directory does not exist yet, so clone creates a dangling junction and then fails (`mkdir _lyx: file exists`).
-   The dedicated `lyx-fabric-test-weft` repo must therefore have an `_lyx/` directory committed on its primary branch (the operator seeds it once).
-   Until then, treat a `clone` failure on this dedicated fabric hub as this known precondition gap, not a fabric defect — fabric's own verbs read their config from that same `_lyx/config/`.
 
 ### PowerShell JSON-quoting
 
@@ -42,7 +34,7 @@ The hub warp repo is initialized at its root, so the agent runs the entire sessi
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the dedicated fabric Hub's warp repo (`lyx-fabric-test-HUB/lyx-fabric-test`).
+**The agent under test works exclusively inside the Hub's warp repo (`lyx-test-HUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
@@ -120,7 +112,7 @@ Is each description accurate and useful?
 
 **Covers:** fabric
 
-**Goal:** "Confirm the dedicated fabric hub the launcher just materialized (or reused) looks the way `lyx fabric clone` promises."
+**Goal:** "Confirm the Hub the launcher just materialized (or reused) looks the way `lyx fabric clone` promises."
 
 **Watch:** `_board` is a linked worktree of the same weft repo as the weft prime, never a separate clone -- confirm `git -C <weft-prime> rev-parse --git-common-dir` and `git -C _board rev-parse --git-common-dir` resolve to the same path. `_board` is checked out on the warp's own dynamically-derived unsuffixed default branch (**never hardcoded to `main`** -- whatever the warp repo's actual default branch is), which `git -C _board branch --show-current` should confirm directly;
 this mirrors the assertion shape `internal/fabricengine/clone_adopt_test.go`'s `assertBoardIsWeftWorktree` already makes in code.
@@ -214,7 +206,7 @@ Before any of that, dirty the warp worktree with an uncommitted edit to a tracke
 
 **Covers:** fabric
 
-**Goal:** "The dedicated fabric hub has already been cloned once with both URLs, which is what writes the warp-URL binding onto `weft:main`.
+**Goal:** "The Hub has already been cloned once with both URLs, which is what writes the warp-URL binding onto `weft:main`.
 Delete the hub directory outright, then re-clone it supplying only the weft URL, and confirm the warp side is derived rather than asked for."
 
 **Watch:** Confirm the re-clone succeeds with no warp URL on the command line at all -- the warp URL must be derived from the binding recorded on the weft side, not prompted for or defaulted some other way.
@@ -569,6 +561,6 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Notes
 
-- This suite is deliberately scoped to fabric alone and runs against its own dedicated hub -- it does not touch, and is not touched by, `SANDBOX-CORE-SUITE.md`'s warp/weft scenarios against `lyx-test`/`lyx-test-weft`.
+- This suite is deliberately scoped to fabric alone, but runs against the same shared Hub (`lyx-test`/`lyx-test-weft`) as `SANDBOX-CORE-SUITE.md` and every per-module suite -- it is not isolated from them. Several scenarios here are destructive by design (F7's delete-and-re-clone, `--reset`, `prune --apply`, `cleanup --apply`); if a run leaves the Hub in a state another suite would trip on, `sandbox/build.cmd -reset` is the recovery path, not a fabric defect.
 - fabric is lyx's sole warp↔weft git-coordination module (see `internal/fabricengine/doc.go`);
-  its stricter `main-weft`-suffixed branch-naming scheme is exactly why this suite runs against its own dedicated hub rather than the shared sandbox hub.
+  its stricter `main-weft`-suffixed branch-naming scheme is exactly what this suite exists to exercise, on the same Hub every other suite already proves the ordinary CLI surface against.
