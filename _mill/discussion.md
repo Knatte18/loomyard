@@ -118,10 +118,15 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 ### debounce-in-the-watcher
 
-- Decision: trailing-edge debounce with a fixed quiet period in the 150–250ms range, coalescing.
+- Decision: trailing-edge debounce with a fixed 200ms quiet period, coalescing.
   Every signal restarts the quiet timer;
   the re-apply fires once, after the resizing stops.
-  Both the tick interval and the debounce window are compile-time constants, not config.
+  **The four loop constants are fixed values, not ranges**, all compile-time and none configurable:
+  debounce quiet period **200ms**;
+  signal-file stat tick **100ms**;
+  poll-mode cycle **2s**;
+  per-event retry cap **N = 3**.
+  Tests reference the exported-within-package constants rather than repeating the literals, so a later tuning change moves one line and does not break the suite.
 - Rationale: measured live — a 20-step drag (one size change per 50ms) fires 20 `window-resized` events in one second.
   Applying on each would mean 20 layouts, each immediately invalidated by the next resize and each fighting tmux's own rescale, all serialised through `reed.lock`.
   Trailing-edge collapses that to one apply after the drag settles, and the layout is only wrong *during* the drag, which is when the operator is still dragging and not reading.
@@ -130,7 +135,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 ### reapply-layout-is-a-new-public-engine-op
 
-- Decision: a new public `Engine` method — shape `ReapplyLayout() (<result>, error)` — that re-plans and re-applies the layout against the live window.
+- Decision: a new public `Engine` method — shape `ReapplyLayout(lastApplied render.Box) (ReapplyResult, error)` — that re-plans and re-applies the layout against the live window.
+  **It takes the caller's last-applied box and owns the box-equality guard itself**, so the comparison happens *inside* the op, under the lock, against a box queried under that same lock.
+  The watcher never queries geometry on its own in either mode: signal mode calls this on a debounced signal, poll mode calls it once per cycle, and both get identical semantics from one code path.
+  This is what keeps `liveBoxLocked`'s documented "assumes the op lock is already held" contract intact — an unlocked watcher-side query would violate it.
   Its body is the existing composition, in the existing order: a **non-blocking** op-lock acquisition (see `watcher-never-blocks-on-the-op-lock`) → `requireSessionLocked` → `loadOrInitStateLocked` → `tmux.listPanes` → the layout apply.
   It persists nothing.
   It applies the layout **only** — it does not issue the trailing `select-pane` (see `reapply-never-moves-focus`).
@@ -164,7 +172,10 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
   So `window-resized` tracks *client-driven* window size changes, not layout-driven ones, which is precisely the property that makes it usable and `window-layout-changed` unusable.
   The box-equality guard is kept anyway, and cheaply: it costs one `display-message` the apply path already performs, it breaks any self-trigger loop on a future tmux or on psmux without depending on this probe holding there, and it also suppresses the redundant re-apply when two signals coalesce imperfectly.
   It must compare against the last **successfully-applied** box, never the last observed one, or a failed apply would be skipped on retry.
-  The box the guard compares is the one `ReapplyLayout` **returns**, not one the watcher queries for itself — so the result type is concrete: `ReapplyResult{Applied bool, Box render.Box, BoxIsLive bool}`.
+  The guard lives **inside** `ReapplyLayout`, which is told the caller's last-applied box and returns the concrete `ReapplyResult{Applied bool, Box render.Box, BoxIsLive bool}`.
+  The watcher never performs a geometry query of its own, in either mode.
+  On the two inherited guard-skip paths — `len(live) < 2` and `!anyPlacedStrand(...)`, both of which return before any box is computed — the result is `Applied=false, BoxIsLive=false`, and the watcher leaves its last-applied box untouched.
+  Propagating the box out therefore needs `applyLayoutLocked` itself to return it, not only the `liveBoxLocked` sibling below: the apply path is where the box is resolved, so its signature grows to hand back the box it used and whether that box was live.
   `BoxIsLive` is load-bearing, because `liveBoxLocked` (`windowsize.go:42`) never reports failure: on a round-trip error or a malformed answer it `logger.Warn`s and returns the configured `cfg.Width`/`cfg.Height` pair, which is a perfectly plausible-looking box.
   A degraded query is therefore **not an observation**: when `BoxIsLive` is false the watcher neither updates its last-applied box nor treats the comparison as meaningful, so a fallback box can cause neither a spurious permanent skip (fallback happens to equal the last applied box) nor a spurious re-apply loop (fallback differs from it forever).
   This needs `liveBoxLocked` to expose the `ok` it already computes internally — a sibling returning `(render.Box, bool)`, with today's method delegating to it and discarding the flag, so no existing caller changes.
@@ -188,7 +199,8 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 
 - Decision: at startup the watcher determines whether its hook is installed with a single `show-hooks`-class round trip.
   If it is, the watcher runs signal-file-driven with no geometry polling.
-  If it is not, the watcher falls back to a slow `liveBoxLocked`-style geometry poll, re-applying only when the observed box differs from the last applied one.
+  If it is not, the watcher falls back to a slow poll that simply calls `ReapplyLayout(lastApplied)` once per cycle and lets the op's own box-equality guard decide whether anything is applied.
+  Poll mode performs **no** geometry query of its own: the same in-op, under-lock comparison governs it, so a non-live box means no apply and no last-applied update there exactly as on the signal path, and the `cfg.Width`/`cfg.Height` fallback can no more cause a permanent re-apply loop in poll mode than in signal mode.
   **The mode is not fixed for the process's life.**
   While in poll mode the watcher re-probes hook availability as part of each poll cycle and promotes itself to signal-driven mode the moment the hook appears;
   signal-driven mode never re-probes and never demotes itself.
@@ -218,6 +230,14 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
     unsetting is the conservative half, because it stops signals rather than starting them, and the operator's next `up` delivers the loud error.
   - the header-pane watch loop in `reedcli/header.go`'s `--blocking` tail — **declines to start**, logs, and falls through to the plain block-forever keepalive.
     It never errors out of the pane.
+  **Take-effect boundary — the key is read once per process, never re-read.**
+  All three consumers read config at process start or op time (`reedcli`'s `PersistentPreRunE` resolves it once per invocation), so flipping to `off` does **not** stop an already-running watcher.
+  It takes effect on the next **header-pane rebuild** — a `lyx reed down` + `up`, a server restart, or a dead-header heal — and the hook unset takes effect on the next boot or attach pre-flight.
+  This is stated in the template comment in the same shape `mouse` and `debug_log` already state theirs ("takes effect on a fresh reed server boot only"), so the reed config file documents all three the same way rather than leaving this one key's boundary to be discovered.
+  The operator-facing kill-switch is therefore `watchdog: off` followed by `lyx reed down` + `lyx reed up`, which is exactly the escape `mouse` already documents.
+- Rationale for the boundary: re-reading config inside the loop would mean a config resolution per tick, and would make the watcher the only reed consumer whose config is live-reloaded — an inconsistency with every sibling key in the same file, for a switch an operator flips at most once.
+  A stale-until-rebuild kill-switch is still a kill-switch;
+  a silently-live-reloading one is a surprise.
 - Rationale for the split: a hard error in the header tail would kill the keepalive the header pane exists to provide, directly contradicting `watch-loop-failures-are-never-fatal` — a config typo would take down the pane that keeps the session alive, which is far worse than self-heal being off.
   Meanwhile `pinGeometryOptionsLocked` cannot report an error even if it wanted to.
   So exactly one consumer is loud, and it is the one the operator is watching;
@@ -237,7 +257,7 @@ Only the resize half is built here (see **Scope: Out** and the `resize-self-heal
 - Decision: every failure inside the watch loop is logged and swallowed.
   The loop never exits, never returns an error to the pane, and never lets the header process die.
   **What is bounded is one event's retries, never the watcher.**
-  A single debounced re-apply gets at most a small fixed number of attempts (N, on the order of 3) with an escalating delay between them;
+  A single debounced re-apply gets at most **3** attempts (the fixed constant `N`, see `debounce-in-the-watcher`) with an escalating delay between them;
   once those N are spent the event is abandoned with one log line and the watcher goes straight back to waiting for the next signal.
   Both the attempt counter and the escalating delay reset on any successful apply **and** on the arrival of the next resize signal, so the cap is per failure-streak, not cumulative over the process's life.
 - Rationale: this is the `geometry-tmux-failures-are-non-fatal-everywhere` Shared Decision applied to the same surface it was written for, and the header pane's entire reason for existing is to be an always-on keepalive that keeps the session (and the substrate the next `add` needs) alive no matter what.
@@ -423,6 +443,9 @@ Discovered during discussion:
   the header tail declines to start the loop and does **not** return an error.
   **TDD candidate** — the header-tail case is the one where an obvious implementation propagates the error and kills the keepalive.
 - The box-equality guard's degraded case: when `BoxIsLive` is false, assert the last-applied box is not updated and the comparison does not gate the next apply — neither a permanent skip nor a permanent re-apply.
+  Assert it identically for both modes, since both now route through the same `ReapplyLayout` call.
+- `ReapplyResult` on the two inherited guard-skip paths (`len(live) < 2`, `!anyPlacedStrand`): assert `Applied=false`, `BoxIsLive=false`, no `select-layout` issued, and no last-applied update.
+- The take-effect boundary: assert the loop does not re-read config mid-run — a `watchdog` flip on disk while the loop is running changes nothing until the process restarts.
 - Signal-file lifecycle: a stale file present at watcher start is removed before the loop begins.
 - The box-equality guard: a signal whose live box equals the last successfully-applied box issues no `select-layout`;
   a signal after a *failed* apply is not skipped even though the observed box is unchanged.
@@ -484,8 +507,13 @@ Attach with `lyx reed attach`, drag the terminal window larger and smaller, and 
   and its stated prerequisite — cheapening the pwsh + WMI reap probe — is Windows-only work unverifiable from this Linux box.
 - **Q:** What does the watchdog do on a resize — a new in-process engine op, shell out to `lyx reed up`, or a full reconcile? **A:** A new public engine op composing existing pieces. **Why:** verified that every part already exists and the op is structurally identical to `Status()`;
   `applyLayoutLocked` already resolves the live box and already carries both session-destruction guards, which matters most for a caller that fires unattended.
-- **Q:** How is the resize burst handled? **A:** Trailing-edge debounce, ~150–250ms quiet period, coalescing. **Why:** a 20-step drag was measured to fire 20 hook events in one second;
+- **Q:** How is the resize burst handled? **A:** Trailing-edge debounce, 200ms quiet period, coalescing. **Why:** a 20-step drag was measured to fire 20 hook events in one second;
   applying on each would serialise 20 immediately-invalidated layouts through `reed.lock`.
+- **Q:** Poll mode was defined as the watcher observing the box itself, but the guard was defined as consuming the box `ReapplyLayout` returns — which is it, and under what lock? **A:** Neither mode queries geometry itself;
+  `ReapplyLayout(lastApplied)` owns the guard internally, under its own lock. **Why:** `liveBoxLocked` documents "assumes the op lock is already held", which an unlocked watcher-side poll would violate;
+  folding the comparison into the op gives both modes one code path and one answer for the degraded-box case.
+- **Q:** Does `watchdog: off` stop an already-running watcher? **A:** No — config is read once per process, so `off` takes effect at the next header-pane rebuild (`down` + `up`, a server restart, or a dead-header heal), stated in the template comment exactly as `mouse`/`debug_log` state theirs. **Why:** re-reading config per tick would make this the only live-reloaded key in the reed config file, an inconsistency with every sibling, for a switch flipped at most once.
+- **Q:** What are the loop constants? **A:** Fixed values, not ranges — debounce 200ms, signal tick 100ms, poll cycle 2s, retry cap 3 — with tests referencing the constants rather than literals. **Why:** the tier-1 synthetic-clock tests assert against exactly these, so a range is not a specification.
 - **Q:** How does the hook reach the in-pane watcher? **A:** The hook touches a signal file in `.lyx/`; the watcher consumes it by removing it, on a cheap stat tick. **Why:** near-zero steady-state cost with no subprocess until an actual resize;
   a hook that invokes `lyx` directly would race `reed.lock` once per drag step, and a socket/FIFO owes a Windows named-pipe story for no measurable gain.
 - **Q:** Where is the hook set? **A:** In `pinGeometryOptionsLocked`, alongside the two existing pins. **Why:** it is already the non-fatal geometry-option block, and it already runs both at boot and in the attach pre-flight — which is exactly the established migration path for the "session booted by an older lyx" case, since boot options never re-apply to an already-up session.
