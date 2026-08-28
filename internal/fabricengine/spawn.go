@@ -74,6 +74,7 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 		logger.Warn("fabricengine: spawn detached push failed", "exe", exe, "args", args, "error", err)
 		return err
 	}
+	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "pid", cmd.Process.Pid)
 	return nil // intentionally not Wait()ed
 }
 
