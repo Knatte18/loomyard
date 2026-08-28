@@ -10,7 +10,8 @@ parent: main
 ## Problem
 
 Running `lyx reed resume` or `lyx reed down` from a worktree that was renamed while its tmux session was up leaves a brand-new, empty, REAL directory at the hub root named after the pre-rename worktree: `<hub>/<old-name>/.lyx/{reed.json.lock,reed.lock}`.
-It is a real directory, not the `.lyx` symlink a fabric worktree normally carries, and it did not exist before the call — its birth timestamp matches the exact moment the verb ran.
+It is a real directory, not the `.lyx` symlink a fabric worktree normally carries, and it did not exist before the rename.
+The sandbox report records its birth timestamp as matching the moment the verb ran; the mechanism below says it is created at the first watchdog poll tick after the rename, which at human resolution is the same few-second window but is NOT the same claim (see the note in `### the-leak-is-continuous-not-per-event`).
 Reed's own `reed.json` state is written correctly through the live worktree; only the lock-side directory lands somewhere else.
 
 This is a landmine, not litter.
@@ -51,7 +52,8 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
   After `mv`, the process's own cwd follows the inode but the frozen `geom.AnchorPath` string does not.
   The exact chain, per tick: `watchLoop` → `reapplyLayout` (`internal/reedengine/reapply.go:90`) → `withTryOpLock` → `os.MkdirAll(e.stateDir())` creates `<hub>/<old-name>/` AND `.lyx` under it (`MkdirAll` creates every missing parent) plus `reed.lock`; then `requireSessionLocked` (`lifecycle.go:1134`) finds no session under the old name and its error path calls `LoadState(e.stateDir())` at `lifecycle.go:1148`, whose `internal/state.ReadJSON` creates `reed.json.lock`; the error returns before `SaveState` is ever reached.
   That is byte-for-byte the reported shape: a REAL directory (not a symlink), exactly two 0-byte lock files, and no `reed.json` beside them.
-  It also explains the rest: read-only `status` produces no stray (it refuses before reaching a lock helper), and the stray's name varies between "the pre-rename name" and "a name from an earlier rename step" because it is whichever name the long-lived process happened to boot under.
+  It also explains the rest: a CLI `status` produces no stray because `PersistentPreRunE` resolves it a fresh, correct geometry — NOT because it stops short of the lock, which it does not (`Status` acquires `withOpLock` at `lifecycle.go:1165` and the renamed-worktree refusal fires inside it, after the `MkdirAll`).
+  And the stray's name varies between "the pre-rename name" and "a name from an earlier rename step" because it is whichever name the long-lived process happened to boot under.
   Why now: the watchdog daemon (`8002cf976`) is the newest reed commit and the first long-lived in-session process that runs engine ops on a timer.
 - Rejected: a stale recorded session name read out of `reed.json` — no code path joins a recorded session name or `Strand.Worktree` onto a filesystem path; `state.Worktree`/`Strand.Worktree` are stamped (`strand.go:177`) and declared (`state.go:25`) but never read outside tests, and `Down`'s abandonment report reads `st.PaneGeneration.SessionName` purely as message text (`lifecycle.go:900-904`).
   Rejected: `lyxcwd` returning a stale worktree root — verified empirically that `git rev-parse --show-toplevel` returns the NEW path after `mv`, with or without `git worktree repair`; and `readRecordedAnchor` yields a worktree-relative `AnchorRel`, never a sibling worktree name.
@@ -60,7 +62,9 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 
 ### the-leak-is-continuous-not-per-event
 
-- Decision: Treat the leak as a 2-second poll loop that recreates the stray indefinitely, not as a one-shot artifact of the verb that ran.
+- Decision: The poll model is the one this task builds on: an ungated 2-second `reapplyLayout` that creates the stray at the first tick after the rename and keeps re-entering it for as long as the stale-anchored watcher lives.
+  The stray is NOT created by the verb, and its creation is not synchronised to any verb.
+  Where the sandbox report's "birth timestamp matches the exact moment the verb ran" conflicts with this, the poll model wins — it is what the source says, and at human resolution the two are the same few-second window (rename → escape verb) rather than genuinely distinguishable observations.
 - Rationale: `watchLoop` starts in `watchModePoll` (`watchloop.go:180`) and poll mode calls `reapplyLayout` every `watchdogPollCycle` = 2s with no gating.
   Promotion to `watchModeSignal` requires `hookInstalledLocked()` to see an exact match on `resizeHookCommand` in the `window-resized` option — and that signal hook has no install site, while the option itself is occupied by `installResizePinsLocked`'s `resize-pane` pin array — so the probe reports "not installed" every time and every watcher is pinned in poll mode permanently (see the follow-up Decision below).
   This matters for two reasons.
@@ -122,12 +126,14 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 - Ordering at both lock helpers: `validateToldTmuxIdentity` → `validateToldAnchorPath` → the new `WorktreeRoot` validator (shape, then liveness) → `os.MkdirAll(dotLyx)` → acquire `reed.lock`.
   The new check goes last among the validators because it is the only one that touches the filesystem, and the two cheap contract refusals should still fire first on a geometry that is wrong in several ways at once.
 
-### a-separate-live-validator-keeps-the-pure-one-pure
+### a-separate-validator-keeps-the-pure-one-pure
 
-- Decision: Add a new function (e.g. `validateAnchorPathLive(geom Geometry) error`) beside `validateToldAnchorPath` in `internal/reedengine/server.go`, rather than adding a `os.Stat` inside `validateToldAnchorPath`.
-- Rationale: `validateToldAnchorPath` is documented and tested as a pure shape validator over the told contract (empty / relative), driven by a table test in `server_test.go`.
-  Mixing filesystem I/O into it would make that table test I/O-dependent and blur "the caller told me something unusable" against "the world changed under a valid value" — two different diagnoses that deserve two different error messages.
+- Decision: Add a new function — `validateToldWorktreeRootLive(geom Geometry) error`, or whatever the plan names it, as long as the name says **WorktreeRoot** — beside `validateToldAnchorPath` in `internal/reedengine/server.go`, rather than touching `validateToldAnchorPath` at all.
+  It validates `Geometry.WorktreeRoot`; it does not look at `AnchorPath`.
+- Rationale: `validateToldAnchorPath` is documented and tested as a pure shape validator over a DIFFERENT field, driven by a table test in `server_test.go`.
+  Mixing filesystem I/O into it would make that table test I/O-dependent, and folding a second field's rules into it would blur three separate diagnoses — "you told me an unusable anchor", "you told me an unusable worktree root", and "the worktree root you told me is gone" — that deserve distinct messages.
 - Rejected: extending `validateToldAnchorPath` in place.
+  Rejected: any name built on "AnchorPath" (an earlier draft of this discussion proposed `validateAnchorPathLive`, a leftover from when the predicate was `AnchorPath`; the name would now lie about which field is checked).
 
 ### the-error-names-the-vanished-path-and-the-remedy
 
@@ -194,7 +200,11 @@ Why now: the resize watchdog daemon (commit `8002cf976`, the newest reed commit)
 - `internal/reedengine/geometry.go` — `Geometry`'s documented contract: `New` validates no field, and no method recomputes one. Preserve this.
 - `internal/hubgeom/hubgeom.go:18-30` — hub-mode `ReedGeometry(l)`: `AnchorPath = l.AnchorPath()`, `WorktreeRoot = l.WorktreePath()` (i.e. `<hub>/<name>`). Not a defect site; listed so the plan does not go looking for one, and because `WorktreeRoot`'s value here is what makes the chosen predicate work.
 - `internal/standalonegeom/reedgeom.go:19-31` — standalone `ReedGeometry(target, stateDir, hash8)`: `AnchorPath = stateDir`, `WorktreeRoot = target`, and the doc comment states outright that the two "deliberately diverge". This is the second teller the predicate has to survive.
-- `internal/standalonestate/standalonestate.go:31` — `Derive` computes `stateDir` and creates nothing on disk. Confirmed: no production `MkdirAll` of `stateDir` exists in `internal/burlercli/wiring.go` or `internal/webstercli/wiring.go`, so `withOpLock`'s `MkdirAll` is what materializes it on standalone first run. That `MkdirAll` must keep working — a plan that gates it on `AnchorPath` breaks standalone.
+- `internal/standalonestate/standalonestate.go:31` — `Derive` computes `stateDir` and creates nothing on disk.
+  Neither standalone wiring `MkdirAll`s `stateDir` directly, but the claim "nothing creates it" is too strong: with no `--stencils-dir`, both wirings call `stencilstore.Reconcile(standalonegeom.StencilsDir(stateDir))` — `<stateDir>/_lyx/stencils` (`standalonegeom/stencilsdir.go:25`, `burlercli/wiring.go:139`, `webstercli/wiring.go:159`) — which does create `stateDir` before the engine ever runs.
+  So `withOpLock`'s `MkdirAll` is the SOLE materializer only on the `--stencils-dir` path, where `Reconcile` is skipped.
+  The `WorktreeRoot` decision is unaffected either way — it just must not rest on the overstated version.
+  That `MkdirAll` must keep working: a plan that gates it on `AnchorPath` breaks standalone `--stencils-dir` first-run.
 - `internal/reedengine/windowsize.go:197-237` — `resizePinHookArgvs` / `installResizePinsLocked` write the `window-resized` window-hook array. Relevant only as context for the hook follow-up below; not a change site in this task.
 - `internal/reedengine/watchloop.go:159` — `watchLoop`. The `watchdog: off` branch (`<-ctx.Done(); return ctx.Err()`) is the parking pattern to reuse.
   `handleWatchOutcome` (same file) is where an error is currently classified as retryable; the proven-gone case has to be distinguishable there, which is why the plan needs a package-level sentinel error (`errors.Is`-matchable) rather than a string match — a non-`ErrNotExist` stat failure must NOT match it.
@@ -249,7 +259,9 @@ Fixture:
 
 - `newTestEngine` creates its `WorktreeRoot`, and deliberately does NOT create `AnchorPath` — preserving the fixture's existing intent that the fields are distinct values so a mix-up surfaces, while now also standing in for the standalone shape.
 - Every in-package test that reaches `withOpLock`/`withTryOpLock` through an INLINE `Geometry` literal materializes its own `WorktreeRoot` in place (`lock_test.go`'s `TestWithOpLock_PathIsUnderDotLyx` is the known one; sweep for others rather than trusting that list). They are not migrated onto the helper — each was written to observe a specific field arrangement that the shared fixture would erase.
-  Run the whole `internal/reedengine` package afterwards; any test that was silently relying on the worktree root being absent is a real finding, not something to paper over.
+  Run the whole `internal/reedengine` package afterwards **with the `integration` and `smoke` build tags as well as untagged** — `go test` with no tags never compiles the tag-gated files, so a sweep that stops at the default build silently skips them.
+  Those files also build inline `Geometry` literals and drive real ops: `contract_integration_test.go:648,757`, `mouse_boot_integration_test.go:48`, and `attachgeometry_integration_test.go` are the known ones, and they are in scope for the fixture sweep on exactly the same criterion as the untagged inline sites.
+  Any test that was silently relying on the worktree root being absent is a real finding, not something to paper over.
 
 Sandbox (manual, live tmux — the suite is an agent-driven black box, so this is doc text, not code):
 
@@ -259,7 +271,7 @@ Sandbox (manual, live tmux — the suite is an agent-driven black box, so this i
 
 ## Q&A log
 
-- **Q:** What actually creates the stray — the invoked verb, or something else? **A:** [auto-pick] The old session's still-running header-pane watchdog, whose `Engine` geometry is frozen at the pre-rename `AnchorPath`. **Why:** it is the only mechanism that accounts for all of the observed evidence simultaneously — a real (not symlinked) directory, both lock files with no `reed.json`, birth timestamps matching geometry-changing verbs only, no stray from read-only `status`, a name that varies with which rename step the process booted under, and the fact that this surfaced immediately after the watchdog daemon landed.
+- **Q:** What actually creates the stray — the invoked verb, or something else? **A:** [auto-pick] The old session's still-running header-pane watchdog, whose `Engine` geometry is frozen at the pre-rename `AnchorPath`. **Why:** it is the only mechanism that accounts for all of the observed evidence simultaneously — a real (not symlinked) directory, both lock files with no `reed.json`, birth timestamps matching geometry-changing verbs only, no stray from read-only `status`, a name that varies with which rename step the process booted under, and the fact that this surfaced immediately after the watchdog daemon landed. Note the timestamp evidence was restated during review: the poll model puts creation at the first tick after the rename, not at the verb, and the two are only indistinguishable because the rename and the escape verb are seconds apart in the prescribed workflow.
 - **Q:** Where does the fix live? **A:** [auto-pick] Refuse at the op-lock chokepoint (`withOpLock` + `withTryOpLock`) when the told worktree root no longer exists. **Why:** one chokepoint covers every verb including the watchdog, it slots into an existing refusal sequence built for exactly this purpose, and it refuses a told value rather than deriving one, so the Told-Geometry Invariant holds.
 - **Q:** Gate on `AnchorPath` or `WorktreeRoot`? **A:** `WorktreeRoot`. **Why:** raised as BLOCKING by discussion review round 2, and correct — reed has two `Geometry` tellers, and gating on `AnchorPath` breaks standalone mode, where `AnchorPath` is a derived state directory `standalonestate.Derive` never creates and `withOpLock`'s own `MkdirAll` is what materializes on first run. `WorktreeRoot` is `<hub>/<name>` in hub mode (exactly what the stray conjured) and the operator's real target repo in standalone mode (always present), so one predicate serves both tellers with no new field and no wiring change.
 - **Q:** Does a non-`ErrNotExist` stat failure (EACCES, EIO, stalled mount) also mean "gone"? **A:** No — only `fs.ErrNotExist` and the exists-but-not-a-directory case yield the terminal sentinel; every other stat error is retryable. **Why:** raised as BLOCKING by round 2. The sentinel parks the watchdog permanently, so mapping a momentary stat blip onto it would kill a healthy session's self-heal for the rest of that header pane's life on the strength of one `Warn`.
