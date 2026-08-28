@@ -43,7 +43,9 @@ batches:
     commit_sha: f32ccc27ffa44b9e5e961720505eb23cb9f1a8a0
     verify_baseline_failures: []
   - name: engine-reapply-op
-    state: pending
+    state: running
+    implementer_session: b4837eeb-ba0e-4b7e-a748-06bf14e8c6cf
+    start_sha: 46967e8b478bb9816218196bddc1d026f6ca992d
     verify_baseline_failures: []
   - name: watch-loop
     state: pending
