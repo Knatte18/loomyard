@@ -175,6 +175,25 @@ func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
 // client can end up taller than its configured boot height until the next
 // client attaches and snaps it back — a consequence of the live-box query,
 // not a bug.
+//
+// tmux redistributes every window-size delta evenly across the vertical cells and has no fixed-height
+// pane concept, so no absolute row budget survives a resize on its own. This function therefore
+// re-installs a window-resized hook re-pinning the fixed-height panes (the header band and every
+// collapsed strip) after each successful apply, so a later client resize is corrected without a
+// second reed operation.
+//
+// The guard-skip disposition is the opposite of the zero-pin one, and deliberately so: a path
+// returning at either guard above issues NOTHING — not even the clear — so a previously installed
+// array survives it, with no removal path. len(live) < 2 is harmless because resize-pane -y against a
+// window's sole pane is a silent no-op — verified live on tmux 3.6, exit 0 with the pane's height
+// unchanged — so the surviving header pin cannot contradict render.Rules' sole-cell branch even
+// though it now names the only pane in the window. !anyPlacedStrand is the reachable, long-lived one:
+// state.go documents an operator remedy that deletes reed.json while the session and its processes
+// keep running untracked, after which anyPlacedStrand is false forever, and there the surviving array
+// is a benefit — it keeps pinning the still-alive header and strips at the budgets reed last computed
+// for them. Clearing ahead of the guards was considered and rejected: it would strip the pins from
+// exactly that untracked-but-running session, and a clear with no rebuild behind it drifts on the
+// very next resize, which is strictly worse than a slightly stale array.
 func (e *Engine) applyLayoutLocked(st *ReedState, live []LivePane) error {
 	if len(live) < 2 {
 		return nil
@@ -193,6 +212,7 @@ func (e *Engine) applyLayoutLocked(st *ReedState, live []LivePane) error {
 	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), layout); err != nil {
 		return fmt.Errorf("select-layout: %w", err)
 	}
+	e.installResizePinsLocked(e.fixedHeightPins(st, live, box))
 	if focus == "" {
 		return nil
 	}
