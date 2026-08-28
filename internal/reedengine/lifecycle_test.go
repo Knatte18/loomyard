@@ -433,6 +433,84 @@ func TestEnsureHeaderPaneLocked_RecoversWhenTheTopPaneIsTooSmallToSplit(t *testi
 	}
 }
 
+// enableHeaderLaunch flips e.suppressHeaderLaunch back off, undoing the testing.Testing()-derived
+// default New sets. It is the seam P1 needs: nothing outside this package can reach the unexported
+// field, so a test that must drive the real header-launch path against a fake tmux does it through
+// this helper rather than by exporting the field.
+func enableHeaderLaunch(t *testing.T, e *Engine) {
+	t.Helper()
+	e.suppressHeaderLaunch = false
+}
+
+// TestEnsureHeaderPaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys is P1: it pins that the
+// header pane is booted by handing split-window the launch line as its own trailing shell-command
+// argument, not by typing it into an interactive shell afterwards via send-keys. Both halves matter
+// — a fix that carries the command on the argv but still sends keys, or vice versa, must fail this.
+//
+// No #{pane_current_command} assertion is added: that value is shell-dependent and this fake-tmux
+// substrate never runs a real shell.
+func TestEnsureHeaderPaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *testing.T) {
+	e := newTestEngine(t)
+	enableHeaderLaunch(t, e)
+
+	const existingPaneID = "%0"
+	const newPaneID = "%1"
+	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
+
+	var splitArgs []string
+	sendKeysCalls := 0
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return listPanesOut, nil
+		case "split-window":
+			splitArgs = append([]string{}, args...)
+			// A genuinely new pane id, distinct from the pre-split live set, so
+			// the silent-split guard (validateSplitCreatedNewPane) does not
+			// reject the call.
+			return newPaneID + "\n", nil
+		case "send-keys":
+			sendKeysCalls++
+			return "", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
+	if err := e.ensureHeaderPaneLocked(st); err != nil {
+		t.Fatalf("ensureHeaderPaneLocked: %v", err)
+	}
+
+	fIndex := -1
+	for i, arg := range splitArgs {
+		if arg == "-F" {
+			fIndex = i
+			break
+		}
+	}
+	if fIndex == -1 {
+		t.Fatalf("split-window argv %v has no -F flag", splitArgs)
+	}
+	if fIndex+1 >= len(splitArgs) {
+		t.Fatalf("split-window argv %v has a trailing -F with no value", splitArgs)
+	}
+	if fIndex+2 >= len(splitArgs) {
+		t.Fatalf("split-window argv %v carries no trailing command argument after the -F value; want the launch line appended as split-window's own trailing shell-command argument", splitArgs)
+	}
+	launchArg := splitArgs[fIndex+2]
+	// A substring check, not an exact match, because headerLaunchCmd's posix and pwsh quoting differ
+	// — this must hold for both.
+	for _, want := range []string{"reed", "--blocking"} {
+		if !strings.Contains(launchArg, want) {
+			t.Errorf("split-window trailing command argument = %q, want it to contain %q (the header keepalive invocation)", launchArg, want)
+		}
+	}
+	if sendKeysCalls != 0 {
+		t.Errorf("send-keys calls = %d, want 0 (the header pane must launch its own command on the split, not be typed into via send-keys)", sendKeysCalls)
+	}
+}
+
 // TestTopmostPaneID asserts the header split target is chosen by pane_top rather than by list-panes
 // order, which tmux does not guarantee is top-to-bottom.
 func TestTopmostPaneID(t *testing.T) {
