@@ -3,7 +3,7 @@
 ```yaml
 task: "reed: attach's layout computation scales header pane height with terminal height"
 slug: reed-attach-header-height-bug
-approved: false
+approved: true
 started: "20260828-083039"
 parent: "main"
 root: ""
