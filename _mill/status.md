@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-scrollback-backstop-and-composite-smoke
+phase: holistic-reviewing
 slug: reed-header-pane-boot-noise
 branch: reed-header-pane-boot-noise
 plan: _mill/plan
@@ -33,6 +33,7 @@ implementing  '2026-08-28T09:10:37Z'
 approved-header-pane-runs-its-own-command  '2026-08-28T09:16:12Z'
 approved-header-declines-the-stencil-seed-pass  '2026-08-28T09:21:20Z'
 approved-scrollback-backstop-and-composite-smoke  '2026-08-28T09:26:07Z'
+holistic-reviewing  '2026-08-28T09:26:32Z'
 ```
 
 ## Batches
