@@ -29,8 +29,14 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
 - `internal/reedengine/spawn.go` — `planPaneTarget` (drop pane adoption), `soleAliveNonHeaderPane` (delete), and `launchStrandLocked` (reap-before-allocate chokepoint).
 - `internal/reedengine/doc.go` — the package-doc paragraphs describing the deterministic untracked-reap policy and the header's exclusion seams, which currently document the behaviour being changed.
   Specifically including the load-bearing-assumption bullet on dead-pane adoption (`doc.go` "Dead-pane adoption via remain-on-exit (spawn.go)", the paragraph asserting *"`planPaneTarget` must never adopt such a corpse"*) and the package-invariant sentence naming adoption as one of the header's three exclusion seams — both describe a seam this task deletes, so both must be rewritten rather than left standing.
-- **Adoption-describing comments elsewhere**, in-scope as doc surface even though their surrounding logic is untouched: `internal/reedengine/spawn.go`'s file-header comment (*"create (or adopt) a tmux pane"*) and `internal/reedengine/strand.go`'s `RemoveStrand` kill-loop comment (*"planPaneTarget never adopts a corpse"*, ~`strand.go:497`).
-  Neither may be left asserting a behaviour that no longer exists.
+- **Adoption prose everywhere it appears**, in-scope as doc surface even where the surrounding logic is untouched.
+  Do not work from a fixed list: run `grep -rn "adopt" internal/reedengine/*.go internal/reedcli/*.go` (production files;
+  the test-file sweep is stated separately under Testing) and give every hit a disposition by this rule:
+  - **Rewrite** any hit that describes `planPaneTarget`'s pane-adoption seam or the initial-pane-adoption behaviour, since it will assert something that no longer exists.
+    Known hits at the time of writing, offered as a cross-check on the sweep and not as its substitute: `spawn.go`'s file-header comment and the whole `planPaneTarget`/`soleAliveNonHeaderPane` comment block, `strand.go`'s `RemoveStrand` kill-loop comment (~`:497`), `reconcile.go`'s `clearConflictingPaneBindings` doc comment (~`:127`, *"planPaneTarget never adopts or splits the header"*), `doc.go`'s header-invariant sentence (~`:39`, adoption named as one of three exclusion seams), `doc.go`'s dead-pane-adoption load-bearing bullet (~`:164`), `doc.go`'s duplicate-binding paragraph (~`:279`), and `lifecycle.go`'s husk comment (~`:230`, *"no pane to adopt or split"*).
+  - **Leave alone** any hit where "adopt" means something else entirely — the server-rebirth generation probe (`adoptPaneGenerationLocked` and the surrounding prose in `generation.go`, `state.go`, `server.go`) and `reedcli/up.go`'s config-key wording.
+    These share the word, not the concept.
+  The half-updated state is the hazard here: a comment left asserting `planPaneTarget` "never adopts the header" is worse than no comment, because it implies adoption still exists and merely excludes the header.
 - `internal/reedengine/spawn_test.go` — its file-header comment and its whole `planPaneTarget` adopt-vs-split table (the `wantAdoptID` column, the sole-candidate-narrowing cases) are built on adoption and go with it.
 - `internal/reedcli/smoke_panecwd_test.go` — see the affected-test enumeration below.
 - `internal/reedcli/smoke_lifecycle_test.go` — `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` and `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`, plus the two new regressions.
@@ -51,8 +57,10 @@ M16 is a correctness failure of reed's isolation guarantee, not cosmetics: a str
   No change to `planLayout`, `anyPlacedStrand`, or the box resolution.
 - Process-subtree reaping (`descendantClosurePIDs` / `reapPaneChildren`) — stays confined to `RemoveStrand` and `Down`.
 - The read-only verbs: `Status`, `CapturePane`, `SendText`/`SendKey`, and the unattended watcher (`Watch` → `reapply.go`) never reconcile today and must not start.
-- `RemoveStrand`, `Down`, generation/foreign-session refusal (`generation.go`), `clearConflictingPaneBindings` — logic untouched;
-  `RemoveStrand`'s adoption-referencing comment is in scope as doc surface per the In list, but no code in it changes.
+- `RemoveStrand`, `Down`, generation/foreign-session refusal (`generation.go`), `clearConflictingPaneBindings` — logic untouched.
+  Their adoption-referencing comments are in scope as doc surface per the In list, but no code in them changes.
+  **`RemoveStrand` is a deliberate exception to "Out means unaffected":** its own code does not change, but its `reconcileApplyPersistLocked` tail inherits the new gate, so removing the last strand now reaps any untracked alive pane in the same verb (previously `anyBoundPresent` went false with the last binding and the reap did not fire).
+  That is the intended consequence of one rule for every call site, not an oversight — mill-plan should expect it, and should not read this Out entry as a licence to special-case `RemoveStrand` back to the old behaviour.
 - `manifest/roadmap.md` — this is a bugfix, not a planned-item completion.
 
 ## Decisions
@@ -284,11 +292,17 @@ Add a companion case with nothing to reap, asserting no `kill-pane` is issued an
 **Smoke — `internal/reedcli/smoke_lifecycle_test.go` (`//go:build smoke`, real tmux):**
 
 - **M16 regression.** Drive the session to header-plus-foreign-only (`up`, `add`, `remove`, then a raw `tmux -L <socket> split-window -t <session>`), capture the foreign pane's id and `#{pane_pid}`, then `add` a strand.
-  Assert the strand's `paneId` from `lyx reed status` is not the foreign pane id, that the foreign pane id is gone from `list-panes`, and that the recorded foreign pid is no longer alive.
-  The pid check is what actually distinguishes "reaped and recreated" from "adopted" — a pane-id-only assertion would have passed for the adoption bug had ids been recycled.
+  Assert the strand's `paneId` from `lyx reed status` is not the foreign pane id, that the foreign pane id is gone from `list-panes`, and that the recorded foreign **`#{pane_pid}`** is no longer alive.
+  The pid check is what actually distinguishes "reaped and recreated" from "adopted" — a pane-id-only assertion would have passed for the adoption bug had ids been recycled, whereas under adoption the pane pid provably survives (that identity is exactly what M16 recorded).
+  **Assert `#{pane_pid}` only, under a bounded poll.** The reap is `kill-pane`-only by decision (untracked-reap-stays-kill-pane-only), and tmux terminates a pane's children asynchronously — reed's own `RemoveStrand`/`Down` comments say so, and note the process actually holding the worktree can be a deeper descendant.
+  So the test must poll for the pane pid to exit rather than sampling once immediately after the verb returns, and must **not** assert anything about that pid's descendants.
+  Descendant liveness is explicitly out of what these tests pin;
+  `RemoveStrand`/`Down` are where subtree death is guaranteed and asserted.
 - **M22 regression.** `up`, `add` a strand, delete `.lyx/reed.json` while the session is live, `up`.
-  Assert the session holds exactly one pane, that it is the newly persisted `HeaderPaneID`, that the old header id and old strand pane id are both gone, and that the old strand's process is gone.
+  Assert the session holds exactly one pane, that it is the newly persisted `HeaderPaneID`, and that the old header id and old strand pane id are both gone from `list-panes`.
   Asserting *on that `up`* — with no intervening verb — is the point of the test.
+  For the process check, capture the orphaned strand pane's **`#{pane_pid}`** before the scrub and poll for that pid to exit, on the same bounded-poll/`#{pane_pid}`-only terms as the M16 regression above.
+  Note the launched command (`sleep 300` in the original repro) is a *child* of the pane process, not `#{pane_pid}` itself, so it is not what this test asserts on — the leak this pins is the pane and its own process, not the whole subtree.
 - **`TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` must be rewritten, not merely re-run.**
   Its premise changes: with the header alive and zero strands, the reap now fires on that test's **second `up`**, killing both the unadopted initial pane and the foreign pane, where today's comments assert the opposite (*"the foreign panes survive an up"*, *"Every pane must survive it"*).
   Its surviving `len(panes) == 0` assertion is loose enough to keep passing while its stated premise is false, which is worse than a failure — so the comments must be rewritten to the new behaviour and the `up` assertion tightened to the exact expected pane set (the header alone) rather than merely non-empty.
