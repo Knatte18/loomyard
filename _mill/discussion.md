@@ -38,17 +38,25 @@ Established by reading the code, not inferred:
    The captured lines are consistent with either, and this worktree cannot inspect the operator's environment to settle which.
    So the honest claim is: the interactive/login RC route is closed by construction, and a residual `BASH_ENV`-style write is covered by the `ED 3` backstop rather than by the shell change.
 
-3. **The five `stencilstore: dev build does not refresh an untouched stencil` WARN lines.**
-   These are emitted by the header keepalive process itself, on its own stderr, before it prints anything.
-   `cmd/lyx/main.go`'s root `PersistentPreRunE` calls `seedStencils` for *every* command (`cmd/lyx/stencilseed.go:29`), including `reed header --blocking`.
-   `stencilstore.Reconcile` logs one `logger.Warn` per stencil that is `StateUntouched` with a body hash differing from the shipped default, and only when `mode == ModeDev` (`internal/stencilstore/reconcile.go:106`).
-   `internal/logger`'s default stderr threshold is Warn, so these always reach stderr regardless of `-v`.
-   This explains the reported non-determinism exactly: the WARN fires only for a `deploy-dev`-stamped binary (`buildinfo.Channel == "dev"`) whose board stencils are stale relative to the working tree, and stops firing the moment those stencils are refreshed (`lyx stencil sync`) or the binary is a production build.
-   It is not a timing window.
+3. **Stencil-seed WARN lines on the keepalive's own stderr** — the five observed lines are one of **two** distinct sources, and the fix must account for both.
+   All of them are emitted by the header keepalive process itself, before it prints anything, because `cmd/lyx/main.go`'s root `PersistentPreRunE` calls `seedStencils` for *every* command (`cmd/lyx/stencilseed.go:29`), including `reed header --blocking`.
+   `internal/logger`'s default stderr threshold is Warn, so anything at Warn reaches the pane regardless of `-v`.
+   `stencilstore.Reconcile` has two independent Warn emitters:
+   - **The dev-refusal warn** (`internal/stencilstore/reconcile.go:106`) — one line per stencil that is `StateUntouched` with a body hash differing from the shipped default, **only** when `mode == ModeDev`.
+     This is the one whose text the finding captured verbatim ("dev build does not refresh an untouched stencil ... producers will read the OLDER on-disk copy").
+   - **The port-back drift warn** (`warnPortBackDrift`, called at `internal/stencilstore/reconcile.go:77-79`, body at 170-190) — one line per stencil whose board copy differs from the worktree's `contracts/stencils` copy, emitted whenever `sourceDir` is non-empty, in **either** mode.
+     Its text is different ("board copy has drifted from worktree source; see lyx stencil promote"), so the two are distinguishable in a capture, but both land on the same stderr and both reach the same pane.
+   Corrected non-determinism explanation: the dev-refusal warn depends on build channel *and* stencil staleness, so it comes and goes exactly as the finding describes.
+   The drift warn does **not** depend on build channel at all — it fires from a production binary too, whenever the process runs inside a worktree that carries `contracts/stencils` and the board copy has drifted.
+   So the earlier claim that the noise "stops firing ... [if] the binary is a production build" was wrong;
+   what is true is that neither warn fires when the board, the worktree source, and the shipped defaults all agree.
+   That is why the fix is "the header declines the seed pass", not "keep the stencils fresh" — freshness is not something a display pane can depend on.
+   It is still not a timing window.
 
-A separate exposure — independently discovered by reading the same pre-run code path, and **not** something that co-occurs with the WARN above — is that the header keepalive can reach `fabricengine.CommitSeededStencils` (`cmd/lyx/stencilseed.go:105`) at all and perform a **git commit in the hub** from a tmux pane process.
-The two never fire together: `reconcileOne`'s `StateUntouched` dev-mode branch logs the WARN and returns `wrote = false` (`internal/stencilstore/reconcile.go:100-108`), so a warned-about stencil is never added to `written`, and `seedStencilsAt` returns early when `written` is empty (`cmd/lyx/stencilseed.go:101-103`).
-A commit fires only from the other classifications — a `StateAbsent` seed, a `StateReconciled` restamp, or a production-mode `StateUntouched` refresh — none of which produce the WARN.
+A separate exposure — independently discovered by reading the same pre-run code path — is that the header keepalive can reach `fabricengine.CommitSeededStencils` (`cmd/lyx/stencilseed.go:105`) at all and perform a **git commit in the hub** from a tmux pane process.
+It is not the same event as the **dev-refusal** warn, and never co-occurs with it: `reconcileOne`'s `StateUntouched` dev-mode branch logs that warn and returns `wrote = false` (`internal/stencilstore/reconcile.go:100-108`), so a warned-about stencil is never added to `written`, and `seedStencilsAt` returns early when `written` is empty (`cmd/lyx/stencilseed.go:101-103`).
+A commit fires only from the other classifications — a `StateAbsent` seed, a `StateReconciled` restamp, a `.gitattributes` seed, or a production-mode `StateUntouched` refresh — none of which produce the dev-refusal warn.
+The **drift** warn carries no such exclusivity: `warnPortBackDrift` runs after the write loop and is independent of what was written, so a drift warn and a commit can occur in the same pass.
 The commit exposure is undesirable on its own terms, in its own scenarios, and is a second reason to keep the header out of the seed pass;
 it is not evidence for the noise, and this distinction must not be blurred when `internal/reedengine/doc.go` is updated.
 
@@ -102,6 +110,11 @@ it does not touch scrollback, which is precisely why the noise survives where th
 - Decision: pass the launch line as **one** trailing argument to `split-window`, keeping the existing `shell.Shell`-composed string from `headerLaunchCmd` unchanged (`'<exe>' 'reed' 'header' '--blocking'` on POSIX, `& '<exe>' 'reed' 'header' '--blocking'` on pwsh).
   Do not switch to a multi-argument `argv` form.
 - Rationale: a single shell-command argument is the form tmux has always accepted and the form `new-session ... e.cfg.Shell` (`internal/reedengine/lifecycle.go:314`) already relies on in this codebase, so it is the shape most likely to be supported identically by psmux, the Windows tmux port reed targets.
+  One precision, recorded because the cited precedent is not an exact parallel: `new-session` is handed `e.cfg.Shell` *as* the command, whereas a `split-window` shell-command argument is interpreted by tmux's own `default-shell`, which reed does not set and which need not equal `cfg.Shell`.
+  The composed line still comes from `shell.ForGOOS()`.
+  That mismatch is accepted and explicitly **out of scope**: it is unchanged from today, because the line typed by `send-keys` already lands in a pane running tmux's default shell rather than `cfg.Shell`.
+  This task neither introduces nor worsens the gap;
+  making `cfg.Shell` actually govern pane interpretation is a separate change.
   tmux runs a single-argument shell-command through a **non-interactive** shell, which reads no interactive or login RC files — so noise class 2's observed shape is closed even though a shell is technically still in the chain (with the `BASH_ENV` qualification recorded in Mechanism §2).
   Keeping the `shell.Shell` composition also means `headerLaunchCmd`/`headerLaunchLine` and their existing table tests (`internal/reedengine/headerpane_test.go`) survive intact;
   only the call site changes.
@@ -179,11 +192,16 @@ it does not touch scrollback, which is precisely why the noise survives where th
     Untagged, hermetic, `internal/reedengine`: the recorded fake-tmux argv shows `split-window` carrying the launch command, and **zero** `send-keys` calls are issued against the header pane.
     The negative half is the pin;
     it fails on pre-fix code immediately and cannot be satisfied by anything the header later prints.
-    Optionally strengthened in the smoke test by asserting `#{pane_current_command}` for the header pane is the lyx binary rather than a shell — an observation `ED 3` cannot affect, because it is about the process, not the buffer.
+    The argv + zero-`send-keys` assertion **is** P1's pin;
+    nothing else is required for it.
+    A `#{pane_current_command}` assertion was considered as a smoke-tier reinforcement and is **not** adopted as a pin: whether the pane's process ends up being lyx or the interpreting shell depends on that shell's last-command `exec` optimisation, which is shell-dependent — the same fact this discussion cites when rejecting an explicit `exec` prefix.
+    If a plan wants it at all, it belongs as a best-effort observation that is allowed to see either value, never as an assertion that the value is the lyx binary.
   - **P2 — the header declines the stencil-seed pass** (noise class 3).
-    Its own test, and deliberately **not** routed through tmux: run the dev-stamped binary as `lyx reed header` (non-blocking) against a hub whose stencils are deliberately stale, capture the process's **stderr**, and assert it is empty.
-    Pre-fix this emits five WARN lines and fails;
-    post-fix it is silent.
+    Its own test, and deliberately **not** routed through tmux: run the binary as `lyx reed header` (non-blocking) against a hub arranged so the seed pass warns, capture the process's **stderr**, and assert it is empty.
+    The pre-fix expectation is stated as "stderr is non-empty", not as a specific line count or a specific message: either WARN source is sufficient to fail it, and the test must not be written so that it only detects the dev-refusal one.
+    Arranging *both* is cheap and makes the pre-fix failure robust — build dev-stamped **and** plant a board copy that differs from both the shipped default and the worktree's `contracts/stencils` copy, which trips the dev-refusal warn and the port-back drift warn together.
+    Post-fix, stderr is silent because the pass does not run at all, which is the property being pinned;
+    the test asserts that, not the absence of any particular sentence.
     No pane, no scrollback, no escape sequences — so `ED 3` is structurally incapable of masking it.
     Pair it with the untagged `cmd/lyx` gate tests (annotation present on the command;
     predicate returns skip) so the wiring is pinned in the fast suite and the observable effect is pinned in the slow one.
@@ -229,6 +247,9 @@ Everything mill-plan needs, with the exploration already done:
 - **Root pre-run and the seed pass:** `cmd/lyx/main.go:78-88` (`PersistentPreRunE`, with `cobra.EnableTraverseRunHooks = true`), `cmd/lyx/stencilseed.go` (`seedStencils` at 29, `stencilSeedTarget` at 60, `seedStencilsAt` at 84).
   `seedStencils` already returns early under `testing.Testing()`;
   the annotation gate belongs alongside that early return, and must be checked **before** `stencilSeedTarget` so no `git rev-parse` is spawned for an opted-out command either.
+  This is **not** a body-only edit: today's signature is `seedStencils(ctx context.Context)` and the call site is `seedStencils(cmd.Context())` (`cmd/lyx/main.go:86`), so the function never sees the `*cobra.Command` and cannot read its annotations.
+  The plan must thread the command in — either `seedStencils(cmd *cobra.Command)` deriving the context itself, or an added parameter carrying the annotation map — and the choice is mill-plan's, but the signature change itself is not optional.
+  Extract the predicate as its own directly-assertable function regardless, for the same reason `stencilSeedTarget` was extracted (`cmd/lyx/stencilseed.go:47-59`): `seedStencils`' `testing.Testing()` early return makes the gate unobservable through it.
 - **The command being annotated:** `internal/reedcli/header.go`, `headerCmd()` (line 28).
   Annotations go on the `&cobra.Command{...}` literal.
 - **Where a shared annotation key belongs:** `internal/clihelp` — it already owns the CLI-wide seams (`ShouldAbort`, `SetExit`, `RunRoot`, `InstallJSONHelp`, `GroupRunE`) that both `cmd/lyx` and every `*cli` package import, so a key constant there creates no new dependency edge in either direction.
@@ -325,7 +346,11 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
 
 - TDD candidate: assert the pure payload helper's return value is exactly the `ED 2` + `ED 3` + cursor-home sequence followed by the trimmed header text (see `blocking-payload-extracted-to-a-pure-helper`).
   Assert on the **helper**, never by driving `RunCLI` with `--blocking`: that path calls `blockForever()` right after its single `fmt.Fprint`, so a test that reaches it never returns and hangs the untagged suite — `internal/reedcli/header_test.go`'s own file header already records why the existing tests avoid it.
-- Assert non-blocking mode still returns the JSON envelope unchanged, driven through `RunCLI` as today.
+- The non-blocking JSON-envelope path is **not** asserted in the untagged tier.
+  Driving it through `RunCLI` reaches reed's `PersistentPreRunE` and therefore `lyxcwd.Resolve`, which spawns `git rev-parse` — banned here by the Test Tier Purity Invariant, and the reason `internal/reedcli/header_test.go` states in its own header that it never runs `RunE`/`PreRunE`.
+  Existing `RunCLI`-driven reedcli coverage lives in `cli_integration_test.go` (`//go:build integration`);
+  if the envelope path needs a regression assertion in this task, it belongs there or in the smoke tier, not untagged.
+  This task changes nothing about that path's output, so adding one is optional.
 
 **`internal/reedcli` (`//go:build smoke`) — P2 and B.**
 
@@ -338,7 +363,8 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
 - Both assertions should name what they found when they fail — a future regression must be diagnosable from the failure output alone, since the original bug was only ever caught by an operator eyeballing a pane.
 - Scenarios worth covering in the same file if cheap: the header survives a `reed resume` with its scrollback still clean, and a healed header (corpse killed, fresh pane split) is equally clean.
   The heal path is the one most likely to regress, because it re-runs the same launch code from a different entry point.
-- If the smoke tier can cheaply observe it, add the P1 reinforcement here too: `#{pane_current_command}` for the header pane names the lyx binary, not a shell.
+- Do **not** add a smoke assertion that `#{pane_current_command}` for the header pane is the lyx binary — the value is shell-dependent (last-command `exec` optimisation).
+  P1 is pinned by the untagged argv + zero-`send-keys` assertions alone.
 
 **Evidence discipline (applies to the whole task).**
 
@@ -372,3 +398,5 @@ Discovered during discussion, not from `CONSTRAINTS.md`:
   `RunE` prints its result and then blocks as before. **Why:** it is the same composition-split-from-side-effecting-call-site idiom `internal/reedengine/headerpane.go` already uses for exactly this reason, and it keeps the byte sequence covered in the fast suite instead of smoke-only.
 - **Q:** [round-2] Is `CONSTRAINTS.md`'s Stencil Ownership Invariant amended in this task's commit, or left to a later judgement? **A:** [auto-pick] Amended in the same commit, with the existing sentence preserved verbatim and one sentence added for the all-or-nothing per-command opt-out. **Why:** the invariant currently reads unconditionally and this task makes it conditional;
   the Documentation Lifecycle rule does not allow that gap to persist, and punting the decision to an unnamed reviewer is not a decision.
+- **Q:** [round-3 gap] `stencilstore.Reconcile` has a second Warn emitter (`warnPortBackDrift`) that fires in either build mode — does that change the fix or only the explanation? **A:** [auto-pick] Only the explanation and P2's expectation;
+  the fix (decline the pass) already covers both emitters. **Why:** the header declines the whole pass, so every Warn the pass can emit is suppressed by construction — but the discussion had to stop claiming a production build is quiet, and P2 must assert "stderr non-empty pre-fix" rather than counting dev-refusal lines.
