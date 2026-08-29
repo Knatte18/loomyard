@@ -36,7 +36,12 @@ matched_status=""
 found=0
 # Split on tab via parameter expansion rather than grep/sed: an endpoint
 # contains a literal `?`, which grep/sed would read as a regex metachar.
-while IFS= read -r line; do
+# `|| [ -n "$line" ]` keeps the last iteration even when the map file has
+# no trailing newline (e.g. one built from `$(printf ...)`, which command
+# substitution strips): `read` returns non-zero on that final chunk but
+# still assigns it to $line, and without this the loop would silently
+# drop that last entry instead of matching it.
+while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     field1="${line%%$'\t'*}"
     remainder="${line#*$'\t'}"

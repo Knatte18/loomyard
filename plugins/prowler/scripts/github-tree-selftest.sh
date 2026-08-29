@@ -30,6 +30,14 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$SCRIPT_DIR/.."
 GH_TREE_SH="$SCRIPT_DIR/github-tree.sh"
+# Resolved once, up front, before test 18 strips PATH for its own
+# invocation: bash's temporary-assignment scoping (`VAR=val cmd`) applies
+# the modified PATH to the search for `cmd` itself, so bare `bash` cannot
+# be found by name once PATH has been emptied. Using this absolute path
+# (which contains a slash, so execve needs no PATH search at all) is what
+# lets test 18 actually exercise github-tree.sh's own "gh not found"
+# guard instead of failing before it even starts.
+BASH_BIN="$(command -v bash)"
 STUB_BIN="$SCRIPT_DIR/testdata/github-tree/bin"
 BODIES_DIR="$SCRIPT_DIR/testdata/github-tree/bodies"
 
@@ -378,7 +386,7 @@ else
 fi
 
 # --- Test 18: gh missing from PATH --------------------------------------------
-PATH="" bash "$GH_TREE_SH" acme/small >"$SCRATCH/nogh.stdout" 2>"$SCRATCH/nogh.stderr"
+PATH="" "$BASH_BIN" "$GH_TREE_SH" acme/small >"$SCRATCH/nogh.stdout" 2>"$SCRATCH/nogh.stderr"
 status=$?
 out="$(cat "$SCRATCH/nogh.stdout")"
 err="$(cat "$SCRATCH/nogh.stderr")"
