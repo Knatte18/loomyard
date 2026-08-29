@@ -36,6 +36,7 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
   - `internal/reedcli/smoke_test.go`
   - `internal/reedengine/reconcile.go`
   - `internal/reedengine/apply.go`
+  - `internal/reedengine/apply_test.go`
   - `internal/reedengine/state.go`
 - **Edits:**
   - `internal/reedcli/smoke_lifecycle_test.go`
@@ -58,8 +59,11 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
   card 4 changed that string to `"session has no panes to split"` and deferred this quote to this batch, so correct it here.
   Tighten the post-`up` assertion from "not empty" to the exact expected pane set: after the second `up` the session holds exactly one pane, and it is the persisted `HeaderPaneID` the test already reads out of `reedengine.LoadState`.
   Use the existing `listPaneLines` and `paneLiveOnSession` helpers.
-  What the test exists to pin is unchanged and must stay pinned, in both the code and the rewritten comments: `up` with zero placeable strands must never emit a zero-cell layout string, because tmux answers that by destroying every pane and wedging the session.
-  Say so explicitly in the rewritten doc comment, since after this change the "exactly one pane survives" assertion is what stands in for it and a future reader could otherwise mistake the header-only end state for the destruction this test guards against.
+  Do not write a comment claiming this test still pins the zero-cell-layout hazard.
+  After the reap it cannot, and asserting otherwise would leave a second false premise behind in place of the one being removed.
+  `applyLayoutLockedOpts` returns at its `len(live) < 2` guard *before* it reaches the `anyPlacedStrand` guard, and post-reap both of this test's `up` calls arrive at apply holding exactly one pane — so the `anyPlacedStrand` branch, the one that exists because tmux answers a zero-cell layout string by destroying every pane, is never entered from this fixture again.
+  State the real disposition in the rewritten doc comment instead: what this test still proves is that an `up` against a session holding only foreign panes leaves a usable session with the header intact, and that a subsequent `add` comes up live on its own pane without displacing the header.
+  Record that the zero-cell hazard it was originally written for is now covered at the unit tier by `apply_test.go`'s `TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult`, and name that test in the comment so the coverage is traceable rather than silently dropped.
   Keep the post-`add` assertion (exactly the strand's pane and the header pane, with neither displaced) as it is — it still holds.
   Keep the foreign `split-window` via the real tmux binary, the `socketAndSession` read, and the `down` cleanup unchanged.
 - **Commit:** `test(reedcli): retarget the foreign-pane smoke test to the post-reap pane set`
@@ -147,9 +151,11 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
   Delete the state file with `os.Remove` against `filepath.Join(h.PrimeWorktree(), ".lyx", "reed.json")`;
   both packages are already imported by this file.
   One neighbouring test drives the same scrub reproduction and must keep passing: `TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp`, the R4-F4 guard, whose observable pane set after its recovering `up` goes from three panes to one under the new reap.
-  Its load-bearing assertion is only that the rebuilt header lands at `pane_top` 0, which a sole full-height header still satisfies, and its following `add` still succeeds by splitting the header — so it is expected to pass unchanged.
-  Read it and confirm that.
-  Correct its comments only where they state a pane set or a layout precondition the reap has made false;
+  It is expected to pass unchanged — but say why honestly, because half of it stops guarding.
+  Its `pane_top == 0` assertion is satisfied by a sole full-height header trivially: with one pane there is nowhere else for it to be, so that half becomes vacuous rather than merely still-true, and the "a fix that recovered by splitting somewhere else would fail here" reasoning its comment gives no longer has teeth for this fixture.
+  What stays load-bearing is the other half — the recovering `up` must exit 0, which is the actual R4-F4 wedge (`split header pane: exit status 1: no space for new pane` on every subsequent invocation) — plus the following `add` proving the session is genuinely usable again.
+  Read it and confirm both.
+  Correct its comments only where they state a pane set or a layout precondition the reap has made false, and record the vacuity above so a later reader does not mistake a trivially-true assertion for live coverage;
   leave its assertions alone.
   It is in this batch's `verify:` filter for exactly this reason, since smoke is outside `pipeline.done_gate` and nothing else would run it.
   The new test asserts a header-only, full-height end state, which is the accepted outcome rather than a layout defect — `applyLayoutLockedOpts` deliberately skips `select-layout` when no strand owns a present pane.

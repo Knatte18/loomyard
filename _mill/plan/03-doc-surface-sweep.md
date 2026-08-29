@@ -189,8 +189,16 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   This card changes no file;
   its output is a judgement, and any hit it cannot justify means an earlier card in this batch (or batch 2, or batch 4) left prose asserting something that no longer exists.
   Run `grep -rn "adopt" internal/reedengine/*.go internal/reedcli/*.go tools/sandbox/*.md` and `grep -rni "untracked reap\|bound present pane\|reap.*does not fire" internal/reedengine/*.go tools/sandbox/*.md`, then give every hit a disposition.
-  A hit is a legitimate survivor only when "adopt" means something other than pane adoption.
-  The survivors are: the server-rebirth generation probe — `adoptPaneGenerationLocked` itself and the prose around it in `generation.go`, `server.go`, `generation_test.go`, `attach_test.go`, `reapply_test.go`, `contract_integration_test.go`, and `spawn_test.go`'s `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims` doc comment, whose "the guard adopts rather than clears" sentence is about the generation stamp and not about pane adoption — plus, in `state.go`, the `PaneGeneration` field comment alone and never the `HeaderPaneID` one card 9 rewrites;
+  A hit is a legitimate survivor in two circumstances, not one.
+  The first is when "adopt" means something other than pane adoption — enumerated below.
+  The second is **historical-rationale prose this plan itself commissions**: several cards deliberately require the new comments to record *why* the adoption seam was removed, and that reasoning cannot be written without naming the thing that was removed.
+  Card 4 requires `planPaneTarget`'s replacement doc comment to state that the function never adopts an existing pane and to record the R4-F5 and M16 findings that killed the heuristic;
+  card 5 requires `spawn_test.go`'s `SeveralUntrackedAlivePanes_...` comment to keep the R4-F5 provenance in the past tense;
+  card 15 requires the M16 regression's doc comment to explain that under adoption the pane pid provably survives, which is why that test asserts on `#{pane_pid}`.
+  Text of that shape is the intended end state, not a gap.
+  Judge by tense and claim, not by the presence of the word: prose describing adoption as a seam that once existed and was removed is correct;
+  prose asserting adoption as something `planPaneTarget` still does, or still decides against, is a missed rewrite.
+  The other-meaning survivors are: the server-rebirth generation probe — `adoptPaneGenerationLocked` itself and the prose around it in `generation.go`, `server.go`, `generation_test.go`, `attach_test.go`, `reapply_test.go`, `contract_integration_test.go`, and `spawn_test.go`'s `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims` doc comment, whose "the guard adopts rather than clears" sentence is about the generation stamp and not about pane adoption — plus, in `state.go`, the `PaneGeneration` field comment alone and never the `HeaderPaneID` one card 9 rewrites;
   `internal/reedcli/up.go`'s config-key wording about adopting a key;
   `doc.go`'s session-name-rewrite bullet, whose "each adopt the other's panes" clause describes two worktrees colliding on one session name rather than `planPaneTarget`;
   `spawn.go`'s own surviving hit, the `e.adoptPaneGenerationLocked(st)` call inside `loadOrInitStateLocked`, which cards 4 and 6 leave standing because it is the generation probe rather than pane adoption;

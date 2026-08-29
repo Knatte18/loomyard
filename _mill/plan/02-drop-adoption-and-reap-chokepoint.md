@@ -67,7 +67,12 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
   Merge each pair into one case rather than leaving two identical rows: `FreshSession_AdoptsTheAliveInitialPane` with `AllStrandsPaneless_AdoptsFirstAlivePane` (both reduce to a single alive pane and no header), and `OneStrandHoldsAPane_SplitsTheTallestAlive` with `TinyActiveBand_SplitTargetsTheTallestNotTheFirst` (both reduce to a 2-row pane beside a 47-row pane and no header).
   Carry the surviving case's comment forward from whichever of the pair explains the rule better — for the second pair that is `TinyActiveBand_SplitTargetsTheTallestNotTheFirst`, whose comment records the session-target split defect this planner replaces.
   Keep `SoleCorpseUnbound_NeverAdopted_SplitOffTheCorpse`, `DeadPaneNeverTheSplitTargetWhileAnyAlive`, `NoPanesAtAll_Errors`, `HeaderPresentWithStrand_HeaderNeverTheSplitTarget`, `SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt`, and `HeaderIsSolePane_SplitTargetFallsBackToHeader` with their current expectations — the split-target policy is unchanged, and these are what pin it.
-  Rename `SoleCorpseUnbound_NeverAdopted_SplitOffTheCorpse` and `SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt` only if their names assert adoption semantics that no longer exist;
+  Two of those kept cases carry comments that assert the deleted decision as live, and their expectations staying put does not make their prose true — rewrite both.
+  `SoleCorpseUnbound_NeverAdopted_SplitOffTheCorpse`'s comment ends "so the next add must split, not adopt, even though no strand holds a binding";
+  the surviving reason it splits off the corpse is that a corpse is never a valid target for anything but a split, with no decision left to make.
+  `SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt`'s comment narrates R4-F5 as "Adoption picked it … the planner must split a guaranteed-idle new pane instead";
+  keep the R4-F5 provenance, which is exactly why the split-only rule exists, but state it in the past tense as the finding that removed the seam rather than as a choice the planner still makes.
+  Rename either case only if its name asserts adoption semantics that no longer exist;
   their expectations must not change either way.
   After the merges the table must still contain a case for every surviving rule, and no two cases may share an identical `live` plus `headerPaneID` pair.
   Rewrite the file-header comment of `internal/reedengine/spawn_test.go`: it currently describes an adopt-vs-split decision, a header exclusion from adoption, and a sole-candidate narrowing on adoption, all of which are gone.

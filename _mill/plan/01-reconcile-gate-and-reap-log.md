@@ -53,6 +53,7 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
 - **Context:**
   - `internal/reedengine/apply.go`
   - `internal/reedengine/lifecycle.go`
+  - `internal/reedengine/strand.go`
 - **Edits:**
   - `internal/reedengine/reconcile.go`
   - `internal/reedengine/reconcile_test.go`
