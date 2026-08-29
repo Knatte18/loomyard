@@ -265,10 +265,10 @@ Batch-local decision beyond `## Shared Decisions`: the harness generates each sc
   Also assert the call log contains no line requesting `tbbb`, proving the walk aborts on the first failure rather than continuing.
 
   Test 12, HTTP 401: scenario `err401`, repo `acme/e401`, map routing the recursive root endpoint to `error-401.json` with status marker `401`.
-  Assert stderr mentions authentication.
+  Assert stderr contains the literal substring `not authenticated`, matching card 5's fixed wording rather than paraphrasing it.
 
   Test 13, HTTP 403: scenario `err403`, repo `acme/e403`, map routing the recursive root endpoint to `error-403.json` with status marker `403`.
-  Assert stderr mentions rate limiting.
+  Assert stderr contains the literal substring `rate limited`, matching card 5's fixed wording rather than paraphrasing it — every assertion in this harness that inspects an error message greps for a substring the fixed wording literally contains, never a reworded form of it.
 
   Test 14, HTTP 404 on an unscoped fetch: scenario `err404`, repo `acme/e404`, no path argument, map routing `.../HEAD?recursive=1` to `error-404.json` with status marker `404`.
   Assert stderr names all three causes — that the repository was not found, that it may not be accessible with this token, and that it may have no commits yet — since the script deliberately does not spend a second call telling them apart.
@@ -280,7 +280,8 @@ Batch-local decision beyond `## Shared Decisions`: the harness generates each sc
   Assert both exit non-zero with byte-empty stdout, and that the call log is empty in both cases.
 
   Test 17, a path needing URL encoding: invoke repo `acme/small` with each of the path arguments `src dir`, `a#b`, and `naïve`.
-  Assert each exits non-zero with byte-empty stdout, that the call log is empty every time — the rejection must happen before any `gh` call — and that stderr names the offending character.
+  Assert each exits non-zero with byte-empty stdout, that the call log is empty every time — the rejection must happen before any `gh` call — and that stderr contains the offending character or characters: a space for the first, `#` for the second, and `ï` for the third.
+  The `naïve` case is the one that matters most: it must report `ï` whole, not a lone invalid byte, so this assertion is what pins the locale-independent rejection mechanism specified in batch 2, card 5, rather than a byte-indexed character walk that behaves differently under a `C` locale than a UTF-8 one.
 
   Test 18, `gh` missing from `PATH`: invoke `github-tree.sh` with `PATH` set to the empty string and a valid repository argument.
   Assert a non-zero exit, byte-empty stdout, and stderr mentioning `gh`.

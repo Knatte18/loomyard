@@ -54,7 +54,12 @@ Batch-local decision beyond `## Shared Decisions`: none — the script's contrac
   Third, the repository reference must match the bash regex `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`, or `github-tree: '<arg>' is not a valid <owner>/<repo> reference`.
   Fourth, normalize the path: strip every leading and trailing `/`, and treat a result that is empty as "whole repo".
   A non-empty result must match `^[A-Za-z0-9._/-]+$`;
-  when it does not, walk it character by character, find the first character outside that set, and emit `github-tree: path '<path>' contains an unsupported character '<char>' — only [A-Za-z0-9._/-] is accepted`.
+  when it does not, name the offending input by deleting every accepted character from a copy of the path with the bash pattern substitution `"${path//[A-Za-z0-9._\/-]/}"` and reporting whatever remains, then emit `github-tree: path '<path>' contains unsupported character(s) '<offending>' — only [A-Za-z0-9._/-] is accepted`.
+  Do not iterate the path character by character looking for the first offender.
+  Bash string indexing is byte-oriented under a `C`/POSIX locale, which minimal shells and CI images routinely run with and which this script deliberately does not pin, so indexing would slice a multi-byte UTF-8 character such as `ï` into single invalid bytes and report one of them as "the character".
+  The substitution above is locale-independent instead: the accepted set is pure ASCII, and a UTF-8 continuation byte is never in it, so no multi-byte sequence can be split — the remainder always holds each offending character whole.
+  Reporting the full remaining set rather than just the first offender is the same choice made for the same reason;
+  there is no first-offender extraction that is byte-safe without re-introducing the indexing problem.
   Do no other rewriting — internal `//`, `.`, and `..` segments pass straight through to the API and surface as a loud error there rather than being silently reinterpreted.
 
   Derive two values from the normalized path: `BASE_REF` is `HEAD` when the path is empty and `HEAD:<path>` otherwise, and `PREFIX` is the empty string when the path is empty and `<path>/` otherwise.
@@ -68,6 +73,8 @@ Batch-local decision beyond `## Shared Decisions`: none — the script's contrac
   One `gh api` response therefore yields both the truncation flag and the entry list, which is the direct fix for the duplicate call against the recursive endpoint.
 
   Define `fetch <endpoint> <kind>`, where `<kind>` is `root` or `child`.
+  Bind those two values to their call sites explicitly rather than leaving them inferable: `root` is passed by exactly the two fetches that address the walk's seed item — its `rec` fetch of `BASE_REF` and, when that comes back truncated, the `nonrec` re-fetch of the same `BASE_REF` — and `child` is passed by every other fetch the queue drains, all of which address a subtree by the sha its parent listing gave.
+  This is what makes the scoped-versus-unscoped 404 branch below well defined: only a `root` fetch can be the one carrying the caller's `path`, so only there is a 404 attributable to that path rather than to a subtree that vanished mid-walk.
   It runs `gh api "<endpoint>" --jq "<expr>"` — exactly four arguments, no other flags, ever — capturing stdout into a local variable and discarding `gh`'s own stderr, since the script prints its own diagnostics.
   On a non-zero exit it extracts the HTTP status from the captured body using a bash regular expression tolerant of whitespace around the colon, matching a `status` key whose value is a three-digit string, and branches:
   401 gives `github-tree: repos/<repo> — not authenticated (HTTP 401); run 'gh auth login'`;
@@ -76,6 +83,8 @@ Batch-local decision beyond `## Shared Decisions`: none — the script's contrac
   404 on a `root` fetch with a non-empty path gives `github-tree: repos/<repo> — path '<path>' not found (HTTP 404)`;
   422 gives `github-tree: repos/<repo> — path '<path>' is not a directory (HTTP 422)`;
   and anything else, including an unparseable body, gives `github-tree: gh api <endpoint> failed (exit <status>): <body>` so a rate-limit or auth failure is never flattened into a generic message.
+  Collapse the body to one physical line before embedding it, by substituting a space for every newline with `"${body//$'\n'/ }"`.
+  GitHub's error bodies are compact JSON in practice, but nothing guarantees it, and the rewritten `SKILL.md` promises callers exactly one stderr line on failure — a promise the script should keep literally rather than by assumption.
   Both 404 branches share a code but must produce different text — that difference is asserted, and it is what keeps a mistyped path from ever reading as "this directory has no files".
 
   On success `fetch` parses the captured stream into two outputs the caller reads: a truncation flag and an array of entry lines.
