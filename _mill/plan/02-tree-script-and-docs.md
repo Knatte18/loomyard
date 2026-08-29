@@ -79,7 +79,7 @@ Batch-local decision beyond `## Shared Decisions`: none — the script's contrac
   On a non-zero exit it extracts the HTTP status from the captured body using a bash regular expression tolerant of whitespace around the colon, matching a `status` key whose value is a three-digit string, and branches:
   401 gives `github-tree: repos/<repo> — not authenticated (HTTP 401); run 'gh auth login'`;
   403 gives `github-tree: repos/<repo> — rate limited or access denied (HTTP 403)`;
-  404 or 409 on a `root` fetch with an empty path gives `github-tree: repos/<repo> — not found, not accessible with this token, or has no commits yet (HTTP <code>)`;
+  404 or 409 on a `root` fetch with an empty path gives `github-tree: repos/<repo> — not found, may not be accessible with this token, or has no commits yet (HTTP <code>)`;
   404 on a `root` fetch with a non-empty path gives `github-tree: repos/<repo> — path '<path>' not found (HTTP 404)`;
   422 gives `github-tree: repos/<repo> — path '<path>' is not a directory (HTTP 422)`;
   and anything else, including an unparseable body, gives `github-tree: gh api <endpoint> failed (exit <status>): <body>` so a rate-limit or auth failure is never flattened into a generic message.
@@ -96,7 +96,7 @@ Batch-local decision beyond `## Shared Decisions`: none — the script's contrac
   Every other line is split into type, sha, and path by successive parameter expansions on the first and second tab — not by `IFS=$'\t' read`, so a path can never be split further even though the `#badpath` guard already makes that impossible.
 
   The walk itself uses one explicit FIFO queue in the main shell — an append-only bash array plus an advancing head index consumed by `while [ "$head" -lt "${#queue[@]}" ]` — never a recursive shell function and never a LIFO stack.
-  Each queue item is a tab-separated triple of a mode (`rec` or `nonrec`), a ref, and a path prefix.
+  Each queue item is a tab-separated 4-tuple of a mode (`rec` or `nonrec`), a ref, a path prefix, and the `kind` (`root` or `child`) `fetch` needs to route its root/child-specific 404 handling correctly through the `nonrec` fallback re-enqueue.
   Seed the queue with a single `rec` item carrying `BASE_REF` and `PREFIX`.
 
   Processing a `rec` item fetches `repos/<repo>/git/trees/<ref>?recursive=1` and, if the response reports truncated, appends one `nonrec` item with the same ref and prefix and moves on;

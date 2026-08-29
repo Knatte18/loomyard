@@ -30,8 +30,10 @@ This means:
 `github-tree.sh` lists a GitHub repository's file paths, optionally scoped to one directory, in a single invocation.
 It exists because the `github-repo-explorer` skill previously had the model execute a branching, potentially recursive `gh api` walk one call per turn — resolve the default branch, list the recursive tree, check truncation, then fall back to non-recursive per-directory calls — and that walk contains no decision a model actually needs to make.
 
-An untruncated listing costs exactly one `gh api` call, and even a repository large enough to trigger GitHub's recursive-tree truncation cap is one agent turn regardless of how many API calls the internal fallback makes.
-Its only runtime dependency is `gh`, already a hard prerequisite of the skill: every JSON field is extracted through `gh api --jq`, and no system `jq` is ever invoked at run time.
+An untruncated listing costs exactly one `gh api` call,
+and even a repository large enough to trigger GitHub's recursive-tree truncation cap is one agent turn regardless of how many API calls the internal fallback makes.
+Its only runtime dependency is `gh`, already a hard prerequisite of the skill: every JSON field is extracted through `gh api --jq`,
+and no system `jq` is ever invoked at run time.
 Unlike `run.sh`, it has no build step and no lock, since there is nothing to compile.
 Its offline test harness (`github-tree-selftest.sh`) carries the one extra dependency of system `jq`, which the harness checks for up front.
 
