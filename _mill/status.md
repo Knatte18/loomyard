@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-test-harness-and-fixtures
 slug: prowler-github-tree-script
 branch: prowler-github-tree-script
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-review-r2  '2026-08-29T11:21:13Z'
 plan-fix-r2  '2026-08-29T11:22:08Z'
 planned  '2026-08-29T11:22:28Z'
 implementing  '2026-08-29T11:22:59Z'
+approved-test-harness-and-fixtures  '2026-08-29T11:32:32Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ implementing  '2026-08-29T11:22:59Z'
 ```yaml
 batches:
   - name: test-harness-and-fixtures
-    state: running
+    state: approved
     implementer_session: 6a2d9ff8-717e-4e19-9e3a-13776d33050b
     start_sha: 35f9abb4137b8c7e50c9d4d0c6e73b8bf568eb22
+    commit_sha: a4f77b9880a4f63bfcb0d98d086436893ac8ecc6
     verify_baseline_failures: []
   - name: tree-script-and-docs
     state: pending
