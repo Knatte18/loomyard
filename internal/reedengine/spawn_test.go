@@ -139,6 +139,154 @@ func TestPlanPaneTarget(t *testing.T) {
 	}
 }
 
+// TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget pins the reap-before-allocate
+// chokepoint at the unit tier: launchStrandLocked must reconcile before it plans a split target, so
+// an untracked alive pane is never eligible to become the split target and is instead reaped first.
+//
+// The fixture is a ReedState with an alive header pane, zero strands bound to a present pane, and one
+// untracked alive pane; the strand being launched has PaneID == "", mirroring how addStrandLocked
+// appends a fresh strand before calling launchStrandLocked. The alive header — not any strand
+// binding — is what authorizes the untracked reap here (see reconcile.go's headerAlive disjunct).
+func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *testing.T) {
+	e := newTestEngine(t)
+
+	const headerPaneID = "%header"
+	const untrackedPaneID = "%untracked"
+	preReap := headerPaneID + " 0 0 100 3 4321\n" + untrackedPaneID + " 0 3 100 20 4322\n"
+	postReap := headerPaneID + " 0 0 100 3 4321\n"
+
+	var verbs []string
+	var listPanesCalls int
+	var splitArgs []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		verbs = append(verbs, args[0])
+		switch args[0] {
+		case "list-panes":
+			listPanesCalls++
+			if listPanesCalls == 1 {
+				return preReap, nil
+			}
+			return postReap, nil
+		case "split-window":
+			splitArgs = append([]string{}, args...)
+			return "%new\n", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{HeaderPaneID: headerPaneID}
+	st.Strands = append(st.Strands, Strand{GUID: "new"})
+	s := &st.Strands[0]
+
+	if err := e.launchStrandLocked(st, s, "echo hi"); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+
+	killIdx, splitIdx, secondListIdx := -1, -1, -1
+	listPanesSeen := 0
+	for i, v := range verbs {
+		switch v {
+		case "kill-pane":
+			if killIdx == -1 {
+				killIdx = i
+			}
+		case "split-window":
+			if splitIdx == -1 {
+				splitIdx = i
+			}
+		case "list-panes":
+			listPanesSeen++
+			if listPanesSeen == 2 {
+				secondListIdx = i
+			}
+		}
+	}
+	if killIdx == -1 {
+		t.Fatalf("verbs %v: expected a kill-pane reaping the untracked pane, got none", verbs)
+	}
+	if splitIdx == -1 {
+		t.Fatalf("verbs %v: expected a split-window, got none", verbs)
+	}
+	if killIdx > splitIdx {
+		t.Errorf("verbs %v: kill-pane at %d, split-window at %d; want kill-pane before split-window", verbs, killIdx, splitIdx)
+	}
+	if secondListIdx == -1 {
+		t.Fatalf("verbs %v: expected a second list-panes (re-enumeration after reap), got none", verbs)
+	}
+	if !(killIdx < secondListIdx && secondListIdx < splitIdx) {
+		t.Errorf("verbs %v: want kill-pane(%d) < second list-panes(%d) < split-window(%d)", verbs, killIdx, secondListIdx, splitIdx)
+	}
+
+	if len(splitArgs) == 0 {
+		t.Fatal("split-window was never called")
+	}
+	for i, arg := range splitArgs {
+		if arg == "-t" && i+1 < len(splitArgs) && splitArgs[i+1] == untrackedPaneID {
+			t.Errorf("split-window target = %q, want it not to be the reaped pane", untrackedPaneID)
+		}
+	}
+}
+
+// TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped is the companion to
+// TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget: when reconcile kills nothing,
+// launchStrandLocked must not pay for a second list-panes round trip it does not need.
+//
+// The fixture has nothing to reap: an alive header plus a strand already bound to a present alive
+// pane. The strand being launched is a second one, again with PaneID == "".
+func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t *testing.T) {
+	e := newTestEngine(t)
+
+	const headerPaneID = "%header"
+	const boundPaneID = "%bound"
+	live := headerPaneID + " 0 0 100 3 4321\n" + boundPaneID + " 0 3 100 20 4322\n"
+
+	var verbs []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		verbs = append(verbs, args[0])
+		switch args[0] {
+		case "list-panes":
+			return live, nil
+		case "split-window":
+			return "%new\n", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{HeaderPaneID: headerPaneID}
+	st.Strands = append(st.Strands, Strand{GUID: "bound", PaneID: boundPaneID}, Strand{GUID: "new"})
+	s := &st.Strands[1]
+
+	if err := e.launchStrandLocked(st, s, "echo hi"); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+
+	for _, v := range verbs {
+		if v == "kill-pane" {
+			t.Fatalf("verbs %v: expected no kill-pane when nothing is reaped", verbs)
+		}
+	}
+	listPanesCount, splitIdx := 0, -1
+	for i, v := range verbs {
+		if v == "list-panes" {
+			listPanesCount++
+		}
+		if v == "split-window" && splitIdx == -1 {
+			splitIdx = i
+		}
+	}
+	if listPanesCount != 1 {
+		t.Errorf("verbs %v: list-panes called %d times, want exactly 1 (no redundant re-enumeration)", verbs, listPanesCount)
+	}
+	if splitIdx == -1 {
+		t.Fatalf("verbs %v: expected a split-window, got none", verbs)
+	}
+	if verbs[0] != "list-panes" || splitIdx <= 0 {
+		t.Errorf("verbs %v: want the single list-panes to precede split-window", verbs)
+	}
+}
+
 func TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity(t *testing.T) {
 	e := newTestEngine(t)
 
