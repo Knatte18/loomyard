@@ -6,6 +6,7 @@ slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'reed: pane reap isn''t applied consistently across up/add''s mutating paths'
 task_description: |
   reed: pane reap isn't applied consistently across up/add's mutating paths
@@ -43,11 +44,17 @@ implementing  '2026-08-29T06:33:07Z'
 ```yaml
 batches:
   - name: reconcile-gate-and-reap-log
-    state: pending
+    state: running
+    implementer_session: c3c73c59-00ca-412a-9d3d-378a81b4469d
+    start_sha: d1b200ffdad35056714606cfbe550d5a71ca3b6a
+    verify_baseline_failures: []
   - name: drop-adoption-and-reap-chokepoint
     state: pending
+    verify_baseline_failures: []
   - name: smoke-regressions
     state: pending
+    verify_baseline_failures: []
   - name: doc-surface-sweep
     state: pending
+    verify_baseline_failures: []
 ```
