@@ -264,9 +264,17 @@ func TestReapplyLayout_DegradedBox(t *testing.T) {
 // (HookInstalled, HookKnown) for every scripted show-options -v answer shape.
 // "Some window-resized hook exists" is the wrong test and is what an obvious implementation writes —
 // every case here pins the exact-match requirement instead.
+//
+// The multi-line cases are the ones the probe originally got wrong: show-options -v prints a hook
+// ARRAY as one line per entry (live-verified, tmux 3.6), and reed's own array normally carries a
+// resize-pane pin per fixed-height pane ahead of the touch — so an answer that merely CONTAINS reed's
+// command among other entries is the healthy shape, not the degenerate one, while an answer whose
+// line merely embeds that command as a substring is still a miss.
 func TestReapplyLayout_HookProbeExactMatchOnly(t *testing.T) {
 	e, _ := newReapplyTestEngine(t)
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+	const pinEntry = `resize-pane -t "%1" -y 1`
+	const secondPinEntry = `resize-pane -t "%2" -y 2`
 
 	tests := []struct {
 		name          string
@@ -280,13 +288,12 @@ func TestReapplyLayout_HookProbeExactMatchOnly(t *testing.T) {
 		{"ForeignWindowResizedHook", "run-shell -b 'echo something-else'", nil, false, true},
 		{"OwnShapeDifferentWorktree", "run-shell -b \"sh -c 'touch \\\"/some/other/worktree/.lyx/reed-resize.signal\\\"'\"", nil, false, true},
 		{"RoundTripError", "", errors.New("boom"), false, false},
-		// A multi-entry array (windowsize.go's resizePinHookArgvs folds the watchdog signal command in
-		// alongside any resize-pane pins) answers show-options -v with one line per entry — the match
-		// must find the own command as an exact LINE anywhere in that answer, not just when it is the
-		// whole (single-line) answer.
-		{"OwnCommandAlongsideResizePinLines", "resize-pane -t %1 -y 3\n" + ownCommand, nil, true, true},
-		{"OwnCommandFirstAmongResizePinLines", ownCommand + "\nresize-pane -t %1 -y 3", nil, true, true},
-		{"ForeignHookAlongsideResizePinLines", "resize-pane -t %1 -y 3\nrun-shell -b 'echo something-else'", nil, false, true},
+		{"PinsThenOwnCommandLast", pinEntry + "\n" + secondPinEntry + "\n" + ownCommand, nil, true, true},
+		{"TrailingNewlineAfterOwnCommand", pinEntry + "\n" + ownCommand + "\n", nil, true, true},
+		{"OwnCommandAheadOfAForeignEntry", ownCommand + "\nrun-shell -b 'echo something-else'", nil, true, true},
+		{"PinsOnlyNoOwnCommand", pinEntry + "\n" + secondPinEntry, nil, false, true},
+		{"PinsAndAnotherWorktreesTouch", pinEntry + "\nrun-shell -b \"sh -c 'touch \\\"/some/other/worktree/.lyx/reed-resize.signal\\\"'\"", nil, false, true},
+		{"OwnCommandEmbeddedInALongerEntry", pinEntry + "\nif-shell true '" + ownCommand + "'", nil, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -217,6 +217,29 @@
 //     (removalEmptiedSession, strand.go) only when the session is
 //     confirmed gone, rather than the fix mispredicting a corpse
 //     universally, as an earlier version of this assumption did.
+//   - Told-geometry lifetime and the vanished worktree root (server.go's
+//     validateToldWorktreeRootLive, lock.go's withOpLock/withTryOpLock): a
+//     told Geometry is resolved once per process and pinned for that
+//     process's whole life, so a long-lived process such as the header
+//     pane's keepalive holds a frozen WorktreeRoot that a `mv` of the
+//     worktree makes stale. Every operation therefore re-checks that told
+//     worktree root's liveness at the op-lock chokepoint, and refuses
+//     rather than creating substrate under a path that is no longer a
+//     worktree. One user-visible consequence is a deliberate behaviour
+//     change in standalone mode: a `--target-dir` naming a directory that
+//     does not exist is now refused at the first engine op, instead of
+//     proceeding and deriving a state directory for it. Once the resize
+//     watch loop (watchloop.go) itself learns its told worktree root is
+//     gone — via errWorktreeRootGone surfacing from a re-apply attempt — it
+//     logs exactly one warning and drops to a sixty-second dormant cadence
+//     rather than the ordinary two-second poll, so a session abandoned by
+//     `down` costs one log line instead of a warning every two seconds for
+//     the rest of its life. It automatically returns to whichever mode
+//     (poll or signal) it was in before dormancy, logging exactly one more
+//     line, once the worktree root exists again. Dormancy never tears down
+//     the header pane and never stops the watch loop itself: the session
+//     reed walked away from may still be hosting the operator's live
+//     strands.
 //   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
 //     tmux does not REJECT a session name containing '.' or ':' — it
 //     rewrites each to '_', creates the session under the rewritten name,
@@ -373,6 +396,21 @@
 //     pinned heights coming from render.FixedHeightPins: the heights render
 //     actually placed the cells at, after clampHeaderHeight and
 //     clampToFit, never the raw configured budgets.
+//     The watchdog's own signal entry rides the SAME array, always as its
+//     last entry, and installResizePinsLocked is its only install site —
+//     the array is a whole-snapshot rebuild, so a second writer could only
+//     clear the pins this one just installed or accumulate a duplicate
+//     touch per attach. Ordering it last means a resize fires the pin
+//     fixups before the watcher is told about it, and that is safe because
+//     array entries fire independently (see the dead-strip-pin case
+//     below), so a pin naming a destroyed pane cannot swallow the touch
+//     behind it. It is installed even when the pin set is empty:
+//     "nothing is pinned" and "nobody wants to hear about a resize" are
+//     different opinions, and gating the touch on a non-empty pin set would
+//     pin such a session's watcher into poll mode forever. The one gate it
+//     does carry is watchdog: off (and Windows, where the hook is never
+//     installed at all), since a touch entry nobody reads is a run-shell
+//     spawn per resize for nothing.
 //     Two candidate hooks were measured and rejected: client-resized fires
 //     BEFORE the layout is resized, so a resize-pane inside it cannot work,
 //     and window-layout-changed also fires on reed's own select-layout,
@@ -392,6 +430,11 @@
 //     surviving array is a benefit, still holding the live header and
 //     strips at the budgets reed last
 //     computed for them.
+//     Since the signal entry rides the same array, the same rule decides it:
+//     a session that has never reached an install keeps no touch entry and
+//     so keeps its watcher in poll mode until the first real apply, and a
+//     session that has reached one keeps it across every later guard-skip
+//     and degrade.
 //     The ~50-row threshold in the original bug report is
 //     template_posix.yaml's "height: 50" boot box showing through the BARE
 //     (unchained) attach path, not evidence of a miscomputed layout — a
@@ -477,15 +520,32 @@
 //   - The plain set-hook form replaces; -a accumulates (windowsize.go): four
 //     identical plain installs yield exactly one fire per resize; three
 //     further -a appends yield four. installResizePinsLocked's rebuild always
-//     starts from its own unconditional clear (resizePinHookArgvs), so a
-//     plain first entry followed by -a on every later one is what keeps a
-//     rebuild idempotent across N AttachArgv pre-flights and N applies,
-//     rather than accumulating N run-shell spawns per resize.
+//     starts from its own unconditional clear and establishes entry [0] with a
+//     plain set-hook, using -a only for the entries behind it. Since the rebuild
+//     runs on every AttachArgv pre-flight as well as on every apply, an
+//     append-only pattern would accumulate N run-shell spawns and N redundant
+//     resize-panes per resize after N attaches — the plain-first/-a-after
+//     pattern keeps it idempotent instead.
 //   - The hook readback is show-options, not show-hooks (reapply.go): in
 //     tmux 3.6 hooks are options, and show-hooks prints nothing for a
 //     window-scoped hook that demonstrably fires — a show-hooks-based probe
 //     would report "no hook" every time and pin every watcher into poll
 //     mode.
+//   - show-options -v prints an ARRAY option one entry per line
+//     (windowsize.go, reapply.go): verified live on tmux 3.6, -v prints
+//     every entry of window-resized in index order with the
+//     "window-resized[N]" prefix that plain show-options carries suppressed.
+//     So the probe's match is exact PER ENTRY, never against the whole
+//     answer: reed's own array normally holds a resize-pane pin per
+//     fixed-height pane ahead of the touch, and an equality test against the
+//     whole multi-line answer therefore reports "absent" on every healthy
+//     session with anything pinned — which is exactly what it did for as
+//     long as the touch entry had no install site at all. Exactness stays
+//     per entry all the same, never a substring search over the raw answer,
+//     which would accept a foreign entry that merely embeds reed's command
+//     string. Entry POSITION is deliberately outside the match: reed writes
+//     the touch last, but the question the probe answers is only "will a
+//     resize touch THIS worktree's signal file".
 //   - run-shell without -b blocks the tmux server (watchdog.go).
 //   - liveBoxLocked never reports failure through its box (windowsize.go,
 //     reapply.go): a degraded query returns the configured

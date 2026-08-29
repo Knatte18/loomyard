@@ -26,17 +26,29 @@ type ReapplyResult struct {
 	// BoxIsLive reports whether Box was a real observation rather than
 	// liveBoxLocked's configured fallback, or no query at all.
 	BoxIsLive bool
-	// HookInstalled reports whether this session's window-resized hook is
-	// exactly reed's own command string for this worktree's signal path.
+	// HookInstalled reports whether this session's window-resized hook array
+	// carries, as one whole entry, exactly reed's own command string for this
+	// worktree's signal path.
 	HookInstalled bool
 	// HookKnown reports whether HookInstalled was decided at all this call.
 	HookKnown bool
 }
 
-// hookInstalledLocked reports whether this session's window-resized hook is exactly reed's own
-// command string for this worktree's signal path (installed), and whether that was decided at all
-// this call (known). It is called only when a caller of reapplyLayout asks for a probe (see
-// reapplyLayout's probeHook parameter).
+// hookArrayEntries splits one `show-options -v <hook-name>` answer into the hook array's entries.
+//
+// tmux 3.6 prints EVERY entry of an array option under -v, one per line, in index order, with the
+// "<name>[N]" prefix that plain show-options would carry suppressed (live-verified) — so the answer
+// for a window-resized array holding two pins and reed's touch is three lines, not one. A trailing
+// newline yields a trailing empty entry, which no caller can match against a non-empty command
+// string, so it is left in place rather than special-cased.
+func hookArrayEntries(raw string) []string {
+	return strings.Split(raw, "\n")
+}
+
+// hookInstalledLocked reports whether one entry of this session's window-resized hook array is
+// exactly reed's own command string for this worktree's signal path (installed), and whether that was
+// decided at all this call (known). It is called only when a caller of reapplyLayout asks for a probe
+// (see reapplyLayout's probeHook parameter).
 //
 // On runtime.GOOS == "windows" it returns (false, false) immediately, issuing NO round trip — Windows
 // is poll-only unconditionally, because set-hook/run-shell are absent from requiredSubcommands and
@@ -49,13 +61,25 @@ type ReapplyResult struct {
 // failure shape here yields known == false and therefore poll mode, so no capability-probe change is
 // needed and no psmux risk is taken.
 //
+// The match against resizeHookCommand is exact against reed's own command string for THIS worktree's
+// signal path, never merely "some window-resized hook exists" (also live-verified as necessary): a
+// foreign hook or a sibling worktree's signal path would deliver nothing this watcher can consume.
+// It is exact PER ENTRY rather than against the whole answer, because reed's own array normally holds
+// one resize-pane pin per fixed-height pane ahead of the touch (windowsize.go's resizePinHookArgvs) —
+// an equality test against the whole multi-line answer therefore reports "absent" on every healthy
+// session with anything pinned, which is exactly the bug this probe shipped with. Exactness stays
+// per-entry all the same: a substring search over the raw answer would accept a foreign entry that
+// merely embeds reed's command string.
+//
+// Entry POSITION is deliberately not part of the match. installResizePinsLocked always writes the
+// touch last, but what this probe has to answer is only "will a resize touch THIS worktree's signal
+// file", and a foreign entry appended after reed's own does not change that answer — while demanding
+// the last position would silently drop such a session into poll mode forever.
+//
 // window-resized has no session scope to read back separately from the resize-pin array
 // (windowsize.go's resizePinHookArgvs doc comment): a multi-entry hook's `show-options -v` answer is
 // every entry's command string, one per line, in install order, so the watchdog's own signal command
-// can share the array with any number of resize-pane pins. The match is therefore against each line
-// of the answer, not the answer as a whole — exact per line, never a substring match, so a foreign
-// hook or a sibling worktree's signal path (which shares the "run-shell -b" prefix but never the exact
-// remainder) still cannot be mistaken for reed's own line.
+// can share the array with any number of resize-pane pins.
 func (e *Engine) hookInstalledLocked() (installed bool, known bool) {
 	if runtime.GOOS == "windows" {
 		return false, false
@@ -65,13 +89,9 @@ func (e *Engine) hookInstalledLocked() (installed bool, known bool) {
 		logger.Debug("reed: failed to read back window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false, false
 	}
-	want := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	trimmed := strings.TrimSpace(out)
-	if trimmed == "" {
-		return false, true
-	}
-	for _, line := range strings.Split(trimmed, "\n") {
-		if line == want {
+	own := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+	for _, entry := range hookArrayEntries(out) {
+		if entry == own {
 			return true, true
 		}
 	}

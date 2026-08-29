@@ -10,9 +10,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 func TestParseWindowSize(t *testing.T) {
@@ -383,41 +386,21 @@ func containsArg(args []string, want string) bool {
 }
 
 // TestResizePinHookArgvs pins the pure argv shape resizePinHookArgvs builds for zero, one, and
-// several pins, with and without a signal hook appended: the unconditional clear always leads, every
-// argv carries -w and the exact-match window target, each pin body is exactly "resize-pane -t <pane>
-// -y <height>", the "-a" flag appears on every entry after the first, and no argv anywhere in the
+// several pins with no signal entry asked for: the unconditional clear always leads, every argv
+// carries -w and the exact-match window target, each body is exactly "resize-pane -t <pane> -y
+// <height>", the "-a" flag appears on every entry after the first pin, and no argv anywhere in the
 // sequence carries a bare ";" element.
+// The signal entry's own shape is TestResizePinHookArgvs_SignalEntry's business.
 func TestResizePinHookArgvs(t *testing.T) {
 	const session = "myproj"
 	target := exactSessionWindowTarget(session)
 
 	assertCommon := func(t *testing.T, argvs [][]string) {
 		t.Helper()
-		if len(argvs) == 0 {
-			t.Fatal("resizePinHookArgvs() = empty slice, want at least the clear")
-		}
-		for i, argv := range argvs {
-			if argv[0] != "set-hook" {
-				t.Errorf("argv[%d][0] = %q, want %q", i, argv[0], "set-hook")
-			}
-			if !containsArg(argv, "-w") {
-				t.Errorf("argv[%d] = %v, want -w", i, argv)
-			}
-			if !containsArg(argv, target) {
-				t.Errorf("argv[%d] = %v, want the exact-match window target %q", i, argv, target)
-			}
-			if !containsArg(argv, "window-resized") {
-				t.Errorf("argv[%d] = %v, want the window-resized hook name", i, argv)
-			}
-			for _, elem := range argv {
-				if elem == ";" {
-					t.Errorf("argv[%d] = %v, want no bare \";\" element", i, argv)
-				}
-			}
-		}
+		assertResizePinHookArgvsWellFormed(t, argvs, target)
 	}
 
-	t.Run("ZeroPinsNoSignalHook", func(t *testing.T) {
+	t.Run("ZeroPins", func(t *testing.T) {
 		argvs := resizePinHookArgvs(session, nil, "")
 		assertCommon(t, argvs)
 		if len(argvs) != 1 {
@@ -526,6 +509,209 @@ func TestResizePinHookArgvs(t *testing.T) {
 		}
 		if last[len(last)-1] != signal {
 			t.Errorf("signal-hook body = %q, want %q", last[len(last)-1], signal)
+		}
+	})
+}
+
+// assertResizePinHookArgvsWellFormed asserts the invariants every argv resizePinHookArgvs emits
+// carries, whatever the pin set or signal command: the sequence is non-empty, every argv is a
+// set-hook against the exact-match window target's window-resized option, and none of them carries a
+// bare ";" element (set-hook takes its body as one argument, so a separate ";" would terminate the
+// set-hook itself).
+func assertResizePinHookArgvsWellFormed(t *testing.T, argvs [][]string, target string) {
+	t.Helper()
+	if len(argvs) == 0 {
+		t.Fatal("resizePinHookArgvs() = empty slice, want at least the clear")
+	}
+	for i, argv := range argvs {
+		if argv[0] != "set-hook" {
+			t.Errorf("argv[%d][0] = %q, want %q", i, argv[0], "set-hook")
+		}
+		if !containsArg(argv, "-w") {
+			t.Errorf("argv[%d] = %v, want -w", i, argv)
+		}
+		if !containsArg(argv, target) {
+			t.Errorf("argv[%d] = %v, want the exact-match window target %q", i, argv, target)
+		}
+		if !containsArg(argv, "window-resized") {
+			t.Errorf("argv[%d] = %v, want the window-resized hook name", i, argv)
+		}
+		for _, elem := range argv {
+			if elem == ";" {
+				t.Errorf("argv[%d] = %v, want no bare \";\" element", i, argv)
+			}
+		}
+	}
+}
+
+// TestResizePinHookArgvs_SignalEntry pins the half of the array that had no install site at all
+// before this fix: the watchdog's own run-shell touch entry, which reapply.go's hookInstalledLocked
+// probes for and which nothing was ever installing.
+// Every case asserts the touch is the array's LAST entry, so a resize fires the pin fixups before the
+// watcher is told about it, and that the zero-pin case still installs it.
+func TestResizePinHookArgvs_SignalEntry(t *testing.T) {
+	const session = "myproj"
+	const signalCommand = `run-shell -b "sh -c 'touch \"/tmp/wt/.lyx/reed-resize.signal\"'"`
+	target := exactSessionWindowTarget(session)
+
+	t.Run("PinsThenSignalLast", func(t *testing.T) {
+		pins := []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}}
+		argvs := resizePinHookArgvs(session, pins, signalCommand)
+		assertResizePinHookArgvsWellFormed(t, argvs, target)
+
+		if len(argvs) != 4 {
+			t.Fatalf("resizePinHookArgvs(2 pins + signal) = %v, want 4 argvs (clear + 2 pins + signal)", argvs)
+		}
+		last := argvs[len(argvs)-1]
+		if last[len(last)-1] != signalCommand {
+			t.Errorf("last argv body = %q, want the signal command %q — the touch must be the array's last entry", last[len(last)-1], signalCommand)
+		}
+		if !containsArg(last, "-a") {
+			t.Errorf("signal argv = %v, want -a (it appends onto the pins already at index 0 and 1)", last)
+		}
+		for i, argv := range argvs[1:3] {
+			if !strings.HasPrefix(argv[len(argv)-1], "resize-pane ") {
+				t.Errorf("argv for pin %d body = %q, want a resize-pane body ahead of the signal entry", i, argv[len(argv)-1])
+			}
+		}
+	})
+
+	t.Run("ZeroPinsStillInstallsTheSignalEntry", func(t *testing.T) {
+		argvs := resizePinHookArgvs(session, nil, signalCommand)
+		assertResizePinHookArgvsWellFormed(t, argvs, target)
+
+		// "Nothing is pinned" and "nobody wants to hear about a resize" are different opinions: a
+		// session with no fixed-height pane still needs its watcher told a resize happened, or the
+		// probe can never promote it out of poll mode.
+		if len(argvs) != 2 {
+			t.Fatalf("resizePinHookArgvs(zero pins + signal) = %v, want 2 argvs (clear + signal)", argvs)
+		}
+		signal := argvs[1]
+		if containsArg(signal, "-a") {
+			t.Errorf("signal argv = %v, want no -a — with no pins ahead of it, it is the entry that establishes the array at index 0", signal)
+		}
+		if signal[len(signal)-1] != signalCommand {
+			t.Errorf("signal argv body = %q, want %q", signal[len(signal)-1], signalCommand)
+		}
+	})
+
+	t.Run("EmptySignalCommandEmitsNoEntry", func(t *testing.T) {
+		pins := []render.Pin{{PaneID: "%1", Height: 3}}
+		argvs := resizePinHookArgvs(session, pins, "")
+		assertResizePinHookArgvsWellFormed(t, argvs, target)
+
+		if len(argvs) != 2 {
+			t.Fatalf("resizePinHookArgvs(1 pin, no signal) = %v, want 2 argvs (clear + 1 pin)", argvs)
+		}
+		for i, argv := range argvs {
+			if argv[len(argv)-1] == "" {
+				t.Errorf("argv[%d] = %v, want no empty body element", i, argv)
+			}
+		}
+	})
+}
+
+// TestResizeSignalHookCommand covers the gate deciding whether the touch entry belongs in the array
+// at all: on for a watchdog: on session, off for watchdog: off, and off for an invalid value, which
+// this non-fatal path treats as off rather than propagating.
+func TestResizeSignalHookCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hook is never installed on Windows; resizeSignalHookCommand answers \"\" unconditionally there")
+	}
+
+	tests := []struct {
+		name           string
+		watchdog       string
+		wantOwnCommand bool
+	}{
+		{"On", "on", true},
+		{"Off", "off", false},
+		{"Invalid", "bogus", false},
+		{"Empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.cfg.Watchdog = tt.watchdog
+
+			got := e.resizeSignalHookCommand()
+			want := ""
+			if tt.wantOwnCommand {
+				want = resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+			}
+			if got != want {
+				t.Errorf("resizeSignalHookCommand() = %q; want %q for watchdog %q", got, want, tt.watchdog)
+			}
+		})
+	}
+}
+
+// TestInstallResizePinsLocked_IssuesTheSignalEntryLast is the call-site half of the fix: the argv
+// builder above is pure, so only this proves installResizePinsLocked actually hands tmux the touch
+// entry — the statement whose absence left resizeHookCommand orphaned and every watcher in poll mode.
+func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hook is never installed on Windows")
+	}
+
+	t.Run("WatchdogOn", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "on"
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, append([]string{}, args...))
+			return "", nil
+		}
+
+		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+
+		if len(calls) != 3 {
+			t.Fatalf("installResizePinsLocked calls = %v, want 3 (clear + 1 pin + signal)", calls)
+		}
+		last := calls[len(calls)-1]
+		want := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+		if last[len(last)-1] != want {
+			t.Errorf("last set-hook body = %q, want reed's own touch command %q", last[len(last)-1], want)
+		}
+	})
+
+	t.Run("WatchdogOff", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "off"
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, append([]string{}, args...))
+			return "", nil
+		}
+
+		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+
+		if len(calls) != 2 {
+			t.Fatalf("installResizePinsLocked calls = %v, want 2 (clear + 1 pin, no signal entry)", calls)
+		}
+		own := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+		for i, argv := range calls {
+			if argv[len(argv)-1] == own {
+				t.Errorf("calls[%d] = %v, want no touch entry with the watchdog off", i, argv)
+			}
+		}
+	})
+
+	t.Run("SignalEntryFailureIsNonFatal", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.cfg.Watchdog = "on"
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			calls = append(calls, append([]string{}, args...))
+			return "", errors.New("boom")
+		}
+
+		// Every call errors; the contract is that each one is still attempted and nothing panics or
+		// propagates (Shared Decision hook-failure-is-non-fatal-everywhere).
+		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+
+		if len(calls) != 3 {
+			t.Fatalf("installResizePinsLocked calls = %v, want all 3 attempted despite every one erroring", calls)
 		}
 	})
 }
