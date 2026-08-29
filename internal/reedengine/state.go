@@ -41,9 +41,9 @@ type ReedState struct {
 	// HeaderPaneID is the tmux pane id of the always-present header pane —
 	// deliberately outside Strands, since the header is a first-class but
 	// separate construct and never itself a strand (Shared Decision
-	// header-is-not-a-strand): it is excluded from every strand accounting,
-	// adoption, reconcile, and layout path a Strand would otherwise be
-	// subject to. Empty means the header pane has not yet been created (a
+	// header-is-not-a-strand): it is excluded from strand accounting, from
+	// being the preferred split target, and from both halves of reconcile's
+	// kill schedule. Empty means the header pane has not yet been created (a
 	// fresh worktree, or a server rebirth that cleared every binding) and
 	// must be (re)created at the next up/resume boot.
 	HeaderPaneID string `json:"headerPaneId,omitempty"`
@@ -150,10 +150,10 @@ func LoadState(dotLyxDir string) (*ReedState, error) {
 // (`down`) is the one that destroys it.
 //
 // Both remedies are named because they are genuinely different trades, and the operator — not
-// reed — has to pick. Deleting the file keeps the session: with no strands recorded,
-// planReconcile's untracked reap does not fire (it needs a bound present pane) and
-// applyLayoutLocked skips (anyPlacedStrand is false), so the panes and their processes keep running
-// untracked and can be attached to.
+// reed — has to pick. Deleting the file keeps the session: the panes and their processes keep
+// running and can be attached to, but only until the next mutating verb (up, resume, add, or
+// remove) reaps them, since an alive header now authorizes reaping every other pane the moment
+// one of those verbs reconciles.
 //
 // Repairing the file automatically is deliberately not offered: every repair reed could perform
 // amounts to discarding the strand table, which is exactly the silent loss the "null" refusal above
@@ -162,7 +162,8 @@ func unreadableStateError(path string, err error) error {
 	return fmt.Errorf(
 		"reed state file %s is unreadable: %w — the tmux session it describes may still be running, "+
 			`so reed will not guess at its contents. Either run "lyx reed down" to tear that session down and clear the file, `+
-			"or delete %s by hand to keep the session (its panes and their processes keep running, untracked) and lose only reed's strand tracking",
+			"or delete %s by hand to keep the session for now (its panes and their processes keep running, untracked, "+
+			"but are reaped by the next up/resume/add/remove — attach is the way back to that work) and lose only reed's strand tracking",
 		path, err, path)
 }
 

@@ -75,6 +75,11 @@ func hookArrayEntries(raw string) []string {
 // touch last, but what this probe has to answer is only "will a resize touch THIS worktree's signal
 // file", and a foreign entry appended after reed's own does not change that answer — while demanding
 // the last position would silently drop such a session into poll mode forever.
+//
+// window-resized has no session scope to read back separately from the resize-pin array
+// (windowsize.go's resizePinHookArgvs doc comment): a multi-entry hook's `show-options -v` answer is
+// every entry's command string, one per line, in install order, so the watchdog's own signal command
+// can share the array with any number of resize-pane pins.
 func (e *Engine) hookInstalledLocked() (installed bool, known bool) {
 	if runtime.GOOS == "windows" {
 		return false, false

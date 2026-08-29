@@ -404,7 +404,7 @@ func TestResizePinHookArgvs(t *testing.T) {
 		argvs := resizePinHookArgvs(session, nil, "")
 		assertCommon(t, argvs)
 		if len(argvs) != 1 {
-			t.Fatalf("resizePinHookArgvs(zero pins) = %v, want exactly one argv (the clear)", argvs)
+			t.Fatalf("resizePinHookArgvs(zero pins, no signal hook) = %v, want exactly one argv (the clear)", argvs)
 		}
 		want := []string{"set-hook", "-u", "-w", "-t", target, "window-resized"}
 		if len(argvs[0]) != len(want) {
@@ -465,6 +465,50 @@ func TestResizePinHookArgvs(t *testing.T) {
 			if argv[len(argv)-1] != wantBody {
 				t.Errorf("argv for pin %d body = %q, want %q", i, argv[len(argv)-1], wantBody)
 			}
+		}
+	})
+
+	t.Run("ZeroPinsWithSignalHook", func(t *testing.T) {
+		const signal = `run-shell -b ": > '/tmp/reed-resize.signal'"`
+		argvs := resizePinHookArgvs(session, nil, signal)
+		assertCommon(t, argvs)
+		if len(argvs) != 2 {
+			t.Fatalf("resizePinHookArgvs(zero pins, signal hook) = %v, want 2 argvs (clear + the signal entry)", argvs)
+		}
+		if containsArg(argvs[0], "-a") {
+			t.Errorf("clear argv = %v, want no -a", argvs[0])
+		}
+		// With zero pins the signal entry is the array's first (and only) content entry, so it must
+		// land plain — carrying -a here would append onto an array the clear just emptied, which is
+		// harmless to tmux but would misrepresent "is this the first entry" to a reader of the argv.
+		if containsArg(argvs[1], "-a") {
+			t.Errorf("signal-hook argv = %v, want no -a (it is the sole entry)", argvs[1])
+		}
+		if argvs[1][len(argvs[1])-1] != signal {
+			t.Errorf("signal-hook body = %q, want %q", argvs[1][len(argvs[1])-1], signal)
+		}
+	})
+
+	t.Run("PinsWithSignalHookAppendedLast", func(t *testing.T) {
+		const signal = `run-shell -b ": > '/tmp/reed-resize.signal'"`
+		pins := []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}}
+		argvs := resizePinHookArgvs(session, pins, signal)
+		assertCommon(t, argvs)
+		if len(argvs) != 4 {
+			t.Fatalf("resizePinHookArgvs(2 pins, signal hook) = %v, want 4 argvs (clear + 2 pins + signal)", argvs)
+		}
+		if containsArg(argvs[0], "-a") {
+			t.Errorf("clear argv = %v, want no -a", argvs[0])
+		}
+		if containsArg(argvs[1], "-a") {
+			t.Errorf("first-pin argv = %v, want no -a", argvs[1])
+		}
+		last := argvs[len(argvs)-1]
+		if !containsArg(last, "-a") {
+			t.Errorf("signal-hook argv = %v, want -a (it follows existing pins)", last)
+		}
+		if last[len(last)-1] != signal {
+			t.Errorf("signal-hook body = %q, want %q", last[len(last)-1], signal)
 		}
 	})
 }

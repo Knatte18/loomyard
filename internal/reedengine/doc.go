@@ -36,10 +36,11 @@
 // additional, permanent pane beyond its strands — the header
 // (ReedState.HeaderPaneID). It is a first-class construct, deliberately never
 // a Strand (Shared Decision header-is-not-a-strand): it is excluded from
-// every strand-accounting, adoption, split-target, and reconcile path (see
-// ensureHeaderPaneLocked in lifecycle.go, planPaneTarget in spawn.go, and
-// planReconcile's exemptPaneIDs in reconcile.go for the three exclusion
-// seams), so that removing a session's last strand can never destroy the
+// strand accounting, from being the preferred split target, and from both
+// halves of reconcile's kill schedule (see ensureHeaderPaneLocked in
+// lifecycle.go, planPaneTarget in spawn.go, and planReconcile's
+// exemptPaneIDs in reconcile.go for the three exclusion seams), so that
+// removing a session's last strand can never destroy the
 // session or corpse its sole pane — the header keeps the session (and the
 // substrate the next add needs) alive no matter how many strands come and
 // go. It boots alongside the session/initial pane on both Up and Resume, and
@@ -161,17 +162,36 @@
 //     set before trusting it as genuinely new: launchStrandLocked's strand
 //     splits and ensureHeaderPaneLocked's header rebuild both run the shared
 //     validateSplitCreatedNewPane guard.
-//   - Dead-pane adoption via remain-on-exit (spawn.go): with
+//   - Dead panes under remain-on-exit (spawn.go): with
 //     "set-option -g remain-on-exit on" set at boot, a pane whose command
 //     exits stays enumerable (pane_dead=1) instead of vanishing WHILE THE
 //     SESSION ITSELF SURVIVES — the only signal that lets reconcile
 //     distinguish "the strand's process died" from "the pane is simply
-//     gone" — and planPaneTarget must never adopt such a corpse, since
-//     send-keys into a dead pane exits 0 while running nothing, silently
-//     swallowing the strand's command. This corpse-and-session-survives
-//     behavior is scoped to a non-last pane (any backend) and to psmux even
-//     for the true last pane; it does NOT hold for tmux's true last pane —
-//     see the next bullet.
+//     gone" — and such a corpse is never reused as a strand's pane, since a
+//     strand's pane is always a fresh split: send-keys into a dead pane
+//     exits 0 while running nothing, silently swallowing the strand's
+//     command, which is exactly the failure a fresh split can never
+//     reproduce. This corpse-and-session-survives behavior is scoped to a
+//     non-last pane (any backend) and to psmux even for the true last pane;
+//     it does NOT hold for tmux's true last pane — see the next bullet.
+//   - The untracked-pane reap gate (spawn.go, reconcile.go): every pane in
+//     a reed session is either the header or a bound strand's pane, and the
+//     untracked reap enforces that rule as `anyBoundPresent || headerAlive`,
+//     where the header anchor requires ALIVENESS rather than mere
+//     presence — launchStrandLocked makes the gate fire from AddStrand and
+//     UpdateStrand, neither of which calls ensureHeaderPaneLocked to heal a
+//     header corpse first, so a dead header id must never itself authorize
+//     sparing the untracked set. The reap runs before pane allocation at
+//     one chokepoint inside launchStrandLocked, so the property holds by
+//     construction on every realization path rather than requiring two
+//     call sites to stay in sync. Two consequences follow: an `up` against
+//     a session with zero tracked strands ends up header-only and
+//     full-height, because applyLayoutLockedOpts deliberately skips
+//     select-layout when no strand owns a present pane, and the header
+//     snaps back to its configured height the moment a strand pane exists;
+//     and RemoveStrand's own code is unchanged, but its
+//     reconcileApplyPersistLocked tail inherits the new gate, so removing
+//     the last strand now reaps any untracked alive pane in the same verb.
 //   - Last-pane fate is BINARY-DEPENDENT, not universally the corpse
 //     behavior above (strand.go's kill-pane loop, RemoveStrand): killing a
 //     session's TRUE LAST pane behaves oppositely depending on the
@@ -299,9 +319,9 @@
 //     positionally, and destroys every pane the resulting short cell list no
 //     longer covers (verified live, tmux 3.6: one `up` reduced a two-pane
 //     session to one and reported ok:true). Nothing reed constructs can
-//     produce such a table — planPaneTarget never adopts or splits the header
-//     and validateSplitCreatedNewPane guarantees a fresh id — so the source
-//     is always a CORRUPT persisted table: a restored backup, a hand-edited
+//     produce such a table — planPaneTarget always yields a split whose
+//     result validateSplitCreatedNewPane proves genuinely new — so the
+//     source is always a CORRUPT persisted table: a restored backup, a hand-edited
 //     or partially-restored reed.json (R5 review finding R5-F3). It is
 //     guarded twice on purpose: the engine clears such bindings at the single
 //     load chokepoint, and render.Rules independently drops a duplicated pane
@@ -404,10 +424,11 @@
 //     sole pane is a verified silent no-op (exit 0, height unchanged), so
 //     the len(live) < 2 case's surviving header pin cannot contradict
 //     render.Rules' sole-cell branch.
-//     And in the !anyPlacedStrand case — reachable for good via the
-//     operator remedy state.go documents, which deletes reed.json while the
-//     session keeps running untracked — the surviving array is a benefit,
-//     still holding the live header and strips at the budgets reed last
+//     And in the !anyPlacedStrand case — reachable via the operator remedy
+//     state.go documents, which deletes reed.json while the session keeps
+//     running untracked only until the next mutating verb reaps it — the
+//     surviving array is a benefit, still holding the live header and
+//     strips at the budgets reed last
 //     computed for them.
 //     Since the signal entry rides the same array, the same rule decides it:
 //     a session that has never reached an install keeps no touch entry and
@@ -419,6 +440,21 @@
 //     (unchained) attach path, not evidence of a miscomputed layout — a
 //     synthetic bare attach reproduces the reported table exactly, with 40
 //     and 50 rows leaving the header at 1 row and 76 rows taking it to 10.
+//     The watchdog's own run-shell signal command (watchdog.go's
+//     resizeHookCommand) lives in THIS SAME array, appended as one further
+//     entry by installResizePinsLocked whenever the watchdog is enabled —
+//     never installed independently. window-resized has no session scope to
+//     fall back on: verified live, tmux 3.6, `set-hook` against any target
+//     that does not resolve to a specific window errors "no such window",
+//     and a hook installed against a window target is invisible from any
+//     sibling window of the same session, -w or no -w. Since the array's
+//     plain (non-"-a") form replaces the whole thing, a signal hook installed
+//     by a separate call would be silently clobbered the next time this
+//     rebuild ran (or vice versa) — folding it into the one rebuild is what
+//     keeps both mechanisms alive on the same event. hookInstalledLocked
+//     (reapply.go) reads the array back and matches the signal command
+//     against each line of the multi-entry answer, never the answer as a
+//     whole, so its position among the resize-pane pins does not matter.
 //   - The chained attach (attach.go): AttachArgv's argv is
 //     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
 //     separator a literal one-character ";" argv element — never "\;",
@@ -483,15 +519,16 @@
 //     worst available failure mode.
 //   - The plain set-hook form replaces; -a accumulates (windowsize.go): four
 //     identical plain installs yield exactly one fire per resize; three
-//     further -a appends yield four. That is why every rebuild leads with
-//     the -u clear and establishes entry [0] with a plain set-hook, using -a
-//     only for the entries behind it: installResizePinsLocked runs on every
-//     AttachArgv pre-flight as well as on every apply, so an append-only
-//     rebuild would cost N run-shell spawns and N redundant resize-panes per
-//     resize after N attaches.
+//     further -a appends yield four. installResizePinsLocked's rebuild always
+//     starts from its own unconditional clear and establishes entry [0] with a
+//     plain set-hook, using -a only for the entries behind it. Since the rebuild
+//     runs on every AttachArgv pre-flight as well as on every apply, an
+//     append-only pattern would accumulate N run-shell spawns and N redundant
+//     resize-panes per resize after N attaches — the plain-first/-a-after
+//     pattern keeps it idempotent instead.
 //   - The hook readback is show-options, not show-hooks (reapply.go): in
 //     tmux 3.6 hooks are options, and show-hooks prints nothing for a
-//     session-scoped hook that demonstrably fires — a show-hooks-based probe
+//     window-scoped hook that demonstrably fires — a show-hooks-based probe
 //     would report "no hook" every time and pin every watcher into poll
 //     mode.
 //   - show-options -v prints an ARRAY option one entry per line

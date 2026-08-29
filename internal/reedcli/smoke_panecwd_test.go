@@ -25,9 +25,16 @@ import (
 // stand. Under t.Chdir that is accidentally the anchor; under the RunCLIIn seam it is not, and
 // every strand pane came up in the wrong tree while reed reported success.
 //
-// The FIRST strand adopts the session's initial pane, which new-session already created with -c, so
-// it is correct either way and is asserted only as a control. The SECOND strand is the one that
-// exercises the split path and the one the defect broke.
+// Both strands here are splits — there is no other way a strand gets a pane — but they still take
+// genuinely different planPaneTarget branches, worth asserting as two distinct cases rather than one
+// duplicated twice: by
+// the time this fixture's first add runs, the preceding up's own reconcile has already reaped the
+// session down to the header pane alone (the same zero-strands-plus-alive-header reap
+// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins), so the FIRST strand's split targets the
+// header itself (planPaneTarget's header-as-last-resort fallback, since no non-header pane exists to
+// split otherwise). The SECOND strand then targets the tallest alive non-header pane — the first
+// strand's own pane, once it exists. Both are exercised for the -c regression identically: the split
+// path is the one the defect broke, on either branch.
 func TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -57,8 +64,8 @@ func TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd(t *testing.T) {
 	}
 
 	launch := smokeReapLaunchCmd()
-	adopted := addStrandIn(t, anchor, launch, "--name", "adopted")
-	split := addStrandIn(t, anchor, launch, "--name", "split")
+	first := addStrandIn(t, anchor, launch, "--name", "first")
+	second := addStrandIn(t, anchor, launch, "--name", "second")
 
 	socket, session := socketAndSessionIn(t, anchor)
 	if session == "" {
@@ -69,8 +76,8 @@ func TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd(t *testing.T) {
 		name string
 		guid string
 	}{
-		{"adopted initial pane (control)", adopted},
-		{"split pane", split},
+		{"first strand (splits off the header)", first},
+		{"second strand (splits off the first)", second},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

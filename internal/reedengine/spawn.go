@@ -1,7 +1,7 @@
 // spawn.go implements the shared pane-launch helper every strand-realizing path composes: AddStrand
 // launching a freshly added strand, UpdateStrand surfacing a hidden->visible strand, and Resume
-// replaying a not-live strand all call launchStrandLocked to actually create (or adopt) a tmux pane
-// and run the strand's command in it (GAP A) — without this shared helper, add would register a
+// replaying a not-live strand all call launchStrandLocked to reconcile and then create a fresh tmux
+// pane and run the strand's command in it (GAP A) — without this shared helper, add would register a
 // record and re-render but never create a pane or run anything.
 // This file also carries the two other small cross-file bootstrap helpers strand.go and
 // lifecycle.go both need: loadOrInitStateLocked (fresh-worktree state bootstrap) and
@@ -17,41 +17,28 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// planPaneTarget decides how the next strand realization obtains its pane:
-// adopt the session's sole alive non-header pane when no strand holds a
-// binding, or split the tallest alive non-header pane otherwise. Exactly one
-// of adoptID or splitTargetID is non-empty on success.
+// planPaneTarget always yields a split target for the next strand realization
+// — it never adopts an existing pane. The surviving rules are a pure function
+// of live and headerPaneID: prefer the tallest alive non-header pane, fall
+// back to any present non-header pane (a corpse) when none is alive, and fall
+// back to live[0] (the header itself) when no non-header pane exists at all.
 //
-// Adoption is deliberately narrowed to the SOLE-pane case, because that is the
-// only case it was written for: the pane new-session leaves behind on a fresh
-// boot, which would otherwise sit unused beside every strand pane forever.
-// Adopting one of SEVERAL untracked panes is a guess about which of them is an
-// idle shell, and a wrong guess is silent: send-keys into a pane already
-// running a blocking command exits 0, types the strand's command onto that
-// pane's screen where it never executes, and reed then reports the strand
-// live. Reproduced live (R4 review finding R4-F5): after .lyx/reed.json was
-// scrubbed from a running session, the next add adopted the previous header
-// pane — still running "lyx reed header --blocking" — and the strand's command
-// was typed into it and never ran, with status reporting live:true and no such
-// process on the box. Splitting a fresh pane instead is always correct: the new
-// pane's shell is idle by construction, and any leftover untracked pane is
-// reaped by the reconcile tail once a strand is bound.
-func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (adoptID, splitTargetID string, err error) {
+// Adoption used to give a fresh session's initial pane a use rather than
+// splitting a needless second one, but the seam it required — deciding
+// whether a candidate pane was reed's own idle initial pane or a foreign one
+// — could not be made safely, and produced two live findings: R4-F5 (after
+// .lyx/reed.json was scrubbed from a running session, adoption picked the
+// previous header pane — still running "lyx reed header --blocking" — and the
+// strand's command was typed onto its screen and never ran, with status
+// reporting live:true and no such process on the box) and M16 (adoption
+// claimed an operator's own manually-created split-window pane). Once the
+// untracked reap is authorized by an alive header (reconcile.go), the initial
+// pane is disposed of like any other untracked pane before this function ever
+// runs, so a fresh split — idle by construction — costs one kill-pane plus
+// one split-window and buys correctness back.
+func planPaneTarget(live []LivePane, headerPaneID string) (splitTargetID string, err error) {
 	if len(live) == 0 {
-		return "", "", fmt.Errorf("session has no panes to adopt or split")
-	}
-
-	anyBound := false
-	for _, s := range strands {
-		if s.PaneID != "" {
-			anyBound = true
-			break
-		}
-	}
-	if !anyBound {
-		if sole, ok := soleAliveNonHeaderPane(live, headerPaneID); ok {
-			return sole, "", nil
-		}
+		return "", fmt.Errorf("session has no panes to split")
 	}
 
 	splitTargetID = ""
@@ -82,25 +69,7 @@ func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (ado
 		// still has a pane to split.
 		splitTargetID = live[0].ID
 	}
-	return "", splitTargetID, nil
-}
-
-// soleAliveNonHeaderPane returns the id of the session's only alive pane that is not the header,
-// and whether exactly one such pane exists.
-// It reports false both when there is none and when there are several — see planPaneTarget for why
-// "several" must not be adopted from.
-func soleAliveNonHeaderPane(live []LivePane, headerPaneID string) (string, bool) {
-	found := ""
-	for _, p := range live {
-		if p.Dead || p.ID == headerPaneID {
-			continue
-		}
-		if found != "" {
-			return "", false
-		}
-		found = p.ID
-	}
-	return found, found != ""
+	return splitTargetID, nil
 }
 
 // validateSplitCreatedNewPane returns an error unless paneID is genuinely
@@ -124,10 +93,36 @@ func sendKeysLiteralArg(text string) string {
 	return text
 }
 
-// launchStrandLocked realizes s into a live tmux pane and runs launchCmd in it,
-// adopting the initial pane or splitting the tallest alive one. It validates
-// the split created a new pane and sets only s.PaneID; Live is derived from
-// pane binding downstream.
+// launchStrandLocked reconciles the session's panes first, then always splits a fresh pane for s and
+// runs launchCmd in it. It validates the split created a new pane and sets only s.PaneID; Live is
+// derived from pane binding downstream.
+//
+// Reconciling here — rather than trusting the caller's last reconcile — is the chokepoint that makes
+// "reap before allocate" hold on every strand-realizing path (AddStrand, UpdateStrand, Resume, and
+// any future one) by construction, instead of by each call site remembering to do it. It is safe for
+// the strand being launched itself, though the reason differs per path:
+//   - On AddStrand and UpdateStrand, s reaches here with PaneID == "" (addStrandLocked builds a
+//     fresh record; updateStrandLocked launches a strand that has never held a pane), so reconcile
+//     can neither clear nor kill anything belonging to it.
+//   - On Resume that is not universally true: planResumeLaunches selects strands whose pane is
+//     absent from aliveIDSet, which includes a strand still bound to a dead-but-present pane. That is
+//     harmless here too — that binding names a corpse, so reconcile either kills it as a dead pane
+//     (clearing the binding) or spares it as the kept dead pane, and either way this function
+//     overwrites s.PaneID with the freshly split pane a few lines below. Strands Resume's per-strand
+//     loop already relaunched earlier in the same pass are bound to alive panes by the time this
+//     reconcile runs for the next strand, so they are exempt from the untracked reap, not merely
+//     lucky to survive it.
+//
+// This does not call SaveState: AddStrand and UpdateStrand only persist after this function returns
+// nil, so a split-window or send-keys failure here returns with panes already killed in tmux while
+// the corresponding binding clears live only in memory — reed.json itself is untouched. That window
+// is accepted rather than closed, because it is self-healing (Status and toRenderStrands derive
+// liveness from the live pane set, never the persisted binding, and the next mutating verb's own
+// reconcile clears the now-stale bindings for real) and because closing it here would be worse:
+// persisting inside this helper would write the half-added strand record on the add path, turning a
+// clean failure into a phantom strand Resume would later try to launch. If this window ever needs
+// closing, the right shape is reaping before the strand record is appended to st.Strands, not
+// persisting a partial one from inside this helper.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
 	session := e.SessionName()
 
@@ -135,31 +130,44 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
-	adoptID, splitTargetID, err := planPaneTarget(st.Strands, live, st.HeaderPaneID)
+
+	killed, err := e.reconcileLocked(st, live)
+	if err != nil {
+		return fmt.Errorf("reconcile: %w", err)
+	}
+	if len(killed) > 0 {
+		// Order matters: kill untracked/dead -> re-enumerate live -> plan.
+		// The kill-pane calls above mutate the pane set planPaneTarget below
+		// must choose from, so enumeration must follow them (same ordering
+		// reconcileApplyPersistLocked already treats as load-bearing).
+		live, err = e.tmux.listPanes(session)
+		if err != nil {
+			return fmt.Errorf("list panes after reconcile: %w", err)
+		}
+	}
+
+	splitTargetID, err := planPaneTarget(live, st.HeaderPaneID)
 	if err != nil {
 		return err
 	}
 
-	paneID := adoptID
-	if paneID == "" {
-		// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
-		// new-session and the header split (lifecycle.go) already do. Without
-		// it tmux resolves the cwd from the invoking CLIENT — verified live
-		// (tmux 3.6): a split issued from outside tmux lands in the calling
-		// process's cwd, neither the target pane's cwd nor the session's. That
-		// happens to be PaneCwd whenever lyx runs under lyxcwd.Resolve's
-		// exact-equality cwd gate, and stops being it the moment a
-		// caller injects a cwd through the RunCLIIn seam instead — at which
-		// point every strand command would run against the wrong tree while
-		// reed reported success.
-		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
-		if err != nil {
-			return fmt.Errorf("split window: %w", err)
-		}
-		paneID = strings.TrimSpace(out)
-		if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
-			return err
-		}
+	// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
+	// new-session and the header split (lifecycle.go) already do. Without
+	// it tmux resolves the cwd from the invoking CLIENT — verified live
+	// (tmux 3.6): a split issued from outside tmux lands in the calling
+	// process's cwd, neither the target pane's cwd nor the session's. That
+	// happens to be PaneCwd whenever lyx runs under lyxcwd.Resolve's
+	// exact-equality cwd gate, and stops being it the moment a
+	// caller injects a cwd through the RunCLIIn seam instead — at which
+	// point every strand command would run against the wrong tree while
+	// reed reported success.
+	out, err := e.tmux.output("split-window", "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		return fmt.Errorf("split window: %w", err)
+	}
+	paneID := strings.TrimSpace(out)
+	if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
+		return err
 	}
 
 	s.PaneID = paneID

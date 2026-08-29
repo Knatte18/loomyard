@@ -494,8 +494,8 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// below handles both outcomes by re-probing hasSession and swallowing
 		// that failure as an expected success only when the session is
 		// confirmed gone (the tmux case); on psmux the reconcile tail simply
-		// re-enumerates and re-applies, and planPaneTarget never adopts a
-		// corpse.
+		// re-enumerates and re-applies — a strand's pane is now always a
+		// fresh split, so a corpse is never reused.
 		for _, id := range killPaneIDs {
 			_ = e.tmux.run("kill-pane", "-t", id)
 		}
