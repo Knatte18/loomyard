@@ -163,6 +163,7 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/spawn_test.go`
   - `internal/reedengine/lifecycle_test.go`
+  - `internal/reedengine/reconcile_test.go`
   - `internal/reedengine/generation.go`
   - `internal/reedengine/generation_test.go`
   - `internal/reedengine/server.go`
@@ -187,7 +188,10 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   The survivors are: the server-rebirth generation probe — `adoptPaneGenerationLocked` itself and the prose around it in `generation.go`, `server.go`, `generation_test.go`, `attach_test.go`, `reapply_test.go`, `contract_integration_test.go`, and `spawn_test.go`'s `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims` doc comment, whose "the guard adopts rather than clears" sentence is about the generation stamp and not about pane adoption — plus, in `state.go`, the `PaneGeneration` field comment alone and never the `HeaderPaneID` one card 9 rewrites;
   `internal/reedcli/up.go`'s config-key wording about adopting a key;
   `doc.go`'s session-name-rewrite bullet, whose "each adopt the other's panes" clause describes two worktrees colliding on one session name rather than `planPaneTarget`;
+  `spawn.go`'s own surviving hit, the `e.adoptPaneGenerationLocked(st)` call inside `loadOrInitStateLocked`, which cards 4 and 6 leave standing because it is the generation probe rather than pane adoption;
   and `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s merge-adoption prose, which belongs to fabric and not to reed.
+  The second sweep has one legitimate survivor of its own: `reconcile_test.go`'s `DeadHeaderPaneKeptNotKilled` comment, reading "the dead-pane kill loop, not only the untracked reap, spares it".
+  It describes the header's exemption from the dead-pane kill, which this task does not change, and card 2 preserves that case unchanged — so the phrase is still true and stays.
   Anything else — any surviving text describing `planPaneTarget`'s pane-adoption seam, the initial-pane-adoption behaviour, or the reap gate needing a bound present pane — is a missed rewrite.
   Close one further enumeration item the two greps cannot reach, because its comment contains neither sweep term: `internal/reedengine/lifecycle_test.go`'s fixture comment describing a pane as "the new-session initial pane a fresh boot leaves".
   Read it and confirm it merely labels a scripted fixture's pane set rather than asserting that the initial pane is adopted or survives an `up`;

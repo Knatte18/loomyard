@@ -74,8 +74,9 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   Add table cases covering: an alive header with zero strands and one untracked alive pane, where that pane is killed as an *untracked* kill and the header is not;
   an alive header with zero strands and several untracked panes (an old header pane plus an orphaned strand pane, M22's shape), where all of them are killed and the current header is spared;
   a header present but `Dead: true` with no strand bound and one alive untracked pane, where nothing is reaped;
-  a dead header alongside a strand bound to a present pane, where the reap fires anyway via `anyBoundPresent` and the header corpse is still spared;
-  and an alive header alongside a bound strand, where both stay exempt and a third foreign pane is still reaped.
+  and a dead header alongside a strand bound to a present pane, where the reap fires anyway via `anyBoundPresent` and the header corpse is still spared.
+  The alive-header-alongside-a-bound-strand shape needs no new case: `HeaderPaneNeverReapedAsUntrackedWhileStrandBound` already covers it exactly (a strand on `%1`, an alive `%header`, and a foreign `%7` that is reaped), and card 1 preserves it unchanged.
+  Confirm it still passes rather than adding a duplicate of it.
   Keep every existing dead-pane case's expectation unchanged — this card must not alter `keptDeadPane` behaviour or the dead-header exemption.
 - **Commit:** `fix(reedengine): let an alive header authorize the untracked pane reap`
 
@@ -106,7 +107,8 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   Both calls are required: `internal/logger`'s stderr half defaults to the Warn threshold and its durable half is disabled outright under `testing.Testing()`, so `SetOutput` alone captures nothing and an Info-asserting test would fail inexplicably.
   `os.Stderr` is the restore target because `internal/logger` exports no getter for its current writer and `os.Stderr` is that package's own declared default.
   Give the file a header comment saying exactly that.
-  In `internal/reedengine/reconcile_test.go`, add one focused test driving `reconcileLocked` through the `newTestEngine` fixture with an `e.tmux.execHook` that answers `kill-pane` successfully.
+  In `internal/reedengine/reconcile_test.go`, add one focused test — name it `TestReconcileLocked_LogsTheUntrackedPanesItReaps` — driving `reconcileLocked` through the `newTestEngine` fixture with an `e.tmux.execHook` that answers `kill-pane` successfully.
+  The `TestReconcileLocked_` prefix is required, not stylistic: this batch's `verify:` filters on `-run 'TestPlanReconcile|TestReconcileLocked'`, and `go test -run` exits 0 when a pattern matches nothing, so a name outside that prefix would leave the new log line with no gate at all.
   `execHook` is the field declared in `internal/reedengine/overlay.go` that replaces the real subprocess exec for both the run and capture paths;
   `internal/reedengine/lifecycle_test.go` shows the switch-on-`args[0]` shape to follow.
   Assert that a reconcile which kills untracked panes emits an `Info` line naming those pane ids, and that a reconcile which kills nothing emits no output at all.

@@ -120,7 +120,8 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add a test to `internal/reedengine/spawn_test.go` — name it `TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget` — driving `launchStrandLocked` directly through the `newTestEngine` fixture and an `e.tmux.execHook` fake, in the style `lifecycle_test.go`'s `TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure` already uses (switch on `args[0]`, script `list-panes` and `split-window`, capture the split argv).
+- **Requirements:** Add a test to `internal/reedengine/spawn_test.go` — name it `TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget` — driving `launchStrandLocked` directly through the `newTestEngine` fixture and an `e.tmux.execHook` fake, in the style `lifecycle_test.go` already uses.
+  Two tests there model the halves this needs: `TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure` shows the switch-on-`args[0]` hook scripting `list-panes` and `split-window`, and `TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath` shows the `splitArgs` capture used to assert on a split's argv.
   The fixture is a `ReedState` with an alive header pane, zero strands bound to a present pane, and one untracked alive pane;
   the strand passed in has `PaneID == ""`, mirroring how `addStrandLocked` appends it.
   The hook records the ordered sequence of tmux verbs it is asked to run and answers `list-panes` with the pre-reap pane set on the first call and the post-reap pane set (the untracked pane gone) on subsequent calls, so the re-enumeration is observable.

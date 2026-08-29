@@ -165,7 +165,9 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
 - **Requirements:** `TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd` builds its two-case table on the contrast between an adopted first pane — correct by construction, since `new-session` carried `-c` — and a split second pane, the path the `-c` defect broke.
   After this change both strands are splits, so the control/exercise contrast silently collapses into two identical cases and the test would keep passing while no longer testing what its comment claims.
   Rewrite it.
-  Drop the adoption framing from the function's doc comment (the paragraph beginning "The FIRST strand adopts the session's initial pane") and from the table, renaming the `adopted` local and the `"adopted initial pane (control)"` case label so neither names a seam that no longer exists.
+  Drop the adoption framing from the function's doc comment (the paragraph beginning "The FIRST strand adopts the session's initial pane") and from the table.
+  Three sites carry the word, not two: the `adopted` local, the `"adopted initial pane (control)"` case label, and the `--name` argument's value `"adopted"` on the same line as the local.
+  That third one is a live strand name rather than a comment, so rename it too — card 12's `grep -rn "adopt" internal/reedcli/*.go` reaches it and would otherwise report it as a missed rewrite.
   Keep both cases: a first-and-subsequent split pair is still worth asserting, because they take different `planPaneTarget` branches — the first strand's split targets the header (the header-as-last-resort fallback, since the reap has by then removed the initial pane), the second targets the tallest alive non-header pane.
   Say that in the rewritten comment, so the two cases read as genuinely distinct rather than duplicated.
   Restate the doc comment so the `-c` regression it guards is still plainly the stated subject: `launchStrandLocked`'s `split-window` carried no `-c`, so tmux resolved the new pane's cwd from the invoking client rather than from the anchor reed was told, and under the `RunCLIIn` seam that is observably the wrong tree.
