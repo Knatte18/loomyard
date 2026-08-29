@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
@@ -548,12 +549,15 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 
 // TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear pins the-clear-is-unconditional-including-zero-pins:
 // an apply whose plan yields zero pins — a HeaderPaneID absent from the live set, no strip strand
-// present — still issues the clear and nothing after it.
+// present — still issues the clear and nothing after it, once the watchdog itself is not separately
+// contributing the signal-hook entry resizePinHookArgvs would otherwise append (see the
+// WithWatchdogOn variant below for that case).
 func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
 	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
 	e.cfg.Header.HeightRows = 1
+	e.cfg.Watchdog = "off"
 
 	rec := &applyHookRecorder{}
 	e.tmux.execHook = newApplyRecordingHook(rec)
@@ -582,6 +586,50 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 	}
 	if !containsArg(rec.setHookArgvs[0], "-u") {
 		t.Errorf("sole set-hook argv = %v, want the -u clear", rec.setHookArgvs[0])
+	}
+}
+
+// TestApplyLayoutLocked_ZeroPinsWithWatchdogOnStillInstallsOnlyTheSignalHook is
+// TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear's watchdog-on counterpart: with zero resize-pane
+// pins but the watchdog enabled, the rebuilt array is the clear plus exactly one further entry — the
+// watchdog's own run-shell signal command, landing plain (no -a) since it is the array's only content
+// entry (windowsize.go's resizePinHookArgvs).
+func TestApplyLayoutLocked_ZeroPinsWithWatchdogOnStillInstallsOnlyTheSignalHook(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Width, e.cfg.Height = 100, 21
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.Header.HeightRows = 1
+	e.cfg.Watchdog = "on"
+
+	rec := &applyHookRecorder{}
+	e.tmux.execHook = newApplyRecordingHook(rec)
+
+	st := &ReedState{
+		HeaderPaneID: "%9", // absent from live below, so the mapping blanks it
+		Strands: []Strand{
+			{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		},
+	}
+	live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 11}}
+
+	if err := e.applyLayoutLocked(st, live); err != nil {
+		t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
+	}
+
+	if len(rec.setHookArgvs) != 2 {
+		t.Fatalf("recorded %d set-hook calls, want exactly 2 (the clear, then the signal hook): %v", len(rec.setHookArgvs), rec.setHookArgvs)
+	}
+	if !containsArg(rec.setHookArgvs[0], "-u") {
+		t.Errorf("first set-hook argv = %v, want the -u clear", rec.setHookArgvs[0])
+	}
+	signalCall := rec.setHookArgvs[1]
+	if containsArg(signalCall, "-a") {
+		t.Errorf("signal-hook argv = %v, want no -a (it is the array's sole content entry)", signalCall)
+	}
+	wantBody := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+	if signalCall[len(signalCall)-1] != wantBody {
+		t.Errorf("signal-hook body = %q, want %q", signalCall[len(signalCall)-1], wantBody)
 	}
 }
 

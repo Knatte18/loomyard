@@ -280,6 +280,13 @@ func TestReapplyLayout_HookProbeExactMatchOnly(t *testing.T) {
 		{"ForeignWindowResizedHook", "run-shell -b 'echo something-else'", nil, false, true},
 		{"OwnShapeDifferentWorktree", "run-shell -b \"sh -c 'touch \\\"/some/other/worktree/.lyx/reed-resize.signal\\\"'\"", nil, false, true},
 		{"RoundTripError", "", errors.New("boom"), false, false},
+		// A multi-entry array (windowsize.go's resizePinHookArgvs folds the watchdog signal command in
+		// alongside any resize-pane pins) answers show-options -v with one line per entry — the match
+		// must find the own command as an exact LINE anywhere in that answer, not just when it is the
+		// whole (single-line) answer.
+		{"OwnCommandAlongsideResizePinLines", "resize-pane -t %1 -y 3\n" + ownCommand, nil, true, true},
+		{"OwnCommandFirstAmongResizePinLines", ownCommand + "\nresize-pane -t %1 -y 3", nil, true, true},
+		{"ForeignHookAlongsideResizePinLines", "resize-pane -t %1 -y 3\nrun-shell -b 'echo something-else'", nil, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

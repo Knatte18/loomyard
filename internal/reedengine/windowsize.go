@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // parseWindowSize parses a `display-message -p '#{window_width} #{window_height}'` answer into a
@@ -178,15 +179,29 @@ func (e *Engine) readWindowSizeLatestLocked() bool {
 }
 
 // resizePinHookArgvs returns the full argv sequence rebuilding session's `window-resized` window-hook
-// array for pins. It performs no I/O and no logging.
+// array for pins, plus signalHook appended as one further entry when non-empty. It performs no I/O
+// and no logging.
+//
+// window-resized has no session-scoped counterpart to fall back on — verified live, tmux 3.6:
+// `set-hook` against any target that does not resolve to a specific window errors "no such window",
+// and a hook installed against a window target is visible only on that window, never any sibling
+// window of the same session. So the watchdog's own run-shell signal command (watchdog.go's
+// resizeHookCommand) MUST live in this exact array alongside the resize-pane pins, not in some
+// separate scope, or one rebuild silently clobbers the other — set-hook's plain (non-"-a") form
+// REPLACES the array wholesale (see "The plain set-hook form replaces" below), so whichever of the two
+// mechanisms last called set-hook without -a would otherwise erase the other's entry.
 //
 // The first returned argv is always the clear — {"set-hook", "-u", "-w", "-t",
-// exactSessionWindowTarget(session), "window-resized"} — emitted even when pins is empty, per the
-// Shared Decision the-clear-is-unconditional-including-zero-pins. Then one argv per pin, in pins
-// order: {"set-hook", "-w", "-t", exactSessionWindowTarget(session), "window-resized", body} for the
-// first pin and {"set-hook", "-a", "-w", "-t", exactSessionWindowTarget(session), "window-resized",
-// body} for every subsequent pin, where body is the single string "resize-pane -t <pane> -y
-// <height>".
+// exactSessionWindowTarget(session), "window-resized"} — emitted even when pins is empty and
+// signalHook is "", per the Shared Decision the-clear-is-unconditional-including-zero-pins. Then one
+// argv per pin, in pins order: {"set-hook", "-w", "-t", exactSessionWindowTarget(session),
+// "window-resized", body} for the first entry and {"set-hook", "-a", "-w", "-t",
+// exactSessionWindowTarget(session), "window-resized", body} for every subsequent entry, where a pin's
+// body is "resize-pane -t <pane> -y <height>". When signalHook is non-empty it is appended last, as
+// its own entry, using the same first-entry-is-plain/later-entries-carry-"-a" rule — so it lands plain
+// (no -a) only when pins is empty, and with -a otherwise. hookInstalledLocked (reapply.go) reads this
+// array back and looks for signalHook as an exact LINE within it, never merely a substring, so its
+// position among the pins does not matter to that probe.
 //
 // The body is one whole argv element; this function never emits a bare ";" element, because
 // set-hook takes its body as a single argument and a separate ";" element would terminate the
@@ -194,23 +209,52 @@ func (e *Engine) readWindowSizeLatestLocked() bool {
 // for failure isolation: verified live on tmux 3.6, a resize-pane naming a destroyed pane aborts the
 // rest of a single command list, while array entries are independent. The header is always pin index
 // 0 so it fires before any strip pin can go wrong.
-func resizePinHookArgvs(session string, pins []render.Pin) [][]string {
+func resizePinHookArgvs(session string, pins []render.Pin, signalHook string) [][]string {
 	target := exactSessionWindowTarget(session)
-	argvs := make([][]string, 0, len(pins)+1)
+	argvs := make([][]string, 0, len(pins)+2)
 	argvs = append(argvs, []string{"set-hook", "-u", "-w", "-t", target, "window-resized"})
-	for i, pin := range pins {
-		body := fmt.Sprintf("resize-pane -t %s -y %d", pin.PaneID, pin.Height)
-		if i == 0 {
+	first := true
+	appendEntry := func(body string) {
+		if first {
 			argvs = append(argvs, []string{"set-hook", "-w", "-t", target, "window-resized", body})
+			first = false
 		} else {
 			argvs = append(argvs, []string{"set-hook", "-a", "-w", "-t", target, "window-resized", body})
 		}
 	}
+	for _, pin := range pins {
+		appendEntry(fmt.Sprintf("resize-pane -t %s -y %d", pin.PaneID, pin.Height))
+	}
+	if signalHook != "" {
+		appendEntry(signalHook)
+	}
 	return argvs
 }
 
-// installResizePinsLocked rebuilds this session's `window-resized` window-hook array from pins,
-// issuing each argv resizePinHookArgvs builds through e.tmux.run. It returns nothing.
+// windowResizedSignalHookCommandLocked returns the watchdog signal hook's command string — the
+// run-shell invocation resizeHookCommand builds, touching this worktree's resize signal file — when
+// the watchdog is enabled and reachable, and "" otherwise (Windows, watchdog off, or an invalid
+// watchdog value, which behaves like off). "" is resizePinHookArgvs's sentinel for "append no signal
+// entry"; an invalid value is logged non-fatally, matching every other watchdogOption call site in
+// this package. Assumes the op lock is already held.
+func (e *Engine) windowResizedSignalHookCommandLocked() string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	enabled, err := watchdogOption(e.cfg.Watchdog)
+	if err != nil {
+		logger.Warn("reed: invalid watchdog value, treating the watchdog as off", "socket", e.Socket(), "session", e.SessionName(), "watchdog", e.cfg.Watchdog, "err", err)
+		enabled = false
+	}
+	if !enabled {
+		return ""
+	}
+	return resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+}
+
+// installResizePinsLocked rebuilds this session's `window-resized` window-hook array from pins plus
+// the watchdog signal hook (windowResizedSignalHookCommandLocked), issuing each argv
+// resizePinHookArgvs builds through e.tmux.run. It returns nothing.
 //
 // This follows the Shared Decision hook-failure-is-non-fatal-everywhere, which already governs
 // pinGeometryOptionsLocked in this same file: each failure is logged via logger.Warn naming the
@@ -219,9 +263,12 @@ func resizePinHookArgvs(session string, pins []render.Pin) [][]string {
 // the array from entry [0] regardless.
 //
 // The clear is unconditional because reaching a call site means reed has computed an opinion, and
-// with zero pins that opinion is "nothing is pinned" (Shared Decision
+// with zero pins and no signal hook that opinion is "nothing is pinned" (Shared Decision
 // the-clear-is-unconditional-including-zero-pins). The whole array is a snapshot rebuilt on every
-// successful apply rather than something recomputed at fire time.
+// successful apply rather than something recomputed at fire time — which is also why the watchdog
+// signal entry is folded in HERE rather than installed independently by pinGeometryOptionsLocked: a
+// separate, independently-timed set-hook call would be exactly one more plain rebuild racing this one
+// for the same array, and whichever ran last would silently win.
 //
 // Known limitation: a clamp-derived pin is computed for the box at install time, so an operator who
 // shrinks the terminal past a clamp threshold with no intervening reed op keeps a pre-shrink pin,
@@ -229,7 +276,7 @@ func resizePinHookArgvs(session string, pins []render.Pin) [][]string {
 //
 // Assumes the op lock is already held, like every other Locked method in this file.
 func (e *Engine) installResizePinsLocked(pins []render.Pin) {
-	for _, argv := range resizePinHookArgvs(e.SessionName(), pins) {
+	for _, argv := range resizePinHookArgvs(e.SessionName(), pins, e.windowResizedSignalHookCommandLocked()) {
 		if err := e.tmux.run(argv...); err != nil {
 			logger.Warn("reed: failed to install resize-pane hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		}

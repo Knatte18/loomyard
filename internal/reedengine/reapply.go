@@ -49,9 +49,13 @@ type ReapplyResult struct {
 // failure shape here yields known == false and therefore poll mode, so no capability-probe change is
 // needed and no psmux risk is taken.
 //
-// The match against resizeHookCommand is exact against reed's own command string for THIS worktree's
-// signal path, never merely "some window-resized hook exists" (also live-verified as necessary): a
-// foreign hook or a sibling worktree's signal path would deliver nothing this watcher can consume.
+// window-resized has no session scope to read back separately from the resize-pin array
+// (windowsize.go's resizePinHookArgvs doc comment): a multi-entry hook's `show-options -v` answer is
+// every entry's command string, one per line, in install order, so the watchdog's own signal command
+// can share the array with any number of resize-pane pins. The match is therefore against each line
+// of the answer, not the answer as a whole — exact per line, never a substring match, so a foreign
+// hook or a sibling worktree's signal path (which shares the "run-shell -b" prefix but never the exact
+// remainder) still cannot be mistaken for reed's own line.
 func (e *Engine) hookInstalledLocked() (installed bool, known bool) {
 	if runtime.GOOS == "windows" {
 		return false, false
@@ -61,7 +65,17 @@ func (e *Engine) hookInstalledLocked() (installed bool, known bool) {
 		logger.Debug("reed: failed to read back window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false, false
 	}
-	return strings.TrimSpace(out) == resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath()), true
+	want := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		return false, true
+	}
+	for _, line := range strings.Split(trimmed, "\n") {
+		if line == want {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 // reapplyLayout is the watchdog's single re-apply op: it tries the (non-blocking) op lock, and, if

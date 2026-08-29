@@ -397,6 +397,21 @@
 //     (unchained) attach path, not evidence of a miscomputed layout — a
 //     synthetic bare attach reproduces the reported table exactly, with 40
 //     and 50 rows leaving the header at 1 row and 76 rows taking it to 10.
+//     The watchdog's own run-shell signal command (watchdog.go's
+//     resizeHookCommand) lives in THIS SAME array, appended as one further
+//     entry by installResizePinsLocked whenever the watchdog is enabled —
+//     never installed independently. window-resized has no session scope to
+//     fall back on: verified live, tmux 3.6, `set-hook` against any target
+//     that does not resolve to a specific window errors "no such window",
+//     and a hook installed against a window target is invisible from any
+//     sibling window of the same session, -w or no -w. Since the array's
+//     plain (non-"-a") form replaces the whole thing, a signal hook installed
+//     by a separate call would be silently clobbered the next time this
+//     rebuild ran (or vice versa) — folding it into the one rebuild is what
+//     keeps both mechanisms alive on the same event. hookInstalledLocked
+//     (reapply.go) reads the array back and matches the signal command
+//     against each line of the multi-entry answer, never the answer as a
+//     whole, so its position among the resize-pane pins does not matter.
 //   - The chained attach (attach.go): AttachArgv's argv is
 //     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
 //     separator a literal one-character ";" argv element — never "\;",
@@ -461,12 +476,14 @@
 //     worst available failure mode.
 //   - The plain set-hook form replaces; -a accumulates (windowsize.go): four
 //     identical plain installs yield exactly one fire per resize; three
-//     further -a appends yield four. pinGeometryOptionsLocked runs on every
-//     AttachArgv pre-flight as well as at boot, so -a would cost N run-shell
-//     spawns per resize after N attaches.
+//     further -a appends yield four. installResizePinsLocked's rebuild always
+//     starts from its own unconditional clear (resizePinHookArgvs), so a
+//     plain first entry followed by -a on every later one is what keeps a
+//     rebuild idempotent across N AttachArgv pre-flights and N applies,
+//     rather than accumulating N run-shell spawns per resize.
 //   - The hook readback is show-options, not show-hooks (reapply.go): in
 //     tmux 3.6 hooks are options, and show-hooks prints nothing for a
-//     session-scoped hook that demonstrably fires — a show-hooks-based probe
+//     window-scoped hook that demonstrably fires — a show-hooks-based probe
 //     would report "no hook" every time and pin every watcher into poll
 //     mode.
 //   - run-shell without -b blocks the tmux server (watchdog.go).
