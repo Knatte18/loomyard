@@ -1,6 +1,9 @@
 # Plan Card format — symbol-level, Quarry-ready
 
-> **Status: implemented**, by the **planparser: Card-format migration to `Edits`/`Uses`** task (`manifest/roadmap.md`'s Done section is cleared regularly, not a durable record). `contracts/specs/loom-plan-spec.md` is the as-built format-4 contract this doc designed; see it, not this doc, for the pinned Card fields — both the spec and `contracts/stencils/loom/loom-template-plan.md` are rewritten to this design by that task. `manifest/designs/scout-plan-symbol-fields.md` and `manifest/designs/webster-parallel-execution.md` predate this doc and are stale, and their reconciliation is the roadmap's job, not this doc's: the Someday `webster: worktree-per-card parallel execution` item owns and reconciles `webster-parallel-execution.md`, and the Someday `scout-backed plan symbol fields` item owns `scout-plan-symbol-fields.md`.
+> **Status: implemented**, by the **planparser: Card-format migration to `Edits`/`Uses`** task (`manifest/roadmap.md`'s Done section is cleared regularly, not a durable record). `contracts/specs/loom-plan-spec.md` is the as-built format-4 contract this doc designed; see it, not this doc, for the pinned Card fields — both the spec and `contracts/stencils/loom/loom-template-plan.md` are rewritten to this design by that task. `manifest/designs/webster-parallel-execution.md` and `manifest/designs/quarry-plan-symbol-verification.md` both predate this doc and were stale against it; the 2026-08-29 designs audit reconciled both.
+> Audited 2026-08-29 and kept rather than deleted, against the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle)'s default for an implemented design draft: this doc is a live reference, not a superseded one.
+> `contracts/stencils/loom/loom-rubric-plan-review.md`, `contracts/stencils/loom/loom-rubric-webster-review.md`, `contracts/stencils/loom/loom-template-plan.md`, `contracts/recipes/loom-recipe.yaml`, `contracts/specs/loom-plan-spec.md`, and `internal/planparser`'s package comments all cite it by name for the Card model the spec's format only pins, and its own Verify model section is the sole home of the three-tier design `loom-plan-spec.md` records as designed-but-not-implemented.
+> Delete it once that Verify model either ships into the spec or is abandoned, and the citing stencils are repointed.
 
 ## Card fields
 
@@ -60,11 +63,11 @@ Granularity rule: one card per independently reviewable/testable unit, not one c
 
 Delete vs. Edit: removing the last caller of a symbol and deleting the symbol are two cards, not one — a symbol can have N callers, each requiring its own Edit card, and only one final Delete card once all are gone.
 
-Docstrings are not a separate card: a symbol's own doc comment is written/updated as part of whichever Create/Edit/Rename card touches that symbol, per `code-comment-conventions.md`. `Prosa` is reserved for documentation with no single-symbol owner — design docs, `docs/overview.md`, module-level `doc.go` headers not triggered by a code change, repo-wide comment-convention sweeps.
+Docstrings are not a separate card: a symbol's own doc comment is written/updated as part of whichever Create/Edit/Rename card touches that symbol, per `docs/code-comment-conventions.md`. `Prosa` is reserved for documentation with no single-symbol owner — design docs, `docs/overview.md`, module-level `doc.go` headers not triggered by a code change, repo-wide comment-convention sweeps.
 
 ## Docstring convention
 
-See [code-comment-conventions.md](code-comment-conventions.md) — the actual rule (Go only, for now). This doc only adds one Card-specific requirement: a Rename card's execution must also fix the target symbol's own self-referencing comment opening (see above), on top of whatever `code-comment-conventions.md` requires generally.
+See [code-comment-conventions.md](../../docs/code-comment-conventions.md) — the actual rule (Go only, for now). This doc only adds one Card-specific requirement: a Rename card's execution must also fix the target symbol's own self-referencing comment opening (see above), on top of whatever `docs/code-comment-conventions.md` requires generally.
 
 Wiring: a "Load these skills: ..." section composed into every code-writing producer's stencil (same stencil-composition mechanism `bouncer.go` already uses) — not left to model discretion to invoke.
 
@@ -72,7 +75,7 @@ Wiring: a "Load these skills: ..." section composed into every code-writing prod
 
 Every mechanical check above must work without Quarry, because Quarry does not exist yet and the format must not be blocked on it:
 
-- **Impact/refs**: `go doc <pkg> <Symbol>` for existence/definition, `grep -rn` scoped to the right package for call sites, manual read. Quarry later replaces this with `quarry impact <symbol>`, which must also return each caller's full enclosing function and its own doc comment, not just file:line (see `code-comment-conventions.md`). The Card format and `ImpactSummary` output shape do not change either way.
+- **Impact/refs**: `go doc <pkg> <Symbol>` for existence/definition, `grep -rn` scoped to the right package for call sites, manual read. Quarry later replaces this with `quarry impact <symbol>`, which must also return each caller's full enclosing function and its own doc comment, not just file:line (see `docs/code-comment-conventions.md`). The Card format and `ImpactSummary` output shape do not change either way.
 - **Rename**: an AST-aware script (`go/ast`+`go/types` for Go, Roslyn `Renamer` for C#, `rope`/`libcst` for Python — model picks the library, but the script must not be text/regex-based), then a grep pass to confirm zero remaining old-name references and that the symbol's own doc comment was updated. Quarry later replaces the script-writing step with a mechanical rename primitive; the grep-verify step stays as the same backstop either way.
 - **Delete**: manual grep for zero remaining callers, same caveat as today (`assert-no-callers`-equivalent is necessary, not sufficient — interface satisfaction, dispatch-table registration, and prose references are not caught).
 

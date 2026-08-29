@@ -1,5 +1,12 @@
 # logger-coverage — audit of internal/logger coverage across spawn/hard-error paths
 
+> **Status: a durable, re-runnable survey — not a module-design draft, and not deleted when its fixes land.**
+> Classified explicitly by the 2026-08-29 designs audit, which found this file was the one doc under `manifest/designs/` with no Status line of its own.
+> The [documentation lifecycle](../../docs/overview.md#documentation-lifecycle)'s delete-on-landing rule applies to per-module design drafts;
+> this is instead the enumerated evidence behind `CONSTRAINTS.md`'s Live-Substrate Spawn Observability invariant, and `cmd/lyx/spawnobservability_test.go` cites it by name for the argument the guard test deliberately does not encode.
+> Every verdict the `logger-coverage-audit` task acted on has since landed and the tables below are re-verified against the tree as of 2026-08-29;
+> re-run both selectors rather than trusting them after any further spawn-site work.
+
 ## What this is, and why it exists
 
 This document is the enumerated coverage survey behind the **Live-Substrate Spawn Observability** invariant (`CONSTRAINTS.md`).
@@ -33,16 +40,16 @@ comment mentions are excluded, per the spawn selector above.
 | --- | --- | --- | --- |
 | `internal/reedengine/lifecycle.go` | 1 | `Run` | covered |
 | `internal/reedengine/overlay.go` | 2 | `Run`/`Output` | covered |
-| `internal/reedcli/attach.go` | 1 | waits via `Run` | add (`Info` spawn + teardown) |
-| `internal/loomcli/run.go` | 2 | one waits via `Run` | one covered, one add (`Info` spawn + teardown) |
-| `internal/fabricengine/spawn.go` | 1 | detached | add (`Info` spawn only; the `Warn` on `Start` failure already exists) |
-| `internal/websterengine/integration.go` | 1 | `Run` | add (`Info` spawn + teardown) |
-| `internal/treadleengine/gate.go` | 1 | `CombinedOutput` | add (`Info` spawn + teardown) |
-| `internal/configengine/edit.go` | 1 | `Run` | add (`Info` spawn + teardown) |
-| `internal/boardengine/spawn.go` | 1 | detached | add (`Info` spawn only, `Warn` on `Start` failure) |
-| `internal/vscode/launch_linux.go` | 1 | detached | add (`Info` spawn only, `Warn` on `Start` failure) |
-| `internal/vscode/launch_windows.go` | 1 | detached | add (same shape) |
-| `internal/reedengine/proctree_windows.go` | 2 | `Output` | add (`Debug` only) |
+| `internal/reedcli/attach.go` | 1 | waits via `Run` | covered (`Info` spawn + teardown) |
+| `internal/loomcli/run.go` | 2 | one waits via `Run` | covered (both; `Info` spawn + teardown on the attach site) |
+| `internal/fabricengine/spawn.go` | 1 | detached | covered (`Info` spawn, `Warn` on `Start` failure) |
+| `internal/websterengine/integration.go` | 1 | `Run` | covered (`Info` spawn + teardown) |
+| `internal/treadleengine/gate.go` | 1 | `CombinedOutput` | covered (`Info` spawn + teardown) |
+| `internal/configengine/edit.go` | 1 | `Run` | covered (`Info` spawn + teardown) |
+| `internal/boardengine/spawn.go` | 1 | detached | covered (`Info` spawn, `Warn` on `Start` failure) |
+| `internal/vscode/launch_linux.go` | 1 | detached | covered (`Info` spawn, `Warn` on `Start` failure) |
+| `internal/vscode/launch_windows.go` | 1 | detached | covered (same shape) |
+| `internal/reedengine/proctree_windows.go` | 2 | `Output` | covered (`Debug` only) |
 | `internal/gitexec/gitexec.go` | 1 | `Run` | blocked (import cycle) |
 | `internal/gitkit/gitkit.go` | 3 | `Run` | blocked (gitkit Leaf Invariant) |
 | `internal/githubclient/token.go` | 1 | `Output` | blocked (GitHub Auth leaf allowlist) |
@@ -50,9 +57,9 @@ comment mentions are excluded, per the spawn selector above.
 | `cmd/testtiming/main.go` | 1 | `Run` | excluded (test-timing harness) |
 | `tools/deploy/main.go`, `tools/sandbox/*` | 7 | — | excluded (dev tooling, outside the walk) |
 
-`internal/loomcli/run.go`'s two sites split: the `loom drive` spawn is covered (`Info` at spawn),
-and the tmux-attach spawn waits via `Run` but is unlogged, hence add.
-`internal/loomcli/run.go`, `internal/reedcli/attach.go`, and `internal/fabricengine/spawn.go` were re-verdicted from an earlier, coarser `covered` reading — see "What 'covered' means here" below.
+`internal/loomcli/run.go`'s two sites were the survey's one split verdict: the `loom drive` spawn was already covered (`Info` at spawn), while the tmux-attach spawn waited via `Run` unlogged.
+Both are logged now.
+`internal/loomcli/run.go`, `internal/reedcli/attach.go`, and `internal/fabricengine/spawn.go` were re-verdicted from an earlier, coarser `covered` reading before being fixed — see "What 'covered' means here" below.
 
 ## Detached spawns are spawn-only
 
@@ -64,11 +71,12 @@ and a `Warn` records a `Start` failure.
 ## What "covered" means here
 
 A verdict of `covered` is a per-call-site claim — the spawn call itself is logged — not merely a claim that the enclosing file imports `internal/logger` somewhere.
-Read against that stricter measure, three sites originally read as `covered` on the coarser file-level measure were re-verdicted `add` on a per-call read:
+That distinction is why the survey is worth re-running rather than replacing with a file-level grep: three sites originally read as `covered` on the coarser file-level measure were re-verdicted `add` on a per-call read, and only then fixed.
+As found, before the fixes landed:
 
-- `internal/fabricengine/spawn.go` logs only a `Warn` on `Start` failure and announces no spawn.
-- `internal/reedcli/attach.go`'s only `logger` line is an unrelated terminal-size warning, leaving its tmux-attach spawn unlogged.
-- `internal/loomcli/run.go` logs its `loom drive` spawn but not its tmux-attach spawn.
+- `internal/fabricengine/spawn.go` logged only a `Warn` on `Start` failure and announced no spawn.
+- `internal/reedcli/attach.go`'s only `logger` line was an unrelated terminal-size warning, leaving its tmux-attach spawn unlogged.
+- `internal/loomcli/run.go` logged its `loom drive` spawn but not its tmux-attach spawn.
 
 `internal/reedengine/overlay.go`'s two sites are `covered` at `Debug` — `TmuxCmd.run` and `TmuxCmd.output` each log the argv immediately before spawning —
 and `Debug` is correct there for the same reason it is correct for `internal/reedengine/proctree_windows.go`: both are high-frequency probe wrappers whose `Info` volume would flood the durable sink.
@@ -82,9 +90,9 @@ Sites are cited by file and enclosing function, never by line number.
 
 | Site | Non-Done handling | Verdict |
 | --- | --- | --- |
-| `internal/shedadapters/singlellm.go` `mapOutcome` | `Asking`→`Stuck`, `Died`/`Timeout`→error, `default`→error | add (`Warn` on `Died`/`Timeout` and on `default`) |
-| `internal/websterengine/runlevel.go` `Run`'s Master outcome switch | `Asking`/`Died`/`Timeout`→typed errors, `default`→error | add (`Warn` on all four non-`Done` branches) |
-| `internal/mergeresolve/mergeresolve.go` `Resolve`'s `!= OutcomeDone` branch | → `abortAndStuck` | add (`Warn` before `abortAndStuck`) |
+| `internal/shedadapters/singlellm.go` `mapOutcome` | `Asking`→`Stuck`, `Died`/`Timeout`→error, `default`→error | covered (`Warn` on `Asking`, on `Died`/`Timeout`, and on `default`) |
+| `internal/websterengine/runlevel.go` `Run`'s Master outcome switch | `Asking`/`Died`/`Timeout`→typed errors, `default`→error | covered (`Warn` on all four non-`Done` branches) |
+| `internal/mergeresolve/mergeresolve.go` `Resolve`'s `!= OutcomeDone` branch | → `abortAndStuck` | covered (`Warn` before `abortAndStuck`) |
 | `internal/shedadapters/burler.go` two switches (`Call`, `probeLiveRound`) | retry then respawn | covered |
 | `internal/shedadapters/bouncer.go` two comparisons (`runSeedSpawn`, `judgeCall`) | seed run and judge run did not complete | covered |
 | `internal/treadleengine/run.go` two comparisons (`runRound`) | retry on `Died`/`Timeout` | covered |

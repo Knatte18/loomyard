@@ -1,6 +1,8 @@
 # Loom: the phased orchestrator
 
-> **Status: Design — not built.** This is a plan draft. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), when the modules land the durable parts of this doc fold into `overview.md` and the package headers, and this file is deleted. Until then it is the single design reference for the loom orchestration model.
+> **Status: built, except `Plan-Sweep`.** All seventeen `contracts/recipes/loom-recipe.yaml` rows have real producers — `internal/loomshed`'s `stubProducer` is no longer used by loom's own list — across `internal/loomengine`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomshed`. The one table row never built is `Plan-Sweep`, which is not a recipe row at all; it has its own Someday roadmap item.
+> This banner said "Design — not built" until the 2026-08-29 designs audit, long after the module shipped, while the body below already described the recipe in as-built present tense.
+> Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) this file is now overdue for retirement: its durable parts belong in `overview.md` and the package headers, and reconciling 489 lines of design prose against the as-built module is its own task, not a status-line edit. Until that happens it remains the single design reference for the loom orchestration model, and should be read as design intent that the code may have moved past.
 
 ## What it is
 
@@ -72,7 +74,7 @@ The thin-Input carve-out (a chain-head producer, human intent instead of an arti
 Review is never a property attached to the producer it reviews — it stays a separate producer, reached by explicit routing rather than by position in the list, consistent with the review gate being one generic mechanism reused for every phase (see [the gate](#the-gate) below).
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach the round loop used against a fake `burler`.
-Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`, already shipped) is built for real first, every `LLM`/review-segment row stays a stub until then.
+Build order followed from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`) was built for real first, and every `LLM`/review-segment row stayed a stub until then. All of them have since shipped.
 `Publish` and `Finalize` (rows 13–14) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubbed both, then swapped in the real, shared-by-reference producers once `landing: Publish + Finalize producers` landed, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
 The shipped `landing: parent-fabric resolution chain` item completed their construction chain by filling `Env.Landing`, so `Publish`/`Finalize` are now genuinely constructible in a real `lyx loom drive` run, not merely implemented.
 The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last per-producer prompt/rubric tasks (`loom: Discussion-Write producer`, `loom: Discussion-Review producer`, `loom: Plan-Write producer`, `loom: Plan-Review producer` (shipped), `loom: Webster-Review producer` (shipped)), and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
@@ -186,9 +188,9 @@ Also flag:
 
 ## Plan-Sweep detail — the quarry-inventory spec
 
-**Build order note:** `Plan-Sweep` is not built in `loom: phase-machine scaffolding` — it stays a stub there, alongside `Plan-Write`, its only consumer.
+**Build order note:** `Plan-Sweep` was not built in `loom: phase-machine scaffolding` — it stayed a stub there, alongside `Plan-Write`, its only consumer.
 Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
-Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item), `Plan-Sweep` stays a stub past that point too — deferred to its own Someday roadmap item, since quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry.
+Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item, since shipped), `Plan-Sweep` was never built at all — it is not even a recipe row, and is deferred to its own Someday roadmap item, since quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry.
 `Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
 
 `Plan-Sweep` (row 6) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
@@ -258,7 +260,7 @@ This section is a doc *about* that stencil, per the Producer Pointer-Rule Invari
 
 Two dimensions on top of ordinary diff review:
 
-- **Comment-convention compliance.** Any new/changed doc comment follows [code-comment-conventions.md](code-comment-conventions.md) — no unnecessary symbol cross-references.
+- **Comment-convention compliance.** Any new/changed doc comment follows [code-comment-conventions.md](../../docs/code-comment-conventions.md) — no unnecessary symbol cross-references.
 - **Per-card mechanical check.** Confirms every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's (e.g. the AST-script-plus-grep for a Rename group, `assert-no-callers` for a Delete group), not only that the diff compiles and tests pass.
 
 The stencil adds two things beyond those two bullets, so this durable record is not thinner than the shipped file: it derives its own review range from `product.parent` in loom's status file rather than guessing, and it blocks with a BLOCKING finding when that value cannot be read; and it carries a do-not-flag list keeping the three upstream gates' subjects — the plan's format, the plan itself, and the overlay artifacts — out of this gate's findings.

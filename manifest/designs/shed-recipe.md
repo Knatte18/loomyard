@@ -3,6 +3,9 @@
 > **All four pieces — the engine registry, the recipe loader/builder, the validity checker, and loom's own conversion to a recipe file — are built and shipped, as `internal/shedrecipe`, `internal/shedbuild`, `internal/shedcheck`, and `internal/loomrecipe` respectively.**
 >
 > **Status: all four pieces of this group are Done.** See each package's own documentation for as-built detail — `manifest/roadmap.md`'s Done section is cleared regularly, not a durable record.
+> This doc survives its pieces landing, which the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) would otherwise read as grounds for deletion, for the same reason [shed.md](shed.md) does and audited alongside it on 2026-08-29: it is shared narrative the still-unbuilt `loom` is written against.
+> [loom.md](loom.md) cites it for the recipe's own row/routing model and [shed.md](shed.md) links it by anchor (`#whats-in-a-recipe-row`) for the `Segment`-field reasoning, both links Markdown Link Integrity enforces, and `internal/shedrecipe/paths.go` cites it for the reject-absolute-paths rationale.
+> Retention should be re-evaluated once `loom` lands.
 
 ## The idea
 

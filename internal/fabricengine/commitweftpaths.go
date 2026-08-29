@@ -83,8 +83,7 @@ func CommitWeftPaths(rec *Mutations, weftPath, anchorRel string, relPaths []stri
 }
 
 // CommitAnchoredPaths is CommitWeftPaths's fabric-vocabulary-neutral wrapper: it resolves the
-// commit target from l itself (mirroring ReadOrigin/WriteOrigin's own l-in, no-path-out shape,
-// per the weft-visibility-leak closure recorded in fabric-unified-view.md's "Slice 8"), so a
+// commit target from l itself, taking a Location in and handing no weft path back out, so a
 // caller outside the owner set -- internal/loomcli's session-bootstrap commit is the first one --
 // can reach this narrow, no-push, explicit-paths commit shape without ever naming a weft path,
 // importing internal/weftname, or otherwise learning that weft exists.
