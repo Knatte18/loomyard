@@ -11,7 +11,7 @@ depends-on: []
 
 ## Batch Scope
 
-This batch delivers the entire offline test apparatus for `github-tree.sh` before any line of that script exists: a stub `gh` executable that applies the real `--jq` expression it was handed, 25 canned GitHub tree-API JSON response bodies, and `github-tree-selftest.sh` — a harness in the shape of the existing `selftest.sh`, carrying twenty numbered assertions.
+This batch delivers the entire offline test apparatus for `github-tree.sh` before any line of that script exists: a stub `gh` executable that applies the real `--jq` expression it was handed, 25 canned GitHub tree-API JSON response bodies, and `github-tree-selftest.sh` — a harness in the shape of the existing `selftest.sh`, carrying twenty-two numbered assertions.
 Taken together these fully define the contract batch 2 must satisfy: the exact stdout for every scenario, the exact call count and call identity for every scenario, and a distinguishing stderr substring for every distinguished failure.
 
 The external interface batch 2 consumes is threefold and is fixed here: (a) `github-tree.sh` is invoked as `bash <path>/github-tree.sh <owner/repo> [path]` and nothing else;
@@ -211,7 +211,7 @@ Batch-local decision beyond `## Shared Decisions`: the harness generates each sc
   Map content is tab-separated: endpoint, body filename, and an optional HTTP status marker;
   build it with `printf` and explicit `\t` escapes so the tabs are unambiguous in the source.
 
-  Then write these twenty tests, in this order.
+  Then write these twenty-two tests, in this order.
   Every one of tests 9 through 18 additionally asserts that stdout is byte-empty and that the exit status is non-zero, because that pair *is* the all-or-nothing contract and asserting it once per error path is the point.
 
   Test 1, fast path untruncated: scenario `small`, repo `acme/small`, no path argument, map routing `repos/acme/small/git/trees/HEAD?recursive=1` to `small-root-rec.json`.
@@ -291,6 +291,16 @@ Batch-local decision beyond `## Shared Decisions`: the harness generates each sc
   Test 20, the harness's own prerequisite guard: in a subshell, set `JQ_BIN` to `definitely-not-jq` and call `require_jq`, capturing its stderr and status.
   Assert it returns non-zero and that its message contains both `definitely-not-jq` and `install jq`.
   Running the guard directly in a subshell rather than re-invoking the harness is deliberate — it exercises the same function the up-front check calls, with no recursion to bound.
+
+  Test 21, too many arguments: invoke `github-tree.sh` with three arguments, `acme/small`, `src`, and `extra`.
+  Assert exit status 2 specifically — not merely non-zero, since 2 is the usage code the script reserves and distinguishing it from the general failure code is the only thing that makes it worth reserving — byte-empty stdout, an empty call log, and stderr containing the literal `usage:`.
+  Test 16 covers the argument-count check's lower bound;
+  this covers its upper bound, which is a separate branch of the same condition and was otherwise unexercised.
+
+  Test 22, the stub's own rejection path: invoke the stub `gh` directly, bypassing `github-tree.sh` entirely, with a deliberately wrong shape — `auth status` — and the three `GH_STUB_*` variables exported as usual.
+  Assert exit status 98 and stderr containing `unsupported invocation`, then assert that the call log nonetheless gained a line, since the stub logs before it validates and a test asserting "no call was made" elsewhere in this harness depends on that ordering holding.
+  Every other test in this harness confirms the one-call property by counting log lines, which catches a re-added `gh auth status` preflight by arithmetic alone;
+  this one confirms the mechanism that is supposed to make such a call fail loudly rather than be silently absorbed, and it is the only test that exercises the stub as the thing under test rather than as scaffolding.
 
   Delete the `$SCRATCH` tree at the end of a successful run, in the same spirit as `selftest.sh`'s closing `clean_bin` call.
 - **Commit:** `test(prowler): add offline github-tree-selftest harness`

@@ -3,7 +3,7 @@
 ```yaml
 task: "prowler: collapse github-repo-explorer's truncation-fallback tree-walk into one script call"
 slug: "prowler-github-tree-script"
-approved: false
+approved: true
 started: "20260829-110046"
 parent: "main"
 root: ""

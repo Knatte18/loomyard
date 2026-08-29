@@ -149,7 +149,7 @@ Batch-local decision beyond `## Shared Decisions`: none — the script's contrac
 ## Batch Tests
 
 `verify:` for this batch is `bash plugins/prowler/scripts/github-tree-selftest.sh` — the harness batch 1 created, run for real against the script this batch creates.
-It covers all three files: the twenty assertions exercise `github-tree.sh` end to end through a stub `gh`, and they transitively validate the stub and all 25 JSON fixture bodies from batch 1, since a malformed body or a mis-keyed map surfaces as a failing scenario.
+It covers all three files: the twenty-two assertions exercise `github-tree.sh` end to end through a stub `gh`, and they transitively validate the stub and all 25 JSON fixture bodies from batch 1, since a malformed body or a mis-keyed map surfaces as a failing scenario.
 The command is scoped to this task's own harness and does not invoke `plugins/prowler/scripts/selftest.sh`, which exercises the unrelated build-on-first-run wrapper and needs a Go toolchain.
 
 The two documentation files have no runnable surface and are verified by review.
