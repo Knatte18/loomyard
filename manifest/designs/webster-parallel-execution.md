@@ -17,7 +17,11 @@ Not built.
 ## A possible unblocking shape (2026-08-20)
 
 A structural alternative to the rejected concurrent-forks-in-one-tree shape above: each DAG-independent group (a batch, possibly one card) gets its own `fabric`-spawned worktree — genuinely its own git index/HEAD, which is what the rejected shape lacked — running the existing `Preflight → Webster → Finalize` row set unchanged, with `Webster`'s `Geometry.PlanDir` (already told, not derived) pointed at the source plan and a new batch-filter selecting the one group to run.
-Merge-back reuses `fabric`'s existing merge machinery, not new infrastructure.
+Merge-back reuses `fabric`'s existing merge machinery, not new infrastructure, and a group's completion gates on a build+test of the *merged* result rather than of the group's own worktree in isolation.
+The ready set recomputes wave to wave rather than being precomputed upfront, so a group that turns out to depend on another's output is simply not ready yet instead of being mis-scheduled.
+
+This shape is what makes the rejection at the top of this doc specific rather than general: that rejection was about concurrent forks sharing one checkout's git index, which worktree-per-group does not do.
+The Status banner above still describes the earlier, rejected shape and has not been rewritten for this one — reconciling it belongs to the Someday `webster: worktree-per-card parallel execution` roadmap item, whenever it is picked up.
 
 Grouping granularity (one card vs. several) is orthogonal to safety — the original rejection above conflated it with the working-tree-sharing hazard, but genuine worktree-per-lane isolation is what actually matters.
 Not yet a plan: needs the DAG source (the Someday `quarry-backed plan symbol fields` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).

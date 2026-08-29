@@ -14,14 +14,12 @@ This section holds what's committed to next.
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
 
-1. **webster: worktree-per-card parallel execution** — spawn independently-executable cards/batches into their own `git worktree` (via `internal/fabricengine`) instead of forking in one shared worktree, gating a batch's completion on a build+test of the merged result; the ready set recomputes wave to wave, never precomputed upfront. Depends on the shipped `webster: DAG-derived card sequencing` for the dependency graph, and on the Someday `quarry-backed plan symbol fields` item for the symbol-derived edges the DAG scheduler needs — so this is not yet a plan, just a shape. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, not a prerequisite — wait for the sequential path to get real mileage first.
-   This entry absorbed a duplicate of itself, `webster: parallel card/batch execution`, in the 2026-08-29 designs audit: the two described the same idea, the same unblocking shape, and the same design doc under two names.
-   Use this name for it — three variants were in circulation across the roadmap and `designs/`.
-   See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (stale, reconcile in this task — its prior rejection was about concurrent forks sharing one checkout's git index, a different model than worktree-per-card, which does not share that race).
+1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, and still blocked on the Someday `quarry-backed plan symbol fields` item for the edges its scheduler would need.
+   See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (status banner there is stale — written for the earlier, rejected shape).
 
-1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the whole task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first (deliberately kept out today to protect the Fabric illusion) — needs its own look before this is scoped further.
+1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first, so it needs its own look before it can be scoped.
 
-1. **VS Code as opt-in per worktree, not spun up by default** — `loom`/Loomyard should default to CLI/tmux, spinning up VS Code only on request, since the common case is reviewing the final PR rather than watching an agent edit live. Likely shape: a fourth per-worktree launcher variant (alongside `ide`/`fabric-checkout`/`run<ext>`, see `internal/fabricengine/launchers.go`) that opens VS Code just far enough to `lyx reed attach` into the worktree's already-running `reed` server — a terminal-launcher convenience, not a standing editor.
+1. **VS Code as opt-in per worktree, not spun up by default** — default to CLI/tmux and start VS Code only on request, since the common case is reviewing the final PR rather than watching an agent edit live. Likely shape: a fourth per-worktree launcher variant (see `internal/fabricengine/launchers.go`) that opens VS Code just far enough to `lyx reed attach` — a terminal-launcher convenience, not a standing editor.
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
@@ -50,7 +48,7 @@ No build order is implied between these items.
 1. **shuttle `Spec`: generic tools-restriction** — meaningless for today's single-session A→B agent;
    cluster reviewers turned out to be fork subagents inside the handler's own session (`useExactTools`), not separate sessions needing their own `settings.json`, so this stays unmotivated rather than blocked on anything.
 
-1. **shuttle `Spec`: per-round provider selector** — meaningless until a second engine lands (non-Claude engines are not a current priority, per `CLAUDE.md`); today "provider" just means whichever engine is wired into the `Runner`. The main cost if picked up: `burler`'s cluster-review fan-out (N reviewers as cheap, context-sharing forks) has no non-Claude equivalent — a non-Claude engine would need N full separate sessions instead, costlier by construction.
+1. **shuttle `Spec`: per-round provider selector** — meaningless until a second engine lands (non-Claude engines are not a current priority, per `CLAUDE.md`); today "provider" just means whichever engine is wired into the `Runner`. The cost if picked up: `burler`'s cluster-review fan-out has no non-Claude equivalent, needing N full sessions where Claude uses N cheap context-sharing forks.
 
 1. **Bulk-mode clusters + provider-side context caching** — a `burler` cluster round can run *tool-use* or *bulk* (Go concatenates target + fasit + rubric into one blob).
    Bulk is what makes provider-side context caching (e.g. Gemini's explicit cache) pay off, and only if modelled as one shared prefix + N distinct suffixes, never N full prompts.
@@ -62,14 +60,14 @@ No build order is implied between these items.
 1. **self-report: two-tier friction capture** — loom's per-phase design means no single LLM session has full-run context the way Millhouse's self-report assumes; splits into Go-detected structural anomalies plus per-phase friction notes, aggregated for one reflection agent at natural end points.
    See [designs/self-report.md](designs/self-report.md).
 
-1. **board: curation/triage automation** — the GitHub-issue-intake and periodic-triage workflow originally scoped in `designs/board-weft-storage.md`'s Curation flow section, deferred out of `board: move storage to weft:main`: an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via `promote-note` (which already ships as a plain mechanical CLI primitive — this item is the automation layer on top, not the primitive itself).
+1. **board: curation/triage automation** — an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via the already-shipped `promote-note` primitive. This is the automation layer on top of that primitive, deferred out of `board: move storage to weft:main`.
    See [designs/curation-triage.md](designs/curation-triage.md).
 
 1. **quarry-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified code-intelligence lookup tool; that tool (now `quarry`, an external Go module dependency) and the loom Planner have since shipped, unblocking but not yet scoping this.
    Named prerequisite for `webster: worktree-per-card parallel execution`'s parked DAG scheduler.
    See [designs/quarry-plan-symbol-fields.md](designs/quarry-plan-symbol-fields.md).
 
-1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config today resolves only from `<cwd>/_lyx/config/<module>.yaml` (per-worktree, no shared default; `fabric.yaml` is the sole exception, anchored at `_board`/weft:main). Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses. Not yet designed.
+1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config resolves only from `<cwd>/_lyx/config/<module>.yaml` today, per-worktree with no shared default (`fabric.yaml` is the sole exception, anchored at `_board`). Add a repo-wide default layer read from `_board`, with each worktree's own file as an override on top — the two-layer overlay millhouse already uses; not yet designed.
 
 1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on review findings, and scope each review stage to what its downstream stage cannot catch better.
    See [designs/review-finding-classification.md](designs/review-finding-classification.md).
@@ -77,7 +75,7 @@ No build order is implied between these items.
 1. **fabric: ordinary-monorepo verb surface** — against plain git, `fabric` is still missing `log`, `show`, `branch` (create/list/delete), `tag`, `stash`, `reset` (non-hard), `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick`, and `blame`.
    None blocks `Finalize`/`Hardener` today; scope by actual need when a consumer needs one, never by completing the list for its own sake.
 
-1. **fabric: two-sided reset-to-SHA verb** — the post-conclude undo the merge surface deliberately does not ship: `MergeAbort` covers only the uncommitted merge-attempt window, so a landed merge is final at the Fabric layer until a `Fabric`-level reset to a visible (warp) SHA exists, resolving the paired weft SHA through the correspondence index and routing both resets through the destruction gate.
+1. **fabric: two-sided reset-to-SHA verb** — the post-conclude undo the merge surface deliberately does not ship: `MergeAbort` covers only the uncommitted merge-attempt window, so a landed merge is final at the Fabric layer. Closing it means a reset to a visible warp SHA that resolves the paired weft SHA through the correspondence index and routes both sides through the destruction gate.
    See the `internal/fabricengine` package documentation's merge section.
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
@@ -85,11 +83,9 @@ No build order is implied between these items.
 1. **loom: build `Plan-Sweep` for real** — stays a stub past the shipped `loom: Plan-Write producer`; deferred because quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry. Full spec already written.
    See [designs/loom.md](designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec).
 
-1. **finalize: the discrepancy-document conflict shape** — `finalize.md` originally sketched a second Fabric-to-Finalize conflict artifact, a precomputed "discrepancy document" for a divergence Fabric cannot express as a git conflict.
-   Only the ordinary-git-conflict shape shipped; the document shape is not built.
-   The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, whenever picked up (`Shed`/`loom` now exist to consume it).
+1. **finalize: the discrepancy-document conflict shape** — some divergences cannot be expressed as a git conflict at all, so there are no markers to hand a resolving agent; the answer is a precomputed document describing the disagreement instead. Only the ordinary-git-conflict shape shipped (`internal/mergeresolve`), while `PullResult.PatternResidue` already is this shape for the history-rewrite case — design it once, for both, whenever picked up.
 
-1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability today means hand-threading a passthrough `Env` field through three layers (`shedrecipe` → `loomrecipe` → `loomcli`), since `shedrecipe` can't import the capability's owning package directly (Shed Recipe Registry Invariant); both shipped `loom: Discussion-Write producer` and `loom: Plan-Write producer` repeated this identical three-layer edit for their own two `Env` fields. The idea — not yet designed — is for a producer to declare what it needs and have the registry wire it automatically, closer to how a VS Code extension declares its own capabilities than to hand-editing a host per extension. Genuinely deep: likely touches the Shed Recipe Registry Invariant itself and all fourteen existing registry entries already wired the old way.
+1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability means hand-threading a passthrough `Env` field through three layers, because the Shed Recipe Registry Invariant bars `shedrecipe` from importing the capability's owning package. The idea, not yet designed: let a producer declare what it needs and have the registry wire it — deep, likely touching the invariant itself and all fourteen registry entries.
 
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
@@ -97,12 +93,10 @@ No build order is implied between these items.
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
 
-1. **reed: watchdog daemon** — the watch loop hosted in the per-worktree header pane, with its `window-resized` hook entry, poll fallback, debounce, and `watchdog: on|off` key in `reed.yaml`;
-   both halves landed, the resize-geometry reconcile and the pane reap.
+1. **reed: watchdog daemon** — the header-pane watch loop, with both halves landed: the resize-geometry reconcile and the pane reap.
    See `internal/reedengine`'s package documentation.
 
-1. **Real-Linux validation** — the sandbox suite and every tmux/`/proc` assumption are exercised on real Linux, which is now the platform everything runs on.
-   Its platform sibling, `fabric: Windows path behaviour`, stays open in Someday.
+1. **Real-Linux validation** — the sandbox suite and every tmux/`/proc` assumption are exercised on real Linux, now the platform everything runs on.
 
 1. **loom: Discussion-Review producer** — replaced the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment.
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
