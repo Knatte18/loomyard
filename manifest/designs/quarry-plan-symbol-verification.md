@@ -1,11 +1,14 @@
-# quarry-backed plan symbol fields — making the Planner's file-op enumeration deterministic
+# quarry-backed plan symbol verification — checking a card's symbol claims against the code
 
-> **Status: Speculative, not scoped.** [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) already named this gap explicitly: the symbol fields (`creates-symbols`/`edits-symbols`/`reads-symbols`) were "deliberately omitted in v0, not just left optional... they depend on a working, planner-side-verified `quarry`, which is deprioritized." Both blockers are now gone — `quarry` shipped (V1, Go-only, since ported out of this repo into its own standalone module) and the loom Planner producer (`internal/loomengine/plan.go` + `contracts/stencils/loom/loom-template-plan.md`) also shipped, with no review logic of its own blocking a prompt-level change. This doc names the idea and lays out the design space; it does not commit to an approach. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning doc (`loom-plan-spec.md` and/or `internal/loomengine`'s package doc) when it lands; if abandoned, this file is simply deleted.
-> Renamed from `scout-plan-symbol-fields.md` by the 2026-08-29 designs audit: `scout` is no longer a thing that exists in this repo — the tool was extracted into the standalone `quarry` module — so only the historical `scout-vs-grep benchmark` keeps the old name below, as the proper name of a benchmark run when the tool was still `lyx scout`.
+> **Status: Speculative, not scoped.** [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) v0 named this gap as three deferred fields, `creates-symbols`/`edits-symbols`/`reads-symbols`, "deliberately omitted in v0, not just left optional... they depend on a working, planner-side-verified `quarry`, which is deprioritized."
+> **That framing is superseded and the quoted passage is gone from the spec:** format 4's shape classifier admits a symbol anywhere a path may go, so a card already declares symbols in its ordinary target and `Uses:` lists, and no separate fields are needed or wanted.
+> What survives is the other half — *verification*. A path-shaped entry gets the `path-missing` existence check; a symbol-shaped entry is checked against nothing at all, which is precisely the gap `quarry` would close.
+> Both original blockers are gone — `quarry` shipped (V1, Go-only, since ported out of this repo into its own standalone module) and the loom Planner producer (`internal/loomengine/plan.go` + `contracts/stencils/loom/loom-template-plan.md`) also shipped, with no review logic of its own blocking a prompt-level change. This doc names the idea and lays out the design space; it does not commit to an approach. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning doc (`loom-plan-spec.md` and/or `internal/loomengine`'s package doc) when it lands; if abandoned, this file is simply deleted.
+> Renamed from `scout-plan-symbol-fields.md` by the 2026-08-29 designs audit, in two steps: `fields` became `verification` because format 4 already ships the fields, and `scout` is no longer a thing that exists in this repo — the tool was extracted into the standalone `quarry` module — so only the historical `scout-vs-grep benchmark` keeps the old name below, as the proper name of a benchmark run when the tool was still `lyx scout`.
 
 ## The problem this responds to
 
-Today, `contracts/stencils/loom/loom-template-plan.md`'s Step 2 ("Explore the codebase") tells the Planner agent to read the relevant parts of the codebase before writing a card's `Edits:`/`Context:`/`Creates:`/`Deletes:`/`Moves:` fields — in practice this means grep-and-read exploration, paid for in tokens and wall-clock, for every card that touches existing code.
+Today, `contracts/stencils/loom/loom-template-plan.md`'s Step 2 ("Explore the codebase") tells the Planner agent to read the relevant parts of the codebase before writing a card's target groups and `**Uses:**` list — in practice this means grep-and-read exploration, paid for in tokens and wall-clock, for every card that touches existing code.
 Two failure modes follow: grepping a symbol's name returns false positives when an unrelated symbol elsewhere in the repo happens to share the name,
 and it structurally cannot prove a call reached only through an interface — the exact case `quarry`'s own CLI help text calls out ("including calls reached only through an interface, which no amount of grepping can prove").
 A card whose `Edits:` silently omits a real caller is a plan defect no existing plan-format validator check can catch, because every current check (`all-files-touched-mismatch` included) only verifies internal consistency between the overview and the cards — never consistency between a card's claims and the actual code.
@@ -24,8 +27,9 @@ Worse than the win/loss tally itself: Task 3 exposed that `refs`' `"resolution":
 An LLM given the *option* to call the tool still has to exercise judgment about when the tool's output can be trusted as-is versus needs cross-checking — the benchmark shows that judgment call itself doesn't reliably pay for itself.
 This does not fully rule out (a) (single run, n=1 per cell, three hand-picked tasks — see that benchmark's own caveats), but it removes any presumption that giving the Planner tool access would obviously help, and no measurement has been done of (a) specifically wired into `contracts/stencils/loom/loom-template-plan.md` rather than a bare subagent.
 
-**(b) The originally-envisioned schema fields.** `loom-plan-spec.md` names `creates-symbols`/`edits-symbols`/`reads-symbols` as the deferred fields themselves — a card would declare symbols, not just files, and something (`internal/planparser`'s `Validate`, most likely) would cross-check those declarations against `quarry` mechanically, turning the "planner missed a caller" failure mode into a hard validation error instead of a silent gap.
-This is the fuller original vision and the one `internal/websterengine`'s dead DAG scheduler seam is waiting on (see Relationship table below) — but it means real schema, parser, and validator work in `internal/planparser`, not just prompt wording.
+**(b) Mechanical verification of the declarations already there.** A card already declares symbols; what is missing is something (`internal/planparser`'s `Validate`, most likely) cross-checking those declarations against `quarry`, turning the "planner missed a caller" failure mode into a hard validation error instead of a silent gap.
+The original v0 framing put this behind three new schema fields, but format 4 removed that prerequisite — so this is now validator work in `internal/planparser`, not schema work.
+This is the half `internal/websterengine`'s dead DAG scheduler seam is waiting on (see Relationship table below).
 
 **(b) is the recommended direction if this is ever picked up, precisely because of what the benchmark found.** The failure modes in the scout-vs-grep benchmark — imprecise workspace-wide interface resolution, a trust marker that overpromises — are LLM-facing problems: they matter only when an agent has to decide whether to believe the tool's output.
 Deterministic Go code calling `quarry`'s in-process API to fill or validate a schema field never faces that decision — it can apply the same scoping/filtering logic (e.g. the `--within <dir>` flag added after this benchmark) correctly and identically every time, and a validator either matches or hard-fails, with no judgment call to get wrong.
@@ -44,7 +48,7 @@ Neither of these required any change to ship — they exist independently of thi
 | Item | Answers | Depends on |
 |---|---|---|
 | `quarry` | "What exactly references/defines this symbol, right now?" | Nothing further (shipped) |
-| symbol fields (this) | "Does this card's declared file-op list match what actually references the symbol?" | `quarry` (shipped) |
+| symbol verification (this) | "Does this card's declared target list match what actually references the symbol?" | `quarry` (shipped) |
 | `webster: worktree-per-card parallel execution`'s DAG scheduler | "Which cards can run concurrently without a real dependency edge between them?" | Symbol fields (this) — `internal/websterengine`'s scheduler runs strictly in declared order today specifically because the symbol-derived edges it would need don't exist yet |
 
 Picking up this idea is a prerequisite for the parallel-execution item ever becoming buildable, not just a nice-to-have alongside it — see [webster-parallel-execution.md](webster-parallel-execution.md)'s own "Relationship to quarry" section, which already names structured impact lookup as the retired `websterv2.md` draft's Part B.
@@ -73,8 +77,8 @@ Go-only, same as `quarry` V1; a lexer/AST approach cannot generalize by swapping
 
 ## Related
 
-- [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) — names the deferred symbol fields directly;
-  the schema option (b) would extend it.
+- [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) — the format-4 contract whose shape classifier already admits symbol targets, and whose `path-missing` check has no symbol-side counterpart;
+  option (b) would add that counterpart.
 - [webster-parallel-execution.md](webster-parallel-execution.md) — the item this one is a prerequisite for.
 - [quarry](https://github.com/Knatte18/quarry) — the standalone module carrying the scout-vs-grep benchmark this doc's (a)-vs-(b) recommendation is grounded in.
 - [review-finding-classification.md](review-finding-classification.md) — the discussion-review proposal that raised the free-text/`quarry literals` question this doc folds in above.

@@ -24,7 +24,7 @@ This shape is what makes the rejection at the top of this doc specific rather th
 The Status banner above still describes the earlier, rejected shape and has not been rewritten for this one — reconciling it belongs to the Someday `webster: worktree-per-card parallel execution` roadmap item, whenever it is picked up.
 
 Grouping granularity (one card vs. several) is orthogonal to safety — the original rejection above conflated it with the working-tree-sharing hazard, but genuine worktree-per-lane isolation is what actually matters.
-Not yet a plan: needs the DAG source (the Someday `quarry-backed plan symbol fields` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
+Not yet a plan: needs the DAG source (the Someday `quarry-backed plan symbol verification` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
 
 ## The case study (from an earlier, more detailed design draft, `websterv2.md`, now retired)
 

@@ -14,7 +14,7 @@ This section holds what's committed to next.
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
 
-1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, and still blocked on the Someday `quarry-backed plan symbol fields` item for the edges its scheduler would need.
+1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, and still blocked on the Someday `quarry-backed plan symbol verification` item for the edges its scheduler would need.
    See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (status banner there is stale — written for the earlier, rejected shape).
 
 1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first, so it needs its own look before it can be scoped.
@@ -63,9 +63,9 @@ No build order is implied between these items.
 1. **board: curation/triage automation** — an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via the already-shipped `promote-note` primitive. This is the automation layer on top of that primitive, deferred out of `board: move storage to weft:main`.
    See [designs/curation-triage.md](designs/curation-triage.md).
 
-1. **quarry-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified code-intelligence lookup tool; that tool (now `quarry`, an external Go module dependency) and the loom Planner have since shipped, unblocking but not yet scoping this.
+1. **quarry-backed plan symbol verification** — format-4 cards already declare symbols (the shape classifier admits a symbol anywhere a path may go), but nothing checks those declarations against the code: a path-shaped target gets `path-missing`, a symbol-shaped one gets nothing. Cross-check them against `quarry` so a card that silently omits a real caller hard-fails validation instead of shipping a plan defect.
    Named prerequisite for `webster: worktree-per-card parallel execution`'s parked DAG scheduler.
-   See [designs/quarry-plan-symbol-fields.md](designs/quarry-plan-symbol-fields.md).
+   See [designs/quarry-plan-symbol-verification.md](designs/quarry-plan-symbol-verification.md).
 
 1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config resolves only from `<cwd>/_lyx/config/<module>.yaml` today, per-worktree with no shared default (`fabric.yaml` is the sole exception, anchored at `_board`). Add a repo-wide default layer read from `_board`, with each worktree's own file as an override on top — the two-layer overlay millhouse already uses; not yet designed.
 
@@ -129,7 +129,7 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
   Delete that doc once the module ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — a Done entry instead points at the module's own package documentation, which is where its durable detail lives from then on.
   If an entry keeps growing past a couple of sentences, that is a signal to move the growth into the doc it points to, not to let the entry itself grow.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`quarry-backed plan symbol fields`, `raddle`, `webster: worktree-per-card parallel execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
+- Someday items get a `designs/<name>.md` doc when there's real design behind them (`quarry-backed plan symbol verification`, `raddle`, `webster: worktree-per-card parallel execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`warp-visibility`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
   Add new speculative ideas directly to Someday.
