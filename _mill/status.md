@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-lock-stale-session-name
 branch: reed-lock-stale-session-name
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-watch-loop-dormant-mode  '2026-08-29T05:43:10Z'
 holistic-reviewing  '2026-08-29T05:43:35Z'
 holistic-approved  '2026-08-29T05:46:19Z'
 done  '2026-08-29T06:14:31Z'
+pr-pending  '2026-08-29T06:15:31Z'
 ```
 
 ## Batches
