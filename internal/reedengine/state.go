@@ -43,8 +43,7 @@ type ReedState struct {
 	// separate construct and never itself a strand (Shared Decision
 	// header-is-not-a-strand): it is excluded from strand accounting, from
 	// being the preferred split target, and from both halves of reconcile's
-	// kill schedule, and from every layout path a Strand would otherwise be
-	// subject to. Empty means the header pane has not yet been created (a
+	// kill schedule. Empty means the header pane has not yet been created (a
 	// fresh worktree, or a server rebirth that cleared every binding) and
 	// must be (re)created at the next up/resume boot.
 	HeaderPaneID string `json:"headerPaneId,omitempty"`
@@ -153,8 +152,8 @@ func LoadState(dotLyxDir string) (*ReedState, error) {
 // Both remedies are named because they are genuinely different trades, and the operator — not
 // reed — has to pick. Deleting the file keeps the session: the panes and their processes keep
 // running and can be attached to, but only until the next mutating verb (up, resume, add, or
-// remove) reaps them, since an alive header no longer suffices to spare an untracked pane once
-// one of those verbs runs.
+// remove) reaps them, since an alive header now authorizes reaping every other pane the moment
+// one of those verbs reconciles.
 //
 // Repairing the file automatically is deliberately not offered: every repair reed could perform
 // amounts to discarding the strand table, which is exactly the silent loss the "null" refusal above
