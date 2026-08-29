@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: prowler-github-tree-script
 branch: prowler-github-tree-script
 plan: _mill/plan
@@ -26,4 +26,15 @@ plan-fix-r1  '2026-08-29T11:16:16Z'
 plan-review-r2  '2026-08-29T11:21:13Z'
 plan-fix-r2  '2026-08-29T11:22:08Z'
 planned  '2026-08-29T11:22:28Z'
+implementing  '2026-08-29T11:22:59Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: test-harness-and-fixtures
+    state: pending
+  - name: tree-script-and-docs
+    state: pending
 ```
