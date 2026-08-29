@@ -26,12 +26,12 @@ Batch-local decision beyond `## Shared Decisions`: none — the script's contrac
 
 - **Context:**
   - `plugins/prowler/scripts/run.sh`
-  - `plugins/prowler/scripts/github-tree-selftest.sh`
   - `plugins/prowler/skills/prowler/SKILL.md`
 - **Edits:**
   - `plugins/prowler/skills/github-repo-explorer/SKILL.md`
   - `plugins/prowler/README.md`
   - `plugins/prowler/scripts/testdata/github-tree/bin/gh`
+  - `plugins/prowler/scripts/github-tree-selftest.sh`
 - **Creates:**
   - `plugins/prowler/scripts/github-tree.sh`
 - **Deletes:** none
