@@ -58,7 +58,9 @@ batches:
     commit_sha: 8071d5477c750bc16d6806e8759088c68efde761
     verify_baseline_failures: []
   - name: smoke-regressions
-    state: pending
+    state: running
+    implementer_session: 67e6e76e-0fc6-4ba5-aa37-6d8789a967ac
+    start_sha: a9745178fc47c75b457e5ea678f7b08a24963bf9
     verify_baseline_failures: []
   - name: doc-surface-sweep
     state: pending
