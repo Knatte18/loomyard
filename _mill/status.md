@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: _mill/plan
@@ -35,4 +35,19 @@ plan-fix-r6  '2026-08-29T06:19:45Z'
 plan-review-r7  '2026-08-29T06:31:02Z'
 plan-fix-r7  '2026-08-29T06:32:24Z'
 planned  '2026-08-29T06:32:38Z'
+implementing  '2026-08-29T06:33:07Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: reconcile-gate-and-reap-log
+    state: pending
+  - name: drop-adoption-and-reap-chokepoint
+    state: pending
+  - name: smoke-regressions
+    state: pending
+  - name: doc-surface-sweep
+    state: pending
 ```
