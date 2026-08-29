@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-reconcile-gate-and-reap-log
 slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: _mill/plan
@@ -37,6 +37,7 @@ plan-review-r7  '2026-08-29T06:31:02Z'
 plan-fix-r7  '2026-08-29T06:32:24Z'
 planned  '2026-08-29T06:32:38Z'
 implementing  '2026-08-29T06:33:07Z'
+approved-reconcile-gate-and-reap-log  '2026-08-29T06:38:57Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ implementing  '2026-08-29T06:33:07Z'
 ```yaml
 batches:
   - name: reconcile-gate-and-reap-log
-    state: running
+    state: approved
     implementer_session: c3c73c59-00ca-412a-9d3d-378a81b4469d
     start_sha: d1b200ffdad35056714606cfbe550d5a71ca3b6a
+    commit_sha: b5d165ebf97505c340532ca0407a26cfbb22406c
     verify_baseline_failures: []
   - name: drop-adoption-and-reap-chokepoint
     state: pending
