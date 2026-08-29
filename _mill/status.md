@@ -65,6 +65,8 @@ batches:
     commit_sha: e1460824cbc86a91cd96f0db17aee9ab55b67a6a
     verify_baseline_failures: []
   - name: doc-surface-sweep
-    state: pending
+    state: running
+    implementer_session: 8a333795-7275-4713-9408-f3a9ca5b485f
+    start_sha: e56eb52b11eb7033c81118f635af5b1ba7092171
     verify_baseline_failures: []
 ```
