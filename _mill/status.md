@@ -51,7 +51,9 @@ batches:
     commit_sha: b5d165ebf97505c340532ca0407a26cfbb22406c
     verify_baseline_failures: []
   - name: drop-adoption-and-reap-chokepoint
-    state: pending
+    state: running
+    implementer_session: 4aa6a18c-2820-42b7-bff0-6a46c8c40bcf
+    start_sha: db60dc0289f2d13722796857adcf18322ac26461
     verify_baseline_failures: []
   - name: smoke-regressions
     state: pending
