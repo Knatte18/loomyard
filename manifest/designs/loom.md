@@ -258,7 +258,7 @@ This section is a doc *about* that stencil, per the Producer Pointer-Rule Invari
 
 Two dimensions on top of ordinary diff review:
 
-- **Comment-convention compliance.** Any new/changed doc comment follows [code-comment-conventions.md](code-comment-conventions.md) — no unnecessary symbol cross-references.
+- **Comment-convention compliance.** Any new/changed doc comment follows [code-comment-conventions.md](../../docs/code-comment-conventions.md) — no unnecessary symbol cross-references.
 - **Per-card mechanical check.** Confirms every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's (e.g. the AST-script-plus-grep for a Rename group, `assert-no-callers` for a Delete group), not only that the diff compiles and tests pass.
 
 The stencil adds two things beyond those two bullets, so this durable record is not thinner than the shipped file: it derives its own review range from `product.parent` in loom's status file rather than guessing, and it blocks with a BLOCKING finding when that value cannot be read; and it carries a do-not-flag list keeping the three upstream gates' subjects — the plan's format, the plan itself, and the overlay artifacts — out of this gate's findings.

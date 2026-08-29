@@ -442,6 +442,8 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 
 - [manifest/designs/loom.md](../manifest/designs/loom.md) — the phased orchestrator (`lyx loom`);
   design.
+- [code-comment-conventions.md](code-comment-conventions.md) — the doc-comment rule's standing rationale (Go only, for now);
+  a durable convention doc, kept rather than deleted, moved here from `manifest/designs/` by the 2026-08-29 designs audit.
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub` + `Render` over `internal/stencil`), consumed by reed's header pipeline and, later, loom's prompt templates;
   a leaf, not a phased module (as-built;
   module doc deleted per the documentation lifecycle).

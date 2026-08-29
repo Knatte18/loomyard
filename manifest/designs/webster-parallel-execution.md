@@ -20,7 +20,7 @@ A structural alternative to the rejected concurrent-forks-in-one-tree shape abov
 Merge-back reuses `fabric`'s existing merge machinery, not new infrastructure.
 
 Grouping granularity (one card vs. several) is orthogonal to safety — the original rejection above conflated it with the working-tree-sharing hazard, but genuine worktree-per-lane isolation is what actually matters.
-Not yet a plan: needs the DAG source (the Someday `scout-backed plan symbol fields` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
+Not yet a plan: needs the DAG source (the Someday `quarry-backed plan symbol fields` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
 
 ## The case study (from an earlier, more detailed design draft, `websterv2.md`, now retired)
 

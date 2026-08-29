@@ -29,16 +29,9 @@ No build order is implied between these items.
 
 1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree.
 
-1. **reed: watchdog daemon** — a watch loop hosted inside the existing per-worktree header pane, driven by a `window-resized` tmux hook entry (sharing the same window-scoped hook array as the resize-pin correction below it) that touches a signal file, with a slow poll fallback where the hook cannot be verified to install (Windows/psmux), a trailing-edge debounce, and a `watchdog: on|off` key in `reed.yaml`.
-   The resize-geometry reconcile half is done: a resize while already attached now re-applies the planned layout, with no `lyx reed` op needed.
-   The pane-reap half remains, together with its stated prerequisite — cheapening the reap probe, today a fresh pwsh plus full `Win32_Process` WMI enumeration per poll — and its real open question is the policy distinguishing a bug-induced pane from an intentional scratch pane, which is unwritten.
-   The self-heal core is worth building on its own merits, independent of the Slack-relay item below.
-
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
 
-1. **Real-Linux validation** — run the sandbox suite and validate every tmux/`/proc` assumption on a real Linux box (built and cross-compiled so far, never executed there).
-
-1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of `Real-Linux validation` above; needs a Windows host to close, not further design.
+1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of the now-Done `Real-Linux validation`; needs a Windows host to close, not further design.
    See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
 
 1. **raddle** — codeguide's woven-in successor;
@@ -73,9 +66,9 @@ No build order is implied between these items.
 1. **board: curation/triage automation** — the GitHub-issue-intake and periodic-triage workflow originally scoped in `designs/board-weft-storage.md`'s Curation flow section, deferred out of `board: move storage to weft:main`: an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via `promote-note` (which already ships as a plain mechanical CLI primitive — this item is the automation layer on top, not the primitive itself).
    See [designs/curation-triage.md](designs/curation-triage.md).
 
-1. **scout-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified code-intelligence lookup tool; that tool (now `quarry`, an external Go module dependency) and the loom Planner have since shipped, unblocking but not yet scoping this.
+1. **quarry-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified code-intelligence lookup tool; that tool (now `quarry`, an external Go module dependency) and the loom Planner have since shipped, unblocking but not yet scoping this.
    Named prerequisite for `webster: parallel card/batch execution`'s parked DAG scheduler.
-   See [designs/scout-plan-symbol-fields.md](designs/scout-plan-symbol-fields.md).
+   See [designs/quarry-plan-symbol-fields.md](designs/quarry-plan-symbol-fields.md).
 
 1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config today resolves only from `<cwd>/_lyx/config/<module>.yaml` (per-worktree, no shared default; `fabric.yaml` is the sole exception, anchored at `_board`/weft:main). Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses. Not yet designed.
 
@@ -99,11 +92,18 @@ No build order is implied between these items.
 
 1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability today means hand-threading a passthrough `Env` field through three layers (`shedrecipe` → `loomrecipe` → `loomcli`), since `shedrecipe` can't import the capability's owning package directly (Shed Recipe Registry Invariant); both shipped `loom: Discussion-Write producer` and `loom: Plan-Write producer` repeated this identical three-layer edit for their own two `Env` fields. The idea — not yet designed — is for a producer to declare what it needs and have the registry wire it automatically, closer to how a VS Code extension declares its own capabilities than to hand-editing a host per extension. Genuinely deep: likely touches the Shed Recipe Registry Invariant itself and all fourteen existing registry entries already wired the old way.
 
-1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the `reed: watchdog daemon` item above once it exists. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
+1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **reed: watchdog daemon** — the watch loop hosted in the per-worktree header pane, with its `window-resized` hook entry, poll fallback, debounce, and `watchdog: on|off` key in `reed.yaml`;
+   both halves landed, the resize-geometry reconcile and the pane reap.
+   See `internal/reedengine`'s package documentation.
+
+1. **Real-Linux validation** — the sandbox suite and every tmux/`/proc` assumption are exercised on real Linux, which is now the platform everything runs on.
+   Its platform sibling, `fabric: Windows path behaviour`, stays open in Someday.
 
 1. **loom: Discussion-Review producer** — replaced the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment.
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
@@ -136,7 +136,7 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
   Delete that doc once the module ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — a Done entry instead points at the module's own package documentation, which is where its durable detail lives from then on.
   If an entry keeps growing past a couple of sentences, that is a signal to move the growth into the doc it points to, not to let the entry itself grow.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout-backed plan symbol fields`, `raddle`, `webster: parallel card/batch execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
+- Someday items get a `designs/<name>.md` doc when there's real design behind them (`quarry-backed plan symbol fields`, `raddle`, `webster: parallel card/batch execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`warp-visibility`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
   Add new speculative ideas directly to Someday.

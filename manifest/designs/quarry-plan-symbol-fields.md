@@ -1,6 +1,7 @@
-# scout-backed plan symbol fields — making the Planner's file-op enumeration deterministic
+# quarry-backed plan symbol fields — making the Planner's file-op enumeration deterministic
 
 > **Status: Speculative, not scoped.** [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) already named this gap explicitly: the symbol fields (`creates-symbols`/`edits-symbols`/`reads-symbols`) were "deliberately omitted in v0, not just left optional... they depend on a working, planner-side-verified `quarry`, which is deprioritized." Both blockers are now gone — `quarry` shipped (V1, Go-only, since ported out of this repo into its own standalone module) and the loom Planner producer (`internal/loomengine/plan.go` + `contracts/stencils/loom/loom-template-plan.md`) also shipped, with no review logic of its own blocking a prompt-level change. This doc names the idea and lays out the design space; it does not commit to an approach. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning doc (`loom-plan-spec.md` and/or `internal/loomengine`'s package doc) when it lands; if abandoned, this file is simply deleted.
+> Renamed from `scout-plan-symbol-fields.md` by the 2026-08-29 designs audit: `scout` is no longer a thing that exists in this repo — the tool was extracted into the standalone `quarry` module — so only the historical `scout-vs-grep benchmark` keeps the old name below, as the proper name of a benchmark run when the tool was still `lyx scout`.
 
 ## The problem this responds to
 
