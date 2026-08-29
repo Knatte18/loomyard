@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: prowler-github-tree-script
 branch: prowler-github-tree-script
 plan: _mill/plan
@@ -34,6 +34,7 @@ holistic-fixing  '2026-08-29T11:50:39Z'
 nits-fixed-holistic  '2026-08-29T11:52:43Z'
 holistic-approved  '2026-08-29T11:52:51Z'
 done  '2026-08-29T11:54:36Z'
+pr-pending  '2026-08-29T11:55:48Z'
 ```
 
 ## Batches
