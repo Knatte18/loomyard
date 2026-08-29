@@ -1,6 +1,6 @@
 // reconcile.go implements the reconcile-against-live-panes engine op: the pure planning function
-// planReconcile decides which strand pane bindings to clear and which dead panes to kill,
-// and reconcileLocked composes that plan with the tmux kill I/O.
+// planReconcile decides which strand pane bindings to clear, which dead panes to kill, and which
+// untracked panes to reap, and reconcileLocked composes that plan with the tmux kill I/O.
 // Every public engine op runs reconcile first, under the op lock, so the persisted table never
 // drifts from what tmux's list-panes actually reports.
 
@@ -8,10 +8,26 @@ package reedengine
 
 import "fmt"
 
-// planReconcile decides which pane bindings to clear and which panes to kill.
+// reconcilePlan is planReconcile's decision: which strand bindings to clear, which dead panes to
+// kill, which untracked panes to reap, and which dead pane (if any) is kept alive so the session
+// survives.
+// deadPanesToKill and untrackedPanesToKill are carried apart, rather than merged into one slice,
+// because reconcileLocked's reap log line must distinguish the two kill reasons without a caller
+// having to cross-reference anything else.
+type reconcilePlan struct {
+	clearedGUIDs         []string
+	deadPanesToKill      []string
+	untrackedPanesToKill []string
+	keptDeadPane         string
+}
+
+// planReconcile decides which pane bindings to clear, which dead panes to kill, and which
+// untracked panes to reap.
 // Pure logic; unit-testable without a running server.
 // Keeps at least one pane alive (session-survival rule); spares header pane.
-func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clearedGUIDs []string, panesToKill []string, keptDeadPane string) {
+func planReconcile(strands []Strand, live []LivePane, headerPaneID string) reconcilePlan {
+	var plan reconcilePlan
+
 	liveByID := make(map[string]LivePane, len(live))
 	for _, p := range live {
 		liveByID[p.ID] = p
@@ -54,14 +70,20 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clea
 	for _, p := range live {
 		if p.Dead && p.ID != keptDeadPaneID && p.ID != headerPaneID {
 			killSet[p.ID] = true
-			panesToKill = append(panesToKill, p.ID)
+			plan.deadPanesToKill = append(plan.deadPanesToKill, p.ID)
 		}
 	}
 
 	// Deterministic untracked-pane reaping (see the doc comment): kill every
-	// live pane no strand owns, but only while some strand is bound to a
-	// present pane — killing an alive pane at worst corpses it under
-	// remain-on-exit, so the bound pane always keeps the session alive.
+	// live pane no strand owns, while EITHER some strand is bound to a
+	// present pane OR the header itself is alive — killing an alive pane at
+	// worst corpses it under remain-on-exit, so the surviving bound pane or
+	// header always keeps the session alive. The header disjunct exists
+	// because this reap fires from AddStrand/UpdateStrand once the
+	// reap-before-allocate chokepoint lands, and neither of those paths ever
+	// calls ensureHeaderPaneLocked — so a dead-but-present header must not
+	// be allowed to authorize reaping the session's only alive pane; only an
+	// ALIVE header may.
 	boundPaneIDs := make(map[string]bool, len(strands))
 	for _, s := range strands {
 		if s.PaneID != "" {
@@ -76,6 +98,17 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clea
 		}
 	}
 
+	// headerAlive is a third, separate local, never folded into
+	// boundPaneIDs/anyBoundPresent/exemptPaneIDs: the header stays exempt
+	// from being killed by mere presence (a header corpse is still never
+	// killed), while only an alive header authorizes killing anything else.
+	headerAlive := false
+	if headerPaneID != "" {
+		if p, present := liveByID[headerPaneID]; present && !p.Dead {
+			headerAlive = true
+		}
+	}
+
 	// exemptPaneIDs gates ONLY which untracked panes escape the deterministic
 	// reap below; anyBoundPresent above stays computed from real strand
 	// bindings alone (see this function's doc comment).
@@ -87,11 +120,11 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clea
 		exemptPaneIDs[headerPaneID] = true
 	}
 
-	if anyBoundPresent {
+	if anyBoundPresent || headerAlive {
 		for _, p := range live {
 			if !exemptPaneIDs[p.ID] && !killSet[p.ID] && p.ID != keptDeadPaneID {
 				killSet[p.ID] = true
-				panesToKill = append(panesToKill, p.ID)
+				plan.untrackedPanesToKill = append(plan.untrackedPanesToKill, p.ID)
 			}
 		}
 	}
@@ -102,13 +135,14 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clea
 		}
 		p, present := liveByID[s.PaneID]
 		if !present || killSet[p.ID] {
-			clearedGUIDs = append(clearedGUIDs, s.GUID)
+			plan.clearedGUIDs = append(plan.clearedGUIDs, s.GUID)
 		}
 		// present and not being killed (including the kept dead pane):
 		// binding stays, so render still places it.
 	}
 
-	return clearedGUIDs, panesToKill, keptDeadPaneID
+	plan.keptDeadPane = keptDeadPaneID
+	return plan
 }
 
 // clearAllPaneBindings clears every strand's PaneID after server rebirth.
@@ -171,17 +205,23 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 // reconcileLocked reconciles the persisted table against live panes.
 // Kills panes per planReconcile's schedule; clears bindings for gone panes.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []string, err error) {
-	clearedGUIDs, panesToKill, _ := planReconcile(st.Strands, live, st.HeaderPaneID)
+	plan := planReconcile(st.Strands, live, st.HeaderPaneID)
 
-	for _, id := range panesToKill {
+	for _, id := range plan.deadPanesToKill {
+		if err := e.tmux.run("kill-pane", "-t", id); err != nil {
+			return killed, fmt.Errorf("kill pane %s: %w", id, err)
+		}
+		killed = append(killed, id)
+	}
+	for _, id := range plan.untrackedPanesToKill {
 		if err := e.tmux.run("kill-pane", "-t", id); err != nil {
 			return killed, fmt.Errorf("kill pane %s: %w", id, err)
 		}
 		killed = append(killed, id)
 	}
 
-	clearSet := make(map[string]bool, len(clearedGUIDs))
-	for _, g := range clearedGUIDs {
+	clearSet := make(map[string]bool, len(plan.clearedGUIDs))
+	for _, g := range plan.clearedGUIDs {
 		clearSet[g] = true
 	}
 	for i := range st.Strands {
