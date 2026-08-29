@@ -26,10 +26,18 @@ import (
 // The Geometry fields are distinct values derived from one t.TempDir() — a
 // synthetic hub, a worktree root under it, and an anchor path under that —
 // so a field mix-up inside the engine surfaces instead of passing silently.
+// Only the worktree root is created on disk. AnchorPath and PaneCwd are
+// deliberately left uncreated: leaving them absent is what makes a field
+// mix-up between them and WorktreeRoot surface, and it makes this shared
+// fixture stand in for the standalone shape, where the anchor is a state
+// directory the engine itself materializes on first use.
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
 	hub := t.TempDir()
 	worktreeRoot := filepath.Join(hub, "worktree")
+	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll worktree root: %v", err)
+	}
 	anchorPath := filepath.Join(worktreeRoot, "anchor")
 	// PaneCwd is deliberately set to a directory distinct from AnchorPath, so
 	// a spawn site that regresses to reading AnchorPath instead of PaneCwd
@@ -68,6 +76,9 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 	// actually observable.
 	hub := t.TempDir()
 	worktreeRoot := filepath.Join(hub, "worktree")
+	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll worktree root: %v", err)
+	}
 	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
 	geom := Geometry{
 		SocketKey:    ServerName(hub),

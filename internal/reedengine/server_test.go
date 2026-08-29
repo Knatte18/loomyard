@@ -8,9 +8,11 @@
 package reedengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -280,6 +282,113 @@ func TestValidateToldAnchorPath(t *testing.T) {
 	}
 }
 
+// TestValidateToldWorktreeRootLive is the table test for the new liveness validator, modelled on
+// TestValidateToldAnchorPath's shape but I/O-aware: each row stats a real filesystem entry rather
+// than only checking shape.
+// The relative-value row points at a name that exists relative to this package's own source
+// directory (server_test.go, which is always present) rather than an absolute path made relative,
+// so the assertion holds regardless of the test process's actual working directory — the row
+// exists to prove the refusal fires on shape alone, not on the target's existence.
+func TestValidateToldWorktreeRootLive(t *testing.T) {
+	dir := t.TempDir()
+	existingDir := filepath.Join(dir, "worktree")
+	if err := os.Mkdir(existingDir, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	regularFile := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(regularFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	vanished := filepath.Join(dir, "does-not-exist")
+
+	tests := []struct {
+		name         string
+		worktreeRoot string
+		wantErr      bool
+		wantSentinel bool
+	}{
+		{"existing directory", existingDir, false, false},
+		{"empty value", "", true, false},
+		{"relative value", "server_test.go", true, false},
+		{"path that does not exist", vanished, true, true},
+		{"existing regular file", regularFile, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: tt.worktreeRoot})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateToldWorktreeRootLive(WorktreeRoot=%q) error = %v; want error: %v", tt.worktreeRoot, err, tt.wantErr)
+			}
+			if got := errors.Is(err, errWorktreeRootGone); got != tt.wantSentinel {
+				t.Errorf("validateToldWorktreeRootLive(WorktreeRoot=%q) errors.Is(err, errWorktreeRootGone) = %v; want %v", tt.worktreeRoot, got, tt.wantSentinel)
+			}
+		})
+	}
+
+	t.Run("vanished path message names both causes and asserts neither", func(t *testing.T) {
+		err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: vanished})
+		if err == nil {
+			t.Fatalf("validateToldWorktreeRootLive(WorktreeRoot=%q) = nil; want an error", vanished)
+		}
+		if !strings.Contains(err.Error(), vanished) {
+			t.Errorf("error = %q; want it to quote the path %q", err, vanished)
+		}
+		if !strings.Contains(err.Error(), "--target-dir") {
+			t.Errorf("error = %q; want it to mention --target-dir", err)
+		}
+		if strings.Contains(err.Error(), "the worktree was renamed") {
+			t.Errorf("error = %q; want it to assert neither cause outright rather than claim a rename happened", err)
+		}
+	})
+
+	t.Run("not-a-directory message carries no rename remedy", func(t *testing.T) {
+		err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: regularFile})
+		if err == nil {
+			t.Fatalf("validateToldWorktreeRootLive(WorktreeRoot=%q) = nil; want an error", regularFile)
+		}
+		if strings.Contains(err.Error(), "renamed") || strings.Contains(err.Error(), "--target-dir") {
+			t.Errorf("error = %q; want no rename remedy for a not-a-directory refusal", err)
+		}
+	})
+}
+
+// TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel provokes a real non-fs.ErrNotExist
+// stat failure — EACCES on the parent directory — and asserts it refuses without matching the
+// sentinel, per the only-proven-gone-carries-the-sentinel contract.
+// Skipped on Windows, where a directory mode bit does not gate traversal the same way, and when
+// running as root, since root ignores the permission bit entirely.
+func TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permission bits do not gate traversal on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the permission bit")
+	}
+
+	parent := t.TempDir()
+	worktreeRoot := filepath.Join(parent, "worktree")
+	if err := os.Mkdir(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	if err := os.Chmod(parent, 0o000); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() {
+		// Restore the mode so t.TempDir's own cleanup can traverse and remove parent.
+		if err := os.Chmod(parent, 0o755); err != nil {
+			t.Fatalf("restore parent mode: %v", err)
+		}
+	})
+
+	err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: worktreeRoot})
+	if err == nil {
+		t.Fatal("validateToldWorktreeRootLive with an unreadable parent = nil; want an error")
+	}
+	if errors.Is(err, errWorktreeRootGone) {
+		t.Errorf("validateToldWorktreeRootLive with an unreadable parent matched errWorktreeRootGone; want a plain non-sentinel refusal")
+	}
+}
+
 // TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState asserts the anchor refusal lands at
 // the same op boundary the identity refusal does — before the .lyx directory is created, which is
 // the very act that would otherwise litter the caller's own working directory with reed state.
@@ -353,6 +462,197 @@ func TestWithOpLock_RefusesARewrittenSessionNameBeforeTouchingTmux(t *testing.T)
 	}
 	if got := filepath.Join(e.stateDir(), reedLockFileName); fileExists(got) {
 		t.Errorf("withOpLock created the lock file %q despite refusing the told geometry", got)
+	}
+}
+
+// TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState is the regression guard for this
+// task: a told WorktreeRoot that names a directory that does not exist is refused before any
+// substrate is created, mirroring
+// TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState's shape.
+func TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState(t *testing.T) {
+	e := newTestEngine(t)
+	vanished := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "renamed-away")
+	e.geom.WorktreeRoot = vanished
+
+	ran := false
+	err := e.withOpLock(func() error {
+		ran = true
+		return nil
+	})
+	if err == nil {
+		t.Fatalf("withOpLock with a vanished told worktree root = nil; want a refusal")
+	}
+	if !errors.Is(err, errWorktreeRootGone) {
+		t.Errorf("withOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
+	}
+	if ran {
+		t.Errorf("withOpLock ran the operation body despite a vanished told worktree root")
+	}
+	if fileExists(vanished) {
+		t.Errorf("withOpLock created the worktree root %q despite refusing the told geometry", vanished)
+	}
+	if fileExists(e.geom.AnchorPath) {
+		t.Errorf("withOpLock created the anchor path %q despite refusing the told geometry", e.geom.AnchorPath)
+	}
+	if fileExists(e.stateDir()) {
+		t.Errorf("withOpLock created the .lyx state directory %q despite refusing the told geometry", e.stateDir())
+	}
+	if got := filepath.Join(e.stateDir(), reedLockFileName); fileExists(got) {
+		t.Errorf("withOpLock created the lock file %q despite refusing the told geometry", got)
+	}
+}
+
+// TestWithTryOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState is withTryOpLock's own copy of
+// the guard above, written as its own separate test rather than a shared subtest so a regression
+// that fixes only one of the two lock helpers fails here.
+func TestWithTryOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState(t *testing.T) {
+	e := newTestEngine(t)
+	vanished := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "renamed-away")
+	e.geom.WorktreeRoot = vanished
+
+	ran := false
+	acquired, err := e.withTryOpLock(func() error {
+		ran = true
+		return nil
+	})
+	if err == nil {
+		t.Fatalf("withTryOpLock with a vanished told worktree root = (%v, nil); want a refusal", acquired)
+	}
+	if acquired {
+		t.Errorf("withTryOpLock() acquired = true, want false (told-geometry refusal)")
+	}
+	if !errors.Is(err, errWorktreeRootGone) {
+		t.Errorf("withTryOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
+	}
+	if ran {
+		t.Errorf("withTryOpLock ran the operation body despite a vanished told worktree root")
+	}
+	if fileExists(vanished) {
+		t.Errorf("withTryOpLock created the worktree root %q despite refusing the told geometry", vanished)
+	}
+	if fileExists(e.geom.AnchorPath) {
+		t.Errorf("withTryOpLock created the anchor path %q despite refusing the told geometry", e.geom.AnchorPath)
+	}
+	if fileExists(e.stateDir()) {
+		t.Errorf("withTryOpLock created the .lyx state directory %q despite refusing the told geometry", e.stateDir())
+	}
+	if got := filepath.Join(e.stateDir(), reedLockFileName); fileExists(got) {
+		t.Errorf("withTryOpLock created the lock file %q despite refusing the told geometry", got)
+	}
+}
+
+// TestWithOpLock_RefusesAWorktreeRootThatIsARegularFile pins the not-a-directory message, distinct
+// from the vanished-path one: a told WorktreeRoot naming an existing regular file is refused with a
+// message carrying no rename remedy, since nothing was renamed.
+func TestWithOpLock_RefusesAWorktreeRootThatIsARegularFile(t *testing.T) {
+	e := newTestEngine(t)
+	regularFile := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "worktree-is-a-file")
+	if err := os.WriteFile(regularFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	e.geom.WorktreeRoot = regularFile
+
+	err := e.withOpLock(func() error {
+		t.Fatal("withOpLock ran the operation body despite a told worktree root that is a regular file")
+		return nil
+	})
+	if err == nil {
+		t.Fatalf("withOpLock with a told worktree root that is a regular file = nil; want a refusal")
+	}
+	if !errors.Is(err, errWorktreeRootGone) {
+		t.Errorf("withOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
+	}
+	if strings.Contains(err.Error(), "renamed") || strings.Contains(err.Error(), "--target-dir") {
+		t.Errorf("withOpLock error = %q; want the not-a-directory message, carrying no rename remedy", err)
+	}
+}
+
+// TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape is the regression guard on the intended
+// standalone behaviour change (Shared Decision the-standalone-refusal-is-an-intended-behaviour-change):
+// a WorktreeRoot that does not exist AND an AnchorPath that is a different, also non-existent path
+// (what a standalone `--target-dir` naming a directory that does not exist produces) is refused with
+// the vanished-path message, and neither path is created.
+func TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape(t *testing.T) {
+	e := newTestEngine(t)
+	parent := filepath.Dir(e.geom.WorktreeRoot)
+	vanishedTarget := filepath.Join(parent, "does-not-exist-target")
+	vanishedAnchor := filepath.Join(parent, "does-not-exist-anchor")
+	e.geom.WorktreeRoot = vanishedTarget
+	e.geom.AnchorPath = vanishedAnchor
+
+	err := e.withOpLock(func() error {
+		t.Fatal("withOpLock ran the operation body despite the standalone non-existent-target shape")
+		return nil
+	})
+	if err == nil {
+		t.Fatalf("withOpLock with the standalone non-existent-target shape = nil; want a refusal")
+	}
+	if !errors.Is(err, errWorktreeRootGone) {
+		t.Errorf("withOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
+	}
+	if !strings.Contains(err.Error(), "--target-dir") {
+		t.Errorf("withOpLock error = %q; want the vanished-path message mentioning --target-dir", err)
+	}
+	if fileExists(vanishedTarget) {
+		t.Errorf("withOpLock created the worktree root %q despite refusing the told geometry", vanishedTarget)
+	}
+	if fileExists(vanishedAnchor) {
+		t.Errorf("withOpLock created the anchor path %q despite refusing the told geometry", vanishedAnchor)
+	}
+}
+
+// TestWithOpLock_SucceedsForTheStandaloneFirstRunShape pins the other half of that same Shared
+// Decision: a WorktreeRoot that exists as a directory with a DIFFERENT AnchorPath that does not
+// exist yet — newTestEngine's own fixture as of card 2 — must still SUCCEED and create the anchor's
+// .lyx directory. This is the test that fails if a later change re-gates the predicate on
+// AnchorPath instead of WorktreeRoot.
+func TestWithOpLock_SucceedsForTheStandaloneFirstRunShape(t *testing.T) {
+	e := newTestEngine(t)
+	if e.geom.AnchorPath == e.geom.WorktreeRoot {
+		t.Fatalf("fixture assumption violated: AnchorPath %q must differ from WorktreeRoot %q", e.geom.AnchorPath, e.geom.WorktreeRoot)
+	}
+	if fileExists(e.geom.AnchorPath) {
+		t.Fatalf("fixture assumption violated: AnchorPath %q must not exist yet", e.geom.AnchorPath)
+	}
+
+	ran := false
+	err := e.withOpLock(func() error {
+		ran = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withOpLock with the standalone first-run shape: %v", err)
+	}
+	if !ran {
+		t.Errorf("withOpLock did not run the operation body")
+	}
+	if !fileExists(e.stateDir()) {
+		t.Errorf("withOpLock did not create the anchor's .lyx directory %q", e.stateDir())
+	}
+}
+
+// TestWithOpLock_SucceedsForTheHubFirstRunShape pins the hub-mode first-run shape: WorktreeRoot
+// exists, AnchorPath equals it, and no .lyx exists yet. The operation must succeed and create .lyx.
+func TestWithOpLock_SucceedsForTheHubFirstRunShape(t *testing.T) {
+	e := newTestEngine(t)
+	e.geom.AnchorPath = e.geom.WorktreeRoot
+	if fileExists(e.stateDir()) {
+		t.Fatalf("fixture assumption violated: .lyx %q must not exist yet", e.stateDir())
+	}
+
+	ran := false
+	err := e.withOpLock(func() error {
+		ran = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withOpLock with the hub first-run shape: %v", err)
+	}
+	if !ran {
+		t.Errorf("withOpLock did not run the operation body")
+	}
+	if !fileExists(e.stateDir()) {
+		t.Errorf("withOpLock did not create .lyx %q", e.stateDir())
 	}
 }
 

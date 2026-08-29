@@ -47,6 +47,10 @@ const (
 	watchdogRetryBaseDelay = 200 * time.Millisecond
 	// watchdogMaxAttempts caps one debounced event's retries, never the watcher itself.
 	watchdogMaxAttempts = 3
+	// watchdogDormantCycle is the cadence a watcher runs at once it is told its worktree root is
+	// provably gone. It exists so a session abandoned by `down` costs one log line and a
+	// minute-scale poll rather than a warning every two seconds forever.
+	watchdogDormantCycle = 60 * time.Second
 )
 
 // resizeSignalFileName is the resize signal file's name inside stateDir().

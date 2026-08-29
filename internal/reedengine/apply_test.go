@@ -8,9 +8,12 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
@@ -548,41 +551,75 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 
 // TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear pins the-clear-is-unconditional-including-zero-pins:
 // an apply whose plan yields zero pins — a HeaderPaneID absent from the live set, no strip strand
-// present — still issues the clear and nothing after it.
+// present — still issues the clear, and issues no resize-pane entry behind it.
+// The two subtests separate the two opinions a zero-pin rebuild carries: "nothing is pinned" is
+// unconditional, while the watchdog's touch entry rides watchdog on/off, so a watchdog: on session
+// with nothing to pin still gets told about a resize.
 func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
-	e := newTestEngine(t)
-	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
-	e.cfg.Header.HeightRows = 1
+	newZeroPinApply := func(t *testing.T, watchdog string) (*Engine, *applyHookRecorder) {
+		t.Helper()
+		e := newTestEngine(t)
+		e.cfg.Width, e.cfg.Height = 100, 21
+		e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+		e.cfg.Header.HeightRows = 1
+		e.cfg.Watchdog = watchdog
 
-	rec := &applyHookRecorder{}
-	e.tmux.execHook = newApplyRecordingHook(rec)
+		rec := &applyHookRecorder{}
+		e.tmux.execHook = newApplyRecordingHook(rec)
 
-	st := &ReedState{
-		HeaderPaneID: "%9", // absent from live below, so the mapping blanks it
-		Strands: []Strand{
-			{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
-			{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
-		},
+		st := &ReedState{
+			HeaderPaneID: "%9", // absent from live below, so the mapping blanks it
+			Strands: []Strand{
+				{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+				{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			},
+		}
+		live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 11}}
+
+		if err := e.applyLayoutLocked(st, live); err != nil {
+			t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
+		}
+		return e, rec
 	}
-	live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 11}}
 
-	if err := e.applyLayoutLocked(st, live); err != nil {
-		t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
-	}
-
-	setHookCount := 0
-	for _, step := range rec.sequence {
-		if step == "set-hook" {
-			setHookCount++
+	assertClearFirstAndNoPin := func(t *testing.T, rec *applyHookRecorder) {
+		t.Helper()
+		if len(rec.setHookArgvs) == 0 {
+			t.Fatal("no set-hook calls recorded, want at least the unconditional clear")
+		}
+		if !containsArg(rec.setHookArgvs[0], "-u") {
+			t.Errorf("first set-hook argv = %v, want the -u clear", rec.setHookArgvs[0])
+		}
+		for i, argv := range rec.setHookArgvs {
+			if strings.HasPrefix(argv[len(argv)-1], "resize-pane ") {
+				t.Errorf("set-hook argv[%d] = %v, want no resize-pane entry on a zero-pin plan", i, argv)
+			}
 		}
 	}
-	if setHookCount != 1 {
-		t.Fatalf("recorded %d set-hook calls, want exactly 1 (the unconditional clear): %v", setHookCount, rec.setHookArgvs)
-	}
-	if !containsArg(rec.setHookArgvs[0], "-u") {
-		t.Errorf("sole set-hook argv = %v, want the -u clear", rec.setHookArgvs[0])
-	}
+
+	t.Run("WatchdogOffIsTheClearAlone", func(t *testing.T) {
+		_, rec := newZeroPinApply(t, "off")
+		assertClearFirstAndNoPin(t, rec)
+		if len(rec.setHookArgvs) != 1 {
+			t.Fatalf("recorded %d set-hook calls, want exactly 1 (the unconditional clear): %v", len(rec.setHookArgvs), rec.setHookArgvs)
+		}
+	})
+
+	t.Run("WatchdogOnAlsoInstallsTheSignalEntry", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("the hook is never installed on Windows")
+		}
+		e, rec := newZeroPinApply(t, "on")
+		assertClearFirstAndNoPin(t, rec)
+		if len(rec.setHookArgvs) != 2 {
+			t.Fatalf("recorded %d set-hook calls, want exactly 2 (the clear plus the resize-signal entry): %v", len(rec.setHookArgvs), rec.setHookArgvs)
+		}
+		signal := rec.setHookArgvs[1]
+		want := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+		if signal[len(signal)-1] != want {
+			t.Errorf("second set-hook body = %q, want reed's own touch command %q", signal[len(signal)-1], want)
+		}
+	})
 }
 
 // TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall pins guard-skip-leaves-a-stale-array-deliberately:

@@ -405,6 +405,8 @@ controlled exception, restore the name when done).
 `tmux -L <socket> ls` (controlled exception) must then show only the ORIGINAL session -- the refusal must not have deposited a second one -- and the strand's command must still be running exactly once, not twice.
 Running the `kill-session` the error names, then `lyx reed resume` again, must succeed normally.
 A silent success, two copies of the strand process, a second session left on the socket, or a refusal the operator cannot escape is a `FAIL`.
+After that successful `resume`, inspect the hub root: it must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`, since the whole point of the refusal is that nothing gets conjured under the old name.
+Before running the remedy, check the renamed session's header pane log: it must show exactly one warning about the vanished worktree root rather than a reconcile failure repeating every two seconds, which is a `FAIL`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -420,6 +422,9 @@ A silent success, two copies of the strand process, a second session left on the
 An `ok: true` with no `abandonedSession` key is a `FAIL` -- `down` deletes `reed.json`, so that key is the last thing that ever names the orphan.
 A `down` that kills the old session is also a `FAIL`.
 Then run an ordinary `lyx reed up` / `down` cycle in a normal worktree and confirm `abandonedSession` is ABSENT there -- the key must be signal, not noise.
+Inspect the hub root as well, but not immediately: wait well past the two-second watchdog poll cycle before checking, since `down` deliberately leaves the abandoned session running, and checking too early would mask a watcher that resumed leaking.
+Once that wait has elapsed, the hub root must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`.
+Across that same wait, the abandoned session's header pane must have logged exactly one warning about the vanished worktree root, not one every two seconds -- a stream of repeating warnings there is a `FAIL`, since it means the watcher never dropped to its dormant cadence.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -439,6 +444,11 @@ The shrink direction is the non-negotiable half of this scenario -- it is the on
 A header that grows past its configured row count, or a bottom strand squeezed below `min_full_rows`, is also a `FAIL`.
 The operator must also confirm the cursor did NOT jump to another pane across either resize (the focus-steal regression), and that typing into a pane before a resize leaves that same pane focused after it.
 Rationale: the agent session owns the current terminal, so it cannot demonstrate or observe a live client resize itself.
+
+The agent then checks the mechanism the self-heal is supposed to be RUNNING on, which the visual half cannot distinguish on its own -- a watcher stuck on the two-second poll fallback heals a resize about as convincingly as a signal-driven one does, only later.
+`tmux -L <socket> show-options -v -t '=<session>:' window-resized` (controlled exception) must print one `resize-pane -t "%<id>" -y <rows>` line per fixed-height pane AND, as its LAST line, a `run-shell -b` line naming THIS worktree's own `.lyx/reed-resize.signal` path.
+A missing `run-shell` line is a `FAIL`: it means every watcher on the box is silently in poll mode, with the hook probe reporting "absent" forever.
+The header pane's log must also carry exactly one `promoting resize watchdog to signal mode` line for the session -- absent means the probe never matched, and repeated means the watcher is flapping between modes.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

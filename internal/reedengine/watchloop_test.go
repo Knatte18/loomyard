@@ -8,22 +8,25 @@
 package reedengine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// TestWatchDefaultTiming_MatchesTheFiveConstants pins that watchDefaultTiming returns exactly the
-// five package constants, so a later tuning change moves one line and does not break the suite.
-func TestWatchDefaultTiming_MatchesTheFiveConstants(t *testing.T) {
+// TestWatchDefaultTiming_MatchesTheSixConstants pins that watchDefaultTiming returns exactly the
+// six package constants, so a later tuning change moves one line and does not break the suite.
+func TestWatchDefaultTiming_MatchesTheSixConstants(t *testing.T) {
 	got := watchDefaultTiming()
 	want := watchTiming{
 		SignalTick:  watchdogSignalTick,
@@ -31,9 +34,34 @@ func TestWatchDefaultTiming_MatchesTheFiveConstants(t *testing.T) {
 		Quiet:       watchdogDebounceQuiet,
 		BaseDelay:   watchdogRetryBaseDelay,
 		MaxAttempts: watchdogMaxAttempts,
+		Dormant:     watchdogDormantCycle,
 	}
 	if got != want {
 		t.Errorf("watchDefaultTiming() = %+v, want %+v", got, want)
+	}
+}
+
+// TestTickerPeriodFor_AnswersPerModeCadence pins tickerPeriodFor's cadence-per-mode contract
+// directly: while dormant the loop refuses before any tmux round trip, so the recording hook
+// observes nothing and cannot measure the interval, which is why this is pinned as a pure
+// function test rather than through a driver-test timing measurement.
+func TestTickerPeriodFor_AnswersPerModeCadence(t *testing.T) {
+	timing := watchdogTestTiming()
+	tests := []struct {
+		name string
+		mode watchMode
+		want time.Duration
+	}{
+		{"Dormant", watchModeDormant, timing.Dormant},
+		{"Signal", watchModeSignal, timing.SignalTick},
+		{"Poll", watchModePoll, timing.PollCycle},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tickerPeriodFor(tt.mode, timing); got != tt.want {
+				t.Errorf("tickerPeriodFor(%v, timing) = %v, want %v", tt.mode, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -315,6 +343,7 @@ func watchdogTestTiming() watchTiming {
 		Quiet:       5 * time.Millisecond,
 		BaseDelay:   2 * time.Millisecond,
 		MaxAttempts: 3,
+		Dormant:     15 * time.Millisecond,
 	}
 }
 
@@ -838,5 +867,213 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 
 	if !eventually(t, 300*time.Millisecond, func() bool { return hook.count("select-layout") > baseline }) {
 		t.Errorf("no select-layout observed once reed.lock was released, want the deferred signal still owed")
+	}
+}
+
+// --- Dormant-mode driver tests -----------------------------------------------
+//
+// These reuse the driver-test fixture above, plus a mutex-guarded log buffer:
+// watchLoop writes log lines from its own goroutine while the test goroutine
+// reads the buffer, so an unguarded bytes.Buffer would race under -race.
+
+// safeLogBuffer is a mutex-guarded io.Writer standing in for a real sink, safe for one goroutine
+// to write to while another reads its accumulated contents.
+type safeLogBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+// Write implements io.Writer under the buffer's own mutex.
+func (b *safeLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+// String returns a snapshot of everything written so far, under the same mutex as Write.
+func (b *safeLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// captureLog redirects logger's stderr sink to a fresh safeLogBuffer for the rest of the test,
+// restoring os.Stderr in a t.Cleanup. It also lowers the verbosity threshold to Info so that the
+// recovery line's Info-level log (unlike the dormancy warning, which is Warn and therefore already
+// visible at the default threshold) reaches the captured buffer, restoring the default Warn
+// threshold in the same cleanup.
+func captureLog(t *testing.T) *safeLogBuffer {
+	t.Helper()
+	buf := &safeLogBuffer{}
+	logger.SetOutput(buf)
+	logger.SetVerbosity(1)
+	t.Cleanup(func() {
+		logger.SetOutput(os.Stderr)
+		logger.SetVerbosity(0)
+	})
+	return buf
+}
+
+// TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot pins that when the told worktree root
+// vanishes while the loop is in poll mode, the loop stops issuing tmux calls, keeps running rather
+// than returning, and logs exactly one warning.
+func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
+	buf := captureLog(t)
+	e, hook := newWatchLoopTestEngine(t, "on")
+	hook.setHook("", nil)
+
+	_, done := startWatchLoop(t, e, watchdogTestTiming())
+
+	if !eventually(t, 200*time.Millisecond, func() bool { return hook.count("list-panes") >= 2 }) {
+		t.Fatalf("list-panes calls = %d, want at least 2 poll cycles before the worktree root vanishes", hook.count("list-panes"))
+	}
+
+	if err := os.RemoveAll(e.geom.WorktreeRoot); err != nil {
+		t.Fatalf("RemoveAll worktree root: %v", err)
+	}
+
+	if !eventually(t, 300*time.Millisecond, func() bool {
+		before := hook.count("list-panes")
+		time.Sleep(20 * time.Millisecond)
+		return hook.count("list-panes") == before
+	}) {
+		t.Fatalf("list-panes call count never stabilized, want dormancy to stop the per-cycle tmux round trip")
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("watchLoop returned %v after the worktree root vanished, want it to keep running", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	if got := strings.Count(buf.String(), "dropping the resize watcher into dormant mode"); got != 1 {
+		t.Errorf("dormancy warning lines = %d, want exactly 1; log:\n%s", got, buf.String())
+	}
+}
+
+// TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot pins the identical entry-into-dormancy
+// contract from signal mode, so the per-event retry-streak machinery cannot swallow the transition.
+func TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
+	buf := captureLog(t)
+	e, hook := newWatchLoopTestEngine(t, "on")
+	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+	hook.setHook(ownCommand, nil)
+
+	// A generously wide quiet window: the sequence below writes the signal file, waits for the
+	// loop to consume it into a pending apply, and only then removes the worktree root — the
+	// window has to comfortably outlast that handoff without becoming a multi-second sleep.
+	timing := watchdogTestTiming()
+	timing.Quiet = 30 * time.Millisecond
+
+	_, done := startWatchLoop(t, e, timing)
+	waitForPromotion(t, hook)
+
+	signalPath := e.resizeSignalPath()
+	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile signal: %v", err)
+	}
+	if !eventually(t, 200*time.Millisecond, func() bool {
+		_, err := os.Stat(signalPath)
+		return os.IsNotExist(err)
+	}) {
+		t.Fatalf("signal file was not consumed before the quiet period elapsed")
+	}
+
+	if err := os.RemoveAll(e.geom.WorktreeRoot); err != nil {
+		t.Fatalf("RemoveAll worktree root: %v", err)
+	}
+
+	if !eventually(t, 300*time.Millisecond, func() bool {
+		return strings.Contains(buf.String(), "told worktree root is gone")
+	}) {
+		t.Fatalf("no dormancy warning observed after the worktree root vanished mid-quiet-period; log:\n%s", buf.String())
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("watchLoop returned %v after the worktree root vanished, want it to keep running", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	if got := strings.Count(buf.String(), "dropping the resize watcher into dormant mode"); got != 1 {
+		t.Errorf("dormancy warning lines = %d, want exactly 1; log:\n%s", got, buf.String())
+	}
+}
+
+// TestWatchLoop_RecoversFromDormancyToItsPriorMode pins that once the told worktree root exists
+// again, a dormant watcher logs exactly one recovery line and resumes at the mode it was in before
+// dormancy — signal mode here, so the regression guard is that it does not come back demoted to
+// poll.
+func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
+	buf := captureLog(t)
+	e, hook := newWatchLoopTestEngine(t, "on")
+	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+	hook.setHook(ownCommand, nil)
+
+	timing := watchdogTestTiming()
+	timing.Quiet = 30 * time.Millisecond
+
+	startWatchLoop(t, e, timing)
+	waitForPromotion(t, hook)
+
+	signalPath := e.resizeSignalPath()
+	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile signal: %v", err)
+	}
+	if !eventually(t, 200*time.Millisecond, func() bool {
+		_, err := os.Stat(signalPath)
+		return os.IsNotExist(err)
+	}) {
+		t.Fatalf("signal file was not consumed before the quiet period elapsed")
+	}
+
+	worktreeRoot := e.geom.WorktreeRoot
+	if err := os.RemoveAll(worktreeRoot); err != nil {
+		t.Fatalf("RemoveAll worktree root: %v", err)
+	}
+	if !eventually(t, 300*time.Millisecond, func() bool {
+		return strings.Contains(buf.String(), "told worktree root is gone")
+	}) {
+		t.Fatalf("no dormancy warning observed after the worktree root vanished; log:\n%s", buf.String())
+	}
+
+	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll (recreate) worktree root: %v", err)
+	}
+
+	if !eventually(t, 500*time.Millisecond, func() bool {
+		return strings.Contains(buf.String(), "told worktree root is back")
+	}) {
+		t.Fatalf("no recovery line observed after recreating the worktree root; log:\n%s", buf.String())
+	}
+
+	if got := strings.Count(buf.String(), "told worktree root is back"); got != 1 {
+		t.Errorf("recovery info lines = %d, want exactly 1; log:\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), "dropping the resize watcher into dormant mode"); got != 1 {
+		t.Errorf("dormancy warning lines after recovery = %d, want unchanged at exactly 1; log:\n%s", got, buf.String())
+	}
+
+	// Signal mode's signature, distinguishing it from poll mode: with no fresh signal file, the
+	// list-panes count stabilizes rather than continuing to grow tick after tick.
+	waitForPromotion(t, hook)
+}
+
+// TestWatchLoop_NonSentinelFailureDoesNotGoDormant pins the narrowing itself: a re-apply failure
+// that is NOT errWorktreeRootGone must not drop the loop into dormancy, so the loop keeps
+// re-applying at its existing (poll) cadence exactly as it does today.
+func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
+	buf := captureLog(t)
+	e, hook := newWatchLoopTestEngine(t, "on")
+	hook.setHook("", nil)
+	hook.setSelectLayoutErr(errors.New("select-layout boom"))
+
+	startWatchLoop(t, e, watchdogTestTiming())
+
+	if !eventually(t, 300*time.Millisecond, func() bool { return hook.count("list-panes") >= 5 }) {
+		t.Fatalf("list-panes calls = %d, want continued poll-cadence reapply attempts despite the non-sentinel failure", hook.count("list-panes"))
+	}
+	if strings.Contains(buf.String(), "told worktree root is gone") {
+		t.Errorf("dormancy warning logged for a non-sentinel failure, want only the sentinel to trigger dormancy:\n%s", buf.String())
 	}
 }

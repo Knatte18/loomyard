@@ -11,6 +11,9 @@
 package reedengine
 
 import (
+	"errors"
+	"io/fs"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,6 +23,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // fastWatchTiming shortens watchDefaultTiming's SignalTick, PollCycle, and Quiet durations, which
@@ -359,12 +363,31 @@ func TestWatchdogSelfHeal_NoSelfTriggerLoop(t *testing.T) {
 }
 
 // TestWatchdogSelfHeal_HookProbeMatchesLiveTmux asserts hookInstalledLocked reports (true, true)
-// after pinGeometryOptionsLocked has already run against the real session via AttachArgv's own
-// pre-flight. This is the assertion that catches any tmux-side normalisation of the hook command
-// string that would silently pin every watcher into poll mode on Linux, which no tier-1 test can see.
+// after AttachArgv's own pre-flight has installed the window-resized array against the real session.
+// This is the assertion that catches any tmux-side normalisation of the hook command string that
+// would silently pin every watcher into poll mode on Linux, which no tier-1 test can see.
+//
+// It is also the case that caught the probe's original shape: the array carries a resize-pane pin per
+// fixed-height pane alongside reed's touch, so an equality test against the whole show-options answer
+// reported "absent" on this — a perfectly healthy — session. The raw answer is asserted here too, so a
+// regression says which half broke: the install (no touch entry at all) or the match (a touch entry
+// the probe cannot see).
 func TestWatchdogSelfHeal_HookProbeMatchesLiveTmux(t *testing.T) {
 	fx := bootWatchdogFixture(t, 100, 30)
 	e := fx.e
+
+	raw, err := e.tmux.output("show-options", "-v", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName)
+	if err != nil {
+		t.Fatalf("show-options -v window-resized: %v", err)
+	}
+	entries := hookArrayEntries(strings.TrimRight(raw, "\n"))
+	own := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
+	if len(entries) < 2 {
+		t.Errorf("window-resized array = %q (%d entries), want the resize-pane pins AND reed's own touch entry", raw, len(entries))
+	}
+	if last := entries[len(entries)-1]; last != own {
+		t.Errorf("window-resized array's last entry = %q, want reed's own touch command %q — the whole array reads %q", last, own, raw)
+	}
 
 	var installed, known bool
 	if err := e.withOpLock(func() error {
@@ -374,9 +397,30 @@ func TestWatchdogSelfHeal_HookProbeMatchesLiveTmux(t *testing.T) {
 		t.Fatalf("withOpLock(hookInstalledLocked): %v", err)
 	}
 	if !known {
-		t.Fatal("hookInstalledLocked() known = false, want true — pinGeometryOptionsLocked already ran against the real session via AttachArgv's own pre-flight")
+		t.Fatal("hookInstalledLocked() known = false, want true — AttachArgv's own pre-flight already ran against the real session")
 	}
 	if !installed {
-		t.Error("hookInstalledLocked() installed = false, want true — reed's own hook command must round-trip byte-identically through show-options against a live tmux")
+		t.Errorf("hookInstalledLocked() installed = false, want true — reed's own hook command must round-trip byte-identically through show-options against a live tmux; the array reads %q", raw)
 	}
+}
+
+// TestWatchdogSelfHeal_ResizeTouchesTheSignalFile is the other half of the hook's contract, and the
+// one no probe can stand in for: a real client resize must actually run the array's touch entry and
+// leave this worktree's signal file on disk.
+// No watch loop runs here on purpose — the loop would consume the file the moment it appeared, so
+// this scenario proves the tmux SERVER writes it, not that a watcher can be observed reacting to it.
+func TestWatchdogSelfHeal_ResizeTouchesTheSignalFile(t *testing.T) {
+	fx := bootWatchdogFixture(t, 100, 30)
+	e := fx.e
+
+	if err := os.Remove(e.resizeSignalPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("remove any pre-existing signal file: %v", err)
+	}
+
+	resizePTY(t, fx.pty, 132, 44)
+
+	waitUntil(t, 15*time.Second, "the window-resized hook never touched the resize signal file after a live client resize", func() bool {
+		_, err := os.Stat(e.resizeSignalPath())
+		return err == nil
+	})
 }
