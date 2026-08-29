@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: done
 slug: manifest-designs-cleanup
 branch: manifest-designs-cleanup
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-29T10:16:43Z'
 implementing  '2026-08-29T10:20:36Z'
+done  '2026-08-29T10:33:28Z'
 ```
