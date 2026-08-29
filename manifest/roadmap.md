@@ -80,7 +80,7 @@ No build order is implied between these items.
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
 
-1. **loom: build `Plan-Sweep` for real** — stays a stub past the shipped `loom: Plan-Write producer`; deferred because quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry. Full spec already written.
+1. **loom: build `Plan-Sweep` for real** — the one row of loom's design table never built, and not a `loom-recipe.yaml` row at all; deferred because quarry-backed work is low-priority project-wide and this is the only row in the initiative that touches quarry. Full spec already written.
    See [designs/loom.md](designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec).
 
 1. **finalize: the discrepancy-document conflict shape** — some divergences cannot be expressed as a git conflict at all, so there are no markers to hand a resolving agent; the answer is a precomputed document describing the disagreement instead. Only the ordinary-git-conflict shape shipped (`internal/mergeresolve`), while `PullResult.PatternResidue` already is this shape for the history-rewrite case — design it once, for both, whenever picked up.
