@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r5
+phase: discussed
 slug: prowler-github-tree-script
 branch: prowler-github-tree-script
 plan: null
@@ -18,4 +18,6 @@ discussing  '2026-08-29T10:25:09Z'
 discussion-fix-r3  '2026-08-29T10:43:04Z'
 discussion-fix-r4  '2026-08-29T10:45:57Z'
 discussion-fix-r5  '2026-08-29T10:50:07Z'
+discussion-fix-r7  '2026-08-29T10:55:50Z'
+discussed  '2026-08-29T10:55:50Z'
 ```
