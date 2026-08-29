@@ -41,6 +41,8 @@ batches:
     commit_sha: a4f77b9880a4f63bfcb0d98d086436893ac8ecc6
     verify_baseline_failures: []
   - name: tree-script-and-docs
-    state: pending
+    state: running
+    implementer_session: 368a6c00-3127-43e2-98cb-6793d85a063d
+    start_sha: 4e26051d038c034d20ff06aa1f4cd04de21a1d86
     verify_baseline_failures: []
 ```
