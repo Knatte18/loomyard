@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-doc-surface-sweep
+phase: holistic-reviewing
 slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-reconcile-gate-and-reap-log  '2026-08-29T06:38:57Z'
 approved-drop-adoption-and-reap-chokepoint  '2026-08-29T06:44:32Z'
 approved-smoke-regressions  '2026-08-29T06:53:06Z'
 approved-doc-surface-sweep  '2026-08-29T06:58:45Z'
+holistic-reviewing  '2026-08-29T06:59:05Z'
 ```
 
 ## Batches
