@@ -25,6 +25,18 @@ This means:
 - If a build is ever interrupted in a way that leaves a stuck lock (e.g. a hard-killed process), the wrapper reclaims a lock older than ~300 seconds automatically.
   If you ever need to clear one manually: `rm -rf plugins/prowler/bin/.build.lock`.
 
+## `github-tree.sh`: one-call repo tree listing
+
+`github-tree.sh` lists a GitHub repository's file paths, optionally scoped to one directory, in a single invocation.
+It exists because the `github-repo-explorer` skill previously had the model execute a branching, potentially recursive `gh api` walk one call per turn — resolve the default branch, list the recursive tree, check truncation, then fall back to non-recursive per-directory calls — and that walk contains no decision a model actually needs to make.
+
+An untruncated listing costs exactly one `gh api` call,
+and even a repository large enough to trigger GitHub's recursive-tree truncation cap is one agent turn regardless of how many API calls the internal fallback makes.
+Its only runtime dependency is `gh`, already a hard prerequisite of the skill: every JSON field is extracted through `gh api --jq`,
+and no system `jq` is ever invoked at run time.
+Unlike `run.sh`, it has no build step and no lock, since there is nothing to compile.
+Its offline test harness (`github-tree-selftest.sh`) carries the one extra dependency of system `jq`, which the harness checks for up front.
+
 ## Runtime prerequisite: Chrome/Chromium
 
 The headless-browser fallback (used when a page is bot-blocked or JS-rendered and static extraction alone isn't enough) needs a local Chrome or Chromium install. prowler discovers it via the `CHROME_PATH` environment variable first, then a platform-specific candidate list (matching weblens' own discovery).
