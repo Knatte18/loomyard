@@ -135,36 +135,30 @@ func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 	}
 }
 
-// TestSmokeRemoveLastStrandThenAddRunsTheNewCommand pins the corpse-pane adoption defect this round
-// fixed: kill-pane on a session's SOLE pane does not remove it — under remain-on-exit psmux corpses
-// it as pane_dead=1 with exit 0 — and the old adopt path then bound the next added strand to that
-// corpse, silently swallowing its send-keys (the command never ran, and the next verb's reconcile
-// stripped the binding again).
-// The fix never adopts a dead pane, so the post-remove add must yield a strand that is live and
-// STAYS live across the next reconciling verb.
+// TestSmokeRemoveLastStrandThenAddRunsTheNewCommand exercises removing a session's last STRAND and
+// then adding a new one, with the always-present header pane in play: removeStrandLocked collects
+// pane ids from strands only, and the header is never a strand, so the removed strand's pane is never
+// the session's actual last pane — kill-pane removes it outright, on either backend, rather than
+// corpsing it under remain-on-exit, and the header alone is left holding the session up. The
+// following add must split a fresh pane whose command genuinely runs and STAYS live across the next
+// reconciling verb.
 //
-// Caveat: this corpse-pane premise is PSMUX-SPECIFIC.
-// tmux behaves oppositely — killing a session's true last pane DESTROYS the session (and, if it was
-// the server's only session, the server exits) rather than corpsing it — so this test's sole-pane
-// remove would never reach an "adopt or not" decision at all on tmux;
-// see reedengine.RemoveStrand's emptied-session swallow (strand.go) for how that backend is
-// handled.
+// This premise holds identically on tmux — see reedengine.RemoveStrand's emptied-session swallow
+// (strand.go) for how that path is handled at the engine level — so the Windows-only skip below is
+// kept for coverage economy, not backend-specific behavior: the equivalent
+// removing-the-last-strand-then-add shape is already exercised on the tmux backend by
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds (contract_integration_test.go), so running this
+// real-tmux-session variant there too would be redundant.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	tmuxBinaryPath(t)
 
-	// This test's whole premise — kill-pane on a session's sole pane corpses
-	// it (pane_dead=1, exit 0) rather than destroying the session — is
-	// PSMUX-SPECIFIC (see the doc comment above): on native tmux, killing a
-	// session's true last pane destroys the session outright, so the remove
-	// call below never reaches an "adopt a corpse or not" decision at all —
-	// there is nothing left to adopt, correctly, by design (see
-	// reedengine.RemoveStrand's emptied-session swallow in strand.go). Skip
-	// rather than hard-fail a scenario this backend cannot reach; the
-	// emptied-session path itself is covered by
-	// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds
-	// (contract_integration_test.go).
+	// Windows-only for coverage economy, not because this backend behaves
+	// differently (see the doc comment above): the equivalent
+	// removing-the-last-strand-then-add shape is already exercised on the
+	// tmux backend by TestRemoveStrand_SoleStrandEmptiesSessionSucceeds
+	// (contract_integration_test.go), so skip here rather than duplicate it.
 	if runtime.GOOS != "windows" {
-		t.Skip("corpse-pane-adoption premise is PSMUX-SPECIFIC; on native tmux, removing a session's sole strand destroys the session instead of corpsing its pane, so this scenario cannot occur here (see TestRemoveStrand_SoleStrandEmptiesSessionSucceeds for the tmux-side coverage)")
+		t.Skip("removing-the-last-strand-then-add is already exercised on the tmux backend by TestRemoveStrand_SoleStrandEmptiesSessionSucceeds; this real-tmux-session variant runs only on the psmux (Windows) backend to avoid redundant coverage")
 	}
 
 	h := hubforge.NewHub(t, ".")
@@ -189,10 +183,9 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 
 	second := addStrand(t, launch, "--name", "second")
 
-	// The reconciling verb is the trap: with the old corpse adoption the
-	// strand read live immediately after add (its binding named the corpse,
-	// still present), and only the next reconcile exposed the lie by
-	// clearing the binding. up reconciles; the strand must still be live.
+	// A genuine fresh split has no reason to wobble across a reconcile, but
+	// this is the shape a corpse-bound strand would have failed under: up
+	// reconciles; the strand must still be live.
 	out.Reset()
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("post-add up = %d; want 0, output: %s", code, out.String())
@@ -206,7 +199,7 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 		t.Fatalf("status missing strand %s; output: %s", second, out.String())
 	}
 	if live, _ := strand["live"].(bool); !live {
-		t.Errorf("strand added after remove-last: live = false; want true (adopted a dead corpse pane?); status: %s", out.String())
+		t.Errorf("strand added after remove-last: live = false; want true (bound to a pane reconcile then cleared?); status: %s", out.String())
 	}
 }
 
@@ -361,8 +354,10 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 
 // TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane keepalive guarantee this
 // batch adds: the always-present header pane must survive a full up -> add -> remove -> add cycle
-// and every reconcile along the way, never adopted/reaped as a strand's pane, and — the whole point
-// — still alive even when the strand table momentarily drops to zero after a remove.
+// and every reconcile along the way, and it is never a strand's pane — because a strand's pane is
+// always a fresh split (planPaneTarget never targets the header while any non-header pane exists),
+// and the header is exempt from both halves of reconcile's kill schedule — and, the whole point,
+// still alive even when the strand table momentarily drops to zero after a remove.
 // Mirrors TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's tmux-driven verification style
 // (list-panes via the real binary, not reed's own reporting) but for the header instead of a
 // foreign pane.
@@ -401,9 +396,13 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	}
 	requireHeaderAlive("right after up (zero strands)")
 
-	// add: the header must never be adopted as this first strand's pane —
-	// planPaneTarget excludes it from adoption, so the strand lands on the
-	// session's other (pre-header) pane instead.
+	// add: the preceding up's own reconcile already reaped the session's
+	// pre-header pane (the same zero-strands-plus-alive-header reap
+	// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins), so the header
+	// is the session's only pane when this first strand is added.
+	// planPaneTarget's header-as-last-resort fallback then splits off the
+	// header itself — the header stays alive as the split TARGET, and the
+	// strand lands on the freshly split pane, never on the header pane.
 	guid := addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "first")
 	requireHeaderAlive("after add")
 
@@ -446,9 +445,9 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	}
 	requireHeaderAlive("after a reconciling up with zero strands")
 
-	// add again: the header must still never be adopted, and the new
-	// strand must come up live — the substrate the header keeps alive is
-	// still genuinely usable, not a wedged husk.
+	// add again: the header must still never become the new strand's own
+	// pane, and the new strand must come up live — the substrate the header
+	// keeps alive is still genuinely usable, not a wedged husk.
 	second := addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "second")
 	requireHeaderAlive("after a second add with strands now bound")
 
@@ -464,7 +463,7 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 		t.Errorf("strand %s live = false; want true", second)
 	}
 	if paneID, _ := strand2["paneId"].(string); paneID == headerPaneID {
-		t.Errorf("strand %s was bound to the header pane %s; the header must never be adopted", second, headerPaneID)
+		t.Errorf("strand %s was bound to the header pane %s; the header must never become a strand's own pane", second, headerPaneID)
 	}
 }
 
