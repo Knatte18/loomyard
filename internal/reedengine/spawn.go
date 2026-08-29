@@ -1,7 +1,7 @@
 // spawn.go implements the shared pane-launch helper every strand-realizing path composes: AddStrand
 // launching a freshly added strand, UpdateStrand surfacing a hidden->visible strand, and Resume
-// replaying a not-live strand all call launchStrandLocked to actually create (or adopt) a tmux pane
-// and run the strand's command in it (GAP A) — without this shared helper, add would register a
+// replaying a not-live strand all call launchStrandLocked to reconcile and then create a fresh tmux
+// pane and run the strand's command in it (GAP A) — without this shared helper, add would register a
 // record and re-render but never create a pane or run anything.
 // This file also carries the two other small cross-file bootstrap helpers strand.go and
 // lifecycle.go both need: loadOrInitStateLocked (fresh-worktree state bootstrap) and
@@ -93,10 +93,36 @@ func sendKeysLiteralArg(text string) string {
 	return text
 }
 
-// launchStrandLocked realizes s into a live tmux pane and runs launchCmd in it,
-// adopting the initial pane or splitting the tallest alive one. It validates
-// the split created a new pane and sets only s.PaneID; Live is derived from
-// pane binding downstream.
+// launchStrandLocked reconciles the session's panes first, then always splits a fresh pane for s and
+// runs launchCmd in it. It validates the split created a new pane and sets only s.PaneID; Live is
+// derived from pane binding downstream.
+//
+// Reconciling here — rather than trusting the caller's last reconcile — is the chokepoint that makes
+// "reap before allocate" hold on every strand-realizing path (AddStrand, UpdateStrand, Resume, and
+// any future one) by construction, instead of by each call site remembering to do it. It is safe for
+// the strand being launched itself, though the reason differs per path:
+//   - On AddStrand and UpdateStrand, s reaches here with PaneID == "" (addStrandLocked builds a
+//     fresh record; updateStrandLocked launches a strand that has never held a pane), so reconcile
+//     can neither clear nor kill anything belonging to it.
+//   - On Resume that is not universally true: planResumeLaunches selects strands whose pane is
+//     absent from aliveIDSet, which includes a strand still bound to a dead-but-present pane. That is
+//     harmless here too — that binding names a corpse, so reconcile either kills it as a dead pane
+//     (clearing the binding) or spares it as the kept dead pane, and either way this function
+//     overwrites s.PaneID with the freshly split pane a few lines below. Strands Resume's per-strand
+//     loop already relaunched earlier in the same pass are bound to alive panes by the time this
+//     reconcile runs for the next strand, so they are exempt from the untracked reap, not merely
+//     lucky to survive it.
+//
+// This does not call SaveState: AddStrand and UpdateStrand only persist after this function returns
+// nil, so a split-window or send-keys failure here returns with panes already killed in tmux while
+// the corresponding binding clears live only in memory — reed.json itself is untouched. That window
+// is accepted rather than closed, because it is self-healing (Status and toRenderStrands derive
+// liveness from the live pane set, never the persisted binding, and the next mutating verb's own
+// reconcile clears the now-stale bindings for real) and because closing it here would be worse:
+// persisting inside this helper would write the half-added strand record on the add path, turning a
+// clean failure into a phantom strand Resume would later try to launch. If this window ever needs
+// closing, the right shape is reaping before the strand record is appended to st.Strands, not
+// persisting a partial one from inside this helper.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
 	session := e.SessionName()
 
@@ -104,6 +130,22 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
+
+	killed, err := e.reconcileLocked(st, live)
+	if err != nil {
+		return fmt.Errorf("reconcile: %w", err)
+	}
+	if len(killed) > 0 {
+		// Order matters: kill untracked/dead -> re-enumerate live -> plan.
+		// The kill-pane calls above mutate the pane set planPaneTarget below
+		// must choose from, so enumeration must follow them (same ordering
+		// reconcileApplyPersistLocked already treats as load-bearing).
+		live, err = e.tmux.listPanes(session)
+		if err != nil {
+			return fmt.Errorf("list panes after reconcile: %w", err)
+		}
+	}
+
 	splitTargetID, err := planPaneTarget(live, st.HeaderPaneID)
 	if err != nil {
 		return err
