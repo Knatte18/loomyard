@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-smoke-regressions
+phase: approved-doc-surface-sweep
 slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: _mill/plan
@@ -40,6 +40,7 @@ implementing  '2026-08-29T06:33:07Z'
 approved-reconcile-gate-and-reap-log  '2026-08-29T06:38:57Z'
 approved-drop-adoption-and-reap-chokepoint  '2026-08-29T06:44:32Z'
 approved-smoke-regressions  '2026-08-29T06:53:06Z'
+approved-doc-surface-sweep  '2026-08-29T06:58:45Z'
 ```
 
 ## Batches
@@ -65,8 +66,9 @@ batches:
     commit_sha: e1460824cbc86a91cd96f0db17aee9ab55b67a6a
     verify_baseline_failures: []
   - name: doc-surface-sweep
-    state: running
+    state: approved
     implementer_session: 8a333795-7275-4713-9408-f3a9ca5b485f
     start_sha: e56eb52b11eb7033c81118f635af5b1ba7092171
+    commit_sha: e1096707c496d16f4d5b8a8027814028b57bc3c1
     verify_baseline_failures: []
 ```
