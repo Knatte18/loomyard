@@ -43,6 +43,9 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   In `reconcileLocked`, replace the tuple destructuring with a single `plan := planReconcile(...)`, then run the `kill-pane` loop over `plan.deadPanesToKill` first and `plan.untrackedPanesToKill` second — that order reproduces today's single merged slice exactly, and the existing `killed` accumulator and its error-wrapping (`fmt.Errorf("kill pane %s: %w", id, err)`) stay as they are.
   Update the binding-clear loop to read `plan.clearedGUIDs`.
   Update `planReconcile`'s own doc comment to describe the struct and to state why the two kill reasons are carried apart (the reap log line distinguishes them).
+  Correct `reconcile.go`'s file-header comment in the same card: its opening sentence says `planReconcile` "decides which strand pane bindings to clear and which dead panes to kill", which this card falsifies by making untracked kills a first-class field of the returned struct rather than an unnamed half of one merged slice.
+  This card owns that correction because it is the card that makes the sentence wrong;
+  leaving it for the batch 3 doc sweep would park a false file header at the top of the file for three batches, and neither of card 12's grep terms reaches it, so nothing downstream would catch it either.
   In `internal/reedengine/reconcile_test.go`, rewrite `TestPlanReconcile`'s table so each case carries `wantDeadPanesToKill` and `wantUntrackedPanesToKill` in place of the single `wantPanesToKill` field, and update the assertion body to compare all three slices plus `keptDeadPane` against the struct's fields via the existing `equalStringSlices` helper.
   Every existing case keeps its current expected outcome — assign each existing `wantPanesToKill` entry to whichever of the two new fields matches the reason that case exercises (`NonSoleDeadPaneScheduledForKillAndBindingCleared`, `AllDeadKeepsFirstPaneAndKillsTheRest` and `DeadHeaderExemptWhileDeadStrandPaneStillKilled` are dead-pane kills; `UntrackedAlivePaneKilledWhileBoundContentPresent` and `HeaderPaneNeverReapedAsUntrackedWhileStrandBound` are untracked kills).
   Do not change any case's behavioural expectation in this card.
@@ -99,7 +102,10 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/reedengine/reconcile.go`, add `"github.com/Knatte18/loomyard/internal/logger"` to the import block and emit exactly one `logger.Info` call at the end of `reconcileLocked`, only when at least one pane was killed.
-  The call carries the `"socket"`/`"session"` key shape `loadOrInitStateLocked` already uses in `spawn.go` (`e.Socket()` and `e.SessionName()` as values) plus two further keys carrying `plan.deadPanesToKill` and `plan.untrackedPanesToKill` separately, so the untracked half is distinguishable in the log without cross-referencing anything.
+  The call carries the `"socket"`/`"session"` key shape `loadOrInitStateLocked` already uses in `spawn.go` (`e.Socket()` and `e.SessionName()` as values) plus two further keys separating the dead-pane kills from the untracked kills, so the untracked half is distinguishable in the log without cross-referencing anything.
+  Those two keys must carry the ids actually destroyed — the accumulated locals described below — never `plan.deadPanesToKill` / `plan.untrackedPanesToKill`.
+  The two sources agree on the success path and diverge on the partial-kill path, where the scheduled lists would name panes the failing `kill-pane` never reached;
+  a log claiming to have destroyed a pane that is still alive is worse than no log, and this is a destruction record, not a record of intent.
   One line per `reconcileLocked` call, never one per pane.
   A reconcile that killed nothing must emit nothing.
   The line must fire on the partial-kill error path too, not only on the success path.
@@ -122,7 +128,9 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   Assert three things: a reconcile which kills untracked panes emits an `Info` line naming those pane ids;
   a reconcile which kills nothing emits no output at all;
   and a reconcile whose `kill-pane` fails partway — scripted by an `execHook` that succeeds for the first pane and returns an error for the second — still emits a line naming the pane it did destroy, while returning the error to its caller.
-  That third case is the one the partial-kill requirement above exists for, and without it the `defer` could be removed and the suite would stay green.
+  That third case must assert both halves: the destroyed pane's id **is** present in the logged output, and the failed pane's id is **absent** from it.
+  Asserting only the first half cannot tell the accumulated actually-killed locals apart from the scheduled `plan.*ToKill` lists, since both contain the first pane — the absence half is what pins the distinction the requirement above turns on.
+  Without this whole case the `defer` could be removed and the suite would stay green.
   Assert on the pane ids' presence, not on the message's exact wording — the point is that the destructive path is observable.
 - **Commit:** `feat(reedengine): log the panes a reconcile reaps`
 

@@ -3,7 +3,7 @@
 ```yaml
 task: 'reed: pane reap isn''t applied consistently across up/add''s mutating paths'
 slug: 'reed-pane-reap-consistency'
-approved: false
+approved: true
 started: '20260828-144143'
 parent: 'main'
 root: ""
