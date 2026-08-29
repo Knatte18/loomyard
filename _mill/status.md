@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: prowler-github-tree-script
 branch: prowler-github-tree-script
-plan: null
+plan: _mill/plan
 parent: main
 task: 'prowler: collapse github-repo-explorer''s truncation-fallback tree-walk into one script call'
 task_description: |
@@ -20,4 +20,5 @@ discussion-fix-r4  '2026-08-29T10:45:57Z'
 discussion-fix-r5  '2026-08-29T10:50:07Z'
 discussion-fix-r7  '2026-08-29T10:55:50Z'
 discussed  '2026-08-29T10:55:50Z'
+planning  '2026-08-29T11:06:10Z'
 ```
