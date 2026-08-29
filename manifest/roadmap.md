@@ -15,7 +15,7 @@ Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
 
 1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, and still blocked on the Someday `quarry-backed plan symbol verification` item for the edges its scheduler would need.
-   See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (status banner there is stale — written for the earlier, rejected shape).
+   See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
 1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first, so it needs its own look before it can be scoped.
 

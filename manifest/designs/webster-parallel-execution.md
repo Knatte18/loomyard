@@ -1,6 +1,8 @@
 # webster: parallel card execution via worktrees + a DAG
 
-> **Status: Speculative, explored twice, rejected for now both times.** Not pursued further until webster's card-list rewrite (`internal/websterengine`, landed) has real running mileage, and this looks worth the complexity by measured evidence, not estimate. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into `internal/websterengine`'s package doc and this file is deleted; if abandoned, this file is simply deleted.
+> **Status: parked, not rejected — one shape was rejected, a second is open.** What two explorations rejected is *concurrent forks inside one working tree*, which race on a single shared git index; the 2026-08-20 worktree-per-group shape below does not share that index and is not covered by that rejection. Read past this banner before concluding the idea is dead — the earlier wording said "rejected for now both times" and, until the 2026-08-29 designs audit, sent readers away before the open shape, the measured case study, and the decision gate.
+> Still parked, for reasons that have not changed: it is a speed optimization over an already-correct sequential system, its DAG edges depend on the unscheduled Someday `quarry-backed plan symbol verification` item, and webster's landed card-list rewrite (`internal/websterengine`) should get real running mileage first. Reopen it on the measured evidence the Decision gate section names, never on estimate.
+> Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into `internal/websterengine`'s package doc and this file is deleted; if abandoned, this file is simply deleted.
 
 ## Why it's parked
 
@@ -21,7 +23,6 @@ Merge-back reuses `fabric`'s existing merge machinery, not new infrastructure, a
 The ready set recomputes wave to wave rather than being precomputed upfront, so a group that turns out to depend on another's output is simply not ready yet instead of being mis-scheduled.
 
 This shape is what makes the rejection at the top of this doc specific rather than general: that rejection was about concurrent forks sharing one checkout's git index, which worktree-per-group does not do.
-The Status banner above still describes the earlier, rejected shape and has not been rewritten for this one — reconciling it belongs to the Someday `webster: worktree-per-card parallel execution` roadmap item, whenever it is picked up.
 
 Grouping granularity (one card vs. several) is orthogonal to safety — the original rejection above conflated it with the working-tree-sharing hazard, but genuine worktree-per-lane isolation is what actually matters.
 Not yet a plan: needs the DAG source (the Someday `quarry-backed plan symbol verification` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
