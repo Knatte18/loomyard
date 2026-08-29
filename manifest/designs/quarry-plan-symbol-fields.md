@@ -45,7 +45,7 @@ Neither of these required any change to ship — they exist independently of thi
 |---|---|---|
 | `quarry` | "What exactly references/defines this symbol, right now?" | Nothing further (shipped) |
 | symbol fields (this) | "Does this card's declared file-op list match what actually references the symbol?" | `quarry` (shipped) |
-| `webster: parallel card execution`'s DAG scheduler | "Which cards can run concurrently without a real dependency edge between them?" | Symbol fields (this) — `internal/websterengine`'s scheduler runs strictly in declared order today specifically because the symbol-derived edges it would need don't exist yet |
+| `webster: worktree-per-card parallel execution`'s DAG scheduler | "Which cards can run concurrently without a real dependency edge between them?" | Symbol fields (this) — `internal/websterengine`'s scheduler runs strictly in declared order today specifically because the symbol-derived edges it would need don't exist yet |
 
 Picking up this idea is a prerequisite for the parallel-execution item ever becoming buildable, not just a nice-to-have alongside it — see [webster-parallel-execution.md](webster-parallel-execution.md)'s own "Relationship to quarry" section, which already names structured impact lookup as the retired `websterv2.md` draft's Part B.
 

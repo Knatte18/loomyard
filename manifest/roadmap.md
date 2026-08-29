@@ -14,7 +14,9 @@ This section holds what's committed to next.
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
 
-1. **webster: worktree-per-card parallel execution** — spawn independently-executable cards/batches into their own `git worktree` (via `internal/fabricengine`) instead of forking in one shared worktree, gating a batch's completion on a build+test of the merged result; the ready set recomputes wave to wave, never precomputed upfront. Depends on the shipped `webster: DAG-derived card sequencing` for the dependency graph. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, not a prerequisite — wait for the sequential path to get real mileage first.
+1. **webster: worktree-per-card parallel execution** — spawn independently-executable cards/batches into their own `git worktree` (via `internal/fabricengine`) instead of forking in one shared worktree, gating a batch's completion on a build+test of the merged result; the ready set recomputes wave to wave, never precomputed upfront. Depends on the shipped `webster: DAG-derived card sequencing` for the dependency graph, and on the Someday `quarry-backed plan symbol fields` item for the symbol-derived edges the DAG scheduler needs — so this is not yet a plan, just a shape. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system, not a prerequisite — wait for the sequential path to get real mileage first.
+   This entry absorbed a duplicate of itself, `webster: parallel card/batch execution`, in the 2026-08-29 designs audit: the two described the same idea, the same unblocking shape, and the same design doc under two names.
+   Use this name for it — three variants were in circulation across the roadmap and `designs/`.
    See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (stale, reconcile in this task — its prior rejection was about concurrent forks sharing one checkout's git index, a different model than worktree-per-card, which does not share that race).
 
 1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the whole task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first (deliberately kept out today to protect the Fabric illusion) — needs its own look before this is scoped further.
@@ -38,9 +40,6 @@ No build order is implied between these items.
    parallel-regeneration design exists;
    folds into `Finalize`'s own contract rather than a separate producer — `Shed` has no slots for it to occupy.
    See [designs/raddle.md](designs/raddle.md).
-
-1. **webster: parallel card/batch execution** — a possible unblocking shape exists (own `fabric` worktree per DAG-independent group, avoiding the git-index race the earlier rejected shape hit) but isn't yet a plan — needs the DAG source and more design work.
-   See [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (status banner there is stale — written for the earlier, rejected shape, not this one).
 
 1. **Tenter + Hardener** — behavior-based hardening of a live-substrate module (archetype: `reed` driving real tmux), on-demand and post-`loom`, off the `shuttle → burler → shed → loom` spine; `Hardener` is the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe merge-back).
    See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
@@ -67,7 +66,7 @@ No build order is implied between these items.
    See [designs/curation-triage.md](designs/curation-triage.md).
 
 1. **quarry-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified code-intelligence lookup tool; that tool (now `quarry`, an external Go module dependency) and the loom Planner have since shipped, unblocking but not yet scoping this.
-   Named prerequisite for `webster: parallel card/batch execution`'s parked DAG scheduler.
+   Named prerequisite for `webster: worktree-per-card parallel execution`'s parked DAG scheduler.
    See [designs/quarry-plan-symbol-fields.md](designs/quarry-plan-symbol-fields.md).
 
 1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config today resolves only from `<cwd>/_lyx/config/<module>.yaml` (per-worktree, no shared default; `fabric.yaml` is the sole exception, anchored at `_board`/weft:main). Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses. Not yet designed.
@@ -136,7 +135,7 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
   Delete that doc once the module ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — a Done entry instead points at the module's own package documentation, which is where its durable detail lives from then on.
   If an entry keeps growing past a couple of sentences, that is a signal to move the growth into the doc it points to, not to let the entry itself grow.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`quarry-backed plan symbol fields`, `raddle`, `webster: parallel card/batch execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
+- Someday items get a `designs/<name>.md` doc when there's real design behind them (`quarry-backed plan symbol fields`, `raddle`, `webster: worktree-per-card parallel execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`warp-visibility`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
   Add new speculative ideas directly to Someday.
