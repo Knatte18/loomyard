@@ -445,6 +445,11 @@ A header that grows past its configured row count, or a bottom strand squeezed b
 The operator must also confirm the cursor did NOT jump to another pane across either resize (the focus-steal regression), and that typing into a pane before a resize leaves that same pane focused after it.
 Rationale: the agent session owns the current terminal, so it cannot demonstrate or observe a live client resize itself.
 
+The agent then checks the mechanism the self-heal is supposed to be RUNNING on, which the visual half cannot distinguish on its own -- a watcher stuck on the two-second poll fallback heals a resize about as convincingly as a signal-driven one does, only later.
+`tmux -L <socket> show-options -v -t '=<session>:' window-resized` (controlled exception) must print one `resize-pane -t "%<id>" -y <rows>` line per fixed-height pane AND, as its LAST line, a `run-shell -b` line naming THIS worktree's own `.lyx/reed-resize.signal` path.
+A missing `run-shell` line is a `FAIL`: it means every watcher on the box is silently in poll mode, with the hook probe reporting "absent" forever.
+The header pane's log must also carry exactly one `promoting resize watchdog to signal mode` line for the session -- absent means the probe never matched, and repeated means the watcher is flapping between modes.
+
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ## Session log format
