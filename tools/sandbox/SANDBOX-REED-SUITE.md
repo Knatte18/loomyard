@@ -246,7 +246,7 @@ or a strand that flips to `live: false` after the next verb means a split/apply 
 
 **Watch:** `lyx reed remove <guid>` on the sole strand succeeds;
 the following `lyx reed add --cmd <long-running command>` returns a guid,
-and the strand reads `live: true` in `status` **both immediately and again after one more verb** (e.g. `lyx reed up`) -- a strand that reads live once and then flips to `live: false` with an empty `paneId` adopted a dead leftover pane and its command never ran (`FAIL`).
+and the strand reads `live: true` in `status` **both immediately and again after one more verb** (e.g. `lyx reed up`) -- a strand that reads live once and then flips to `live: false` with an empty `paneId` means its fresh split silently failed to produce a working pane and its command never ran (`FAIL`).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -281,9 +281,9 @@ Skip with a note if no claude is configured. (Covered headlessly by `TestSmokeCl
 **Goal:** "With the overlay up and **no strands added**, create a pane in the reed session behind reed's back, then run `lyx reed up` again and prove the session is still usable."
 
 **Watch:** `tmux -L <socket> split-window -t <session>` (controlled exception) simulates an operator-split/foreign pane.
-The follow-up `lyx reed up` must **not** destroy the session's pane set (`tmux -L <socket> list-panes` still shows panes — an empty pane list means an empty layout was applied and tmux wiped the window: `FAIL`).
-A subsequent `lyx reed add --cmd <long-running command>` must succeed and read `live: true` in `status` (a "session has no panes to adopt or split" error means the session became a zero-pane husk: `FAIL`), and after that add the foreign pane is **deterministically reaped** by reconcile (the documented "reed owns the session window" policy, not a finding) — what would be a `FAIL` is a *tracked* strand's pane disappearing instead of the foreign one.
-Covered headlessly by `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`.
+The follow-up `lyx reed up` must **not** destroy the session's pane set (`tmux -L <socket> list-panes` still shows panes — an empty pane list means an empty layout was applied and tmux wiped the window: `FAIL`), and that SAME `up` -- not a subsequent `add` -- is what **deterministically reaps** the foreign pane (the documented "reed owns the session window" policy, not a finding), since the untracked reap now fires from the alive header this `up` boots.
+A subsequent `lyx reed add --cmd <long-running command>` must succeed and read `live: true` in `status` (a "session has no panes to split" error means the session became a zero-pane husk: `FAIL`) — what would be a `FAIL` is a *tracked* strand's pane disappearing instead of the foreign one.
+Covered headlessly by `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` (the `up` reap) and `TestSmokeForeignPaneIsReapedNotAdoptedByAdd` (the faithful M16 regression).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -370,9 +370,9 @@ A new server on the default socket (the capability probe's historical leak, R2-F
 
 **Watch:** `up`, then `add` one strand, so the one-row header band at the top of the window is actually laid out.
 Delete `.lyx/reed.json` (or run `git clean -xdf` in the worktree -- `.lyx` is never-tracked machine-local scratch, so this is a sanctioned operator action) while leaving the session up.
-`lyx reed up` must then SUCCEED, and the rebuilt header band must be visible at the very top of the window with the strand stack below it -- not inverted, not squeezed to nothing.
+`lyx reed up` must then SUCCEED and converge IMMEDIATELY, not one verb late: the old header and the now-untracked strand pane are both reaped in this same `up`, and the freshly rebuilt header ends up alone, full-height, at the very top of the window, with nothing below it -- a full-height header with an empty strand stack is the expected `OK` here, not a defect.
 A subsequent `lyx reed add` must run its command for real (check the pane, and check the process exists), not type it onto a pane that is already busy.
-An `up` that fails with `no space for new pane`, a header that does not end up topmost, or an added strand whose command never runs is a `FAIL`.
+An `up` that fails with `no space for new pane`, a header that does not end up topmost, or an added strand whose command never runs is a `FAIL` -- and so now is a surviving OLD header pane or a surviving ORPHANED strand pane left behind by that `up`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
