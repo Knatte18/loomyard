@@ -467,6 +467,123 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	}
 }
 
+// pollProcessGone polls processGone until pid is gone or timeout elapses, failing the test on
+// timeout. kill-pane terminates a pane's process asynchronously, so a caller that needs to assert a
+// killed pane's process is truly gone must poll rather than sample once immediately after the killing
+// verb returns.
+func pollProcessGone(t *testing.T, pid int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if processGone(pid) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d still running %s after the pane that held it was reaped", pid, timeout)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// TestSmokeForeignPaneIsReapedNotAdoptedByAdd is the faithful M16 regression: an operator's own
+// manually-created split-window pane must never be adopted as a strand's pane, and must instead be
+// reaped by add's reconcile.
+//
+// M16 fires only when the sole alive non-header pane is the foreign one — a session that still holds
+// its unadopted initial new-session pane has TWO alive non-header panes, which is why
+// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable passed even before this round's fix. So the
+// fixture first drives the session to a header-plus-foreign-pane-only state: up, add a strand, remove
+// that strand (its pane is gone, not corpsed — the always-present header keeps the session up), then
+// split a foreign pane in with the real tmux binary, exactly as
+// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable does.
+//
+// The foreign pane's own #{pane_pid} is captured before the add under test and polled gone afterward,
+// under a bounded deadline rather than sampled once immediately — kill-pane terminates a pane's
+// process asynchronously. That pid check is the load-bearing assertion, not decoration: a pane-id-only
+// assertion would have passed for the adoption bug had ids been recycled, whereas under adoption the
+// pane pid provably survives — that identity is exactly what M16 recorded. Assert nothing about the
+// foreign pid's descendants: the reap is kill-pane-only by decision, and descendant liveness is pinned
+// by RemoveStrand's and Down's own tests, not here.
+func TestSmokeForeignPaneIsReapedNotAdoptedByAdd(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+
+	st, err := reedengine.LoadState(filepath.Join(h.PrimeWorktree(), ".lyx"))
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+	headerPaneID := st.HeaderPaneID
+
+	guid := addStrand(t, smokeReapLaunchCmd(), "--name", "throwaway")
+	out.Reset()
+	if code := RunCLI(&out, []string{"remove", guid}); code != 0 {
+		t.Fatalf("remove = %d; want 0, output: %s", code, out.String())
+	}
+
+	socket, session := socketAndSession(t)
+
+	// A foreign pane reed does not track (the operator-split case), created
+	// exactly as TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's own
+	// foreign split-window: the session now holds the header plus this one
+	// foreign pane, and zero strands — the sole-alive-non-header-pane
+	// precondition M16 requires.
+	if err := exec.Command(tmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
+		t.Fatalf("foreign split-window: %v", err)
+	}
+
+	// The foreign pane is the one live pane that is neither the header nor
+	// the (already-gone, kill-pane-removed-outright) removed strand's pane.
+	foreignPaneID := ""
+	for _, line := range listPaneLines(t, tmuxPath, socket, session) {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] == headerPaneID {
+			continue
+		}
+		foreignPaneID = fields[0]
+		break
+	}
+	if foreignPaneID == "" {
+		t.Fatalf("no foreign pane found after split-window; panes=%v", listPaneLines(t, tmuxPath, socket, session))
+	}
+	foreignPID := paneRootPID(t, tmuxPath, socket, session, foreignPaneID)
+
+	guid2 := addStrand(t, smokeReapLaunchCmd(), "--name", "after-foreign")
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"status"}); code != 0 {
+		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
+	}
+	strand, found := statusStrand(t, out.Bytes(), guid2)
+	if !found {
+		t.Fatalf("status missing strand %s; output: %s", guid2, out.String())
+	}
+	if paneID, _ := strand["paneId"].(string); paneID == foreignPaneID {
+		t.Fatalf("strand %s was bound to the foreign pane %s; the foreign pane must be reaped, never adopted", guid2, foreignPaneID)
+	}
+
+	panes := listPaneLines(t, tmuxPath, socket, session)
+	for _, line := range panes {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == foreignPaneID {
+			t.Fatalf("foreign pane %s still present after add; want it reaped by reconcile; panes=%v", foreignPaneID, panes)
+		}
+	}
+
+	pollProcessGone(t, foreignPID, 20*time.Second)
+}
+
 // TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp is the end-to-end regression guard for
 // the R4 review's R4-F4, driven at the CLI seam a real operator uses.
 //
