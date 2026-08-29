@@ -102,7 +102,13 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   The call carries the `"socket"`/`"session"` key shape `loadOrInitStateLocked` already uses in `spawn.go` (`e.Socket()` and `e.SessionName()` as values) plus two further keys carrying `plan.deadPanesToKill` and `plan.untrackedPanesToKill` separately, so the untracked half is distinguishable in the log without cross-referencing anything.
   One line per `reconcileLocked` call, never one per pane.
   A reconcile that killed nothing must emit nothing.
-  Place the call after the kill loop and after the binding-clear loop, on the success path only — an early `return killed, err` from a failing `kill-pane` must not log.
+  The line must fire on the partial-kill error path too, not only on the success path.
+  `reconcileLocked` returns `killed, fmt.Errorf("kill pane %s: %w", ...)` from inside the loop, so a failure on the third of four panes returns with two panes already destroyed — and every caller discards the returned `killed` slice on error (`reconcileApplyPersistLocked`'s `return nil, fmt.Errorf("reconcile: %w", err)`, `Resume`'s identical site, and the new call site card 6 adds).
+  A success-only log would therefore leave exactly the silent destruction this log exists to prevent, in the one case where the operator most needs the trace.
+  Implement it so both paths are covered: accumulate the killed ids into two locals as the loops progress — one for the dead-pane kills, one for the untracked kills — and emit the single `Info` line from a `defer` that fires whenever either local is non-empty.
+  A `defer` is preferred over duplicating the call before each `return` so the two paths cannot drift apart later.
+  The line still carries the same key shape either way, and the error itself still propagates unchanged — logging is additive here and must not swallow or alter the returned error.
+  A reconcile that killed nothing still logs nothing, on either path.
   Add a comment above it recording why this is `Info` and not `Debug` (CONSTRAINTS.md's Live-Substrate Spawn Observability lifecycle-vs-probe split: this is a lifecycle teardown) and why the reap needs a trace at all (card 2 makes it fire on the zero-strand precondition, so it goes from near-dormant to routine, and it destroys panes an operator may have created).
   Create `internal/reedengine/logcapture_test.go` — an untagged test file in package `reedengine` — holding a single helper `captureLogOutput(t *testing.T) *bytes.Buffer`.
   It must call both `logger.SetOutput(&buf)` and `logger.SetVerbosity(1)`, and register one `t.Cleanup` restoring `logger.SetVerbosity(0)` and `logger.SetOutput(os.Stderr)`.
@@ -113,7 +119,10 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   The `TestReconcileLocked_` prefix is required, not stylistic: this batch's `verify:` filters on `-run 'TestPlanReconcile|TestReconcileLocked'`, and `go test -run` exits 0 when a pattern matches nothing, so a name outside that prefix would leave the new log line with no gate at all.
   `execHook` is the field declared in `internal/reedengine/overlay.go` that replaces the real subprocess exec for both the run and capture paths;
   `internal/reedengine/lifecycle_test.go` shows the switch-on-`args[0]` shape to follow.
-  Assert that a reconcile which kills untracked panes emits an `Info` line naming those pane ids, and that a reconcile which kills nothing emits no output at all.
+  Assert three things: a reconcile which kills untracked panes emits an `Info` line naming those pane ids;
+  a reconcile which kills nothing emits no output at all;
+  and a reconcile whose `kill-pane` fails partway — scripted by an `execHook` that succeeds for the first pane and returns an error for the second — still emits a line naming the pane it did destroy, while returning the error to its caller.
+  That third case is the one the partial-kill requirement above exists for, and without it the `defer` could be removed and the suite would stay green.
   Assert on the pane ids' presence, not on the message's exact wording — the point is that the destructive path is observable.
 - **Commit:** `feat(reedengine): log the panes a reconcile reaps`
 

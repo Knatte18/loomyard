@@ -119,6 +119,7 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
   - `internal/reedengine/reconcile.go`
   - `internal/reedengine/lock_test.go`
   - `internal/reedengine/lifecycle_test.go`
+  - `internal/reedengine/overlay.go`
   - `internal/reedengine/state.go`
   - `internal/reedengine/strand.go`
   - `internal/reedengine/apply.go`

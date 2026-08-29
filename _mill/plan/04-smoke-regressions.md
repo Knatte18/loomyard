@@ -89,7 +89,13 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
   What the test exists to pin is unchanged and must stay asserted: the header is never a strand's pane and stays alive across `up`, `add`, `remove` and reconcile, including while the strand table is momentarily empty.
   Keep every `requireHeaderAlive` call, both liveness assertions, and the non-header-pane-id assertion exactly as they are.
   In `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` (psmux/Windows-only, skipped on tmux), the whole framing is that "the old adopt path bound the next strand to that corpse", and the skip string says the remove "never reaches an 'adopt a corpse or not' decision".
-  The mechanics still hold with adoption gone — the sole pane is corpsed by `kill-pane`, the corpse is not the header, and the next `add` splits rather than adopting — so what the test asserts (the new strand is live and stays live across the next reconciling verb) is unchanged and must stay asserted.
+  What the test asserts — the new strand is live and stays live across the next reconciling verb — is unchanged and must stay asserted.
+  Its stated *premise* is a different matter, and needs a disposition rather than being carried forward: the comment justifies itself with the session's sole pane being corpsed by `kill-pane` under `remain-on-exit`, but the always-present header pane makes that unreachable.
+  `removeStrandLocked` collects pane ids from strands only, and the header is never a strand, so the removed strand's pane is not the session's last pane and `kill-pane` removes it outright on either backend instead of corpsing it.
+  That premise was already false before this task — the header pane falsified it in an earlier round, not the reap — so correcting it is bookkeeping this card happens to be the right owner of, since it is already rewriting this test's prose and card 12 would otherwise have no card to attribute the stale text to.
+  Rewrite the doc comment and the skip string to describe what the scenario actually exercises now: removing the last *strand* leaves the header holding the session, the removed pane is gone rather than corpsed, and the following `add` splits a fresh pane whose command must genuinely run and stay live across the next reconcile.
+  Do not invent new assertions to match the corrected premise;
+  the existing ones already cover it.
   Rewrite only the adoption framing: the doc comment, the inline comment before the `runtime.GOOS` check, the inline comment before the reconciling `up`, and the `t.Errorf` message's parenthetical.
   Rewrite the `t.Skip` string too — it is operator-facing output that would otherwise name a decision the code no longer makes — while keeping its pointer to `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds` for the tmux-side coverage.
   Do not change the `runtime.GOOS != "windows"` skip condition itself, and do not change either test's assertions.
