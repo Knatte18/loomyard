@@ -6,7 +6,11 @@
 
 package reedengine
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+)
 
 // reconcilePlan is planReconcile's decision: which strand bindings to clear, which dead panes to
 // kill, which untracked panes to reap, and which dead pane (if any) is kept alive so the session
@@ -207,17 +211,51 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []string, err error) {
 	plan := planReconcile(st.Strands, live, st.HeaderPaneID)
 
+	// Accumulate the ids actually destroyed, separately for each kill reason,
+	// as the loops below progress -- never plan.deadPanesToKill /
+	// plan.untrackedPanesToKill themselves, which name what was SCHEDULED,
+	// not what a partial-kill error path actually reached. The two agree on
+	// the success path and diverge on a mid-loop kill-pane failure, where a
+	// log claiming to have destroyed a pane that is still alive is worse
+	// than no log at all -- this is a destruction record, not a record of
+	// intent.
+	var deadKilled, untrackedKilled []string
+
+	// This is Info, not Debug: per CONSTRAINTS.md's Live-Substrate Spawn
+	// Observability lifecycle-vs-probe split, a real pane teardown is a
+	// lifecycle event, not a probe. And it needs a trace at all because the
+	// headerAlive disjunct above makes this reap fire on the zero-strand
+	// precondition (every AddStrand/UpdateStrand once the reap-before-
+	// allocate chokepoint lands), taking it from near-dormant to routine --
+	// and it destroys panes an operator may have created themselves.
+	//
+	// A defer (rather than duplicating the call before each return) is what
+	// keeps the success and partial-kill-error paths from drifting apart
+	// later: both reach this same one call, and a reconcile that killed
+	// nothing on either path still logs nothing. Logging here is additive
+	// only -- it must not swallow or alter the returned error.
+	defer func() {
+		if len(deadKilled) == 0 && len(untrackedKilled) == 0 {
+			return
+		}
+		logger.Info("reed: reconcile reaped panes",
+			"socket", e.Socket(), "session", e.SessionName(),
+			"dead_panes_killed", deadKilled, "untracked_panes_killed", untrackedKilled)
+	}()
+
 	for _, id := range plan.deadPanesToKill {
 		if err := e.tmux.run("kill-pane", "-t", id); err != nil {
 			return killed, fmt.Errorf("kill pane %s: %w", id, err)
 		}
 		killed = append(killed, id)
+		deadKilled = append(deadKilled, id)
 	}
 	for _, id := range plan.untrackedPanesToKill {
 		if err := e.tmux.run("kill-pane", "-t", id); err != nil {
 			return killed, fmt.Errorf("kill pane %s: %w", id, err)
 		}
 		killed = append(killed, id)
+		untrackedKilled = append(untrackedKilled, id)
 	}
 
 	clearSet := make(map[string]bool, len(plan.clearedGUIDs))

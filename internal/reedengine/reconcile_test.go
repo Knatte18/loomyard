@@ -1,11 +1,16 @@
 // reconcile_test.go table-tests planReconcile's pure decision logic against saved strand tables and
 // fake list-panes results (including pane_dead=1 rows and the header-pane exemption),
-// and exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never
-// touches tmux and so stays hermetic.
+// exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never
+// touches tmux and so stays hermetic, and pins reconcileLocked's reap log line via
+// captureLogOutput (logcapture_test.go).
 
 package reedengine
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func equalStringSlices(a, b []string) bool {
 	if len(a) != len(b) {
@@ -287,6 +292,91 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 	if got := findStrandPaneID(st.Strands, "present"); got != "%1" {
 		t.Errorf("present strand PaneID = %q, want kept", got)
 	}
+}
+
+// TestReconcileLocked_LogsTheUntrackedPanesItReaps pins reconcileLocked's reap log line (see
+// reconcile.go's reconcileLocked doc comment): one Info line naming the panes ACTUALLY destroyed,
+// never plan.deadPanesToKill/plan.untrackedPanesToKill directly, on both the success path and the
+// partial-kill error path, and no line at all when nothing was killed.
+func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
+	t.Run("KillsUntrackedPanes_LogsTheirIDs", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			return "", nil
+		}
+		buf := captureLogOutput(t)
+
+		st := &ReedState{HeaderPaneID: "%header"}
+		live := []LivePane{{ID: "%header", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
+
+		killed, err := e.reconcileLocked(st, live)
+		if err != nil {
+			t.Fatalf("reconcileLocked: %v", err)
+		}
+		if !equalStringSlices(killed, []string{"%orphan1", "%orphan2"}) {
+			t.Fatalf("killed = %v, want [%%orphan1 %%orphan2]", killed)
+		}
+		out := buf.String()
+		for _, want := range []string{"%orphan1", "%orphan2"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("log output = %q, want it to contain %q", out, want)
+			}
+		}
+	})
+
+	t.Run("KillsNothing_LogsNothing", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			return "", nil
+		}
+		buf := captureLogOutput(t)
+
+		st := &ReedState{}
+		killed, err := e.reconcileLocked(st, nil)
+		if err != nil {
+			t.Fatalf("reconcileLocked: %v", err)
+		}
+		if len(killed) != 0 {
+			t.Fatalf("killed = %v, want none", killed)
+		}
+		if out := buf.String(); out != "" {
+			t.Errorf("log output = %q, want empty (a reconcile that killed nothing must log nothing)", out)
+		}
+	})
+
+	t.Run("PartialKillFailure_LogsOnlyTheDestroyedPaneAndStillReturnsTheError", func(t *testing.T) {
+		e := newTestEngine(t)
+		killPaneErr := errors.New("kill-pane failed")
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			if args[0] == "kill-pane" && len(args) >= 3 && args[2] == "%orphan2" {
+				return "", killPaneErr
+			}
+			return "", nil
+		}
+		buf := captureLogOutput(t)
+
+		st := &ReedState{HeaderPaneID: "%header"}
+		live := []LivePane{{ID: "%header", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
+
+		killed, err := e.reconcileLocked(st, live)
+		if err == nil {
+			t.Fatal("reconcileLocked() err = nil, want the kill-pane failure to propagate")
+		}
+		if !errors.Is(err, killPaneErr) {
+			t.Errorf("reconcileLocked() err = %v, want it to wrap %v", err, killPaneErr)
+		}
+		if !equalStringSlices(killed, []string{"%orphan1"}) {
+			t.Fatalf("killed = %v, want [%%orphan1] (only the pane destroyed before the failure)", killed)
+		}
+
+		out := buf.String()
+		if !strings.Contains(out, "%orphan1") {
+			t.Errorf("log output = %q, want it to contain the destroyed pane %q", out, "%orphan1")
+		}
+		if strings.Contains(out, "%orphan2") {
+			t.Errorf("log output = %q, want it to NOT contain %q (that pane was scheduled but never actually destroyed)", out, "%orphan2")
+		}
+	})
 }
 
 // TestClearConflictingPaneBindings is the regression guard for the R5 review's R5-F3: a corrupt
