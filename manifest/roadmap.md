@@ -29,7 +29,7 @@ No build order is implied between these items.
 
 1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree.
 
-1. **reed: watchdog daemon** — a watch loop hosted inside the existing per-worktree header pane, driven by a session-scoped `window-resized` tmux hook that touches a signal file, with a slow poll fallback where the hook cannot be verified to install (Windows/psmux), a trailing-edge debounce, and a `watchdog: on|off` key in `reed.yaml`.
+1. **reed: watchdog daemon** — a watch loop hosted inside the existing per-worktree header pane, driven by a `window-resized` tmux hook entry (sharing the same window-scoped hook array as the resize-pin correction below it) that touches a signal file, with a slow poll fallback where the hook cannot be verified to install (Windows/psmux), a trailing-edge debounce, and a `watchdog: on|off` key in `reed.yaml`.
    The resize-geometry reconcile half is done: a resize while already attached now re-applies the planned layout, with no `lyx reed` op needed.
    The pane-reap half remains, together with its stated prerequisite — cheapening the reap probe, today a fresh pwsh plus full `Win32_Process` WMI enumeration per poll — and its real open question is the policy distinguishing a bug-induced pane from an intentional scratch pane, which is unwritten.
    The self-heal core is worth building on its own merits, independent of the Slack-relay item below.

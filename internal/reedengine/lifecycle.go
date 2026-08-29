@@ -227,7 +227,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 	if up {
 		// A session that exists but holds ZERO panes is broken substrate: it
-		// cannot host a strand (there is no pane to adopt or split, and tmux
+		// cannot host a strand (there is no pane to split, and tmux
 		// offers no way to add a pane to an empty window), so add would fail
 		// forever while up kept reporting success. The state is reachable
 		// when an applied layout once destroyed every pane (tmux reaps any

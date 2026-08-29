@@ -213,7 +213,7 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 		if code := RunCLI(&out, []string{"up"}); code != 0 {
 			t.Fatalf("cycle %d up = %d; want 0, output: %s", cycle, code, out.String())
 		}
-		// Keeper first (adopts the initial pane), then the victim we remove.
+		// Keeper first, then the victim we remove.
 		keeper := addStrand(t, launch, "--name", "keeper")
 		victim := addStrand(t, launch, "--name", "victim")
 		socket, session := socketAndSession(t)
