@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: reed-pane-reap-consistency
 branch: reed-pane-reap-consistency
 plan: _mill/plan
@@ -45,6 +45,7 @@ holistic-reviewing  '2026-08-29T06:59:05Z'
 holistic-fixing  '2026-08-29T07:02:59Z'
 nits-fixed-holistic  '2026-08-29T07:04:29Z'
 holistic-approved  '2026-08-29T07:04:35Z'
+done  '2026-08-29T07:36:36Z'
 ```
 
 ## Batches
