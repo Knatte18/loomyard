@@ -162,8 +162,9 @@ func clearAllPaneBindings(st *ReedState) {
 // returns the GUIDs it cleared, in table order.
 //
 // A pane has exactly one owner. reed's own construction paths already guarantee that
-// (planPaneTarget never adopts or splits the header, validateSplitCreatedNewPane refuses an id that
-// already existed), so a table violating it is a CORRUPT table, not one reed produced: a stale
+// (planPaneTarget never yields the header as a split target while any non-header pane exists, and
+// its result is always validated as genuinely new by validateSplitCreatedNewPane), so a table
+// violating it is a CORRUPT table, not one reed produced: a stale
 // reed.json restored over a newer session, a hand-edited file, a partially restored backup. Every
 // such table reaches this package through LoadState, so the repair belongs at that one load
 // chokepoint rather than at each of the several places a duplicate does damage.
