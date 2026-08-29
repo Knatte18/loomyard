@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: prowler-github-tree-script
 branch: prowler-github-tree-script
 plan: _mill/plan
@@ -31,6 +31,8 @@ approved-test-harness-and-fixtures  '2026-08-29T11:32:32Z'
 approved-tree-script-and-docs  '2026-08-29T11:44:24Z'
 holistic-reviewing  '2026-08-29T11:45:20Z'
 holistic-fixing  '2026-08-29T11:50:39Z'
+nits-fixed-holistic  '2026-08-29T11:52:43Z'
+holistic-approved  '2026-08-29T11:52:51Z'
 ```
 
 ## Batches
