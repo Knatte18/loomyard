@@ -34,7 +34,11 @@ implementing  '2026-08-29T11:22:59Z'
 ```yaml
 batches:
   - name: test-harness-and-fixtures
-    state: pending
+    state: running
+    implementer_session: 6a2d9ff8-717e-4e19-9e3a-13776d33050b
+    start_sha: 35f9abb4137b8c7e50c9d4d0c6e73b8bf568eb22
+    verify_baseline_failures: []
   - name: tree-script-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
