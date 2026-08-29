@@ -81,15 +81,19 @@ func (e *Engine) TmuxPath() string {
 // changing that contract. Refusing before the lock — and therefore before any tmux round trip,
 // any directory creation, and any state read — is what keeps a bad identity from creating substrate
 // that no later reed verb can address, or state under a directory that is not the worktree (see
-// validateToldTmuxIdentity and validateToldAnchorPath in server.go).
-// The anchor check runs second on purpose: an unusable tmux identity is the more actionable
-// diagnosis of the two, and the lock path below is what the anchor check protects, so it only has
-// to precede that.
+// validateToldTmuxIdentity, validateToldAnchorPath, and validateToldWorktreeRootLive in server.go).
+// The ordering is: told tmux identity, then told anchor shape, then told worktree-root shape and
+// liveness, then MkdirAll, then the lock. The worktree-root liveness check runs LAST among the
+// three validators, deliberately: it is the only one that touches the filesystem, so the two cheap
+// contract refusals should still fire first on a geometry that is wrong in several ways at once.
 func (e *Engine) withOpLock(fn func() error) error {
 	if err := validateToldTmuxIdentity(e.geom); err != nil {
 		return err
 	}
 	if err := validateToldAnchorPath(e.geom); err != nil {
+		return err
+	}
+	if err := validateToldWorktreeRootLive(e.geom); err != nil {
 		return err
 	}
 
@@ -142,15 +146,20 @@ func (e *Engine) withOpLock(fn func() error) error {
 // convenient: whatever holds the lock is another reed op, and every reed op ends by re-applying the
 // layout itself, so the watcher's own re-apply would be redundant even if it could wait for its turn.
 //
-// It keeps both told-geometry pre-flight validations and the post-op lock-compromise check that
-// withOpLock runs, because those are the reason withOpLock is a chokepoint rather than a bare lock
-// acquisition — a non-blocking sibling that skipped them would let an unusable identity or a
-// compromised lock pass silently through the one caller most likely to run unattended.
+// It keeps all THREE told-geometry pre-flight validations and the post-op lock-compromise check
+// that withOpLock runs, because those are the reason withOpLock is a chokepoint rather than a bare
+// lock acquisition — a non-blocking sibling that skipped them would let an unusable identity, a
+// vanished worktree root, or a compromised lock pass silently through the one caller most likely to
+// run unattended: the resize watch loop, which is the actual leak source this third validator
+// closes off.
 func (e *Engine) withTryOpLock(fn func() error) (acquired bool, err error) {
 	if err := validateToldTmuxIdentity(e.geom); err != nil {
 		return false, err
 	}
 	if err := validateToldAnchorPath(e.geom); err != nil {
+		return false, err
+	}
+	if err := validateToldWorktreeRootLive(e.geom); err != nil {
 		return false, err
 	}
 

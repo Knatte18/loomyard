@@ -33,6 +33,7 @@ type watchTiming struct {
 	Quiet       time.Duration
 	BaseDelay   time.Duration
 	MaxAttempts int
+	Dormant     time.Duration
 }
 
 // watchDefaultTiming returns the loop's production timings, sourced from the package's fixed
@@ -44,6 +45,7 @@ func watchDefaultTiming() watchTiming {
 		Quiet:       watchdogDebounceQuiet,
 		BaseDelay:   watchdogRetryBaseDelay,
 		MaxAttempts: watchdogMaxAttempts,
+		Dormant:     watchdogDormantCycle,
 	}
 }
 
@@ -133,6 +135,11 @@ const (
 	// watchModeSignal waits on the hook-written signal file and performs no
 	// geometry polling at all.
 	watchModeSignal
+	// watchModeDormant is the mode a watcher enters when reapplyLayout reports the told worktree
+	// root is provably gone: it neither polls geometry nor consumes signals, it re-tries at the
+	// dormant cadence purely so it can notice the directory coming back, and it is the only mode
+	// that remembers where it came from.
+	watchModeDormant
 )
 
 // Watch runs reed's resize self-heal loop for this worktree's session.
@@ -148,10 +155,14 @@ func (e *Engine) Watch(ctx context.Context) error {
 
 // tickerPeriodFor returns the ticker period the loop should run at while in mode.
 func tickerPeriodFor(mode watchMode, t watchTiming) time.Duration {
-	if mode == watchModeSignal {
+	switch mode {
+	case watchModeSignal:
 		return t.SignalTick
+	case watchModeDormant:
+		return t.Dormant
+	default:
+		return t.PollCycle
 	}
-	return t.PollCycle
 }
 
 // watchLoop is Watch's driver. It reads e.cfg.Watchdog exactly once, at the top, and never again:
@@ -181,6 +192,10 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming) error {
 	}
 
 	mode := watchModePoll
+	// dormantFrom remembers which mode a dormant watcher should resume as once its told worktree
+	// root comes back — the only mode dormancy needs to remember, since poll and signal mode never
+	// need to recall a prior mode of their own.
+	var dormantFrom watchMode
 	state := newWatchState(t)
 	// The zero render.Box is a deliberate "nothing applied yet" sentinel and needs no companion flag:
 	// a live box always has positive W/H, so it can never equal the zero box, and the first re-apply
@@ -227,9 +242,14 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming) error {
 				// makes that rule literally true rather than merely suppressing the mode transition
 				// while still paying the show-options round trip on every resize.
 				res, applyErr = e.reapplyLayout(lastApplied, false)
+			case watchModeDormant:
+				// A dormant tick asks for no probe, and it does not use the debouncer or the retry
+				// streak — dormancy is not a resize-event failure mode, it is a wait for the told
+				// worktree root to come back.
+				res, applyErr = e.reapplyLayout(lastApplied, false)
 			}
 
-			newMode := e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied)
+			newMode := e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &dormantFrom)
 			if newMode != mode {
 				mode = newMode
 				ticker.Stop()
@@ -241,7 +261,33 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming) error {
 
 // handleWatchOutcome applies one re-apply outcome to state and lastApplied, identically for both
 // modes, and reports the mode the loop should run at from now on.
-func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTiming, res ReapplyResult, err error, lastApplied *render.Box) watchMode {
+//
+// dormantFrom is the loop's own memory of which mode a dormant watcher should resume as; this
+// function is the sole reader and sole writer of it, across both the sentinel branch (which
+// writes it) and the recovery branch (which reads it).
+func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTiming, res ReapplyResult, err error, lastApplied *render.Box, dormantFrom *watchMode) watchMode {
+	if errors.Is(err, errWorktreeRootGone) {
+		// A watcher not already dormant is entering dormancy for the first time this outage: log
+		// once and remember the mode it should resume as. A watcher already dormant has nothing new
+		// to say — dormancy logs nothing while dormant, or it would be back to a warning every
+		// dormant tick, exactly the noise this mode exists to remove.
+		if mode != watchModeDormant {
+			logger.Warn("reed: told worktree root is gone, dropping the resize watcher into dormant mode",
+				"socket", e.Socket(), "session", e.SessionName(), "err", err)
+			*dormantFrom = mode
+		}
+		return watchModeDormant
+	}
+	if mode == watchModeDormant {
+		// Any non-sentinel outcome means the stat succeeded and the worktree root is a directory
+		// again — recovery. Whether the re-apply itself then failed for an unrelated reason is the
+		// existing error path's business below, not dormancy's; that is why this falls through into
+		// the rest of the function under the restored mode instead of returning early.
+		logger.Info("reed: told worktree root is back, resuming the resize watcher",
+			"socket", e.Socket(), "session", e.SessionName())
+		mode = *dormantFrom
+	}
+
 	if err != nil {
 		logger.Warn("reed: resize re-apply failed", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		if mode == watchModeSignal {
