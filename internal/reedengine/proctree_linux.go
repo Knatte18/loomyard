@@ -4,9 +4,8 @@
 // Each enumerates the numeric entries under /proc, reads the per-pid file it needs
 // (/proc/<pid>/stat or /proc/<pid>/cmdline), and delegates the actual decision to the pure helpers
 // in proctree.go (parseStatPPID, descendantClosure, matchSocketCmdlines).
-// Real-Linux execution of this file is a deferred follow-up (see serverProcessesOnSocket's doc
-// comment);
-// here it is compile-checked only, by the batch's `GOOS=linux go build` gate.
+// Linux is the platform lyx runs on, so this file is exercised for real rather than merely
+// compile-checked.
 
 package reedengine
 
