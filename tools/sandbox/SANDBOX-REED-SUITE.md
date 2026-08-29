@@ -406,6 +406,7 @@ controlled exception, restore the name when done).
 Running the `kill-session` the error names, then `lyx reed resume` again, must succeed normally.
 A silent success, two copies of the strand process, a second session left on the socket, or a refusal the operator cannot escape is a `FAIL`.
 After that successful `resume`, inspect the hub root: it must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`, since the whole point of the refusal is that nothing gets conjured under the old name.
+Before running the remedy, check the renamed session's header pane log: it must show exactly one warning about the vanished worktree root rather than a reconcile failure repeating every two seconds, which is a `FAIL`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -423,6 +424,7 @@ A `down` that kills the old session is also a `FAIL`.
 Then run an ordinary `lyx reed up` / `down` cycle in a normal worktree and confirm `abandonedSession` is ABSENT there -- the key must be signal, not noise.
 Inspect the hub root as well, but not immediately: wait well past the two-second watchdog poll cycle before checking, since `down` deliberately leaves the abandoned session running, and checking too early would mask a watcher that resumed leaking.
 Once that wait has elapsed, the hub root must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`.
+Across that same wait, the abandoned session's header pane must have logged exactly one warning about the vanished worktree root, not one every two seconds -- a stream of repeating warnings there is a `FAIL`, since it means the watcher never dropped to its dormant cadence.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

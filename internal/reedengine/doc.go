@@ -208,7 +208,18 @@
 //     worktree. One user-visible consequence is a deliberate behaviour
 //     change in standalone mode: a `--target-dir` naming a directory that
 //     does not exist is now refused at the first engine op, instead of
-//     proceeding and deriving a state directory for it.
+//     proceeding and deriving a state directory for it. Once the resize
+//     watch loop (watchloop.go) itself learns its told worktree root is
+//     gone — via errWorktreeRootGone surfacing from a re-apply attempt — it
+//     logs exactly one warning and drops to a sixty-second dormant cadence
+//     rather than the ordinary two-second poll, so a session abandoned by
+//     `down` costs one log line instead of a warning every two seconds for
+//     the rest of its life. It automatically returns to whichever mode
+//     (poll or signal) it was in before dormancy, logging exactly one more
+//     line, once the worktree root exists again. Dormancy never tears down
+//     the header pane and never stops the watch loop itself: the session
+//     reed walked away from may still be hosting the operator's live
+//     strands.
 //   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
 //     tmux does not REJECT a session name containing '.' or ':' — it
 //     rewrites each to '_', creates the session under the rewritten name,
