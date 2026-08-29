@@ -211,13 +211,20 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 }
 
 // TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins the empty-layout defect this round fixed:
-// with ZERO strands tracked and a foreign pane in the session (an operator's raw split-window — 2+
-// panes, none reed's), the old apply emitted a layout string enumerating no cells, which tmux
-// answers (exit 0) by destroying EVERY pane — leaving a zero-pane zombie session in which add fails
-// forever ("session has no panes to adopt or split") while up keeps reporting success.
-// Now (a) apply is skipped when no strand owns a present pane, so the foreign panes survive an up,
-// and (b) even a zero-pane husk (simulated separately below via the same foreign route) is healed
-// by the next up's fresh boot.
+// with ZERO strands tracked and a foreign pane in the session (an operator's raw split-window), the
+// old apply emitted a layout string enumerating no cells, which tmux answers (exit 0) by destroying
+// EVERY pane — leaving a zero-pane zombie session in which add fails forever ("session has no panes
+// to split") while up kept reporting success.
+// That empty-layout hazard is now covered at the unit tier by apply_test.go's
+// TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult (applyLayoutLockedOpts' anyPlacedStrand guard
+// skips select-layout whenever no strand owns a present pane): this fixture's two up calls always
+// arrive at apply holding exactly one pane, well under the len(live) < 2 guard applyLayoutLockedOpts
+// checks first, so the anyPlacedStrand branch is never even reached from here anymore.
+// What this test still proves instead: with zero strands tracked, an ALIVE header now authorizes
+// reconcile's deterministic untracked-pane reap (reconcile.go), so an up against a session holding
+// only foreign panes leaves a USABLE session — the header pane intact, every foreign pane gone — not
+// the old zero-pane wedge, and a subsequent add comes up live on its own fresh pane without ever
+// displacing the header.
 func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -235,10 +242,14 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	}
 	socket, session := socketAndSession(t)
 
-	// up already booted the always-present header pane before any strand
-	// exists, alongside the session's not-yet-adopted initial pane (2
-	// panes, 0 strands). Read the header's pane id directly from reed.json
-	// so the assertions below can tell it apart from the foreign pane.
+	// up boots the always-present header pane before any strand exists, and
+	// this SAME up's own reconcile (reconcileApplyPersistLocked's tail)
+	// already reaps the session's not-yet-adopted initial pane: with zero
+	// strands tracked, the newly-alive header authorizes the untracked-pane
+	// reap (reconcile.go), so that initial pane never survives past this
+	// first up at all. Read the header's pane id directly from reed.json so
+	// the assertions below can tell it apart from the foreign pane added
+	// next.
 	st, err := reedengine.LoadState(filepath.Join(h.PrimeWorktree(), ".lyx"))
 	if err != nil || st == nil || st.HeaderPaneID == "" {
 		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
@@ -246,20 +257,23 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	headerPaneID := st.HeaderPaneID
 
 	// A foreign pane reed does not track (the operator-split case): the
-	// session now has 3 panes (header, the not-yet-adopted initial pane,
-	// and this foreign one) and 0 strands.
+	// session holds 1 pane (the header) and 0 strands going in — the first
+	// up above already reaped its own not-yet-adopted initial pane — so this
+	// split leaves it at 2 panes (header, foreign) and 0 strands.
 	if err := exec.Command(tmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
 		t.Fatalf("foreign split-window: %v", err)
 	}
 
-	// The trap: up with zero placeable strands must NOT apply an empty
-	// layout. Every pane must survive it.
+	// The second up: with zero strands tracked and the header alive,
+	// reconcile's untracked reap fires again and kills the foreign pane too
+	// — this up must still exit 0 and leave the session usable, never the
+	// zero-pane wedge the old empty-layout-apply defect produced.
 	out.Reset()
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("second up = %d; want 0, output: %s", code, out.String())
 	}
-	if panes := listPaneLines(t, tmuxPath, socket, session); len(panes) == 0 {
-		t.Fatalf("up with only foreign panes destroyed the session's pane set (zero panes remain)")
+	if panes := listPaneLines(t, tmuxPath, socket, session); len(panes) != 1 || !paneLiveOnSession(panes, headerPaneID) {
+		t.Fatalf("up with only a foreign pane must reap it, leaving exactly the header pane %s alive; got panes=%v", headerPaneID, panes)
 	}
 
 	// The session must still be able to host a strand: the add both proves
