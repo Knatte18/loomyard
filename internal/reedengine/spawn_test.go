@@ -1,12 +1,12 @@
-// spawn_test.go table-tests planPaneTarget's adopt-vs-split decision — including the corpse-pane
-// rules tmux forces (never adopt a dead pane; split the tallest alive pane, or the kept corpse when
-// nothing is alive), the header-pane exclusion (never adopted, never the preferred split target,
-// but the sole-pane fallback), and the sole-candidate narrowing on adoption (never guess which of
-// several untracked panes is idle) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
+// spawn_test.go table-tests planPaneTarget's split-target policy — prefer the tallest alive
+// non-header pane, fall back to any present non-header pane (a corpse) when none is alive, and fall
+// back to the header itself as a last resort when no non-header pane exists at all — and the
+// header's exclusion from being the PREFERRED split target (it is never chosen while any non-header
+// pane, alive or dead, is present) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
 // Both are pure/hermetic, no live tmux required.
-// launchStrandLocked itself always makes a real tmux round trip (list-panes/split-window +
-// send-keys), so it is exercised only through this decision seam, not invoked directly here;
-// the composed live behavior is covered by the smoke tests.
+// TestLaunchStrandLocked_* below invokes launchStrandLocked directly through the e.tmux.execHook
+// fake, pinning the reap-before-allocate ordering; the composed live behavior against a real tmux is
+// covered by the smoke tests.
 
 package reedengine
 
@@ -17,119 +17,102 @@ import (
 func TestPlanPaneTarget(t *testing.T) {
 	tests := []struct {
 		name            string
-		strands         []Strand
 		live            []LivePane
 		headerPaneID    string
-		wantAdoptID     string
 		wantSplitTarget string
 		wantErr         bool
 	}{
 		{
-			name:        "FreshSession_AdoptsTheAliveInitialPane",
-			strands:     nil,
-			live:        []LivePane{{ID: "%1", Height: 50}},
-			wantAdoptID: "%1",
-		},
-		{
-			name:        "AllStrandsPaneless_AdoptsFirstAlivePane",
-			strands:     []Strand{{GUID: "a"}, {GUID: "b"}},
-			live:        []LivePane{{ID: "%1", Height: 50}},
-			wantAdoptID: "%1",
+			// Collapses the old FreshSession_AdoptsTheAliveInitialPane and
+			// AllStrandsPaneless_AdoptsFirstAlivePane cases, which differed
+			// only in the (now-deleted) strand table they supplied: a sole
+			// alive pane and no header both reduce to the same input once
+			// the strand table stops mattering.
+			name:            "FreshSession_SplitsTheAliveInitialPane",
+			live:            []LivePane{{ID: "%1", Height: 50}},
+			wantSplitTarget: "%1",
 		},
 		{
 			name: "SoleCorpseUnbound_NeverAdopted_SplitOffTheCorpse",
-			// The remove-last-strand aftermath: kill-pane on a session's
-			// sole pane corpses it (pane_dead=1, exit 0) instead of removing
-			// it, and send-keys into a corpse is silently swallowed — so the
-			// next add must split, not adopt, even though no strand holds a
-			// binding.
-			strands:         []Strand{{GUID: "a"}},
+			// A corpse is never a valid target for anything but a split — the
+			// remove-last-strand aftermath: kill-pane on a session's sole
+			// pane corpses it (pane_dead=1, exit 0) instead of removing it,
+			// and send-keys into a corpse is silently swallowed.
 			live:            []LivePane{{ID: "%1", Dead: true, Height: 50}},
 			wantSplitTarget: "%1",
 		},
 		{
-			name:            "OneStrandHoldsAPane_SplitsTheTallestAlive",
-			strands:         []Strand{{GUID: "a", PaneID: "%1"}, {GUID: "b"}},
-			live:            []LivePane{{ID: "%1", Height: 2}, {ID: "%2", Height: 47}},
-			wantSplitTarget: "%2",
-		},
-		{
+			// Collapses the old OneStrandHoldsAPane_SplitsTheTallestAlive and
+			// TinyActiveBand_SplitTargetsTheTallestNotTheFirst cases, which
+			// differed only in the (now-deleted) strand table they supplied:
+			// a 2-row pane beside a 47-row pane and no header, in both.
 			name: "TinyActiveBand_SplitTargetsTheTallestNotTheFirst",
 			// The session-target split defect this planner replaces: tmux
 			// splits the active pane, which select-layout can leave on a
 			// 1-2 row band, and a too-small split fails silently. The
 			// planner must always pick the tallest alive pane instead.
-			strands:         []Strand{{GUID: "a", PaneID: "%1"}, {GUID: "b", PaneID: "%2"}},
 			live:            []LivePane{{ID: "%1", Height: 2}, {ID: "%2", Height: 47}},
 			wantSplitTarget: "%2",
 		},
 		{
 			name:            "DeadPaneNeverTheSplitTargetWhileAnyAlive",
-			strands:         []Strand{{GUID: "a", PaneID: "%1"}},
 			live:            []LivePane{{ID: "%1", Dead: true, Height: 47}, {ID: "%2", Height: 2}},
 			wantSplitTarget: "%2",
 		},
 		{
 			name:    "NoPanesAtAll_Errors",
-			strands: []Strand{{GUID: "a"}},
 			live:    nil,
 			wantErr: true,
 		},
 		{
-			name: "HeaderPresentNoStrandBound_HeaderNeverAdopted",
-			// A live header pane plus an alive non-header pane: adoption
-			// must land on the non-header pane, never the header, even
-			// though no strand holds a binding yet.
-			strands:      nil,
-			live:         []LivePane{{ID: "%header", Height: 1}, {ID: "%1", Height: 50}},
-			headerPaneID: "%header",
-			wantAdoptID:  "%1",
+			name: "HeaderPresentNoStrandBound_NonHeaderPaneIsTheSplitTarget",
+			// A live header pane plus an alive non-header pane: the split
+			// target must land on the non-header pane, never the header.
+			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%1", Height: 50}},
+			headerPaneID:    "%header",
+			wantSplitTarget: "%1",
 		},
 		{
 			name: "HeaderPresentWithStrand_HeaderNeverTheSplitTarget",
 			// The header is tallest by raw Height here, but must still
 			// never be chosen over a genuine (if shorter) non-header
 			// candidate.
-			strands:         []Strand{{GUID: "a", PaneID: "%1"}},
 			live:            []LivePane{{ID: "%header", Height: 90}, {ID: "%1", Height: 10}},
 			headerPaneID:    "%header",
 			wantSplitTarget: "%1",
 		},
 		{
 			name: "SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt",
-			// R4 review finding R4-F5, reproduced live: after .lyx/reed.json
-			// was scrubbed from a running session, no strand held a binding
-			// and several untracked alive panes remained — one of them the
-			// previous header pane, still running "lyx reed header
-			// --blocking". Adoption picked it, send-keys typed the strand's
-			// command onto a blocked pane's screen where it never executed
-			// (exit 0 throughout), and status then reported the strand live
-			// with no such process on the box. With more than one candidate
-			// there is no way to tell an idle shell from a busy one, so the
-			// planner must split a guaranteed-idle new pane instead — off the
-			// tallest, %2 here.
-			strands:         nil,
+			// R4 review finding R4-F5, reproduced live and the reason this
+			// seam was removed: after .lyx/reed.json was scrubbed from a
+			// running session, no strand held a binding and several
+			// untracked alive panes remained — one of them the previous
+			// header pane, still running "lyx reed header --blocking".
+			// Adoption picked it, send-keys typed the strand's command onto
+			// a blocked pane's screen where it never executed (exit 0
+			// throughout), and status then reported the strand live with no
+			// such process on the box. With more than one candidate there
+			// was no way to tell an idle shell from a busy one, so the
+			// planner always splits a guaranteed-idle new pane instead — off
+			// the tallest, %2 here.
 			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%stale", Height: 12}, {ID: "%2", Height: 37}},
 			headerPaneID:    "%header",
 			wantSplitTarget: "%2",
 		},
 		{
-			name: "SeveralAlivePanesButOnlyOneNonHeaderAlive_StillAdopts",
-			// The narrowing must not reach the case adoption exists for: a
-			// fresh boot's header plus the sole new-session pane, with a dead
-			// corpse also present. Exactly one alive non-header pane, so
-			// adopting it is still unambiguous.
-			strands:      nil,
-			live:         []LivePane{{ID: "%header", Height: 1}, {ID: "%corpse", Dead: true, Height: 12}, {ID: "%1", Height: 37}},
-			headerPaneID: "%header",
-			wantAdoptID:  "%1",
+			name: "SeveralAlivePanesButOnlyOneNonHeaderAlive_StillSplits",
+			// A fresh boot's header plus the sole new-session pane, with a
+			// dead corpse also present. Exactly one alive non-header pane —
+			// it is the split target regardless.
+			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%corpse", Dead: true, Height: 12}, {ID: "%1", Height: 37}},
+			headerPaneID:    "%header",
+			wantSplitTarget: "%1",
 		},
 		{
 			name: "HeaderIsSolePane_SplitTargetFallsBackToHeader",
 			// Every strand has been removed: only the header remains. The
 			// header must become the split target so a subsequent add still
 			// has something to split (the header survives the split).
-			strands:         nil,
 			live:            []LivePane{{ID: "%header", Height: 21}},
 			headerPaneID:    "%header",
 			wantSplitTarget: "%header",
@@ -138,19 +121,19 @@ func TestPlanPaneTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adoptID, splitTarget, err := planPaneTarget(tt.strands, tt.live, tt.headerPaneID)
+			splitTarget, err := planPaneTarget(tt.live, tt.headerPaneID)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("planPaneTarget(%+v, %+v, %q): expected error, got nil", tt.strands, tt.live, tt.headerPaneID)
+					t.Fatalf("planPaneTarget(%+v, %q): expected error, got nil", tt.live, tt.headerPaneID)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("planPaneTarget: unexpected error: %v", err)
 			}
-			if adoptID != tt.wantAdoptID || splitTarget != tt.wantSplitTarget {
-				t.Errorf("planPaneTarget(%+v, %+v, %q) = (adopt %q, split %q), want (adopt %q, split %q)",
-					tt.strands, tt.live, tt.headerPaneID, adoptID, splitTarget, tt.wantAdoptID, tt.wantSplitTarget)
+			if splitTarget != tt.wantSplitTarget {
+				t.Errorf("planPaneTarget(%+v, %q) = %q, want %q",
+					tt.live, tt.headerPaneID, splitTarget, tt.wantSplitTarget)
 			}
 		})
 	}
