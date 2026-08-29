@@ -157,6 +157,23 @@ and an `lyx init`-ed warp repo.
 Same `-claude`/`-prompt` overrides.
 After the session ends, the launcher runs `lyx reed down` in the warp repo (for the reed, shuttle, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
 
+### 4d. Run the reed watch suite (optional, needs live tmux + logged-in claude)
+
+```cmd
+sandbox/win/reed-watch-suite.cmd
+```
+
+```sh
+sandbox/posix/reed-watch-suite.sh
+```
+
+The non-destructive counterpart to 4b: no scenario here kills a server, kills a pane, renames a worktree, or tears the session down.
+The operator attaches once at the start (W0) and stays attached through every later scenario, watching strands appear, a parent collapse as a child appears, a real cheap Claude Code agent (Haiku) visibly work in its own pane, and a live terminal resize reflow everything — all in one continuous window.
+Reach for this instead of 4b when you want to *watch* reed work rather than follow a crash/kill/rename scenario log; reach for 4b when you actually need that destructive coverage.
+Same `-claude`/`-prompt` overrides as the other suites.
+
+**Unlike every other reed-touching suite, this one does not run `lyx reed down` after the session ends** — the whole point is that the session stays live and attached so you can keep exploring by hand. Tear it down yourself (`lyx reed down` in the Hub warp repo) when you're done.
+
 ### 5. Fetch the report
 
 ```cmd
@@ -192,7 +209,7 @@ Then groom/spawn as usual.
 | `lyx` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) `C:\Code\tools\bin` not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
 | `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
-| `build -reset` fails: "being used by another process" (Windows) / "text file busy" (POSIX) | orphaned tmux from an earlier suite session still holds Hub handles | the launcher now runs `lyx reed down` after reed-backed suites; if hit anyway, find the Hub-scoped tmux PIDs by start time (Windows: `Get-Process -Name tmux \| Select Id,StartTime`; POSIX: `ps -o pid,lstart,cmd -C tmux`) and kill only those — never blanket-kill by image name |
+| `build -reset` fails: "being used by another process" (Windows) / "text file busy" (POSIX) | orphaned tmux from an earlier suite session still holds Hub handles | the launcher now runs `lyx reed down` after reed-backed suites **except the reed watch suite, which never auto-tears-down (see 4d)**; if hit anyway, find the Hub-scoped tmux PIDs by start time (Windows: `Get-Process -Name tmux \| Select Id,StartTime`; POSIX: `ps -o pid,lstart,cmd -C tmux`) and kill only those — never blanket-kill by image name |
 | agent session ends early, scenarios abandoned, no report | launcher was backgrounded/redirected (no TTY) | rerun in a real attached terminal; heed the launcher's non-console stdio warning |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 
@@ -201,3 +218,4 @@ Then groom/spawn as usual.
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
 - [tools/sandbox/SANDBOX-CORE-SUITE.md](../tools/sandbox/SANDBOX-CORE-SUITE.md) — the embedded test scheme the agent follows.
 - [tools/sandbox/SANDBOX-REED-SUITE.md](../tools/sandbox/SANDBOX-REED-SUITE.md) — the embedded reed-specific test scheme `sandbox/win/reed-suite.cmd`/`sandbox/posix/reed-suite.sh` follows.
+- [tools/sandbox/SANDBOX-REED-WATCH-SUITE.md](../tools/sandbox/SANDBOX-REED-WATCH-SUITE.md) — the embedded, non-destructive reed scheme `sandbox/win/reed-watch-suite.cmd`/`sandbox/posix/reed-watch-suite.sh` follows.

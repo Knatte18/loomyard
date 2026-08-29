@@ -1,14 +1,16 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand dispatch.
-// It supports eight subcommands: "build" (default, clones the Hub), "suite" (runs the embedded
+// It supports nine subcommands: "build" (default, clones the Hub), "suite" (runs the embedded
 // SANDBOX-CORE-SUITE agent), "reed-suite" (runs the embedded SANDBOX-REED-SUITE agent),
-// "shuttle-suite" (runs the embedded SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the
-// embedded SANDBOX-BURLER-SUITE agent), "webster-suite" (runs the embedded SANDBOX-WEBSTER-SUITE
-// agent), "fabric-suite" (runs the embedded SANDBOX-FABRIC-SUITE agent), and "fetch" (collects
-// the agent-written report into .scratch). fabric-suite runs against the same shared Hub every
-// other suite uses -- it has no dedicated hub or clone step of its own, matching the other five.
+// "reed-watch-suite" (runs the embedded SANDBOX-REED-WATCH-SUITE agent, the non-destructive
+// single-attach-session counterpart to reed-suite), "shuttle-suite" (runs the embedded
+// SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded SANDBOX-BURLER-SUITE agent),
+// "webster-suite" (runs the embedded SANDBOX-WEBSTER-SUITE agent), "fabric-suite" (runs the
+// embedded SANDBOX-FABRIC-SUITE agent), and "fetch" (collects the agent-written report into
+// .scratch). fabric-suite runs against the same shared Hub every other suite uses -- it has no
+// dedicated hub or clone step of its own, matching the other six.
 // Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
-// suite/reed-suite/shuttle-suite/burler-suite/webster-suite/fabric-suite
+// suite/reed-suite/reed-watch-suite/shuttle-suite/burler-suite/webster-suite/fabric-suite
 // parse their -claude/-prompt flags.
 
 package main
@@ -154,6 +156,22 @@ func run(argv []string) int {
 		}
 
 		if err := runSuite(absParent, *claudeFlag, *promptFlag, reedSuite); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "reed-watch-suite":
+		rwf := flag.NewFlagSet("sandbox reed-watch-suite", flag.ContinueOnError)
+		rwf.SetOutput(os.Stderr)
+		claudeFlag := rwf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := rwf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+
+		remaining := fs.Args()[1:]
+		if err := rwf.Parse(remaining); err != nil {
+			return 1
+		}
+
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, reedWatchSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

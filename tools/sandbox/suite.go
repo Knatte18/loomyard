@@ -1,11 +1,12 @@
-// suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox shuttle-suite", "sandbox
-// burler-suite", and "sandbox webster-suite"
-// subcommands: copies one of the embedded suite templates (main, reed, shuttle, burler,
-// or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file
+// suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox reed-watch-suite",
+// "sandbox shuttle-suite", "sandbox burler-suite", and "sandbox webster-suite"
+// subcommands: copies one of the embedded suite templates (main, reed, reed-watch, shuttle,
+// burler, or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file
 // as a git exclude entry, and launches an interactive Claude session to execute it.
-// The five suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent
+// The six suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent
 // launch, post-session reed teardown) via the suiteSpec parameterization of runSuite;
-// only the file name, embedded doc body, default instruction, and reed-teardown flag differ.
+// only the file name, embedded doc body, default instruction, and reed-teardown flag differ --
+// reedWatchSuite is the one spec that sets reedTeardown false, deliberately (see its own comment).
 
 package main
 
@@ -34,6 +35,9 @@ var sandboxSuiteMD string
 
 //go:embed SANDBOX-REED-SUITE.md
 var reedSandboxSuiteMD string
+
+//go:embed SANDBOX-REED-WATCH-SUITE.md
+var reedWatchSandboxSuiteMD string
 
 //go:embed SANDBOX-SHUTTLE-SUITE.md
 var shuttleSandboxSuiteMD string
@@ -88,6 +92,19 @@ var reedSuite = suiteSpec{
 	doc:          reedSandboxSuiteMD,
 	instruction:  "Read ./SANDBOX-REED-SUITE.md and follow the instructions in it exactly.",
 	reedTeardown: true,
+}
+
+// reedWatchSuite is the SANDBOX-REED-WATCH-SUITE spec: the non-destructive,
+// single-attach-session counterpart to reedSuite. Unlike every other
+// reed-touching suite, reedTeardown is deliberately false here -- the whole
+// point of this suite is that the reed session survives past the driving
+// agent's own turn ending, so the operator can keep exploring the still-live,
+// still-attached session by hand. See SANDBOX-REED-WATCH-SUITE.md's "Session
+// end" section.
+var reedWatchSuite = suiteSpec{
+	fileName:    "SANDBOX-REED-WATCH-SUITE.md",
+	doc:         reedWatchSandboxSuiteMD,
+	instruction: "Read ./SANDBOX-REED-WATCH-SUITE.md and follow the instructions in it exactly.",
 }
 
 // shuttleSuite is the SANDBOX-SHUTTLE-SUITE spec: the dedicated scheme
