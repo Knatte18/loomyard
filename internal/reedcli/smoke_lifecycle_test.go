@@ -596,9 +596,19 @@ func TestSmokeForeignPaneIsReapedNotAdoptedByAdd(t *testing.T) {
 // now an UNTRACKED one-row header band that tmux cannot split, while `lyx reed status` kept
 // reporting the session healthy and nothing named the one escape (`down`, then `up`).
 //
-// The load-bearing assertions are that the recovering `up` exits 0 AND that the rebuilt header pane
-// really is at pane_top 0 — a fix that recovered by splitting somewhere else would let the next
-// select-layout assign the header's one-row cell to a strand positionally.
+// Under the reap this batch adds, the observable pane set after the recovering `up` has changed: it
+// used to be three panes (the untracked old header, the untracked orphaned strand pane, and the
+// freshly split header), and is now exactly one — the freshly split header alone. The scrub erases the
+// strand table along with HeaderPaneID, so the recovering up's own reconcile runs with zero strands
+// tracked and a freshly-alive header, which authorizes reaping every other pane (reconcile.go). That
+// makes the rebuilt header pane's pane_top == 0 assertion below TRIVIALLY true — with one pane there is
+// nowhere else for it to be — so it is vacuous rather than live coverage now; "a fix that recovered by
+// splitting somewhere else would fail here" no longer has teeth for this fixture. What stays
+// load-bearing is the other half: the recovering `up` must still exit 0 — the actual R4-F4 wedge
+// (`split header pane: exit status 1: no space for new pane` on every subsequent invocation) — plus
+// the following `add` proving the session is genuinely usable again, not merely non-erroring.
+// TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader is where the reap's own effect on this
+// scenario is actually pinned, asserting on the recovering `up` itself rather than a follow-up verb.
 func TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -649,6 +659,107 @@ func TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp(t *testing.T) {
 
 	// The session must be genuinely usable again, not merely non-erroring.
 	addStrand(t, "pwsh -NoExit -Command Write-Host recovered", "--name", "after-scrub")
+}
+
+// TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader is the M22 regression: a scrubbed
+// .lyx/reed.json must converge on the recovering `up` under test itself, not one verb later.
+//
+// The pre-fix defect converged one verb late — the recovering up left the old header pane and the
+// orphaned strand pane both untracked-but-alive alongside the freshly split header, and only a
+// FOLLOW-UP verb's reconcile cleared them. An assertion placed after that follow-up would pass either
+// way, which is why this test asserts on the recovering `up` itself, with no intervening verb: the
+// session must hold exactly one pane (the newly persisted HeaderPaneID, distinct from the captured old
+// one), and both the old header pane id and the old strand pane id must already be gone from
+// list-panes.
+//
+// The orphaned strand pane's captured #{pane_pid} is polled gone too, under a bounded deadline
+// (kill-pane terminates asynchronously) — smokeReapLaunchCmd's launched command is a CHILD of that
+// pane's own process, not #{pane_pid} itself, so it is deliberately not what this test asserts on: the
+// leak this pins is the pane and its own process, not the whole subtree (RemoveStrand's and Down's own
+// tests pin subtree reaping).
+//
+// The header-only, full-height end state this test asserts is the accepted outcome, not a layout
+// defect to "fix" by synthesizing a spacer pane: applyLayoutLockedOpts deliberately skips
+// select-layout when no strand owns a present pane (anyPlacedStrand, apply.go), and the scrub erases
+// the strand table along with HeaderPaneID, so the recovering up's reconcile leaves nothing else for
+// this session to place.
+func TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+
+	stateDir := filepath.Join(h.PrimeWorktree(), ".lyx")
+	stBefore, err := reedengine.LoadState(stateDir)
+	if err != nil || stBefore == nil || stBefore.HeaderPaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", stBefore, err)
+	}
+	oldHeaderPaneID := stBefore.HeaderPaneID
+
+	guid := addStrand(t, smokeReapLaunchCmd(), "--name", "orphaned-by-scrub")
+	socket, session := socketAndSession(t)
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"status"}); code != 0 {
+		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
+	}
+	strand, found := statusStrand(t, out.Bytes(), guid)
+	if !found {
+		t.Fatalf("status missing strand %s; output: %s", guid, out.String())
+	}
+	oldStrandPaneID, _ := strand["paneId"].(string)
+	if oldStrandPaneID == "" {
+		t.Fatalf("strand %s has no pane before the scrub: %s", guid, out.String())
+	}
+	oldStrandPID := paneRootPID(t, tmuxPath, socket, session, oldStrandPaneID)
+
+	statePath := filepath.Join(stateDir, "reed.json")
+	if err := os.Remove(statePath); err != nil {
+		t.Fatalf("remove %s: %v", statePath, err)
+	}
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up after the state file was scrubbed = %d; want 0, output: %s", code, out.String())
+	}
+
+	stAfter, err := reedengine.LoadState(stateDir)
+	if err != nil || stAfter == nil || stAfter.HeaderPaneID == "" {
+		t.Fatalf("LoadState after the recovering up = (%+v, %v); want a freshly persisted HeaderPaneID", stAfter, err)
+	}
+	newHeaderPaneID := stAfter.HeaderPaneID
+	if newHeaderPaneID == oldHeaderPaneID {
+		t.Fatalf("HeaderPaneID after the recovering up = %s; want a NEW id distinct from the pre-scrub header %s", newHeaderPaneID, oldHeaderPaneID)
+	}
+
+	panes := listPaneLines(t, tmuxPath, socket, session)
+	if len(panes) != 1 || !paneLiveOnSession(panes, newHeaderPaneID) {
+		t.Fatalf("panes after the recovering up = %v; want exactly the freshly rebuilt header pane %s", panes, newHeaderPaneID)
+	}
+	for _, line := range panes {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if fields[0] == oldHeaderPaneID {
+			t.Errorf("old header pane %s still present after the recovering up; want it reaped", oldHeaderPaneID)
+		}
+		if fields[0] == oldStrandPaneID {
+			t.Errorf("orphaned strand pane %s still present after the recovering up; want it reaped", oldStrandPaneID)
+		}
+	}
+
+	pollProcessGone(t, oldStrandPID, 20*time.Second)
 }
 
 // TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite is the end-to-end regression guard for the R2
