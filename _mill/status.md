@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: reed-lock-stale-session-name
 branch: reed-lock-stale-session-name
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-refuse-a-vanished-worktree-root  '2026-08-28T15:10:27Z'
 approved-watch-loop-dormant-mode  '2026-08-29T05:43:10Z'
 holistic-reviewing  '2026-08-29T05:43:35Z'
 holistic-approved  '2026-08-29T05:46:19Z'
+done  '2026-08-29T06:14:31Z'
 ```
 
 ## Batches
