@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: prowler-github-tree-script
 branch: prowler-github-tree-script
 plan: _mill/plan
@@ -25,4 +25,5 @@ plan-review-r1  '2026-08-29T11:14:46Z'
 plan-fix-r1  '2026-08-29T11:16:16Z'
 plan-review-r2  '2026-08-29T11:21:13Z'
 plan-fix-r2  '2026-08-29T11:22:08Z'
+planned  '2026-08-29T11:22:28Z'
 ```
