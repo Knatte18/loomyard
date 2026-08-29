@@ -15,6 +15,10 @@ verify: go build ./... && go vet ./internal/reedengine/ ./internal/reedcli/
 _The fenced yaml block below is the authoritative DAG mill-go reads to schedule batches.
 Every batch lives at `NN-<batch-slug>.md` in this directory and is mirrored as one entry here._
 
+_Read the edges, not the numbers: batch 3 declares `depends-on: [2, 4]`, so it runs **last** despite its number.
+That backward edge is deliberate — batch 3's closing sweep card greps `internal/reedcli/*.go`, which is exactly the file set batch 4 rewrites, so the sweep is only meaningful once batch 4 has landed.
+The execution order is 1 → 2 → 4 → 3._
+
 ```yaml
 batches:
   - number: 1

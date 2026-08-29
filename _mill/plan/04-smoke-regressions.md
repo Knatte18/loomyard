@@ -42,7 +42,11 @@ A pane-id-only assertion would have passed for the adoption bug had ids been rec
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Rewrite `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`, whose premise is now false: with the header alive and zero strands, the reap fires on that test's second `lyx reed up` and kills both the unadopted initial pane and the foreign pane, while its comments assert the opposite ("the foreign panes survive an up", "Every pane must survive it").
+- **Requirements:** Rewrite `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`, whose premise is now false, while its comments assert the opposite ("the foreign panes survive an up", "Every pane must survive it").
+  Be precise about which `up` reaps what, because the test's two `up` calls now behave differently and its comments must say so.
+  The *first* `up` boots the session and creates the header before it reconciles, so with the header alive and zero strands the reap fires there and kills the session's initial pane — the test reaches its foreign `split-window` with the header as the only pane.
+  The *second* `up` then reaps the foreign pane alone.
+  Neither `up` kills both, and the tightened "exactly one pane" assertion below passes under either reading, so a comment that gets this backwards would not be caught by anything.
   Its surviving `len(panes) == 0` assertion is loose enough to keep passing while its stated premise is false, which is worse than a failure.
   Rewrite all four stale sites to the new behaviour;
   the test carries more falsified text than the two headline comments.

@@ -74,6 +74,7 @@ Batch-local decision beyond `## Shared Decisions`: the two killed-id lists are l
   Add table cases covering: an alive header with zero strands and one untracked alive pane, where that pane is killed as an *untracked* kill and the header is not;
   an alive header with zero strands and several untracked panes (an old header pane plus an orphaned strand pane, M22's shape), where all of them are killed and the current header is spared;
   a header present but `Dead: true` with no strand bound and one alive untracked pane, where nothing is reaped;
+  a non-empty `headerPaneID` naming no entry in `live` at all, with no strand bound and one alive untracked pane, where nothing is reaped — this is `headerAlive`'s third way of being false, distinct from the empty-id and present-but-dead cases above, and it is reachable on the `add` path once an operator kills the header pane outright, since no verb but `up`/`resume` rebuilds it;
   and a dead header alongside a strand bound to a present pane, where the reap fires anyway via `anyBoundPresent` and the header corpse is still spared.
   The alive-header-alongside-a-bound-strand shape needs no new case: `HeaderPaneNeverReapedAsUntrackedWhileStrandBound` already covers it exactly (a strand on `%1`, an alive `%header`, and a foreign `%7` that is reaped), and card 1 preserves it unchanged.
   Confirm it still passes rather than adding a duplicate of it.

@@ -82,6 +82,7 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
   - `internal/reedengine/strand.go`
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/apply.go`
+  - `internal/reedengine/state.go`
 - **Edits:**
   - `internal/reedengine/spawn.go`
 - **Creates:** none
@@ -114,6 +115,7 @@ Batch-local decisions beyond `## Shared Decisions`: the ordering assertion is pi
   - `internal/reedengine/lock_test.go`
   - `internal/reedengine/lifecycle_test.go`
   - `internal/reedengine/state.go`
+  - `internal/reedengine/strand.go`
   - `internal/reedengine/apply.go`
 - **Edits:**
   - `internal/reedengine/spawn_test.go`

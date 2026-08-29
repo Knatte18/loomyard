@@ -35,13 +35,17 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   - `internal/reedengine/spawn.go`
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/apply.go`
+  - `internal/reedengine/strand.go`
+  - `internal/reedengine/state.go`
+  - `internal/reedengine/generation.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/reedengine/doc.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Rewrite three passages in `internal/reedengine/doc.go`, each of which asserts something that no longer exists.
+- **Requirements:** Rewrite four passages in `internal/reedengine/doc.go`, each of which asserts something that no longer exists.
+  Count them off against the First/Second/Third/Fourth enumeration below and do not stop at three — the fourth is the one passage neither of card 12's sweeps can reach, so nothing downstream would catch it.
   First, the header package-invariant sentence naming adoption as one of the header's three exclusion seams (the sentence listing `ensureHeaderPaneLocked` in `lifecycle.go`, `planPaneTarget` in `spawn.go`, and `planReconcile`'s `exemptPaneIDs` in `reconcile.go` as "the three exclusion seams", reached via the phrase "every strand-accounting, adoption, split-target, and reconcile path").
   With adoption gone the header is excluded from strand accounting, from being the preferred split target, and from both halves of reconcile's kill schedule;
   restate the seams accordingly and drop "adoption" from the enumeration.
@@ -70,6 +74,7 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
 - **Context:**
   - `internal/reedengine/reconcile.go`
   - `internal/reedengine/apply.go`
+  - `internal/reedengine/generation.go`
 - **Edits:**
   - `internal/reedengine/state.go`
 - **Creates:** none
@@ -190,8 +195,11 @@ Card 12 exists to make that failure detectable rather than trusting the enumerat
   `doc.go`'s session-name-rewrite bullet, whose "each adopt the other's panes" clause describes two worktrees colliding on one session name rather than `planPaneTarget`;
   `spawn.go`'s own surviving hit, the `e.adoptPaneGenerationLocked(st)` call inside `loadOrInitStateLocked`, which cards 4 and 6 leave standing because it is the generation probe rather than pane adoption;
   and `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s merge-adoption prose, which belongs to fabric and not to reed.
-  The second sweep has one legitimate survivor of its own: `reconcile_test.go`'s `DeadHeaderPaneKeptNotKilled` comment, reading "the dead-pane kill loop, not only the untracked reap, spares it".
-  It describes the header's exemption from the dead-pane kill, which this task does not change, and card 2 preserves that case unchanged — so the phrase is still true and stays.
+  The second sweep has three legitimate survivors of its own, all still true post-fix and all deliberately preserved by earlier cards;
+  expect them, and do not report them as missed rewrites.
+  `reconcile_test.go`'s `DeadHeaderPaneKeptNotKilled` comment, reading "the dead-pane kill loop, not only the untracked reap, spares it" — it describes the header's exemption from the dead-pane kill, which this task does not change, and card 2 preserves that case unchanged.
+  `reconcile.go`'s header-exemption comment above the dead-pane kill loop, reading "exempt from the dead-pane kill too, not only from the untracked reap below" — same rule, same reason, and card 2 changes neither the loop nor this comment.
+  And `reconcile.go`'s `clearConflictingPaneBindings` doc comment, where "planReconcile's deterministic untracked reap kills it" describes what happens to a second strand's orphaned pane under a corrupt table — card 10 rewrites only that comment's adoption clause, and this sentence stays true because the reap still kills such a pane.
   Anything else — any surviving text describing `planPaneTarget`'s pane-adoption seam, the initial-pane-adoption behaviour, or the reap gate needing a bound present pane — is a missed rewrite.
   Close one further enumeration item the two greps cannot reach, because its comment contains neither sweep term: `internal/reedengine/lifecycle_test.go`'s fixture comment describing a pane as "the new-session initial pane a fresh boot leaves".
   Read it and confirm it merely labels a scripted fixture's pane set rather than asserting that the initial pane is adopted or survives an `up`;
