@@ -58,8 +58,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.Height != 50 {
 		t.Errorf("Height = %d, want 50", cfg.Height)
 	}
-	if cfg.CollapsedStripRows != 3 {
-		t.Errorf("CollapsedStripRows = %d, want 3", cfg.CollapsedStripRows)
+	if cfg.CollapsedStripRows != 6 {
+		t.Errorf("CollapsedStripRows = %d, want 6", cfg.CollapsedStripRows)
 	}
 	if cfg.MinFullRows != 3 {
 		t.Errorf("MinFullRows = %d, want 3", cfg.MinFullRows)
@@ -135,8 +135,8 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	if cfg.Width != 220 {
 		t.Errorf("Width = %d, want 220", cfg.Width)
 	}
-	if cfg.CollapsedStripRows != 3 {
-		t.Errorf("CollapsedStripRows = %d, want 3", cfg.CollapsedStripRows)
+	if cfg.CollapsedStripRows != 6 {
+		t.Errorf("CollapsedStripRows = %d, want 6", cfg.CollapsedStripRows)
 	}
 	if cfg.Header.HeightRows != 1 {
 		t.Errorf("Header.HeightRows = %d, want 1", cfg.Header.HeightRows)
