@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-collapsed-strip-readability
 branch: reed-collapsed-strip-readability
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-collapsed-strip-default  '2026-08-31T10:47:01Z'
 holistic-reviewing  '2026-08-31T10:47:25Z'
 holistic-approved  '2026-08-31T10:49:00Z'
 done  '2026-08-31T10:50:28Z'
+pr-pending  '2026-08-31T10:51:15Z'
 ```
 
 ## Batches
