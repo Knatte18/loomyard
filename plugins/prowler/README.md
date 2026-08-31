@@ -52,6 +52,30 @@ and its absence costs speed rather than capability by skipping straight to the `
 Like `github-tree.sh`, it has no build step and no lock, since there is nothing to compile, and it invokes no system `jq` at run time — every JSON field the fallback path needs is extracted through `gh api --jq`.
 Its offline test harness (`github-read-selftest.sh`) carries the one extra dependency of system `jq`, which the harness checks for up front and which, like the tree harness, is not wired into CI.
 
+## `github-code-search.sh`: one-call cross-repo code search
+
+`github-code-search.sh` runs one GitHub code search query across one or more repositories in a single invocation.
+It replaces an N-call LLM-driven "search each repo, one at a time, retyping the query each time" loop with a single script call the model no longer has to compose turn by turn.
+
+The contract: a query followed by one or more `<owner>/<repo>` refs, and one tab-separated record per matching file on stdout — `<owner>/<repo>\t<path>\t<snippet>`.
+Every record across every repo is buffered in memory and printed only once the whole sweep has succeeded, so a failure partway through never leaves a partial prefix on stdout for a caller to mistake for a complete (if short) result set.
+
+The rate-limit budget is what fixes the repo cap: each repo costs one preflight call against the 5000-per-hour core bucket, plus one search call against the 10-per-minute search bucket, and it is the ten-per-minute search bucket that caps a single invocation at 10 distinct repos.
+
+Three GitHub API quirks shape the contract:
+
+- Repeated `repo:` qualifiers do not combine — the last one wins and the earlier ones are silently discarded — which is why the script issues one search call per repo rather than one call for the whole sweep.
+  For the same reason, a caller-supplied query containing `repo:` is refused outright;
+  use a raw `gh api -X GET search/code -f q=...` call instead if an explicit qualifier is genuinely needed.
+- A nonexistent repo answers 200 with a zero total, indistinguishable from a real repo with no matches, which is why the script runs a preflight call against every repo before running any search call.
+- A partial result set arrives as a 200 carrying an incomplete-results flag, which the script treats as a hard failure rather than a silent partial success.
+
+Results are capped at one page per repo here, and at 1000 by the API regardless;
+a repo with more matches than fit on one page still exits 0, with a stderr note naming the true total so a capped listing is never mistaken for a complete one.
+
+As with `github-tree.sh`, its only runtime dependency is `gh`: every field is extracted through `gh api --jq` (gh's embedded gojq), and no system `jq` is ever invoked at run time.
+Its offline test harness (`github-code-search-selftest.sh`) carries the one extra dependency of system `jq`, which the harness checks for up front.
+
 ## Runtime prerequisite: Chrome/Chromium
 
 The headless-browser fallback (used when a page is bot-blocked or JS-rendered and static extraction alone isn't enough) needs a local Chrome or Chromium install. prowler discovers it via the `CHROME_PATH` environment variable first, then a platform-specific candidate list (matching weblens' own discovery).
