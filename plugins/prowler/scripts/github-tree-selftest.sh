@@ -650,6 +650,68 @@ else
     fail "buffering guarantee: the default-ceiling abort left a non-empty stdout: $default_over_out"
 fi
 
+# assert_usage_error asserts the shared shape every usage-error scenario in
+# this section must have: exit status 2 specifically (not merely non-zero),
+# byte-empty stdout, and an empty call log, because the parser runs before
+# any network call.
+assert_usage_error() {
+    local label="$1" scenario="$2"
+    if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(call_line_count "$scenario")" -eq 0 ]; then
+        pass "$label"
+    else
+        fail "$label: status=$status out=$out calls=$(calls "$scenario")"
+    fi
+}
+
+# --- Test 36: --max-entries with a non-integer value -------------------------------
+run_scenario flag_nonint "" --max-entries abc acme/small
+assert_usage_error "--max-entries with a non-integer value: exit 2, empty stdout, empty call log" flag_nonint
+
+# --- Test 37: --max-entries with a negative value ----------------------------------
+run_scenario flag_negative "" --max-entries -5 acme/small
+assert_usage_error "--max-entries with a negative value: exit 2, empty stdout, empty call log" flag_negative
+
+# --- Test 38: --max-entries with no following value at all -------------------------
+run_scenario flag_novalue "" acme/small --max-entries
+assert_usage_error "--max-entries with no following value: exit 2, empty stdout, empty call log" flag_novalue
+
+# --- Test 39: an unrecognised leading double-dash token -----------------------------
+run_scenario flag_unrecognised "" --bogus acme/small
+assert_usage_error "unrecognised leading double-dash token: exit 2, empty stdout, empty call log" flag_unrecognised
+
+# --- Test 40: a double-dash token appearing after the positionals -------------------
+run_scenario flag_trailing_dashdash "" acme/small --weird
+assert_usage_error "double-dash token after positionals: exit 2, empty stdout, empty call log (the one deliberate deviation)" flag_trailing_dashdash
+
+# --- Test 41: a recognised flag appearing after the positionals ---------------------
+run_scenario flag_trailing_children "" acme/small --children
+assert_usage_error "recognised flag after positionals: exit 2, empty stdout, empty call log" flag_trailing_children
+
+# --- Test 42: a -- terminator followed by a path beginning with a dash --------------
+run_scenario flag_terminator_dashpath "$(printf 'repos/acme/dashpath/git/trees/HEAD:-weirdpath?recursive=1\tsmall-root-rec.json\n')" -- acme/dashpath -weirdpath
+if [ "$status" -eq 0 ] && [ "$(call_line_count flag_terminator_dashpath)" -eq 1 ]; then
+    pass "-- terminator followed by a dash-leading path: accepted, reaches the API"
+else
+    fail "-- terminator followed by a dash-leading path: status=$status out=$out calls=$(calls flag_terminator_dashpath)"
+fi
+
+# --- Test 43: a single-dash token in path position, no terminator -------------------
+run_scenario flag_singledash "$(printf 'repos/acme/singledash/git/trees/HEAD:-x?recursive=1\tsmall-root-rec.json\n')" acme/singledash -x
+if [ "$status" -eq 0 ] && [ "$(call_line_count flag_singledash)" -eq 1 ]; then
+    pass "single-dash token in path position: not treated as a flag, reaches the API exactly as today"
+else
+    fail "single-dash token in path position: status=$status out=$out calls=$(calls flag_singledash)"
+fi
+
+# --- Test 44: combining both flags with both positionals ----------------------------
+run_scenario flag_combined "$(printf 'repos/acme/bothflags/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children --max-entries 5 acme/bothflags src
+expected="$(printf 'src/main.go\nsrc/deep/\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "combining --children and --max-entries with both positionals: parses and lists successfully"
+else
+    fail "combining --children and --max-entries with both positionals: status=$status out=$out"
+fi
+
 rm -rf "$SCRATCH"
 
 echo "==========================================================="
