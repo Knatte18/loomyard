@@ -712,6 +712,25 @@ else
     fail "combining --children and --max-entries with both positionals: status=$status out=$out"
 fi
 
+# --- Test 45: --max-entries with a leading zero is read as decimal, not octal ------
+# Bash treats a leading-zero numeric literal as octal in arithmetic context,
+# so an unguarded comparison would misapply 010 as a ceiling of 8 (silent
+# wrong answer) and crash outright on 018 ("value too great for base 8").
+# Both must instead behave exactly as their decimal value.
+run_scenario flag_leadingzero_ok "$small_map" --max-entries 010 acme/guardboundary
+expected="$(printf 'intro.md\nsrc/main.go\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--max-entries 010 is read as decimal ten, not octal eight: the three-entry listing succeeds"
+else
+    fail "--max-entries 010 is read as decimal ten, not octal eight: status=$status out=$out"
+fi
+run_scenario flag_leadingzero_crash "$small_map" --max-entries 018 acme/guardboundary
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--max-entries 018 does not crash on an invalid octal digit: the three-entry listing succeeds"
+else
+    fail "--max-entries 018 does not crash on an invalid octal digit: status=$status out=$out"
+fi
+
 rm -rf "$SCRATCH"
 
 echo "==========================================================="

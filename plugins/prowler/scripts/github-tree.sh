@@ -36,6 +36,9 @@
 # The check runs on every append, not once at the end, so a listing that
 # would exceed the ceiling never burns the rest of its `gh` call budget
 # just to arrive at a rejection already determined earlier in the walk.
+# `--max-entries` is always read as base-10, leading zeros included (e.g.
+# `010` means ten, not eight), so it never falls into bash's octal-literal
+# arithmetic parsing.
 #
 # `--children` lists one path's direct children without recursing: a
 # directory entry is marked with a single trailing slash, a file entry
@@ -105,6 +108,15 @@ done
 case "$MAX_ENTRIES" in
 '' | *[!0-9]*) usage ;;
 esac
+
+# Force base-10 interpretation and strip any leading zeros: bash treats a
+# leading-zero numeric literal (e.g. 010) as octal in arithmetic context,
+# which would silently misapply the ceiling (010 -> 8) or crash outright on
+# an invalid octal digit (018 -> "value too great for base"). Normalizing
+# here, once, keeps both the "0 means unlimited" string comparison in emit
+# and the arithmetic comparison against ${#output[@]} working against the
+# same canonical decimal value.
+MAX_ENTRIES=$((10#$MAX_ENTRIES))
 
 [ "${#args[@]}" -ge 1 ] && [ "${#args[@]}" -le 2 ] || usage
 
