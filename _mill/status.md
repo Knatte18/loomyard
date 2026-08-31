@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-attach-multi-client-warning  '2026-08-31T13:48:23Z'
 approved-measurement-gate  '2026-08-31T14:01:08Z'
 approved-repaint-entry  '2026-08-31T14:08:00Z'
 approved-docs  '2026-08-31T14:14:09Z'
+holistic-reviewing  '2026-08-31T14:14:46Z'
 ```
 
 ## Batches
