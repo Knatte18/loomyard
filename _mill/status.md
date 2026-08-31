@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'auto: discussion review gaps unresolved after 7 rounds'
+phase: discussed
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: null
@@ -18,4 +17,5 @@ task_description: |
 discussing  '2026-08-29T17:31:36Z'
 discussion-fix-r5  '2026-08-31T10:32:32Z'
 blocked  '2026-08-31T10:41:28Z'
+discussed  '2026-08-31T11:51:39Z'
 ```
