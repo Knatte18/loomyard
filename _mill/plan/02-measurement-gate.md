@@ -32,6 +32,7 @@ That is deliberate and is not a Shell Mechanics Seam violation — the seam bind
   - `internal/reedcli/smoke_dotfill_test.go`
   - `internal/reedcli/smoke_test.go`
   - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/watchdog.go`
 - **Edits:** none
 - **Creates:**
   - `internal/reedcli/smoke_dotfill_measure_test.go`
@@ -98,6 +99,7 @@ That is deliberate and is not a Shell Mechanics Seam violation — the seam bind
   - `internal/reedcli/smoke_dotfill_test.go`
   - `internal/reedcli/smoke_test.go`
   - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/reapply.go`
 - **Edits:**
   - `internal/reedcli/smoke_dotfill_measure_test.go`
 - **Creates:** none

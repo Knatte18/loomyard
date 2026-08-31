@@ -98,7 +98,12 @@ Batch-local decisions beyond `## Shared Decisions`:
   The message must say plainly what the operator will see: that another client is attached at a different size, that tmux must pick one window size, and that the mismatched client shows tmux padding until it is resized or detached.
 
   Wire the call into `AttachArgv`'s existing `withOpLock` closure, immediately after `e.requireSessionLocked()` and before `e.pinGeometryOptionsLocked()`.
-  That position is deliberate and is worth its own sentence in the doc comment: it is before any mutation, and it is ahead of every in-closure degrade return, so the warning still fires on an attach whose chain is later suppressed — which is precisely the attach an operator is most likely to be confused by.
+  Document the position twice, in two different places, because they answer different questions:
+  - On `warnMismatchedClientsLocked` itself, say why the position is deliberate — it is before any mutation, and it is ahead of every in-closure degrade return, so the warning still fires on an attach whose chain is later suppressed, which is precisely the attach an operator is most likely to be confused by.
+  - In `AttachArgv`'s **own** doc comment, extend the existing precondition enumeration — today "the session existing, the geometry option pins and their readbacks, the persisted state, the live pane list, both layout guards, and the layout plan itself" — so it names the client listing too.
+    That sentence is the file's index of everything the pre-flight does, and a new tmux round trip missing from it makes the index wrong.
+    Say in the same breath that the listing is the one pre-flight step that is not a precondition at all: it gates nothing and can never suppress the chain.
+
   Add no new early return, no new error path, and no change to either returned argv.
 
   Add nothing to `requiredSubcommands` in `internal/reedengine/probe.go`: a failing or unsupported `list-clients` logs one warning and emits no multi-client warning, and the argv is unaffected.

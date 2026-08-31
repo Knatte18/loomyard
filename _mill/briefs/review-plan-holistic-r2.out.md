@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: Reed attach dot-fill render artifact on resize and cross-client mouse move — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5 (per harness-reported model ID)
+reviewed_file: plan/
+date: 2026-08-31
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 7 Context omits watchdog.go, source of tmuxQuoteValue
+**Location:** 02-measurement-gate.md, Card 7 (`fireCounterEntry`)
+**Issue:** Requirements instruct escaping "the same way `tmuxQuoteValue` does," but `tmuxQuoteValue` is declared in `internal/reedengine/watchdog.go`, which is absent from Card 7's `Context:` list (only `smoke_dotfill_test.go`, `smoke_test.go`, `windowsize.go` are listed). Since `reedcli` cannot import this unexported `reedengine` function, the implementer must read its exact escaping order/behavior from source to hand-replicate it, which Context forbids under cold-start rules.
+**Fix:** Add `internal/reedengine/watchdog.go` to Card 7's `Context:` list (Card 8, which also cites `tmuxQuoteValue`, already includes it — mirror that).
+
+### [NIT:consistency] AttachArgv's own doc comment enumeration not updated for the new pre-flight step
+**Location:** 04-attach-multi-client-warning.md, Card 16
+**Issue:** `AttachArgv`'s existing doc comment enumerates every precondition it checks ("the session existing, the geometry option pins and their readbacks, the persisted state, the live pane list, both layout guards, and the layout plan itself"); Card 16 adds a new pre-flight tmux call but only says the ordering choice is "worth its own sentence in the doc comment" without specifying whether that means updating this top-level enumeration.
+**Fix:** State explicitly that `AttachArgv`'s doc comment's precondition list must be extended to mention the client-listing warning, not just that `warnMismatchedClientsLocked` gets its own doc comment.
+
+### [NIT:scope] Card 9 cites hookInstalledLocked without reapply.go in Context
+**Location:** 02-measurement-gate.md, Card 9
+**Issue:** The card explains why the readback assertion matters by naming `hookInstalledLocked` (`internal/reedengine/reapply.go`), but that file is not in Card 9's `Context:` list (`smoke_dotfill_test.go`, `smoke_test.go`, `windowsize.go`). This citation is rationale rather than a behavior to replicate, so it's lower-severity than Card 7's case, but still leaves the implementer unable to verify the claim without leaving Context.
+**Fix:** Add `internal/reedengine/reapply.go` to Card 9's Context list, or drop the named citation from the rationale.
+
+## Verdict
+
+REQUEST_CHANGES
+Card 7's Context omission is a mechanical, single-line fix; everything else reviewed (DAG, decisions, sequencing, tests) is sound.
+MILL_REVIEW_END
