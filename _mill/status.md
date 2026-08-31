@@ -34,5 +34,8 @@ implementing  '2026-08-31T10:43:28Z'
 ```yaml
 batches:
   - name: collapsed-strip-default
-    state: pending
+    state: running
+    implementer_session: 737a74a4-c346-4c5a-8962-f7e1da90be00
+    start_sha: 938d604c8450f7fa41743b53aba5bdbf23fdffa6
+    verify_baseline_failures: []
 ```
