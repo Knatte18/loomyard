@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-collapsed-strip-default
 slug: reed-collapsed-strip-readability
 branch: reed-collapsed-strip-readability
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r2  '2026-08-31T10:39:16Z'
 plan-review-r3  '2026-08-31T10:42:44Z'
 planned  '2026-08-31T10:43:00Z'
 implementing  '2026-08-31T10:43:28Z'
+approved-collapsed-strip-default  '2026-08-31T10:47:01Z'
 ```
 
 ## Batches
@@ -34,8 +35,9 @@ implementing  '2026-08-31T10:43:28Z'
 ```yaml
 batches:
   - name: collapsed-strip-default
-    state: running
+    state: approved
     implementer_session: 737a74a4-c346-4c5a-8962-f7e1da90be00
     start_sha: 938d604c8450f7fa41743b53aba5bdbf23fdffa6
+    commit_sha: 328a8abf90415e538e1ec808a62dcb29edfd4272
     verify_baseline_failures: []
 ```
