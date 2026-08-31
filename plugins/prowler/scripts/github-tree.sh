@@ -22,6 +22,28 @@
 # owner/repo and an optional path and calls `gh`, nothing else -- so it does
 # not self-locate a SCRIPT_DIR/PLUGIN_ROOT. What it does copy from run.sh is
 # the strict stdout discipline and the `command -v` prerequisite check.
+#
+# Flags are recognised only ahead of the first positional argument: once one
+# positional has been collected, a later token beginning with two dashes is
+# a usage error rather than a silently-ignored flag or a reinterpreted path.
+# A `--` terminator ends flag recognition early and makes every remaining
+# token -- including one beginning with two dashes -- a positional, which is
+# the only way to pass such a path to this script.
+#
+# An entry-count guard aborts the walk, incrementally, once the buffered
+# listing exceeds a ceiling that defaults to 1000 entries and is overridable
+# with `--max-entries N`; `--max-entries 0` disables the ceiling entirely.
+# The check runs on every append, not once at the end, so a listing that
+# would exceed the ceiling never burns the rest of its `gh` call budget
+# just to arrive at a rejection already determined earlier in the walk.
+# `--max-entries` is always read as base-10, leading zeros included (e.g.
+# `010` means ten, not eight), so it never falls into bash's octal-literal
+# arithmetic parsing.
+#
+# `--children` lists one path's direct children without recursing: a
+# directory entry is marked with a single trailing slash, a file entry
+# carries no marker, and a trailing slash cannot collide with a file name
+# because a blob path never ends in one.
 set -u
 
 # die prints one message to stderr and exits 1. It is not used for the
@@ -38,13 +60,68 @@ if ! command -v gh >/dev/null 2>&1; then
     die "github-tree: gh not found on PATH — install the GitHub CLI and authenticate it (gh auth login)"
 fi
 
-if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-    echo "github-tree: usage: github-tree.sh <owner/repo> [path]" >&2
+# usage prints the usage line to stderr and exits 2. It is deliberately not
+# routed through die, which exits 1 -- exit 2 is reserved for malformed
+# invocations, exit 1 for every operational failure.
+usage() {
+    echo "github-tree: usage: github-tree.sh [--children] [--max-entries N] <owner/repo> [path]" >&2
     exit 2
-fi
+}
 
-REPO="$1"
-RAW_PATH="${2:-}"
+CHILDREN=0
+MAX_ENTRIES=1000
+
+args=()
+terminated=0
+while [ "$#" -gt 0 ]; do
+    if [ "$terminated" -eq 1 ]; then
+        args+=("$1")
+        shift
+        continue
+    fi
+    case "$1" in
+    --)
+        terminated=1
+        shift
+        ;;
+    --children)
+        [ "${#args[@]}" -eq 0 ] || usage
+        CHILDREN=1
+        shift
+        ;;
+    --max-entries)
+        [ "${#args[@]}" -eq 0 ] || usage
+        [ "$#" -ge 2 ] || usage
+        MAX_ENTRIES="$2"
+        shift 2
+        ;;
+    --*)
+        usage
+        ;;
+    *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+done
+
+case "$MAX_ENTRIES" in
+'' | *[!0-9]*) usage ;;
+esac
+
+# Force base-10 interpretation and strip any leading zeros: bash treats a
+# leading-zero numeric literal (e.g. 010) as octal in arithmetic context,
+# which would silently misapply the ceiling (010 -> 8) or crash outright on
+# an invalid octal digit (018 -> "value too great for base"). Normalizing
+# here, once, keeps both the "0 means unlimited" string comparison in emit
+# and the arithmetic comparison against ${#output[@]} working against the
+# same canonical decimal value.
+MAX_ENTRIES=$((10#$MAX_ENTRIES))
+
+[ "${#args[@]}" -ge 1 ] && [ "${#args[@]}" -le 2 ] || usage
+
+REPO="${args[0]}"
+RAW_PATH="${args[1]:-}"
 
 if ! [[ "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
     die "github-tree: '$REPO' is not a valid <owner>/<repo> reference"
@@ -175,75 +252,135 @@ fetch() {
     done <<<"$captured"
 }
 
-# The walk itself: one explicit FIFO queue in the main shell, never a
-# recursive shell function and never a LIFO stack, so output order is
-# fixed to the order work items were appended -- the root's own blobs
-# first, then each subtree's blobs in the order its parent listing gave
-# them, at every depth.
-#
-# Each queue item is a tab-separated 4-tuple: mode ("rec" or "nonrec"), a
-# ref, a path prefix, and a kind ("root" or "child", see fetch() above).
-queue=("rec"$'\t'"$BASE_REF"$'\t'"$PREFIX"$'\t'"root")
-head=0
 output=()
 
-while [ "$head" -lt "${#queue[@]}" ]; do
-    item="${queue[$head]}"
-    head=$((head + 1))
-
-    mode="${item%%$'\t'*}"
-    rest="${item#*$'\t'}"
-    ref="${rest%%$'\t'*}"
-    rest="${rest#*$'\t'}"
-    prefix="${rest%%$'\t'*}"
-    kind="${rest#*$'\t'}"
-
-    if [ "$mode" = "rec" ]; then
-        fetch "repos/$REPO/git/trees/$ref?recursive=1" "$kind"
-        if [ "$FETCH_TRUNCATED" = "true" ]; then
-            # Truncated: re-fetch the same ref non-recursively instead of
-            # trusting this partial listing.
-            queue+=("nonrec"$'\t'"$ref"$'\t'"$prefix"$'\t'"$kind")
-            continue
+# emit appends one path to output and enforces the entry-count guard on the
+# crossing append, not once at the end -- an abort here is what keeps a
+# truncated-fallback walk from burning its whole multi-call budget to
+# produce a rejection already determined by the first few hundred entries.
+# Checking strictly greater than after the append is what lets a listing of
+# exactly MAX_ENTRIES entries succeed while MAX_ENTRIES plus one aborts.
+# MAX_ENTRIES=0 means unlimited. The abort message is mode-aware: it never
+# suggests --children back to a caller who is already using it.
+emit() {
+    output+=("$1")
+    if [ "$MAX_ENTRIES" != "0" ] && [ "${#output[@]}" -gt "$MAX_ENTRIES" ]; then
+        if [ "$CHILDREN" -eq 1 ]; then
+            die "github-tree: repos/$REPO — listing exceeds $MAX_ENTRIES entries; scope to a subdirectory or raise --max-entries"
+        else
+            die "github-tree: repos/$REPO — listing exceeds $MAX_ENTRIES entries; scope to a subdirectory, use --children, or raise --max-entries"
         fi
+    fi
+}
+
+if [ "$CHILDREN" -eq 1 ]; then
+    # --children lists exactly one path's direct children and never
+    # recurses: one fetch against the non-recursive endpoint (no
+    # ?recursive=1 suffix), reusing fetch/BASE_REF/PREFIX/JQ_EXPR unchanged
+    # so a --children run makes exactly one gh call. The non-recursive
+    # truncation abort is restated here rather than inherited, because it
+    # lives inside the recursive walk's own else branch below, which this
+    # arm never enters.
+    fetch "repos/$REPO/git/trees/$BASE_REF" "root"
+    if [ "$FETCH_TRUNCATED" = "true" ]; then
+        die "github-tree: repos/$REPO — the non-recursive listing of '$BASE_REF' is itself truncated; this repository has a directory too large for the GitHub tree API"
+    fi
+    # The [ -gt 0 ] guard keeps an empty directory a genuine no-op under
+    # set -u rather than an unbound-variable error.
+    if [ "${#FETCH_ENTRIES[@]}" -gt 0 ]; then
         for entry in "${FETCH_ENTRIES[@]}"; do
             etype="${entry%%$'\t'*}"
             erest="${entry#*$'\t'}"
-            epath="${erest#*$'\t'}"
-            if [ "$etype" = "blob" ]; then
-                output+=("$prefix$epath")
-            fi
-            # "tree" entries within an untruncated recursive listing need
-            # no further queueing -- the recursive listing already
-            # descended into them. "commit" entries (submodules) are
-            # skipped silently: a submodule path is not readable through
-            # this repository's contents API.
-        done
-    else
-        fetch "repos/$REPO/git/trees/$ref" "$kind"
-        if [ "$FETCH_TRUNCATED" = "true" ]; then
-            die "github-tree: repos/$REPO — the non-recursive listing of '$ref' is itself truncated; this repository has a directory too large for the GitHub tree API"
-        fi
-        for entry in "${FETCH_ENTRIES[@]}"; do
-            etype="${entry%%$'\t'*}"
-            erest="${entry#*$'\t'}"
-            esha="${erest%%$'\t'*}"
             epath="${erest#*$'\t'}"
             case "$etype" in
             blob)
-                output+=("$prefix$epath")
+                emit "$PREFIX$epath"
                 ;;
             tree)
-                queue+=("rec"$'\t'"$esha"$'\t'"$prefix$epath/"$'\t'"child")
+                # A single trailing slash marks a directory; a blob path
+                # never ends in one, so the marker cannot collide with a
+                # file name. This is the one place the recursive modes'
+                # blob-paths-only output contract does not apply.
+                emit "$PREFIX$epath/"
                 ;;
             *)
                 # "commit" entries (submodules) are skipped silently, same
-                # reason as above.
+                # reason as the recursive walk below.
                 ;;
             esac
         done
     fi
-done
+else
+    # The walk itself: one explicit FIFO queue in the main shell, never a
+    # recursive shell function and never a LIFO stack, so output order is
+    # fixed to the order work items were appended -- the root's own blobs
+    # first, then each subtree's blobs in the order its parent listing gave
+    # them, at every depth.
+    #
+    # Each queue item is a tab-separated 4-tuple: mode ("rec" or "nonrec"),
+    # a ref, a path prefix, and a kind ("root" or "child", see fetch()
+    # above).
+    queue=("rec"$'\t'"$BASE_REF"$'\t'"$PREFIX"$'\t'"root")
+    head=0
+
+    while [ "$head" -lt "${#queue[@]}" ]; do
+        item="${queue[$head]}"
+        head=$((head + 1))
+
+        mode="${item%%$'\t'*}"
+        rest="${item#*$'\t'}"
+        ref="${rest%%$'\t'*}"
+        rest="${rest#*$'\t'}"
+        prefix="${rest%%$'\t'*}"
+        kind="${rest#*$'\t'}"
+
+        if [ "$mode" = "rec" ]; then
+            fetch "repos/$REPO/git/trees/$ref?recursive=1" "$kind"
+            if [ "$FETCH_TRUNCATED" = "true" ]; then
+                # Truncated: re-fetch the same ref non-recursively instead
+                # of trusting this partial listing.
+                queue+=("nonrec"$'\t'"$ref"$'\t'"$prefix"$'\t'"$kind")
+                continue
+            fi
+            for entry in "${FETCH_ENTRIES[@]}"; do
+                etype="${entry%%$'\t'*}"
+                erest="${entry#*$'\t'}"
+                epath="${erest#*$'\t'}"
+                if [ "$etype" = "blob" ]; then
+                    emit "$prefix$epath"
+                fi
+                # "tree" entries within an untruncated recursive listing
+                # need no further queueing -- the recursive listing
+                # already descended into them. "commit" entries
+                # (submodules) are skipped silently: a submodule path is
+                # not readable through this repository's contents API.
+            done
+        else
+            fetch "repos/$REPO/git/trees/$ref" "$kind"
+            if [ "$FETCH_TRUNCATED" = "true" ]; then
+                die "github-tree: repos/$REPO — the non-recursive listing of '$ref' is itself truncated; this repository has a directory too large for the GitHub tree API"
+            fi
+            for entry in "${FETCH_ENTRIES[@]}"; do
+                etype="${entry%%$'\t'*}"
+                erest="${entry#*$'\t'}"
+                esha="${erest%%$'\t'*}"
+                epath="${erest#*$'\t'}"
+                case "$etype" in
+                blob)
+                    emit "$prefix$epath"
+                    ;;
+                tree)
+                    queue+=("rec"$'\t'"$esha"$'\t'"$prefix$epath/"$'\t'"child")
+                    ;;
+                *)
+                    # "commit" entries (submodules) are skipped silently,
+                    # same reason as above.
+                    ;;
+                esac
+            done
+        fi
+    done
+fi
 
 # Nothing is written to stdout until the queue is exhausted with no error.
 # Zero blobs is a success (exit 0, empty stdout) -- the guard below just

@@ -18,6 +18,11 @@
 # platforms. Windows Git Bash is expected to work but is not claimed;
 # cmd.exe and PowerShell cannot run this harness or the stub at all.
 #
+# The stub gh's map file can point a fixture name at an absolute path
+# instead of a bare filename under testdata/ -- see gen_tree_body below,
+# which uses this to hand the stub a body generated at harness runtime
+# rather than a fixture checked into the repository.
+#
 # NOT covered here (documented, not asserted -- manual checks per the
 # batch plan's "Batch Tests" section): one live run against a small
 # public repo; one live run against torvalds/linux confirming the real
@@ -25,6 +30,9 @@
 # the jq expression behaves identically under gojq and jq; and the HTTP
 # 409 commitless-repository alias, which no fixture pins because it was
 # never observed live.
+# Also not covered offline (documented here, not asserted): one live
+# --children run against a real repository, and one live guard trip
+# against a large public repository.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -128,6 +136,30 @@ call_count_for_endpoint() {
         fi
     done < "$logfile"
     echo "$count"
+}
+
+# gen_tree_body <outfile> <count> writes a syntactically valid non-recursive
+# tree response body to <outfile>, with truncated false and exactly <count>
+# blob entries whose path and sha are mechanically derived from the loop
+# index. These large bodies are generated rather than checked in as
+# fixtures because a thousand mechanically-identical entries have no shape
+# worth reviewing, and committing them would bury the fixtures that do.
+# Reading the same generator with different counts is also what keeps the
+# at-ceiling and one-over-ceiling scenarios provably one entry apart.
+gen_tree_body() {
+    local outfile="$1" count="$2" i
+    {
+        printf '{\n  "sha": "srgenerated",\n  "truncated": false,\n  "tree": [\n'
+        for ((i = 0; i < count; i++)); do
+            printf '    { "path": "gen%d.txt", "mode": "100644", "type": "blob", "sha": "bgen%d" }' "$i" "$i"
+            if [ "$((i + 1))" -lt "$count" ]; then
+                printf ',\n'
+            else
+                printf '\n'
+            fi
+        done
+        printf '  ]\n}\n'
+    } > "$outfile"
 }
 
 echo "=== github-tree selftest: offline stub-gh harness ==="
@@ -450,6 +482,253 @@ if [ "$stub_status" -eq 98 ] && [[ "$stub_err" == *"unsupported invocation"* ]] 
     pass "stub rejection path: exit 98, 'unsupported invocation' in stderr, call still logged"
 else
     fail "stub rejection path: status=$stub_status err=$stub_err calls=$(cat "$stub_dir/calls.log")"
+fi
+
+# --- Test 23: --children on a path ---------------------------------------------
+run_scenario children_scoped "$(printf 'repos/acme/childrenrepo/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children acme/childrenrepo src
+expected="$(printf 'src/main.go\nsrc/deep/\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--children on a path: exact stdout, directory entry with one trailing slash"
+else
+    fail "--children on a path: status=$status out=$out"
+fi
+case "$out" in
+*vendor*) fail "--children on a path: submodule entry 'vendor' leaked onto stdout" ;;
+*) pass "--children on a path: submodule entry absent" ;;
+esac
+if [ "$(call_line_count children_scoped)" -eq 1 ]; then
+    pass "--children on a path: exactly one gh call"
+else
+    fail "--children on a path: call log has $(call_line_count children_scoped) lines, expected 1: $(calls children_scoped)"
+fi
+if [ "$(call_count_for_endpoint children_scoped 'repos/acme/childrenrepo/git/trees/HEAD:src')" -eq 1 ]; then
+    pass "--children on a path: endpoint is the non-recursive HEAD:<path> form"
+else
+    fail "--children on a path: endpoint did not match the non-recursive scoped form: $(calls children_scoped)"
+fi
+
+# --- Test 24: --children with no path -------------------------------------------
+run_scenario children_root "$(printf 'repos/acme/childrenroot/git/trees/HEAD\ttrunc1-root-nonrec.json\n')" --children acme/childrenroot
+expected="$(printf 'zzz.txt\nMakefile\nmmm/\naaa/\nbbb/')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--children with no path: two root blobs unmarked, three directories trailing-slash-marked"
+else
+    fail "--children with no path: status=$status out=$out"
+fi
+if [ "$(call_line_count children_root)" -eq 1 ]; then
+    pass "--children with no path: exactly one gh call"
+else
+    fail "--children with no path: call log has $(call_line_count children_root) lines, expected 1: $(calls children_root)"
+fi
+
+# --- Test 25: --children never recurses -----------------------------------------
+run_scenario children_norecurse "$(printf 'repos/acme/childrennorec/git/trees/HEAD\ttrunc1-root-nonrec.json\n')" --children acme/childrennorec
+if [ "$(call_line_count children_norecurse)" -eq 1 ]; then
+    pass "--children never recurses: call count stays at 1 despite tree entries in the listing"
+else
+    fail "--children never recurses: call log has $(call_line_count children_norecurse) lines, expected 1: $(calls children_norecurse)"
+fi
+descendant_leaked=0
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    stripped="${line%/}"
+    case "$stripped" in
+    */*) descendant_leaked=1 ;;
+    esac
+done <<< "$out"
+if [ "$descendant_leaked" -eq 0 ]; then
+    pass "--children never recurses: no descendant path (a slash before the final character) appears"
+else
+    fail "--children never recurses: a descendant path leaked onto stdout: $out"
+fi
+
+# --- Test 26: --children skips submodules ----------------------------------------
+run_scenario children_submodule "$(printf 'repos/acme/childrenrepo2/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children acme/childrenrepo2 src
+case "$out" in
+*vendor*) fail "--children skips submodules: 'vendor' leaked onto stdout marked or unmarked" ;;
+*) pass "--children skips submodules: submodule entry never appears" ;;
+esac
+
+# --- Test 27: --children on an empty directory ------------------------------------
+run_scenario children_empty "$(printf 'repos/acme/childrenempty/git/trees/HEAD:empty\tchildren-empty-nonrec.json\n')" --children acme/childrenempty empty
+if [ "$status" -eq 0 ] && [ -z "$out" ]; then
+    pass "--children on an empty directory: exit 0, byte-empty stdout"
+else
+    fail "--children on an empty directory: status=$status out=$out"
+fi
+
+# --- Test 28: --children listing that is itself truncated -------------------------
+run_scenario children_trunc "$(printf 'repos/acme/childrentrunc/git/trees/HEAD\tnonrectrunc-root-nonrec.json\n')" --children acme/childrentrunc
+if [ -z "$out" ] && [ "$status" -ne 0 ] && [[ "$err" == *truncated* ]]; then
+    pass "--children listing itself truncated: byte-empty stdout, non-zero exit, 'truncated' in stderr"
+else
+    fail "--children listing itself truncated: status=$status out=$out err=$err"
+fi
+
+# --- Test 29: guard fires on the recursive fast path -----------------------------
+run_scenario guard_fastpath "$(printf 'repos/acme/guardfast/git/trees/HEAD?recursive=1\tsmall-root-rec.json\n')" --max-entries 2 acme/guardfast
+if [ -z "$out" ] && [ "$status" -eq 1 ] \
+    && [[ "$err" == *"2"* ]] && [[ "$err" == *"--children"* ]] && [[ "$err" == *"--max-entries"* ]]; then
+    pass "guard fires on the recursive fast path: byte-empty stdout, exit 1, ceiling and both remedies in stderr"
+else
+    fail "guard fires on the recursive fast path: status=$status out=$out err=$err"
+fi
+
+# --- Test 30: guard fires in --children mode --------------------------------------
+run_scenario guard_children "$(printf 'repos/acme/guardchildren/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children --max-entries 1 acme/guardchildren src
+if [ -z "$out" ] && [ "$status" -eq 1 ] \
+    && [[ "$err" == *"1"* ]] && [[ "$err" == *"--max-entries"* ]] && [[ "$err" != *"--children"* ]]; then
+    pass "guard fires in --children mode: ceiling and --max-entries in stderr, --children never suggested back"
+else
+    fail "guard fires in --children mode: status=$status out=$out err=$err"
+fi
+
+# --- Test 31: guard fires incrementally, not at end-of-walk -----------------------
+run_scenario guard_incremental_on "$trunc1_map" --max-entries 2 acme/big
+if [ -z "$out" ] && [ "$status" -eq 1 ]; then
+    pass "guard fires incrementally: aborts a low-ceiling run of the five-call truncated-fallback map"
+else
+    fail "guard fires incrementally: status=$status out=$out"
+fi
+guarded_calls="$(call_line_count guard_incremental_on)"
+run_scenario guard_incremental_off "$trunc1_map" --max-entries 0 acme/big
+unguarded_calls="$(call_line_count guard_incremental_off)"
+if [ "$guarded_calls" -lt "$unguarded_calls" ]; then
+    pass "guard fires incrementally: guarded call count ($guarded_calls) is strictly lower than the unguarded run's ($unguarded_calls)"
+else
+    fail "guard fires incrementally: guarded call count ($guarded_calls) is not lower than the unguarded run's ($unguarded_calls)"
+fi
+
+# --- Test 32: the boundary, one entry apart ----------------------------------------
+small_map="$(printf 'repos/acme/guardboundary/git/trees/HEAD?recursive=1\tsmall-root-rec.json\n')"
+run_scenario guard_boundary_ok "$small_map" --max-entries 3 acme/guardboundary
+expected="$(printf 'intro.md\nsrc/main.go\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "boundary: ceiling exactly equal to the entry count succeeds, printing all three paths"
+else
+    fail "boundary: status=$status out=$out"
+fi
+run_scenario guard_boundary_abort "$small_map" --max-entries 2 acme/guardboundary
+if [ -z "$out" ] && [ "$status" -eq 1 ]; then
+    pass "boundary: the same fixture one entry over the ceiling aborts"
+else
+    fail "boundary: status=$status out=$out"
+fi
+
+# --- Test 33: the default ceiling is 1000 ------------------------------------------
+mkdir -p "$SCRATCH/gen"
+gen_tree_body "$SCRATCH/gen/body-1001.json" 1001
+gen_tree_body "$SCRATCH/gen/body-1000.json" 1000
+run_scenario guard_default_over "$(printf 'repos/acme/guarddefault1/git/trees/HEAD?recursive=1\t%s\n' "$SCRATCH/gen/body-1001.json")" acme/guarddefault1
+default_over_out="$out"
+if [ -z "$default_over_out" ] && [ "$status" -eq 1 ]; then
+    pass "default ceiling: no --max-entries at all, a 1001-entry listing aborts"
+else
+    fail "default ceiling: status=$status out=$default_over_out"
+fi
+run_scenario guard_default_at "$(printf 'repos/acme/guarddefault2/git/trees/HEAD?recursive=1\t%s\n' "$SCRATCH/gen/body-1000.json")" acme/guarddefault2
+default_at_lines="$(printf '%s\n' "$out" | grep -c .)"
+if [ "$status" -eq 0 ] && [ "$default_at_lines" -eq 1000 ]; then
+    pass "default ceiling: no --max-entries at all, a 1000-entry listing succeeds"
+else
+    fail "default ceiling: status=$status out_line_count=$default_at_lines"
+fi
+
+# --- Test 34: --max-entries 0 disables the ceiling ---------------------------------
+run_scenario guard_zero_unlimited "$(printf 'repos/acme/guardzero/git/trees/HEAD?recursive=1\t%s\n' "$SCRATCH/gen/body-1001.json")" --max-entries 0 acme/guardzero
+out_lines="$(printf '%s\n' "$out" | grep -c .)"
+if [ "$status" -eq 0 ] && [ "$out_lines" -eq 1001 ]; then
+    pass "--max-entries 0 disables the ceiling: exit 0, 1001-line stdout"
+else
+    fail "--max-entries 0 disables the ceiling: status=$status out_lines=$out_lines"
+fi
+
+# --- Test 35: the buffering guarantee under the guard's own failure mode ----------
+if [ -z "$default_over_out" ]; then
+    pass "buffering guarantee: the default-ceiling abort (many entries buffered before crossing) leaks no partial prefix"
+else
+    fail "buffering guarantee: the default-ceiling abort left a non-empty stdout: $default_over_out"
+fi
+
+# assert_usage_error asserts the shared shape every usage-error scenario in
+# this section must have: exit status 2 specifically (not merely non-zero),
+# byte-empty stdout, and an empty call log, because the parser runs before
+# any network call.
+assert_usage_error() {
+    local label="$1" scenario="$2"
+    if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(call_line_count "$scenario")" -eq 0 ]; then
+        pass "$label"
+    else
+        fail "$label: status=$status out=$out calls=$(calls "$scenario")"
+    fi
+}
+
+# --- Test 36: --max-entries with a non-integer value -------------------------------
+run_scenario flag_nonint "" --max-entries abc acme/small
+assert_usage_error "--max-entries with a non-integer value: exit 2, empty stdout, empty call log" flag_nonint
+
+# --- Test 37: --max-entries with a negative value ----------------------------------
+run_scenario flag_negative "" --max-entries -5 acme/small
+assert_usage_error "--max-entries with a negative value: exit 2, empty stdout, empty call log" flag_negative
+
+# --- Test 38: --max-entries with no following value at all -------------------------
+run_scenario flag_novalue "" acme/small --max-entries
+assert_usage_error "--max-entries with no following value: exit 2, empty stdout, empty call log" flag_novalue
+
+# --- Test 39: an unrecognised leading double-dash token -----------------------------
+run_scenario flag_unrecognised "" --bogus acme/small
+assert_usage_error "unrecognised leading double-dash token: exit 2, empty stdout, empty call log" flag_unrecognised
+
+# --- Test 40: a double-dash token appearing after the positionals -------------------
+run_scenario flag_trailing_dashdash "" acme/small --weird
+assert_usage_error "double-dash token after positionals: exit 2, empty stdout, empty call log (the one deliberate deviation)" flag_trailing_dashdash
+
+# --- Test 41: a recognised flag appearing after the positionals ---------------------
+run_scenario flag_trailing_children "" acme/small --children
+assert_usage_error "recognised flag after positionals: exit 2, empty stdout, empty call log" flag_trailing_children
+
+# --- Test 42: a -- terminator followed by a path beginning with a dash --------------
+run_scenario flag_terminator_dashpath "$(printf 'repos/acme/dashpath/git/trees/HEAD:-weirdpath?recursive=1\tsmall-root-rec.json\n')" -- acme/dashpath -weirdpath
+if [ "$status" -eq 0 ] && [ "$(call_line_count flag_terminator_dashpath)" -eq 1 ]; then
+    pass "-- terminator followed by a dash-leading path: accepted, reaches the API"
+else
+    fail "-- terminator followed by a dash-leading path: status=$status out=$out calls=$(calls flag_terminator_dashpath)"
+fi
+
+# --- Test 43: a single-dash token in path position, no terminator -------------------
+run_scenario flag_singledash "$(printf 'repos/acme/singledash/git/trees/HEAD:-x?recursive=1\tsmall-root-rec.json\n')" acme/singledash -x
+if [ "$status" -eq 0 ] && [ "$(call_line_count flag_singledash)" -eq 1 ]; then
+    pass "single-dash token in path position: not treated as a flag, reaches the API exactly as today"
+else
+    fail "single-dash token in path position: status=$status out=$out calls=$(calls flag_singledash)"
+fi
+
+# --- Test 44: combining both flags with both positionals ----------------------------
+run_scenario flag_combined "$(printf 'repos/acme/bothflags/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children --max-entries 5 acme/bothflags src
+expected="$(printf 'src/main.go\nsrc/deep/\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "combining --children and --max-entries with both positionals: parses and lists successfully"
+else
+    fail "combining --children and --max-entries with both positionals: status=$status out=$out"
+fi
+
+# --- Test 45: --max-entries with a leading zero is read as decimal, not octal ------
+# Bash treats a leading-zero numeric literal as octal in arithmetic context,
+# so an unguarded comparison would misapply 010 as a ceiling of 8 (silent
+# wrong answer) and crash outright on 018 ("value too great for base 8").
+# Both must instead behave exactly as their decimal value.
+run_scenario flag_leadingzero_ok "$small_map" --max-entries 010 acme/guardboundary
+expected="$(printf 'intro.md\nsrc/main.go\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--max-entries 010 is read as decimal ten, not octal eight: the three-entry listing succeeds"
+else
+    fail "--max-entries 010 is read as decimal ten, not octal eight: status=$status out=$out"
+fi
+run_scenario flag_leadingzero_crash "$small_map" --max-entries 018 acme/guardboundary
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--max-entries 018 does not crash on an invalid octal digit: the three-entry listing succeeds"
+else
+    fail "--max-entries 018 does not crash on an invalid octal digit: status=$status out=$out"
 fi
 
 rm -rf "$SCRATCH"

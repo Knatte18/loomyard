@@ -8,6 +8,13 @@
 # dependency exercised below belongs to this harness alone;
 # github-tree.sh at run time relies on the real `gh`'s embedded gojq, not
 # on this stub's use of jq.
+#
+# A mapped fixture name beginning with a slash is used verbatim as an
+# absolute path instead of being resolved under GH_STUB_BODIES: this lets a
+# scenario point at a fixture body generated at harness runtime into its
+# own scratch directory (see gen_tree_body in github-tree-selftest.sh)
+# rather than committing a large mechanically-identical fixture under
+# testdata/. Every existing scenario's bare filename is unaffected.
 set -u
 
 for var in GH_STUB_MAP GH_STUB_BODIES GH_STUB_LOG; do
@@ -66,7 +73,10 @@ if [ "$found" -ne 1 ]; then
     exit 97
 fi
 
-body_path="$GH_STUB_BODIES/$matched_body"
+case "$matched_body" in
+/*) body_path="$matched_body" ;;
+*) body_path="$GH_STUB_BODIES/$matched_body" ;;
+esac
 
 if [ -n "$matched_status" ]; then
     # Emulates the real `gh api` failure shape: the raw error body reaches
