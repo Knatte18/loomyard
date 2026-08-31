@@ -28,6 +28,7 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 - A new offline test harness `plugins/prowler/scripts/github-code-search-selftest.sh` plus its stub `gh` and JSON fixtures under `plugins/prowler/scripts/testdata/github-code-search/`, mirroring `github-tree-selftest.sh`'s shape.
 - `plugins/prowler/skills/github-repo-explorer/SKILL.md`: document the new script and the search-vs-tree routing rule ("known term/import/symbol across a whole repo" → search; "understand a repo's structure" → tree + selective reads).
 - `plugins/prowler/skills/github-repo-explorer/SKILL.md`'s **frontmatter**, and the matching row in `plugins/prowler/skills/INDEX.md` — see the "Skill dispatch surface is updated too" decision for the exact new strings.
+- `plugins/prowler/skills/github-repo-explorer/SKILL.md`'s existing **argument-disambiguation paragraph** (line 21 today), rewritten for a plural repo list and a second slot that can now be a search term — see the "SKILL.md's argument-disambiguation paragraph is rewritten" decision for the rule it must encode.
 - `plugins/prowler/README.md`: a `## github-code-search.sh` section, mirroring the existing `## github-tree.sh` section, documenting the contract, the rate-limit budget, and the API quirks the contract is built around.
 
 **Out:**
@@ -87,9 +88,22 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 
 ### Reject a caller query containing `repo:`
 
-- Decision: if the caller's query string contains `repo:`, exit 2 with a usage error saying repos are supplied as positional arguments.
+- Decision: if the caller's query string contains the substring `repo:`, exit 1 via `die` with a message saying repos are supplied as positional arguments (exit 1, not 2 — see "Exit codes: 2 for usage shape, 1 for everything else"; a query containing `repo:` still satisfies the synopsis's arity, so it is a semantic rejection).
 - Rationale: the script appends its own `repo:` qualifier last, so by the last-wins rule the script's always wins and the caller's is silently discarded — the caller's intent evaporates with no diagnostic. Rejecting is a one-line guard that turns a silent surprise into an explicit message. Every other qualifier (`language:`, `path:`, `in:file`, `extension:`) passes through untouched and is genuinely useful.
-- Rejected: silently letting the script's qualifier win (silent intent loss); attempting to merge the caller's `repo:` into the repo list (guessing at intent, and unparseable in general).
+- The guard is a plain substring test on the whole query, not a qualifier-position test, so it also rejects a search for the *literal* token `repo:` in file content — a YAML key, a Go struct tag, a CI config line.
+  This is an accepted, documented limitation rather than a bug to engineer around: distinguishing "a `repo:` qualifier" from "the characters `repo:` inside a quoted phrase" means reimplementing GitHub's query tokenizer in bash, which is far more failure surface than the case is worth.
+  The stderr message names the limitation and points at a raw `gh api -X GET search/code -f q=...` call as the escape hatch, so a caller who genuinely needs that search is not left guessing.
+  README.md documents the same limitation in the script's contract section.
+- Rejected: silently letting the script's qualifier win (silent intent loss); attempting to merge the caller's `repo:` into the repo list (guessing at intent, and unparseable in general); a qualifier-position-aware test (a bash query tokenizer, for a rare case that already has a one-line escape hatch).
+
+### An empty or whitespace-only query is rejected
+
+- Decision: a `<query>` argument that is empty or contains only whitespace is rejected before any network call, exit 1 via `die`, naming the argument.
+- Rationale: `<query>` is mandatory by arity, but arity alone does not catch `github-code-search.sh "" owner/repo` — and the API accepts it.
+  Verified live: a `q` carrying only a `repo:` qualifier returns hits (1744 for one test repo), so an empty query does not error, it silently degrades into "the first 100 indexed files in this repo", which is a tree listing wearing a search's output shape and burning a `code_search` request per repo to produce it.
+  A caller who wants that has `github-tree.sh`, which is free of the search bucket entirely.
+- Rejected: allowing it as an undocumented "list indexed files" mode (a second, worse tree listing, on the scarcest rate-limit bucket in the plugin);
+  letting it through silently (the caller reads a truncated file list as "these are your matches").
 
 ### Buffer output, print only on complete success
 
@@ -135,7 +149,7 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 
 - Decision: exit 2 is reserved for a usage-shape error — too few arguments to satisfy the synopsis `github-code-search.sh <query> <owner/repo> [<owner/repo>...]`.
   Every other rejection exits 1 via `die`, with one stderr line.
-  Concretely: no arguments → 2; a query but no repo ref → 2; an invalid `<owner>/<repo>` ref → 1; more than 10 distinct repo refs → 1; a caller query containing `repo:` → 1.
+  Concretely: no arguments → 2; a query but no repo ref → 2; an invalid `<owner>/<repo>` ref → 1; more than 10 distinct repo refs → 1; a caller query containing `repo:` → 1; an empty-string query → 1; a whitespace-only query → 1.
 - Rationale: this is `github-tree.sh`'s actual convention, which the earlier draft of this file misstated.
   That script exits 2 only for the arg-count check (lines 41–44, printing the bare `usage:` synopsis) and exits 1 via `die` for a semantically invalid ref (lines 49–51) and for every other rejection.
   The split is shape-versus-semantics, not "all argument problems are 2".
@@ -167,7 +181,28 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
   Leaving it unchanged ships a search capability that a cross-repo search query would never route to, which defeats the task's own trigger case.
   `INDEX.md` line 6 duplicates that description verbatim today, so updating one without the other leaves the two disagreeing.
   The `argument-hint` changes because the skill's input is now plural repos, and the second positional slot is either a path (tree/read) or a search term.
-- This is the only edit either file receives; nothing else in `INDEX.md` is touched.
+- `INDEX.md` receives this one row edit and nothing else.
+  `SKILL.md` receives the frontmatter change here *and* the body changes in Scope (the new script's documentation, the routing rule, and the rewritten disambiguation paragraph below).
+
+### SKILL.md's argument-disambiguation paragraph is rewritten, not just its hint
+
+- Decision: SKILL.md's existing disambiguation paragraph (line 21 today: a second token is forwarded as `<path>` only when it matches `^[A-Za-z0-9._/-]+$` and contains no whitespace) is replaced with a two-part rule, and the plan must carry that rule's text, not just the new `argument-hint`:
+  1. **Where the repo list ends.** Every *leading* whitespace-separated token matching `^[^/[:space:]]+/[^/[:space:]]+$` — exactly one `/`, no whitespace — is a repo ref.
+     The list ends at the first leading token that does not match.
+     No terminator token is introduced.
+  2. **What the remainder is.** With **two or more** repo refs the remainder is never a path — a repo-relative path has no meaning across a repo list — so it is the search term or question, and the invocation routes to `github-code-search.sh`.
+     With **exactly one** repo ref, the remainder is treated as a `<path>` for `github-tree.sh` only when the user's phrasing asks for structure ("what's in", "list", "show me the tree", a trailing `/`), and as a search term otherwise.
+     When the phrasing settles it either way, phrasing wins over token shape.
+- Rationale: the old predicate was written when the only second-slot meaning was `<path>`, and it silently breaks under the new hint in exactly the two ways the r3 review names: a bare search term like `tree-sitter` or `wgpu` satisfies `^[A-Za-z0-9._/-]+$` with no whitespace and would route to the tree script, and a plural repo list has no stated boundary at all.
+  Part 1 is mechanical and needs no intent-reading: `tree-sitter` has no `/` and so can never be mistaken for a repo ref, while `owner/repo` always is.
+  Part 2 stops pretending token shape can separate a path from a search term — `README.md` and `go.mod` are plausible as either — and hands that call to the reader that is actually present.
+  This paragraph is read by an LLM, not parsed by a CLI, so an intent rule is implementable here in a way it would not be inside `github-code-search.sh` itself, whose own arguments stay strictly positional and shape-checked.
+- **Ambiguous single-repo case defaults to search.** When neither phrasing nor shape settles it, route to `github-code-search.sh`.
+  A mis-routed search costs one `code_search` request and still answers "does this token appear in this repo, and where";
+  a mis-routed tree call returns the entire file list and answers nothing about the token, so the caller pays a second turn to recover.
+- Rejected: keeping the old shape predicate and letting the hint imply the rest (the two documented breakages, unfixed);
+  introducing a `--` terminator between repos and the remainder (invents syntax for an LLM-read skill and would have to be taught to every caller);
+  routing on whether the token names a real path by first fetching the tree (a whole extra API round trip to answer a question the phrasing usually already answers).
 - Rejected: leaving the frontmatter alone (a search capability nothing routes to);
   updating `SKILL.md` only (the two files' descriptions are duplicates by convention, and a silent divergence is the kind of rot the Documentation Lifecycle invariant exists to prevent).
 
@@ -248,7 +283,7 @@ Scenarios that must be covered:
 - **`total_count` greater than the returned item count** — exit 0, full stdout, one stderr note naming the repo and the total.
 - **Preflight failures**, each with its own distinguishing stderr substring and byte-empty stdout: 404 (repo not found / not accessible), 401 (not authenticated), 403 (access denied or rate limited). Each must also assert that **no search call was made** — the call log makes this checkable.
 - **Search-call failures**: 403 mid-sweep (repo 2 of 3) proving buffer-until-complete — byte-empty stdout despite repo 1 having succeeded; and 422.
-- **Argument rejection, all before any network call** (assert an empty call log), each asserting its own exit code per the "Exit codes" decision: no arguments → 2; a query but no repo ref → 2; an invalid `<owner>/<repo>` ref → 1; more than 10 distinct repo refs → 1; a caller query containing `repo:` → 1.
+- **Argument rejection, all before any network call** (assert an empty call log), each asserting its own exit code per the "Exit codes" decision: no arguments → 2; a query but no repo ref → 2; an invalid `<owner>/<repo>` ref → 1; more than 10 distinct repo refs → 1; a caller query containing `repo:` → 1; an empty-string query → 1; a whitespace-only query → 1.
   Each also asserts byte-empty stdout and its own distinguishing stderr substring.
 - **Duplicate repo refs are deduped** — the same `<owner>/<repo>` passed twice, plus a third distinct repo, yields exactly 2 preflight calls and 2 search calls (asserted against the call log), output records for the duplicated repo appearing once, and first-occurrence argument ordering preserved.
 - **Dedup happens before the cap** — 11 refs of which 2 are duplicates of each other (10 distinct) runs normally rather than being rejected;
@@ -275,7 +310,7 @@ Scenarios that must be covered:
 - **Q:** Preflight each repo's existence, given it costs an extra call? **A:** [auto-pick] Yes, via `gh api repos/<owner>/<repo>`. **Why:** a nonexistent repo returns 200/`total_count: 0`, identical to a real no-match, so without preflight a typo reads as a confident negative answer; the preflight hits the 5000/hour `core` bucket, not the scarce one.
 - **Q:** How should `incomplete_results: true` be handled? **A:** [auto-pick] Hard failure, empty stdout, non-zero exit. **Why:** it means a partial result set returned with a 200; treating it as "no matches" is the silent-partial failure this codebase consistently refuses.
 - **Q:** Paginate per repo? **A:** [auto-pick] No — one page, `per_page=100`, with a stderr note when `total_count` exceeds what was returned. **Why:** the first 100 hits answer the relevance question; pagination multiplies the scarce budget, and the API refuses past 1000 anyway (verified 422).
-- **Q:** What if the caller's own query string contains `repo:`? **A:** [auto-pick] Reject with exit 2, pointing at the positional repo arguments. **Why:** the script's appended qualifier wins by the last-wins rule, silently discarding the caller's intent with no diagnostic.
+- **Q:** What if the caller's own query string contains `repo:`? **A:** [auto-pick] Reject with exit 1 via `die`, pointing at the positional repo arguments. **Why:** the script's appended qualifier wins by the last-wins rule, silently discarding the caller's intent with no diagnostic.
 - **Q:** Extend the existing `testdata/github-tree/bin/gh` stub, or write a second one? **A:** [auto-pick] A second stub and fixture tree under `testdata/github-code-search/`. **Why:** the existing stub deliberately rejects any invocation that is not exactly `api <endpoint> --jq <expr>`, and that strictness is a load-bearing property of the tree harness; loosening it to fit both shapes would weaken assertions that already exist.
 - **Q:** Support `org:` / `user:` whole-org sweeps as a script argument? **A:** [auto-pick] No — out of scope; a raw `gh api` call covers it. **Why:** the trigger case supplies an explicit repo list, and a second scope mode doubles the argument surface and the harness matrix for a case not yet demanded. (Verified that `org:` does work in one call, so the raw-call fallback is real, not hypothetical.)
 - **Q:** Bump `plugin.json`'s version for a new capability? **A:** [auto-pick] No, leave it at `1.1.0`. **Why:** the comparable prior feature commit `63916b1e2` did not bump it, and unpublished loomyard plugins are not version-bumped per feature.
