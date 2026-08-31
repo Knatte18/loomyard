@@ -26,7 +26,8 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
 
 - A root-cause determination, made by live measurement against real tmux, recorded in `internal/reedengine/doc.go`'s decision log — not left as a hypothesis.
 - A deterministic regression test that reproduces the artifact headlessly and asserts on the *rendered client output*, not on pane grids.
-- A measured repaint mitigation for the subset of the artifact that is a stale paint: one additional entry in the session's `window-resized` window-hook array that forces every attached client to redraw.
+- A measured repaint mitigation for the subset of the artifact that is a stale paint: one additional entry in the session's `window-resized` window-hook array that forces every attached client to redraw — **conditional on the measurement gate under Testing**, which may conclude that no candidate mechanism helps and that no entry ships.
+  The measurement and its recorded outcome are the unconditional deliverable; the entry itself is not.
 - An attach-time operator warning when another client is already attached to the same session at a different size, so the residual artifact is explained rather than mysterious.
 - Documentation: the mechanism, what was fixed, and what is inherent, in `internal/reedengine/doc.go` and in `tools/sandbox/SANDBOX-REED-WATCH-SUITE.md`'s W5 scenario.
 
@@ -98,7 +99,10 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
 
 ### repaint-body-composition
 
-- Decision: the repaint entry's body is built by a new `""`-returning builder in `internal/reedengine/watchdog.go`, modelled line-for-line on `resizeSignalHookCommand`/`resizeHookCommand`, and the shell fragment inside it is built **only** through `internal/shell` — never by string-concatenating shell syntax inside `reedengine`.
+- Decision: the repaint entry's body is built by a new `""`-returning builder split across the two files the existing pair already occupies, following their split exactly rather than inventing a third home:
+  the *pure* body builder (the string, no I/O, no engine state) joins `resizeHookCommand` and `tmuxQuoteValue` in `internal/reedengine/watchdog.go`, tested in `watchdog_test.go`;
+  the *engine-method* wrapper that decides `""` versus a real body — the direct analogue of `resizeSignalHookCommand`, which reads `runtime.GOOS` and engine state — joins it in `internal/reedengine/windowsize.go` beside `resizeSignalHookCommand` itself, tested in `windowsize_test.go`.
+  The shell fragment inside it is built **only** through `internal/shell` — never by string-concatenating shell syntax inside `reedengine`.
   Concretely, for candidate 1 the body needs four things, and each has exactly one source:
   - The multiplexer binary path — `e.TmuxPath()`, the engine accessor `internal/reedcli/attach.go` already uses to spawn the attach child.
     The tmux server's `run-shell` inherits no reed context, so the path must be embedded in the fragment; it is quoted with `shell.Shell.Quote`.
@@ -123,6 +127,28 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
   Rejected: omitting `-L` and relying on the default socket — reed never uses it.
   Rejected: building the loop inline in `watchdog.go` to avoid touching `internal/shell` — a direct Shell Mechanics Seam violation, and it would leave the pwsh dialect unrepresented.
   Rejected: replacing the loop with tmux's own syntax — tmux has no iteration construct, and `refresh-client` takes one client.
+
+### repaint-must-not-self-retrigger
+
+- Decision: the repaint entry is only acceptable if a server-issued redraw provably cannot feed back into the event that fired it.
+  The reasoning the design rests on, which the measurement gate must confirm rather than assume:
+  - `window-resized` fires on a settled **size change**, not on a paint.
+    A `refresh-client` repaints a client at its existing size and changes no geometry, so on its own it has no path back to the hook.
+  - `window-size latest` keys on the *most-recently-used* client, and "used" means client **input** — keystrokes, mouse reports, focus reports.
+    A `refresh-client` issued by the tmux server on the server's own behalf is not client input and must not move the MRU pointer.
+    This is the load-bearing assumption of candidate 1, because candidate 1 refreshes *every* client, including ones that are not current: if a server-issued refresh did mark a client as used, refreshing all of them would hand MRU to whichever client was refreshed last, resize the window to it, fire `window-resized` again, and loop.
+  - `run-shell -b` runs detached, so even a pathological body cannot block the server while this is being established.
+- Measurement-gate acceptance criteria — a candidate that clears the artifact but trips either of these is **rejected**, not shipped:
+  1. **No repeated hook fire.** During each smoke scenario, count `window-resized` fires across the trigger and the settling window (a counting entry appended to the array for the duration of the measurement is the cheapest instrument).
+     One settled resize must yield the documented single fire, not a growing series.
+  2. **No resize storm.** The window's size must be observably stable after the trigger settles — sample `#{window_width} #{window_height}` across the settling window and require it to stop changing, rather than oscillating between two clients' sizes.
+  Both criteria are recorded in `doc.go` with the tmux version they were measured on, in the same voice as the surrounding "verified live on tmux 3.6" evidence.
+- Rationale: this is the one failure mode where the mitigation would be worse than the bug.
+  A resize storm inside the tmux server would be far more damaging than a one-second cosmetic smear, and it would be reached by exactly the mechanism the rest of this design leans on — `window-size latest` following whichever client most recently did something.
+  "Did it clear the artifact" is therefore not a sufficient measurement criterion on its own.
+- Rejected: relying on the reasoning above without measuring it — the whole task exists because a plausible-sounding hypothesis about this subsystem (the mouse-tracking one) turned out to be wrong.
+  Rejected: guarding at runtime with a re-entrancy flag in the hook body — the array is executed by the tmux server with no place to hold state, and a flag written to a file would need its own cleanup and would reintroduce the signal-file machinery for a second purpose.
+  Rejected: dropping candidate 1 pre-emptively on this risk — it is the only candidate that can reach the cross-client trigger at all, so it is measured first and rejected on evidence if it fails.
 
 ### repaint-is-independent-of-watchdog
 
@@ -172,6 +198,10 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
 
 - Decision: `AttachArgv`'s pre-flight additionally lists the session's currently attached clients and their sizes, and emits a `logger.Warn` when any existing client's size differs from the size this attach was told, naming the other client and both sizes.
   It never blocks, never changes the argv, and never reaches the JSON envelope.
+- Cardinality: **one warning line per differing client**, not one aggregate line, and no line at all for a client whose size matches.
+  Zero differing clients therefore produce zero lines — the common single-client case stays silent.
+  Per-client is the right granularity because the line's whole job is to name the specific other terminal the operator should go look at, and an aggregate ("3 clients differ") would drop exactly that.
+  The line count is bounded by the number of attached clients, which is bounded by how many terminals a human has open.
 - Rationale: this is the cheapest possible cure for the *actual* operator cost of the residual, which is bewilderment rather than pixels — the reporter spent a scenario on it and still could not explain it.
   The warning turns a mysterious artifact into a logged, searchable fact at the exact moment the operator creates the condition.
   It also fits `AttachArgv`'s existing contract exactly: the builder already performs several tmux round trips under the op lock and already answers every failure with `logger.Warn` plus a degrade, per the Shared Decision `geometry-tmux-failures-are-non-fatal-everywhere`.
@@ -270,7 +300,11 @@ Discovered during discussion:
 - `AttachArgv` must never return an error and must never block the handover, no matter what the new client listing does.
 - The `window-resized` array **is** installed on Windows (`installResizePinsLocked` has no `runtime.GOOS` gate); only the signal entry is excluded there, and only because its builder returns `""`.
   The repaint entry needs its own `""`-returning builder to be excluded — there is no inheritance to rely on.
-- The repaint entry is independent of the `watchdog` key, and the unconditional array clear that `watchdog: off` performs is immediately followed by a rebuild on both call paths. See `repaint-is-independent-of-watchdog`.
+- The repaint entry is independent of the `watchdog` key.
+  The array's only install sites are `AttachArgv`'s pre-flight and non-`SkipFocus` applies — the boot path clears without rebuilding, and the watchdog's own re-apply (`SkipFocus: true`) returns before the install.
+  So with `watchdog: off` the array is empty from boot until the first attach or first focusing apply.
+  See `repaint-is-independent-of-watchdog`.
+- The repaint mechanism must be proven not to feed back into `window-resized` via `window-size latest`. See `repaint-must-not-self-retrigger`.
 - `list-clients` and `refresh-client` stay out of `requiredSubcommands`; both call sites degrade silently.
 - Shared Decision `geometry-tmux-failures-are-non-fatal-everywhere` governs every tmux call added by this task.
 - Shared Decision `the-clear-is-unconditional-including-zero-pins` still holds: a zero-pin rebuild with the watchdog on still installs the signal entry, and now also the repaint entry.
@@ -295,6 +329,7 @@ Both implementations must exist even though only POSIX executes here, because th
 - The new client-listing helper: parsing a `list-clients -F` answer into name/size triples.
   Cover the empty answer (no clients attached), one client, several clients, a malformed line, and trailing whitespace — mirroring `parseWindowSize`'s existing table-test shape and its strict "any other shape reports not-ok" discipline.
 - `AttachArgv` (extend `attach_test.go`): with a fake tmux answering `list-clients`, a same-size existing client produces no warning, a different-size one produces exactly one warning, a `list-clients` error produces a warning and no behaviour change, and in every one of those cases the returned argv is byte-identical to what it is today.
+  Add the cardinality case: three attached clients of which two differ in size produce exactly two warning lines, one naming each differing client, and none for the matching one.
   The argv is the contract; the warning is a side effect that must never perturb it.
 
 **`internal/reedcli` — smoke tests (build tag `smoke`, real tmux required).**
@@ -338,8 +373,21 @@ that is precisely why the control exists as an executable assertion rather than 
 
 **Measurement gate.**
 Before the repaint entry is implemented, the plan runs the resize smoke scenario against candidate 1 and, if needed, candidate 2 from `repaint-mechanism`, and records which one cleared the artifact and on what tmux version — in `doc.go`, in the same "verified live on tmux 3.6" voice the surrounding decisions use.
-If neither candidate clears either trigger, that negative result is itself recorded in `doc.go`, the repaint entry is not added at all, and the task still lands the regression tests, the attach-time warning, and the documentation.
-That branch is a complete, acceptable outcome, not a failure — the artifact is WARN-severity and cosmetic, and an explained residual is worth more than a speculative hook entry.
+A candidate is accepted only if it clears the artifact **and** satisfies both acceptance criteria in `repaint-must-not-self-retrigger` (no repeated hook fire, no resize storm);
+clearing the artifact alone is not sufficient.
+
+*The no-candidate branch.*
+If no candidate is accepted, no repaint entry ships, and the treatment scenarios have nothing to assert absence against — so their disposition must be stated here rather than improvised:
+
+- Both triggers' **control** scenarios land unchanged and stay in the suite.
+  They assert the artifact appears against reed's shipped array, which is now the pre-task array, and they are the durable record that the artifact is real and reproducible.
+  Their array-rewrite setup step becomes a no-op in effect but is kept, so the scenarios do not have to be rewritten if a mechanism is found later.
+- Both triggers' **treatment** scenarios are **inverted**, not skipped and not deleted: each asserts the artifact **appears** and cites `uncovered-subset-is-documented-not-fixed` and the recorded measurement by name in its comment.
+  An inverted treatment is a live tripwire — if a future tmux release or a future reed change makes the artifact stop appearing, the scenario fails and someone finds out, which a `t.Skip` would never do.
+- The negative result itself is recorded in `doc.go`: which candidates were tried, on which tmux version, and which criterion each failed.
+
+That branch is a complete, acceptable outcome, not a failure — the artifact is WARN-severity and cosmetic, and an explained, tested, reproducible residual is worth more than a speculative hook entry.
+This disposition supersedes nothing in the cross-client scenario's own sizing-related inversion rule above: that rule covers the case where a mechanism ships but the scenario lands in the uncovered subset, and this one covers the case where no mechanism ships at all.
 
 **Live suite.**
 `tools/sandbox/SANDBOX-REED-WATCH-SUITE.md`'s W5 scenario text is updated with the confirmed mechanism, the cross-client repro steps, and what the observer should now expect to see — so the next observation run recognises the residual rather than re-filing it.
@@ -362,8 +410,10 @@ That branch is a complete, acceptable outcome, not a failure — the artifact is
 - **Q:** Where is the `window-resized` array actually (re)installed? **A:** [auto-pick] `AttachArgv`'s pre-flight and non-`SkipFocus` applies only — never at boot, and never by the watchdog's own re-apply, which sets `SkipFocus: true` and returns before the install. **Why:** it changes the true `watchdog: off` residual and it is the reason the smoke control must sequence its array rewrite after every attach.
 - **Q:** Which target form does `list-clients` take? **A:** [auto-pick] `exactSessionTarget` — the bare `=<name>` session form, at both call sites. **Why:** `-t` on `list-clients` is a session target; `exactSessionWindowTarget`'s trailing colon exists only for the window/pane parsers.
 - **Q:** What if measurement shows no candidate mechanism clears either trigger? **A:** [auto-pick] Land the regression tests, the attach-time warning, and the documentation, and record the negative result in `doc.go`. **Why:** a WARN-severity cosmetic artifact that is understood, tested, and explained is an acceptable outcome; a speculative hook entry that fixes nothing is not.
-- **Q:** Is the repaint entry gated on `watchdog: off` like the signal entry? **A:** [auto-pick] No — independent; `watchdog` gates the self-healing loop and its signal entry only. **Why:** the kill-switch means "stop mutating my layout", and a forced redraw mutates nothing; the array clear that `watchdog: off` performs is followed immediately by a rebuild on both call paths, so the entry survives.
-- **Q:** Where do the tmux binary path, socket, and client loop in candidate 1's hook body come from? **A:** [auto-pick] `e.TmuxPath()`, `e.Socket()`, `exactSessionWindowTarget`, and a **new** `internal/shell` line-iterating primitive with POSIX and pwsh implementations. **Why:** `resizeHookCommand` establishes none of them, and the Shell Mechanics Seam forbids building the fragment inside `reedengine`.
+- **Q:** Is the repaint entry gated on `watchdog: off` like the signal entry? **A:** [auto-pick] No — independent; `watchdog` gates the self-healing loop and its signal entry only. **Why:** the kill-switch means "stop mutating my layout", and a forced redraw mutates nothing. The clear that `watchdog: off` performs is *not* always followed by a rebuild — with `watchdog: off` the array stays empty from boot until the first attach or first focusing apply — but that residual is today's behaviour for the pins too, and the repaint entry shares their lifecycle rather than inventing one.
+- **Q:** Where do the tmux binary path, socket, and client loop in candidate 1's hook body come from? **A:** [auto-pick] `e.TmuxPath()`, `e.Socket()`, `exactSessionTarget` (bare `=<name>`, since `list-clients -t` takes a session target), and a **new** `internal/shell` line-iterating primitive with POSIX and pwsh implementations. **Why:** `resizeHookCommand` establishes none of them, and the Shell Mechanics Seam forbids building the fragment inside `reedengine`.
+- **Q:** Can the repaint entry retrigger `window-resized` through `window-size latest`? **A:** [auto-pick] It must be proven it cannot — a server-issued `refresh-client` changes no geometry and is not client input, so it should not move MRU; "no repeated fire" and "no resize storm" become hard acceptance criteria of the measurement gate. **Why:** a resize storm inside the tmux server would be far worse than the one-second cosmetic smear the entry exists to remove.
+- **Q:** What happens to the treatment scenarios if no candidate is accepted? **A:** [auto-pick] Inverted to assert the artifact appears, citing the recorded measurement — never skipped or deleted. **Why:** an inverted treatment is a tripwire that fires if the artifact ever stops reproducing; a `t.Skip` tells nobody anything.
 - **Q:** Do `list-clients` and `refresh-client` join `requiredSubcommands`? **A:** [auto-pick] No — both call sites degrade silently. **Why:** that list is the set the engine cannot work without; adding a cosmetic-feature verb would fail boot for multiplexers that run reed fine today.
 - **Q:** How does the smoke suite avoid asserting absence vacuously? **A:** [auto-pick] Each trigger ships as a control/treatment pair; the control rewrites the `window-resized` array from the test without the repaint entry and asserts the artifact **appears**. **Why:** an absence-only assertion would keep passing if the fix were deleted, and would pass vacuously wherever the timing-dependent artifact never shows.
 - **Q:** What predicate detects the dots? **A:** [auto-pick] A run of at least 20 consecutive `.` on any single captured line, polled to a bounded deadline — not `pollPaneContains`. **Why:** `pollPaneContains` is a plain substring match and legitimate pane content contains dots.
