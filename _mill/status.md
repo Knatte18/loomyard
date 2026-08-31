@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-search-script-and-harness
+phase: approved-documentation
 slug: cross-repo-code-search
 branch: cross-repo-code-search
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-08-31T15:41:11Z'
 planned  '2026-08-31T15:41:21Z'
 implementing  '2026-08-31T15:41:51Z'
 approved-search-script-and-harness  '2026-08-31T15:52:41Z'
+approved-documentation  '2026-08-31T15:55:45Z'
 ```
 
 ## Batches
@@ -37,7 +38,8 @@ batches:
     commit_sha: 8c41a5269bf9b12977fe7d823e8f5a6491987b87
     verify_baseline_failures: []
   - name: documentation
-    state: running
+    state: approved
     implementer_session: 6da82f1f-7393-488a-8bfa-56b39a1d78b8
     start_sha: 7736101445a025d67070e7877e6f26b42006ebff
+    commit_sha: 9e2e47b87f9b9554fa6fb6ae348156ca43674fdd
 ```
