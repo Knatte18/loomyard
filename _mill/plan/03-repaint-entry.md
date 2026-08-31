@@ -147,6 +147,10 @@ Batch-local decisions beyond `## Shared Decisions`:
   Add `TestRepaintHookCommand_Posix` asserting the composed string carries the `run-shell -b ` prefix, is wrapped by `tmuxQuoteValue` (leading and trailing double quote), escapes `\`, `"`, and `$`, embeds the binary path and socket quoted via `Shell.Quote` in **both** tmux invocations, and takes its per-line reference from `LineVarRef()` rather than a literal.
   Add `TestRepaintHookCommand_Pwsh` asserting the pwsh dialect's `ForEach-Object` shape appears intact.
 
+  Add `TestResizeRepaintHookCommand` for the engine wrapper itself, following the GOOS-skipped shape `TestResizeSignalHookCommand` already uses: off Windows it must equal `repaintHookCommand(shell.ForGOOS(), e.TmuxPath(), e.Socket(), exactSessionTarget(e.SessionName()))`, and on Windows `""`.
+  Without it the wrapper's own composition — which of the engine's four accessors it feeds the builder, and in which order — is asserted nowhere, since the builder tests pass explicit arguments and the array tests only check position and call count.
+  Assert as part of the same test that the wrapper's answer does not vary with `e.cfg.Watchdog`, which is the `repaint-is-independent-of-watchdog` decision expressed as a test.
+
   Add the anti-drift pin, `TestRepaintHookCommand_ReproducesTheMeasuredBody`.
   Declare four `const`s transcribed verbatim from the measurement record: the measured body string, the tmux binary path, the socket name, and the session name.
   Assert `repaintHookCommand(shell.Posix(), <recorded tmux path>, <recorded socket>, exactSessionTarget(<recorded session>))` equals the recorded body byte for byte.
@@ -167,6 +171,8 @@ Batch-local decisions beyond `## Shared Decisions`:
     State in a comment that `resizePinHookArgvs` takes command *strings* and holds no `runtime.GOOS` branch, so the Windows behaviour cannot be asserted at this seam;
     what belongs here is only "an empty body emits no entry".
   - `internal/reedengine/windowsize_test.go`: update `TestInstallResizePinsLocked_IssuesTheSignalEntryLast`'s exact call counts for the extra entry, and strengthen it to assert the signal entry is the **last** argv rather than a fixed index, and that the repaint entry sits immediately before it.
+    Assert the installed repaint entry's **body**, not only its position: the argv's last element must equal `e.resizeRepaintHookCommand()`, mirroring the `want := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())` content check the signal entry already gets in `internal/reedengine/apply_test.go`'s `WatchdogOnAlsoInstallsTheSignalEntry`.
+    Position and call count alone would pass on an entry carrying the wrong body entirely.
     Its `watchdog: off` subtest must now expect the repaint entry to still be installed — that is the `repaint-is-independent-of-watchdog` decision, and it is the assertion that would catch the entry being wrongly gated on `watchdogOption`.
   - `internal/reedengine/apply_test.go`: update the two exact-count subtests that currently pin the zero-pin array.
     `WatchdogOffIsTheClearAlone` must expect the clear plus the repaint entry on a host where `resizeRepaintHookCommand()` is non-empty, and the clear alone where it is empty;
@@ -189,6 +195,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/reedengine/doc.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/reapply.go`
+  - `internal/reedengine/server.go`
+  - `internal/reedengine/overlay.go`
 - **Edits:**
   - `internal/reedcli/smoke_dotfill_test.go`
 - **Creates:** none
@@ -199,11 +207,22 @@ Batch-local decisions beyond `## Shared Decisions`:
   It shares the control's setup exactly — `newDotFillHarness(t, 140, 42)`, `harnessOnlyPaneID`, `attachIn` — and fires the same shrink-then-grow `resize-window` trigger.
   It differs in one way: it leaves reed's own array untouched rather than rewriting it.
 
-  Add the helper `func assertRepaintEntryPresent(t *testing.T, entries []string, want string)` beside `assertOnlyPinEntries`, failing unless some entry equals `want` exactly.
-  It performs the same per-entry matching `hookInstalledLocked` performs.
+  Add the helper `func assertRepaintEntryPresent(t *testing.T, entries []string, mustContain []string) string` beside `assertOnlyPinEntries`.
+  It fails unless exactly one non-empty entry contains every token in `mustContain`, and returns that entry.
+  It performs the same per-entry matching `hookInstalledLocked` performs, never a match against the whole answer.
+
+  **The readback must not compare against the body string the measurement record froze, and this is not a stylistic choice.**
+  `ServerName` in `internal/reedengine/server.go` derives the socket key from a SHA-256 of the hub's absolute path, and every `newDotFillHarness` call boots a fresh `hubforge.NewHub` under a fresh temp directory — so batch 2's measuring run and this scenario's own later `go test` invocation have different sockets, and for candidate 1 the recorded body embeds that socket twice.
+  A byte-equality assertion against the frozen literal would therefore fail on every run.
+  `internal/reedcli` also cannot recompute the expected string, because `repaintHookCommand` and `resizeRepaintHookCommand` are unexported members of `internal/reedengine`.
+  Do not export either of them to make this assertion possible: the byte-exact pin already exists, in the right package and against the right inputs, as card 13's `TestRepaintHookCommand_ReproducesTheMeasuredBody`.
+  What this scenario needs is a *presence* proof, not a second copy of that pin.
 
   **Branches A and B — a candidate was accepted.**
-  Immediately before the trigger, read reed's array with `windowResizedEntries` and pass it to `assertRepaintEntryPresent` with the body the measurement record names.
+  Immediately before the trigger, read reed's array with `windowResizedEntries` and pass it to `assertRepaintEntryPresent` with tokens the test computes from its **own live harness values**, which is a stronger check than a frozen literal because it proves the entry belongs to *this* session rather than a stale or foreign one:
+  - Branch A: `"run-shell -b "`, `"list-clients"`, `"refresh-client"`, the live `h.reedSocket`, and `"=" + h.reedSession` (the exact-target form `exactSessionTarget` produces).
+  - Branch B: the single token `"refresh-client"`, plus an additional assertion that the returned entry equals `"refresh-client"` exactly — candidate 2's body embeds nothing, so it admits the literal form.
+
   This readback is mandatory, not defensive: with `watchdog: off` the array is empty from boot and any *degrading* attach re-empties it, so without this assertion the treatment could pass because no array was installed at all.
   Then fire the trigger and assert `paneStaysCleanOfDotRun` holds against the harness pane for a fixed 3 s window.
   The window is fixed and every sample must be clean;
