@@ -152,7 +152,6 @@ The one accepted behavioural deviation is a positional argument beginning with t
 - **Context:**
   - `plugins/prowler/scripts/github-tree.sh`
   - `plugins/prowler/scripts/testdata/github-tree/bin/gh`
-  - `plugins/prowler/scripts/testdata/github-tree/bin/gh`
   - `plugins/prowler/scripts/testdata/github-tree/bodies/small-root-rec.json`
   - `plugins/prowler/scripts/testdata/github-tree/bodies/trunc1-root-rec.json`
   - `plugins/prowler/scripts/testdata/github-tree/bodies/trunc1-root-nonrec.json`

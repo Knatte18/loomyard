@@ -205,6 +205,11 @@ It runs real `gh` and real `curl` against real repositories and builds every fai
   Capturing stdout and stderr separately is mandatory, because many assertions turn on stdout being byte-empty while stderr is not.
   The runner must also point the environment's temp directory at the scenario's own scratch directory, which is what makes the temp-file-cleanup assertion in card 15 possible.
   Provide per-stub call-log accessors and line counters so a scenario can assert one command was called and the other was not.
+  Provide one further helper the curl-absence scenario needs: a function that builds a `curl`-free stub directory at runtime under the harness scratch, containing a copy of the stub `gh` and nothing else, and returns its path.
+  The tree harness's own missing-binary trick — emptying PATH entirely and invoking through an absolute interpreter path — cannot serve here, because this scenario needs `gh` to still resolve while `curl` does not, and an emptied PATH hides both.
+  Pointing PATH at a directory holding only the stub `gh`, with no other directory behind it, is what makes the absence real rather than assumed;
+  the runtime-construction idiom mirrors what card 4 already establishes for generated fixtures in the sibling harness.
+  The scenario runner must accept the stub directory to use as a parameter, defaulting to the normal one, so this single scenario can point at the `curl`-free directory while every other scenario is unaffected.
   Then add the raw-path scenarios.
   First and most important, the preference-order proof: a successful raw read whose stdout equals the fixture bytes exactly, exit status 0, exactly one curl call against the raw host URL with the repository, the literal `HEAD`, and the path in it, and zero `gh` calls — this single assertion pins the entire point of the task.
   Second, the argument-vector proof: assert the logged curl invocation is exactly the decided vector, argument by argument, in order.
@@ -212,7 +217,7 @@ It runs real `gh` and real `curl` against real repositories and builds every fai
   Third, that the trigger is the exit status and not a parsed code: run the stub exiting with a timeout status and again with a connection-refused status, and assert the fallback fired in both.
   Fourth, the not-found regression test: run the stub writing nothing to its output file and exiting with the status the fail flag produces, and assert stdout carries no not-found text.
   Fifth, the no-partial-prefix proof: run the stub writing a partial body to its output file and then exiting non-zero with the fallback succeeding, and assert stdout is exactly the fallback's bytes with no partial prefix in front of them — this assertion would fail against a stream-to-stdout implementation and is what pins the temp-file buffering decision.
-  Sixth, curl absent from PATH: assert the script goes straight to `gh api`, that zero curl calls were logged, that stderr says nothing about curl, and that stdout is still correct.
+  Sixth, curl absent from PATH: run this one scenario against the `curl`-free stub directory built by the helper above, so `gh` resolves and `curl` genuinely does not, and assert the script goes straight to `gh api`, that zero curl calls were logged, that stderr says nothing about curl, and that stdout is still correct.
 - **Commit:** `test(prowler): add github-read-selftest.sh and its raw-path scenarios`
 
 ### Card 14: harness scenarios for the fallback and its failure diagnosis
