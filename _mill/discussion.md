@@ -27,6 +27,7 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 - Per-repo existence/accessibility preflight, so an inaccessible or misspelled repo is reported as an error instead of silently reading as "this repo has no matches".
 - A new offline test harness `plugins/prowler/scripts/github-code-search-selftest.sh` plus its stub `gh` and JSON fixtures under `plugins/prowler/scripts/testdata/github-code-search/`, mirroring `github-tree-selftest.sh`'s shape.
 - `plugins/prowler/skills/github-repo-explorer/SKILL.md`: document the new script and the search-vs-tree routing rule ("known term/import/symbol across a whole repo" → search; "understand a repo's structure" → tree + selective reads).
+- `plugins/prowler/skills/github-repo-explorer/SKILL.md`'s **frontmatter**, and the matching row in `plugins/prowler/skills/INDEX.md` — see the "Skill dispatch surface is updated too" decision for the exact new strings.
 - `plugins/prowler/README.md`: a `## github-code-search.sh` section, mirroring the existing `## github-tree.sh` section, documenting the contract, the rate-limit budget, and the API quirks the contract is built around.
 
 **Out:**
@@ -55,7 +56,8 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 
 ### Hard cap of 10 repos per invocation, rejected up front
 
-- Decision: more than 10 repo refs is a usage error (exit 2) raised before any network call, naming the cap and the reason.
+- Decision: more than 10 distinct repo refs is rejected before any network call, naming the cap and the reason, exiting 1 via `die` (see "Exit codes: 2 for usage shape, 1 for everything else" — the cap is a rule about argument values, not arity, so it is not an exit-2 usage-shape error).
+  The count is taken after deduplication (see "Duplicate repo refs are deduped silently").
 - Rationale: the authenticated `code_search` rate-limit bucket is 10 requests per minute (verified: `gh api rate_limit` → `code_search.limit: 10`). An 11-repo sweep is guaranteed to 403 partway through, and — given the buffer-until-complete output discipline below — would produce nothing at all after burning the whole minute's budget. Rejecting up front converts a guaranteed expensive failure into a free, immediate, explanatory one. This matches `github-tree.sh`'s ordering discipline: prerequisite and argument rejection never reach the network.
 - Rejected: no cap plus abort-on-403 (burns the budget, returns nothing, and the user learns the limit only by hitting it); no cap plus internal sleeping between calls (the script's whole design stance is no retries, no backoff, no waiting — the caller decides).
 
@@ -113,11 +115,61 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 - Rationale: the existing stub hard-asserts a four-argument `api <endpoint> --jq <expr>` invocation shape and rejects anything else with exit 98 — deliberately, so that a re-added preflight call in `github-tree.sh` would fail loudly rather than be silently absorbed. The new script's invocations carry `-X GET`, repeated `-f` parameters, and an `-H Accept:` header, and it makes preflight calls the tree script must never make. Generalising the shared stub to accept both shapes would destroy exactly the property that makes the existing assertions meaningful.
 - Rejected: one shared stub accepting both shapes (weakens the tree harness's strictness guarantee to save a file).
 
+### The new stub keys fixtures on a request key, not on the endpoint alone
+
+- Decision: the new stub derives a **request key** from each invocation and matches `map.tsv`'s `field1` against that key, not against the bare endpoint.
+  The key is the endpoint string when the call carries no `-f q=` parameter (every preflight call — `repos/<owner>/<repo>`, already unique per repo), and `search/code?q=<the full q parameter value>` when it does (every search call).
+  `map.tsv` keeps its existing three-field `key<TAB>body<TAB>status` shape and its existing tab-split-by-parameter-expansion loop; only the value compared against `field1` changes.
+- Rationale: `testdata/github-tree/bin/gh` keys on `$2` — the endpoint — alone (`field1 = endpoint`, lines 44–62), which works there because every call in a tree walk hits a distinct endpoint.
+  Every search call in a multi-repo sweep hits the identical endpoint `search/code`, so an endpoint-keyed map cannot express a single one of the per-repo scenarios this harness needs: multi-repo ordering, `incomplete_results` on repo 2 of several, a 403 on repo 2 of 3, or a per-repo `total_count` note.
+  The `q` value is what already distinguishes those calls — the script appends its own ` repo:<owner>/<repo>` to the shared caller query (see "One API call per repo"), so each repo's search call carries a distinct `q` by construction.
+  Keying on it therefore needs no new discipline in the script and no synthetic scenario ids in the fixtures.
+- The key is unique within a scenario for the same reason: preflight endpoints are one per distinct repo, and search `q` values are one per distinct repo.
+  Duplicate repo refs — the one case that could collide two identical keys — never reach the network at all, because they are deduped during argument handling (see "Duplicate repo refs are deduped silently").
+- The stub must also accept the new invocation shape rather than the tree stub's rigid four-argument assertion: `-X GET`, repeated `-f` parameters, and an `-H Accept:` header.
+  It still rejects an unrecognised shape with a distinct non-zero exit, and still appends every invocation verbatim to `GH_STUB_LOG` before any shape check, so the "no call was made" and call-identity assertions stay meaningful.
+- Rejected: a call-sequence index as the key (works, but couples every fixture to the script's internal call ordering, so reordering preflight-then-search would silently re-point every fixture at the wrong scenario);
+  keying on the endpoint plus a synthetic `X-Scenario` header injected by the harness (invents a request field the real `gh` never sends, so the harness would stop exercising the script's actual invocation).
+
+### Exit codes: 2 for usage shape, 1 for everything else
+
+- Decision: exit 2 is reserved for a usage-shape error — too few arguments to satisfy the synopsis `github-code-search.sh <query> <owner/repo> [<owner/repo>...]`.
+  Every other rejection exits 1 via `die`, with one stderr line.
+  Concretely: no arguments → 2; a query but no repo ref → 2; an invalid `<owner>/<repo>` ref → 1; more than 10 distinct repo refs → 1; a caller query containing `repo:` → 1.
+- Rationale: this is `github-tree.sh`'s actual convention, which the earlier draft of this file misstated.
+  That script exits 2 only for the arg-count check (lines 41–44, printing the bare `usage:` synopsis) and exits 1 via `die` for a semantically invalid ref (lines 49–51) and for every other rejection.
+  The split is shape-versus-semantics, not "all argument problems are 2".
+  The repo cap in particular is a semantic rule about argument *values*, not arity — 11 refs still satisfies the synopsis's `<owner/repo>...`, so exit 2 would be wrong there.
+- Rejected: exit 2 for every pre-network rejection (diverges from the sibling script a caller may already have wrapped, and collapses a distinction that script deliberately draws).
+
+### Duplicate repo refs are deduped silently
+
+- Decision: repeated `<owner>/<repo>` refs are deduped before the 10-repo cap is applied, keeping first-occurrence order.
+  The cap counts distinct refs, and each distinct repo produces exactly one preflight call, one search call, and one contiguous block of output records.
+- Rationale: a duplicate is unambiguously a caller slip with exactly one sensible reading, so rejecting it would fail a sweep that the script knows how to run correctly.
+  Silently accepting it is worse than either alternative: it burns two of the ten `code_search` requests on the same repo and emits every one of that repo's records twice, which a caller counting hits per repo would read as real duplication in the repo.
+  Deduping before the cap also makes the cap's guarantee exact — ten distinct refs is ten calls, never eleven.
+- Rejected: reject as a usage error (fails a runnable sweep over a typo); accept as-is (doubles the records and the rate-limit spend, silently).
+
 ### Skill routing documented as a rule, not a preference
 
 - Decision: SKILL.md gains an explicit routing rule — a known term, import, symbol, or dependency name anywhere in a repo → `github-code-search.sh`; understanding a repo's overall structure or layout → `github-tree.sh` plus selective reads; a repo list to relevance-map against one trait → `github-code-search.sh` over the whole list in one call.
 - Rationale: the task body asks for exactly this, and without it the model has two overlapping tools and will default to the one it used last. The routing is also where the "deep single-repo work goes through a local clone instead" boundary gets restated, so the skill's remit stays visible at the point of use.
 - Rejected: leaving routing implicit in the two script descriptions.
+
+### Skill dispatch surface is updated too, not just the skill body
+
+- Decision: `skills/github-repo-explorer/SKILL.md`'s frontmatter and the matching `skills/INDEX.md` row are updated in the same commit, to these exact strings:
+  - `description: Search code across GitHub repos, browse a repo's file tree, and read files via the gh CLI, without cloning`
+  - `argument-hint: "<owner/repo>... [path | search term] [question]"`
+  - `INDEX.md`'s `github-repo-explorer` row (line 6) takes the same new `description` text verbatim.
+- Rationale: the frontmatter `description` is the skill's dispatch surface — it is what decides whether this skill is reached at all — and today it names only tree-browsing and file-reading (`Browse a GitHub repo's file tree and read files via the gh CLI, without cloning`).
+  Leaving it unchanged ships a search capability that a cross-repo search query would never route to, which defeats the task's own trigger case.
+  `INDEX.md` line 6 duplicates that description verbatim today, so updating one without the other leaves the two disagreeing.
+  The `argument-hint` changes because the skill's input is now plural repos, and the second positional slot is either a path (tree/read) or a search term.
+- This is the only edit either file receives; nothing else in `INDEX.md` is touched.
+- Rejected: leaving the frontmatter alone (a search capability nothing routes to);
+  updating `SKILL.md` only (the two files' descriptions are duplicates by convention, and a silent divergence is the kind of rot the Documentation Lifecycle invariant exists to prevent).
 
 ## Technical context
 
@@ -163,8 +215,8 @@ From `CONSTRAINTS.md` — the relevant finding is that **none of its invariants 
 
 From `CLAUDE.md`:
 
-- **Markdown: semantic line breaks.** Every `.md` file touched — `README.md`, `SKILL.md`, and this file — uses one sentence per line, with additional breaks at internal independent-clause boundaries. Never a fixed-column hard wrap, never trailing double-spaces or a backslash. Table cells stay on one line.
-- **Task completion — docs land in the same commit.** `plugins/prowler/` has no entry in `manifest/designs/` and is not named in `docs/overview.md` (verified: `grep -rl prowler docs manifest` returns nothing), so the module-doc and overview obligations have no target here. The docs that must land in the same commit are `README.md` and `SKILL.md`. `CONSTRAINTS.md` is untouched — this introduces no cross-cutting invariant. `manifest/roadmap.md` is untouched — this is neither completing nor adding a planned roadmap item.
+- **Markdown: semantic line breaks.** Every `.md` file touched — `README.md`, `SKILL.md`, `skills/INDEX.md`, and this file — uses one sentence per line, with additional breaks at internal independent-clause boundaries. Never a fixed-column hard wrap, never trailing double-spaces or a backslash. Table cells stay on one line.
+- **Task completion — docs land in the same commit.** `plugins/prowler/` has no entry in `manifest/designs/` and is not named in `docs/overview.md` (verified: `grep -rl prowler docs manifest` returns nothing), so the module-doc and overview obligations have no target here. The docs that must land in the same commit are `README.md`, `SKILL.md` (body and frontmatter), and `plugins/prowler/skills/INDEX.md`. `CONSTRAINTS.md` is untouched — this introduces no cross-cutting invariant. `manifest/roadmap.md` is untouched — this is neither completing nor adding a planned roadmap item.
 - **No version bumps pre-publish.** `plugins/prowler/.claude-plugin/plugin.json` stays at `1.1.0`; the comparable prior feature commit `63916b1e2` did not bump it either.
 - **Worktree isolation.** All work stays inside `wts/cross-repo-code-search`.
 
@@ -180,7 +232,7 @@ The workable order is: capture fixtures from the live observations above → wri
 The harness is the deliverable that proves the contract, and it must be written in the same batch as the script, not after.
 
 **`plugins/prowler/scripts/github-code-search-selftest.sh` — offline, stub-driven, no network.**
-Mirrors `github-tree-selftest.sh`'s structure exactly: `run_scenario` writes a per-scenario `map.tsv`, truncates `calls.log`, runs the script with the stub on `PATH`, and captures stdout, stderr, and exit status into separate variables (separate is mandatory — many assertions turn on stdout being byte-empty while stderr is not).
+Mirrors `github-tree-selftest.sh`'s structure exactly — with the one deliberate divergence that its `map.tsv` is keyed on the request key rather than the bare endpoint (see "The new stub keys fixtures on a request key, not on the endpoint alone"), which is what makes the per-repo scenarios below expressible at all: `run_scenario` writes a per-scenario `map.tsv`, truncates `calls.log`, runs the script with the stub on `PATH`, and captures stdout, stderr, and exit status into separate variables (separate is mandatory — many assertions turn on stdout being byte-empty while stderr is not).
 `jq` availability is checked up front with the same `require_jq` guard.
 Scratch lives under `.scratch/github-code-search-selftest/`.
 
@@ -196,7 +248,11 @@ Scenarios that must be covered:
 - **`total_count` greater than the returned item count** — exit 0, full stdout, one stderr note naming the repo and the total.
 - **Preflight failures**, each with its own distinguishing stderr substring and byte-empty stdout: 404 (repo not found / not accessible), 401 (not authenticated), 403 (access denied or rate limited). Each must also assert that **no search call was made** — the call log makes this checkable.
 - **Search-call failures**: 403 mid-sweep (repo 2 of 3) proving buffer-until-complete — byte-empty stdout despite repo 1 having succeeded; and 422.
-- **Argument rejection, all before any network call** (assert an empty call log): no arguments; a query but no repo; an invalid `<owner>/<repo>` ref; more than 10 repo refs; a query containing `repo:`. Exit 2 for usage errors, matching `github-tree.sh`'s convention.
+- **Argument rejection, all before any network call** (assert an empty call log), each asserting its own exit code per the "Exit codes" decision: no arguments → 2; a query but no repo ref → 2; an invalid `<owner>/<repo>` ref → 1; more than 10 distinct repo refs → 1; a caller query containing `repo:` → 1.
+  Each also asserts byte-empty stdout and its own distinguishing stderr substring.
+- **Duplicate repo refs are deduped** — the same `<owner>/<repo>` passed twice, plus a third distinct repo, yields exactly 2 preflight calls and 2 search calls (asserted against the call log), output records for the duplicated repo appearing once, and first-occurrence argument ordering preserved.
+- **Dedup happens before the cap** — 11 refs of which 2 are duplicates of each other (10 distinct) runs normally rather than being rejected;
+  11 distinct refs is rejected with exit 1 and an empty call log.
 - **`gh` missing from `PATH`** — reuses `github-tree-selftest.sh`'s `BASH_BIN` absolute-path trick so the script's own prerequisite guard is what fires, not the harness failing to find bash.
 - **A path or `full_name` containing a tab or newline** — the `#badpath` sentinel path: refuse to emit, non-zero exit, byte-empty stdout.
 
