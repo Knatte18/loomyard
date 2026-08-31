@@ -479,6 +479,105 @@
 //     reproduction record, and the resize treatment scenario is inverted
 //     to assert the artifact's continued appearance rather than its
 //     absence, per the no-candidate-accepted disposition.
+//   - The dot-fill artifact's mechanism (windowsize.go, attach.go): the dots are painted by tmux
+//     itself, in the region of an attached client's terminal that the current window geometry does
+//     not cover or whose paint has gone stale relative to a just-changed window size. They are
+//     never content reed writes and are in no pane's grid — which is also why capture-pane against
+//     the reed session is structurally blind to them, and why the regression test
+//     (internal/reedcli's smoke_dotfill_test.go) captures the harness pane hosting the attach client
+//     instead. Both reported triggers are one mechanism, a transient or standing mismatch between a
+//     client's terminal size and the window's size: a resize changes the client's size and
+//     window-size latest moves the window to follow it, and delivering any input to a second client
+//     — a keystroke, a mouse report, a focus report — makes that client most-recently-used, which is
+//     exactly what window-size latest keys on, so the window resizes to it and every other client is
+//     left mismatched with no resize from the operator's point of view. The reporter's
+//     "mouse-tracking escape sequences leak through the shared session" hypothesis is rejected:
+//     mouse bytes are consumed by tmux as client input and never reach another client's screen; the
+//     mouse is only how the second client announced itself as most-recently-used.
+//   - The stale-paint / uncovered split, and which trigger is which (windowsize.go): the stale-paint
+//     subset is a client fully covered by the new window geometry showing leftover paint, and a
+//     forced redraw removes it — this is the resize trigger. The uncovered subset is a client whose
+//     terminal is genuinely larger than the window, so tmux has real estate with nothing behind it
+//     and legitimately pads it — this is the cross-client trigger as reported, because a VS Code
+//     integrated terminal is smaller than a standalone Konsole window. No repaint mechanism can
+//     remove the uncovered subset, and reed does not attempt to: removing it would require changing
+//     window-size, which is refused for stronger reasons (see the next bullet).
+//   - Why window-size latest is not changed, made configurable, or conditioned on the client count
+//     (windowsize.go): with two clients of different sizes attached, tmux must pick one window size,
+//     so some client is always mismatched under every available policy; latest gives the artifact to
+//     the client the operator is not currently using, which is the best of the three. It is also
+//     structurally load-bearing: AttachArgv reads #{window-size} back and suppresses the chained
+//     select-layout on anything other than latest. Rejected: largest breaks attach-time layout for
+//     every operator with a second client open; smallest turns an intermittent artifact into a
+//     standing one; manual abandons client-following and is already a chain-suppressing value.
+//   - The repaint entry (windowsize.go's installResizePinsLocked): none shipped. The measurement
+//     gate (the Measurement record bullet above) rejected both candidates on the same criterion — no
+//     repeated hook fire — so installResizePinsLocked installs no forced-repaint entry into the
+//     window-resized array; its own doc comment records the disposition and points back at that
+//     Measurement record block. With no repaint entry, a resize's dot-fill artifact is cleared by
+//     the watchdog's own round trip when the watchdog is on (the hook's run-shell touch,
+//     watchdogSignalTick, watchdogDebounceQuiet, and the re-apply round trip — roughly a second) or
+//     stands until the next reed operation when the watchdog is off; the cross-client trigger is
+//     never cleared by anything, per the split above.
+//   - The two acceptance criteria and why "did it clear the artifact" was not sufficient:
+//     window-resized fires on a settled size change rather than on a paint, and a server-issued
+//     refresh-client repaints a client at its existing size without moving the most-recently-used
+//     pointer — but that reasoning was measured rather than assumed, because refreshing every client
+//     would otherwise hand most-recently-used to whichever client was refreshed last, resize the
+//     window to it, fire the hook again, and loop. Both criteria — no repeated hook fire, no resize
+//     storm — were measured live on tmux 3.6 (Measurement record above); both candidates cleared the
+//     artifact and held the window settled, and both failed the same first criterion.
+//   - The (would-be) repaint entry's independence from watchdog, with the full call-site map stated
+//     plainly (windowsize.go, attach.go, apply.go, lifecycle.go), rather than left for a reader to
+//     re-derive across four files: watchdog gates the watch loop and its signal entry only; a forced
+//     redraw would mutate nothing, so an operator who turns off self-healing would still keep a
+//     repaint entry if one existed. The two unset sites and the two install sites are different
+//     sites: pinGeometryOptionsLocked is called from lifecycle.go's boot path and from AttachArgv's
+//     pre-flight, while installResizePinsLocked is called from that same pre-flight and from
+//     applyLayoutLockedOpts in apply.go, and nowhere else. Only the attach path holds both, in that
+//     order, in one locked closure. The boot path clears and returns without rebuilding. AttachArgv
+//     reaches the install only when its chain succeeds: it returns bare before taking the lock on
+//     non-positive cols/rows, and every in-closure degrade returns before the install — while
+//     pinGeometryOptionsLocked has already run, so under watchdog: off a degrading attach issues the
+//     unconditional clear and leaves without rebuilding. And applyLayoutLockedOpts returns
+//     immediately after select-layout when opts.SkipFocus is set, which is exactly the mode the
+//     watchdog's own re-apply (reapplyLayout) uses — so the watchdog re-apply never installs the
+//     array. So the array is (re)established only by an attach whose chain succeeds or by a focusing
+//     apply (up, add, remove, resume); under watchdog: off it is empty from boot and any degrading
+//     attach returns it to empty until one of those runs. This is accepted as-is and unchanged by
+//     this task — it is already today's behaviour for the resize-pane pins — and, had a repaint
+//     entry shipped, it would have shared their lifecycle rather than inventing one; widening the
+//     install to the SkipFocus path remains out of scope because it would put a hook-array rebuild
+//     inside the watchdog's own re-apply loop.
+//   - Windows (windowsize.go): installResizePinsLocked carries no runtime.GOOS gate: on Windows it
+//     issues the clear and every resize-pane pin argv exactly as elsewhere, and
+//     pinGeometryOptionsLocked's early Windows return covers only the unset half of the lifecycle.
+//     The single mechanism keeping the signal entry off Windows is resizeSignalHookCommand returning
+//     "" combined with resizePinHookArgvs emitting no entry for an empty body. Since no repaint
+//     entry shipped, this bullet records what its wiring would have been rather than what runs: it
+//     would have carried its own ""-returning check for the same unchanged underlying reason —
+//     set-hook and run-shell are outside requiredSubcommands and psmux's support for them is
+//     unverified.
+//   - The attach-time multi-client warning (attach.go's warnMismatchedClientsLocked): AttachArgv's
+//     pre-flight lists the session's attached clients and emits one logger.Warn per client whose
+//     size differs from the size this attach was told, naming that client and both sizes; zero
+//     differing clients produce zero lines. It never blocks, never changes the argv, and never
+//     reaches the JSON envelope. This is the primary deliverable for the cross-client trigger rather
+//     than a consolation prize, because that trigger's dots are the uncovered subset and cannot be
+//     repainted away — the residual's real operator cost is bewilderment, and the warning turns a
+//     mysterious artifact into a logged, searchable fact at the moment the operator creates the
+//     condition. The target-form rule binding both new call sites: list-clients -t takes a SESSION
+//     target, so warnMismatchedClientsLocked uses the bare "=<name>" form, while set-hook keeps the
+//     "=<name>:" window form because the array is window-scoped.
+//   - list-clients and refresh-client stay out of requiredSubcommands (probe.go): both are
+//     geometry-quality only, exactly like the status/window-size pins the Shared Decision
+//     geometry-tmux-failures-are-non-fatal-everywhere already exempts from fatality. A failing or
+//     unsupported list-clients logs one warning and emits no multi-client warning
+//     (warnMismatchedClientsLocked); refresh-client was never wired in, since no candidate shipped,
+//     but the same exemption would have applied to it — a refresh-client the multiplexer does not
+//     implement would have made the hook entry a server-fired no-op, the same outcome as the
+//     mitigation not helping. Adding either would make a multiplexer that runs reed perfectly well
+//     today fail at boot over a cosmetic feature.
 //   - The chained attach (attach.go): AttachArgv's argv is
 //     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
 //     separator a literal one-character ";" argv element — never "\;",
