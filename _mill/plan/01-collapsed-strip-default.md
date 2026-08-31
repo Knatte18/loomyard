@@ -43,7 +43,7 @@ this batch adds none of its own.
   (4) In `internal/reedengine/doc.go`, in the "Silent layout rescale" entry of the `# Multiplexer contract surface` list (around lines 370-372), reword the measurement so its `3` reads as the then-default rather than the current one: the phrase `turned a 3-row collapsed strip into 1 row` becomes `turned a 3-row collapsed strip (3 was the then-default; it is 6 today) into 1 row`.
   Keep the tmux 3.6 measurement itself and the `"220x50"` / `"100x30"` figures verbatim — they record a real live observation and must not be restated as though taken at `6`.
   Re-wrap only the lines of that one bullet, preserving the file's existing `//     ` continuation prefix and its surrounding godoc wrap width;
-  do not reflow any other bullet in the list, and do not touch the `CollapsedStripRows` mention at line 373 or the parallel comment at `apply.go:200`.
+  do not reflow any other bullet in the list, do not touch the `CollapsedStripRows` mention at line 373, and do not reword any other occurrence of this same measurement elsewhere in the package.
   (5) Run `go test ./internal/reedengine/...` again and confirm it is green.
   Do not edit `internal/reedengine/apply_test.go`, `internal/reedengine/lock_test.go`, `internal/reedengine/render/rules_test.go`, `internal/reedengine/render/pins_test.go`, or `internal/reedengine/render/height_test.go` — their `CollapsedStripRows: 2` values are deliberately-chosen unit inputs, not the template default.
   Do not edit `internal/reedengine/attachgeometry_integration_test.go` — it asserts against `e.cfg.CollapsedStripRows` rather than a literal, so it follows the template automatically;
