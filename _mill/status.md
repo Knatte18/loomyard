@@ -60,7 +60,9 @@ batches:
     commit_sha: 364cba2ab2abddc19606e8445b509212cf2a5b87
     verify_baseline_failures: []
   - name: repaint-entry
-    state: pending
+    state: running
+    implementer_session: edf51a56-89df-41df-92b8-1c43cfa209d1
+    start_sha: a4c687cf93ec6ffbb4a432044e022850b75dad05
     verify_baseline_failures: []
   - name: docs
     state: pending
