@@ -399,6 +399,40 @@ func TestSmokeDotFillResizeControl(t *testing.T) {
 	}
 }
 
+// TestSmokeDotFillResizeTreatment is the resize-trigger treatment scenario, the fix-side companion to
+// TestSmokeDotFillResizeControl above. It shares the control's setup exactly — newDotFillHarness,
+// harnessOnlyPaneID, attachIn — and fires the same shrink-then-grow resize-window trigger. It differs
+// in one way: it leaves reed's own window-resized array untouched rather than rewriting it, so this
+// scenario always observes whatever reed itself installs.
+//
+// Per the Measurement record (repaint candidates) block in internal/reedengine/doc.go's package doc
+// comment, neither measured repaint candidate was accepted: both cleared the dot-fill artifact but both
+// were rejected on the repaint-must-not-self-retrigger decision's exactly-one-fire criterion. No repaint
+// entry ships from this task, so this scenario is INVERTED rather than skipped or deleted: it asserts
+// the artifact still appears on the resize trigger. This makes the scenario a live tripwire — if a
+// future tmux release or a future reed change makes the artifact stop appearing on its own (for
+// instance because a repaint mechanism is added later without updating this test), this scenario fails
+// and someone finds out, which a t.Skip would never do.
+func TestSmokeDotFillResizeTreatment(t *testing.T) {
+	h := newDotFillHarness(t, 140, 42)
+	paneID := harnessOnlyPaneID(t, h.tmuxPath, h.harnessSocket, "h")
+	h.attachIn(t, paneID, "DOTFILL-MARKER-ALPHA")
+
+	// No array readback and no rewrite here — unlike the control, this scenario's whole point is to
+	// observe reed's own array exactly as installed. There is also no repaint entry to assert the
+	// presence of, since no candidate was accepted.
+	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "80", "-y", "24").Run(); err != nil {
+		t.Fatalf("resize-window shrink: %v", err)
+	}
+	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "160", "-y", "50").Run(); err != nil {
+		t.Fatalf("resize-window grow: %v", err)
+	}
+
+	if !pollPaneHasDotRun(t, h.tmuxPath, h.harnessSocket, paneID, 5*time.Second) {
+		t.Fatalf("inverted resize treatment did not reproduce the dot-fill artifact within 5s — this is a live tripwire per the no-candidate-accepted disposition in internal/reedengine/doc.go's Measurement record (repaint candidates) block: either the environment changed or a repaint mechanism has shipped without updating this scenario")
+	}
+}
+
 // TestSmokeDotFillCrossClientControl is the cross-client-trigger control scenario. It is control-only —
 // there is no cross-client treatment scenario, in any branch of the measurement gate — per the
 // uncovered-subset-is-documented-not-fixed decision: this is a documentation-of-behaviour test, not a
