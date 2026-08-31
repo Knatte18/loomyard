@@ -49,5 +49,7 @@ batches:
     commit_sha: a3c610b8ef0ea58b1d942fc70432aacc5edf0a7a
     verify_baseline_failures: []
   - name: skill and README documentation
-    state: pending
+    state: running
+    implementer_session: 00730930-d951-4b24-a74b-3fcd254ed5fa
+    start_sha: 0bf30d4d74c59bbe58bf3670686fa9fa0bab2db7
 ```
