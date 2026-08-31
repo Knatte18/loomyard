@@ -146,3 +146,46 @@ fi
 BODY_FILE="$(mktemp)"
 STDERR_FILE="$(mktemp)"
 trap 'rm -f "$BODY_FILE" "$STDERR_FILE"' EXIT
+
+# --- Raw attempt: the fast path ------------------------------------------
+#
+# A missing `curl` costs speed, not capability: fall straight through to
+# the `gh api` fallback with no error and nothing written to stderr.
+# Warning on every read would be noise the caller cannot act on, since the
+# fallback covers this case completely.
+if command -v curl >/dev/null 2>&1; then
+    raw_url="https://raw.githubusercontent.com/$REPO/HEAD/$path"
+
+    # Exactly this argument vector, no other flags:
+    #   -f  turns every response at or above 400 into a non-zero exit with
+    #       an empty output file, so curl's exit status alone is a
+    #       sufficient failure signal and no HTTP status needs capturing
+    #       or parsing. Without it a plain request answers a 404 with exit
+    #       0 and a "404: Not Found" body that would be emitted as if it
+    #       were the file's content.
+    #   -s  (rather than -sS) is required because this script never
+    #       reports the raw attempt's failure -- curl must write no
+    #       progress or error text to stderr either.
+    #   -L  follows a redirect the raw host may answer with; an unfollowed
+    #       301 would be a spurious fallback.
+    #   --connect-timeout 5 / --max-time 30 bound a hung request so it
+    #       becomes one clean non-zero exit that hands off to the single
+    #       `gh api` attempt exactly once. These are bounds, not retries.
+    #   -o "$BODY_FILE" writes the body to the temp file rather than
+    #       streaming it to stdout: streaming would leave a truncated
+    #       prefix on stdout if the connection died mid-body after a 200,
+    #       and the fallback would then append a second copy behind it.
+    #       Command substitution is avoided for the same call for a
+    #       different reason -- it strips every trailing newline and
+    #       silently drops NUL bytes, corrupting byte fidelity on every
+    #       read rather than only on failure.
+    if curl -s -f -L --connect-timeout 5 --max-time 30 -o "$BODY_FILE" "$raw_url"; then
+        cat "$BODY_FILE"
+        exit 0
+    fi
+    # Failure is defined as curl's exit status being non-zero and nothing
+    # else: no HTTP status is captured, parsed, or branched on, and body
+    # emptiness is never the signal, because an empty file that read
+    # successfully (the zero-byte-file case) is a valid outcome the
+    # harness asserts explicitly. Fall through to the gh api fallback.
+fi
