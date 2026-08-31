@@ -37,13 +37,20 @@ implementing  '2026-08-31T12:55:17Z'
 ```yaml
 batches:
   - name: dotfill-repro-harness
-    state: pending
+    state: running
+    implementer_session: 0ecf36bc-358d-4ff5-8dbf-2a1d7ba90c92
+    start_sha: 875b41561a023a935d665d433ba6fde25c62beb6
+    verify_baseline_failures: []
   - name: attach-multi-client-warning
     state: pending
+    verify_baseline_failures: []
   - name: measurement-gate
     state: pending
+    verify_baseline_failures: []
   - name: repaint-entry
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
