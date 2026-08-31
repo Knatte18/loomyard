@@ -421,15 +421,23 @@ func TestSmokeDotFillResizeTreatment(t *testing.T) {
 	// No array readback and no rewrite here — unlike the control, this scenario's whole point is to
 	// observe reed's own array exactly as installed. There is also no repaint entry to assert the
 	// presence of, since no candidate was accepted.
+	//
+	// Fire the shrink half and assert the hit WHILE the window is still shrunk, exactly like the
+	// control above: the control's own comment records that the grow clears the artifact instantly
+	// and permanently in this environment, so a poll started only after the grow-half has run would
+	// sample the clean fully-covered regime and could never hit, regardless of whether the fix
+	// shipped.
 	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "80", "-y", "24").Run(); err != nil {
 		t.Fatalf("resize-window shrink: %v", err)
 	}
-	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "160", "-y", "50").Run(); err != nil {
-		t.Fatalf("resize-window grow: %v", err)
+	if !pollPaneHasDotRun(t, h.tmuxPath, h.harnessSocket, paneID, 5*time.Second) {
+		t.Fatalf("inverted resize treatment did not reproduce the dot-fill artifact within 5s of the shrink — this is a live tripwire per the no-candidate-accepted disposition in internal/reedengine/doc.go's Measurement record (repaint candidates) block: either the environment changed or a repaint mechanism has shipped without updating this scenario")
 	}
 
-	if !pollPaneHasDotRun(t, h.tmuxPath, h.harnessSocket, paneID, 5*time.Second) {
-		t.Fatalf("inverted resize treatment did not reproduce the dot-fill artifact within 5s — this is a live tripwire per the no-candidate-accepted disposition in internal/reedengine/doc.go's Measurement record (repaint candidates) block: either the environment changed or a repaint mechanism has shipped without updating this scenario")
+	// Fire the grow half to restore the harness to a settled state for cleanup; the tripwire's
+	// assertion is already made above, so the grow's own effect is not asserted here.
+	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "160", "-y", "50").Run(); err != nil {
+		t.Fatalf("resize-window grow: %v", err)
 	}
 }
 
