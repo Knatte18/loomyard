@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -42,6 +42,7 @@ holistic-fixing  '2026-08-31T14:19:23Z'
 holistic-reviewing  '2026-08-31T14:23:41Z'
 holistic-approved  '2026-08-31T14:28:32Z'
 done  '2026-08-31T14:30:22Z'
+pr-pending  '2026-08-31T14:33:46Z'
 ```
 
 ## Batches
