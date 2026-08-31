@@ -376,6 +376,156 @@ for scenario in fallback_dir fallback_symlink fallback_submodule fallback_401 fa
     fi
 done
 
+# --- Test 13: gh missing from PATH -------------------------------------------
+PATH="" "$BASH_BIN" "$GH_READ_SH" acme/nogh x.txt >"$SCRATCH/nogh.stdout" 2>"$SCRATCH/nogh.stderr"
+status=$?
+out="$(cat "$SCRATCH/nogh.stdout")"
+err="$(cat "$SCRATCH/nogh.stderr")"
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [[ "$err" == *gh* ]]; then
+    pass "gh missing from PATH: exit 1, byte-empty stdout, stderr mentions gh, no network call happened"
+else
+    fail "gh missing from PATH: status=$status out=$out err=$err"
+fi
+
+# --- Test 14: path validation ------------------------------------------------
+run_scenario badchar "" "" acme/small "a#b"
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [ "$(curl_call_line_count badchar)" -eq 0 ] && [ "$(gh_call_line_count badchar)" -eq 0 ] && [[ "$err" == *"#"* ]]; then
+    pass "path with a '#': rejected locally, zero calls to either command, stderr names the '#'"
+else
+    fail "path with a '#': status=$status out=$out err=$err"
+fi
+run_scenario badchar_accented "" "" acme/small "naïve"
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [ "$(curl_call_line_count badchar_accented)" -eq 0 ] && [ "$(gh_call_line_count badchar_accented)" -eq 0 ] && [[ "$err" == *"ï"* ]]; then
+    pass "path with 'naïve': rejected locally (the reproduced glob-vs-regex failure this technique exists to prevent), stderr names 'ï' whole"
+else
+    fail "path with 'naïve': status=$status out=$out err=$err"
+fi
+
+# --- Test 15: path normalisation ----------------------------------------------
+# strip_temp_path blanks out the -o flag's value (the 9th whitespace-
+# separated field of a logged curl call) before comparison, because that
+# value is a scenario-specific mktemp path that necessarily differs across
+# separately-run scenarios even for byte-identical invocations otherwise --
+# not part of what "byte-identical call logs" is asserting here.
+strip_temp_path() {
+    local line="$1"
+    read -r -a a <<<"$line"
+    a[8]="<tmp>"
+    echo "${a[*]}"
+}
+norm_curl_map="$(printf '0\tplain.txt')"
+run_scenario norm1 "$norm_curl_map" "" acme/norm src/a.txt
+calls1="$(strip_temp_path "$(curl_calls norm1)")"
+run_scenario norm2 "$norm_curl_map" "" acme/norm /src/a.txt
+calls2="$(strip_temp_path "$(curl_calls norm2)")"
+run_scenario norm3 "$norm_curl_map" "" acme/norm src/a.txt/
+calls3="$(strip_temp_path "$(curl_calls norm3)")"
+if [ "$calls1" = "$calls2" ] && [ "$calls2" = "$calls3" ]; then
+    pass "path normalisation: bare, leading-slash, and trailing-slash paths produce byte-identical call logs"
+else
+    fail "path normalisation: calls1=$calls1 calls2=$calls2 calls3=$calls3"
+fi
+
+# --- Test 16: empty and slash-only paths are usage errors --------------------
+run_scenario emptypath "" "" acme/small ""
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(curl_call_line_count emptypath)" -eq 0 ] && [ "$(gh_call_line_count emptypath)" -eq 0 ]; then
+    pass "empty path: usage error, exit 2, no calls"
+else
+    fail "empty path: status=$status out=$out"
+fi
+run_scenario slashonlypath "" "" acme/small "/"
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(curl_call_line_count slashonlypath)" -eq 0 ] && [ "$(gh_call_line_count slashonlypath)" -eq 0 ]; then
+    pass "slash-only path: usage error, exit 2, no calls"
+else
+    fail "slash-only path: status=$status out=$out"
+fi
+
+# --- Test 17: argument count ---------------------------------------------------
+run_scenario argcount_zero "" ""
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(curl_call_line_count argcount_zero)" -eq 0 ] && [ "$(gh_call_line_count argcount_zero)" -eq 0 ]; then
+    pass "zero positionals: usage error, exit 2, no calls"
+else
+    fail "zero positionals: status=$status out=$out"
+fi
+run_scenario argcount_one "" "" acme/small
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(curl_call_line_count argcount_one)" -eq 0 ] && [ "$(gh_call_line_count argcount_one)" -eq 0 ]; then
+    pass "one positional: usage error, exit 2, no calls"
+else
+    fail "one positional: status=$status out=$out"
+fi
+run_scenario argcount_three "" "" -- acme/small x.txt extra
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(curl_call_line_count argcount_three)" -eq 0 ] && [ "$(gh_call_line_count argcount_three)" -eq 0 ]; then
+    pass "three positionals after a terminator: usage error, exit 2, no calls"
+else
+    fail "three positionals after a terminator: status=$status out=$out"
+fi
+run_scenario argcount_terminator_dashpath "$(printf '0\tplain.txt')" "" -- acme/small --weird-path
+if [ "$status" -eq 0 ] && [ "$(curl_call_line_count argcount_terminator_dashpath)" -eq 1 ]; then
+    pass "terminator plus a doubly-dashed path: a legitimate two-positional call, reaches the API"
+else
+    fail "terminator plus a doubly-dashed path: status=$status out=$out calls=$(curl_calls argcount_terminator_dashpath)"
+fi
+
+# --- Test 18: a double-dash token without a terminator -------------------------
+run_scenario dashdash_noterm "" "" acme/small --weird
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(curl_call_line_count dashdash_noterm)" -eq 0 ] && [ "$(gh_call_line_count dashdash_noterm)" -eq 0 ]; then
+    pass "a positional beginning with two dashes, no terminator: usage error, exit 2, empty call logs (matches github-tree.sh's own behaviour for the same token)"
+else
+    fail "double-dash without a terminator: status=$status out=$out"
+fi
+
+# --- Test 19: a malformed owner/repo reference ----------------------------------
+run_scenario badslug "" "" notaslug x.txt
+if [ -z "$out" ] && [ "$status" -ne 0 ] && [ "$(curl_call_line_count badslug)" -eq 0 ] && [ "$(gh_call_line_count badslug)" -eq 0 ]; then
+    pass "malformed owner/repo reference: rejected locally, no calls to either command"
+else
+    fail "malformed owner/repo reference: status=$status out=$out"
+fi
+
+# --- Test 20: byte fidelity -----------------------------------------------------
+run_scenario fidelity_plain "$(printf '0\tplain.txt')" "" acme/fid plain.txt
+if cmp -s "$SCRATCH/fidelity_plain/stdout" "$BODIES_DIR/plain.txt"; then
+    pass "byte fidelity: ordinary fixture, stdout byte-identical (no added trailing newline, no banner, no filename)"
+else
+    fail "byte fidelity: ordinary fixture mismatch"
+fi
+run_scenario fidelity_nul "$(printf '0\twithnul.bin')" "" acme/fid withnul.bin
+if cmp -s "$SCRATCH/fidelity_nul/stdout" "$BODIES_DIR/withnul.bin"; then
+    pass "byte fidelity: NUL-byte fixture, stdout byte-identical (no silent truncation or drop of the NUL byte)"
+else
+    fail "byte fidelity: NUL-byte fixture mismatch"
+fi
+run_scenario fidelity_zero "$(printf '0\tzero.txt')" "" acme/fid zero.txt
+if [ "$status" -eq 0 ] && [ -z "$out" ]; then
+    pass "byte fidelity: zero-byte fixture, exit 0 with byte-empty stdout -- success distinguished from failure only by the exit code"
+else
+    fail "byte fidelity: zero-byte fixture status=$status out=$out"
+fi
+
+# --- Test 21: cleanup -------------------------------------------------------------
+# temp_leftover_count counts files matching mktemp's default naming pattern
+# left behind in a scenario's own scratch directory (which TMPDIR was
+# pointed at), proving the EXIT trap removed both of github-read.sh's own
+# temp files on every exit path, success or failure.
+temp_leftover_count() {
+    local dir="$SCRATCH/$1"
+    find "$dir" -maxdepth 1 -name 'tmp.*' 2>/dev/null | wc -l | tr -d ' '
+}
+run_scenario cleanup_success "$(printf '0\tplain.txt')" "" acme/cleanup1 plain.txt
+if [ "$(temp_leftover_count cleanup_success)" -eq 0 ]; then
+    pass "cleanup: after a successful read, the scratch temp directory holds no leftover mktemp file"
+else
+    fail "cleanup: leftover temp file(s) after a successful read"
+fi
+run_scenario cleanup_bothfail "$(printf '7\t')" "$(printf 'probe\trepos/acme/cleanup2/contents/x.txt\terror-404.json\t404\t\n')" acme/cleanup2 x.txt
+if [ "$(temp_leftover_count cleanup_bothfail)" -eq 0 ]; then
+    pass "cleanup: after a read where both backends failed, the scratch temp directory holds no leftover mktemp file"
+else
+    fail "cleanup: leftover temp file(s) after a both-backends-failed read"
+fi
+
+rm -rf "$SCRATCH"
+
 echo "==========================================================="
 if [ "$failures" -eq 0 ]; then
     echo "PASS: all github-read selftest assertions passed"
