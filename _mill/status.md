@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-collapsed-strip-readability
 branch: reed-collapsed-strip-readability
 plan: _mill/plan
@@ -26,4 +26,13 @@ plan-review-r2  '2026-08-31T10:38:41Z'
 plan-fix-r2  '2026-08-31T10:39:16Z'
 plan-review-r3  '2026-08-31T10:42:44Z'
 planned  '2026-08-31T10:43:00Z'
+implementing  '2026-08-31T10:43:28Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: collapsed-strip-default
+    state: pending
 ```
