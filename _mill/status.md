@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: raw-fetch-tree-scoping
 branch: raw-fetch-tree-scoping
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-08-31T16:38:13Z'
 holistic-reviewing  '2026-08-31T16:41:28Z'
 holistic-approved  '2026-08-31T16:45:36Z'
 done  '2026-08-31T16:47:03Z'
+pr-pending  '2026-08-31T16:47:48Z'
 ```
 
 ## Batches
