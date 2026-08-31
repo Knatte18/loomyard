@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-attach-multi-client-warning
+phase: approved-measurement-gate
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -34,6 +34,7 @@ self-resolved-verify-logic  '2026-08-31T13:16:56Z'
 blocked  '2026-08-31T13:27:12Z'
 approved-dotfill-repro-harness  '2026-08-31T13:43:37Z'
 approved-attach-multi-client-warning  '2026-08-31T13:48:23Z'
+approved-measurement-gate  '2026-08-31T14:01:08Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: 5fcb7ba535628ee0aec1dd19b2bd3c4a9cc725cd
     verify_baseline_failures: []
   - name: measurement-gate
-    state: running
+    state: approved
     implementer_session: 5ba1587c-ec4f-4bbf-8ee2-42041c346a2c
     start_sha: 4697ed372711fb5f1d676559bb19e6aa64f1996b
+    commit_sha: 364cba2ab2abddc19606e8445b509212cf2a5b87
     verify_baseline_failures: []
   - name: repaint-entry
     state: pending
