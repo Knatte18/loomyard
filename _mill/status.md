@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: self-resolved-verify-logic
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r4  '2026-08-31T12:48:32Z'
 plan-review-r5  '2026-08-31T12:54:16Z'
 planned  '2026-08-31T12:54:39Z'
 implementing  '2026-08-31T12:55:17Z'
+self-resolved-verify-logic  '2026-08-31T13:16:56Z'
 ```
 
 ## Batches

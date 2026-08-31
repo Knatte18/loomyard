@@ -9,6 +9,10 @@ verify: go test -tags smoke -count=1 -timeout 25m -run 'TestSmokeDotFill' ./inte
 depends-on: []
 ```
 
+## Prior failure
+
+- Round 1: `TestSmokeDotFillResizeControl cannot be made to reproduce the dot-fill artifact via harness resize-window in either direction in this environment, after fixing the dot-run predicate's glyph (tmux 3.6 emits U+00B7, not ASCII '.') got the other two new tests passing; extensive additional reproduction techniques (multi-step drag resize, concurrent-capture race hunting, 8-15 strand stacks) also failed to hit within the plan's 5s window`
+
 ## Batch Scope
 
 This batch builds the measuring instrument and nothing else: a new build-tagged `smoke` test file that reproduces the dot-fill artifact headlessly and asserts on the *rendered client output*.
@@ -152,9 +156,10 @@ Batch-local decision beyond `## Shared Decisions`: the control scenarios must **
   2. `harnessOnlyPaneID` for the harness pane, then `attachIn` on it.
   3. **Last setup step, after the attach:** read reed's array with `windowResizedEntries`, filter it with `pinOnlyEntries`, and rewrite it with `rewriteWindowResizedArray`.
      Then read it back again and pass it to `assertOnlyPinEntries`.
-  4. Fire the trigger: resize the harness window with `resize-window -t h -x <w> -y <h>` against the harness socket, in both directions — first a shrink to a distinctly smaller size, then a grow back past the original.
+  4. Fire the trigger: resize **reed's own window directly**, with `resize-window -t <reedSession> -x <w> -y <h>` against **reed's own socket** (`h.reedSocket`/`h.reedSession`), in both directions — first a shrink to a distinctly smaller size, then a grow back past the original.
      Both directions are required;
      the shrink direction is the half a growth-only mechanism misses.
+     (Corrected from an earlier cascaded-resize design that resized the outer harness window instead: a live diagnostic during batch 1 confirmed that resizing the harness window's pane, expecting the resize to cascade through the attached client's terminal into reed's own window-resize hook, does not reliably reproduce the artifact in this container's tmux 3.6 build within any timing tried — while resizing reed's own window directly on reed's own socket reproduces it reliably. Both paths exercise the same code under test (reed's `window-resized` hook array firing on a real window-dimension change to a window carrying the `resize-pane` pins); only the delivery mechanism changes.)
   5. Assert `pollPaneHasDotRun` returns `true` against the harness pane within a 5 s deadline, passing on the first hit.
 
   The failure message must state that a control that does not hit means the harness can no longer reproduce the bug and every companion absence assertion has become vacuous — so this is a run failure, not a skip.
