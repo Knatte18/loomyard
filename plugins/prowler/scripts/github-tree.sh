@@ -36,6 +36,11 @@
 # The check runs on every append, not once at the end, so a listing that
 # would exceed the ceiling never burns the rest of its `gh` call budget
 # just to arrive at a rejection already determined earlier in the walk.
+#
+# `--children` lists one path's direct children without recursing: a
+# directory entry is marked with a single trailing slash, a file entry
+# carries no marker, and a trailing slash cannot collide with a file name
+# because a blob path never ends in one.
 set -u
 
 # die prints one message to stderr and exits 1. It is not used for the
@@ -256,74 +261,114 @@ emit() {
     fi
 }
 
-# The walk itself: one explicit FIFO queue in the main shell, never a
-# recursive shell function and never a LIFO stack, so output order is
-# fixed to the order work items were appended -- the root's own blobs
-# first, then each subtree's blobs in the order its parent listing gave
-# them, at every depth.
-#
-# Each queue item is a tab-separated 4-tuple: mode ("rec" or "nonrec"), a
-# ref, a path prefix, and a kind ("root" or "child", see fetch() above).
-queue=("rec"$'\t'"$BASE_REF"$'\t'"$PREFIX"$'\t'"root")
-head=0
-
-while [ "$head" -lt "${#queue[@]}" ]; do
-    item="${queue[$head]}"
-    head=$((head + 1))
-
-    mode="${item%%$'\t'*}"
-    rest="${item#*$'\t'}"
-    ref="${rest%%$'\t'*}"
-    rest="${rest#*$'\t'}"
-    prefix="${rest%%$'\t'*}"
-    kind="${rest#*$'\t'}"
-
-    if [ "$mode" = "rec" ]; then
-        fetch "repos/$REPO/git/trees/$ref?recursive=1" "$kind"
-        if [ "$FETCH_TRUNCATED" = "true" ]; then
-            # Truncated: re-fetch the same ref non-recursively instead of
-            # trusting this partial listing.
-            queue+=("nonrec"$'\t'"$ref"$'\t'"$prefix"$'\t'"$kind")
-            continue
-        fi
+if [ "$CHILDREN" -eq 1 ]; then
+    # --children lists exactly one path's direct children and never
+    # recurses: one fetch against the non-recursive endpoint (no
+    # ?recursive=1 suffix), reusing fetch/BASE_REF/PREFIX/JQ_EXPR unchanged
+    # so a --children run makes exactly one gh call. The non-recursive
+    # truncation abort is restated here rather than inherited, because it
+    # lives inside the recursive walk's own else branch below, which this
+    # arm never enters.
+    fetch "repos/$REPO/git/trees/$BASE_REF" "root"
+    if [ "$FETCH_TRUNCATED" = "true" ]; then
+        die "github-tree: repos/$REPO — the non-recursive listing of '$BASE_REF' is itself truncated; this repository has a directory too large for the GitHub tree API"
+    fi
+    # The [ -gt 0 ] guard keeps an empty directory a genuine no-op under
+    # set -u rather than an unbound-variable error.
+    if [ "${#FETCH_ENTRIES[@]}" -gt 0 ]; then
         for entry in "${FETCH_ENTRIES[@]}"; do
             etype="${entry%%$'\t'*}"
             erest="${entry#*$'\t'}"
-            epath="${erest#*$'\t'}"
-            if [ "$etype" = "blob" ]; then
-                emit "$prefix$epath"
-            fi
-            # "tree" entries within an untruncated recursive listing need
-            # no further queueing -- the recursive listing already
-            # descended into them. "commit" entries (submodules) are
-            # skipped silently: a submodule path is not readable through
-            # this repository's contents API.
-        done
-    else
-        fetch "repos/$REPO/git/trees/$ref" "$kind"
-        if [ "$FETCH_TRUNCATED" = "true" ]; then
-            die "github-tree: repos/$REPO — the non-recursive listing of '$ref' is itself truncated; this repository has a directory too large for the GitHub tree API"
-        fi
-        for entry in "${FETCH_ENTRIES[@]}"; do
-            etype="${entry%%$'\t'*}"
-            erest="${entry#*$'\t'}"
-            esha="${erest%%$'\t'*}"
             epath="${erest#*$'\t'}"
             case "$etype" in
             blob)
-                emit "$prefix$epath"
+                emit "$PREFIX$epath"
                 ;;
             tree)
-                queue+=("rec"$'\t'"$esha"$'\t'"$prefix$epath/"$'\t'"child")
+                # A single trailing slash marks a directory; a blob path
+                # never ends in one, so the marker cannot collide with a
+                # file name. This is the one place the recursive modes'
+                # blob-paths-only output contract does not apply.
+                emit "$PREFIX$epath/"
                 ;;
             *)
                 # "commit" entries (submodules) are skipped silently, same
-                # reason as above.
+                # reason as the recursive walk below.
                 ;;
             esac
         done
     fi
-done
+else
+    # The walk itself: one explicit FIFO queue in the main shell, never a
+    # recursive shell function and never a LIFO stack, so output order is
+    # fixed to the order work items were appended -- the root's own blobs
+    # first, then each subtree's blobs in the order its parent listing gave
+    # them, at every depth.
+    #
+    # Each queue item is a tab-separated 4-tuple: mode ("rec" or "nonrec"),
+    # a ref, a path prefix, and a kind ("root" or "child", see fetch()
+    # above).
+    queue=("rec"$'\t'"$BASE_REF"$'\t'"$PREFIX"$'\t'"root")
+    head=0
+
+    while [ "$head" -lt "${#queue[@]}" ]; do
+        item="${queue[$head]}"
+        head=$((head + 1))
+
+        mode="${item%%$'\t'*}"
+        rest="${item#*$'\t'}"
+        ref="${rest%%$'\t'*}"
+        rest="${rest#*$'\t'}"
+        prefix="${rest%%$'\t'*}"
+        kind="${rest#*$'\t'}"
+
+        if [ "$mode" = "rec" ]; then
+            fetch "repos/$REPO/git/trees/$ref?recursive=1" "$kind"
+            if [ "$FETCH_TRUNCATED" = "true" ]; then
+                # Truncated: re-fetch the same ref non-recursively instead
+                # of trusting this partial listing.
+                queue+=("nonrec"$'\t'"$ref"$'\t'"$prefix"$'\t'"$kind")
+                continue
+            fi
+            for entry in "${FETCH_ENTRIES[@]}"; do
+                etype="${entry%%$'\t'*}"
+                erest="${entry#*$'\t'}"
+                epath="${erest#*$'\t'}"
+                if [ "$etype" = "blob" ]; then
+                    emit "$prefix$epath"
+                fi
+                # "tree" entries within an untruncated recursive listing
+                # need no further queueing -- the recursive listing
+                # already descended into them. "commit" entries
+                # (submodules) are skipped silently: a submodule path is
+                # not readable through this repository's contents API.
+            done
+        else
+            fetch "repos/$REPO/git/trees/$ref" "$kind"
+            if [ "$FETCH_TRUNCATED" = "true" ]; then
+                die "github-tree: repos/$REPO — the non-recursive listing of '$ref' is itself truncated; this repository has a directory too large for the GitHub tree API"
+            fi
+            for entry in "${FETCH_ENTRIES[@]}"; do
+                etype="${entry%%$'\t'*}"
+                erest="${entry#*$'\t'}"
+                esha="${erest%%$'\t'*}"
+                epath="${erest#*$'\t'}"
+                case "$etype" in
+                blob)
+                    emit "$prefix$epath"
+                    ;;
+                tree)
+                    queue+=("rec"$'\t'"$esha"$'\t'"$prefix$epath/"$'\t'"child")
+                    ;;
+                *)
+                    # "commit" entries (submodules) are skipped silently,
+                    # same reason as above.
+                    ;;
+                esac
+            done
+        fi
+    done
+fi
 
 # Nothing is written to stdout until the queue is exhausted with no error.
 # Zero blobs is a success (exit 0, empty stdout) -- the guard below just
