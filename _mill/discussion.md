@@ -16,8 +16,8 @@ they can only infer it from a *different* verb refusing with `*ErrMergeInProgres
 That inference is also only half-reliable, which shapes the scope below.
 `*ErrMergeInProgress` is raised from **two** distinct predicates, and they answer different questions:
 
-- `mergeBlocksMutation` → `f.mergeRecordExists()` — *"is **this pair** mid-merge"* (`commit.go:123`, `pull.go:237`, `checkout.go:48`, `remove.go:65`).
-- `mergeSourceInFlight` — *"is some **other pair in the hub** mid-merge **on this pair's branch**"* (`remove.go:81`, implemented at `mergestate.go:209-226`, which globs every pair's `fabric-merge.json` looking for a record whose `Source` is this warp branch).
+- The **this-pair record predicate** — `f.mergeRecordExists()` (`mergestate.go:179`), reached either directly (`commit.go:123`, `pull.go:237`, `merge.go:61`/`:133`/`:334`, `mergeguards.go:162`, `mergestage.go:58`) or through the `mergeBlocksMutation` wrapper (`mergestate.go:198`, whose only two call sites are `checkout.go:48` and `remove.go:65`) — *"is **this pair** mid-merge"*.
+- `mergeSourceInFlight` (`mergestate.go:226`) — *"is some **other pair in the hub** mid-merge **on this pair's branch**"*. Called at `remove.go:76`, with the refusal raised at `remove.go:81`. It globs every pair's `fabric-merge.json` looking for a record whose `Source` is this warp branch.
 
 `MergeInProgress()` is the first sense only — it is a one-line delegation to `mergeRecordExists()`.
 So the new field is *not* a complete read-only mirror of "the verb that refused": a `remove` can refuse with `*ErrMergeInProgress` on the hub-wide predicate while this pair's own `merge_in_progress` is legitimately `false`.
@@ -43,7 +43,8 @@ folding it into the `status` verb's output was deliberately deferred as a small 
 
 - `internal/fabricengine`'s **behavior** — no engine code change at all. `MergeInProgress()` is used exactly as it ships; its signature, semantics and doc comment at `mergelifecycle.go:414-419` are untouched. The `doc.go` edit listed above is prose in the package's merge section, not a change to any engine API.
 - `mergeSourceInFlight`'s hub-wide sense — the "some other pair is mid-merge on this branch" predicate (`mergestate.go:209-226`) is **not** surfaced by this task, in any field. It is a different subject with a different answer, it is unexported with no exported accessor, and exposing it would mean designing new engine API. `status` gains one field with one sense.
-- Foreign (plain-git) merge state. `MergeInProgress` deliberately never consults `foreignMergeStatePresent` (`mergelifecycle.go:414-417`); surfacing that separately is new semantics, not exposing the existing API, and is not in this task.
+- Foreign (plain-git) merge state — **excluded by choice, not by mechanical constraint.** `MergeInProgress` deliberately never consults `foreignMergeStatePresent` (`mergelifecycle.go:414-417`), and the exported `MergeStateActive(l *lyxcwd.Location) (bool, error)` (`internal/fabricengine/mergestateactive.go:36`) already answers the git-level question from exactly the `*lyxcwd.Location` that `statusCmd`'s closure holds (`weft_verbs.go:89`), so a second field could be wired with no new engine API at all. It is still out of scope, for three reasons: the roadmap item names `MergeInProgress` and nothing else; `MergeStateActive` is a **third, different** sense — weft-only and git-level, distinct from both `MergeInProgress` and the two-sided `foreignMergeStatePresent` (its own doc comment says so) — so shipping it alongside would put two same-shaped booleans with subtly different subjects in one envelope, which is the ambiguity the `field-is-this-pair-only` decision exists to avoid; and naming, help text, and the operator story for a foreign-state field are a design question this task has not asked, not a plumbing detail. A follow-up may add it deliberately;
+  this task does not add it by accident.
 - Richer merge detail. The on-disk `mergeState` record (`internal/fabricengine/mergestate.go:47`) carries verb/source/outcomes/`StartedAt`, but no exported accessor returns it. Exposing it would mean designing and shipping new engine API.
 - A new verb. This folds into the existing `status` verb; no `lyx fabric merge-status` is added.
 - Any other verb's envelope. `commit`, `push`, `pull`, `sync`, `diff`, and the merge verbs are unchanged.
@@ -146,6 +147,8 @@ So "surface it in the output" means exactly "add a JSON key".
 - `setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")` + `branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")` followed by `RunCLIIn(…, []string{"merge-in", "feature"})` returning exit 1 is the established way to park a conflicted merge — see `TestRunCLI_MergeStageRejectsAPathThatIsNotConflicted` (`merge_cli_integration_test.go:432-445`) for the exact sequence.
 - `gitOutputCLI(t, dir, args…)` (`cli_test.go:723`) for raw git assertions if needed.
 
+**`MergeStateActive` is not the method to call here.** `internal/fabricengine/mergestateactive.go:36` exports a similarly-shaped `(bool, error)` probe taking the same `*lyxcwd.Location` the closure holds, and `internal/loomcli/wiring.go:51` already calls it — but it answers the *git-level, weft-only* question, not fabric's own record. Its own doc comment states the distinction outright. `statusCmd` calls `fab.MergeInProgress()`.
+
 **Gotcha — JSON booleans decode as `any`.** `decodeResult` returns `map[string]any`;
 a JSON `false` decodes to `interface{}(false)`, so a bare `if !result["merge_in_progress"].(bool)` on a *missing* key panics rather than failing cleanly.
 Existing tests use the comma-ok form (`if ok, _ := envelope["ok"].(bool); !ok`) plus a separate presence check (`if _, present := result["mutations"]; present`);
@@ -170,6 +173,11 @@ From `CLAUDE.md`:
 
 Single module under test: `internal/fabriccli`. No engine tests change.
 
+**Build tier — the new test is `integration`-tagged.** It calls `hubforge.NewHub`, which the **Test Tier Purity Invariant** (`CONSTRAINTS.md:192-197`) bars from untagged files.
+Every peer in this package already carries `//go:build integration` on line 1 (`cli_test.go`, `merge_cli_integration_test.go`), so the new test — whether it lands in an existing file or a new one — carries the same tag.
+Verification must therefore pass `-tags integration`;
+an untagged `go test ./internal/fabriccli/...` compiles none of these files, so the TDD red step and both scenarios would silently not run and the pass would be vacuous.
+
 **TDD candidate — the new integration test.** Write it first;
 it fails on the current `statusCmd` (missing key) and passes once the field is added.
 
@@ -188,7 +196,12 @@ Regression coverage that must stay green **without modification**:
 Whether the two cases live in one test function with subtests or two top-level functions is mill-plan's call;
 the established style in this package is one top-level `TestRunCLI_*` per behavior, with `t.Run` subtests when the cases share expensive hub setup.
 
-Verify with the repo's normal Go build/test path (`golang:golang-build`) over `./internal/fabriccli/...` at minimum, and the full suite before handoff.
+**The `error-handling` decision is deliberately left uncovered.** Inducing a non-nil error from `MergeInProgress()` means making the pair's `fabric-merge.json` unreadable-but-present (a torn record, or a permission failure through `internal/state`'s locked reader) — a fixture that is platform-dependent, would have to reach past the engine's own API to build, and would pin the error path to today's internal record layout rather than to the CLI behavior under test.
+The behavior it guards is one `if err != nil` branch copied verbatim from the adjacent `fab.Status()` path, so a plan should record this as intentionally untested rather than quietly having no scenario for it.
+Do not invent an engine-level seam or export a test hook to make it reachable — that would be new API, which the Scope/Out section rules out.
+
+Verify with the repo's normal Go build/test path (`golang:golang-build`), running **both** tiers over `./internal/fabriccli/...`: the untagged tier for the regression pins, and `-tags integration` for the new test and the existing `TestRunCLI_*` suite (including `TestRunCLI_ReadOnlyVerbsOmitMutationsKey`, which is itself `integration`-tagged).
+Run the full suite before handoff.
 
 ## Q&A log
 
@@ -196,7 +209,9 @@ Verify with the repo's normal Go build/test path (`golang:golang-build`) over `.
 - **Q:** Is the key always present, or emitted only when a merge is parked? **A:** [auto-pick] Always present, `false` when clean. **Why:** `envelope.go`'s stated contract is that fabric's key set does not vary by outcome, so a consumer never distinguishes absent from false.
 - **Q:** What happens when `MergeInProgress()` returns an error? **A:** [auto-pick] Fail the verb through `output.Err`, same as the existing `fab.Status()` error path. **Why:** the state is unknown, not known-clean; emitting `false` would assert an unobserved fact.
 - **Q:** Probe merge state before or after `fab.Status()`? **A:** [auto-pick] After. **Why:** preserves today's error precedence for an already-broken pair.
-- **Q:** Should foreign (plain-git) merge state be surfaced alongside it? **A:** [auto-pick] No — out of scope. **Why:** `MergeInProgress` deliberately excludes `foreignMergeStatePresent`; including it changes semantics rather than exposing the shipped API.
+- **Q:** Should foreign (plain-git) merge state be surfaced alongside it, given the exported `MergeStateActive` makes it reachable with no new API? **A:** [auto-pick] No — excluded by choice, with the choice stated. **Why:** it is a third, different sense (weft-only, git-level) from both `MergeInProgress` and `foreignMergeStatePresent`; two same-shaped booleans with different subjects in one envelope is the exact ambiguity `field-is-this-pair-only` exists to prevent, and the roadmap item names `MergeInProgress` alone.
+- **Q:** Which build tier does the new test land in? **A:** [auto-pick] `//go:build integration`, verified with `-tags integration`. **Why:** it calls `hubforge.NewHub`, which the Test Tier Purity Invariant bars from untagged files; without the tag the test would not compile into the run and the pass would be vacuous.
+- **Q:** Does the `error-handling` decision get a test scenario? **A:** [auto-pick] No — recorded as intentionally untested. **Why:** inducing the error needs a torn or unreadable `fabric-merge.json` built past the engine's API, pinning the test to internal record layout; the guarded branch is copied verbatim from the adjacent `Status()` error path.
 - **Q:** Does adding a field make `status` route through `okWithRecord`? **A:** [auto-pick] No — `status` stays read-only with no `mutations`/`partial` keys. **Why:** nothing is mutated, and `TestRunCLI_ReadOnlyVerbsOmitMutationsKey` pins this as a machine-held decision.
 - **Q:** Which docs move in this commit? **A:** [auto-pick] `statusCmd`'s `Long`, `docs/overview.md:210`, `internal/fabricengine/doc.go:1116`, `SANDBOX-FABRIC-SUITE.md` F3 and F18, and the roadmap item Planned → Done. **Why:** CLAUDE.md requires same-commit docs for observable CLI changes, and a repo-wide `grep -rn "fabric status"` found five live claims about status's output — the disposition table under `docs-in-same-commit` records each one, including the three deliberately left alone.
 - **Q:** `*ErrMergeInProgress` is raised from two predicates (this-pair `mergeRecordExists` and hub-wide `mergeSourceInFlight`) — which does the field answer, and does the other get surfaced? **A:** [auto-pick] This-pair only, named as such in the `Long` text; the hub-wide sense is explicitly out of scope. **Why:** `MergeInProgress()` delegates to `mergeRecordExists` alone, so `merge_in_progress: false` can legitimately coexist with a `remove` refusing on the hub-wide predicate; the help text has to say which question it answers, and `mergeSourceInFlight` is unexported with no accessor, so exposing it would need new engine API.
