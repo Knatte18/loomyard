@@ -3,7 +3,7 @@
 ```yaml
 task: Add cross-repo code search to prowler
 slug: cross-repo-code-search
-approved: false
+approved: true
 started: 20260831-152840
 parent: main
 root: ""

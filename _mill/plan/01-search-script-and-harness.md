@@ -283,7 +283,7 @@ Batch-local decisions that differ from `## Shared Decisions` in the overview:
   6. **Search 403 mid-sweep, repo 2 of 3.**
      All three preflights succeed;
      repo 1's search succeeds and repo 2's search returns 403.
-     Assert a non-zero exit and byte-empty stdout despite repo 1 having produced records, and assert that repo 3's search call was never made.
+     Assert a non-zero exit, byte-empty stdout despite repo 1 having produced records, stderr naming both the offending repo and the 403 status, and that repo 3's search call was never made.
   7. **Search 422.**
      One repo whose search call returns 422.
      Assert a non-zero exit, byte-empty stdout, and stderr carrying the status.
