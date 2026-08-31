@@ -46,7 +46,9 @@ batches:
     commit_sha: c801d43f50c3f097ac7a22daba5fe81e094bef7c
     verify_baseline_failures: []
   - name: attach-multi-client-warning
-    state: pending
+    state: running
+    implementer_session: 950f2296-4b0e-44ff-9b5e-c4410765635b
+    start_sha: 64a742c2d2f550d63f3cc2336ee559caec5c448e
     verify_baseline_failures: []
   - name: measurement-gate
     state: pending
