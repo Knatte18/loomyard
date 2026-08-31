@@ -57,6 +57,9 @@ func chainedAttachArgv(socket, session, layout string) []string {
 // this builder checks — the session existing, the geometry option pins and their readbacks, the
 // persisted state, the live pane list, both layout guards, and the layout plan itself — degrades to
 // the bare attach-session argv on failure, logged via logger.Warn rather than surfaced as an error.
+// The pre-flight also lists the session's currently attached clients, but that listing is the one
+// step that is not a precondition at all: it gates nothing and can never suppress the chain, so it
+// belongs in this sentence only as the pre-flight's complete inventory, not as another degrade path.
 //
 // cols and rows are the attaching client's own terminal size, in columns and rows; a non-positive
 // value means no client size is known, and AttachArgv returns the bare argv immediately without
@@ -81,6 +84,8 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}
+
+		e.warnMismatchedClientsLocked(cols, rows)
 
 		// The pins are made here, by the builder itself, not by a second exported call a CLI must
 		// remember. The ordering is load-bearing: the told box is only correct once "status off" has
@@ -196,4 +201,35 @@ func parseClientList(out string) []attachedClient {
 		clients = append(clients, attachedClient{Name: fields[0], Width: width, Height: height})
 	}
 	return clients
+}
+
+// warnMismatchedClientsLocked lists this session's currently attached clients and logs one
+// logger.Warn per client whose size differs from cols/rows, the size this attach was told. It
+// returns nothing and never blocks the chain: this is the uncovered subset of the resize-dot-fill
+// root-cause model (see the discussion's root-cause-model decision) — tmux is correctly painting
+// real estate no other client's window can cover, and the warning's whole job is to name the
+// specific other terminal an operator should go look at, not to repair anything.
+//
+// It is called deliberately ahead of every in-closure degrade return in AttachArgv — before
+// pinGeometryOptionsLocked and everything after it — so the warning still fires on an attach whose
+// chain is later suppressed. That is precisely the attach an operator is most likely to be confused
+// by: a bare (unchained) attach gives no other hint that a second client is holding the window at a
+// different size.
+//
+// A round-trip error is logged via logger.Warn, naming the socket, the session, and the error, and
+// warnMismatchedClientsLocked returns without emitting any per-client line — exactly the
+// Shared Decision geometry-tmux-failures-are-non-fatal-everywhere already governs the rest of this
+// package's tmux calls. It never returns an error and never introduces a degrade path.
+func (e *Engine) warnMismatchedClientsLocked(cols, rows int) {
+	out, err := e.tmux.output("list-clients", "-t", exactSessionTarget(e.SessionName()), "-F", "#{client_name} #{client_width} #{client_height}")
+	if err != nil {
+		logger.Warn("reed: failed to list attached clients, skipping the multi-client size check", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return
+	}
+	for _, client := range parseClientList(out) {
+		if client.Width == cols && client.Height == rows {
+			continue
+		}
+		logger.Warn("reed: another client is attached at a different size; tmux must pick one window size, so the mismatched client shows tmux padding until it is resized or detached", "socket", e.Socket(), "session", e.SessionName(), "client", client.Name, "clientWidth", client.Width, "clientHeight", client.Height, "toldCols", cols, "toldRows", rows)
+	}
 }
