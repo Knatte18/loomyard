@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-skill and README documentation
+phase: holistic-reviewing
 slug: raw-fetch-tree-scoping
 branch: raw-fetch-tree-scoping
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-31T16:10:57Z'
 approved-github-tree flag parsing, children mode, entry-count guard  '2026-08-31T16:19:02Z'
 approved-github-read raw-first script and its offline harness  '2026-08-31T16:30:28Z'
 approved-skill and README documentation  '2026-08-31T16:32:40Z'
+holistic-reviewing  '2026-08-31T16:33:06Z'
 ```
 
 ## Batches
