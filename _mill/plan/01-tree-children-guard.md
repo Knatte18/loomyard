@@ -180,6 +180,7 @@ The one accepted behavioural deviation is a positional argument beginning with t
   - `plugins/prowler/scripts/github-tree.sh`
   - `plugins/prowler/scripts/testdata/github-tree/bin/gh`
   - `plugins/prowler/scripts/testdata/github-tree/bodies/scoped-src-rec.json`
+  - `plugins/prowler/scripts/testdata/github-tree/bodies/children-src-nonrec.json`
 - **Edits:**
   - `plugins/prowler/scripts/github-tree-selftest.sh`
 - **Creates:** none
@@ -197,7 +198,8 @@ The one accepted behavioural deviation is a positional argument beginning with t
   Then cover the two accepting cases.
   A `--` terminator followed by a path beginning with a dash must be accepted as a path and reach the API — map the endpoint the resulting `BASE_REF` produces and assert a `gh` call was made.
   A single-dash token in path position, with no terminator, must still reach path validation and the API exactly as it does today, proving the flag test is on a leading double dash only.
-  Finally, assert that combining both flags with both positionals parses — `--children` and `--max-entries` together ahead of an owner/repo and a path — by mapping the scoped non-recursive endpoint and asserting a successful listing.
+  Finally, assert that combining both flags with both positionals parses — `--children` and `--max-entries` together ahead of an owner/repo and a path — by mapping the scoped non-recursive endpoint to `children-src-nonrec.json` and asserting a successful listing.
+  Use that fixture rather than a recursively-named one, so the harness's `-rec` and `-nonrec` suffixes keep meaning which endpoint shape a fixture represents.
 - **Commit:** `test(prowler): assert github-tree.sh flag parsing and usage-error exit codes`
 
 ## Batch Tests

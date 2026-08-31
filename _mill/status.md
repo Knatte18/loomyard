@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r4
+phase: plan-fix-r4
 slug: raw-fetch-tree-scoping
 branch: raw-fetch-tree-scoping
 plan: _mill/plan
@@ -25,4 +25,5 @@ plan-fix-r2  '2026-08-31T15:54:54Z'
 plan-review-r3  '2026-08-31T16:01:39Z'
 plan-fix-r3  '2026-08-31T16:02:21Z'
 plan-review-r4  '2026-08-31T16:09:38Z'
+plan-fix-r4  '2026-08-31T16:10:19Z'
 ```

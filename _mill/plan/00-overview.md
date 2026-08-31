@@ -3,7 +3,7 @@
 ```yaml
 task: "Prefer raw fetch, scope large tree listings"
 slug: "raw-fetch-tree-scoping"
-approved: false
+approved: true
 started: "20260831-153224"
 parent: "main"
 root: ""

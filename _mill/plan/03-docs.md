@@ -51,6 +51,9 @@ and `CONSTRAINTS.md` is unchanged, since no new cross-cutting invariant arises.
   it is the documented answer to reading many files, which is why the read script needs no batch mode.
   Finally, consult `plugins/prowler/scripts/testdata/github-read/CAPTURE.md`: if the capture recorded that the raw host answers a symlink with a 200 and its target path as the body, add one sentence recording that a symlink path reads back as its target path rather than failing, since the type guard is reachable only on the fallback path and probing before every read would erase the entire measured win.
   If the capture recorded a non-2xx instead, that limitation is empty in practice and the sentence is omitted.
+  If the capture recorded the question as unresolved — no symlink was reachable to test at all — the sentence is likewise omitted, because a caveat asserting behaviour nobody observed would be worse than none;
+  card 8's own record already carries the open question for a later task to close.
+  Those three outcomes are the only ones the capture can record, and each now has a stated disposition.
 - **Commit:** `docs(prowler): document raw-first reads and scoped listings in github-repo-explorer`
 
 ### Card 17: plugin README — the read script, the new mode, and the guard
