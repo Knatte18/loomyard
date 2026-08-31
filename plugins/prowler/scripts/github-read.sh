@@ -189,3 +189,99 @@ if command -v curl >/dev/null 2>&1; then
     # successfully (the zero-byte-file case) is a valid outcome the
     # harness asserts explicitly. Fall through to the gh api fallback.
 fi
+
+# --- gh api fallback: type probe, raw-Accept fetch, and diagnosis -------
+#
+# Reached whenever the raw attempt above did not already exit. Both calls
+# below are paid only once the raw attempt has already failed, which is the
+# rare and far slower path.
+#
+# diagnose <endpoint> <exit-status> derives the HTTP status of whichever
+# call just failed and `die`s with the matching message. The order is
+# deliberate: the body is checked first, because GitHub answers a non-2xx
+# with a JSON error body carrying a `status` field whatever media type was
+# requested, and `gh` writes that body to stdout -- the same `status`
+# pattern github-tree.sh already uses. The stderr pass runs second, not
+# first, because its message text is a CLI presentation string, not an API
+# contract, and is the more likely of the two to change between releases.
+# If neither source yields a code, the generic form names the endpoint, the
+# exit status, and the body, with the body collapsed to one physical line
+# the way github-tree.sh already collapses it, keeping the one-stderr-line
+# contract literally.
+diagnose() {
+    local endpoint="$1" status="$2" body http
+
+    body="$(cat "$BODY_FILE" 2>/dev/null)"
+    http=""
+    if [[ "$body" =~ \"status\"[[:space:]]*:[[:space:]]*\"?([0-9]{3})\"? ]]; then
+        http="${BASH_REMATCH[1]}"
+    elif [[ "$(cat "$STDERR_FILE" 2>/dev/null)" =~ \(HTTP\ ([0-9]{3})\) ]]; then
+        http="${BASH_REMATCH[1]}"
+    fi
+
+    if [ "$http" = "401" ]; then
+        die "github-read: repos/$REPO — not authenticated (HTTP 401); run 'gh auth login'"
+    elif [ "$http" = "403" ]; then
+        die "github-read: repos/$REPO — rate limited or access denied (HTTP 403)"
+    elif [ "$http" = "404" ]; then
+        die "github-read: repos/$REPO — path '$path' not found (HTTP 404)"
+    else
+        local collapsed="${body//$'\n'/ }"
+        die "github-read: gh api $endpoint failed (exit $status): $collapsed"
+    fi
+}
+
+# The type probe: one jq expression answers "dir" for a JSON-array
+# response and the response's own `type` field otherwise, so one expression
+# covers both shapes and no runtime `jq` is ever invoked -- every JSON
+# field here is extracted through `gh api --jq`, which uses `gh`'s embedded
+# engine, never a system `jq`.
+#
+# The probe exists because the contents endpoint answers a directory with
+# HTTP 200 and a JSON listing, which a non-zero-exit trigger does not
+# catch and which the no-body-inspection rule would otherwise write to
+# stdout as file content -- the one failure mode where the caller cannot
+# tell anything went wrong, since exit 0 plus plausible-looking bytes is
+# indistinguishable from success. The probe's own response carries base64
+# content that is downloaded and discarded; that waste is accepted because
+# it is paid only on the rare, already-slow fallback path.
+#
+# The probe is also a default-media-type contents call, so it cannot
+# inline a blob above roughly one megabyte -- such a file fails at the
+# probe even though the fetch behind it could have read it. This is parity
+# with what the skill documents today, not a regression; the raw path has
+# no such ceiling.
+PROBE_ENDPOINT="repos/$REPO/contents/$path"
+PROBE_JQ='if type=="array" then "dir" else .type end'
+
+gh api "$PROBE_ENDPOINT" --jq "$PROBE_JQ" >"$BODY_FILE" 2>"$STDERR_FILE"
+probe_status=$?
+if [ "$probe_status" -ne 0 ]; then
+    diagnose "$PROBE_ENDPOINT" "$probe_status"
+fi
+
+probe_type="$(cat "$BODY_FILE")"
+if [ "$probe_type" != "file" ]; then
+    if [ "$probe_type" = "dir" ]; then
+        die "github-read: repos/$REPO — '$path' is a directory, not a file; use github-tree.sh --children to list its entries"
+    else
+        die "github-read: repos/$REPO — '$path' is a $probe_type, not a file; use github-tree.sh --children to list its entries"
+    fi
+fi
+
+# Only reached when the probe answered "file": the second call fetches the
+# same contents endpoint with the raw media type, whose response body is
+# the file content itself -- not the base64-plus-decode form, which
+# inflates the transferred payload by roughly a third and adds a parse and
+# a decode step for the same bytes over the same authenticated path.
+gh api "$PROBE_ENDPOINT" -H "Accept: application/vnd.github.raw" >"$BODY_FILE" 2>"$STDERR_FILE"
+content_status=$?
+if [ "$content_status" -ne 0 ]; then
+    # Nothing is ever written to stdout on this failure path, even though
+    # the error body was written into $BODY_FILE the success path below
+    # would have emitted.
+    diagnose "$PROBE_ENDPOINT" "$content_status"
+fi
+
+cat "$BODY_FILE"
+exit 0
