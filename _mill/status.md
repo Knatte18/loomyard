@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r2
 slug: reed-collapsed-strip-readability
 branch: reed-collapsed-strip-readability
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-29T17:31:26Z'
+discussion-fix-r2  '2026-08-31T10:18:39Z'
 ```

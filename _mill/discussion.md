@@ -23,8 +23,8 @@ The fix direction chosen here is to make liveness read from *real recent output*
 
 **In:**
 
-- `internal/reedengine/template_posix.yaml` — `collapsed_strip_rows: 3` → `6`, and extend the key's inline comment with the readability rationale.
-- `internal/reedengine/template_windows.yaml` — the same two edits, identical values.
+- `internal/reedengine/template_posix.yaml` — `collapsed_strip_rows: 3` → `6`, and extend the key's inline comment with two things: the readability rationale, and the reconcile adoption caveat ("an already-materialized reed.yaml keeps whatever value it holds, since reconcile is key-based and never rewrites a value") worded to match the `mouse` and `watchdog` comments in the same file that already carry it.
+- `internal/reedengine/template_windows.yaml` — the same two edits, identical values and identical comment text.
 - `internal/reedengine/config_test.go` — the two template-default assertions at lines 61 and 138 (`CollapsedStripRows != 3`) move to `6`.
 - `internal/reedengine/doc.go` — one minimal reword of the silent-layout-rescale anecdote so its "3-row collapsed strip" is marked as the then-default rather than reading as the current one.
 
@@ -46,7 +46,12 @@ The fix direction chosen here is to make liveness read from *real recent output*
 - Decision: `collapsed_strip_rows` defaults to `6`.
 - Rationale: the strip must show enough consecutive recent output lines that a still-producing process is visibly moving, which is what makes liveness readable without a cross-check.
   Three rows in practice yields one line of visible text once a TUI's trailing status/padding lines are accounted for.
-  Six is the smallest value that reliably clears that bar while staying cheap when strips stack: on the boot box (50 rows, header 1 + its divider 1 = 48 usable), four stacked strips plus dividers cost 28 rows and still leave the active pane 20; on a 30-row attached client, three stacked strips leave the active pane 7 — in neither case does `clampToFit` fire.
+  Six is the smallest value that reliably clears that bar while staying cheap when strips stack: on the boot box (50 rows, header 1 + its divider 1 = 48 usable), four stacked strips plus dividers cost 28 rows and still leave the active pane 20;
+  on a 30-row attached client, three stacked strips leave the active pane 7 — in neither case does `clampToFit` fire.
+  Six does move the depth at which clamping starts, and that is accepted rather than unnoticed: on a 30-row client the stack box is 28 rows, so four strips plus their four dividers consume all 24 usable rows and `stackHeights` computes a natural active-pane height of `0`, where `3` at that same depth would have left the active pane 12.
+  The threshold is four-deep on a 30-row client, five-deep on a 40-row one, and seven-deep on the 50-row boot box;
+  below those depths nothing clamps, and at or beyond them `clampToFit`'s existing priority order reclaims from the strips first, which is exactly the degradation `clamp-path-unchanged` keeps.
+  A strand stack four-plus deep on a 30-row terminal has no readable active pane at any strip height, so the case newly being clamped is one already past the point of usefulness.
 - Rejected: `5` (still marginal against a TUI that pins a status line at the bottom);
   `8` (four stacked strips cost 32 of 48 usable rows on the boot box, squeezing the active pane for a readability gain over `6` that no observation supports);
   deriving the strip height proportionally from the window height (reed's entire fixed-height machinery — `FixedHeightPins`, the `window-resized` hook's `resize-pane -y` array, `clampToFit` — is built on absolute row budgets, and a proportional budget would have to be recomputed and re-pinned on every resize for no benefit the absolute budget does not already deliver);
@@ -61,7 +66,9 @@ The fix direction chosen here is to make liveness read from *real recent output*
 
 ### no-value-migration
 
-- Decision: existing hubs whose materialized `_lyx/config/reed.yaml` already holds `collapsed_strip_rows: 3` keep `3`. No migration is added; the change is documented and operators hand-edit if they want the new default.
+- Decision: existing hubs whose materialized `_lyx/config/reed.yaml` already holds `collapsed_strip_rows: 3` keep `3`. No migration is added.
+  "Documented" names one concrete artefact and no other: the `collapsed_strip_rows` inline comment in both templates gains the same reconcile adoption caveat `mouse` and `watchdog` already carry, so an operator reading their own `reed.yaml` finds there why their value did not move.
+  Operators hand-edit if they want the new default.
 - Rationale: `internal/configsync`'s `ReconcileAll` is key-based by construction — it adds keys newly present in the template and removes keys absent from it (via `yamlengine.Reconcile`), and never rewrites the value of a key that already exists.
   That is deliberate: an operator who tuned `collapsed_strip_rows` for their own terminal must not have it silently reverted by an unrelated `lyx config reconcile --apply`.
   The other reed keys already document this same behaviour in their own comments ("an already-materialized reed.yaml keeps whatever value it holds, since reconcile is key-based and never rewrites a value").
@@ -127,6 +134,10 @@ The reason it is that small is worth stating explicitly, because it is the thing
   `height_test.go` is table-driven on a `collapsedStripRows` field and asserts `placements[0].height == tt.collapsedStripRows`;
   it is value-agnostic by construction.
   Changing any of these would be a scope violation, not a fix.
+- **The live-tmux integration test that consumes the default.** `internal/reedengine/attachgeometry_integration_test.go` asserts a collapsed parent pane's live height against `e.cfg.CollapsedStripRows` (lines 248-249 and 367-368), and its fixture loads the real template: `newIntegrationEngine` (`mouse_boot_integration_test.go:27-40`) calls `seedReedConfig`, which writes `ConfigTemplate()` verbatim to `_lyx/config/reed.yaml` (`contract_integration_test.go:33-49`), and `LoadConfig` then reads it back.
+  So this test does exercise the new `6` against real tmux geometry — at a 100x30 client, and again after a resize to 100x90.
+  **Disposition: value-agnostic, no edit.** It compares the live pane height to `e.cfg.CollapsedStripRows` rather than to a literal, so it follows the template wherever the default goes.
+  It must still be RUN, because it is the only check that `6` actually lands unclamped on a real multiplexer: at 100x30 the stack box is 28 rows (30 less the 1-row header and its 1-row divider), one strip plus one active pane with a 1-row divider between them leaves 27 usable, `stripDemand` is 6, and the active pane takes 21 — no clamp, so the assertion holds.
 - **Symbolic doc references.** `tools/sandbox/SANDBOX-REED-SUITE.md` (lines 235, 314) and `tools/sandbox/SANDBOX-REED-WATCH-SUITE.md` (line 170) say "collapses to `collapsed_strip_rows`" without naming a number. They need no edit.
 - **The one numeric doc reference.** `internal/reedengine/doc.go`, in the "Silent layout rescale" entry of the `# Multiplexer contract surface` list (~line 368-375): "a `220x50` string applied to a `100x30` window turned a 3-row collapsed strip into 1 row".
   This is the single place a bare `3` appears in prose.
@@ -152,10 +163,10 @@ Discovered during discussion:
 
 ## Testing
 
-Unit tier only;
-no live tmux, no sandbox run is required to land this.
+Unit tier for the change itself, plus one integration-tier run to confirm the new default lands unclamped on a real multiplexer.
+No sandbox run is required to land this.
 
-**`internal/reedengine` (`config_test.go`)** — TDD candidate, and the only place behaviour is asserted.
+**`internal/reedengine` (`config_test.go`)** — TDD candidate, and the only place the default's VALUE is asserted.
 Flip both existing default assertions to `6` first and watch them fail against the unchanged templates, then change the templates and watch them pass.
 Two scenarios, both already scaffolded:
 
@@ -170,7 +181,14 @@ A newly-added render test would be asserting the arithmetic `stackHeights` alrea
 **`internal/configsync`** — no test change. The no-migration decision is a decision to leave reconcile alone;
 its existing key-based tests already pin that contract.
 
-**Whole-repo** — `go build ./...` and `go test ./...` must pass. No golden/snapshot file embeds the template text, so there is no fixture to regenerate.
+**`internal/reedengine` (`attachgeometry_integration_test.go`)** — no edit, but it must be run.
+It is the one test that puts the new default in front of a real tmux, asserting a collapsed pane's live height equals `e.cfg.CollapsedStripRows` at a 100x30 client and again after a resize to 100x90.
+Because its fixture writes `ConfigTemplate()` verbatim it picks up `6` automatically and needs no change;
+because it asserts against `e.cfg` rather than a literal, what it can catch is not a wrong value but `6` being silently clamped or rescaled by tmux at a real window size, which no unit test can see.
+Run it with the integration build tag on a machine where the configured multiplexer is present (it skips itself otherwise).
+
+**Whole-repo** — `go build ./...`, `go test ./...`, and `go test -tags integration ./...` must pass.
+No golden/snapshot file embeds the template text, so there is no fixture to regenerate.
 
 **Not tested here:** whether `6` is subjectively "enough" rows to read liveness at a glance.
 That is an operator judgement confirmed by attaching to a real session, not an assertion.
