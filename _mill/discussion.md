@@ -72,7 +72,11 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 
 - Decision: before any search call, the script verifies every repo ref with `gh api repos/<owner>/<repo>`, aborting on the first failure with a message distinguishing 404 (not found / not accessible with this token), 401 (not authenticated), and 403 (access denied or rate limited).
 - Rationale: verified live — searching a nonexistent repo returns **HTTP 200 with `total_count: 0`**, byte-identical to a real repo with no matches. Without the preflight, a typo'd or private repo silently reads as "this repo does not use tree-sitter" — a confidently wrong answer in precisely the reconnaissance use case this task serves. The preflight calls the `core` bucket (5000/hour), not `code_search` (10/minute), so it costs nothing from the scarce budget; at the 10-repo cap it is at most 10 core calls.
-- Rejected: no preflight (silent wrong answers, the worst available failure mode); preflight only on a zero-result repo (saves calls in the common case but makes the call pattern data-dependent and much harder to assert in the offline harness, for a bucket that is not scarce).
+- The preflight call carries a `--jq` expression — `gh api "repos/<owner>/<repo>" --jq '.full_name' 2>/dev/null` — and recovers the HTTP status exactly as `github-tree.sh`'s `fetch()` does (lines 121–151): `gh` writes the raw JSON error body to **stdout** on failure and does not apply `--jq` on that path, so the script captures stdout, checks `$?`, and extracts the status with the same `\"status\"[[:space:]]*:[[:space:]]*\"?([0-9]{3})\"?` regex, then branches on 401 / 403 / 404 with its own messages and falls back to a body-quoting `die` for anything else.
+  The `--jq` is not decoration: it is what puts the error body on stdout where the status can be parsed, and dropping it would leave the script with an exit code and no way to tell 404 from 403.
+  Consequently the new stub's accepted invocation shapes are exactly two — `api <endpoint> --jq <expr>` (preflight) and the search shape with `-X GET`, repeated `-f`, and `-H Accept:` — and its failure path reproduces the tree stub's: body to stdout verbatim, nothing to stderr, `--jq` not applied, exit 1.
+  There is no bare two-argument `api <endpoint>` shape to support.
+- Rejected: no preflight (silent wrong answers, the worst available failure mode); a preflight without `--jq` (an exit code with no distinguishable status, so 404-vs-403-vs-401 collapse into one message); preflight only on a zero-result repo (saves calls in the common case but makes the call pattern data-dependent and much harder to assert in the offline harness, for a bucket that is not scarce).
 
 ### `incomplete_results: true` is a hard failure
 
@@ -156,6 +160,16 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
   The repo cap in particular is a semantic rule about argument *values*, not arity — 11 refs still satisfies the synopsis's `<owner/repo>...`, so exit 2 would be wrong there.
 - Rejected: exit 2 for every pre-network rejection (diverges from the sibling script a caller may already have wrapped, and collapses a distinction that script deliberately draws).
 
+### One `<owner>/<repo>` predicate for the whole task
+
+- Decision: `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` — copied verbatim from `github-tree.sh` line 49 — is the single ref predicate, used both by `github-code-search.sh`'s own argument validation (a non-matching ref is the "invalid `<owner>/<repo>` ref → 1" rejection) and by SKILL.md's repo-list scan.
+- Rationale: two predicates for one concept in one task is a divergence waiting to happen — a ref the skill accepts and the script rejects would surface as a confusing exit 1 from an invocation the skill's own documentation just told the model to make.
+  The looser `^[^/[:space:]]+/[^/[:space:]]+$` an earlier draft of the SKILL.md rule proposed accepted refs GitHub cannot name, so it bought nothing.
+  Reusing the sibling script's predicate also means the two scripts reject the same strings with the same exit code, which is one fewer difference for a caller wrapping both.
+- The predicate is deliberately shape-only: it does not check that the repo exists or is reachable — that is the preflight's job, and the two failures carry distinct messages.
+- Rejected: a looser skill-side predicate with a stricter script-side one (a class of refs the skill forwards and the script refuses);
+  a stricter predicate mirroring GitHub's actual naming rules (owner and repo name charsets are not publicly pinned, and the preflight already catches anything that slips through).
+
 ### Duplicate repo refs are deduped silently
 
 - Decision: repeated `<owner>/<repo>` refs are deduped before the 10-repo cap is applied, keeping first-occurrence order.
@@ -187,14 +201,22 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 ### SKILL.md's argument-disambiguation paragraph is rewritten, not just its hint
 
 - Decision: SKILL.md's existing disambiguation paragraph (line 21 today: a second token is forwarded as `<path>` only when it matches `^[A-Za-z0-9._/-]+$` and contains no whitespace) is replaced with a two-part rule, and the plan must carry that rule's text, not just the new `argument-hint`:
-  1. **Where the repo list ends.** Every *leading* whitespace-separated token matching `^[^/[:space:]]+/[^/[:space:]]+$` — exactly one `/`, no whitespace — is a repo ref.
-     The list ends at the first leading token that does not match.
-     No terminator token is introduced.
+  1. **Where the repo list ends.** A *repo-shaped* token is a leading whitespace-separated token matching `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` — the same predicate `github-tree.sh` line 49 already enforces, reused verbatim rather than a second looser one (see "One `<owner>/<repo>` predicate for the whole task").
+     Take the maximal leading run of repo-shaped tokens, then resolve the run by its length:
+     - **Length 1** — one repo. The remainder is the second slot, decided by part 2.
+     - **Length ≥3** — always a repo list. Nobody writes one repo followed by two paths, and `github-tree.sh` takes at most one path anyway.
+     - **Length exactly 2** — genuinely ambiguous, because a repo-relative path like `src/parser` is repo-shaped too.
+       Break it on phrasing: a **sweep marker** in the request ("which of these", "any of", "across", "compare", "both", or an explicit enumeration of the repos in prose) makes it a two-repo list;
+       otherwise the second token is the second slot, i.e. a path against the first repo.
+       Two explicit overrides exist for the caller who wants certainty: a trailing `/` on the second token always forces path, and naming the repos in prose always forces sweep.
+     The list never extends past that run, and no terminator token is introduced.
   2. **What the remainder is.** With **two or more** repo refs the remainder is never a path — a repo-relative path has no meaning across a repo list — so it is the search term or question, and the invocation routes to `github-code-search.sh`.
      With **exactly one** repo ref, the remainder is treated as a `<path>` for `github-tree.sh` only when the user's phrasing asks for structure ("what's in", "list", "show me the tree", a trailing `/`), and as a search term otherwise.
      When the phrasing settles it either way, phrasing wins over token shape.
 - Rationale: the old predicate was written when the only second-slot meaning was `<path>`, and it silently breaks under the new hint in exactly the two ways the r3 review names: a bare search term like `tree-sitter` or `wgpu` satisfies `^[A-Za-z0-9._/-]+$` with no whitespace and would route to the tree script, and a plural repo list has no stated boundary at all.
-  Part 1 is mechanical and needs no intent-reading: `tree-sitter` has no `/` and so can never be mistaken for a repo ref, while `owner/repo` always is.
+  Part 1 is mechanical wherever it can be: `tree-sitter` has no `/` and so can never be mistaken for a repo ref, and a run of three or more is decided without reading intent at all.
+  Only the length-2 run needs phrasing, and it needs it unavoidably — `helix-editor/helix src/parser` and `helix-editor/helix zed-industries/zed` are the same token shape, so the today-documented `<owner/repo> <path>` invocation (`SKILL.md` line 15) and a two-repo sweep are not separable by shape.
+  Defaulting a length-2 run to path (absent a sweep marker) is what keeps that existing invocation working, and the sweep case is the one that reliably carries plural phrasing anyway, since it is a comparison by definition.
   Part 2 stops pretending token shape can separate a path from a search term — `README.md` and `go.mod` are plausible as either — and hands that call to the reader that is actually present.
   This paragraph is read by an LLM, not parsed by a CLI, so an intent rule is implementable here in a way it would not be inside `github-code-search.sh` itself, whose own arguments stay strictly positional and shape-checked.
 - **Ambiguous single-repo case defaults to search.** When neither phrasing nor shape settles it, route to `github-code-search.sh`.
@@ -314,4 +336,4 @@ Scenarios that must be covered:
 - **Q:** Extend the existing `testdata/github-tree/bin/gh` stub, or write a second one? **A:** [auto-pick] A second stub and fixture tree under `testdata/github-code-search/`. **Why:** the existing stub deliberately rejects any invocation that is not exactly `api <endpoint> --jq <expr>`, and that strictness is a load-bearing property of the tree harness; loosening it to fit both shapes would weaken assertions that already exist.
 - **Q:** Support `org:` / `user:` whole-org sweeps as a script argument? **A:** [auto-pick] No — out of scope; a raw `gh api` call covers it. **Why:** the trigger case supplies an explicit repo list, and a second scope mode doubles the argument surface and the harness matrix for a case not yet demanded. (Verified that `org:` does work in one call, so the raw-call fallback is real, not hypothetical.)
 - **Q:** Bump `plugin.json`'s version for a new capability? **A:** [auto-pick] No, leave it at `1.1.0`. **Why:** the comparable prior feature commit `63916b1e2` did not bump it, and unpublished loomyard plugins are not version-bumped per feature.
-- **Q:** Which docs must land in the same commit? **A:** [auto-pick] `README.md` and `SKILL.md` only. **Why:** `grep -rl prowler docs manifest` returns nothing — prowler has no `manifest/designs/` doc and no `docs/overview.md` entry; no new cross-cutting invariant means no `CONSTRAINTS.md` change; this is neither completing nor adding a roadmap item.
+- **Q:** Which docs must land in the same commit? **A:** [auto-pick] `README.md`, `SKILL.md` (body and frontmatter), and `plugins/prowler/skills/INDEX.md`. **Why:** `grep -rl prowler docs manifest` returns nothing — prowler has no `manifest/designs/` doc and no `docs/overview.md` entry; no new cross-cutting invariant means no `CONSTRAINTS.md` change; this is neither completing nor adding a roadmap item. `INDEX.md` joins the list because its row duplicates SKILL.md's `description` verbatim today, so the two would otherwise ship disagreeing.
