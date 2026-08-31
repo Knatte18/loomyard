@@ -9,8 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -92,6 +90,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **fabric: surface merge-in-progress in `lyx fabric status`** — `status` now reports a `merge_in_progress` boolean, whether THIS pair has a fabric merge parked.
+   See the `internal/fabricengine` package documentation's merge section.
 
 1. **reed: watchdog daemon** — the header-pane watch loop, with both halves landed: the resize-geometry reconcile and the pane reap.
    See `internal/reedengine`'s package documentation.
