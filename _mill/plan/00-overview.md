@@ -108,6 +108,15 @@ batches:
   Pointing `TMPDIR` at the harness scratch directory is also what makes the temp-file-cleanup assertion possible.
 - **Applies to:** batch 2
 
+### Decision: private repository identifiers are redacted everywhere this task writes
+
+- **Decision:** no file this task creates or edits — plan files, captured testdata, harness comments, skill, or README — names a private repository by its literal owner-and-name string.
+  Private targets are referred to by a placeholder such as `<private-repo>`, and any private path appearing inside a captured command or response body is genericized the same way.
+  Public repositories may be named literally.
+- **Rationale:** this repository is public and the prowler plugin is distributed as an installable package, so a private repository name committed into tracked content permanently discloses that repository's existence to everyone who installs it.
+  The live captures' value is the observed response shapes, which a placeholder preserves entirely — nothing about the fixtures or the parser depends on which private repository produced them.
+- **Applies to:** all batches
+
 ### Decision: neither harness is wired into CI
 
 - **Decision:** both harnesses stay manually invoked.

@@ -58,7 +58,10 @@ The one accepted behavioural deviation is a positional argument beginning with t
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add an `emit` shell function to `plugins/prowler/scripts/github-tree.sh`, declared after the `output=()` array is initialised, that appends its single argument to `output` and then, when `MAX_ENTRIES` is not `0` and the resulting `${#output[@]}` is strictly greater than `MAX_ENTRIES`, aborts through the existing `die` helper.
+- **Requirements:** In `plugins/prowler/scripts/github-tree.sh`, hoist the `output=()` array initialisation out of the walk's three-line `queue`/`head`/`output` preamble so it stands on its own above everything that emits, and declare an `emit` shell function immediately after it.
+  Only `queue=()` and `head=0` stay in the walk's own preamble, since only the recursive walk uses them.
+  This ordering is load-bearing: card 3 inserts the `--children` branch above the walk's preamble, and that branch calls `emit`, so both `output` and `emit` must already exist at that point and be shared by both arms.
+  `emit` appends its single argument to `output` and then, when `MAX_ENTRIES` is not `0` and the resulting `${#output[@]}` is strictly greater than `MAX_ENTRIES`, aborts through the existing `die` helper.
   Checking strictly greater than after the append is what makes a listing of exactly `MAX_ENTRIES` entries succeed while `MAX_ENTRIES` plus one aborts.
   The abort message is mode-aware, selected on `CHILDREN`.
   When `CHILDREN` is `0` the message names the repository, the ceiling number, and all three remedies — scoping to a subdirectory, `--children`, and raising `--max-entries`.
@@ -80,6 +83,7 @@ The one accepted behavioural deviation is a positional argument beginning with t
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `plugins/prowler/scripts/github-tree.sh`, branch on `CHILDREN` immediately before the existing walk's `queue`/`head` initialisation, so that a `--children` run bypasses the FIFO queue entirely and the recursive walk is reached only when `CHILDREN` is `0`.
+  The branch point sits below the `output=()` initialisation and the `emit` declaration card 2 hoisted above it, so both are already in scope on this arm.
   The `--children` branch performs exactly one `fetch "repos/$REPO/git/trees/$BASE_REF" "root"` — reusing the existing `fetch` helper, `BASE_REF`, `PREFIX`, and `JQ_EXPR` unchanged, so a `--children` run makes exactly one `gh` call against the non-recursive endpoint with no `?recursive=1` suffix.
   Restate the non-recursive truncation abort on this branch rather than assuming it is inherited: when `FETCH_TRUNCATED` is `true`, `die` with the same message text the walk loop's non-recursive branch already uses, naming `BASE_REF` as the ref.
   It cannot be inherited because that check lives inside the walk loop's `else` branch, which `--children` never enters.
@@ -147,6 +151,7 @@ The one accepted behavioural deviation is a positional argument beginning with t
 
 - **Context:**
   - `plugins/prowler/scripts/github-tree.sh`
+  - `plugins/prowler/scripts/testdata/github-tree/bin/gh`
   - `plugins/prowler/scripts/testdata/github-tree/bin/gh`
   - `plugins/prowler/scripts/testdata/github-tree/bodies/small-root-rec.json`
   - `plugins/prowler/scripts/testdata/github-tree/bodies/trunc1-root-rec.json`

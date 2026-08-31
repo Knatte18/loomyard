@@ -46,12 +46,17 @@ It runs real `gh` and real `curl` against real repositories and builds every fai
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Run the live captures first, before writing any other card in this batch, and build every failure fixture from what actually came back rather than from a written description.
-  The public repository `Knatte18/quarry` and the private repositories `Knatte18/enk-hub` and `Knatte18/fellesutgifter` are all reachable with this box's authenticated `gh`, so every capture below has a real target.
+  The public repository `Knatte18/quarry` is reachable with this box's authenticated `gh`, and `gh repo list --visibility private --limit 20` lists private repositories reachable with the same credentials, so every capture below has a real target;
+  pick any one private repository from that listing as the private target.
+  Both this card's own prose and the capture record must refer to the private target by a placeholder such as `<private-repo>`, never by its literal owner-and-name string, and must genericize any private path that appears inside a captured command or response body the same way.
+  This repository is public and this plugin is distributed as an installable package, so a literal private repository name written here or into tracked testdata would permanently disclose that repository's existence to everyone who installs it.
+  The captures' value is the observed response shapes, which the placeholder preserves entirely.
   Capture, holding stdout and stderr separately for each: a `gh api` contents call against a missing path with the raw Accept header, to learn the failure body and the `gh` stderr line shape;
   the same call against a real file, a real directory, and — if one exists in any reachable repository — a symlink and a submodule entry, using the type-probe jq expression, to learn what the probe actually answers;
   a `curl` request against a symlink path on `raw.githubusercontent.com`, recording the HTTP status and the body, since nothing in this plan assumes what raw does with one;
   and, if a file above roughly one megabyte is reachable, a default-media-type contents call against it, to learn whether the probe fails on such a file and with what status.
-  Write every observation into `plugins/prowler/scripts/testdata/github-read/CAPTURE.md` as a short record: the command run, the exit status, and the observed stdout and stderr shapes, one section per capture.
+  Write every observation into `plugins/prowler/scripts/testdata/github-read/CAPTURE.md` as a short record: the command run with every private identifier replaced by the placeholder, the exit status, and the observed stdout and stderr shapes with the same substitution applied, one section per capture.
+  Open that file with a one-line note stating that private repository names are deliberately redacted because this testdata ships with the plugin.
   This file is the audit trail that makes the fixtures reviewable as reality rather than as invention, and card 11's status-extraction ordering must follow it wherever it disagrees with this plan's description.
   If raw answers a symlink with a non-2xx status, record that the symlink limitation is empty in practice;
   if raw answers 200 with the target path, record that the limitation stands, because batch 3 writes a caveat sentence conditional on exactly this observation.
