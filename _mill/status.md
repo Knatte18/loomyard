@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: reed-collapsed-strip-readability
 branch: reed-collapsed-strip-readability
 plan: _mill/plan
@@ -23,4 +23,5 @@ planning  '2026-08-31T10:27:56Z'
 plan-review-r1  '2026-08-31T10:33:06Z'
 plan-fix-r1  '2026-08-31T10:33:30Z'
 plan-review-r2  '2026-08-31T10:38:41Z'
+plan-fix-r2  '2026-08-31T10:39:16Z'
 ```

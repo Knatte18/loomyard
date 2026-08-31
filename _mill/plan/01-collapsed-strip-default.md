@@ -45,10 +45,10 @@ this batch adds none of its own.
   Re-wrap only the lines of that one bullet, preserving the file's existing `//     ` continuation prefix and its surrounding godoc wrap width;
   do not reflow any other bullet in the list, do not touch the `CollapsedStripRows` mention at line 373, and do not reword any other occurrence of this same measurement elsewhere in the package.
   (5) Run `go test ./internal/reedengine/...` again and confirm it is green.
-  Do not edit `internal/reedengine/apply_test.go`, `internal/reedengine/lock_test.go`, `internal/reedengine/render/rules_test.go`, `internal/reedengine/render/pins_test.go`, or `internal/reedengine/render/height_test.go` — their `CollapsedStripRows: 2` values are deliberately-chosen unit inputs, not the template default.
+  Do not edit any test file other than the one listed under `Edits:` — the `no-render-or-configsync-change` Shared Decision in the plan overview enumerates the fixtures whose `CollapsedStripRows` values are deliberately-chosen unit inputs rather than the template default, and none of them moves.
   Do not edit `internal/reedengine/attachgeometry_integration_test.go` — it asserts against `e.cfg.CollapsedStripRows` rather than a literal, so it follows the template automatically;
   it is listed as Context only so its value-agnostic shape can be confirmed by reading, and it is exercised by the task's `pipeline.done_gate` tagged run, not by this batch's `verify:`.
-  Do not add a spinner, badge, or any other synthetic liveness marker, do not add a strip floor to `clampToFit`, and do not add a value migration to `internal/configsync`.
+  Do not add a spinner, badge, or any other synthetic liveness marker, do not add a strip floor to the render package's clamp rule, and do not add a value migration to the configsync module.
 - **Commit:** `fix(reedengine): default collapsed_strip_rows to 6 for readable liveness`
 
 ## Batch Tests
