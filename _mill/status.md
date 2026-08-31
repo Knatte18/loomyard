@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-github-tree flag parsing, children mode, entry-count guard
 slug: raw-fetch-tree-scoping
 branch: raw-fetch-tree-scoping
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-review-r4  '2026-08-31T16:09:38Z'
 plan-fix-r4  '2026-08-31T16:10:19Z'
 planned  '2026-08-31T16:10:28Z'
 implementing  '2026-08-31T16:10:57Z'
+approved-github-tree flag parsing, children mode, entry-count guard  '2026-08-31T16:19:02Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-31T16:10:57Z'
 ```yaml
 batches:
   - name: github-tree flag parsing, children mode, entry-count guard
-    state: running
+    state: approved
     implementer_session: 7ce70db0-a862-4a6b-a274-cfaea6c48b5b
     start_sha: a2b5667ba22912ff2bac65989b7105f9fc8493f2
+    commit_sha: feba7ea332249e7516aa45e2a51342e434859b94
     verify_baseline_failures: []
   - name: github-read raw-first script and its offline harness
     state: pending
