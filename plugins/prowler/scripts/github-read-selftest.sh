@@ -260,6 +260,122 @@ case "$err" in
 *) pass "curl absent from PATH: stderr says nothing about curl" ;;
 esac
 
+# --- Test 7: the happy fallback -------------------------------------------
+run_scenario fallback_happy "$(printf '7\t')" "$(printf 'probe\trepos/acme/happy/contents/x.txt\tprobe-file.json\t\t\ncontent\trepos/acme/happy/contents/x.txt\tplain.txt\t\t\n')" acme/happy x.txt
+if cmp -s "$SCRATCH/fallback_happy/stdout" "$BODIES_DIR/plain.txt" && [ "$status" -eq 0 ]; then
+    pass "happy fallback: correct stdout, exit 0"
+else
+    fail "happy fallback: status=$status out=$out"
+fi
+if [ "$(curl_call_line_count fallback_happy)" -eq 1 ]; then
+    pass "happy fallback: exactly one curl call"
+else
+    fail "happy fallback: curl call log has $(curl_call_line_count fallback_happy) lines"
+fi
+if [ "$(gh_call_line_count fallback_happy)" -eq 2 ]; then
+    pass "happy fallback: exactly two gh calls"
+else
+    fail "happy fallback: gh call log has $(gh_call_line_count fallback_happy) lines, expected 2: $(gh_calls fallback_happy)"
+fi
+gh_line1="$(gh_calls fallback_happy | sed -n '1p')"
+gh_line2="$(gh_calls fallback_happy | sed -n '2p')"
+if [ "$gh_line1" = "api repos/acme/happy/contents/x.txt --jq if type==\"array\" then \"dir\" else .type end" ]; then
+    pass "happy fallback: first gh call is the probe, full argument vector including the jq expression"
+else
+    fail "happy fallback: first gh call vector unexpected: $gh_line1"
+fi
+if [ "$gh_line2" = "api repos/acme/happy/contents/x.txt -H Accept: application/vnd.github.raw" ]; then
+    pass "happy fallback: second gh call is the content fetch, full argument vector including the raw-media header"
+else
+    fail "happy fallback: second gh call vector unexpected: $gh_line2"
+fi
+
+# --- Test 8: the directory rejection ---------------------------------------
+run_scenario fallback_dir "$(printf '7\t')" "$(printf 'probe\trepos/acme/dirrej/contents/adir\tprobe-dir.json\t\t\n')" acme/dirrej adir
+if [ "$status" -eq 1 ] && [ -z "$out" ]; then
+    pass "directory rejection: exit status 1, byte-empty stdout"
+else
+    fail "directory rejection: status=$status out=$out"
+fi
+err_lines="$(printf '%s\n' "$err" | grep -c .)"
+if [ "$err_lines" -eq 1 ] && [[ "$err" == *adir* ]] && [[ "$err" == *"github-tree.sh"* ]] && [[ "$err" == *"--children"* ]]; then
+    pass "directory rejection: exactly one stderr line naming the path and the sibling tree script's children mode"
+else
+    fail "directory rejection: err=$err (lines=$err_lines)"
+fi
+if [ "$(gh_call_line_count fallback_dir)" -eq 1 ]; then
+    pass "directory rejection: exactly one gh call, proving the content fetch never ran"
+else
+    fail "directory rejection: gh call log has $(gh_call_line_count fallback_dir) lines: $(gh_calls fallback_dir)"
+fi
+
+# --- Test 9: the symlink and submodule rejections ---------------------------
+run_scenario fallback_symlink "$(printf '7\t')" "$(printf 'probe\trepos/acme/linkrej/contents/l\tprobe-symlink.json\t\t\n')" acme/linkrej l
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *symlink* ]]; then
+    pass "symlink rejection: non-zero exit, byte-empty stdout, observed type 'symlink' named in stderr"
+else
+    fail "symlink rejection: status=$status out=$out err=$err"
+fi
+run_scenario fallback_submodule "$(printf '7\t')" "$(printf 'probe\trepos/acme/subrej/contents/s\tprobe-submodule.json\t\t\n')" acme/subrej s
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *submodule* ]]; then
+    pass "submodule rejection: non-zero exit, byte-empty stdout, observed type 'submodule' named in stderr"
+else
+    fail "submodule rejection: status=$status out=$out err=$err"
+fi
+
+# --- Test 10: the three authenticated failures -------------------------------
+run_scenario fallback_401 "$(printf '7\t')" "$(printf 'probe\trepos/acme/e401/contents/x.txt\terror-401.json\t401\t\n')" acme/e401 x.txt
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [ "$(printf '%s\n' "$err" | grep -c .)" -eq 1 ] \
+    && [[ "$err" == *"not authenticated"* ]] && [[ "$err" != *raw* ]] && [ "$(gh_call_line_count fallback_401)" -eq 1 ]; then
+    pass "HTTP 401: one stderr line, no mention of the raw attempt, second gh call never happened"
+else
+    fail "HTTP 401: status=$status out=$out err=$err gh_calls=$(gh_call_line_count fallback_401)"
+fi
+run_scenario fallback_403 "$(printf '7\t')" "$(printf 'probe\trepos/acme/e403/contents/x.txt\terror-403.json\t403\t\n')" acme/e403 x.txt
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [ "$(printf '%s\n' "$err" | grep -c .)" -eq 1 ] \
+    && [[ "$err" == *"rate limited"* ]] && [[ "$err" != *raw* ]] && [ "$(gh_call_line_count fallback_403)" -eq 1 ]; then
+    pass "HTTP 403: one stderr line, no mention of the raw attempt, second gh call never happened"
+else
+    fail "HTTP 403: status=$status out=$out err=$err gh_calls=$(gh_call_line_count fallback_403)"
+fi
+run_scenario fallback_404 "$(printf '7\t')" "$(printf 'probe\trepos/acme/e404/contents/x.txt\terror-404.json\t404\terror-404.stderr\n')" acme/e404 x.txt
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [ "$(printf '%s\n' "$err" | grep -c .)" -eq 1 ] \
+    && [[ "$err" == *"not found"* ]] && [[ "$err" != *raw* ]] && [ "$(gh_call_line_count fallback_404)" -eq 1 ]; then
+    pass "HTTP 404: one stderr line, no mention of the raw attempt, second gh call never happened"
+else
+    fail "HTTP 404: status=$status out=$out err=$err gh_calls=$(gh_call_line_count fallback_404)"
+fi
+
+# --- Test 11: the three status-extraction sources, in isolation -------------
+run_scenario status_from_body "$(printf '7\t')" "$(printf 'probe\trepos/acme/sbody/contents/x.txt\terror-404.json\t404\t\n')" acme/sbody x.txt
+if [[ "$err" == *"404"* ]]; then
+    pass "status extraction: body-only fixture (no stderr fixture) yields the code from the body"
+else
+    fail "status extraction from body: err=$err"
+fi
+run_scenario status_from_stderr "$(printf '7\t')" "$(printf 'probe\trepos/acme/sstderr/contents/x.txt\terror-nostatus.json\t500\terror-404.stderr\n')" acme/sstderr x.txt
+if [[ "$err" == *"404"* ]]; then
+    pass "status extraction: no-status body plus a parenthesised stderr code yields the code from stderr"
+else
+    fail "status extraction from stderr: err=$err"
+fi
+run_scenario status_generic "$(printf '7\t')" "$(printf 'probe\trepos/acme/sgeneric/contents/x.txt\terror-multiline.json\t500\t\n')" acme/sgeneric x.txt
+err_lines_generic="$(printf '%s\n' "$err" | grep -c .)"
+if [[ "$err" == *"repos/acme/sgeneric/contents/x.txt"* ]] && [[ "$err" == *"exit 1"* ]] && [[ "$err" == *"Server Error"* ]] && [ "$err_lines_generic" -eq 1 ]; then
+    pass "status extraction: neither source yields a code -- generic form names the endpoint and exit status, still one physical stderr line despite the multi-line body"
+else
+    fail "status extraction generic form: err=$err (lines=$err_lines_generic)"
+fi
+
+# --- Test 12: byte-empty stdout across every fallback-failure scenario ------
+for scenario in fallback_dir fallback_symlink fallback_submodule fallback_401 fallback_403 fallback_404 status_from_body status_from_stderr status_generic; do
+    if [ -s "$SCRATCH/$scenario/stdout" ]; then
+        fail "byte-empty stdout on failure: $scenario left non-empty stdout (the failed fallback's error body reached it)"
+    else
+        pass "byte-empty stdout on failure: $scenario"
+    fi
+done
+
 echo "==========================================================="
 if [ "$failures" -eq 0 ]; then
     echo "PASS: all github-read selftest assertions passed"
