@@ -1,9 +1,10 @@
 //go:build smoke
 
 // smoke_dotfill_test.go reproduces the tmux client-side dot-fill render artifact described by reed's
-// root-cause-model decision: tmux itself, not reed, paints a run of "." characters into the region of
-// an attached client's terminal that its own window geometry does not (yet, or ever) cover. Those dots
-// live entirely in what tmux paints to a client's terminal — they are in no pane's grid, so they never
+// root-cause-model decision: tmux itself, not reed, paints a run of dot-fill glyphs (see dotFillGlyphs)
+// into the region of an attached client's terminal that its own window geometry does not (yet, or
+// ever) cover. Those dots live entirely in what tmux paints to a client's terminal — they are in no
+// pane's grid, so they never
 // show up in a `capture-pane` of a strand's own pane. Capturing the *harness* pane that hosts the
 // attach client is therefore the only way to observe them: this file's harness boots a second, private
 // tmux server whose own pane renders the attach client's terminal, and every dot-run assertion here
@@ -27,8 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// dotRunFloor is the minimum number of consecutive "." characters on one captured line that counts as
-// the dot-fill artifact.
+// dotRunFloor is the minimum number of consecutive dot-fill characters on one captured line that
+// counts as the dot-fill artifact.
 // This value is fixed, not tunable: it sits far above anything reed's own rendered content produces on
 // one line, and far below the width of any pane region tmux would pad with the artifact. Card 6 (below)
 // validates it once against a clean capture, and that validation is a gate rather than a licence to
@@ -36,9 +37,27 @@ import (
 // floor.
 const dotRunFloor = 20
 
-// lineHasDotRun reports whether line contains a run of at least dotRunFloor consecutive "." characters.
+// dotFillGlyphs are the tmux uncovered-cell padding characters lineHasDotRun matches against.
+//
+// Verified live on tmux 3.6: the operator's field report describes the artifact as "dots", but the
+// byte tmux 3.6 actually writes into an uncovered cell — confirmed here via a hex dump of a captured
+// cross-client-control line — is U+00B7 MIDDLE DOT ("\xc2\xb7" in UTF-8), never the ASCII U+002E FULL
+// STOP a literal `strings.Repeat(".", dotRunFloor)` would match. A middle dot renders visually close
+// enough to a period, at typical terminal font sizes, that the field report's informal "dots" is
+// accurate prose despite naming the wrong code point. Older tmux builds — and clients that failed to
+// negotiate a UTF-8 terminal — fall back to the ASCII period for the same padding role, so both glyphs
+// are matched here rather than only the one this build was observed to emit.
+var dotFillGlyphs = []string{".", "·"}
+
+// lineHasDotRun reports whether line contains a run of at least dotRunFloor consecutive occurrences of
+// one of dotFillGlyphs.
 func lineHasDotRun(line string) bool {
-	return strings.Contains(line, strings.Repeat(".", dotRunFloor))
+	for _, glyph := range dotFillGlyphs {
+		if strings.Contains(line, strings.Repeat(glyph, dotRunFloor)) {
+			return true
+		}
+	}
+	return false
 }
 
 // captureHasDotRun reports whether any single line of capture contains a dot run, per lineHasDotRun.
