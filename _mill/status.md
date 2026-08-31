@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: cross-repo-code-search
 branch: cross-repo-code-search
 plan: _mill/plan
@@ -22,4 +22,15 @@ planning  '2026-08-31T15:34:01Z'
 plan-review-r1  '2026-08-31T15:40:41Z'
 plan-fix-r1  '2026-08-31T15:41:11Z'
 planned  '2026-08-31T15:41:21Z'
+implementing  '2026-08-31T15:41:51Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: search-script-and-harness
+    state: pending
+  - name: documentation
+    state: pending
 ```
