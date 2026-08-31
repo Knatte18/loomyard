@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: fabric-status-merge-in-progress
 branch: fabric-status-merge-in-progress
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-31T18:23:29Z'
 approved-status-merge-in-progress  '2026-08-31T18:27:43Z'
 holistic-reviewing  '2026-08-31T18:28:12Z'
 holistic-approved  '2026-08-31T18:30:32Z'
+done  '2026-08-31T18:32:00Z'
 ```
 
 ## Batches
