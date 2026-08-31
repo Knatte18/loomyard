@@ -3,7 +3,7 @@
 ```yaml
 task: "Reconsider the collapsed strand strip default size"
 slug: "reed-collapsed-strip-readability"
-approved: false
+approved: true
 started: "20260831-102642"
 parent: "main"
 root: ""
