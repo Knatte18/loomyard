@@ -2,7 +2,7 @@ tmux: ${env:LYX_REED_TMUX:-tmux}  # path to the tmux executable
 shell: ${env:LYX_REED_SHELL:-bash}  # path to the shell command lyx launches inside each pane (bash on POSIX, pwsh on Windows by default)
 width: 220  # tmux window width while no client has ever attached (new-session -x), and the fallback render box when the live window size cannot be read; once a client attaches tmux resizes the window to that client and reed renders against the live size instead
 height: 50  # tmux window height while no client has ever attached (new-session -y), and the fallback render box when the live window size cannot be read; once a client attaches tmux resizes the window to that client and reed renders against the live size instead
-collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present
+collapsed_strip_rows: 6  # height a shrink:true ancestor collapses to once a descendant is present (6 rather than 3 so the strip carries several consecutive lines of recent output and a still-producing strand is visibly moving — at 3 a TUI's trailing status and padding lines leave effectively one frozen line, which at a glance is indistinguishable from a dead strand; an already-materialized reed.yaml keeps whatever value it holds, since reconcile is key-based and never rewrites a value)
 min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pane
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""
 debug_log: ${env:LYX_REED_DEBUG:-0}  # opt-in tmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key
