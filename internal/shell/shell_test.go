@@ -8,7 +8,7 @@ package shell
 
 import "testing"
 
-// Compile-time assertions that both dialects satisfy the widened Shell interface.
+// Compile-time assertions that both dialects satisfy the Shell interface.
 var (
 	_ Shell = Posix()
 	_ Shell = Pwsh()
