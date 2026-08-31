@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-status-merge-in-progress
 branch: fabric-status-merge-in-progress
 plan: _mill/plan
@@ -22,4 +22,13 @@ discussed  '2026-08-31T18:12:50Z'
 planning  '2026-08-31T18:16:41Z'
 plan-review-r1  '2026-08-31T18:22:36Z'
 planned  '2026-08-31T18:22:59Z'
+implementing  '2026-08-31T18:23:29Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: status-merge-in-progress
+    state: pending
 ```
