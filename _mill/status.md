@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
+phase: approved-dotfill-repro-harness
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -32,6 +32,7 @@ planned  '2026-08-31T12:54:39Z'
 implementing  '2026-08-31T12:55:17Z'
 self-resolved-verify-logic  '2026-08-31T13:16:56Z'
 blocked  '2026-08-31T13:27:12Z'
+approved-dotfill-repro-harness  '2026-08-31T13:43:37Z'
 ```
 
 ## Batches
@@ -39,10 +40,10 @@ blocked  '2026-08-31T13:27:12Z'
 ```yaml
 batches:
   - name: dotfill-repro-harness
-    state: blocked
+    state: approved
     implementer_session: 0ecf36bc-358d-4ff5-8dbf-2a1d7ba90c92
     start_sha: 875b41561a023a935d665d433ba6fde25c62beb6
-    blocked_reason: 'verify/logic: unresolved after retry'
+    commit_sha: c801d43f50c3f097ac7a22daba5fe81e094bef7c
     verify_baseline_failures: []
   - name: attach-multi-client-warning
     state: pending
