@@ -112,7 +112,8 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
   the *pure* body builder (the string, no I/O, no engine state) joins `resizeHookCommand` and `tmuxQuoteValue` in `internal/reedengine/watchdog.go`, tested in `watchdog_test.go`;
   the *engine-method* wrapper that decides `""` versus a real body — the direct analogue of `resizeSignalHookCommand`, which reads `runtime.GOOS` and engine state — joins it in `internal/reedengine/windowsize.go` beside `resizeSignalHookCommand` itself, tested in `windowsize_test.go`.
   The shell fragment inside it is built **only** through `internal/shell` — never by string-concatenating shell syntax inside `reedengine`.
-  Concretely, for candidate 1 the body needs four things, and each has exactly one source:
+  Concretely, for candidate 1 the body needs four things, and each has exactly one source.
+  Note before the list that the fragment invokes tmux **twice**, not once — `list-clients -F` to enumerate, then `refresh-client -t` once per line — so the binary path and the `-L` socket are embedded in **both** invocations, while the session target applies to `list-clients` alone (`refresh-client -t` takes a *client* target, which is the loop's per-line value):
   - The multiplexer binary path — `e.TmuxPath()`, the engine accessor `internal/reedcli/attach.go` already uses to spawn the attach child.
     The tmux server's `run-shell` inherits no reed context, so the path must be embedded in the fragment; it is quoted with `shell.Shell.Quote`.
   - Reed's socket — `e.Socket()`, embedded as the `-L` argument for the same reason, quoted the same way.
@@ -291,9 +292,11 @@ Consequently the repaint entry has nothing to inherit and will be installed on W
 The attach-time warning has no such restriction — `list-clients` is a plain query and is issued on every platform.
 It is not in `requiredSubcommands` and is not being added (decision `probe-verbs-not-extended`), so its absence or failure degrades to no warning, never to an error.
 
-**Nothing in reed currently knows about multiple clients.**
-`grep` for `list-clients`, `client_width`, or any client concept across `internal/reedengine` and `internal/reedcli` returns nothing.
-This task introduces reed's first client-awareness, which is why the model in `root-cause-model` was not obvious from the code.
+**No reed *production* code currently knows about multiple clients.**
+No production file under `internal/reedengine` or `internal/reedcli` issues `list-clients` or reads any client-scoped format;
+this task introduces reed's first production client-awareness, which is why the model in `root-cause-model` was not obvious from the code.
+Test code is the exception and a useful one: `internal/reedengine/attachgeometry_integration_test.go` already polls `e.tmux.output("list-clients", "-t", exactSessionTarget(e.SessionName()))` to wait for a client to attach.
+That call independently corroborates the target form chosen in `repaint-body-composition` — the bare `=<name>` session form — and is the closest in-repo precedent for the new production call's shape.
 
 **Where the decision log goes.**
 reed has no `manifest/designs/reed.md`;
@@ -366,12 +369,31 @@ If candidate 2 is accepted instead, `internal/shell` is not touched and none of 
 **`internal/reedcli` — smoke tests (build tag `smoke`, real tmux required).**
 A new file beside `smoke_attach_test.go`, built on the harness-server pattern that file establishes and the shared primitives in `smoke_test.go`.
 
+*The `watchdog` setting — load-bearing, and the same for every scenario.*
+**Every smoke scenario boots the reed session with `watchdog: off`** (via `LYX_REED_WATCHDOG=off`, the key's documented env source).
+This is not incidental, and leaving it unstated would quietly invalidate both halves of the pair:
+
+- With `watchdog: on`, the artifact self-heals in about a second because the watch loop's re-apply forces the repaint.
+  The control could then miss it entirely, and — worse — the treatment's "absent for the whole deadline" would be partly satisfied by the watchdog heal rather than by the repaint entry, which is precisely the thing under test.
+  The experiment would confirm the mitigation works while proving nothing about it.
+- With `watchdog: off` there is no self-heal, so any repaint observed is the repaint entry's doing and nothing else.
+  The repaint entry is installed regardless of the `watchdog` value (`repaint-is-independent-of-watchdog`), so turning the watchdog off costs the experiment nothing.
+
+The one hazard of `watchdog: off` is the residual that same decision documents: the array is empty from boot, and any *degrading* attach re-empties it.
+Both scenarios attach successfully — that is what puts reed's array in place — but the treatment must not take that on trust.
+**Immediately before its trigger, the treatment reads the array back with `show-options -v` and asserts per entry that the repaint entry is present**, the exact mirror of the control's readback asserting it is absent.
+Without that assertion a treatment could pass because no array was installed at all.
+
 *The assertion predicate.*
 `pollPaneContains` must not be used for this, and reusing it would be the single easiest way to ship a test that proves nothing: it takes a plain substring, and legitimate harness-pane content contains dots (file paths, ellipses, the header template).
 The predicate is a new helper in the same file: capture the harness pane, and report a hit when **any single captured line contains a run of at least 20 consecutive `.` characters**.
 Twenty is **fixed**, not a starting guess: it is far above anything reed's own rendered content produces on one line and far below the width of any pane region tmux would pad.
 The plan validates it once against a clean capture, and that validation is a gate, not a licence to retune — if a clean capture trips a 20-dot run, the finding is that something in reed's rendered output produces long dot runs, which is itself news and must be reported rather than papered over by raising the floor until the test goes quiet.
-The helper polls to a bounded deadline in the style of `pollPaneContains` rather than sampling once, because the artifact is timing-dependent in both directions: it can take a moment to appear, and it heals on its own.
+The helper polls to a bounded deadline rather than sampling once, because the artifact is timing-dependent: it can take a moment to appear.
+It is written in the *style* of `pollPaneContains` but does **not** reuse it and does not inherit its cadence: `pollPaneContains` sleeps 500 ms between captures, which is a quarter of the window the artifact would occupy under `watchdog: on` and too coarse to characterise it.
+**The dot-run helper samples every 100 ms.**
+The control polls up to a 5 s deadline and passes on the first hit.
+The treatment samples for a fixed 3 s window and requires *every* sample to be clean — an absence assertion that returns early on its first clean sample would pass before the artifact had a chance to appear.
 
 *The negative control — this is what keeps the suite honest.*
 "Reproduce it once by hand, then assert absence forever" is not a test;
@@ -421,7 +443,14 @@ that is precisely why the control exists as an executable assertion rather than 
 Candidate 1 needs the new `internal/shell` primitive and the body builder, so it cannot be measured by building it first and deciding afterwards — that would mean writing the production code the gate is supposed to authorise.
 The gate is run instead by **writing the candidate's body into the array directly from the smoke scenario**, using the same `tmux set-hook` rewrite technique the control scenario already performs: the scenario composes the body as a literal string, installs reed's array with that entry in the position the design specifies, and runs the trigger.
 That measures the exact tmux behaviour the production entry would produce, with no production code and no `internal/shell` change in flight.
-Only once a candidate is accepted are the `internal/shell` primitive, the body builder, and the `installResizePinsLocked` wiring written — and the accepted body string is then asserted, in a pure unit test, to equal the string the scenario measured.
+Only once a candidate is accepted are the `internal/shell` primitive, the body builder, and the `installResizePinsLocked` wiring written.
+
+*Pinning the shipped builder to what was measured.*
+The anti-drift assertion has to be phrased carefully, because a naive byte-equality test against a recorded literal is unwritable for candidate 1: its body embeds `e.TmuxPath()`, `e.Socket()`, and `exactSessionTarget(e.SessionName())`, which hold the harness's values in the measuring scenario and different values in any unit test.
+So the gate is stated as a *reproduction* property, not a literal:
+**the builder, invoked with the same tmux path, socket, and session name the measuring scenario used, must reproduce the measured string byte-identically.**
+The unit test records those three values alongside the measured string and passes them in, which makes the assertion exact without hardcoding a machine's paths into the test.
+Candidate 2's body is a constant and admits the simpler form — a plain literal pin — since it embeds nothing.
 Candidate 2 is measured the same way, and is cheaper to measure because its body is a bare `refresh-client`.
 
 Running that measurement, the plan uses the resize smoke scenario against candidate 1 and, if needed, candidate 2 from `repaint-mechanism`, and records which one cleared the artifact and on what tmux version — in `doc.go`, in the same "verified live on tmux 3.6" voice the surrounding decisions use.
@@ -466,6 +495,8 @@ This disposition supersedes nothing in the cross-client scenario's own sizing-re
 - **Q:** Is the repaint entry gated on `watchdog: off` like the signal entry? **A:** [auto-pick] No — independent; `watchdog` gates the self-healing loop and its signal entry only. **Why:** the kill-switch means "stop mutating my layout", and a forced redraw mutates nothing. The clear that `watchdog: off` performs is *not* always followed by a rebuild — with `watchdog: off` the array stays empty from boot until the first attach or first focusing apply — but that residual is today's behaviour for the pins too, and the repaint entry shares their lifecycle rather than inventing one.
 - **Q:** Where do the tmux binary path, socket, and client loop in candidate 1's hook body come from? **A:** [auto-pick] `e.TmuxPath()`, `e.Socket()`, `exactSessionTarget` (bare `=<name>`, since `list-clients -t` takes a session target), and a **new** `internal/shell` line-iterating primitive with POSIX and pwsh implementations. **Why:** `resizeHookCommand` establishes none of them, and the Shell Mechanics Seam forbids building the fragment inside `reedengine`.
 - **Q:** Can the repaint entry retrigger `window-resized` through `window-size latest`? **A:** [auto-pick] It must be proven it cannot — a server-issued `refresh-client` changes no geometry and is not client input, so it should not move MRU; "no repeated fire" and "no resize storm" become hard acceptance criteria of the measurement gate. **Why:** a resize storm inside the tmux server would be far worse than the one-second cosmetic smear the entry exists to remove.
+- **Q:** Which `watchdog` value do the smoke scenarios boot with? **A:** [auto-pick] `off`, every scenario. **Why:** with it on, the ~1 s self-heal would satisfy the treatment's absence assertion instead of the repaint entry, confirming the mitigation while proving nothing about it; the repaint entry is watchdog-independent, so turning it off costs the experiment nothing.
+- **Q:** How is the shipped builder pinned to the measured body when the body embeds machine-specific paths? **A:** [auto-pick] As a reproduction property — the builder, given the same tmux path, socket, and session name the scenario used, reproduces the measured string byte-identically. **Why:** a literal byte-equality pin is unwritable for candidate 1 and would have to be silently weakened at implementation time.
 - **Q:** Which subset does the reported cross-client trigger fall into? **A:** [auto-pick] The uncovered subset — a VS Code terminal is smaller than a Konsole window, so making it most-recently-used shrinks the window and leaves Konsole with genuinely uncovered rows. **Why:** it means no repaint mechanism can clear that trigger, the cross-client scenario is control-only, and the attach-time warning is the primary deliverable for it rather than a consolation prize.
 - **Q:** Should the cross-client scenario be sized so the observed client is fully covered, to allow a treatment assertion? **A:** [auto-pick] No — that was an error in an earlier draft and is corrected. **Why:** a fully-covered client has no uncovered region under this design's own model, so the control would have nothing to reproduce and the pair could neither hit nor clear.
 - **Q:** Where does candidate 2's body live? **A:** [auto-pick] Entirely in the `windowsize.go` engine wrapper as a literal `refresh-client`, with no `run-shell`, no `tmuxQuoteValue`, and no `internal/shell` change. **Why:** it is a tmux command, not a shell fragment; forcing it through candidate 1's machinery would be wrong by construction.
