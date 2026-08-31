@@ -339,12 +339,22 @@ func TestSmokeDotFillResizeControl(t *testing.T) {
 	rewriteWindowResizedArray(t, h.tmuxPath, h.reedSocket, h.reedSession, pins)
 	assertOnlyPinEntries(t, windowResizedEntries(t, h.tmuxPath, h.reedSocket, h.reedSession))
 
-	// Fire the trigger: shrink then grow past the original, in the harness window. Both directions
-	// are required — the shrink direction is the half a growth-only mechanism misses.
-	if err := exec.Command(h.tmuxPath, "-L", h.harnessSocket, "resize-window", "-t", "h", "-x", "80", "-y", "24").Run(); err != nil {
+	// Fire the trigger: resize reed's own window directly, on reed's own socket, shrinking then
+	// growing past the original. Both directions are required — the shrink direction is the half a
+	// growth-only mechanism misses.
+	//
+	// Corrected from an earlier cascaded-resize design that resized the outer harness window instead:
+	// a live diagnostic during batch 1 confirmed that resizing the harness window's pane, expecting
+	// the resize to cascade through the attached client's terminal into reed's own window-resize hook,
+	// does not reliably reproduce the artifact in this container's tmux 3.6 build within any timing
+	// tried — while resizing reed's own window directly on reed's own socket reproduces it reliably.
+	// Both paths exercise the same code under test (reed's window-resized hook array firing on a real
+	// window-dimension change to a window carrying the resize-pane pins); only the delivery mechanism
+	// changes.
+	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "80", "-y", "24").Run(); err != nil {
 		t.Fatalf("resize-window shrink: %v", err)
 	}
-	if err := exec.Command(h.tmuxPath, "-L", h.harnessSocket, "resize-window", "-t", "h", "-x", "160", "-y", "50").Run(); err != nil {
+	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "160", "-y", "50").Run(); err != nil {
 		t.Fatalf("resize-window grow: %v", err)
 	}
 
