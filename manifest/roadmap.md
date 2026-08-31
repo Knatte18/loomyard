@@ -9,6 +9,8 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -77,8 +79,6 @@ No build order is implied between these items.
 
 1. **fabric: two-sided reset-to-SHA verb** — the post-conclude undo the merge surface deliberately does not ship: `MergeAbort` covers only the uncommitted merge-attempt window, so a landed merge is final at the Fabric layer. Closing it means a reset to a visible warp SHA that resolves the paired weft SHA through the correspondence index and routes both sides through the destruction gate.
    See the `internal/fabricengine` package documentation's merge section.
-
-1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
 
 1. **loom: build `Plan-Sweep` for real** — the one row of loom's design table never built, and not a `loom-recipe.yaml` row at all; deferred because quarry-backed work is low-priority project-wide and this is the only row in the initiative that touches quarry. Full spec already written.
    See [designs/loom.md](designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec).
