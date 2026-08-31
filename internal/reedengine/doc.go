@@ -365,21 +365,22 @@
 //     for an always-on pane either. Verified against a real tmux instance;
 //     contract_integration_test.go's TestHeaderNeverGetsZeroHeightLayoutCell
 //     pins it.
-//   - Silent layout rescale (apply.go, windowsize.go): select-layout accepts
-//     a layout string whose dimensions disagree with the live window (exit
-//     0) and silently rescales it proportionally — measured live on tmux
-//     3.6, a "220x50" string applied to a "100x30" window turned a 3-row
-//     collapsed strip into 1 row — so every absolute row budget reed
-//     computes (Header.HeightRows, CollapsedStripRows, MinFullRows) is
-//     scaled by live_height/string_height unless the string is sized to the
-//     live window. This is why applyLayoutLocked always plans against
-//     liveBoxLocked's live box rather than the configured one. The detached
-//     counterpart is the opposite failure: an OVER-budget string is not
-//     refused either — with no client attached, tmux GROWS the window to fit
-//     the cells, so a client-less session can end up taller than its
-//     configured boot height until the next attach snaps it back; with a
-//     client attached, the "window-size latest" pin holds the window at the
-//     client's size and tmux rescales the cells into it instead.
+//   - Silent layout rescale (apply.go, windowsize.go): select-layout accepts a
+//     layout string whose dimensions disagree with the live window (exit 0)
+//     and silently rescales it proportionally — measured live on tmux 3.6, a
+//     "220x50" string applied to a "100x30" window turned a 3-row collapsed
+//     strip (3 was the then-default; it is 6 today) into 1 row — so every
+//     absolute row budget reed computes (Header.HeightRows,
+//     CollapsedStripRows, MinFullRows) is scaled by live_height/string_height
+//     unless the string is sized to the live window. This is why
+//     applyLayoutLocked always plans against liveBoxLocked's live box rather
+//     than the configured one. The detached counterpart is the opposite
+//     failure: an OVER-budget string is not refused either — with no client
+//     attached, tmux GROWS the window to fit the cells, so a client-less
+//     session can end up taller than its configured boot height until the next
+//     attach snaps it back; with a client attached, the "window-size latest"
+//     pin holds the window at the client's size and tmux rescales the cells
+//     into it instead.
 //   - The resize round-robin and the resize-pin hook (windowsize.go,
 //     apply.go, attach.go): tmux has no fixed-height pane concept, and a
 //     window-size delta arriving after attach time is handed out one row at
