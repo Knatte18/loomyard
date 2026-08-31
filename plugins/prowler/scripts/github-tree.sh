@@ -29,6 +29,13 @@
 # A `--` terminator ends flag recognition early and makes every remaining
 # token -- including one beginning with two dashes -- a positional, which is
 # the only way to pass such a path to this script.
+#
+# An entry-count guard aborts the walk, incrementally, once the buffered
+# listing exceeds a ceiling that defaults to 1000 entries and is overridable
+# with `--max-entries N`; `--max-entries 0` disables the ceiling entirely.
+# The check runs on every append, not once at the end, so a listing that
+# would exceed the ceiling never burns the rest of its `gh` call budget
+# just to arrive at a rejection already determined earlier in the walk.
 set -u
 
 # die prints one message to stderr and exits 1. It is not used for the
@@ -228,6 +235,27 @@ fetch() {
     done <<<"$captured"
 }
 
+output=()
+
+# emit appends one path to output and enforces the entry-count guard on the
+# crossing append, not once at the end -- an abort here is what keeps a
+# truncated-fallback walk from burning its whole multi-call budget to
+# produce a rejection already determined by the first few hundred entries.
+# Checking strictly greater than after the append is what lets a listing of
+# exactly MAX_ENTRIES entries succeed while MAX_ENTRIES plus one aborts.
+# MAX_ENTRIES=0 means unlimited. The abort message is mode-aware: it never
+# suggests --children back to a caller who is already using it.
+emit() {
+    output+=("$1")
+    if [ "$MAX_ENTRIES" != "0" ] && [ "${#output[@]}" -gt "$MAX_ENTRIES" ]; then
+        if [ "$CHILDREN" -eq 1 ]; then
+            die "github-tree: repos/$REPO — listing exceeds $MAX_ENTRIES entries; scope to a subdirectory or raise --max-entries"
+        else
+            die "github-tree: repos/$REPO — listing exceeds $MAX_ENTRIES entries; scope to a subdirectory, use --children, or raise --max-entries"
+        fi
+    fi
+}
+
 # The walk itself: one explicit FIFO queue in the main shell, never a
 # recursive shell function and never a LIFO stack, so output order is
 # fixed to the order work items were appended -- the root's own blobs
@@ -238,7 +266,6 @@ fetch() {
 # ref, a path prefix, and a kind ("root" or "child", see fetch() above).
 queue=("rec"$'\t'"$BASE_REF"$'\t'"$PREFIX"$'\t'"root")
 head=0
-output=()
 
 while [ "$head" -lt "${#queue[@]}" ]; do
     item="${queue[$head]}"
@@ -264,7 +291,7 @@ while [ "$head" -lt "${#queue[@]}" ]; do
             erest="${entry#*$'\t'}"
             epath="${erest#*$'\t'}"
             if [ "$etype" = "blob" ]; then
-                output+=("$prefix$epath")
+                emit "$prefix$epath"
             fi
             # "tree" entries within an untruncated recursive listing need
             # no further queueing -- the recursive listing already
@@ -284,7 +311,7 @@ while [ "$head" -lt "${#queue[@]}" ]; do
             epath="${erest#*$'\t'}"
             case "$etype" in
             blob)
-                output+=("$prefix$epath")
+                emit "$prefix$epath"
                 ;;
             tree)
                 queue+=("rec"$'\t'"$esha"$'\t'"$prefix$epath/"$'\t'"child")
