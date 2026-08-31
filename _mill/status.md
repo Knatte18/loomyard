@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: cross-repo-code-search
 branch: cross-repo-code-search
 plan: _mill/plan
@@ -29,6 +29,7 @@ holistic-reviewing  '2026-08-31T15:56:10Z'
 holistic-fixing  '2026-08-31T16:01:38Z'
 nits-fixed-holistic  '2026-08-31T16:02:55Z'
 holistic-approved  '2026-08-31T16:03:03Z'
+done  '2026-08-31T16:04:40Z'
 ```
 
 ## Batches
