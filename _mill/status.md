@@ -42,7 +42,9 @@ batches:
     commit_sha: feba7ea332249e7516aa45e2a51342e434859b94
     verify_baseline_failures: []
   - name: github-read raw-first script and its offline harness
-    state: pending
+    state: running
+    implementer_session: 73f7cccf-8345-4178-87c6-9e48f639d81c
+    start_sha: 7dd682899e575b6821193988bd367543d031dae5
     verify_baseline_failures: []
   - name: skill and README documentation
     state: pending
