@@ -31,7 +31,9 @@ The read-order flip is a measured, uncontested win being left on the table on ev
 - A new `--children` mode on `plugins/prowler/scripts/github-tree.sh` that lists one path's direct children (files and directories) without recursing.
 - A hard entry-count guard on `github-tree.sh`, default 1000, overridable with `--max-entries <N>` (`0` = unlimited), applied uniformly to every mode.
 - New offline test coverage: additional scenarios in `plugins/prowler/scripts/github-tree-selftest.sh` (plus any fixture bodies they need under `plugins/prowler/scripts/testdata/github-tree/bodies/`), and a new sibling harness `plugins/prowler/scripts/github-read-selftest.sh` with its own stub `curl` and stub `gh`.
-- `plugins/prowler/skills/github-repo-explorer/SKILL.md`: flip the documented file-read order to `github-read.sh`, and add guidance on choosing between `--children`, scoped-recursive, and whole-repo listing.
+- `plugins/prowler/skills/github-repo-explorer/SKILL.md`: flip the documented file-read order to `github-read.sh`, add guidance on choosing between `--children`, scoped-recursive, and whole-repo listing, state the `--children` output convention (directories carry a trailing `/`, files do not), and state that a listing can now abort on the entry-count guard and what the caller should do about it.
+  The output convention belongs here specifically because SKILL.md is what the calling agent reads;
+  a marker documented only in the README is a marker the caller does not have.
 - `plugins/prowler/README.md`: a section for `github-read.sh`, and the existing `github-tree.sh` section extended for the new mode and the guard.
 
 **Out:**
@@ -115,7 +117,10 @@ The read-order flip is a measured, uncontested win being left on the table on ev
 
 ### Guard abort is a normal `die`: one stderr line, exit 1, empty stdout
 
-- Decision: the guard uses the existing `die` helper. One stderr line naming the ceiling and both remedies (scope to a subdirectory, or use `--children`), exit status 1, nothing on stdout.
+- Decision: the guard uses the existing `die` helper. One stderr line naming the ceiling, exit status 1, nothing on stdout.
+  The remedies named in that line are **mode-aware**: a recursive-mode abort names both (scope to a subdirectory, or use `--children`), while a `--children` abort names only "scope to a subdirectory, or raise `--max-entries`", because `--children` is already in effect and suggesting it back to the caller is noise.
+  Both variants name `--max-entries` as the escape hatch.
+  The harness asserts the exact wording in both the recursive and the `--children` guard scenarios.
 - Rationale: `github-tree.sh`'s contract is "on failure, exactly one stderr line, nothing on stdout, non-zero exit", and SKILL.md already instructs the caller to check the exit code on every call.
   A guard abort that fits that contract needs no new caller-side handling.
   Exit 2 stays reserved for usage errors — a listing that is too large is not a malformed invocation.
@@ -174,6 +179,26 @@ The read-order flip is a measured, uncontested win being left on the table on ev
   Reporting both would break the one-line contract and lead with the less informative half.
 - Rejected: reporting both attempts — two lines, and the first is noise.
 
+### Where the fallback's HTTP status comes from
+
+- Decision: the fallback runs as `gh api "repos/{owner}/{repo}/contents/{path}" -H "Accept: application/vnd.github.raw" >"$tmp" 2>"$errfile"`, capturing `$?`.
+  On a non-zero exit the status is derived in this order:
+  1. Regex the **temp file** for `"status"\s*:\s*"?([0-9]{3})"?` — the same pattern `github-tree.sh:129-131` uses, applied to the same thing it is applied to there (the error body `gh` wrote to stdout).
+     GitHub answers a non-2xx with a JSON error body whatever the `Accept` header requested, and `gh` writes that body to stdout, so it lands in `$tmp`.
+  2. If that yields nothing, regex the captured **stderr** for `\(HTTP ([0-9]{3})\)` — `gh api` prints a `gh: <message> (HTTP <code>)` line there on a non-2xx.
+  3. If neither yields a code, emit the generic form `github-read: gh api <endpoint> failed (exit <status>): <body>`, with the body collapsed to one physical line exactly as `github-tree.sh:135-138` does, so the one-stderr-line contract is kept literally.
+  The 401 / 403 / 404 messages are then worded as in `github-tree.sh`, with `github-read:` as the prefix and the path named in the 404 case.
+- Rationale: `github-tree.sh`'s technique does not transfer unexamined, because there the error body is the *captured stdout of a `--jq` call* while here stdout is the temp file that must never be emitted.
+  Reading the status out of `$tmp` is the same idea applied to where the body actually is;
+  the temp file is discarded on every failure path regardless, so inspecting it costs nothing and leaks nothing.
+  The stderr pass is a second source rather than the primary one because its message text is a CLI presentation string, not an API contract, and it is the more likely of the two to change between `gh` releases.
+  The generic third form is what guarantees the script still fails cleanly if both shapes change at once.
+- **Implementer note — pin this against real `gh` first.** The harness stub can only reproduce whichever shape it is told to, so a stub built from this description proves the parser, not the premise.
+  Before writing the stub, run one live `gh api "repos/<owner>/<repo>/contents/<missing-path>" -H "Accept: application/vnd.github.raw"` against a real repository, capture stdout and stderr separately, and build the fixtures from what actually came back.
+  If the observed shapes differ from the two above, the fixtures follow reality and this Decision's ordering is updated in the same commit.
+- Rejected: `gh api -i` and parsing the status line out of the response headers — it puts the headers in front of the body in the same stream, so the success path would then have to strip them back off, which reintroduces exactly the byte-fidelity problem the temp-file decision exists to avoid.
+  Rejected: a second `gh api` call purely to learn the status — doubles the fallback's cost on the path that is already the slow one.
+
 ### `github-read.sh` takes no ref argument; reads are pinned to `HEAD`
 
 - Decision: the signature is `github-read.sh <owner/repo> <path>`, exactly two required arguments.
@@ -199,7 +224,12 @@ The read-order flip is a measured, uncontested win being left on the table on ev
   Introducing a sourced common file would destroy that property for both scripts and add a failure mode (missing or unreadable library) to a script that currently has none.
   Two copies of roughly fifteen lines, across two scripts with no third on the horizon, is the cheaper trade.
 - Rationale (correctness): the same validation is what makes URL-encoding unnecessary in `github-read.sh` — the accepted character set is a subset of URL-safe characters, so the path can be interpolated into the raw URL directly.
+- Also copied: the `<owner>/<repo>` slug check (`github-tree.sh:49`), **verbatim**, including its `[[ "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]` bracket-range form.
+  It is deliberately not rewritten into the glob-substitution technique the adjacent path comment argues for.
+  The collation looseness is real here too — an accented character can slip through the range under a UTF-8 locale — but the consequence differs by a lot: a slug that slips through produces a remote 404 from an endpoint that was never going to exist, whereas a path that slips through was the reproduced failure the glob technique was introduced for.
+  Divergence between the two scripts' slug checks would be the worse outcome, so the copy is literal and this looseness is an accepted, recorded property rather than an oversight.
 - Rejected: a sourced `_github-common.sh` — see above.
+  Rejected: tightening the slug check in `github-read.sh` only — leaves the two scripts accepting different repo references, which is a worse trap than the looseness itself.
   Note for the implementer: the copied validation must keep the glob-substitution form (`offending="${path//[A-Za-z0-9._\/-]/}"`) and its accompanying comment's reasoning, not be rewritten as a regex test — the regex form wrongly accepts accented characters under a UTF-8 locale, which is a reproduced failure, not a hypothetical.
 
 ### `github-read.sh` requires a non-empty path
@@ -321,8 +351,8 @@ New scenarios to cover, each using the existing `run_scenario` / `call_count_for
 - `--children` proves it does not recurse: a fixture whose listing contains a `tree` entry, asserting the call count stays at 1 and no descendant path appears on stdout.
 - `--children` on a directory containing a `commit` (submodule) entry: skipped silently, consistent with the recursive modes.
 - `--children` on an empty directory: exit 0, empty stdout.
-- Guard fires on the recursive fast path: a fixture with more entries than a low `--max-entries`, asserting empty stdout, exit 1, and a stderr line naming both remedies.
-- Guard fires in `--children` mode, proving uniform application.
+- Guard fires on the recursive fast path: a fixture with more entries than a low `--max-entries`, asserting empty stdout, exit 1, and a stderr line naming both remedies (scope down, or `--children`) plus `--max-entries`.
+- Guard fires in `--children` mode, proving uniform application, and asserting the mode-aware wording: the line names scoping and `--max-entries` and does **not** suggest `--children` back to a caller already in it.
 - Guard fires incrementally: a truncated-fallback scenario where the ceiling is crossed early, asserting the `gh` call count is strictly lower than the same scenario run with the guard disabled — this is the assertion that distinguishes an incremental check from an end-of-walk one, and it is the one scenario that would silently pass under a wrong implementation.
 - Guard boundary: exactly-at-ceiling succeeds and prints, ceiling-plus-one aborts.
 - `--max-entries 0` disables the ceiling on a listing that would otherwise trip the default.
@@ -350,6 +380,9 @@ Scenarios:
   Assert stdout is exactly the fallback's bytes, with no partial prefix in front of them — the assertion that pins the temp-file buffering decision and would fail against a stream-to-stdout implementation.
 - Raw 404, `gh api` succeeds: correct stdout, exit 0, one `curl` call then one `gh` call, and the `gh` call carries `-H Accept: application/vnd.github.raw` (assert the exact argument vector, mirroring the tree harness's four-argument shape assertion).
 - Raw fails, `gh api` fails with 401 / 403 / 404: exit non-zero, empty stdout, exactly one stderr line, and that line carries the `gh` diagnosis with no mention of the raw attempt.
+  The stub `gh`'s failure fixtures are built from a live capture (see the Decision "Where the fallback's HTTP status comes from"), stdout and stderr held separately, so the parser is tested against the shape `gh` really produces.
+- Fallback status extraction, each source in isolation: one scenario where only the temp-file body carries `"status": "404"` (stderr empty), one where only stderr carries `(HTTP 404)` (body carries no status field), and one where neither does — the last asserting the generic `failed (exit <n>): <body>` form, still exactly one physical stderr line even when the stub's body spans several lines.
+- The failed fallback's error body never reaches stdout: assert stdout is empty in every fallback-failure scenario, even though the body was written into the temp file the success path would have `cat`ed.
 - `curl` absent from PATH: goes straight to `gh api`, zero `curl` calls, nothing on stderr about `curl`, correct stdout.
 - `gh` absent from PATH: `die` with the missing-`gh` message, exit 1, before any network call.
 - Path validation: a path with an unsupported character is rejected locally — exit 1, and zero `curl` and zero `gh` calls.
