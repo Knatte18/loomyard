@@ -117,7 +117,13 @@ func addWeftVerbs(cmd *cobra.Command) {
 		Args:  cobra.NoArgs,
 		Short: "show unified warp+weft uncommitted-change status",
 		Long: `Reports every currently-uncommitted path across both sides of the
-warp<->weft pair, each labelled with which side (warp or weft) it changed on.`,
+warp<->weft pair, each labelled with which side (warp or weft) it changed on.
+
+status also reports merge_in_progress: whether THIS pair has a fabric merge
+parked awaiting "lyx fabric merge --continue" or "lyx fabric merge --abort".
+It does NOT report whether some other pair in the hub is mid-merge on this
+pair's branch, so "lyx fabric remove" refusing on that hub-wide condition can
+coexist with merge_in_progress being false here.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -128,7 +134,15 @@ warp<->weft pair, each labelled with which side (warp or weft) it changed on.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"changes": changeEntriesMap(entries)}))
+			inProgress, err := fab.MergeInProgress()
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+				"changes":           changeEntriesMap(entries),
+				"merge_in_progress": inProgress,
+			}))
 			return nil
 		},
 	}

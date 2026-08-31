@@ -207,7 +207,7 @@ Weft paths are computed on demand from geometry and do not require a registry.
 
 ### Status
 
-- **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view. Paired `lyx fabric add` hard-requires a weft repo, which `lyx fabric clone` builds — there is no separate hub-creator tool.
+- **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view, also reporting `merge_in_progress`, whether THIS pair has a fabric merge parked. Paired `lyx fabric add` hard-requires a weft repo, which `lyx fabric clone` builds — there is no separate hub-creator tool.
 - **`lyx config` command**: ✅ task 008 complete.
   The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (A raddle config schema is **raddle** nav-doc work, not part of this task — it was only historically mis-bundled here; there is no `_raddle` junction to activate.)
 - **Portals**: unimplemented;

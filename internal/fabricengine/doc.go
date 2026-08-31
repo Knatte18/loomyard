@@ -1116,6 +1116,8 @@
 // to reprint the list (a merge is already in progress), `lyx fabric status` reports a remaining
 // weft-side conflict as an ordinary weft change indistinguishable from any other, and plain
 // `git status` in the visible worktree does not see it at all, because it lives across the junction.
+// `status` does now report the parked merge itself, through its `merge_in_progress` key, while still
+// not distinguishing which weft path is conflicted.
 // The only route back to the list was raw git inside the weft checkout — the one place the Fabric
 // illusion says an operator never has to look, which is the same argument that made `merge-stage` a
 // shipped gap. The refusal now carries the still-unresolved paths, mapped through the same
