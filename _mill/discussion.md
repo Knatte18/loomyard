@@ -37,7 +37,10 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
 - Changing the `mouse` pin, or anything about mouse-tracking escape sequences.
   The reporter's mouse hypothesis is addressed by the root-cause decision below and then dropped; mouse tracking is the *messenger*, not the cause.
 - The Windows/psmux path for the new hook entry.
-  The existing `window-resized` array is already never installed on Windows (`resizeSignalHookCommand` returns `""` there); the new entry inherits that rule unchanged and no psmux work is attempted.
+  Note the premise precisely, because it is easy to state wrongly: the `window-resized` array *is* installed on Windows — `installResizePinsLocked` carries no `runtime.GOOS` gate and issues the clear plus every `resize-pane` pin argv there like anywhere else.
+  What is excluded on Windows today is the **signal entry alone**, and it is excluded by exactly one mechanism: `resizeSignalHookCommand` returns `""` on `runtime.GOOS == "windows"`, and `resizePinHookArgvs` emits no entry for an empty body.
+  (`pinGeometryOptionsLocked`'s early Windows return covers only the *unset* half of the lifecycle, not the install half.)
+  The repaint entry therefore inherits nothing automatically and must carry its own `""`-returning builder modelled on `resizeSignalHookCommand`; no psmux work is attempted.
 - Any change to the watchdog's timings (`watchdogDebounceQuiet`, `watchdogSignalTick`, `watchdogPollCycle`).
   Shortening the debounce was considered and rejected — see `repaint-mechanism`.
 - Any change to `render/` layout computation. The layout is correct; only its painting is at issue.
@@ -83,15 +86,67 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
   It is ordered **after** the resize-pane pins and **before** the watchdog's signal entry, so it paints the geometry the pins have already fixed up, and so the signal entry keeps its documented position as the array's last entry.
   The plan must select the body by live measurement from this candidate list, in order, taking the first that demonstrably clears the artifact in the regression test:
   1. A `run-shell -b` invocation that enumerates the session's clients and refreshes each one — the only candidate that can reach a client *other* than the one whose resize fired the hook, and therefore the only candidate that can cover the cross-client trigger.
-     It reuses the existing `tmuxQuoteValue` escaping and `shell.ForGOOS()` dialect selection that `resizeHookCommand` already establishes in `internal/reedengine/watchdog.go`.
+     Its composition is specified under `repaint-body-composition` below, because it is not a one-liner and cannot be built from what `internal/shell` exposes today.
   2. A bare `refresh-client` entry with no target, relying on the hook's own client.
-     Cheaper and quoting-free, but structurally cannot cover the cross-client trigger; acceptable only if measurement shows candidate 1 does not work and candidate 2 fixes the resize trigger.
+     Cheaper, needs no shell fragment and no new `internal/shell` primitive, but structurally cannot cover the cross-client trigger; acceptable only if measurement shows candidate 1 does not work and candidate 2 fixes the resize trigger.
 - Rationale: the artifact's whole duration today is the latency of reed's watchdog round trip, because the re-apply's `select-layout` is what incidentally forces the redraw.
   Moving the redraw into the hook array makes it fire server-side, synchronously with the resize, before the watchdog has even been told a resize happened — collapsing a roughly one-second smear into a flicker.
   Putting it in the existing array rather than in a second hook install is mandatory, not stylistic: `installResizePinsLocked` is documented as the array's *only* install site precisely because the array is a whole-snapshot rebuild, and any second writer would clobber the pins or accumulate duplicate entries per attach.
 - Rejected: shortening `watchdogDebounceQuiet` / `watchdogSignalTick` — treats the symptom's duration rather than its cause, costs re-apply churn on every resize burst, and cannot help the cross-client trigger at all (the artifact there is in a client whose own window never resized from its perspective).
   Rejected: issuing `refresh-client` from Go after a successful `reapplyLayout` — that is the exact moment the artifact already heals today, so it would add a tmux round trip and change nothing.
   Rejected: a separate `client-resized` or `client-focus-in` hook — `client-resized` is already documented as reporting the stale pre-resize size, and a second hook install site violates the single-install-site rule above.
+
+### repaint-body-composition
+
+- Decision: the repaint entry's body is built by a new `""`-returning builder in `internal/reedengine/watchdog.go`, modelled line-for-line on `resizeSignalHookCommand`/`resizeHookCommand`, and the shell fragment inside it is built **only** through `internal/shell` — never by string-concatenating shell syntax inside `reedengine`.
+  Concretely, for candidate 1 the body needs four things, and each has exactly one source:
+  - The multiplexer binary path — `e.TmuxPath()`, the engine accessor `internal/reedcli/attach.go` already uses to spawn the attach child.
+    The tmux server's `run-shell` inherits no reed context, so the path must be embedded in the fragment; it is quoted with `shell.Shell.Quote`.
+  - Reed's socket — `e.Socket()`, embedded as the `-L` argument for the same reason, quoted the same way.
+    Without it the fragment would talk to the default socket, which is not reed's.
+  - The session target — `exactSessionWindowTarget(e.SessionName())` / `exactSessionTarget`, per the exact-target discipline every other reed call site follows, so the refresh cannot leak to a sibling worktree's session on the shared per-hub server.
+  - A loop over `list-clients -F '#{client_name}'` issuing one `refresh-client -t <name>` per line.
+    **This primitive does not exist today.** `shell.Shell` exposes `Quote`, `Invoke`, `ReadFile`, `WithEnv`, and `Touch` and nothing else, and the **Shell Mechanics Seam** constraint requires shell command strings to be built via `internal/shell` alone.
+    So the loop is added to `internal/shell` as a new `Shell` method (a line-iterating construct along the lines of `ForEachLine(command, body string) string`), stdlib-only, with both a POSIX and a pwsh implementation and table tests in `internal/shell`, exactly as the interface's existing members are shaped.
+    Adding it to the interface means both implementations must satisfy it even though only the POSIX one is ever executed in production here.
+  The assembled fragment is then wrapped by the existing `tmuxQuoteValue` and prefixed with `run-shell -b`, unchanged.
+  `tmuxQuoteValue`'s `$` escaping is load-bearing for this body specifically: the loop's own shell variable must reach the shell as a literal `$`, which is precisely what escaping it away from tmux's double-quote expansion achieves.
+  The whole string must still round-trip byte-identically through `show-options -v`, which the plan verifies live, since `hookInstalledLocked`'s per-entry matching depends on it.
+- Rationale: this is the difference between a decision and a wish.
+  `resizeHookCommand` wraps `sh.Touch(path)` and nothing more, so it establishes none of the binary path, socket, target, or loop machinery candidate 1 needs, and a plan told only "reuse `tmuxQuoteValue` and `shell.ForGOOS()`" would have to invent the rest — most likely by concatenating shell syntax inside `reedengine`, which the Shell Mechanics Seam forbids.
+- Rejected: hardcoding `tmux` as the binary name — `LYX_REED_TMUX` exists precisely so the binary is configurable, and the fragment would silently target the wrong multiplexer.
+  Rejected: omitting `-L` and relying on the default socket — reed never uses it.
+  Rejected: building the loop inline in `watchdog.go` to avoid touching `internal/shell` — a direct Shell Mechanics Seam violation, and it would leave the pwsh dialect unrepresented.
+  Rejected: replacing the loop with tmux's own syntax — tmux has no iteration construct, and `refresh-client` takes one client.
+
+### repaint-is-independent-of-watchdog
+
+- Decision: the repaint entry is **not** gated on `watchdogOption`.
+  It is installed whenever `installResizePinsLocked` runs on a non-Windows host, whatever `watchdog` is set to.
+  The `watchdog` key gates the watch loop and its signal entry, and nothing else.
+- Rationale: `watchdog: off` is a kill-switch for the self-healing re-apply loop — a behaviour that mutates layout.
+  A forced redraw mutates nothing and costs one tmux round trip per resize; conflating the two would mean an operator who turns off self-healing silently also turns off the repaint that this task exists to add, which is the opposite of what "off" means to them.
+- Reconciliation with the unconditional unset, which is the subtlety the gating question actually turns on: with `watchdog: off`, `pinGeometryOptionsLocked` issues `set-hook -u` and clears the entire array — pins, repaint entry, and all.
+  On both paths that call it, the very next thing that happens is a rebuild: `internal/reedengine/lifecycle.go`'s boot path and `AttachArgv`'s pre-flight both call `installResizePinsLocked` a few statements later in the same locked closure, so the array is immediately re-established with the pins and the repaint entry, minus only the signal entry.
+  The one case where the clear stands is a path that returns before the rebuild — `AttachArgv`'s degrade returns and `applyLayoutLocked`'s two guards.
+  With `watchdog: off` such a session keeps an empty array until the next successful apply.
+  That is accepted and unchanged by this task: it is exactly today's behaviour for the resize-pane pins, it only affects sessions that are already in a guard-skipping state (fewer than two panes, or no strand owning a live pane), and the next real apply restores everything.
+  This must be stated in `doc.go` rather than left for a reader to derive from two files.
+- Rejected: gating the repaint entry on `watchdogOption` for symmetry with the signal entry — symmetry is not a reason; the two entries answer different questions ("does anyone want to hear about a resize" versus "should the screen be correct"), which is the same distinction `doc.go` already draws when it explains why the signal entry ships even with zero pins.
+  Rejected: making the repaint entry survive the unset by moving it out of the array — that would create a second install site, which the single-install-site rule forbids.
+
+### probe-verbs-not-extended
+
+- Decision: `list-clients` and `refresh-client` are **not** added to `requiredSubcommands` in `internal/reedengine/probe.go`.
+  That list holds fourteen verbs today (`new-session`, `has-session`, `split-window`, `select-layout`, `select-pane`, `send-keys`, `capture-pane`, `list-panes`, `list-sessions`, `display-message`, `set-option`, `kill-pane`, `kill-session`, `kill-server`) and neither of the two is among them — nor are `set-hook` or `run-shell`, which the existing hook machinery already depends on.
+  Both new call sites degrade instead:
+  - A failing or unsupported `list-clients` in `AttachArgv` logs one `logger.Warn` and emits no multi-client warning. The argv is unaffected.
+  - A `refresh-client` the multiplexer does not implement makes the hook entry a no-op fired by the tmux server, which is the same outcome as the mitigation not helping — the artifact stays, nothing breaks.
+- Rationale: `requiredSubcommands` is documented as the set the engine "cannot work without", enforced by failing loud once at server-ensure.
+  Both of these are geometry-quality only, exactly like the `status`/`window-size` pins that the Shared Decision `geometry-tmux-failures-are-non-fatal-everywhere` already exempts from fatality.
+  Adding them would make a multiplexer that runs reed perfectly well today fail at boot over a cosmetic feature.
+- Rejected: adding them and letting the probe fail loud — turns a WARN-severity cosmetic fix into a hard compatibility break for psmux and any other tmux-alike.
+  Rejected: probing for them separately at install time — a per-attach capability round trip for a feature whose absence is already silent and harmless.
 
 ### uncovered-subset-is-documented-not-fixed
 
@@ -118,7 +173,9 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
 - Rationale: this is the only way to observe the artifact at all.
   The dots are a client-side render artifact — they exist in what tmux paints to a client's terminal and are in no pane's grid, so `capture-pane` against the reed session itself is structurally blind to them.
   Capturing the *harness* pane that hosts the attach client captures exactly the bytes that client rendered, dots included.
-  `smoke_attach_test.go` already establishes every primitive this needs (`tmuxBinaryPath`, `harnessShellBinaryPath`, `buildLyxBinary`, `hubforge.NewHub`, `sendKeysLine`, `pollPaneContains`, `reapHarnessServer`), so the test is new scenarios over existing scaffolding rather than new infrastructure.
+  The scaffolding already exists and is split across two files, which the plan must cite correctly: `internal/reedcli/smoke_test.go` holds the shared primitives (`tmuxBinaryPath`, `harnessShellBinaryPath`, `buildLyxBinary`, `sendKeysLine`, `pollPaneContains`, `reapHarnessServer`), while `internal/reedcli/smoke_attach_test.go` is where the harness-in-harness *pattern* — booting a second server, sending the attach line into its pane, polling that pane — is demonstrated end to end.
+  `hubforge.NewHub` comes from `internal/hubforge`.
+  So the test is new scenarios over existing scaffolding rather than new infrastructure, with one new helper (the dot-run predicate, see Testing).
 - Rejected: adding a pty dependency such as `creack/pty` to drive the attach directly — a new third-party module for something the harness-server pattern already does, on a repo whose `go.mod` is deliberately small.
   Rejected: asserting only in the live `reed-watch-suite` — that suite is explicitly operator-assisted and non-automated, so it can never gate a regression.
   Rejected: a unit test over a fake tmux — the artifact is produced by real tmux's renderer and cannot be faked into existence.
@@ -157,10 +214,15 @@ The engine talks to tmux through `e.tmux.run(...)` (no output) and `e.tmux.outpu
 Listing clients will need a new `e.tmux.output("list-clients", "-t", ..., "-F", ...)` call; the `#{client_name}`, `#{client_width}`, `#{client_height}` formats are the relevant ones.
 Every tmux failure on this path is non-fatal per the Shared Decision `geometry-tmux-failures-are-non-fatal-everywhere`, which already governs both files.
 
-**Windows.**
-`resizeSignalHookCommand` returns `""` on `runtime.GOOS == "windows"`, and `pinGeometryOptionsLocked`'s hook block returns early there, because `set-hook`/`run-shell` are absent from `requiredSubcommands` and psmux's support is unverified.
-The new repaint entry follows the same rule with no new reasoning: it is never installed on Windows.
-The attach-time warning has no such restriction — `list-clients` is a plain query — but if it turns out not to be in `requiredSubcommands`, its absence must degrade to no warning rather than to an error.
+**Windows — read this carefully, the obvious summary of it is wrong.**
+`installResizePinsLocked` has **no** `runtime.GOOS` gate: on Windows it issues the `set-hook -u` clear and every `resize-pane` pin argv exactly as it does elsewhere.
+`pinGeometryOptionsLocked`'s early Windows return covers only the *unset* half of the hook lifecycle (plus the signal-file removal), not the install half.
+The single mechanism that keeps the signal entry off Windows is `resizeSignalHookCommand` returning `""` there, combined with `resizePinHookArgvs` emitting no entry for an empty body.
+Consequently the repaint entry has nothing to inherit and will be installed on Windows unless it is given its own `""`-returning builder on the `runtime.GOOS == "windows"` path — which it must be, mirroring `resizeSignalHookCommand` exactly.
+`set-hook`/`run-shell` are absent from `requiredSubcommands` and psmux's support for them is unverified, which is the original reason for the Windows exclusion and applies unchanged.
+
+The attach-time warning has no such restriction — `list-clients` is a plain query and is issued on every platform.
+It is not in `requiredSubcommands` and is not being added (decision `probe-verbs-not-extended`), so its absence or failure degrades to no warning, never to an error.
 
 **Nothing in reed currently knows about multiple clients.**
 `grep` for `list-clients`, `client_width`, or any client concept across `internal/reedengine` and `internal/reedcli` returns nothing.
@@ -182,6 +244,9 @@ From `CONSTRAINTS.md`:
 - **Durable-vs-Ephemeral State Invariant** — the resize signal file lives under `.lyx` via `stateDir()`, one per worktree so sibling worktrees on the shared per-hub tmux server cannot collide.
   No new never-tracked file is introduced by this task;
   if one were, it would have to follow the same rule.
+- **Shell Mechanics Seam** — shell command strings are built ONLY via `internal/shell` (`Quote`/`Invoke`/`ReadFile`, stdlib-only).
+  This binds candidate 1's `run-shell` body directly: the client-refresh loop it needs has no existing primitive, so the primitive is added to `internal/shell` (both POSIX and pwsh implementations) rather than concatenated inside `internal/reedengine`.
+  See the `repaint-body-composition` decision.
 - **CLI/Cobra Invariant** — no new subcommand is added, so the `Command()`/`RunCLI` seam, the `Short`-on-every-command rule, and the help-tree tests are untouched.
   `attach`'s registered exception (no JSON envelope after the terminal handover) stays exactly as it is.
 - **Documentation Lifecycle** — the doc updates named under Technical context land in the same commit as the code, per CLAUDE.md.
@@ -190,7 +255,10 @@ Discovered during discussion:
 
 - `installResizePinsLocked` must remain the sole install site for the `window-resized` array. Any second writer clobbers or duplicates.
 - `AttachArgv` must never return an error and must never block the handover, no matter what the new client listing does.
-- The `window-resized` array is never installed on Windows; the new entry inherits that unchanged.
+- The `window-resized` array **is** installed on Windows (`installResizePinsLocked` has no `runtime.GOOS` gate); only the signal entry is excluded there, and only because its builder returns `""`.
+  The repaint entry needs its own `""`-returning builder to be excluded — there is no inheritance to rely on.
+- The repaint entry is independent of the `watchdog` key, and the unconditional array clear that `watchdog: off` performs is immediately followed by a rebuild on both call paths. See `repaint-is-independent-of-watchdog`.
+- `list-clients` and `refresh-client` stay out of `requiredSubcommands`; both call sites degrade silently.
 - Shared Decision `geometry-tmux-failures-are-non-fatal-everywhere` governs every tmux call added by this task.
 - Shared Decision `the-clear-is-unconditional-including-zero-pins` still holds: a zero-pin rebuild with the watchdog on still installs the signal entry, and now also the repaint entry.
 
@@ -205,23 +273,46 @@ These are the primary TDD candidates because the functions are pure and the exis
 - The repaint body builder, wherever it lands beside `resizeHookCommand` in `watchdog.go` (extend `watchdog_test.go`): correct `-b`, correct `tmuxQuoteValue` escaping of `\`, `"`, and `$`, and byte-identical round-trip shape.
 - `hookInstalledLocked` (extend `reapply_test.go`): an array that now contains the repaint entry alongside the pins and the signal entry is still probed correctly.
   This is the regression that matters most — the probe matches per entry, and a new entry must not make a healthy session read as "no hook".
+**`internal/shell` — pure unit tests (TDD candidate).**
+If candidate 1 of `repaint-mechanism` is selected, the new line-iterating `Shell` primitive gets table tests in `internal/shell` for both the POSIX and pwsh implementations, in the shape the package's existing member tests already use: the emitted syntax for a simple command and body, correct quoting of a command containing spaces and quotes, and the interaction with `Quote`.
+Both implementations must exist even though only POSIX executes here, because the member is on the interface.
+
+**`internal/reedengine` — pure unit tests, continued.**
+
 - The new client-listing helper: parsing a `list-clients -F` answer into name/size triples.
   Cover the empty answer (no clients attached), one client, several clients, a malformed line, and trailing whitespace — mirroring `parseWindowSize`'s existing table-test shape and its strict "any other shape reports not-ok" discipline.
 - `AttachArgv` (extend `attach_test.go`): with a fake tmux answering `list-clients`, a same-size existing client produces no warning, a different-size one produces exactly one warning, a `list-clients` error produces a warning and no behaviour change, and in every one of those cases the returned argv is byte-identical to what it is today.
   The argv is the contract; the warning is a side effect that must never perturb it.
 
 **`internal/reedcli` — smoke tests (build tag `smoke`, real tmux required).**
-Two new scenarios in a new file beside `smoke_attach_test.go`, both built on the harness-server pattern that file already establishes.
+A new file beside `smoke_attach_test.go`, built on the harness-server pattern that file establishes and the shared primitives in `smoke_test.go`.
 
-- *Resize trigger*: boot a reed session with at least two live panes, attach inside a harness pane of a known size, resize that harness pane, and capture it.
-  The scenario must first be shown to reproduce the artifact — a run of dots in the captured harness pane within the heal window — and then, with the repaint entry installed, to be free of it.
-  Reproducing before fixing is the point: a test that only ever passes proves nothing about a rendering artifact.
-- *Cross-client trigger*: attach two clients of deliberately different sizes to the same reed session from two harness panes, deliver input to one of them so it becomes the most-recently-used client, and capture the other.
-  Assert the same before/after property.
-  If measurement shows this trigger falls in the uncovered subset of `root-cause-model` and cannot be cleared, the test asserts the *documented* behaviour instead and its comment cites the `uncovered-subset-is-documented-not-fixed` decision by name.
+*The assertion predicate.*
+`pollPaneContains` must not be used for this, and reusing it would be the single easiest way to ship a test that proves nothing: it takes a plain substring, and legitimate harness-pane content contains dots (file paths, ellipses, the header template).
+The predicate is a new helper in the same file: capture the harness pane, and report a hit when **any single captured line contains a run of at least 20 consecutive `.` characters**.
+Twenty is chosen because it is far above anything reed's own rendered content produces on one line and far below the width of any pane region tmux would pad — the plan should sanity-check the floor against a clean capture and raise it if a clean run trips it.
+The helper polls to a bounded deadline in the style of `pollPaneContains` rather than sampling once, because the artifact is timing-dependent in both directions: it can take a moment to appear, and it heals on its own.
 
-Scenarios the smoke tests must not assume: that the artifact appears on every run at every size.
-It is timing-dependent, so each assertion polls within a bounded deadline in the style of the existing `pollPaneContains` helper rather than sampling once.
+*The negative control — this is what keeps the suite honest.*
+"Reproduce it once by hand, then assert absence forever" is not a test;
+once the repaint entry lands, an absence-only assertion passes vacuously on any machine or tmux build where the artifact never appears, and it would keep passing if the repaint entry were deleted outright.
+So each trigger ships as a **pair** of scenarios sharing one setup helper:
+
+- *Control (artifact expected).* After the session is up and reed has installed its array, the test **overwrites the `window-resized` array itself** with direct `tmux set-hook` calls against reed's socket — reproducing reed's own array minus the repaint entry — then fires the trigger and asserts the predicate **hits**.
+  Rewriting the array from the test rather than adding a production seam is deliberate: it needs no build-tagged env knob, no exported test hook, and no branch in shipping code, and it exercises the exact array shape reed produced before this task.
+  A control that does not hit fails the run: that means the harness can no longer reproduce the bug, and every companion assertion has become vacuous.
+- *Treatment (artifact absent).* Same setup, reed's own array left untouched, same trigger, assert the predicate **does not hit** for the whole deadline.
+
+Both triggers get this pair:
+
+- *Resize trigger*: boot a reed session with at least two live panes, attach inside a harness pane of a known size, resize that harness pane in both directions, capture it.
+- *Cross-client trigger*: attach two clients of deliberately different sizes to the same reed session from two harness panes, deliver input to one so it becomes the most-recently-used client, capture the other.
+  Size the two clients so the observed client ends up **fully covered** by the new window geometry — otherwise the scenario lands in the uncovered subset of `root-cause-model`, where dots are correct tmux behaviour and no mitigation can clear them.
+  Getting that sizing right is part of the scenario, not an accident of the machine.
+  If measurement shows this trigger cannot be cleared even when fully covered, the treatment scenario is inverted to assert the *documented* residual instead, and its comment cites `uncovered-subset-is-documented-not-fixed` by name — but the control scenario stays either way.
+
+The smoke tests must not assume the artifact appears on every run at every size;
+that is precisely why the control exists as an executable assertion rather than as a note in a commit message.
 
 **Measurement gate.**
 Before the repaint entry is implemented, the plan runs the resize smoke scenario against candidate 1 and, if needed, candidate 2 from `repaint-mechanism`, and records which one cleared the artifact and on what tmux version — in `doc.go`, in the same "verified live on tmux 3.6" voice the surrounding decisions use.
@@ -247,4 +338,9 @@ That branch is a complete, acceptable outcome, not a failure — the artifact is
 - **Q:** Warn the operator when a second differently-sized client is already attached? **A:** [auto-pick] Yes — one `logger.Warn` from `AttachArgv`'s pre-flight, naming the other client and both sizes. **Why:** the real operator cost of the residual is bewilderment, and the observation run proved it; the warning must never touch the envelope or the argv.
 - **Q:** Does the new hook entry ship on Windows? **A:** [auto-pick] No. **Why:** the `window-resized` array is already never installed there because `set-hook`/`run-shell` are outside `requiredSubcommands` and psmux support is unverified; the entry inherits that rule with no new reasoning.
 - **Q:** What if measurement shows no candidate mechanism clears either trigger? **A:** [auto-pick] Land the regression tests, the attach-time warning, and the documentation, and record the negative result in `doc.go`. **Why:** a WARN-severity cosmetic artifact that is understood, tested, and explained is an acceptable outcome; a speculative hook entry that fixes nothing is not.
+- **Q:** Is the repaint entry gated on `watchdog: off` like the signal entry? **A:** [auto-pick] No — independent; `watchdog` gates the self-healing loop and its signal entry only. **Why:** the kill-switch means "stop mutating my layout", and a forced redraw mutates nothing; the array clear that `watchdog: off` performs is followed immediately by a rebuild on both call paths, so the entry survives.
+- **Q:** Where do the tmux binary path, socket, and client loop in candidate 1's hook body come from? **A:** [auto-pick] `e.TmuxPath()`, `e.Socket()`, `exactSessionWindowTarget`, and a **new** `internal/shell` line-iterating primitive with POSIX and pwsh implementations. **Why:** `resizeHookCommand` establishes none of them, and the Shell Mechanics Seam forbids building the fragment inside `reedengine`.
+- **Q:** Do `list-clients` and `refresh-client` join `requiredSubcommands`? **A:** [auto-pick] No — both call sites degrade silently. **Why:** that list is the set the engine cannot work without; adding a cosmetic-feature verb would fail boot for multiplexers that run reed fine today.
+- **Q:** How does the smoke suite avoid asserting absence vacuously? **A:** [auto-pick] Each trigger ships as a control/treatment pair; the control rewrites the `window-resized` array from the test without the repaint entry and asserts the artifact **appears**. **Why:** an absence-only assertion would keep passing if the fix were deleted, and would pass vacuously wherever the timing-dependent artifact never shows.
+- **Q:** What predicate detects the dots? **A:** [auto-pick] A run of at least 20 consecutive `.` on any single captured line, polled to a bounded deadline — not `pollPaneContains`. **Why:** `pollPaneContains` is a plain substring match and legitimate pane content contains dots.
 - **Q:** Does `manifest/roadmap.md` move? **A:** [auto-pick] No. **Why:** CLAUDE.md reserves roadmap movement for completing or adding a planned item; this is a bugfix/hardening pass covered by git history and `doc.go`.
