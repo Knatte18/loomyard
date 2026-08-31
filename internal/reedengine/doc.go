@@ -455,6 +455,30 @@
 //     (reapply.go) reads the array back and matches the signal command
 //     against each line of the multi-entry answer, never the answer as a
 //     whole, so its position among the resize-pane pins does not matter.
+//   - Measurement record (repaint candidates) (internal/reedcli's
+//     smoke_dotfill_measure_test.go, TestSmokeRepaintCandidateMeasurement):
+//     measured live on tmux 3.6, across two independent runs of the gate.
+//     Candidates were tried in order: candidate 1 (a run-shell -b fragment
+//     enumerating the session's attached clients via
+//     "list-clients -F '##{client_name}'" and refreshing each with
+//     refresh-client) and candidate 2 (the bare refresh-client tmux
+//     command, no target). Both candidates cleared the dot-fill artifact
+//     (paneStaysCleanOfDotRun held over a fixed 3 s window after the
+//     shrink-then-grow trigger) and both left the window size settled
+//     (sampleWindowSize's final third held at a single repeated value,
+//     both runs), but both were rejected on the same gate: no repeated
+//     hook fire. The scenario's shrink-then-grow trigger fires
+//     window-resized exactly twice — once per real resize-window call —
+//     and fireCount read back 2 for both candidates, identically, which is
+//     symmetric evidence that the count comes from the harness's own
+//     two-action trigger rather than either candidate's own feedback; the
+//     repaint-must-not-self-retrigger decision's exactly-one-fire
+//     criterion is nonetheless tripped by that count as literally stated.
+//     No candidate was accepted. No repaint entry ships from this task:
+//     the resize control and cross-client scenarios stand as the durable
+//     reproduction record, and the resize treatment scenario is inverted
+//     to assert the artifact's continued appearance rather than its
+//     absence, per the no-candidate-accepted disposition.
 //   - The chained attach (attach.go): AttachArgv's argv is
 //     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
 //     separator a literal one-character ";" argv element — never "\;",
