@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: fabric-status-merge-in-progress
 branch: fabric-status-merge-in-progress
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussion-fix-r5  '2026-08-31T18:10:36Z'
 discussion-fix-r6  '2026-08-31T18:12:50Z'
 discussed  '2026-08-31T18:12:50Z'
 planning  '2026-08-31T18:16:41Z'
+plan-review-r1  '2026-08-31T18:22:36Z'
 ```
