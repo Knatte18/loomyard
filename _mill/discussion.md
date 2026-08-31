@@ -121,6 +121,39 @@ The read-order flip is a measured, uncontested win being left on the table on ev
   Exit 2 stays reserved for usage errors — a listing that is too large is not a malformed invocation.
 - Rejected: a distinct exit code (e.g. 3) for "too large" — no current caller branches on exit code beyond zero/non-zero, so a third code would be an untested distinction serving nobody.
 
+### The raw attempt is `curl -sfL` with explicit timeouts; any non-zero curl exit is the fallback trigger
+
+- Decision: the raw attempt is exactly
+  `curl -s -f -L --connect-timeout 5 --max-time 30 -o "$tmp" "https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}"`.
+  Failure is defined as **curl's exit status being non-zero** — nothing else.
+  No HTTP status code is captured, parsed, or branched on;
+  `-f` is what turns every `>= 400` response into a non-zero exit (22) with an empty output file.
+- Rationale: `-f` is the flag that makes exit status a sufficient signal.
+  Without it, a plain `curl <url>` answers a 404 with exit 0 and a `404: Not Found` body, which would be emitted as if it were the file's content — the exact failure the fallback exists to prevent.
+  With `-f`, curl writes no body at all on an error status, so "exit non-zero" covers HTTP errors, DNS failure, connection refusal, and timeout under one uniform rule, and the fallback needs no status-code table.
+  Body-emptiness cannot serve as the signal, because an empty file that read successfully is a valid outcome the harness asserts explicitly (exit 0, empty stdout).
+  `-s` (not `-sS`) is required: the script never reports the raw attempt's failure (see the Decision "reports the `gh api` failure, not the raw failure"), so curl must not write progress or error text to stderr either.
+  `-L` is required because `raw.githubusercontent.com` may answer with a redirect, and an unfollowed 301 would be a spurious fallback.
+- Timeouts: `--connect-timeout 5 --max-time 30`.
+  A hung raw request must not stall the read forever with the fallback never firing — that is a distinct concern from retrying, and bounding it is not a retry.
+  The no-retry policy is untouched: the bound converts a hang into one clean non-zero exit that hands off to `gh api` exactly once.
+- Rejected: capturing the HTTP status with `-w '%{http_code}'` and branching on it — more parsing, a second output channel to keep off stdout, and no additional information, since every status the script would branch on is already collapsed into curl's exit code by `-f`.
+  Rejected: no timeout at all — a stalled connection would hang the caller with no diagnosis and no fallback.
+
+### `github-read.sh` buffers the raw body to a temp file; it never streams to stdout
+
+- Decision: curl writes to a temp file created with `mktemp` (`tmp="$(mktemp)"`, cleaned up by a `trap ... EXIT`), and the script `cat`s that file to stdout only after curl exits zero.
+  The `gh api` fallback writes to the same temp file and is emitted the same way.
+  stdout is written exactly once, from a complete body, in both paths.
+- Rationale: this is the only mechanism that satisfies all three stated properties at once.
+  Streaming curl straight to stdout breaks the no-partial-prefix rule — a connection dying mid-body after a 200 leaves a truncated prefix on stdout, and the fallback then appends a second copy behind it.
+  Command-substitution buffering (`content="$(curl ...)"`) breaks byte-fidelity — it strips every trailing newline and silently drops NUL bytes, contradicting both the "byte-identical to the fixture, no added trailing newline" assertion and the promise that whatever bytes arrive are written through unexamined.
+  A temp file has neither problem: `cat` reproduces the bytes exactly, and nothing reaches stdout until the transfer has already succeeded.
+- Scope note on the scratch-location constraint: `mill:conversation`'s "never write to a system temp directory" rule governs mill's own orchestration and harness files inside the repo, which is why `github-read-selftest.sh` scratches under `<repo>/.scratch/`.
+  It does not bind this production script, which must work from an arbitrary cwd against a possibly read-only checkout and which deliberately self-locates no `PLUGIN_ROOT` (see the path-validation Decision) — `mktemp` honouring `TMPDIR` is the portable answer there.
+- Rejected: streaming to stdout with an explicit relaxation of the no-partial-prefix rule — cheapest to write, but it gives the caller a silently truncated file, which is worse than a clean failure and is precisely what the rule exists to prevent.
+  Rejected: command substitution — corrupts trailing newlines and NUL bytes on every read, not only on failure.
+
 ### `github-read.sh` skips raw silently when `curl` is absent
 
 - Decision: `github-read.sh` checks `command -v curl`.
@@ -190,8 +223,14 @@ The read-order flip is a measured, uncontested win being left on the table on ev
   A `--`-style terminator is supported so a path can never be mistaken for a flag.
   An unrecognised leading `--`-prefixed token is a usage error (exit 2), not a path.
   Flags appearing after the positionals are a usage error.
-- Rationale: it preserves every existing invocation verbatim — `github-tree.sh <owner/repo>` and `github-tree.sh <owner/repo> <path>` keep working unchanged, which matters because SKILL.md documents exactly those two forms and the existing harness asserts them.
-  Rejecting an unknown flag rather than silently treating it as a path prevents a typo'd `--childern` from becoming a confusing 404.
+- The flag test is on a leading `--` **only**: a token is treated as a flag candidate if and only if it begins with two dashes.
+  A single-dash token is never a flag, at any position — `github-tree.sh acme/x -foo` still reaches path validation and behaves exactly as today.
+- Accepted behavioural deviation: `-` is inside today's accepted path character set, so `github-tree.sh acme/x --foo` currently reaches the API and returns a 404.
+  Under the new rule it exits 2 as a usage error instead.
+  This is the one invocation whose behaviour changes, and the change is the point — a typo'd `--childern` must not become a confusing 404.
+  "Every existing invocation preserved verbatim" therefore means every invocation whose path does not begin with `--`;
+  a path that genuinely begins with `--` is still reachable, via the `--` terminator.
+- Rationale: it preserves every documented and tested invocation — `github-tree.sh <owner/repo>` and `github-tree.sh <owner/repo> <path>` keep working unchanged, which matters because SKILL.md documents exactly those two forms and the existing harness asserts them.
 - Rejected: allowing flags anywhere among the positionals — more parsing surface, no benefit, and it makes "is this token a path or a typo'd flag" ambiguous.
 
 ### The usage line and its exit code
@@ -224,7 +263,9 @@ The read-order flip is a measured, uncontested win being left on the table on ev
   Zero blobs is success: exit 0, empty stdout.
   The entry-count guard checks against `${#output[@]}` as entries are appended.
 - The script uses `set -u` (not `set -e`); error handling is explicit throughout.
-- The non-recursive path already has its own truncation abort (`the non-recursive listing of '<ref>' is itself truncated`), which `--children` inherits for free.
+- The non-recursive truncation abort (`the non-recursive listing of '<ref>' is itself truncated`) lives inside the walk loop's `else` branch (`github-tree.sh:224-226`), so `--children` — which bypasses the queue entirely — does **not** inherit it.
+  The check must be restated on the `--children` path, with the same message and the same `die`, or hoisted so both paths share it.
+  Restating it is the cheaper choice: it is three lines, and hoisting would mean threading a flag through the walk loop to keep the recursive path's `continue`-vs-`die` distinction intact.
 
 **`plugins/prowler/scripts/github-tree-selftest.sh`** (463 lines, 22 tests) is the harness to extend:
 
@@ -261,10 +302,10 @@ No new cross-cutting invariant arises from this task, so `CONSTRAINTS.md` is not
 - **Documentation Lifecycle** (`CONSTRAINTS.md` → `docs/overview.md`): SKILL.md and `plugins/prowler/README.md` are updated in the same commit as the code, per the project's task-completion rule.
 - **`manifest/roadmap.md` is not touched** — this is hardening of an already-merged change, which the project's CLAUDE.md explicitly excludes from roadmap movement.
 - **Markdown: semantic line breaks** (project CLAUDE.md): one sentence per line, with breaks at internal independent-clause boundaries. No fixed-column hard-wrap, no trailing double-space or backslash breaks. Applies to every `.md` file touched, including lines being edited in place.
-- **Never write to a system temp directory** (`mill:conversation`): the new harness scratches under `<repo>/.scratch/`, mirroring `github-tree-selftest.sh`'s `SCRATCH="$PLUGIN_ROOT/../../.scratch/github-tree-selftest"`.
-- **Backwards compatibility is required, not optional**: `github-tree.sh <owner/repo>` and `github-tree.sh <owner/repo> <path>` must behave byte-identically to today, in both stdout and `gh` call identity/count, for every listing under the ceiling. The existing 22 tests assert this and must keep passing unmodified.
+- **Never write to a system temp directory** (`mill:conversation`): binds mill's own orchestration and harness files, so the new harness scratches under `<repo>/.scratch/`, mirroring `github-tree-selftest.sh`'s `SCRATCH="$PLUGIN_ROOT/../../.scratch/github-tree-selftest"`. It does not bind `github-read.sh` itself, which uses `mktemp` — see the Decision "buffers the raw body to a temp file".
+- **Backwards compatibility is required, not optional**: `github-tree.sh <owner/repo>` and `github-tree.sh <owner/repo> <path>` must behave byte-identically to today, in both stdout and `gh` call identity/count, for every listing under the ceiling. The existing 22 tests assert this and must keep passing unmodified. The single accepted deviation is a positional argument beginning with `--`, which now exits 2 instead of reaching the API — see the flag-parsing Decision.
 - **Strict stdout discipline** (established by `run.sh` and `github-tree.sh`): stdout carries the payload and nothing else; every diagnostic goes to stderr; a failure never leaves a partial prefix on stdout.
-- **No retries, no backoff** in either script — an existing, documented design decision, not an omission to fix.
+- **No retries, no backoff** in either script — an existing, documented design decision, not an omission to fix. `github-read.sh`'s `--connect-timeout`/`--max-time` bounds are not retries: they turn a hang into one clean non-zero exit, which still hands off to the single `gh api` attempt exactly once.
 - **Runtime `jq` is never invoked** by the production scripts; all JSON extraction goes through `gh api --jq`, which uses `gh`'s embedded gojq. System `jq` is a harness-only dependency.
 
 ## Testing
@@ -289,7 +330,9 @@ New scenarios to cover, each using the existing `run_scenario` / `call_count_for
 - `--max-entries` with a non-integer, a negative value, or a missing value is a usage error: exit 2, and no `gh` call was made at all (assert the call log is empty — the prerequisite-and-argument-before-network ordering is a stated property worth pinning).
 - An unrecognised `--`-prefixed flag is a usage error, not a path.
 - `--` terminator: a path that begins with `-` is accepted as a path.
-- Flags after the positionals are a usage error.
+- Flags after the positionals are a usage error: `github-tree.sh <owner/repo> --foo` exits 2 with no `gh` call — the one deliberate behavioural deviation from today, pinned as a test so it is a decision rather than a regression.
+- A single-dash token is not a flag: `github-tree.sh <owner/repo> -foo` still reaches path validation and the API, exactly as today.
+- `--children` on a directory whose non-recursive listing is itself truncated: the truncation abort fires with the same message the walk's non-recursive branch uses — the assertion that the check was restated on the `--children` path rather than assumed inherited.
 - Guard abort leaves stdout completely empty even though many entries were buffered — the buffering guarantee under the new failure mode.
 
 **`github-read-selftest.sh` — new sibling harness.**
@@ -298,6 +341,13 @@ Both stubs must log every invocation before validating its shape, so "no call wa
 Scenarios:
 
 - Raw succeeds: exact stdout equals the fixture bytes, exit 0, exactly one `curl` call against the `https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}` URL, and **zero** `gh` calls — the assertion that proves the preference order.
+- The `curl` argument vector is exactly the decided one: `-s -f -L --connect-timeout 5 --max-time 30 -o <file> <url>`, asserted argument by argument (mirroring the tree harness's four-argument shape assertion on `gh`).
+  `-f` in particular is what makes exit status a sufficient failure signal, so its absence must fail a test rather than silently degrade to emitting `404: Not Found` as file content.
+- Raw fails with a non-zero exit that is **not** an HTTP error — the stub `curl` exits 28 (timeout) and then 7 (connection refused) — and the `gh api` fallback fires in both cases, proving the trigger is curl's exit status and not a parsed status code.
+- Raw returns HTTP 404 the way `-f` does: the stub `curl` writes nothing to its `-o` target and exits 22.
+  Assert stdout carries no `404: Not Found` text — this is the regression test for the plain-`curl` mistake.
+- No partial prefix when raw dies mid-body: the stub `curl` writes a partial body to its `-o` target and then exits non-zero, and the fallback succeeds.
+  Assert stdout is exactly the fallback's bytes, with no partial prefix in front of them — the assertion that pins the temp-file buffering decision and would fail against a stream-to-stdout implementation.
 - Raw 404, `gh api` succeeds: correct stdout, exit 0, one `curl` call then one `gh` call, and the `gh` call carries `-H Accept: application/vnd.github.raw` (assert the exact argument vector, mirroring the tree harness's four-argument shape assertion).
 - Raw fails, `gh api` fails with 401 / 403 / 404: exit non-zero, empty stdout, exactly one stderr line, and that line carries the `gh` diagnosis with no mention of the raw attempt.
 - `curl` absent from PATH: goes straight to `gh api`, zero `curl` calls, nothing on stderr about `curl`, correct stdout.
@@ -310,6 +360,8 @@ Scenarios:
 - Malformed `<owner/repo>`: rejected locally, no calls.
 - Empty file: exit 0, empty stdout — success, distinguished from failure only by the exit code, which is exactly why SKILL.md tells the caller to check it.
 - stdout cleanliness: on a successful read, stdout is byte-identical to the fixture with no added trailing newline, banner, or filename — assert against the fixture bytes, not a trimmed comparison.
+  Include a fixture whose final byte is not a newline and a fixture containing a NUL byte, compared with `cmp`, since both are exactly what command-substitution buffering would silently corrupt and a byte-identical comparison is the only assertion that catches it.
+- The temp file is cleaned up: after a successful read and after a both-backends-failed read, assert the file `mktemp` created no longer exists (capture it by pointing `TMPDIR` at the harness scratch directory for the scenario and asserting that directory is empty afterwards).
 
 **Not covered offline, documented as manual checks** (mirroring the existing harness's "NOT covered here" header note): one live `github-read.sh` run against a public repo confirming the raw path is taken; one live run against a private repo confirming the `gh api` fallback fires and succeeds; one live `--children` run; and one live guard trip against a large public repo.
 
