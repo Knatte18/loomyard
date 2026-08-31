@@ -484,6 +484,87 @@ else
     fail "stub rejection path: status=$stub_status err=$stub_err calls=$(cat "$stub_dir/calls.log")"
 fi
 
+# --- Test 23: --children on a path ---------------------------------------------
+run_scenario children_scoped "$(printf 'repos/acme/childrenrepo/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children acme/childrenrepo src
+expected="$(printf 'src/main.go\nsrc/deep/\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--children on a path: exact stdout, directory entry with one trailing slash"
+else
+    fail "--children on a path: status=$status out=$out"
+fi
+case "$out" in
+*vendor*) fail "--children on a path: submodule entry 'vendor' leaked onto stdout" ;;
+*) pass "--children on a path: submodule entry absent" ;;
+esac
+if [ "$(call_line_count children_scoped)" -eq 1 ]; then
+    pass "--children on a path: exactly one gh call"
+else
+    fail "--children on a path: call log has $(call_line_count children_scoped) lines, expected 1: $(calls children_scoped)"
+fi
+if [ "$(call_count_for_endpoint children_scoped 'repos/acme/childrenrepo/git/trees/HEAD:src')" -eq 1 ]; then
+    pass "--children on a path: endpoint is the non-recursive HEAD:<path> form"
+else
+    fail "--children on a path: endpoint did not match the non-recursive scoped form: $(calls children_scoped)"
+fi
+
+# --- Test 24: --children with no path -------------------------------------------
+run_scenario children_root "$(printf 'repos/acme/childrenroot/git/trees/HEAD\ttrunc1-root-nonrec.json\n')" --children acme/childrenroot
+expected="$(printf 'zzz.txt\nMakefile\nmmm/\naaa/\nbbb/')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "--children with no path: two root blobs unmarked, three directories trailing-slash-marked"
+else
+    fail "--children with no path: status=$status out=$out"
+fi
+if [ "$(call_line_count children_root)" -eq 1 ]; then
+    pass "--children with no path: exactly one gh call"
+else
+    fail "--children with no path: call log has $(call_line_count children_root) lines, expected 1: $(calls children_root)"
+fi
+
+# --- Test 25: --children never recurses -----------------------------------------
+run_scenario children_norecurse "$(printf 'repos/acme/childrennorec/git/trees/HEAD\ttrunc1-root-nonrec.json\n')" --children acme/childrennorec
+if [ "$(call_line_count children_norecurse)" -eq 1 ]; then
+    pass "--children never recurses: call count stays at 1 despite tree entries in the listing"
+else
+    fail "--children never recurses: call log has $(call_line_count children_norecurse) lines, expected 1: $(calls children_norecurse)"
+fi
+descendant_leaked=0
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    stripped="${line%/}"
+    case "$stripped" in
+    */*) descendant_leaked=1 ;;
+    esac
+done <<< "$out"
+if [ "$descendant_leaked" -eq 0 ]; then
+    pass "--children never recurses: no descendant path (a slash before the final character) appears"
+else
+    fail "--children never recurses: a descendant path leaked onto stdout: $out"
+fi
+
+# --- Test 26: --children skips submodules ----------------------------------------
+run_scenario children_submodule "$(printf 'repos/acme/childrenrepo2/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children acme/childrenrepo2 src
+case "$out" in
+*vendor*) fail "--children skips submodules: 'vendor' leaked onto stdout marked or unmarked" ;;
+*) pass "--children skips submodules: submodule entry never appears" ;;
+esac
+
+# --- Test 27: --children on an empty directory ------------------------------------
+run_scenario children_empty "$(printf 'repos/acme/childrenempty/git/trees/HEAD:empty\tchildren-empty-nonrec.json\n')" --children acme/childrenempty empty
+if [ "$status" -eq 0 ] && [ -z "$out" ]; then
+    pass "--children on an empty directory: exit 0, byte-empty stdout"
+else
+    fail "--children on an empty directory: status=$status out=$out"
+fi
+
+# --- Test 28: --children listing that is itself truncated -------------------------
+run_scenario children_trunc "$(printf 'repos/acme/childrentrunc/git/trees/HEAD\tnonrectrunc-root-nonrec.json\n')" --children acme/childrentrunc
+if [ -z "$out" ] && [ "$status" -ne 0 ] && [[ "$err" == *truncated* ]]; then
+    pass "--children listing itself truncated: byte-empty stdout, non-zero exit, 'truncated' in stderr"
+else
+    fail "--children listing itself truncated: status=$status out=$out err=$err"
+fi
+
 rm -rf "$SCRATCH"
 
 echo "==========================================================="
