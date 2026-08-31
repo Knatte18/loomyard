@@ -206,6 +206,25 @@ before the resize stays focused after it.
 Rationale: the agent session owns the current terminal, so it cannot demonstrate or observe a live
 client resize itself.
 
+The confirmed mechanism, if dots briefly appear during either drag: they are tmux's own padding or
+stale paint in the region of a client's terminal the window does not cover, never reed content,
+and both the resize trigger here and the cross-client trigger below are the same underlying
+mismatch between a client's terminal size and the window's size.
+No repaint entry shipped for this task -- see `internal/reedengine/doc.go`'s decision log (the
+Measurement record and the bullets that follow it) for which candidates were tried and why both
+were rejected -- so expect the roughly one-second smear the watchdog's own round trip heals, not a
+brief flicker, on each drag.
+
+Also try the cross-client trigger, since the original finding could not explain it on its own:
+attach a second `lyx reed attach` client of a **different** size to the same session from another
+terminal, then move the pointer into or type into that second window -- no click required -- and
+watch the *first* client fill with dots.
+When the observed client is larger than the client that just became most-recently-used, those dots
+are correct tmux behavior for uncovered real estate and are **expected** -- report the scenario
+`OK` for that case rather than filing it again.
+reed now logs a `logger.Warn` at attach time naming any already-attached client whose size differs
+from the one attaching, which is the searchable trace for this exact condition.
+
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ## Session end
