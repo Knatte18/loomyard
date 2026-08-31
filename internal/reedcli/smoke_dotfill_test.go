@@ -92,6 +92,26 @@ func pollPaneHasDotRun(t *testing.T, tmuxPath, socket, target string, timeout ti
 	}
 }
 
+// pollPaneDotRunClears captures the target pane via capturePane every 100 ms until a capture free of
+// any dot run is observed (returning true) or timeout elapses (returning false).
+// It is pollPaneHasDotRun's inverse, not paneStaysCleanOfDotRun's: it waits for the FIRST clean
+// capture rather than requiring every sample to be clean, so a caller can assert that an artifact it
+// just proved present clears once its trigger condition is removed, without racing the clear itself.
+// Like the other pollers here it never fails the test — the caller owns the verdict.
+func pollPaneDotRunClears(t *testing.T, tmuxPath, socket, target string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if !captureHasDotRun(capturePane(t, tmuxPath, socket, target)) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // paneStaysCleanOfDotRun samples the target pane via capturePane every 100 ms for the whole of window,
 // returning false on the first sample where captureHasDotRun holds and true only if every sample was
 // clean.
@@ -320,8 +340,10 @@ func TestSmokeDotFillFloorIsCleanOnASettledAttach(t *testing.T) {
 }
 
 // TestSmokeDotFillResizeControl is the resize-trigger control scenario: it proves the harness still
-// reproduces the stale-paint subset of the dot-fill artifact (root-cause-model decision) by resizing
-// the harness window in both directions after rewriting reed's own window-resized array to pins only.
+// reproduces the dot-fill artifact on a real window-dimension change (root-cause-model decision) by
+// resizing reed's own window in both directions after rewriting reed's own window-resized array to
+// pins only, and asserting the padding paint appears while the window stands smaller than the
+// attached client and clears once the window grows back past it.
 //
 // A control that does not hit means the harness can no longer reproduce the bug, and every companion
 // absence assertion in the batches built on this one has become vacuous — so a miss here is a run
@@ -339,27 +361,41 @@ func TestSmokeDotFillResizeControl(t *testing.T) {
 	rewriteWindowResizedArray(t, h.tmuxPath, h.reedSocket, h.reedSession, pins)
 	assertOnlyPinEntries(t, windowResizedEntries(t, h.tmuxPath, h.reedSocket, h.reedSession))
 
-	// Fire the trigger: resize reed's own window directly, on reed's own socket, shrinking then
-	// growing past the original. Both directions are required — the shrink direction is the half a
-	// growth-only mechanism misses.
+	// Fire the trigger's shrink half: resize reed's own window directly, on reed's own socket, to a
+	// size distinctly smaller than the attached client. resize-window flips the window's window-size
+	// option to manual (verified live on tmux 3.6), so the shrunken window STANDS against the
+	// still-140x42 client rather than snapping back under the latest policy — and a standing
+	// window-smaller-than-client mismatch is exactly the state root-cause-model says tmux pads with
+	// dot-fill glyphs in the client region the window's geometry does not cover.
 	//
-	// Corrected from an earlier cascaded-resize design that resized the outer harness window instead:
-	// a live diagnostic during batch 1 confirmed that resizing the harness window's pane, expecting
-	// the resize to cascade through the attached client's terminal into reed's own window-resize hook,
-	// does not reliably reproduce the artifact in this container's tmux 3.6 build within any timing
-	// tried — while resizing reed's own window directly on reed's own socket reproduces it reliably.
-	// Both paths exercise the same code under test (reed's window-resized hook array firing on a real
-	// window-dimension change to a window carrying the resize-pane pins); only the delivery mechanism
-	// changes.
+	// The hit assertion must run while the window is still shrunk; both prior rounds of this batch
+	// missed here by sampling only after a back-to-back shrink-then-grow pair. Measured live in this
+	// container's tmux 3.6 build: the padding appears within ~10ms of the shrink and stands for as
+	// long as the mismatch does, while the grow clears it instantly and permanently (zero hits
+	// across ~390 tight no-sleep capture samples over 2.5s, three runs) — so a poll started after
+	// the grow samples only the clean fully-covered regime and can never hit. A real SIGWINCH
+	// cascade (resizing the outer harness window so the attached client's own pty changes size and
+	// window-size latest follows it) was also measured live, in both directions and in 1-column
+	// drag steps, each with a concurrent tight sampling loop: zero hits — in this build the client
+	// repaint after a followed resize is atomic from capture-pane's viewpoint, so the transient
+	// stale-paint smear the field report describes is not observable headlessly, and the standing
+	// mismatch below is this environment's reliable reproduction of the same client-side padding
+	// paint.
 	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "80", "-y", "24").Run(); err != nil {
 		t.Fatalf("resize-window shrink: %v", err)
 	}
+	if !pollPaneHasDotRun(t, h.tmuxPath, h.harnessSocket, paneID, 5*time.Second) {
+		t.Fatalf("resize control did not reproduce the dot-fill artifact within 5s of the shrink — the harness can no longer reproduce the bug, so every companion absence assertion built on this control has become vacuous; this is a run failure, not a skip")
+	}
+
+	// Fire the trigger's grow half: grow the window back past the original. The client is fully
+	// covered again, so the padding must clear — the pair of assertions is what proves the dots
+	// track the window-versus-client mismatch itself, not anything in reed's rendered content.
 	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "160", "-y", "50").Run(); err != nil {
 		t.Fatalf("resize-window grow: %v", err)
 	}
-
-	if !pollPaneHasDotRun(t, h.tmuxPath, h.harnessSocket, paneID, 5*time.Second) {
-		t.Fatalf("resize control did not reproduce the dot-fill artifact within 5s — the harness can no longer reproduce the bug, so every companion absence assertion built on this control has become vacuous; this is a run failure, not a skip")
+	if !pollPaneDotRunClears(t, h.tmuxPath, h.harnessSocket, paneID, 5*time.Second) {
+		t.Fatalf("dot-fill artifact still present 5s after the grow covered the client again — the dots did not track the window-versus-client mismatch, so this scenario measured something other than the padding paint root-cause-model describes")
 	}
 }
 
