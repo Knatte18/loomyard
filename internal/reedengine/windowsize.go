@@ -299,6 +299,14 @@ func (e *Engine) resizeSignalHookCommand() string {
 // shrinks the terminal past a clamp threshold with no intervening reed op keeps a pre-shrink pin,
 // bounded by tmux's own one-row floor and self-correcting on the next reed op.
 //
+// No forced-repaint entry ships in this array. A repaint mechanism was measured against the
+// dot-fill render artifact and not shipped — see the Measurement record (repaint candidates) block
+// in internal/reedengine/doc.go's package doc comment for which candidates were tried and which
+// criterion each failed. With no repaint entry installed, the artifact's remaining duration on a
+// live resize is the latency of the watchdog's own round trip (signal entry, watch loop wake, and
+// re-apply), when the watchdog is on; with the watchdog off, the artifact stands until the next
+// reed operation.
+//
 // Assumes the op lock is already held, like every other Locked method in this file.
 func (e *Engine) installResizePinsLocked(pins []render.Pin) {
 	for _, argv := range resizePinHookArgvs(e.SessionName(), pins, e.resizeSignalHookCommand()) {
