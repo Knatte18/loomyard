@@ -303,6 +303,214 @@ else
     fail "dedup before cap: status=$status out=$out call_lines=$(call_line_count tencap)"
 fi
 
+# --- Test 11: incomplete_results true on repo 2 of several -------------------
+inc_map="$(printf 'repos/acme/inc1\tpreflight-ok.json\nrepos/acme/inc2\tpreflight-ok.json\nrepos/acme/inc3\tpreflight-ok.json\nsearch/code?q=widget repo:acme/inc1\thits-zero.json\nsearch/code?q=widget repo:acme/inc2\tincomplete.json\nsearch/code?q=widget repo:acme/inc3\thits-zero.json\n')"
+run_scenario incomplete "$inc_map" widget acme/inc1 acme/inc2 acme/inc3
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"acme/inc2"* ]]; then
+    pass "incomplete_results on repo 2: non-zero exit, byte-empty stdout despite repo 1 having succeeded, stderr names repo 2"
+else
+    fail "incomplete_results on repo 2: status=$status out=$out err=$err"
+fi
+
+# --- Test 12: preflight 404 ---------------------------------------------------
+run_scenario pf404 "$(printf 'repos/acme/pf404\terror-404.json\t404\n')" widget acme/pf404
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"not found"* ]] && [[ "$err" == *"not accessible with this token"* ]] \
+    && [ "$(search_call_count pf404 'repo:')" -eq 0 ]; then
+    pass "preflight 404: stderr distinguishes not-found-or-not-accessible, no search call made"
+else
+    fail "preflight 404: status=$status out=$out err=$err"
+fi
+
+# --- Test 13: preflight 401 ---------------------------------------------------
+run_scenario pf401 "$(printf 'repos/acme/pf401\terror-401.json\t401\n')" widget acme/pf401
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"not authenticated"* ]] && [[ "$err" == *"gh auth login"* ]] \
+    && [ "$(search_call_count pf401 'repo:')" -eq 0 ]; then
+    pass "preflight 401: stderr distinguishes not-authenticated and names the gh auth login remedy, no search call made"
+else
+    fail "preflight 401: status=$status out=$out err=$err"
+fi
+
+# --- Test 14: preflight 403 ---------------------------------------------------
+run_scenario pf403 "$(printf 'repos/acme/pf403\terror-403.json\t403\n')" widget acme/pf403
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"access denied"* || "$err" == *"rate limited"* ]] \
+    && [ "$(search_call_count pf403 'repo:')" -eq 0 ]; then
+    pass "preflight 403: stderr distinguishes access-denied-or-rate-limited, no search call made"
+else
+    fail "preflight 403: status=$status out=$out err=$err"
+fi
+
+# --- Test 15: all preflights run before any search call -----------------------
+pforder_map="$(printf 'repos/acme/pf1\tpreflight-ok.json\nrepos/acme/pf2\terror-404.json\t404\nrepos/acme/pf3\tpreflight-ok.json\nsearch/code?q=widget repo:acme/pf1\thits-zero.json\nsearch/code?q=widget repo:acme/pf3\thits-zero.json\n')"
+run_scenario pforder "$pforder_map" widget acme/pf1 acme/pf2 acme/pf3
+if [ "$status" -ne 0 ] \
+    && [ "$(preflight_call_count pforder acme/pf1)" -eq 1 ] && [ "$(preflight_call_count pforder acme/pf2)" -eq 1 ] \
+    && [ "$(preflight_call_count pforder acme/pf3)" -eq 0 ] && [ "$(search_call_count pforder 'repo:')" -eq 0 ]; then
+    pass "preflight ordering: repos 1 and 2 preflighted, repo 3 never preflighted, zero search calls"
+else
+    fail "preflight ordering: status=$status preflight1=$(preflight_call_count pforder acme/pf1) preflight2=$(preflight_call_count pforder acme/pf2) preflight3=$(preflight_call_count pforder acme/pf3) search=$(search_call_count pforder 'repo:')"
+fi
+
+# --- Test 16: search 403 mid-sweep, repo 2 of 3 -------------------------------
+s403_map="$(printf 'repos/acme/s1\tpreflight-ok.json\nrepos/acme/s2\tpreflight-ok.json\nrepos/acme/s3\tpreflight-ok.json\nsearch/code?q=widget repo:acme/s1\thits-beta.json\nsearch/code?q=widget repo:acme/s2\terror-403.json\t403\nsearch/code?q=widget repo:acme/s3\thits-gamma.json\n')"
+run_scenario s403 "$s403_map" widget acme/s1 acme/s2 acme/s3
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"acme/s2"* ]] && [[ "$err" == *"403"* ]] \
+    && [ "$(search_call_count s403 'repo:acme/s3')" -eq 0 ]; then
+    pass "search 403 mid-sweep: byte-empty stdout despite repo 1 succeeding, stderr names repo and status, repo 3's search never made"
+else
+    fail "search 403 mid-sweep: status=$status out=$out err=$err search3=$(search_call_count s403 'repo:acme/s3')"
+fi
+
+# --- Test 17: search 422 ------------------------------------------------------
+run_scenario s422 "$(printf 'repos/acme/s422\tpreflight-ok.json\nsearch/code?q=widget repo:acme/s422\terror-422.json\t422\n')" widget acme/s422
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"422"* ]]; then
+    pass "search 422: non-zero exit, byte-empty stdout, stderr carries the status"
+else
+    fail "search 422: status=$status out=$out err=$err"
+fi
+
+# --- Test 18: a returned path containing a tab --------------------------------
+run_scenario badpath "$(printf 'repos/acme/badpath\tpreflight-ok.json\nsearch/code?q=widget repo:acme/badpath\tbadpath-path.json\n')" widget acme/badpath
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"one-record-per-line"* ]] && [[ "$err" == *"cannot represent"* ]]; then
+    pass "tab-containing path: non-zero exit, byte-empty stdout, stderr names the one-record-per-line refusal"
+else
+    fail "tab-containing path: status=$status out=$out err=$err"
+fi
+
+# --- Test 19: a returned full_name containing a newline -----------------------
+run_scenario badfullname "$(printf 'repos/acme/badname\tpreflight-ok.json\nsearch/code?q=widget repo:acme/badname\tbadpath-fullname.json\n')" widget acme/badname
+if [ "$status" -ne 0 ] && [ -z "$out" ] && [[ "$err" == *"one-record-per-line"* ]] && [[ "$err" == *"cannot represent"* ]]; then
+    pass "newline-containing full_name: same refusal, proving the sentinel covers the repository field too"
+else
+    fail "newline-containing full_name: status=$status out=$out err=$err"
+fi
+
+# --- Test 20: argument rejection, all before any network call -----------------
+run_scenario noargs ""
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(call_line_count noargs)" -eq 0 ] && [[ "$err" == *"usage:"* ]]; then
+    pass "no arguments: exit 2, byte-empty stdout, empty call log, bare usage synopsis"
+else
+    fail "no arguments: status=$status out=$out calls=$(calls noargs)"
+fi
+
+run_scenario noreporef "" widget
+if [ -z "$out" ] && [ "$status" -eq 2 ] && [ "$(call_line_count noreporef)" -eq 0 ] && [[ "$err" == *"usage:"* ]]; then
+    pass "query with no repo ref: exit 2, byte-empty stdout, empty call log, same usage synopsis"
+else
+    fail "query with no repo ref: status=$status out=$out calls=$(calls noreporef)"
+fi
+
+run_scenario badref "" widget notaslug
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [ "$(call_line_count badref)" -eq 0 ] && [[ "$err" == *"notaslug"* ]]; then
+    pass "invalid <owner>/<repo> ref: exit 1, byte-empty stdout, empty call log, stderr names the offending ref"
+else
+    fail "invalid <owner>/<repo> ref: status=$status out=$out calls=$(calls badref) err=$err"
+fi
+
+eleven_args=()
+for i in 01 02 03 04 05 06 07 08 09 10 11; do
+    eleven_args+=("acme/y$i")
+done
+run_scenario eleven "" widget "${eleven_args[@]}"
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [ "$(call_line_count eleven)" -eq 0 ] \
+    && [[ "$err" == *"10"* ]] && [[ "$err" == *"code_search"* ]]; then
+    pass "eleven distinct repo refs: exit 1, byte-empty stdout, empty call log, stderr names the ten-repo cap and the code_search bucket"
+else
+    fail "eleven distinct repo refs: status=$status out=$out calls=$(calls eleven) err=$err"
+fi
+
+run_scenario queryrepo "" "widget repo:acme/x" acme/x
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [ "$(call_line_count queryrepo)" -eq 0 ] \
+    && [[ "$err" == *"positional"* ]] && [[ "$err" == *"gh api"* ]]; then
+    pass "query containing 'repo:': exit 1, byte-empty stdout, empty call log, stderr points at positional repo args and the raw gh api escape hatch"
+else
+    fail "query containing 'repo:': status=$status out=$out calls=$(calls queryrepo) err=$err"
+fi
+
+run_scenario emptyquery "" "" acme/x
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [ "$(call_line_count emptyquery)" -eq 0 ] && [[ "$err" == *"query"* ]]; then
+    pass "empty-string query: exit 1, byte-empty stdout, empty call log, stderr names the query argument"
+else
+    fail "empty-string query: status=$status out=$out calls=$(calls emptyquery) err=$err"
+fi
+
+run_scenario wsquery "" "   " acme/x
+if [ -z "$out" ] && [ "$status" -eq 1 ] && [ "$(call_line_count wsquery)" -eq 0 ] && [[ "$err" == *"query"* ]]; then
+    pass "whitespace-only query: exit 1, byte-empty stdout, empty call log, stderr names the query argument"
+else
+    fail "whitespace-only query: status=$status out=$out calls=$(calls wsquery) err=$err"
+fi
+
+# --- Test 21: gh missing from PATH --------------------------------------------
+PATH="" "$BASH_BIN" "$GH_SEARCH_SH" widget acme/x >"$SCRATCH/nogh.stdout" 2>"$SCRATCH/nogh.stderr"
+status=$?
+out="$(cat "$SCRATCH/nogh.stdout")"
+err="$(cat "$SCRATCH/nogh.stderr")"
+if [ -z "$out" ] && [ "$status" -ne 0 ] && [[ "$err" == *gh* ]]; then
+    pass "gh missing from PATH: non-zero exit, byte-empty stdout, stderr mentions gh"
+else
+    fail "gh missing from PATH: status=$status out=$out err=$err"
+fi
+
+# --- Test 22: the harness's own require_jq guard -------------------------------
+(
+    JQ_BIN="definitely-not-jq"
+    guard_err="$(require_jq 2>&1)"
+    guard_status=$?
+    if [ "$guard_status" -ne 0 ] && [[ "$guard_err" == *"definitely-not-jq"* ]] && [[ "$guard_err" == *"install jq"* ]]; then
+        exit 0
+    fi
+    exit 1
+)
+if [ $? -eq 0 ]; then
+    pass "require_jq guard: fails with the missing-binary name and install hint"
+else
+    fail "require_jq guard: did not fail as expected for a missing jq binary"
+fi
+
+# --- Test 23: the stub's own rejection path ------------------------------------
+stub_dir="$SCRATCH/stubdirect"
+mkdir -p "$stub_dir"
+: > "$stub_dir/calls.log"
+GH_STUB_MAP="$stub_dir/map.tsv" GH_STUB_BODIES="$BODIES_DIR" GH_STUB_LOG="$stub_dir/calls.log" \
+    "$STUB_BIN/gh" auth status >"$stub_dir/stdout" 2>"$stub_dir/stderr"
+stub_status=$?
+stub_err="$(cat "$stub_dir/stderr")"
+if [ "$stub_status" -eq 98 ] && [[ "$stub_err" == *"unsupported invocation"* ]] && [ "$(wc -l < "$stub_dir/calls.log" | tr -d ' ')" -eq 1 ]; then
+    pass "stub rejection path: auth status invocation exits 98, 'unsupported invocation' in stderr, call still logged"
+else
+    fail "stub rejection path: status=$stub_status err=$stub_err calls=$(cat "$stub_dir/calls.log")"
+fi
+
+: > "$stub_dir/calls.log"
+GH_STUB_MAP="$stub_dir/map.tsv" GH_STUB_BODIES="$BODIES_DIR" GH_STUB_LOG="$stub_dir/calls.log" \
+    "$STUB_BIN/gh" api search/code -f "q=widget" -H "Accept: application/vnd.github.text-match+json" --jq ".x" \
+    >"$stub_dir/stdout2" 2>"$stub_dir/stderr2"
+stub_status2=$?
+stub_err2="$(cat "$stub_dir/stderr2")"
+if [ "$stub_status2" -eq 98 ] && [[ "$stub_err2" == *"unsupported invocation"* ]]; then
+    pass "stub rejection path: a search-shaped call missing -X GET is refused with the same exit 98"
+else
+    fail "stub rejection path: missing -X GET was not refused: status=$stub_status2 err=$stub_err2"
+fi
+
+# --- Test 24: stdout cleanliness ------------------------------------------------
+run_scenario multi "$(printf 'repos/acme/multi\tpreflight-ok.json\nsearch/code?q=tree-sitter repo:acme/multi\thits-multi.json\n')" tree-sitter acme/multi
+multi_out="$out"
+run_scenario three "$three_map" widget acme/gamma acme/alpha acme/beta
+three_out="$out"
+clean=1
+while IFS= read -r line; do
+    case "$line" in
+    '#'*) clean=0 ;;
+    '') clean=0 ;;
+    esac
+done <<< "$multi_out"$'\n'"$three_out"
+if [ "$clean" -eq 1 ]; then
+    pass "stdout cleanliness: no line begins with '#', no empty line"
+else
+    fail "stdout cleanliness: a '#'-prefixed or empty line leaked onto stdout"
+fi
+
 rm -rf "$SCRATCH"
 
 echo "==========================================================="
