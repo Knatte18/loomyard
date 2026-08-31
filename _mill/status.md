@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: plan-review-r5
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -27,4 +27,5 @@ plan-review-r3  '2026-08-31T12:36:49Z'
 plan-fix-r3  '2026-08-31T12:38:34Z'
 plan-review-r4  '2026-08-31T12:47:31Z'
 plan-fix-r4  '2026-08-31T12:48:32Z'
+plan-review-r5  '2026-08-31T12:54:16Z'
 ```
