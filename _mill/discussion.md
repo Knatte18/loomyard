@@ -180,11 +180,14 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 
 ### Duplicate repo refs are deduped silently
 
-- Decision: repeated `<owner>/<repo>` refs are deduped before the 10-repo cap is applied, keeping first-occurrence order.
+- Decision: repeated `<owner>/<repo>` refs are deduped before the 10-repo cap is applied, keeping first-occurrence order, comparing on the **lowercased** ref rather than the raw string.
+  The ref forwarded into the `repo:` qualifier is the caller's original spelling of the surviving first occurrence, and the emitted record's first field is the API's own `.repository.full_name`, not the caller's spelling — so output is canonically cased regardless of how the ref was typed.
   The cap counts distinct refs, and each distinct repo produces exactly one preflight call, one search call, and one contiguous block of output records.
 - Rationale: a duplicate is unambiguously a caller slip with exactly one sensible reading, so rejecting it would fail a sweep that the script knows how to run correctly.
   Silently accepting it is worse than either alternative: it burns two of the ten `code_search` requests on the same repo and emits every one of that repo's records twice, which a caller counting hits per repo would read as real duplication in the repo.
   Deduping before the cap also makes the cap's guarantee exact — ten distinct refs is ten calls, never eleven.
+  Case-folding is what makes that guarantee hold in practice: GitHub refs are case-insensitive, so an exact-string comparison would let `Helix-editor/helix` and `helix-editor/helix` both survive, burn two of the ten requests on one repo, and emit that repo's records twice — under one identical `full_name`, since the API canonicalises it — which is precisely the failure this decision exists to prevent.
+  Emitting `full_name` rather than the caller's spelling also keeps the output stable across two callers who type the same repo differently.
 - Rejected: reject as a usage error (fails a runnable sweep over a typo); accept as-is (doubles the records and the rate-limit spend, silently).
 
 ### Skill routing documented as a rule, not a preference
@@ -315,6 +318,10 @@ Scenarios that must be covered:
 - **Search-call failures**: 403 mid-sweep (repo 2 of 3) proving buffer-until-complete — byte-empty stdout despite repo 1 having succeeded; and 422.
 - **Argument rejection, all before any network call** (assert an empty call log), each asserting its own exit code per the "Exit codes" decision: no arguments → 2; a query but no repo ref → 2; an invalid `<owner>/<repo>` ref → 1; more than 10 distinct repo refs → 1; a caller query containing `repo:` → 1; an empty-string query → 1; a whitespace-only query → 1.
   Each also asserts byte-empty stdout and its own distinguishing stderr substring.
+- **All preflights run before any search call** — preflight of repo **2 of 3** fails (404), and the call log is asserted to contain **zero** search calls plus preflight calls for repos 1 and 2 only.
+  A per-repo interleaving would have issued repo 1's search before reaching repo 2's preflight, so this scenario is what pins the global ordering;
+  the existing preflight-failure scenarios, which fail on repo 1, cannot distinguish the two orderings.
+- **Duplicate repo refs are deduped, case-insensitively** — `helix-editor/helix`, `Helix-editor/HELIX`, and a third distinct repo yields exactly 2 preflight calls and 2 search calls, output records for the duplicated repo appearing once, and the emitted first field carrying the API's `full_name` rather than either caller spelling.
 - **Duplicate repo refs are deduped** — the same `<owner>/<repo>` passed twice, plus a third distinct repo, yields exactly 2 preflight calls and 2 search calls (asserted against the call log), output records for the duplicated repo appearing once, and first-occurrence argument ordering preserved.
 - **Dedup happens before the cap** — 11 refs of which 2 are duplicates of each other (10 distinct) runs normally rather than being rejected;
   11 distinct refs is rejected with exit 1 and an empty call log.
