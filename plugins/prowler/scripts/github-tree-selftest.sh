@@ -565,6 +565,91 @@ else
     fail "--children listing itself truncated: status=$status out=$out err=$err"
 fi
 
+# --- Test 29: guard fires on the recursive fast path -----------------------------
+run_scenario guard_fastpath "$(printf 'repos/acme/guardfast/git/trees/HEAD?recursive=1\tsmall-root-rec.json\n')" --max-entries 2 acme/guardfast
+if [ -z "$out" ] && [ "$status" -eq 1 ] \
+    && [[ "$err" == *"2"* ]] && [[ "$err" == *"--children"* ]] && [[ "$err" == *"--max-entries"* ]]; then
+    pass "guard fires on the recursive fast path: byte-empty stdout, exit 1, ceiling and both remedies in stderr"
+else
+    fail "guard fires on the recursive fast path: status=$status out=$out err=$err"
+fi
+
+# --- Test 30: guard fires in --children mode --------------------------------------
+run_scenario guard_children "$(printf 'repos/acme/guardchildren/git/trees/HEAD:src\tchildren-src-nonrec.json\n')" --children --max-entries 1 acme/guardchildren src
+if [ -z "$out" ] && [ "$status" -eq 1 ] \
+    && [[ "$err" == *"1"* ]] && [[ "$err" == *"--max-entries"* ]] && [[ "$err" != *"--children"* ]]; then
+    pass "guard fires in --children mode: ceiling and --max-entries in stderr, --children never suggested back"
+else
+    fail "guard fires in --children mode: status=$status out=$out err=$err"
+fi
+
+# --- Test 31: guard fires incrementally, not at end-of-walk -----------------------
+run_scenario guard_incremental_on "$trunc1_map" --max-entries 2 acme/big
+if [ -z "$out" ] && [ "$status" -eq 1 ]; then
+    pass "guard fires incrementally: aborts a low-ceiling run of the five-call truncated-fallback map"
+else
+    fail "guard fires incrementally: status=$status out=$out"
+fi
+guarded_calls="$(call_line_count guard_incremental_on)"
+run_scenario guard_incremental_off "$trunc1_map" --max-entries 0 acme/big
+unguarded_calls="$(call_line_count guard_incremental_off)"
+if [ "$guarded_calls" -lt "$unguarded_calls" ]; then
+    pass "guard fires incrementally: guarded call count ($guarded_calls) is strictly lower than the unguarded run's ($unguarded_calls)"
+else
+    fail "guard fires incrementally: guarded call count ($guarded_calls) is not lower than the unguarded run's ($unguarded_calls)"
+fi
+
+# --- Test 32: the boundary, one entry apart ----------------------------------------
+small_map="$(printf 'repos/acme/guardboundary/git/trees/HEAD?recursive=1\tsmall-root-rec.json\n')"
+run_scenario guard_boundary_ok "$small_map" --max-entries 3 acme/guardboundary
+expected="$(printf 'intro.md\nsrc/main.go\nsrc/util.go')"
+if [ "$out" = "$expected" ] && [ "$status" -eq 0 ]; then
+    pass "boundary: ceiling exactly equal to the entry count succeeds, printing all three paths"
+else
+    fail "boundary: status=$status out=$out"
+fi
+run_scenario guard_boundary_abort "$small_map" --max-entries 2 acme/guardboundary
+if [ -z "$out" ] && [ "$status" -eq 1 ]; then
+    pass "boundary: the same fixture one entry over the ceiling aborts"
+else
+    fail "boundary: status=$status out=$out"
+fi
+
+# --- Test 33: the default ceiling is 1000 ------------------------------------------
+mkdir -p "$SCRATCH/gen"
+gen_tree_body "$SCRATCH/gen/body-1001.json" 1001
+gen_tree_body "$SCRATCH/gen/body-1000.json" 1000
+run_scenario guard_default_over "$(printf 'repos/acme/guarddefault1/git/trees/HEAD?recursive=1\t%s\n' "$SCRATCH/gen/body-1001.json")" acme/guarddefault1
+default_over_out="$out"
+if [ -z "$default_over_out" ] && [ "$status" -eq 1 ]; then
+    pass "default ceiling: no --max-entries at all, a 1001-entry listing aborts"
+else
+    fail "default ceiling: status=$status out=$default_over_out"
+fi
+run_scenario guard_default_at "$(printf 'repos/acme/guarddefault2/git/trees/HEAD?recursive=1\t%s\n' "$SCRATCH/gen/body-1000.json")" acme/guarddefault2
+default_at_lines="$(printf '%s\n' "$out" | grep -c .)"
+if [ "$status" -eq 0 ] && [ "$default_at_lines" -eq 1000 ]; then
+    pass "default ceiling: no --max-entries at all, a 1000-entry listing succeeds"
+else
+    fail "default ceiling: status=$status out_line_count=$default_at_lines"
+fi
+
+# --- Test 34: --max-entries 0 disables the ceiling ---------------------------------
+run_scenario guard_zero_unlimited "$(printf 'repos/acme/guardzero/git/trees/HEAD?recursive=1\t%s\n' "$SCRATCH/gen/body-1001.json")" --max-entries 0 acme/guardzero
+out_lines="$(printf '%s\n' "$out" | grep -c .)"
+if [ "$status" -eq 0 ] && [ "$out_lines" -eq 1001 ]; then
+    pass "--max-entries 0 disables the ceiling: exit 0, 1001-line stdout"
+else
+    fail "--max-entries 0 disables the ceiling: status=$status out_lines=$out_lines"
+fi
+
+# --- Test 35: the buffering guarantee under the guard's own failure mode ----------
+if [ -z "$default_over_out" ]; then
+    pass "buffering guarantee: the default-ceiling abort (many entries buffered before crossing) leaks no partial prefix"
+else
+    fail "buffering guarantee: the default-ceiling abort left a non-empty stdout: $default_over_out"
+fi
+
 rm -rf "$SCRATCH"
 
 echo "==========================================================="
