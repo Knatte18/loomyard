@@ -18,6 +18,11 @@
 # platforms. Windows Git Bash is expected to work but is not claimed;
 # cmd.exe and PowerShell cannot run this harness or the stub at all.
 #
+# The stub gh's map file can point a fixture name at an absolute path
+# instead of a bare filename under testdata/ -- see gen_tree_body below,
+# which uses this to hand the stub a body generated at harness runtime
+# rather than a fixture checked into the repository.
+#
 # NOT covered here (documented, not asserted -- manual checks per the
 # batch plan's "Batch Tests" section): one live run against a small
 # public repo; one live run against torvalds/linux confirming the real
@@ -25,6 +30,9 @@
 # the jq expression behaves identically under gojq and jq; and the HTTP
 # 409 commitless-repository alias, which no fixture pins because it was
 # never observed live.
+# Also not covered offline (documented here, not asserted): one live
+# --children run against a real repository, and one live guard trip
+# against a large public repository.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -128,6 +136,30 @@ call_count_for_endpoint() {
         fi
     done < "$logfile"
     echo "$count"
+}
+
+# gen_tree_body <outfile> <count> writes a syntactically valid non-recursive
+# tree response body to <outfile>, with truncated false and exactly <count>
+# blob entries whose path and sha are mechanically derived from the loop
+# index. These large bodies are generated rather than checked in as
+# fixtures because a thousand mechanically-identical entries have no shape
+# worth reviewing, and committing them would bury the fixtures that do.
+# Reading the same generator with different counts is also what keeps the
+# at-ceiling and one-over-ceiling scenarios provably one entry apart.
+gen_tree_body() {
+    local outfile="$1" count="$2" i
+    {
+        printf '{\n  "sha": "srgenerated",\n  "truncated": false,\n  "tree": [\n'
+        for ((i = 0; i < count; i++)); do
+            printf '    { "path": "gen%d.txt", "mode": "100644", "type": "blob", "sha": "bgen%d" }' "$i" "$i"
+            if [ "$((i + 1))" -lt "$count" ]; then
+                printf ',\n'
+            else
+                printf '\n'
+            fi
+        done
+        printf '  ]\n}\n'
+    } > "$outfile"
 }
 
 echo "=== github-tree selftest: offline stub-gh harness ==="
