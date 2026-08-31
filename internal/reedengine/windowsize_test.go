@@ -611,6 +611,36 @@ func TestResizePinHookArgvs_SignalEntry(t *testing.T) {
 	})
 }
 
+// TestResizePinHookArgvs_NoRepaintEntryShips pins the no-candidate-accepted disposition recorded in the
+// Measurement record (repaint candidates) block in internal/reedengine/doc.go's package doc comment:
+// neither measured repaint candidate cleared the repaint-must-not-self-retrigger decision's
+// exactly-one-fire criterion, so no candidate was accepted and resizePinHookArgvs ships no repaint
+// entry and keeps its pre-task three-argument signature. The array therefore still carries exactly the
+// clear, one entry per pin, and the signal entry last — this test exists to catch a repaint entry being
+// added to the array without a corresponding measurement-gate acceptance recorded in doc.go.
+func TestResizePinHookArgvs_NoRepaintEntryShips(t *testing.T) {
+	const session = "myproj"
+	const signalCommand = `run-shell -b "sh -c 'touch \"/tmp/wt/.lyx/reed-resize.signal\"'"`
+	target := exactSessionWindowTarget(session)
+	pins := []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}}
+
+	argvs := resizePinHookArgvs(session, pins, signalCommand)
+	assertResizePinHookArgvsWellFormed(t, argvs, target)
+
+	if len(argvs) != 4 {
+		t.Fatalf("resizePinHookArgvs(2 pins + signal) = %v, want 4 argvs (clear + 2 pins + signal, no repaint entry)", argvs)
+	}
+	for i, argv := range argvs[1:3] {
+		if !strings.HasPrefix(argv[len(argv)-1], "resize-pane ") {
+			t.Errorf("argv for pin %d body = %q, want a resize-pane body", i, argv[len(argv)-1])
+		}
+	}
+	last := argvs[len(argvs)-1]
+	if last[len(last)-1] != signalCommand {
+		t.Errorf("last argv body = %q, want the signal command %q — no repaint entry sits between the pins and the signal", last[len(last)-1], signalCommand)
+	}
+}
+
 // TestResizeSignalHookCommand covers the gate deciding whether the touch entry belongs in the array
 // at all: on for a watchdog: on session, off for watchdog: off, and off for an invalid value, which
 // this non-fatal path treats as off rather than propagating.
