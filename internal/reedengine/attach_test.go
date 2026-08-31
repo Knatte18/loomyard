@@ -13,6 +13,7 @@ package reedengine
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -71,6 +72,9 @@ type attachScript struct {
 
 	listPanes    string
 	listPanesErr error
+
+	listClients    string
+	listClientsErr error
 }
 
 // attachRecorder captures every call AttachArgv's pre-flight makes through the execHook seam, so a
@@ -150,6 +154,9 @@ func newAttachHook(script attachScript, rec *attachRecorder) func(capture bool, 
 		case "list-panes":
 			rec.sequence = append(rec.sequence, "list-panes")
 			return script.listPanes, script.listPanesErr
+		case "list-clients":
+			rec.sequence = append(rec.sequence, "list-clients")
+			return script.listClients, script.listClientsErr
 		case "select-layout", "select-pane", "kill-pane", "split-window":
 			rec.mutationCalls = append(rec.mutationCalls, append([]string{}, args...))
 			return "", nil
@@ -580,4 +587,129 @@ func TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv(t *testing.T) {
 	if len(rec.setHookCalls) == 0 {
 		t.Fatal("no set-hook calls recorded despite the failing hook, want the install statement still attempted")
 	}
+}
+
+// wantChainedAttachArgv builds the exact chained argv TestAttachArgv_ChainedShape already pins for
+// goodAttachStrands at cols/rows, so the multi-client warning tests below can assert their argv is
+// byte-identical to what the same script produces today without re-deriving the expectation.
+func wantChainedAttachArgv(t *testing.T, e *Engine, cols, rows int) []string {
+	t.Helper()
+	layout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows})
+	if err != nil {
+		t.Fatalf("planLayout() unexpected error: %v", err)
+	}
+	bare := wantBareAttachArgv(e)
+	out := append([]string{}, bare...)
+	target := exactSessionWindowTarget(e.SessionName())
+	out = append(out, ";", "select-layout", "-t", target, layout)
+	return out
+}
+
+// assertChainedArgv asserts got is byte-identical to wantChainedAttachArgv(e, cols, rows).
+func assertChainedArgv(t *testing.T, e *Engine, cols, rows int, got []string) {
+	t.Helper()
+	want := wantChainedAttachArgv(t, e, cols, rows)
+	if len(got) != len(want) {
+		t.Fatalf("AttachArgv() = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("AttachArgv()[%d] = %q, want %q (full: got=%v want=%v)", i, got[i], want[i], got, want)
+		}
+	}
+}
+
+// TestAttachArgv_MultiClientWarning covers warnMismatchedClientsLocked's cardinality: exactly one
+// logger.Warn line per client whose listed size differs from the size this attach was told, none for
+// a matching client, and — in every case — an argv byte-identical to what the same script produces
+// with no attached clients at all, since the warning is a side effect that must never perturb it.
+func TestAttachArgv_MultiClientWarning(t *testing.T) {
+	const cols, rows = 80, 24
+
+	t.Run("SameSizeClient_NoWarning", func(t *testing.T) {
+		script := goodAttachScript()
+		script.listClients = "tty0 80 24"
+		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		buf := captureLogOutput(t)
+
+		got := e.AttachArgv(cols, rows)
+
+		assertChainedArgv(t, e, cols, rows, got)
+		if strings.Contains(buf.String(), "reed: another client is attached") {
+			t.Errorf("log output = %q, want no multi-client warning for a same-size client", buf.String())
+		}
+	})
+
+	t.Run("DifferentSizeClient_OneWarningLine", func(t *testing.T) {
+		script := goodAttachScript()
+		script.listClients = "tty0 100 40"
+		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		buf := captureLogOutput(t)
+
+		got := e.AttachArgv(cols, rows)
+
+		assertChainedArgv(t, e, cols, rows, got)
+		out := buf.String()
+		if n := strings.Count(out, "reed: another client is attached"); n != 1 {
+			t.Fatalf("log output = %q, want exactly 1 multi-client warning line, got %d", out, n)
+		}
+		for _, want := range []string{"tty0", "100", "40", "80", "24"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("log output = %q, want it to mention %q", out, want)
+			}
+		}
+	})
+
+	t.Run("ThreeClientsTwoDiffer_TwoWarningLines", func(t *testing.T) {
+		script := goodAttachScript()
+		script.listClients = "tty0 80 24\ntty1 100 40\ntty2 90 30"
+		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		buf := captureLogOutput(t)
+
+		got := e.AttachArgv(cols, rows)
+
+		assertChainedArgv(t, e, cols, rows, got)
+		out := buf.String()
+		if n := strings.Count(out, "reed: another client is attached"); n != 2 {
+			t.Fatalf("log output = %q, want exactly 2 multi-client warning lines, got %d", out, n)
+		}
+		if strings.Contains(out, "client=tty0") {
+			t.Errorf("log output = %q, want no warning naming the matching client tty0", out)
+		}
+		for _, want := range []string{"tty1", "tty2"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("log output = %q, want it to mention the differing client %q", out, want)
+			}
+		}
+	})
+
+	t.Run("ListClientsError_WarnsAndDoesNotChangeBehaviour", func(t *testing.T) {
+		script := goodAttachScript()
+		script.listClientsErr = errors.New("boom")
+		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		buf := captureLogOutput(t)
+
+		got := e.AttachArgv(cols, rows)
+
+		assertChainedArgv(t, e, cols, rows, got)
+		if !strings.Contains(buf.String(), "reed: failed to list attached clients") {
+			t.Errorf("log output = %q, want the list-clients round-trip failure logged", buf.String())
+		}
+	})
+
+	t.Run("SuppressedChainStillWarns", func(t *testing.T) {
+		script := goodAttachScript()
+		script.windowSize = "manual"
+		script.listClients = "tty0 999 999"
+		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		buf := captureLogOutput(t)
+
+		got := e.AttachArgv(cols, rows)
+
+		assertBareArgv(t, e, got)
+		out := buf.String()
+		if n := strings.Count(out, "reed: another client is attached"); n != 1 {
+			t.Fatalf("log output = %q, want exactly 1 multi-client warning line even though the chain is suppressed, got %d", out, n)
+		}
+	})
 }
