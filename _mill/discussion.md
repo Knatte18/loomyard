@@ -31,7 +31,7 @@ The read-order flip is a measured, uncontested win being left on the table on ev
 - A new `--children` mode on `plugins/prowler/scripts/github-tree.sh` that lists one path's direct children (files and directories) without recursing.
 - A hard entry-count guard on `github-tree.sh`, default 1000, overridable with `--max-entries <N>` (`0` = unlimited), applied uniformly to every mode.
 - New offline test coverage: additional scenarios in `plugins/prowler/scripts/github-tree-selftest.sh` (plus any fixture bodies they need under `plugins/prowler/scripts/testdata/github-tree/bodies/`), and a new sibling harness `plugins/prowler/scripts/github-read-selftest.sh` with its own stub `curl` and stub `gh`.
-- `plugins/prowler/skills/github-repo-explorer/SKILL.md`: flip the documented file-read order to `github-read.sh`, add guidance on choosing between `--children`, scoped-recursive, and whole-repo listing, state the `--children` output convention (directories carry a trailing `/`, files do not), and state that a listing can now abort on the entry-count guard and what the caller should do about it.
+- `plugins/prowler/skills/github-repo-explorer/SKILL.md`: flip the documented file-read order to `github-read.sh`, add guidance on choosing between `--children`, scoped-recursive, and whole-repo listing, state the `--children` output convention (directories carry a trailing `/`, files do not), state that a listing can now abort on the entry-count guard and what the caller should do about it, and — if the live capture confirms raw answers a symlink with 200 — one sentence recording that a symlink path reads back as its target path rather than failing.
   The output convention belongs here specifically because SKILL.md is what the calling agent reads;
   a marker documented only in the README is a marker the caller does not have.
 - `plugins/prowler/README.md`: a section for `github-read.sh`, and the existing `github-tree.sh` section extended for the new mode and the guard.
@@ -148,7 +148,9 @@ The read-order flip is a measured, uncontested win being left on the table on ev
 
 ### `github-read.sh` buffers the raw body to a temp file; it never streams to stdout
 
-- Decision: curl writes to a temp file created with `mktemp` (`tmp="$(mktemp)"`, cleaned up by a `trap ... EXIT`), and the script `cat`s that file to stdout only after curl exits zero.
+- Decision: curl writes to a temp file created with `mktemp` (`tmp="$(mktemp)"`), and the script `cat`s that file to stdout only after curl exits zero.
+  The fallback's stderr sink `errfile` (see "Where the fallback's HTTP status comes from") is a second `mktemp` file created in the same place, and **one** `trap 'rm -f "$tmp" "$errfile"' EXIT` covers both, armed immediately after both are created so no exit path leaks either.
+  `errfile` is created unconditionally alongside `tmp`, not lazily when the fallback fires, so the trap never references an unset variable under `set -u`.
   The `gh api` fallback writes to the same temp file and is emitted the same way.
   stdout is written exactly once, from a complete body, in both paths.
 - Rationale: this is the only mechanism that satisfies all three stated properties at once.
@@ -203,6 +205,9 @@ The read-order flip is a measured, uncontested win being left on the table on ev
 ### `github-read.sh` takes no ref argument; reads are pinned to `HEAD`
 
 - Decision: the signature is `github-read.sh <owner/repo> <path>`, exactly two required arguments.
+  It takes no flags, but it mirrors `github-tree.sh`'s leading-`--` rule: a positional beginning with `--` is a usage error (exit 2, no network call), and a `--` terminator makes such a path reachable.
+  A single-dash token is a path here too.
+  Mirroring costs three lines and avoids the cross-script divergence this discussion argues against elsewhere — `github-read.sh acme/x --foo` and `github-tree.sh acme/x --foo` must not disagree about what that token is.
   The raw URL is `https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}` and the `gh api` fallback addresses the default branch's content.
 - Rationale: prowler is cross-repo reconnaissance on current state ("does repo X have architecture trait Y"), matching `github-tree.sh`, which is likewise `HEAD`-only.
   A ref argument would have to be threaded through two different URL/endpoint constructions and validated separately, for a capability no current caller needs.
@@ -260,6 +265,21 @@ The read-order flip is a measured, uncontested win being left on the table on ev
   Rejected: `gh api -i` and reading `Content-Type` — reintroduces header/body splitting into the byte-exact path, which the temp-file decision exists to keep clean.
   Rejected: accepting the directory JSON as content — that is the silent-wrong-content failure itself.
   Rejected: a local guess from the path's shape (no dot, no extension) — wrong in both directions (`Makefile`, `docs/api.v2`).
+
+### The symlink/submodule guard is fallback-only, and that is an accepted limitation
+
+- Decision: the `symlink` / `submodule` arm of the type probe is reachable only when the fallback fires.
+  On the raw-success path `github-read.sh` does not detect them: if `raw.githubusercontent.com` answers a symlink with 200, its body (git stores a symlink blob's content as the target path) is written to stdout as file content, exit 0.
+  This is recorded as a known limitation rather than closed.
+- Rationale: closing it would mean running the type probe before *every* read, including the raw path.
+  That turns a ~30ms read into a ~400ms one and erases the entire measured win this task exists to capture — the guard would cost more than the feature is worth, on every call, to catch a case that is rare in cross-repo reconnaissance.
+  The directory case is different, and is closed, precisely because the probe is already being run there: the fallback had to fire anyway, so the check is nearly free at that point.
+- **Implementer note — pin the premise, then finalise this text.** Nothing here assumes what raw actually does with a symlink.
+  The same live capture the fallback-status Decision requires must also run `curl -s -f -L -o - "https://raw.githubusercontent.com/<owner>/<repo>/HEAD/<a-symlink-path>"` and record the status and the body.
+  If raw answers non-2xx, this limitation is empty in practice and the note is narrowed to say so, in the same commit.
+  If raw answers 200 with the target path, the limitation stands as written and SKILL.md carries the one-sentence caveat named in Scope.
+- Rejected: probing before every read — see above; it costs the whole feature.
+  Rejected: sniffing the body for "looks like a single relative path" — a one-line file containing a path is an ordinary file, so the test has no sound form.
 
 ### No file-size guard on `github-read.sh`
 
@@ -379,6 +399,11 @@ New scenarios to cover, each using the existing `run_scenario` / `call_count_for
 - Guard boundary: exactly-at-ceiling succeeds and prints, ceiling-plus-one aborts.
 - `--max-entries 0` disables the ceiling on a listing that would otherwise trip the default.
 - Default ceiling is 1000 when `--max-entries` is not passed.
+- **Fixture origin for the large scenarios:** the ~1000/1001-entry bodies are **generated at harness runtime** into the scenario's scratch directory by a small `printf`/loop helper, not checked in under `testdata/github-tree/bodies/`.
+  The checked-in-fixture convention exists so a fixture's exact shape is reviewable in the diff;
+  a thousand mechanically-identical entries have no shape worth reviewing, and committing several hundred KB of them would bury the fixtures that do.
+  The boundary scenarios read the same generator with different counts, which is also what keeps "exactly at the ceiling" and "one over" provably one entry apart.
+  Every other new fixture stays checked in, per the existing convention.
 - `--max-entries` with a non-integer, a negative value, or a missing value is a usage error: exit 2, and no `gh` call was made at all (assert the call log is empty — the prerequisite-and-argument-before-network ordering is a stated property worth pinning).
 - An unrecognised `--`-prefixed flag is a usage error, not a path.
 - `--` terminator: a path that begins with `-` is accepted as a path.
@@ -416,6 +441,7 @@ Scenarios:
 - Path names a symlink or submodule: the probe answers `symlink` / `submodule`, same `die`, same one-call assertion, with the type named in the message.
 - Probe answers `file`: two `gh` calls in order — the probe, then the raw-Accept fetch — and stdout is the fixture bytes.
 - Wrong argument count (zero, one, three): usage error, exit 2, no calls.
+- A positional beginning with `--` is a usage error: exit 2, empty call logs, matching `github-tree.sh`'s behaviour for the same token. `--` terminator: a path beginning with `--` is then accepted and reaches the API.
 - Malformed `<owner/repo>`: rejected locally, no calls.
 - Empty file: exit 0, empty stdout — success, distinguished from failure only by the exit code, which is exactly why SKILL.md tells the caller to check it.
 - stdout cleanliness: on a successful read, stdout is byte-identical to the fixture with no added trailing newline, banner, or filename — assert against the fixture bytes, not a trimmed comparison.
