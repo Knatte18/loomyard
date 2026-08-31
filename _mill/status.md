@@ -35,9 +35,13 @@ implementing  '2026-08-31T16:10:57Z'
 ```yaml
 batches:
   - name: github-tree flag parsing, children mode, entry-count guard
-    state: pending
+    state: running
+    implementer_session: 7ce70db0-a862-4a6b-a274-cfaea6c48b5b
+    start_sha: a2b5667ba22912ff2bac65989b7105f9fc8493f2
+    verify_baseline_failures: []
   - name: github-read raw-first script and its offline harness
     state: pending
+    verify_baseline_failures: []
   - name: skill and README documentation
     state: pending
 ```
