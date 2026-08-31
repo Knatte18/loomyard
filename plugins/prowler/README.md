@@ -32,10 +32,25 @@ It exists because the `github-repo-explorer` skill previously had the model exec
 
 An untruncated listing costs exactly one `gh api` call,
 and even a repository large enough to trigger GitHub's recursive-tree truncation cap is one agent turn regardless of how many API calls the internal fallback makes.
+A `--children` flag switches the walk to a single non-recursive call that lists one path's direct entries instead of recursing — a directory entry carries a trailing slash, a file entry carries none — for exploring one directory at a time top-down rather than pulling a whole subtree at once.
+An entry-count guard aborts a listing, incrementally, once it exceeds a ceiling that defaults to 1000 entries and is overridable with `--max-entries N` (`0` disables it): the default exists to stop an unscoped listing against a very large repository from silently returning tens of thousands of paths,
+and the abort is an ordinary one-stderr-line, non-zero-exit failure like every other, leaving scoping, `--children`, or raising the ceiling as the caller's deliberate next step.
 Its only runtime dependency is `gh`, already a hard prerequisite of the skill: every JSON field is extracted through `gh api --jq`,
 and no system `jq` is ever invoked at run time.
 Unlike `run.sh`, it has no build step and no lock, since there is nothing to compile.
-Its offline test harness (`github-tree-selftest.sh`) carries the one extra dependency of system `jq`, which the harness checks for up front.
+Its offline test harness (`github-tree-selftest.sh`) carries the one extra dependency of system `jq`, which the harness checks for up front and which is not wired into CI.
+
+## `github-read.sh`: raw-first single-file read
+
+`github-read.sh` reads exactly one file from a GitHub repository and writes its content verbatim to stdout.
+It prefers a direct `https://raw.githubusercontent.com/` fetch and falls back to an authenticated `gh api` call only when that fetch fails — private repositories, and the rare host-level hiccup, are the only cases the fallback exists to cover.
+That order is measured, not assumed: a raw fetch is a flat cost per file, while the authenticated contents-API path grows with file size,
+and the two are roughly an order of magnitude apart on the operation the skill performs most often — reading one small-to-medium file.
+Its hard prerequisite is `gh` alone, the same prerequisite the skill already requires;
+`curl` is optional,
+and its absence costs speed rather than capability by skipping straight to the `gh api` fallback.
+Like `github-tree.sh`, it has no build step and no lock, since there is nothing to compile, and it invokes no system `jq` at run time — every JSON field the fallback path needs is extracted through `gh api --jq`.
+Its offline test harness (`github-read-selftest.sh`) carries the one extra dependency of system `jq`, which the harness checks for up front and which, like the tree harness, is not wired into CI.
 
 ## `github-code-search.sh`: one-call cross-repo code search
 
