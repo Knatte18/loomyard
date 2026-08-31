@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: reed-collapsed-strip-readability
 branch: reed-collapsed-strip-readability
 plan: _mill/plan
@@ -29,6 +29,7 @@ planned  '2026-08-31T10:43:00Z'
 implementing  '2026-08-31T10:43:28Z'
 approved-collapsed-strip-default  '2026-08-31T10:47:01Z'
 holistic-reviewing  '2026-08-31T10:47:25Z'
+holistic-approved  '2026-08-31T10:49:00Z'
 ```
 
 ## Batches
