@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: raw-fetch-tree-scoping
 branch: raw-fetch-tree-scoping
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-github-read raw-first script and its offline harness  '2026-08-31T16:30
 approved-skill and README documentation  '2026-08-31T16:32:40Z'
 holistic-reviewing  '2026-08-31T16:33:06Z'
 holistic-fixing  '2026-08-31T16:38:13Z'
+holistic-reviewing  '2026-08-31T16:41:28Z'
 ```
 
 ## Batches
