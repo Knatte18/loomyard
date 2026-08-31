@@ -1,1 +1,0 @@
-- Criterion isolation relies on a bare zero-value `testing.T`: **Location:** `internal/reedcli/smoke_dotfill_measure_test.go:222-241` (`isolatedCriterionResult`)
