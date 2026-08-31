@@ -30,5 +30,8 @@ implementing  '2026-08-31T18:23:29Z'
 ```yaml
 batches:
   - name: status-merge-in-progress
-    state: pending
+    state: running
+    implementer_session: d5267f88-d1a6-4837-91bf-716834262ae9
+    start_sha: 27ae30dfcd29c122a4c4344a49da9cce4864c233
+    verify_baseline_failures: []
 ```
