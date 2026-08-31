@@ -3,7 +3,7 @@
 ```yaml
 task: "Surface merge-in-progress in fabric status"
 slug: "fabric-status-merge-in-progress"
-approved: false
+approved: true
 started: "20260831-181430"
 parent: "main"
 root: ""
