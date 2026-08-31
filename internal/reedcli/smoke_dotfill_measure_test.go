@@ -115,3 +115,41 @@ func assertSingleHookFire(t *testing.T, got int) {
 		t.Fatalf("hook fired %d times; want exactly 1 — this is the no-repeated-hook-fire criterion", got)
 	}
 }
+
+// candidateOneBody returns candidate 1's window-resized array-entry body, from the
+// repaint-mechanism decision: a run-shell -b invocation that enumerates the session's clients and
+// refreshes each one, so it reaches clients other than the one whose resize fired the hook.
+//
+// The multiplexer binary path and reed's socket are POSIX-single-quoted in both tmux invocations —
+// the tmux server's run-shell inherits no reed context, so neither can be omitted. list-clients uses
+// the bare "=<session>" session target (exactSessionTarget's shape, never
+// exactSessionWindowTarget's trailing-colon window form): list-clients -t takes a session target,
+// and the "=" prefix is what stops tmux prefix-matching a sibling worktree's session on the shared
+// per-hub server.
+//
+// Known hazard this body's format string settles empirically (see card 8's brief): tmux performs
+// format expansion on a run-shell argument, so a literal "#{client_name}" may be expanded by tmux
+// itself before the shell ever sees it, collapsing the enumeration to the hook's own client or to an
+// empty string. The doubled form below ("##{client_name}", which tmux reduces to a literal "#{") is
+// the documented escape and is used here; whichever form the measurement actually proves working is
+// the form card 11 must transcribe into the measurement record, not this comment's prose.
+func candidateOneBody(tmuxPath, socket, session string) string {
+	sh := shell.Posix()
+	tmuxQ := sh.Quote(tmuxPath)
+	socketQ := sh.Quote(socket)
+	sessionTargetQ := sh.Quote("=" + session)
+	fragment := tmuxQ + " -L " + socketQ + " list-clients -t " + sessionTargetQ + " -F '##{client_name}'" +
+		" | while IFS= read -r line; do " + tmuxQ + " -L " + socketQ + ` refresh-client -t "$line"; done`
+	return "run-shell -b " + tmuxHookQuote(fragment)
+}
+
+// candidateTwoBody returns candidate 2's window-resized array-entry body, from the
+// repaint-mechanism decision: the literal tmux command "refresh-client", with no target.
+//
+// This is a tmux command, not a shell fragment: it carries no run-shell, no -b, no tmuxHookQuote
+// wrapping, and no shell involvement at all — forcing it through candidateOneBody's machinery would
+// be wrong by construction. With no target it reaches only the hook's own client, which is why it is
+// measured second.
+func candidateTwoBody() string {
+	return "refresh-client"
+}
