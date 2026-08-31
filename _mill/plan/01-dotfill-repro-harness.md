@@ -62,6 +62,8 @@ Batch-local decision beyond `## Shared Decisions`: the control scenarios must **
   - `internal/reedcli/smoke_attach_test.go`
   - `internal/hubforge/hub.go`
   - `internal/reedengine/template_posix.yaml`
+  - `internal/reedengine/render/rules.go`
+  - `internal/reedengine/attach.go`
 - **Edits:**
   - `internal/reedcli/smoke_dotfill_test.go`
 - **Creates:** none
@@ -75,7 +77,9 @@ Batch-local decision beyond `## Shared Decisions`: the control scenarios must **
   3. `hubforge.NewHub(t, ".")`, `deferHubRelease(t, h.PrimeWorktree())`, `t.Chdir(h.PrimeWorktree())`, and a `t.Cleanup` running `RunCLI` with `[]string{"down"}` into a discarded buffer — mirroring the opening of `TestSmokeAttachRendersInsideHarnessPane`.
   4. `RunCLI` with `[]string{"up"}`, failing the test on a non-zero code.
   5. Two `addStrand(t, smokeMarkerLaunchCmd(...), "--name", ...)` calls with distinct markers, so the reed session carries a header pane plus two strand panes.
-     Two strands are required, not decorative: `render.FixedHeightPins` only produces pins for a multi-cell layout, and the control's array rewrite has to have real pins to reproduce.
+     Two strands are a fidelity choice, not a pin-count requirement — state the reason accurately in the helper's comment rather than the pin-set one, which is wrong: `render.FixedHeightPins` emits the header pin whenever a header is placed and the layout is not the sole-header case, so a single strand already yields a non-empty pin set.
+     What two strands buy is a taller stack for the resize round-robin to distribute rows across, so the mid-relayout region is larger and the artifact reproduces more reliably;
+     and it keeps the scenario clear of `AttachArgv`'s `len(live) < 2` guard boundary rather than sitting exactly on it.
   6. `socketAndSession(t)` into `reedSocket`/`reedSession`.
   7. Boot a second tmux server on its own socket named `fmt.Sprintf("lyx-dotfill-harness-%d", os.Getpid())` with `new-session -d -s h -x <cols> -y <rows> <shellPath>`, register `t.Cleanup(func() { reapHarnessServer(t, tmuxPath, harnessSocket) })`, and poll `has-session -t h` to a 30 s deadline — the same shape `TestSmokeAttachRendersInsideHarnessPane` uses.
   8. Pin the harness window's geometry so a later resize is deterministic: `set-option -t h -w window-size manual` against the harness socket.

@@ -38,6 +38,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/reedengine/apply.go`
   - `internal/reedengine/overlay.go`
   - `internal/reedengine/probe.go`
+  - `internal/reedengine/lock.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/shell/shell.go`
@@ -124,6 +125,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/reedengine/watchdog.go`
   - `internal/reedengine/windowsize.go`
   - `internal/reedengine/apply.go`
+  - `internal/reedengine/lock.go`
 - **Edits:**
   - `internal/shell/shell_test.go`
   - `internal/reedengine/watchdog_test.go`
