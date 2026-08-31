@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -29,4 +29,21 @@ plan-review-r4  '2026-08-31T12:47:31Z'
 plan-fix-r4  '2026-08-31T12:48:32Z'
 plan-review-r5  '2026-08-31T12:54:16Z'
 planned  '2026-08-31T12:54:39Z'
+implementing  '2026-08-31T12:55:17Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: dotfill-repro-harness
+    state: pending
+  - name: attach-multi-client-warning
+    state: pending
+  - name: measurement-gate
+    state: pending
+  - name: repaint-entry
+    state: pending
+  - name: docs
+    state: pending
 ```
