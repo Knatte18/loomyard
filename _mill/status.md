@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: cross-repo-code-search
 branch: cross-repo-code-search
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-31T15:41:51Z'
 approved-search-script-and-harness  '2026-08-31T15:52:41Z'
 approved-documentation  '2026-08-31T15:55:45Z'
 holistic-reviewing  '2026-08-31T15:56:10Z'
+holistic-fixing  '2026-08-31T16:01:38Z'
 ```
 
 ## Batches
