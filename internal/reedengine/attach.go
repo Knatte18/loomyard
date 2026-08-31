@@ -9,6 +9,8 @@ package reedengine
 
 import (
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -156,4 +158,42 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 	}
 
 	return chained
+}
+
+// attachedClient is one line of a `list-clients -F '#{client_name} #{client_width}
+// #{client_height}'` answer: a tmux client attached to this session and the terminal size it is
+// currently attached at.
+type attachedClient struct {
+	Name   string
+	Width  int
+	Height int
+}
+
+// parseClientList parses a `list-clients -F '#{client_name} #{client_width} #{client_height}'`
+// answer into one attachedClient per well-formed line. It performs no I/O and no logging.
+//
+// Per line, following parseWindowSize's strictness discipline: a line yields a client only when it
+// has exactly three whitespace-separated fields and both size fields parse as strictly positive
+// integers. Every other line shape — blank, one field, two fields, four or more, non-numeric, zero,
+// or negative — is skipped rather than reported, so one malformed line among several well-formed
+// ones never discards them. The whole answer is trimmed before splitting on lines, so a trailing
+// newline yields no phantom entry.
+//
+// The returned slice is empty, never nil, when no line parses — never a nil-versus-empty
+// ambiguity a caller would have to special-case.
+func parseClientList(out string) []attachedClient {
+	clients := []attachedClient{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			continue
+		}
+		width, errW := strconv.Atoi(fields[1])
+		height, errH := strconv.Atoi(fields[2])
+		if errW != nil || errH != nil || width <= 0 || height <= 0 {
+			continue
+		}
+		clients = append(clients, attachedClient{Name: fields[0], Width: width, Height: height})
+	}
+	return clients
 }

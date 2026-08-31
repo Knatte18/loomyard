@@ -18,6 +18,45 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
+// TestParseClientList mirrors TestParseWindowSize's shape for the sibling parser: a table of
+// `list-clients` answer shapes, asserting the parsed attachedClient slice element by element.
+func TestParseClientList(t *testing.T) {
+	tests := []struct {
+		name string
+		out  string
+		want []attachedClient
+	}{
+		{"Empty", "", []attachedClient{}},
+		{"OneClient", "tty0 80 24", []attachedClient{{Name: "tty0", Width: 80, Height: 24}}},
+		{
+			"SeveralClients",
+			"tty0 80 24\ntty1 100 40",
+			[]attachedClient{{Name: "tty0", Width: 80, Height: 24}, {Name: "tty1", Width: 100, Height: 40}},
+		},
+		{
+			"MalformedLineAmongWellFormed",
+			"tty0 80 24\ngarbage\ntty1 100 40",
+			[]attachedClient{{Name: "tty0", Width: 80, Height: 24}, {Name: "tty1", Width: 100, Height: 40}},
+		},
+		{"TrailingWhitespace", "tty0 80 24\n", []attachedClient{{Name: "tty0", Width: 80, Height: 24}}},
+		{"ZeroSizeField", "tty0 0 24", []attachedClient{}},
+		{"NegativeSizeField", "tty0 80 -1", []attachedClient{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseClientList(tt.out)
+			if len(got) != len(tt.want) {
+				t.Fatalf("parseClientList(%q) = %v, want %v", tt.out, got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("parseClientList(%q)[%d] = %+v, want %+v", tt.out, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 // attachScript describes one scripted tmux round-trip set for AttachArgv: the has-session check, the
 // two effective-value readbacks, and the pane list. A zero-value field means "answer success with an
 // empty/zero value" except where a *Err field is set, which always takes priority for that call.
