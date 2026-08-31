@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -152,4 +153,136 @@ func candidateOneBody(tmuxPath, socket, session string) string {
 // measured second.
 func candidateTwoBody() string {
 	return "refresh-client"
+}
+
+// TestSmokeRepaintCandidateMeasurement is the measurement-gate scenario: one subtest per candidate,
+// named Candidate1 and Candidate2, driven by measureRepaintCandidate so both are measured
+// identically.
+//
+// Neither subtest asserts a pass/fail verdict for the candidate itself — a negative reading (the
+// candidate did not clear the artifact, or it cleared it but tripped a criterion) is a valid,
+// recordable result, never a t.Fatal. Both subtests fail only on a harness fault: the setup failing,
+// the readback not matching what was installed, or the trigger not firing at all.
+func TestSmokeRepaintCandidateMeasurement(t *testing.T) {
+	t.Run("Candidate1", func(t *testing.T) {
+		measureRepaintCandidate(t, "candidate1", func(h *dotFillHarness) string {
+			return candidateOneBody(h.tmuxPath, h.reedSocket, h.reedSession)
+		})
+	})
+	t.Run("Candidate2", func(t *testing.T) {
+		measureRepaintCandidate(t, "candidate2", func(*dotFillHarness) string {
+			return candidateTwoBody()
+		})
+	})
+}
+
+// measureRepaintCandidate runs one candidate's measurement: boot the same harness the resize control
+// uses, install candidateBodyFor(h)'s body into reed's window-resized array (after the pins, before
+// the fire counter), fire the resize trigger exactly as TestSmokeDotFillResizeControl does, and log
+// the REPAINT-MEASUREMENT line card 11 transcribes into the measurement record.
+func measureRepaintCandidate(t *testing.T, name string, candidateBodyFor func(*dotFillHarness) string) {
+	h := newDotFillHarness(t, 140, 42)
+	paneID := harnessOnlyPaneID(t, h.tmuxPath, h.harnessSocket, "h")
+	h.attachIn(t, paneID, "DOTFILL-MARKER-ALPHA")
+
+	countPath := filepath.Join(t.TempDir(), "fires")
+
+	// Last setup step, after the attach: rewrite reed's own array as every pin, then the candidate
+	// body, then the counting entry — the position the repaint-mechanism decision specifies for the
+	// shipped entry relative to the pins.
+	pins := pinOnlyEntries(windowResizedEntries(t, h.tmuxPath, h.reedSocket, h.reedSession))
+	candidateBody := candidateBodyFor(h)
+	entries := append(append([]string{}, pins...), candidateBody, fireCounterEntry(t, countPath))
+	rewriteWindowResizedArray(t, h.tmuxPath, h.reedSocket, h.reedSession, entries)
+
+	readBack := windowResizedEntries(t, h.tmuxPath, h.reedSocket, h.reedSession)
+	assertCandidateInstalled(t, readBack, pins, candidateBody)
+
+	// Fire the trigger exactly as TestSmokeDotFillResizeControl does: resize-window on reed's own
+	// socket and session, shrink then grow.
+	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "80", "-y", "24").Run(); err != nil {
+		t.Fatalf("resize-window shrink: %v", err)
+	}
+	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "160", "-y", "50").Run(); err != nil {
+		t.Fatalf("resize-window grow: %v", err)
+	}
+
+	// Record three readings rather than asserting a pass/fail verdict for the whole subtest.
+	cleared := paneStaysCleanOfDotRun(t, h.tmuxPath, h.harnessSocket, paneID, 3*time.Second)
+	fires := fireCount(t, countPath)
+	samples := sampleWindowSize(t, h.tmuxPath, h.reedSocket, h.reedSession, 3*time.Second)
+
+	singleFireOK := isolatedCriterionResult(func(t *testing.T) { assertSingleHookFire(t, fires) })
+	noStormOK := isolatedCriterionResult(func(t *testing.T) { assertWindowSizeSettles(t, samples) })
+
+	t.Logf("REPAINT-MEASUREMENT candidate=%s tmux=%s cleared=%v single_fire_ok=%v(fires=%d) no_storm_ok=%v(samples=%v) tmux_path=%s socket=%s session=%s body=%q",
+		name, tmuxVersionString(t, h.tmuxPath), cleared, singleFireOK, fires, noStormOK, samples, h.tmuxPath, h.reedSocket, h.reedSession, candidateBody)
+}
+
+// isolatedCriterionResult runs check against a throwaway *testing.T with no parent, in its own
+// goroutine, and reports whether it passed.
+//
+// A throwaway T is required here: assertSingleHookFire and assertWindowSizeSettles are Fatal-style,
+// and testing.common.Fail propagates to every ancestor T, so calling them against the scenario's own
+// *testing.T would fail the whole Candidate1/Candidate2 subtest merely because a candidate tripped a
+// criterion — exactly the outcome this file's doc comment and this function's callers must avoid. The
+// check runs in its own goroutine because a Fatal call's runtime.Goexit unwinds only the calling
+// goroutine; running it inline would abort measureRepaintCandidate itself before it could log the
+// reading.
+func isolatedCriterionResult(check func(t *testing.T)) bool {
+	scratch := &testing.T{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		check(scratch)
+	}()
+	<-done
+	return !scratch.Failed()
+}
+
+// tmuxVersionString returns the tmux binary's `-V` output, trimmed. A failure here is a harness
+// fault, not a candidate reading, so it fails the test.
+func tmuxVersionString(t *testing.T, tmuxPath string) string {
+	t.Helper()
+	out, err := exec.Command(tmuxPath, "-V").Output()
+	if err != nil {
+		t.Fatalf("tmux -V: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// assertCandidateInstalled fails the test unless entries contains, verbatim, every pin in pins and
+// candidateBody itself — the mirror of the control's assertOnlyPinEntries. Finding the body here also
+// proves it round-trips byte-identically through show-options -v, which hookInstalledLocked's
+// per-entry matching depends on.
+func assertCandidateInstalled(t *testing.T, entries, pins []string, candidateBody string) {
+	t.Helper()
+	nonEmpty := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry != "" {
+			nonEmpty = append(nonEmpty, entry)
+		}
+	}
+	sawBody := false
+	for _, entry := range nonEmpty {
+		if entry == candidateBody {
+			sawBody = true
+			break
+		}
+	}
+	if !sawBody {
+		t.Fatalf("candidate body not found verbatim in the read-back window-resized array; installed=%q read-back entries=%v", candidateBody, nonEmpty)
+	}
+	for _, pin := range pins {
+		found := false
+		for _, entry := range nonEmpty {
+			if entry == pin {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("pin %q not found in the read-back window-resized array; entries=%v", pin, nonEmpty)
+		}
+	}
 }
