@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussion-fix-r5
 slug: fabric-status-merge-in-progress
 branch: fabric-status-merge-in-progress
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-31T17:48:13Z'
 discussion-fix-r4  '2026-08-31T18:07:41Z'
+discussion-fix-r5  '2026-08-31T18:10:36Z'
 ```
