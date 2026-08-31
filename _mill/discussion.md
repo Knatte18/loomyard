@@ -35,7 +35,7 @@ The fix direction chosen here is to make liveness read from *real recent output*
 - Any strip-specific floor in `clampToFit` analogous to `MinFullRows`.
 - Any synthetic liveness indicator (spinner, badge, rendered "live" marker) in the strip.
 - `internal/configsync` — no value-migration mechanism. Reconcile stays key-based.
-- Sandbox suites (`tools/sandbox/SANDBOX-REED-SUITE.md`, `SANDBOX-REED-WATCH-SUITE.md`) — they already reference `collapsed_strip_rows` symbolically, never by value.
+- Sandbox suites (`tools/sandbox/SANDBOX-REED-SUITE.md`, `SANDBOX-REED-WATCH-SUITE.md`) and `manifest/designs/loom.md` — all three already reference `collapsed_strip_rows` symbolically, never by value.
 - `docs/overview.md` and `manifest/roadmap.md` — the module table and execution stack do not change, and this is a default-tuning pass, not a planned roadmap item.
 - Every `render` test that passes `Params{CollapsedStripRows: 2, ...}` — those are unit inputs chosen for the test, not the template default, and must stay as they are.
 
@@ -48,7 +48,7 @@ The fix direction chosen here is to make liveness read from *real recent output*
   Three rows in practice yields one line of visible text once a TUI's trailing status/padding lines are accounted for.
   Six is the smallest value that reliably clears that bar while staying cheap when strips stack: on the boot box (50 rows, header 1 + its divider 1 = 48 usable), four stacked strips plus dividers cost 28 rows and still leave the active pane 20;
   on a 30-row attached client, three stacked strips leave the active pane 7 — in neither case does `clampToFit` fire.
-  Six does move the depth at which clamping starts, and that is accepted rather than unnoticed: on a 30-row client the stack box is 28 rows, so four strips plus their four dividers consume all 24 usable rows and `stackHeights` computes a natural active-pane height of `0`, where `3` at that same depth would have left the active pane 12.
+  Six does move the depth at which clamping starts, and that is accepted rather than unnoticed: on a 30-row client the stack box is 28 rows, four dividers leave 24 usable, and four 6-row strips consume all 24 — so `stackHeights` computes a natural active-pane height of `0`, where `3` at that same depth would have left the active pane 12.
   "N-deep" counts collapsed STRIPS, with one active pane always below them and a 1-row header plus its 1-row divider always above;
   on that reading the first clamping depth is four strips on a 30-row client (stack box 28, usable 24, demand 24), six on a 40-row one (stack box 38, usable 32, demand 36), and seven on the 50-row boot box (stack box 48, usable 41, demand 42).
   below those depths nothing clamps, and at or beyond them `clampToFit`'s existing priority order reclaims from the strips first, which is exactly the degradation `clamp-path-unchanged` keeps.
@@ -150,7 +150,8 @@ The reason it is that small is worth stating explicitly, because it is the thing
   So this test does exercise the new `6` against real tmux geometry — at a 100x30 client, and again after a resize to 100x90.
   **Disposition: value-agnostic, no edit.** It compares the live pane height to `e.cfg.CollapsedStripRows` rather than to a literal, so it follows the template wherever the default goes.
   It must still be RUN, because it is the only check that `6` actually lands unclamped on a real multiplexer: at 100x30 the stack box is 28 rows (30 less the 1-row header and its 1-row divider), one strip plus one active pane with a 1-row divider between them leaves 27 usable, `stripDemand` is 6, and the active pane takes 21 — no clamp, so the assertion holds.
-- **Symbolic doc references.** `tools/sandbox/SANDBOX-REED-SUITE.md` (lines 235, 314) and `tools/sandbox/SANDBOX-REED-WATCH-SUITE.md` (line 170) say "collapses to `collapsed_strip_rows`" without naming a number. They need no edit.
+- **Symbolic doc references.** `tools/sandbox/SANDBOX-REED-SUITE.md` (lines 235, 314), `tools/sandbox/SANDBOX-REED-WATCH-SUITE.md` (line 170), and `manifest/designs/loom.md` (line 440, in the loom-startup sequence's status-strand annotation) all name `collapsed_strip_rows` symbolically without quoting a number.
+  None of them needs an edit.
 - **The one numeric doc reference.** `internal/reedengine/doc.go`, in the "Silent layout rescale" entry of the `# Multiplexer contract surface` list (~line 368-375): "a `220x50` string applied to a `100x30` window turned a 3-row collapsed strip into 1 row".
   This is the single place a bare `3` appears in prose.
 
