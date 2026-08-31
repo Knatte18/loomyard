@@ -132,7 +132,9 @@ the method is already exported and already used from tests (`mergecrucible_integ
 
 **The two merge predicates, and why only one is in play.** `internal/fabricengine/mergestate.go` holds both.
 `mergeRecordExists()` (line 179) reads this pair's own `fabric-merge.json`;
-`mergeSourceInFlight(l, warpBranch)` (line 209) globs *every* pair's record under the weft repo — `<weft gitdir>/.git/fabric-merge.json` for the prime pair and `.git/worktrees/*/` for each linked pair — and matches on `st.Source == warpBranch`.
+`mergeSourceInFlight(l, warpBranch)` (line 226) globs *every* pair's record under the weft repo and matches on `st.Source == warpBranch`.
+In the engine's own wording (`mergestate.go:215-217`): "Records live at `<weft gitdir>/fabric-merge.json`, which is the weft repo's own `.git` for the prime pair and `.git/worktrees/<name>/` for every linked pair, so both shapes are globbed."
+The gitdir already *is* `.git` for the prime pair — do not write `<weft gitdir>/.git/…`, which double-counts it.
 `remove.go:65` and `remove.go:81` call them in sequence and return the *same* `&ErrMergeInProgress{}` from either, which is exactly why the error alone cannot tell an operator which condition fired.
 `MergeInProgress()` exposes only the first.
 `mergeSourceInFlight` is unexported and has no exported accessor, so surfacing it is not a CLI-only change — that is the mechanical reason it is out of scope, not just a scoping preference.
