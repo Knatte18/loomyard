@@ -33,6 +33,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 
 - **Context:**
   - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/windowsize_test.go`
   - `internal/reedengine/overlay.go`
 - **Edits:**
   - `internal/reedengine/attach.go`
@@ -70,6 +71,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/reedengine/overlay.go`
   - `internal/reedengine/probe.go`
   - `internal/reedengine/lock.go`
+  - `internal/reedengine/reapply.go`
   - `internal/reedengine/attachgeometry_integration_test.go`
 - **Edits:**
   - `internal/reedengine/attach.go`

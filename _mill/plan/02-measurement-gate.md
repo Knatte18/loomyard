@@ -18,7 +18,7 @@ No production code is written here, and `internal/shell` is not touched: measuri
 It is one batch because the two acceptance criteria (`no repeated hook fire`, `no resize storm`), the candidate body composition, and the scenario that exercises them are one experiment;
 splitting them would leave an instrument in one batch and its readings in another.
 
-The external interface batch 3 consumes is the `Measurement record (repaint candidates)` block this batch writes into the geometry section of `internal/reedengine/doc.go`.
+The external interface batch 3 consumes is the `Measurement record (repaint candidates)` block this batch writes into `internal/reedengine/doc.go`'s package doc comment, beside the resize round-robin and hook bullets.
 That block is the single source of truth for which branch batch 3 takes and for the four values its anti-drift pin needs.
 
 Batch-local decision beyond `## Shared Decisions`: this batch's test scaffolding composes tmux hook bodies as literal strings in test code.
@@ -169,7 +169,7 @@ That is deliberate and is not a Shell Mechanics Seam violation — the seam bind
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Add a `Measurement record (repaint candidates)` bullet to the geometry section of the package doc comment, placed alongside the existing resize round-robin and hook bullets, written in the same voice and with the same "verified live on tmux 3.6" evidence discipline the surrounding bullets use.
+  Add a `Measurement record (repaint candidates)` bullet to the package doc comment's `Load-bearing behavioral assumptions` list, placed beside the existing resize round-robin and hook bullets, written in the same voice and with the same "verified live on tmux 3.6" evidence discipline the surrounding bullets use.
 
   The record must state, in this order:
   - the tmux version the measurement ran on, taken from the captured `tmux -V`;

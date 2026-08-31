@@ -67,7 +67,7 @@ batches:
 
 ### Decision: the-measurement-record-lives-in-doc-go
 
-- **Decision:** batch 2 records the gate's outcome as a `Measurement record (repaint candidates)` block inside the geometry section of `internal/reedengine/doc.go`.
+- **Decision:** batch 2 records the gate's outcome as a `Measurement record (repaint candidates)` block in `internal/reedengine/doc.go`'s package doc comment, beside the resize round-robin and hook bullets in its `Load-bearing behavioral assumptions` list.
   The block records, verbatim and in this order: the tmux version measured on, which candidates were tried, which criterion each rejected candidate failed, the accepted candidate (or "none"), and — for the accepted candidate — the four values the batch-3 anti-drift pin needs: the exact measured hook-entry body string, and the tmux binary path, socket name, and session name the measuring scenario used to compose it.
 - **Rationale:** batch 3's builder pin is stated as a *reproduction* property — "the builder, invoked with the same tmux path, socket, and session name the measuring scenario used, reproduces the measured string byte-identically" — which is unwritable unless those three inputs are recorded alongside the string.
   `doc.go` is reed's design record (the module has no `manifest/designs/reed.md`), so the record belongs there rather than in a new file.

@@ -12,8 +12,8 @@ depends-on: [2, 3, 4]
 ## Batch Scope
 
 This batch writes the record: the mechanism, what was fixed, and what is inherent.
-reed has no `manifest/designs/reed.md` — its design record is the long comment block in `internal/reedengine/doc.go`, whose geometry section already documents the resize round-robin, the resize-pin hook, the chained attach, the two geometry pins, why `window-resized` is the only usable event source, and the `show-options -v` array behaviour.
-The new decisions belong there, in that section, in the same voice and with the same evidence discipline.
+reed has no `manifest/designs/reed.md` — its design record is the long comment block in `internal/reedengine/doc.go`, whose `Load-bearing behavioral assumptions` list already documents the resize round-robin, the resize-pin hook, the chained attach, the two geometry pins, why `window-resized` is the only usable event source, and the `show-options -v` array behaviour.
+The new decisions belong there, in that same bullet list, in the same voice and with the same evidence discipline.
 
 It is one batch because both documents describe the same finding to two audiences — the next reader of the code, and the next operator running the live observation suite — and both must agree.
 It runs last because it must describe what actually shipped: which candidate was accepted, whether a repaint entry exists, and what the residual is.
@@ -41,7 +41,7 @@ It runs last because it must describe what actually shipped: which candidate was
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Extend the geometry section of the package doc comment with the following, as bullets in the existing style, placed beside the resize round-robin and hook bullets and beside the `Measurement record (repaint candidates)` block batch 2 already added.
+  Extend the package doc comment's `Load-bearing behavioral assumptions` list with the following, as bullets in the existing style, placed beside the resize round-robin and hook bullets and beside the `Measurement record (repaint candidates)` block batch 2 already added.
   Every claim that rests on live evidence names the tmux version it was measured on, matching the surrounding "verified live on tmux 3.6" voice.
 
   1. **The dot-fill artifact's mechanism.**

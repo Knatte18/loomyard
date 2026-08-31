@@ -12,7 +12,7 @@ depends-on: [2]
 ## Batch Scope
 
 This batch ships whatever the measurement gate authorised, and nothing more.
-Every card below is **three-way conditional** on the `Measurement record (repaint candidates)` block batch 2 wrote into the geometry section of `internal/reedengine/doc.go`: candidate 1 accepted, candidate 2 accepted, or no candidate accepted.
+Every card below is **three-way conditional** on the `Measurement record (repaint candidates)` block batch 2 wrote into `internal/reedengine/doc.go`'s package doc comment: candidate 1 accepted, candidate 2 accepted, or no candidate accepted.
 Read that record first, decide the branch once, and apply the same branch consistently across all three cards.
 
 It is one batch because the branch decision is a single fact and every card depends on it;
@@ -118,6 +118,12 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/reedengine/reapply.go`
   - `internal/reedengine/overlay.go`
   - `internal/reedengine/render/rules.go`
+  - `internal/shell/shell.go`
+  - `internal/shell/posix.go`
+  - `internal/shell/pwsh.go`
+  - `internal/reedengine/watchdog.go`
+  - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/apply.go`
 - **Edits:**
   - `internal/shell/shell_test.go`
   - `internal/reedengine/watchdog_test.go`
@@ -182,6 +188,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/reedcli/smoke_dotfill_measure_test.go`
   - `internal/reedengine/doc.go`
   - `internal/reedengine/windowsize.go`
+  - `internal/reedengine/reapply.go`
 - **Edits:**
   - `internal/reedcli/smoke_dotfill_test.go`
 - **Creates:** none
