@@ -30,7 +30,10 @@ implementing  '2026-08-31T15:41:51Z'
 ```yaml
 batches:
   - name: search-script-and-harness
-    state: pending
+    state: running
+    implementer_session: c115dec9-8e40-4810-83c6-a44386c36877
+    start_sha: 29faf8bc146deeeb9fcb1e5af3f3f1d6c8046249
+    verify_baseline_failures: []
   - name: documentation
     state: pending
 ```
