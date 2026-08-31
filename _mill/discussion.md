@@ -65,6 +65,9 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 ### Single output format: repo, path, snippet — always
 
 - Decision: stdout carries exactly one tab-separated record per matching file — `<owner>/<repo>\t<path>\t<snippet>` — and nothing else. The snippet is the first `text_matches` fragment with every tab/CR/LF collapsed to a single space and the result truncated to 200 characters. There is no flag and no second output mode.
+  When an item's `text_matches` array is absent or empty, the record is still emitted with an **empty third field** — the two tabs are still present, so the record shape is invariant.
+  A hit is a hit whether or not a fragment came back with it, and dropping the record would silently under-report matches;
+  keeping the field count fixed means a caller can split on tabs without a special case.
 - Rationale: the fragment is free — it arrives on the same call, gated only by the `Accept: application/vnd.github.text-match+json` header (verified working alongside `--jq`). It is what separates a real signal from a coincidental mention: a `tree-sitter` hit in `CHANGELOG.md` and one in `crates/syntax/src/parser.rs` are indistinguishable by path alone in some repos. Sanitising to one physical line preserves `github-tree.sh`'s strict one-record-per-line stdout discipline, so the output stays greppable and the caller never has to parse a multi-line record format. One format means one contract to test.
 - Rejected: paths only (throws away the free disambiguating signal, and pushes the caller back into per-file reads — the exact cost this task exists to remove); an opt-in `--snippets` flag (two output contracts, two sets of assertions, for a body of output that is small either way); multi-line fragment blocks (breaks the line discipline for marginal extra context).
 
@@ -73,9 +76,12 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
 - Decision: before any search call, the script verifies every repo ref with `gh api repos/<owner>/<repo>`, aborting on the first failure with a message distinguishing 404 (not found / not accessible with this token), 401 (not authenticated), and 403 (access denied or rate limited).
 - Rationale: verified live — searching a nonexistent repo returns **HTTP 200 with `total_count: 0`**, byte-identical to a real repo with no matches. Without the preflight, a typo'd or private repo silently reads as "this repo does not use tree-sitter" — a confidently wrong answer in precisely the reconnaissance use case this task serves. The preflight calls the `core` bucket (5000/hour), not `code_search` (10/minute), so it costs nothing from the scarce budget; at the 10-repo cap it is at most 10 core calls.
 - The preflight call carries a `--jq` expression — `gh api "repos/<owner>/<repo>" --jq '.full_name' 2>/dev/null` — and recovers the HTTP status exactly as `github-tree.sh`'s `fetch()` does (lines 121–151): `gh` writes the raw JSON error body to **stdout** on failure and does not apply `--jq` on that path, so the script captures stdout, checks `$?`, and extracts the status with the same `\"status\"[[:space:]]*:[[:space:]]*\"?([0-9]{3})\"?` regex, then branches on 401 / 403 / 404 with its own messages and falls back to a body-quoting `die` for anything else.
-  The `--jq` is not decoration: it is what puts the error body on stdout where the status can be parsed, and dropping it would leave the script with an exit code and no way to tell 404 from 403.
-  Consequently the new stub's accepted invocation shapes are exactly two — `api <endpoint> --jq <expr>` (preflight) and the search shape with `-X GET`, repeated `-f`, and `-H Accept:` — and its failure path reproduces the tree stub's: body to stdout verbatim, nothing to stderr, `--jq` not applied, exit 1.
-  There is no bare two-argument `api <endpoint>` shape to support.
+  The `--jq` is kept for two verified reasons: it is what `fetch()` does on the success path (the expression is what extracts the field, so there is no separate parse step), and it keeps every call this script makes to one uniform shape the stub can shape-check.
+  **Not verified:** whether the real `gh` would still write the error body to stdout for a call carrying no `--jq`.
+  The tree stub reproduces the body-to-stdout behaviour on its failure path independently of the expression, so nothing observed here establishes that dropping `--jq` would lose the status — the claim is simply untested, and the decision to keep `--jq` does not rest on it.
+  Consequently the new stub's accepted invocation shapes are exactly two, both carrying `--jq <expr>`: `api <endpoint> --jq <expr>` (preflight) and the search shape (`-X GET`, repeated `-f`, `-H Accept:`, `--jq <expr>`).
+  Its failure path reproduces the tree stub's: body to stdout verbatim, nothing to stderr, `--jq` not applied, exit 1.
+  A bare two-argument `api <endpoint>` call is not a shape this script produces, so the stub rejects it like any other unrecognised shape.
 - Rejected: no preflight (silent wrong answers, the worst available failure mode); a preflight without `--jq` (an exit code with no distinguishable status, so 404-vs-403-vs-401 collapse into one message); preflight only on a zero-result repo (saves calls in the common case but makes the call pattern data-dependent and much harder to assert in the offline harness, for a bucket that is not scarce).
 
 ### `incomplete_results: true` is a hard failure
@@ -144,7 +150,9 @@ GitHub's code search REST API answers exactly the missed-signal problem: one cal
   Keying on it therefore needs no new discipline in the script and no synthetic scenario ids in the fixtures.
 - The key is unique within a scenario for the same reason: preflight endpoints are one per distinct repo, and search `q` values are one per distinct repo.
   Duplicate repo refs — the one case that could collide two identical keys — never reach the network at all, because they are deduped during argument handling (see "Duplicate repo refs are deduped silently").
-- The stub must also accept the new invocation shape rather than the tree stub's rigid four-argument assertion: `-X GET`, repeated `-f` parameters, and an `-H Accept:` header.
+- The stub must also accept the new invocation shape rather than the tree stub's rigid four-argument assertion: `-X GET`, repeated `-f` parameters, an `-H Accept:` header, and `--jq <expr>`.
+  `--jq` is part of the search shape, not only the preflight's: all extraction goes through `gh api --jq` (see "Runtime dependency is `gh` alone"), and the stub applies that expression to the fixture body exactly as `testdata/github-tree/bin/gh` line 80 does.
+  The harness asserts its presence on every search invocation alongside `-X GET` and the `Accept:` header.
   It still rejects an unrecognised shape with a distinct non-zero exit, and still appends every invocation verbatim to `GH_STUB_LOG` before any shape check, so the "no call was made" and call-identity assertions stay meaningful.
 - Rejected: a call-sequence index as the key (works, but couples every fixture to the script's internal call ordering, so reordering preflight-then-search would silently re-point every fixture at the wrong scenario);
   keying on the endpoint plus a synthetic `X-Scenario` header injected by the harness (invents a request field the real `gh` never sends, so the harness would stop exercising the script's actual invocation).
@@ -298,7 +306,7 @@ Scenarios that must be covered:
 - **Single repo, several hits** — exact stdout bytes, including the `repo\tpath\tsnippet` shape and a fragment whose original form contained newlines, proving sanitation.
 - **Single repo, zero hits** — exit 0, byte-empty stdout, and the preflight call still made.
 - **Multiple repos** — output ordering is the repo-argument order, then per-repo API order; call count is exactly `N` preflight + `N` search calls, and call *identity* is asserted (each search endpoint carries its own repo's `repo:` qualifier appended to the shared query).
-- **`-X GET` is present** on every search invocation, and the `Accept: application/vnd.github.text-match+json` header is present. Asserted against the logged invocation, since a stub that ignores them would let a live-only failure through.
+- **`-X GET` is present** on every search invocation, along with the `Accept: application/vnd.github.text-match+json` header and `--jq <expr>`. Asserted against the logged invocation, since a stub that ignores them would let a live-only failure through.
 - **Fragment truncation** at the 200-character boundary, and an item with multiple `text_matches` emitting only the first.
 - **An item whose `text_matches` array is absent or empty** — emits an empty third field rather than crashing or dropping the record.
 - **`incomplete_results: true`** on one repo of several — non-zero exit, byte-empty stdout, stderr naming that repo.
