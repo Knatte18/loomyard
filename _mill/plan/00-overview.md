@@ -3,7 +3,7 @@
 ```yaml
 task: "Reed attach dot-fill render artifact on resize and cross-client mouse move"
 slug: "reed-attach-dotfill-artifact"
-approved: false
+approved: true
 started: "20260831-115653"
 parent: "main"
 root: ""
