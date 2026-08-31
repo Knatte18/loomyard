@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: raw-fetch-tree-scoping
 branch: raw-fetch-tree-scoping
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-31T14:53:41Z'
+discussion-fix-r6  '2026-08-31T15:28:10Z'
+discussed  '2026-08-31T15:28:10Z'
 ```

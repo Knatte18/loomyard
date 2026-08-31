@@ -121,7 +121,10 @@ The read-order flip is a measured, uncontested win being left on the table on ev
 - Decision: the guard uses the existing `die` helper. One stderr line naming the ceiling, exit status 1, nothing on stdout.
   The remedies named in that line are **mode-aware**: a recursive-mode abort names both (scope to a subdirectory, or use `--children`), while a `--children` abort names only "scope to a subdirectory, or raise `--max-entries`", because `--children` is already in effect and suggesting it back to the caller is noise.
   Both variants name `--max-entries` as the escape hatch.
-  The harness asserts the exact wording in both the recursive and the `--children` guard scenarios.
+  The two message strings are not fixed here — the harness asserts them at **content level**, by substring, exactly as the existing tests do (`[[ "$err" == *"usage:"* ]]` at `github-tree-selftest.sh:435`).
+  The recursive scenario asserts the line contains the ceiling number, `--children`, and `--max-entries`;
+  the `--children` scenario asserts it contains the ceiling number and `--max-entries` and **not** `--children`.
+  Pinning literal text would make every wording improvement a test edit for no additional coverage.
 - Rationale: `github-tree.sh`'s contract is "on failure, exactly one stderr line, nothing on stdout, non-zero exit", and SKILL.md already instructs the caller to check the exit code on every call.
   A guard abort that fits that contract needs no new caller-side handling.
   Exit 2 stays reserved for usage errors — a listing that is too large is not a malformed invocation.
@@ -261,6 +264,9 @@ The read-order flip is a measured, uncontested win being left on the table on ev
   What it buys is the elimination of a silent wrong-content emission — the same class of failure the `-f` decision exists to prevent, and the one failure mode where the caller cannot tell anything went wrong, since exit 0 plus plausible-looking bytes is indistinguishable from success.
   The probe's response carries base64 content for a file, which is downloaded and discarded;
   that inflation is accepted on this path for the same reason.
+- **Known limit — files above the contents API's ~1MB JSON ceiling.** The probe is a default-media-type `contents` call, and that endpoint refuses to inline a blob larger than roughly 1MB, so for such a file the *probe* fails and gets diagnosed even though the raw-Accept fetch that follows it could have read the file.
+  This is parity with what SKILL.md documents today (`--jq .content | base64 -d` has the same ceiling), not a regression, and the raw path — the one this task makes primary — is unaffected because it has no such limit.
+  Fold the check into the live capture the fallback-status Decision already requires: read one >1MB file from a private repo, record whether the probe fails and with what status, and either record the limitation as observed or narrow the probe (e.g. to `Accept: application/vnd.github.object`, if that answers within the ceiling) in the same commit.
 - Rejected: byte-sniffing the buffered body for a leading `[` — unsound, since a file may legitimately begin with `[` (a TOML table, a JSON array, a Markdown link), and a real parse is unavailable because runtime `jq` is banned.
   Rejected: `gh api -i` and reading `Content-Type` — reintroduces header/body splitting into the byte-exact path, which the temp-file decision exists to keep clean.
   Rejected: accepting the directory JSON as content — that is the silent-wrong-content failure itself.
@@ -393,8 +399,8 @@ New scenarios to cover, each using the existing `run_scenario` / `call_count_for
 - `--children` proves it does not recurse: a fixture whose listing contains a `tree` entry, asserting the call count stays at 1 and no descendant path appears on stdout.
 - `--children` on a directory containing a `commit` (submodule) entry: skipped silently, consistent with the recursive modes.
 - `--children` on an empty directory: exit 0, empty stdout.
-- Guard fires on the recursive fast path: a fixture with more entries than a low `--max-entries`, asserting empty stdout, exit 1, and a stderr line naming both remedies (scope down, or `--children`) plus `--max-entries`.
-- Guard fires in `--children` mode, proving uniform application, and asserting the mode-aware wording: the line names scoping and `--max-entries` and does **not** suggest `--children` back to a caller already in it.
+- Guard fires on the recursive fast path: a fixture with more entries than a low `--max-entries`, asserting empty stdout, exit 1, and a stderr line containing the ceiling number, `--children`, and `--max-entries` (substring assertions, not literal-text equality — see the guard-abort Decision).
+- Guard fires in `--children` mode, proving uniform application, and asserting the mode-aware wording: the line contains the ceiling number and `--max-entries` and does **not** contain `--children`.
 - Guard fires incrementally: a truncated-fallback scenario where the ceiling is crossed early, asserting the `gh` call count is strictly lower than the same scenario run with the guard disabled — this is the assertion that distinguishes an incremental check from an end-of-walk one, and it is the one scenario that would silently pass under a wrong implementation.
 - Guard boundary: exactly-at-ceiling succeeds and prints, ceiling-plus-one aborts.
 - `--max-entries 0` disables the ceiling on a listing that would otherwise trip the default.
@@ -440,7 +446,8 @@ Scenarios:
 - Path names a directory: raw fails (stub `curl` exits 22), the type probe answers `dir`, and the script dies — exit 1, byte-empty stdout, exactly one stderr line naming the path and pointing at `github-tree.sh --children`, and exactly **one** `gh` call, proving the raw-Accept fetch never ran.
 - Path names a symlink or submodule: the probe answers `symlink` / `submodule`, same `die`, same one-call assertion, with the type named in the message.
 - Probe answers `file`: two `gh` calls in order — the probe, then the raw-Accept fetch — and stdout is the fixture bytes.
-- Wrong argument count (zero, one, three): usage error, exit 2, no calls.
+- Wrong argument count (zero, one, three **after the `--` terminator has been consumed**): usage error, exit 2, no calls.
+  The count is checked on the post-terminator argument list, so `github-read.sh acme/x -- --weird-path` is three tokens and two positionals — a legitimate invocation, not a count error.
 - A positional beginning with `--` is a usage error: exit 2, empty call logs, matching `github-tree.sh`'s behaviour for the same token. `--` terminator: a path beginning with `--` is then accepted and reaches the API.
 - Malformed `<owner/repo>`: rejected locally, no calls.
 - Empty file: exit 0, empty stdout — success, distinguished from failure only by the exit code, which is exactly why SKILL.md tells the caller to check it.
