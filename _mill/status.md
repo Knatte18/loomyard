@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-status-merge-in-progress
 slug: fabric-status-merge-in-progress
 branch: fabric-status-merge-in-progress
 plan: _mill/plan
@@ -23,6 +23,7 @@ planning  '2026-08-31T18:16:41Z'
 plan-review-r1  '2026-08-31T18:22:36Z'
 planned  '2026-08-31T18:22:59Z'
 implementing  '2026-08-31T18:23:29Z'
+approved-status-merge-in-progress  '2026-08-31T18:27:43Z'
 ```
 
 ## Batches
@@ -30,8 +31,9 @@ implementing  '2026-08-31T18:23:29Z'
 ```yaml
 batches:
   - name: status-merge-in-progress
-    state: running
+    state: approved
     implementer_session: d5267f88-d1a6-4837-91bf-716834262ae9
     start_sha: 27ae30dfcd29c122a4c4344a49da9cce4864c233
+    commit_sha: 001dfbd0532e8d6dda26c810c239fdba738e1e30
     verify_baseline_failures: []
 ```
