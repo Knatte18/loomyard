@@ -53,7 +53,9 @@ batches:
     commit_sha: 5fcb7ba535628ee0aec1dd19b2bd3c4a9cc725cd
     verify_baseline_failures: []
   - name: measurement-gate
-    state: pending
+    state: running
+    implementer_session: 5ba1587c-ec4f-4bbf-8ee2-42041c346a2c
+    start_sha: 4697ed372711fb5f1d676559bb19e6aa64f1996b
     verify_baseline_failures: []
   - name: repaint-entry
     state: pending
