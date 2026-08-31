@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-measurement-gate
+phase: approved-repaint-entry
 slug: reed-attach-dotfill-artifact
 branch: reed-attach-dotfill-artifact
 plan: _mill/plan
@@ -35,6 +35,7 @@ blocked  '2026-08-31T13:27:12Z'
 approved-dotfill-repro-harness  '2026-08-31T13:43:37Z'
 approved-attach-multi-client-warning  '2026-08-31T13:48:23Z'
 approved-measurement-gate  '2026-08-31T14:01:08Z'
+approved-repaint-entry  '2026-08-31T14:08:00Z'
 ```
 
 ## Batches
@@ -60,9 +61,10 @@ batches:
     commit_sha: 364cba2ab2abddc19606e8445b509212cf2a5b87
     verify_baseline_failures: []
   - name: repaint-entry
-    state: running
+    state: approved
     implementer_session: edf51a56-89df-41df-92b8-1c43cfa209d1
     start_sha: a4c687cf93ec6ffbb4a432044e022850b75dad05
+    commit_sha: 8685f63b92674c989d8e58771cf28f9f1a6547d6
     verify_baseline_failures: []
   - name: docs
     state: pending
