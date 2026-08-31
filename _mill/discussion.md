@@ -49,7 +49,8 @@ The fix direction chosen here is to make liveness read from *real recent output*
   Six is the smallest value that reliably clears that bar while staying cheap when strips stack: on the boot box (50 rows, header 1 + its divider 1 = 48 usable), four stacked strips plus dividers cost 28 rows and still leave the active pane 20;
   on a 30-row attached client, three stacked strips leave the active pane 7 — in neither case does `clampToFit` fire.
   Six does move the depth at which clamping starts, and that is accepted rather than unnoticed: on a 30-row client the stack box is 28 rows, so four strips plus their four dividers consume all 24 usable rows and `stackHeights` computes a natural active-pane height of `0`, where `3` at that same depth would have left the active pane 12.
-  The threshold is four-deep on a 30-row client, five-deep on a 40-row one, and seven-deep on the 50-row boot box;
+  "N-deep" counts collapsed STRIPS, with one active pane always below them and a 1-row header plus its 1-row divider always above;
+  on that reading the first clamping depth is four strips on a 30-row client (stack box 28, usable 24, demand 24), six on a 40-row one (stack box 38, usable 32, demand 36), and seven on the 50-row boot box (stack box 48, usable 41, demand 42).
   below those depths nothing clamps, and at or beyond them `clampToFit`'s existing priority order reclaims from the strips first, which is exactly the degradation `clamp-path-unchanged` keeps.
   A strand stack four-plus deep on a 30-row terminal has no readable active pane at any strip height, so the case newly being clamped is one already past the point of usefulness.
 - Rejected: `5` (still marginal against a TUI that pins a status line at the bottom);
@@ -95,7 +96,8 @@ The fix direction chosen here is to make liveness read from *real recent output*
 - Decision: the "why this number" note goes in the `collapsed_strip_rows` inline comment in both templates.
 - Rationale: there is no `manifest/designs/reed.md`;
   reed's durable rationale lives in `internal/reedengine/doc.go` (for measured multiplexer-contract facts) and in the template comments (for tuning knobs).
-  Every other reed knob — `mouse`, `watchdog`, `debug_log`, `width`, `height` — carries its rationale and its adoption caveat in its own inline comment, so a reader looking for "why 6" finds it exactly where they find "why mouse on".
+  Every other reed knob carries its rationale in its own inline comment — `mouse`, `watchdog`, `debug_log`, `width`, and `height` all do — so a reader looking for "why 6" finds it exactly where they find "why mouse on".
+  The adoption caveat is narrower and must be copied from the right neighbours: `mouse` and `watchdog` carry the "an already-materialized reed.yaml keeps whatever value it holds" wording this key needs, `debug_log` carries a different one ("existing hubs must run 'lyx config reconcile' to adopt this key", which is about a MISSING key, not a stale value), and `width`/`height` carry none at all.
 - Rejected: a new paragraph in `doc.go`'s package prose (its `# Multiplexer contract surface` list is specifically for measured multiplexer behaviours, and a default-value rationale is not one);
   creating `manifest/designs/reed.md` (a whole module design doc introduced to hold one sentence).
 
@@ -107,6 +109,16 @@ The fix direction chosen here is to make liveness read from *real recent output*
   But left unqualified, "a 3-row collapsed strip" reads as a statement about the current default and will mislead the next reader.
 - Rejected: leaving it verbatim (misleading once the default is `6`);
   re-measuring at `6` (the entry's point is that absolute row budgets get rescaled proportionally, which is independent of the budget's magnitude — a fresh measurement would prove nothing new and needs a live tmux).
+
+### integration-run-is-a-landing-gate
+
+- Decision: the tagged integration tier is a landing gate for this task, not a best-effort extra. `go test -tags integration ./...` must run green before handoff; on a machine without the configured multiplexer the relevant test skips itself and that still satisfies the gate.
+- Rationale: `attachgeometry_integration_test.go` is the only test that puts the new default in front of a real tmux, and its fixture writes `ConfigTemplate()` verbatim, so it silently starts exercising `6` the moment the template changes.
+  Leaving it ungated would mean the one check capable of catching a real-multiplexer clamp or rescale is optional.
+  Making it a gate costs nothing new, because `pipeline.done_gate` for this task is ALREADY `go test ./... && go test -tags integration ./...` — the gate is being named here, not introduced.
+  The gate is "the tagged suite runs green", never "a tmux was present": `newIntegrationEngine` calls `t.Skipf` when `exec.LookPath(cfg.Tmux)` fails, which is the established in-repo convention for this tier and must not be second-guessed by this task.
+- Rejected: best-effort with the skip treated as sufficient (indistinguishable from the gate in outcome, but leaves a plan writer free to drop the tagged run entirely);
+  requiring a tmux-equipped machine (would make the task unlandable on a bare CI box and contradicts the existing skip convention).
 
 ## Technical context
 
@@ -130,7 +142,7 @@ The reason it is that small is worth stating explicitly, because it is the thing
   Confirm this by reading `configsync.go`'s `Result` doc comment: there is no value-update field.
 - **Test assertions that pin the default.** `internal/reedengine/config_test.go` line 61 (in the explicit-template test, alongside `Width != 220`, `Height != 50`, `MinFullRows != 3`) and line 138 (in the degrade-to-embedded-template test, alongside `Width != 220` and `Header.HeightRows != 1`).
   Both assert `cfg.CollapsedStripRows != 3` and both must move to `6`, error strings included.
-- **Test values that must NOT move.** Every `Params{CollapsedStripRows: 2, MinFullRows: 3}` in `internal/reedengine/render/rules_test.go`, `pins_test.go`, `height_test.go`, and every `e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3` in `internal/reedengine/apply_test.go` is a deliberately-chosen unit input, not the template default.
+- **Test values that must NOT move.** Every `Params{CollapsedStripRows: 2, MinFullRows: 3}` in `internal/reedengine/render/rules_test.go`, `pins_test.go`, and `height_test.go`, every `e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3` in `internal/reedengine/apply_test.go`, and the two `CollapsedStripRows: 2` fixture fields in `internal/reedengine/lock_test.go` (lines 60 and 98) are deliberately-chosen unit inputs, not the template default.
   `height_test.go` is table-driven on a `collapsedStripRows` field and asserts `placements[0].height == tt.collapsedStripRows`;
   it is value-agnostic by construction.
   Changing any of these would be a scope violation, not a fix.
@@ -148,7 +160,8 @@ From `CONSTRAINTS.md`:
 
 - **Config Strictness Invariant** — `reedengine` is on the degrading side: it uses `configengine.LoadOrTemplate`, not `Load`. This change must not alter which of the two it adopts.
 - **Told-Geometry Invariant** — `reedengine` is a bound package: it is handed its absolute paths and derives none. Nothing in this change may introduce a `lyxcwd` import or any self-derived path.
-- **Test Tier Purity Invariant** — the `config_test.go` assertions are unit-tier and must stay so; no live tmux may be required to verify this change.
+- **Test Tier Purity Invariant** — the `config_test.go` assertions are unit-tier and must stay so, and the UNTAGGED tier stays tmux-free: no test outside the `integration` build tag may require a live multiplexer.
+  This does not exempt the tagged tier. The integration run IS a landing gate, because `pipeline.done_gate` for this task is already `go test ./... && go test -tags integration ./...` — see the `integration-run-is-a-landing-gate` decision above.
 - **Documentation Lifecycle** — see `docs/overview.md#documentation-lifecycle`.
 
 From `CLAUDE.md`:
@@ -185,7 +198,7 @@ its existing key-based tests already pin that contract.
 It is the one test that puts the new default in front of a real tmux, asserting a collapsed pane's live height equals `e.cfg.CollapsedStripRows` at a 100x30 client and again after a resize to 100x90.
 Because its fixture writes `ConfigTemplate()` verbatim it picks up `6` automatically and needs no change;
 because it asserts against `e.cfg` rather than a literal, what it can catch is not a wrong value but `6` being silently clamped or rescaled by tmux at a real window size, which no unit test can see.
-Run it with the integration build tag on a machine where the configured multiplexer is present (it skips itself otherwise).
+Run it with the integration build tag. This is a landing gate, not best-effort: `pipeline.done_gate` is `go test ./... && go test -tags integration ./...`, so the tagged tier runs before this task can be handed off. On a machine without the configured multiplexer the test skips itself (`newIntegrationEngine` calls `t.Skipf` when `exec.LookPath(cfg.Tmux)` fails) and the gate still passes — the gate is "the tagged suite runs green", never "a tmux was present".
 
 **Whole-repo** — `go build ./...`, `go test ./...`, and `go test -tags integration ./...` must pass.
 No golden/snapshot file embeds the template text, so there is no fixture to regenerate.
