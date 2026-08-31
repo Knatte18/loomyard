@@ -67,7 +67,7 @@ folding it into the `status` verb's output was deliberately deferred as a small 
 ### key-always-present
 
 - Decision: the key is emitted unconditionally, `false` when no merge is parked.
-- Rationale: `internal/fabriccli/envelope.go`'s header comment states the contract fabric holds — "a consumer therefore never has to distinguish absent from false, and the key set does not vary by outcome: that is the property that lets a test assert the shape once per verb instead of once per path". An omitted-when-false key would be the first fabric envelope field to break that.
+- Rationale: `internal/fabriccli/envelope.go`'s header comment (lines 8-12) states the contract fabric holds — "a consumer therefore never has to distinguish absent from false, and the key set does not vary by outcome: that is the property that lets a test assert the shape once per verb instead of once per path". An omitted-when-false key would be the first fabric envelope field to break that.
 - Rejected: emit only when `true` (smaller output, but forces every consumer into an absent-vs-false branch).
 
 ### error-handling
@@ -85,7 +85,7 @@ folding it into the `status` verb's output was deliberately deferred as a small 
 ### read-only-envelope-unchanged
 
 - Decision: `status` remains a read-only verb — the new field does not route through `okWithRecord`, so no `mutations` and no `partial` key appear.
-- Rationale: nothing is mutated; `envelope.go:16-18` names `status` explicitly as one of the four read-only verbs that deliberately do not route through the record helpers. `TestRunCLI_ReadOnlyVerbsOmitMutationsKey` (`internal/fabriccli/cli_test.go:900`) pins this and must stay green **unmodified** — it is the machine-held statement of the scope decision.
+- Rationale: nothing is mutated; `envelope.go`'s file-header comment (lines 14-15) names `status` explicitly as one of the four read-only verbs that deliberately do not route through the record helpers. `TestRunCLI_ReadOnlyVerbsOmitMutationsKey` (`internal/fabriccli/cli_test.go:900`) pins this and must stay green **unmodified** — it is the machine-held statement of the scope decision.
 - Rejected: nothing seriously considered; noted here because adding a field to a verb's envelope is exactly the change that tempts a switch to the record helpers.
 
 ### docs-in-same-commit
@@ -94,15 +94,19 @@ folding it into the `status` verb's output was deliberately deferred as a small 
 - Rationale: `CLAUDE.md`'s "Task completion — docs land in the same commit" requires it for observable CLI behavior changes. There is no `manifest/designs/fabric.md`, but `manifest/roadmap.md:129` makes a shipped module's own package documentation its durable doc, so `internal/fabricengine/doc.go` is in scope as documentation even though no engine code changes.
 - Rejected: deferring the roadmap move, or any of the doc edits, to a follow-up commit.
 
-**How the doc inventory was enumerated.** `grep -rn "fabric status" --include=*.go --include=*.md .` over the repo, excluding `_test.go` and `_mill/`. Full hit list and per-file disposition:
+**How the doc inventory was enumerated.** Two passes.
+First, `grep -rn "fabric status" --include=*.go --include=*.md .` over the repo, excluding `_test.go` and `_mill/` — that produced every row below except the F18 one.
+Second, a read of `SANDBOX-FABRIC-SUITE.md`'s merge-relevant scenarios (F18, F19, F20), since a scenario can enumerate what the operator checks without ever writing the literal string "fabric status" — which is exactly the case for F18's `Watch`, found by that read rather than by the grep.
+Per-file disposition:
 
 | File:line | Claim it makes | Disposition |
 | --- | --- | --- |
 | `internal/fabricengine/doc.go:142` | `status` reports a pair not in sync, `JunctionReason` naming the cause | Out of scope — junction-drift claim, untouched by this task. |
 | `internal/fabricengine/doc.go:227` | `status` is "one side-labelled view" | Out of scope — describes the engine's `Status()` return shape, which is unchanged. The new field is a CLI-envelope addition, not a `[]ChangeEntry` change. |
 | `internal/fabricengine/doc.go:1116` | during a parked merge, `status` "reports a remaining weft-side conflict as an ordinary weft change indistinguishable from any other" | **In scope — edit.** The claim stays true (the field is pair-level, so it still names no path), but the passage is the merge section's account of what an operator can learn from `status` mid-merge, and after this task that account is incomplete. Add a clause noting `status` now reports the parked merge itself via `merge_in_progress`, while still not distinguishing which weft path is conflicted — the surrounding argument for why `merge-stage` must exist is unchanged and must survive the edit intact. |
+| `tools/sandbox/SANDBOX-FABRIC-SUITE.md:142` (F3 `Goal`) | names `fabric status` in the scenario's one-line goal | Out of scope — a goal line naming which verbs the scenario exercises, making no claim about output shape. F3's `Watch` immediately below is where the enumeration lives. |
 | `tools/sandbox/SANDBOX-FABRIC-SUITE.md:144` (F3 `Watch`) | enumerates status's output shape for the operator running the suite | **In scope — edit.** Add the `merge_in_progress` field to the enumeration, noting it is `false` in F3's own no-merge scenario. |
-| `tools/sandbox/SANDBOX-FABRIC-SUITE.md:404` (F18 `Watch`) | lists what to check while a merge is live — today, only that the sibling verbs refuse | **In scope — edit.** Add: `status` is the read-only way to ask, and must report `merge_in_progress: true` for the whole live window and `false` again after both `merge --continue` and `merge --abort`. |
+| `tools/sandbox/SANDBOX-FABRIC-SUITE.md:404` (F18 `Watch`) — found by the second pass, not the grep | lists what to check while a merge is live — today, only that the sibling verbs refuse | **In scope — edit.** Add: `status` is the read-only way to ask, and must report `merge_in_progress: true` for the whole live window and `false` again after both `merge --continue` and `merge --abort`. |
 | `docs/overview.md:54` | `lyx fabric status` "flags drift" | Out of scope — a friction-asymmetry example, not an output enumeration. |
 | `docs/overview.md:210` | "`status` is the unified both-sides uncommitted-change view" | **In scope — edit.** Extend the sentence to name the new field. |
 | `manifest/roadmap.md:12` | the Planned item itself | **In scope** — moved to Done (see `roadmap-move` below). |
@@ -174,7 +178,8 @@ From `CLAUDE.md`:
 Single module under test: `internal/fabriccli`. No engine tests change.
 
 **Build tier — the new test is `integration`-tagged.** It calls `hubforge.NewHub`, which the **Test Tier Purity Invariant** (`CONSTRAINTS.md:192-197`) bars from untagged files.
-Every peer in this package already carries `//go:build integration` on line 1 (`cli_test.go`, `merge_cli_integration_test.go`), so the new test — whether it lands in an existing file or a new one — carries the same tag.
+Every *hub-driving* peer in this package already carries `//go:build integration` on line 1 — `cli_test.go`, `merge_cli_integration_test.go`, `cloneconfigcommit_integration_test.go`, `envelopecontract_integration_test.go`, `pushbypass_integration_test.go` — while the two pure cobra-inspection files (`argsarity_test.go`, `envelope_test.go`) and `testmain_test.go` are untagged, since they spawn nothing.
+The new test drives a real hub, so it carries the tag — whether it lands in an existing tagged file or a new one.
 Verification must therefore pass `-tags integration`;
 an untagged `go test ./internal/fabriccli/...` compiles none of these files, so the TDD red step and both scenarios would silently not run and the pass would be vacuous.
 
