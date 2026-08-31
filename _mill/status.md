@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: cross-repo-code-search
 branch: cross-repo-code-search
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r5  '2026-08-31T15:22:27Z'
 discussion-fix-r6  '2026-08-31T15:25:07Z'
 discussed  '2026-08-31T15:25:07Z'
 planning  '2026-08-31T15:34:01Z'
+plan-review-r1  '2026-08-31T15:40:41Z'
 ```
