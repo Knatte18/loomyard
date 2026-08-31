@@ -163,7 +163,11 @@ The guess is close but not the mechanism, and nothing in reed today knows that m
   - `installResizePinsLocked` (the rebuild) is called from `attach.go`'s pre-flight and from `applyLayoutLockedOpts` in `apply.go` — and nowhere else.
   Only the attach path holds both, in that order, in one locked closure.
   The boot path clears and then **returns without rebuilding**: `lifecycle.go` calls `pinGeometryOptionsLocked()` as its last act and never reaches an install.
-  So the true residual for `watchdog: off` is: from boot until the first attach or the first non-`SkipFocus` apply, the session's `window-resized` array is **empty** — no pins, no repaint entry.
+  And "an attach" is too generous a description of the other site: `AttachArgv` reaches `installResizePinsLocked` only when the chain succeeds.
+  It returns bare *before taking the lock* on non-positive `cols`/`rows` (a piped stdout or no controlling terminal), and every in-closure degrade — `errAttachChainSuppressed` from either readback, a state-load failure, a `listPanes` failure, a layout-plan failure — returns before the install too.
+  Crucially, `pinGeometryOptionsLocked` runs *first*, before all of those, so under `watchdog: off` a degrading attach issues the unconditional `set-hook -u` and then leaves without rebuilding.
+  So the accurate statement is: the array is (re)established by **an attach whose chain succeeds**, or by a non-`SkipFocus` apply — and under `watchdog: off`, a no-TTY or chain-suppressed attach *re-empties* it every time rather than filling it.
+  The residual for `watchdog: off` is therefore not merely "empty from boot until the first attach": it is empty from boot, and any degrading attach returns it to empty, until a succeeding attach or a focusing apply rebuilds it.
   There is a second, sharper edge on the same fact, which matters more than the boot one and which `doc.go` does not currently say out loud: `applyLayoutLockedOpts` returns immediately after `select-layout` when `opts.SkipFocus` is set, *before* the `installResizePinsLocked` call — and `SkipFocus: true` is exactly the mode the watchdog's own re-apply uses (`reapply.go`).
   The watchdog re-apply therefore never installs the array.
   The array is (re)established only by an attach or by a focusing apply — `up`, `add`, `remove`, `resume` — which is why a session can run for a long time on whatever array its last such operation left behind.
@@ -301,8 +305,8 @@ Discovered during discussion:
 - The `window-resized` array **is** installed on Windows (`installResizePinsLocked` has no `runtime.GOOS` gate); only the signal entry is excluded there, and only because its builder returns `""`.
   The repaint entry needs its own `""`-returning builder to be excluded — there is no inheritance to rely on.
 - The repaint entry is independent of the `watchdog` key.
-  The array's only install sites are `AttachArgv`'s pre-flight and non-`SkipFocus` applies — the boot path clears without rebuilding, and the watchdog's own re-apply (`SkipFocus: true`) returns before the install.
-  So with `watchdog: off` the array is empty from boot until the first attach or first focusing apply.
+  The array's only install sites are an `AttachArgv` pre-flight whose chain **succeeds** and non-`SkipFocus` applies — the boot path clears without rebuilding, the watchdog's own re-apply (`SkipFocus: true`) returns before the install, and every attach degrade returns before it while still having run the clear.
+  So with `watchdog: off` the array is empty from boot, and any degrading attach re-empties it, until a succeeding attach or a focusing apply rebuilds it.
   See `repaint-is-independent-of-watchdog`.
 - The repaint mechanism must be proven not to feed back into `window-resized` via `window-size latest`. See `repaint-must-not-self-retrigger`.
 - `list-clients` and `refresh-client` stay out of `requiredSubcommands`; both call sites degrade silently.
@@ -315,8 +319,11 @@ Discovered during discussion:
 These are the primary TDD candidates because the functions are pure and the existing test files establish the shape.
 
 - `resizePinHookArgvs` (extend `windowsize_test.go`): the new repaint entry appears exactly once, in the documented position — after every resize-pane pin, before the signal entry.
-  Cover zero pins, one pin, several pins, watchdog on and off, and the case where the repaint entry is the array's only entry.
-  Assert the clear stays first and unconditional, that index 0 uses the plain replacing form and everything after it uses `-a`, and that the entry is absent on the Windows path.
+  Cover zero pins, one pin, several pins, an empty versus non-empty signal body, and the case where the repaint entry is the array's only entry.
+  Assert the clear stays first and unconditional, and that index 0 uses the plain replacing form while everything after it uses `-a`.
+  Note the seam precisely: `resizePinHookArgvs` takes command *strings* and holds no `runtime.GOOS` branch, so the Windows behaviour cannot be asserted here.
+  What belongs here is only "an empty body emits no entry".
+  The `""`-on-Windows assertion belongs on the engine wrapper in `windowsize_test.go`, following the GOOS-skipped test that already covers `resizeSignalHookCommand`.
 - The repaint body builder, wherever it lands beside `resizeHookCommand` in `watchdog.go` (extend `watchdog_test.go`): correct `-b`, correct `tmuxQuoteValue` escaping of `\`, `"`, and `$`, and byte-identical round-trip shape.
 - `hookInstalledLocked` (extend `reapply_test.go`): an array that now contains the repaint entry alongside the pins and the signal entry is still probed correctly.
   This is the regression that matters most — the probe matches per entry, and a new entry must not make a healthy session read as "no hook".
@@ -372,7 +379,15 @@ The smoke tests must not assume the artifact appears on every run at every size;
 that is precisely why the control exists as an executable assertion rather than as a note in a commit message.
 
 **Measurement gate.**
-Before the repaint entry is implemented, the plan runs the resize smoke scenario against candidate 1 and, if needed, candidate 2 from `repaint-mechanism`, and records which one cleared the artifact and on what tmux version — in `doc.go`, in the same "verified live on tmux 3.6" voice the surrounding decisions use.
+
+*How a candidate is measured before it exists.*
+Candidate 1 needs the new `internal/shell` primitive and the body builder, so it cannot be measured by building it first and deciding afterwards — that would mean writing the production code the gate is supposed to authorise.
+The gate is run instead by **writing the candidate's body into the array directly from the smoke scenario**, using the same `tmux set-hook` rewrite technique the control scenario already performs: the scenario composes the body as a literal string, installs reed's array with that entry in the position the design specifies, and runs the trigger.
+That measures the exact tmux behaviour the production entry would produce, with no production code and no `internal/shell` change in flight.
+Only once a candidate is accepted are the `internal/shell` primitive, the body builder, and the `installResizePinsLocked` wiring written — and the accepted body string is then asserted, in a pure unit test, to equal the string the scenario measured.
+Candidate 2 is measured the same way, and is cheaper to measure because its body is a bare `refresh-client`.
+
+Running that measurement, the plan uses the resize smoke scenario against candidate 1 and, if needed, candidate 2 from `repaint-mechanism`, and records which one cleared the artifact and on what tmux version — in `doc.go`, in the same "verified live on tmux 3.6" voice the surrounding decisions use.
 A candidate is accepted only if it clears the artifact **and** satisfies both acceptance criteria in `repaint-must-not-self-retrigger` (no repeated hook fire, no resize storm);
 clearing the artifact alone is not sufficient.
 
