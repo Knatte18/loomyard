@@ -13,6 +13,16 @@ parent: main
 An operator — or an agent driving `lyx fabric` — who wants to know whether a pair is mid-merge has no verb to ask;
 they can only infer it from a *different* verb refusing with `*ErrMergeInProgress` (`internal/fabricengine/mergeerrors.go:150`), which means learning the state by attempting a mutation.
 
+That inference is also only half-reliable, which shapes the scope below.
+`*ErrMergeInProgress` is raised from **two** distinct predicates, and they answer different questions:
+
+- `mergeBlocksMutation` → `f.mergeRecordExists()` — *"is **this pair** mid-merge"* (`commit.go:123`, `pull.go:237`, `checkout.go:48`, `remove.go:65`).
+- `mergeSourceInFlight` — *"is some **other pair in the hub** mid-merge **on this pair's branch**"* (`remove.go:81`, implemented at `mergestate.go:209-226`, which globs every pair's `fabric-merge.json` looking for a record whose `Source` is this warp branch).
+
+`MergeInProgress()` is the first sense only — it is a one-line delegation to `mergeRecordExists()`.
+So the new field is *not* a complete read-only mirror of "the verb that refused": a `remove` can refuse with `*ErrMergeInProgress` on the hub-wide predicate while this pair's own `merge_in_progress` is legitimately `false`.
+The field answers the this-pair question, and every artefact this task writes must say so.
+
 Why now: this is the sole item in `manifest/roadmap.md`'s **Planned** section — `fabric: surface merge-in-progress in \`lyx fabric status\``.
 The Go API shipped with the merge lifecycle;
 folding it into the `status` verb's output was deliberately deferred as a small follow-up, and this task is that follow-up.
@@ -22,14 +32,17 @@ folding it into the `status` verb's output was deliberately deferred as a small 
 **In:**
 
 - `internal/fabriccli/weft_verbs.go` — `statusCmd`'s `RunE` calls `fab.MergeInProgress()` and adds a `merge_in_progress` boolean to the success envelope.
-- `statusCmd`'s `Long` help text — a short paragraph describing the new field.
+- `statusCmd`'s `Long` help text — a short paragraph describing the new field, which **must name the this-pair sense explicitly** (see the `field-is-this-pair-only` decision): it reports whether *this* pair has a fabric merge parked, not whether some other pair in the hub is mid-merge on this pair's branch.
 - A new integration test in `internal/fabriccli` covering both the `false` and the `true` case over a real `hubforge` hub.
 - `docs/overview.md` — the `fabric` bullet's sentence describing what `status` reports (currently line 210).
+- `internal/fabricengine/doc.go` — the merge section's sentence at line 1116, which today asserts what `lyx fabric status` does and does not tell an operator during a parked merge (see the `docs-in-same-commit` decision for the exact disposition).
+- `tools/sandbox/SANDBOX-FABRIC-SUITE.md` — F3's `Watch` (line 144, which enumerates status's output shape) and F18's `Watch` (line 404, which enumerates what the operator checks while a merge is live).
 - `manifest/roadmap.md` — move the item from **Planned** to **Done**.
 
 **Out:**
 
-- `internal/fabricengine` — no engine change at all. `MergeInProgress()` is used exactly as it ships; its signature, semantics and doc comment are untouched.
+- `internal/fabricengine`'s **behavior** — no engine code change at all. `MergeInProgress()` is used exactly as it ships; its signature, semantics and doc comment at `mergelifecycle.go:414-419` are untouched. The `doc.go` edit listed above is prose in the package's merge section, not a change to any engine API.
+- `mergeSourceInFlight`'s hub-wide sense — the "some other pair is mid-merge on this branch" predicate (`mergestate.go:209-226`) is **not** surfaced by this task, in any field. It is a different subject with a different answer, it is unexported with no exported accessor, and exposing it would mean designing new engine API. `status` gains one field with one sense.
 - Foreign (plain-git) merge state. `MergeInProgress` deliberately never consults `foreignMergeStatePresent` (`mergelifecycle.go:414-417`); surfacing that separately is new semantics, not exposing the existing API, and is not in this task.
 - Richer merge detail. The on-disk `mergeState` record (`internal/fabricengine/mergestate.go:47`) carries verb/source/outcomes/`StartedAt`, but no exported accessor returns it. Exposing it would mean designing and shipping new engine API.
 - A new verb. This folds into the existing `status` verb; no `lyx fabric merge-status` is added.
@@ -43,6 +56,12 @@ folding it into the `status` verb's output was deliberately deferred as a small 
 - Decision: one boolean key, `merge_in_progress`, at the top level of `status`'s success envelope — alongside the existing `changes` key.
 - Rationale: `MergeInProgress()` returns `(bool, error)` and nothing more. The roadmap item is scoped as "expose the existing `MergeInProgress` Go API on the status verb's output", so the CLI field mirrors the API's own return shape one-to-one. Snake_case matches every other multi-word key fabric already emits (`no_weft_correspondence`, `weft_pulled`, `warp_advanced`, `rewrite_detected`).
 - Rejected: a nested `merge` object carrying verb/source/outcomes/`started_at` from `mergeState` — needs new exported engine API to reach that struct, which is out of scope. Also rejected: a bool *plus* an optional detail object, for the same reason.
+
+### field-is-this-pair-only
+
+- Decision: `merge_in_progress` answers "does **this pair** have a fabric merge parked" and nothing else. `statusCmd`'s `Long` text must say so in those terms, and must not describe the field as "a merge is in progress" unqualified.
+- Rationale: two different predicates raise `*ErrMergeInProgress` (see Problem above). Only `mergeRecordExists` — the one `MergeInProgress()` delegates to — is this-pair; `mergeSourceInFlight` is hub-wide. An unqualified help text would promise the field predicts every `ErrMergeInProgress` refusal, and it does not: `remove` refuses on either predicate, so `merge_in_progress: false` alongside a refusing `remove` is correct behavior that would read as a bug against an unqualified description.
+- Rejected: also emitting a second hub-wide field — `mergeSourceInFlight` is unexported with no accessor, so this needs new engine API, which the roadmap item does not ask for. Also rejected: leaving the `Long` text unqualified and documenting the distinction only here — the operator reading `--help` is exactly who the ambiguity misleads.
 
 ### key-always-present
 
@@ -70,9 +89,29 @@ folding it into the `status` verb's output was deliberately deferred as a small 
 
 ### docs-in-same-commit
 
-- Decision: the same commit updates `statusCmd`'s `Long` text, `docs/overview.md`'s `fabric` bullet, and moves the roadmap item Planned → Done.
-- Rationale: `CLAUDE.md`'s "Task completion — docs land in the same commit" requires it for observable CLI behavior changes, and its roadmap rule ("moves only on completing or adding a planned item") is satisfied here — this completes the only Planned item. There is no `manifest/designs/fabric.md`, so no module design doc exists to update.
-- Rejected: deferring the roadmap move to a follow-up commit.
+- Decision: the same commit updates every artefact that describes `lyx fabric status`'s output — `statusCmd`'s `Long` text, `docs/overview.md:210`, `internal/fabricengine/doc.go:1116`, and `tools/sandbox/SANDBOX-FABRIC-SUITE.md` F3 and F18 — and moves the roadmap item Planned → Done.
+- Rationale: `CLAUDE.md`'s "Task completion — docs land in the same commit" requires it for observable CLI behavior changes. There is no `manifest/designs/fabric.md`, but `manifest/roadmap.md:129` makes a shipped module's own package documentation its durable doc, so `internal/fabricengine/doc.go` is in scope as documentation even though no engine code changes.
+- Rejected: deferring the roadmap move, or any of the doc edits, to a follow-up commit.
+
+**How the doc inventory was enumerated.** `grep -rn "fabric status" --include=*.go --include=*.md .` over the repo, excluding `_test.go` and `_mill/`. Full hit list and per-file disposition:
+
+| File:line | Claim it makes | Disposition |
+| --- | --- | --- |
+| `internal/fabricengine/doc.go:142` | `status` reports a pair not in sync, `JunctionReason` naming the cause | Out of scope — junction-drift claim, untouched by this task. |
+| `internal/fabricengine/doc.go:227` | `status` is "one side-labelled view" | Out of scope — describes the engine's `Status()` return shape, which is unchanged. The new field is a CLI-envelope addition, not a `[]ChangeEntry` change. |
+| `internal/fabricengine/doc.go:1116` | during a parked merge, `status` "reports a remaining weft-side conflict as an ordinary weft change indistinguishable from any other" | **In scope — edit.** The claim stays true (the field is pair-level, so it still names no path), but the passage is the merge section's account of what an operator can learn from `status` mid-merge, and after this task that account is incomplete. Add a clause noting `status` now reports the parked merge itself via `merge_in_progress`, while still not distinguishing which weft path is conflicted — the surrounding argument for why `merge-stage` must exist is unchanged and must survive the edit intact. |
+| `tools/sandbox/SANDBOX-FABRIC-SUITE.md:144` (F3 `Watch`) | enumerates status's output shape for the operator running the suite | **In scope — edit.** Add the `merge_in_progress` field to the enumeration, noting it is `false` in F3's own no-merge scenario. |
+| `tools/sandbox/SANDBOX-FABRIC-SUITE.md:404` (F18 `Watch`) | lists what to check while a merge is live — today, only that the sibling verbs refuse | **In scope — edit.** Add: `status` is the read-only way to ask, and must report `merge_in_progress: true` for the whole live window and `false` again after both `merge --continue` and `merge --abort`. |
+| `docs/overview.md:54` | `lyx fabric status` "flags drift" | Out of scope — a friction-asymmetry example, not an output enumeration. |
+| `docs/overview.md:210` | "`status` is the unified both-sides uncommitted-change view" | **In scope — edit.** Extend the sentence to name the new field. |
+| `manifest/roadmap.md:12` | the Planned item itself | **In scope** — moved to Done (see `roadmap-move` below). |
+
+### roadmap-move
+
+- Decision: move the item into **Done**, leaving the **Planned** section heading and its lead-in in place with no items under it. The Done entry points at `internal/fabricengine`'s package documentation's merge section.
+- Rationale: `manifest/roadmap.md:131` says to move an item to Done when it ships, "with a link to its module doc if one exists". No `designs/fabric.md` exists (and per `roadmap.md:129` a shipped module's Done entry points at its package documentation anyway, not a design doc), and `roadmap.md:81`'s `fabric: two-sided reset-to-SHA verb` entry already establishes the exact phrasing for this module — "See the `internal/fabricengine` package documentation's merge section." — so this entry follows it. That section is also the one being edited per `docs-in-same-commit`, so the pointer lands on a passage that actually mentions the new field.
+- An empty Planned section is acceptable and must not be papered over: nothing in the Maintenance rules requires Planned to be non-empty, the numbering rules are per-section and unaffected, and promoting a Someday item to fill the gap would be an unrequested scope decision that belongs to the operator, not to this task. Do not delete the heading — the section's own lead-in ("This section holds what's committed to next") reads correctly when empty, and deleting it would break every cross-reference to "the Planned section".
+- Rejected: promoting a Someday item in the same commit to keep Planned non-empty; deleting the empty Planned heading; pointing the Done entry at `internal/fabriccli`'s package documentation — it exists (`internal/fabriccli/fabric.go:9-13`) but describes the verb tree's shape rather than the merge lifecycle, so the merge section in `fabricengine` is where a reader following the link actually finds the field's subject. `fabriccli`'s package doc enumerates verbs, not envelope fields, so it makes no claim this task falsifies and needs no edit.
 
 ## Technical context
 
@@ -85,6 +124,13 @@ Its `RunE` today: `clihelp.ShouldAbort` guard → `fab.Status()` → on error `o
 It is a read-only probe that deliberately produces no `MutationRecord`, and it never errors on foreign plain-git state.
 No engine edit is needed;
 the method is already exported and already used from tests (`mergecrucible_integration_test.go`).
+
+**The two merge predicates, and why only one is in play.** `internal/fabricengine/mergestate.go` holds both.
+`mergeRecordExists()` (line 179) reads this pair's own `fabric-merge.json`;
+`mergeSourceInFlight(l, warpBranch)` (line 209) globs *every* pair's record under the weft repo — `<weft gitdir>/.git/fabric-merge.json` for the prime pair and `.git/worktrees/*/` for each linked pair — and matches on `st.Source == warpBranch`.
+`remove.go:65` and `remove.go:81` call them in sequence and return the *same* `&ErrMergeInProgress{}` from either, which is exactly why the error alone cannot tell an operator which condition fired.
+`MergeInProgress()` exposes only the first.
+`mergeSourceInFlight` is unexported and has no exported accessor, so surfacing it is not a CLI-only change — that is the mechanical reason it is out of scope, not just a scoping preference.
 
 **Envelope mechanics.** `internal/output/output.go:17-22` — `output.Ok` sets `fields["ok"] = true`, JSON-marshals, writes one line, returns 0.
 There is no human-readable renderer anywhere in this path: fabric's CLI output is JSON-only, one object per line, per the CLI/Cobra Invariant.
@@ -152,4 +198,6 @@ Verify with the repo's normal Go build/test path (`golang:golang-build`) over `.
 - **Q:** Probe merge state before or after `fab.Status()`? **A:** [auto-pick] After. **Why:** preserves today's error precedence for an already-broken pair.
 - **Q:** Should foreign (plain-git) merge state be surfaced alongside it? **A:** [auto-pick] No — out of scope. **Why:** `MergeInProgress` deliberately excludes `foreignMergeStatePresent`; including it changes semantics rather than exposing the shipped API.
 - **Q:** Does adding a field make `status` route through `okWithRecord`? **A:** [auto-pick] No — `status` stays read-only with no `mutations`/`partial` keys. **Why:** nothing is mutated, and `TestRunCLI_ReadOnlyVerbsOmitMutationsKey` pins this as a machine-held decision.
-- **Q:** Which docs move in this commit? **A:** [auto-pick] `statusCmd`'s `Long`, `docs/overview.md`'s fabric bullet, and the roadmap item Planned → Done. **Why:** CLAUDE.md requires same-commit docs for observable CLI changes, and this completes the only Planned roadmap item.
+- **Q:** Which docs move in this commit? **A:** [auto-pick] `statusCmd`'s `Long`, `docs/overview.md:210`, `internal/fabricengine/doc.go:1116`, `SANDBOX-FABRIC-SUITE.md` F3 and F18, and the roadmap item Planned → Done. **Why:** CLAUDE.md requires same-commit docs for observable CLI changes, and a repo-wide `grep -rn "fabric status"` found five live claims about status's output — the disposition table under `docs-in-same-commit` records each one, including the three deliberately left alone.
+- **Q:** `*ErrMergeInProgress` is raised from two predicates (this-pair `mergeRecordExists` and hub-wide `mergeSourceInFlight`) — which does the field answer, and does the other get surfaced? **A:** [auto-pick] This-pair only, named as such in the `Long` text; the hub-wide sense is explicitly out of scope. **Why:** `MergeInProgress()` delegates to `mergeRecordExists` alone, so `merge_in_progress: false` can legitimately coexist with a `remove` refusing on the hub-wide predicate; the help text has to say which question it answers, and `mergeSourceInFlight` is unexported with no accessor, so exposing it would need new engine API.
+- **Q:** Moving the sole Planned item leaves that section empty — acceptable, and what does the Done entry link to? **A:** [auto-pick] Empty Planned is acceptable and the heading stays; the Done entry points at `internal/fabricengine`'s package documentation's merge section. **Why:** no Maintenance rule requires Planned to be non-empty, and filling it would be an unrequested scope call; `roadmap.md:81` already establishes that exact link phrasing for this module, and that section is the passage this commit edits.
