@@ -68,17 +68,23 @@ An orchestrator has to keep state somewhere — config, task board, plans, revie
 Putting that in your repo pollutes it;
 putting it outside your repo means it doesn't travel, doesn't branch with the work, and can't be resumed on another machine.
 
-LoomYard's answer is a **piggyback repo woven alongside your own**.
+LoomYard's answer is a **piggyback repo woven into your own**.
 Your repository is the **warp**;
 a second git repository, the **weft**, carries everything LoomYard generates.
 Every warp worktree gets a weft sibling on a matching branch, and the two are wired together on disk so that state written while working in a worktree lands in the weft — invisibly, without a single LoomYard file ever appearing in your repo's history or its `.gitignore`.
 
+Woven together, the two sides are one thing: the **Fabric**.
+That is the name that matters — warp and weft are only used where the two sides genuinely have to be told apart.
+From the outside the Fabric behaves as a single repository, because `lyx fabric` is the seam that keeps it coherent and moves both sides as one:
+`add` and `remove` create and destroy a worktree *pair*, `checkout` switches both branches together and re-points the wiring, `pull` reconciles both sides against their remotes, `status` is one both-sides view of uncommitted work, and `diff` reports the change since a given commit across the pair.
+You say "switch this task to that branch" once, against the Fabric, and never think about which of the two repositories underneath had to move.
+
 ```
 <hub>/                                (top-level Hub, NOT a git repo)
-  ├── <prime>/                        (your repo, main branch)
-  ├── <prime>-weft/                   (its piggyback sibling)
-  ├── <slug>/                         (a task worktree)
-  ├── <slug>-weft/                    (that task's piggyback sibling)
+  ├── <prime>/                        (your repo, main branch)   ┐ one Fabric,
+  ├── <prime>-weft/                   (its weft side)            ┘ two checkouts
+  ├── <slug>/                         (a task worktree)          ┐ likewise, on
+  ├── <slug>-weft/                    (its weft side)            ┘ the task branch
   ├── _board/                         (the task store, on weft's main branch)
   ├── _portals/                       (per-worktree entry points into the weft side)
   └── _launchers/                     (per-worktree launcher scripts)
@@ -88,8 +94,10 @@ Because the weft is a real git repository that branches in lockstep with the war
 pick the task up on another machine and it resumes where it stopped.
 And because state is per-branch rather than global, two agents working two tasks never see each other's plans, verdicts, or run status.
 
-`lyx fabric` is the module that owns this — it is the only thing in LoomYard permitted to touch either repository's git, and it moves both sides as a pair: clone, worktree add/remove, branch switch, merge, sync.
-`lyx fabric reconcile` converges a drifted or hand-broken pair back onto the recorded layout.
+Holding that illusion up is a hard rule rather than a convention: every git operation LoomYard's own code performs, on either side, goes through the `fabric` engine in Go — never raw git, and never an agent.
+An agent commits its own code to the warp and nothing else;
+the weft is committed by Go, at boundaries the orchestrator controls.
+When a pair does drift or get broken by hand, `lyx fabric reconcile` converges it back onto the recorded layout.
 
 All path resolution goes through a single package, `internal/lyxcwd`, so this geometry has exactly one owner;
 see [CONSTRAINTS.md](CONSTRAINTS.md) and [docs/overview.md](docs/overview.md) for the on-disk detail.
