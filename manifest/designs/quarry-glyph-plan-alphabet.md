@@ -4,7 +4,7 @@
 > Full text lives in [GitHub issue #226](https://github.com/Knatte18/loomyard/issues/226) — this doc is the short pointer `manifest/roadmap.md`'s Maintenance section asks for, not a restatement.
 > Unblocked since quarry's T5b merged (the `glyph` package is importable, cgo-free).
 > All work is in this repo; quarry only supplies plan-unaware primitives (`toc`, batched `resolve`, `expand`, and three planned ones — the `glyphs` flat index, the glyph-maker, and diff-to-symbols).
-> **Supersedes the Someday `quarry-backed plan symbol verification` item** (`designs/quarry-plan-symbol-verification.md`): that doc's option (b) — mechanically cross-checking a card's symbol declarations against the code — is exactly what glyph-based `Resolve` does, and its "no unique key for a bare symbol name" gap (GitHub issue #225, judged outdated by the operator against this issue) is closed by the glyph alphabet itself rather than a `package+receiver+name` key scheme. Retire that Someday item and its doc when this lands.
+> **Supersedes the former Someday `quarry-backed plan symbol verification` item**, retired 2026-09-05: that item's option (b) — mechanically cross-checking a card's symbol declarations against the code — is exactly what glyph-based `Resolve` does, and its "no unique key for a bare symbol name" gap (GitHub issue #225, judged outdated by the operator against this issue) is closed by the glyph alphabet itself rather than a `package+receiver+name` key scheme. Both GitHub issues (#225, #226) are closed as folded into this item.
 
 ## What changes
 
@@ -35,5 +35,4 @@ No LSP-shaped tools in an agent's own hands (measured flat-to-negative in quarry
 
 - [GitHub issue #226](https://github.com/Knatte18/loomyard/issues/226) — full proposal text.
 - [GitHub issue #225](https://github.com/Knatte18/loomyard/issues/225) — the symbol-key ambiguity problem this supersedes.
-- [quarry-plan-symbol-verification.md](quarry-plan-symbol-verification.md) — the Someday item this replaces.
 - [webster-parallel-execution.md](webster-parallel-execution.md) — the DAG-scheduler consumer waiting on symbol-derived edges.
