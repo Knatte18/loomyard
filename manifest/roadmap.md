@@ -9,6 +9,9 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **Adopt quarry's glyph alphabet as the plan alphabet** — `planparser`/the validator switch a card's symbol declarations from bare names to quarry glyphs, resolved via batched `Resolve`, with placeholder handles (`plan:<expected-glyph>`) for symbols a plan itself creates and mechanical drift detection against the code. Supersedes the Someday `quarry-backed plan symbol verification` item.
+   See [designs/quarry-glyph-plan-alphabet.md](designs/quarry-glyph-plan-alphabet.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
