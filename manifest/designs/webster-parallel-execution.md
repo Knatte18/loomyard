@@ -1,7 +1,7 @@
 # webster: parallel card execution via worktrees + a DAG
 
 > **Status: parked, not rejected — one shape was rejected, a second is open.** What two explorations rejected is *concurrent forks inside one working tree*, which race on a single shared git index; the 2026-08-20 worktree-per-group shape below does not share that index and is not covered by that rejection. Read past this banner before concluding the idea is dead — the earlier wording said "rejected for now both times" and, until the 2026-08-29 designs audit, sent readers away before the open shape, the measured case study, and the decision gate.
-> Still parked, for reasons that have not changed: it is a speed optimization over an already-correct sequential system, its DAG edges depend on the unscheduled Someday `quarry-backed plan symbol verification` item, and webster's landed card-list rewrite (`internal/websterengine`) should get real running mileage first. Reopen it on the measured evidence the Decision gate section names, never on estimate.
+> Still parked, for reasons that have not changed: it is a speed optimization over an already-correct sequential system, its DAG edges depend on the Planned `Adopt quarry's glyph alphabet as the plan alphabet` item, and webster's landed card-list rewrite (`internal/websterengine`) should get real running mileage first. Reopen it on the measured evidence the Decision gate section names, never on estimate.
 > Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into `internal/websterengine`'s package doc and this file is deleted; if abandoned, this file is simply deleted.
 
 ## Why it's parked
@@ -25,7 +25,7 @@ The ready set recomputes wave to wave rather than being precomputed upfront, so 
 This shape is what makes the rejection at the top of this doc specific rather than general: that rejection was about concurrent forks sharing one checkout's git index, which worktree-per-group does not do.
 
 Grouping granularity (one card vs. several) is orthogonal to safety — the original rejection above conflated it with the working-tree-sharing hazard, but genuine worktree-per-lane isolation is what actually matters.
-Not yet a plan: needs the DAG source (the Someday `quarry-backed plan symbol verification` roadmap item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
+Not yet a plan: needs the DAG source (the Planned `Adopt quarry's glyph alphabet as the plan alphabet` item) and a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
 
 ## The case study (from an earlier, more detailed design draft, `websterv2.md`, now retired)
 
