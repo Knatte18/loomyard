@@ -110,8 +110,10 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 
 - **Decision:** `internal/planglyph` joins the Told-Geometry Invariant's bound-packages list **unconditionally**, in the same commit that creates it, and derives no path of its own — no import of `internal/lyxcwd`.
   Each of its three call shapes sources the repository root explicitly:
-  - **The three `drift-boundaries` producer rows** (`begin-batch`, `record-batch`, `Plan-Revalidate`) — the root arrives **already resolved from the orchestrator**.
+  - **The `Plan-Revalidate` producer row** — the root arrives **already resolved from the orchestrator**, exactly as `NewPlanValidate` already receives it.
     A producer needs none of the invariant's three tiers, so it resolves nothing itself.
+  - **The two webster bracket boundaries** (`begin-batch`, `record-batch`) — these are CLI verbs over `websterengine`, not producer rows (see `drift-boundaries`), so the root is `websterengine.Geometry.WorktreeRoot`, which those call sites already hold.
+    `planglyph` receives it as a told parameter like any other caller; it never reaches for a geometry of its own.
   - **The resolve-backed validation pass** — a told signature mirroring `planparser`'s own: the caller supplies the worktree root (and the anchor path where the plan directory is needed), exactly as `planparser.Validate(plan, worktreeRoot)` already does.
   - **The standalone `lyx quarry` verb group** — probes **tier 1 only**, via `preflight.ResolveMode`, and operates on the **current worktree**.
     No arbitrary-repo path flag, and **no plan need be in scope**: `toc`/`glyphs`/`resolve`/`expand` are repository queries, not plan queries, so they must answer before any plan exists — which is precisely when the planner needs them.
@@ -263,7 +265,8 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 
 ### rewrite-write-path
 
-- **Decision:** one new `planparser` primitive — `RewriteRefs(planDir, map[string]string)` — is the single write path all three rewrite occasions call: handle canonicalization, handle binding at card completion, and drift auto-repair.
+- **Decision:** one new `planparser` primitive — `RewriteRefs(planDir, map[string]string)` — is the single write path all three **rewrite** occasions call: handle canonicalization, handle binding at card completion, and drift auto-repair.
+  The amendment append (`amendment-log`) is a separate, second new write path, not folded into this one: it appends to a file `RewriteRefs` never touches and substitutes nothing.
 - **Rationale:** issue #226 already says binding and rename propagation are one mechanism on two occasions, and canonicalization is the same old→new substitution.
   One write path keeps the Planparser Sole-Parser Invariant honest alongside `SetApproved`.
 - **Rejected:** three purpose-built writers (triples the surface that can rewrite `_lyx/plan/` bytes); a full re-render from the parsed model — `planparser` is deliberately *lenient* at the card level, preserving malformed bullets so the validator can enumerate every defect, so a round-trip would silently normalize away exactly the defects the validator exists to report.
@@ -310,14 +313,34 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
   Handles participate identically — a card `Uses`-ing `plan:X` cannot precede the card whose `Create` target is `plan:X`, by the same string equality, until binding rewrites both sides together.
 - **What remains there is the containment check above, not a scheduler rewrite.**
 
+### quarry-spawn-guard-visibility
+
+- **Decision:** both mechanical guards are extended so quarry's in-quarry `git` spawn stops being invisible to them:
+  - `cmd/lyx/tierpurity_test.go`'s `bannedTokens` gains **`DeltaGit`** — a narrow token, deliberately not `quarry.Open`.
+    Only `DeltaGit` spawns a process; `Resolve`, `TOC`, `Glyphs` and `Expand` read files, and `Name` performs no I/O at all, so banning the constructor would force `integration` tags onto tests that spawn nothing.
+  - `cmd/lyx/spawnobservability_test.go` is extended to count a `DeltaGit` call as a spawning call alongside `exec.Command`, so `planglyph`'s single `DeltaGit` call site must import `internal/logger` and log the spawn (`Info` — it is a lifecycle spawn, not a polling probe), under the same file-level import-presence rule the guard already applies.
+    No allowlist entry.
+- **Rationale:** the guards are scans of **loomyard's own source** — `bannedTokens` is a raw-substring list (`gitexec.Run`, `exec.Command`, `gitkit.Copy`, `hubforge.NewHub`) and the observability guard AST-matches `exec.Command` call expressions — so a `DeltaGit` call, whose `exec.Command` lives inside quarry's `internal/gitsrc`, trips neither today.
+  Without this, the Testing section's "anything reaching `DeltaGit` is `integration`-tagged" is an assertion enforced by nothing, and a real OS-process spawn reachable from `lyx webster record-batch` sits outside Live-Substrate Spawn Observability entirely.
+  Raw-substring is the right shape for the tier-purity half, matching that guard's own documented design; the observability half must stay AST-based, matching its own.
+- **Rejected:** a written allowlist entry in `spawnObservabilityAllowedSpawners` instead of logging — the invariant permits an exemption only for a site *structurally barred* from importing `internal/logger`, which `planglyph` is not, and an allowlist entry would record "this spawns without logging, and we accepted it" when logging costs one line.
+  Also rejected: relying on tagging discipline with no guard change, which is precisely the unenforced state this decision exists to end.
+
 ### drift-boundaries
 
-- **Decision:** three boundaries re-resolve, each as a producer row **and** its parity CLI verb:
-  - `begin-batch` — the dispatch boundary re-resolves; never cached;
-  - `record-batch` — done-checks, `Delta`-driven handle binding, and the scope guard;
+- **Decision:** three boundaries re-resolve, but they sit on **two different seams**, and the distinction is load-bearing:
+  - `begin-batch` — the dispatch boundary re-resolves; never cached.
+  - `record-batch` — done-checks, `Delta`-driven handle binding, and the scope guard.
   - `Plan-Revalidate` — one batched `Resolve` over the remaining plan after each card merge.
-- **Rationale:** the Gate Self-Check Parity Invariant requires the verb-plus-row pairing for any new mechanical gate, and adding a gate means adding its verb and its parity check in the same task.
-  Covering only `Plan-Revalidate` would catch drift a merge late and still allow a stale pack to dispatch.
+- **Seam correction — only `Plan-Revalidate` is a `ShedProducer` row.**
+  `internal/shedrecipe`'s registry holds no `BeginBatch`/`RecordBatch` entries (`internal/shedrecipe/registry.go` — the fourteen names are `Preflight`, `Publish`, `Finalize`, `LoomPreflight`, `Batchifier`, `DiscussionValidate`, `DiscussionWrite`, `PlanValidate`, `PlanWrite`, `Stub`, `Webster`, `SingleLLM`, `Bouncer`, `BurlerRound`).
+  `begin-batch` and `record-batch` are **Master's bracket CLI verbs** in `internal/webstercli` over `internal/websterengine` functions — `beginbatch.go`'s own `Short` reads "Master's bracket call immediately before forking one batch's implementer".
+  So the two webster boundaries get their re-resolution as `websterengine` functions called by the **already-existing** verbs, taking the repository root from `websterengine.Geometry.WorktreeRoot`, which those call sites already carry.
+  No new row, no new verb, and nothing to invent.
+- **What the Gate Self-Check Parity Invariant actually binds here:** parity pairs a mechanical gate's `ShedProducer` row with its CLI self-check verb, so it binds `Plan-Revalidate` ↔ `validate-plan --require-approved` only.
+  The two webster boundaries already have verbs and have no rows, so there is no pair for parity to hold — extending them is an in-`websterengine` change, not a new gate.
+  Stating this explicitly matters because the earlier wording implied three new row+verb pairs, which would have sent the plan looking for two registry entries that must not exist.
+- **Rationale for covering all three anyway:** covering only `Plan-Revalidate` would catch drift a merge late and still allow a stale pack to dispatch.
 
 ### delta-call-site
 
@@ -339,6 +362,7 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 ### amendment-log
 
 - **Decision:** an append-only `_lyx/plan/amendments.md`, one entry per repair, carrying timestamp, card, old glyph → new glyph, tier, and triggering SHA.
+  The append is `planparser`'s **second** new write path (`AppendAmendment` or equivalent), distinct from `RewriteRefs` — an append is a write neither `SetApproved` nor `RewriteRefs` performs, so it must be named as its own path rather than left implicit.
 - **Rationale:** the plan directory is the thing that changed, so the log lives beside it, and `planparser` stays the sole writer of `_lyx/plan/` bytes because it owns the file.
 - **Consequence, accepted explicitly:** `index-file-mismatch` must learn that `amendments.md` is a **known non-card file** — an allowlist entry, not a heuristic.
 - **Rejected:** the existing batch digest / status trail (amendment history scatters across per-batch state instead of sitting with the plan it amended); git commit messages only — terminal flaw: a squash-merge erases the history, so the record exists only where nothing can read it back.
@@ -360,6 +384,11 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
   `delta` and `name` are deliberately absent.
 - **Rationale:** `glyphs` and `resolve` are what the planner needs for copied-verbatim spelling; `toc` and `expand` are what the stencil's replaced "do the lookups yourself" section becomes.
   `delta` and `name` are pipeline-internal and never agent-facing — `name` in an agent's hands is a glyph-spelling machine, the one thing the hard rule exists to prevent — which keeps the planner's toolset at the issue's stated "`toc` + the validator".
+- **Module identity:** the CLI package is `internal/quarrycli`, registered as a cobra subtree under `cmd/lyx/main.go` like every other module, with `Command()`/`RunCLI` (and `RunCLIIn`) and a non-empty `Short` on every command.
+  It imports `internal/planglyph` rather than a `quarryengine`, which **deviates** from the CLI/Cobra Invariant's `<module>cli` → `<module>engine` naming rule.
+  The invariant already records one such deviation (`stencilcli` → `internal/stencilstore`); this task adds `quarrycli` → `internal/planglyph` to that same line, in the same commit.
+- **Sandbox disposition:** registering a new module trips the Sandbox Suite Coverage invariant (`cmd/lyx/sandbox_coverage_test.go`), which requires either a `**Covers:**` scenario in a `tools/sandbox/*SUITE.md` suite or an allowlist entry with a documented reason.
+  This task adds a **scenario**, not an allowlist entry — the four verbs are read-only repository queries and are trivially exercisable, so excluding them would be unjustified.
 - **Rider, applying to all four verbs:** they delegate to the facade queries with their frozen presets and **never re-shape the answer**.
   The stencil's "copy the line verbatim" instruction only works if the answer is quarry's answer.
   `quarry.GlyphsOptions()` is the frozen preset for `glyphs`; use it rather than assembling `TOCOptions` locally.
@@ -407,7 +436,8 @@ The engine requires `CGO_ENABLED=1`; `internal/cgoguard` enforces it with a read
 `_lyx/plan/` is untracked weft content; nothing matches on `origin/main`.
 The rewrite surface is the golden fixture, the spec's worked example, and the stencil.
 
-**Docs that must land in the same commits as the code that changes them**, per this repo's Task-completion rule: `contracts/specs/loom-plan-spec.md` (format 5, the new checks, the worked example), `contracts/stencils/loom/loom-template-plan.md` (glyph spelling, the hard rule, the `lyx quarry` verbs replacing the `go doc`/`grep` section), `manifest/designs/quarry-glyph-plan-alphabet.md`, `docs/overview.md` (the new `internal/planglyph` module in the module table), `CONSTRAINTS.md` (the Glyph Conversion Chokepoint Invariant), `README.md` and `CLAUDE.md` (the cgo/C-toolchain prerequisite), and `manifest/roadmap.md` (the Planned item completes).
+**Docs that must land in the same commits as the code that changes them**, per this repo's Task-completion rule: `contracts/specs/loom-plan-spec.md` (format 5, the new checks, the worked example), `contracts/stencils/loom/loom-template-plan.md` (glyph spelling, the hard rule, the `lyx quarry` verbs replacing the `go doc`/`grep` section), `manifest/designs/quarry-glyph-plan-alphabet.md`, `docs/overview.md` (the new `internal/planglyph` and `internal/quarrycli` modules in the module table), `README.md` and `CLAUDE.md` (the cgo/C-toolchain prerequisite), and `manifest/roadmap.md` (the Planned item completes).
+`CONSTRAINTS.md` takes **three** separate edits, not one: the new Glyph Conversion Chokepoint Invariant; the Planparser Sole-Parser bullet, which today reads "`SetApproved` is the one write path" and must name `RewriteRefs` and the amendment append; and the CLI/Cobra package-naming line, which must record the `quarrycli` → `internal/planglyph` deviation beside `stencilcli`'s.
 
 ## Constraints
 
@@ -415,11 +445,17 @@ From `CONSTRAINTS.md`, the ones this task is bound by:
 
 - **Planparser Sole-Parser Invariant** — `internal/planparser` stays the sole parser and writer of `_lyx/plan/`.
   Consumers read only from the `planparser.Plan` model.
-  `SetApproved` is joined by exactly one new write path, `RewriteRefs`; no third.
+  `SetApproved` is joined by exactly **two** new write paths — `RewriteRefs` (ref substitution across the plan) and the amendment append (see `amendment-log`) — and no others.
+  CONSTRAINTS.md's own Planparser bullet currently reads "`SetApproved` is the one write path" and must be updated in the same commit that adds them.
 - **Test Tier Purity Invariant** — untagged test files perform no `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`.
   `planparser` stays a tier1-pure leaf; `quarry.DeltaGit` spawns `git`, so every test that reaches it is `integration`- or `smoke`-tagged.
 - **Gate Self-Check Parity Invariant** — a mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode, and adding a gate means adding its verb and its parity check in the same task.
 - **CLI / Cobra Invariant** — the new `lyx quarry` group goes through the module `Command()`/`RunCLI` seam, carries `Short` on every command, and updates the help-tree tests.
+  Its `quarrycli` → `internal/planglyph` pairing is a naming deviation and joins the invariant's existing `stencilcli` → `internal/stencilstore` deviation on the same line.
+- **Sandbox Suite Coverage** — registering `quarry` as a module obliges either a `**Covers:**` scenario or an allowlist entry; this task adds a scenario (`cmd/lyx/sandbox_coverage_test.go`).
+- **Live-Substrate Spawn Observability** — `quarry.DeltaGit` starts a real OS process on a path reachable from `lyx webster record-batch`, so its call site logs the spawn via `internal/logger` (`Info`).
+  The exemption route is unavailable: it applies only to a site structurally barred from importing `internal/logger`, which `planglyph` is not.
+  See `quarry-spawn-guard-visibility` for the guard extensions that make this enforceable rather than asserted.
 - **Told-Geometry Invariant** — an engine is handed the absolute paths it operates on and derives none of its own; no direct import of `internal/lyxcwd`.
   `internal/planglyph` is added to the invariant's bound-packages list **unconditionally**, in the commit that creates it — see the `planglyph-root-resolution` decision.
 - **Batcher Registry+Config Invariant** — webster's execution unit is the batchifier-derived batch; batching selection stays owned by `internal/batcher`.
@@ -473,6 +509,9 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
 **Cross-cutting.**
 
 - A constraint test for the Glyph Conversion Chokepoint Invariant: no production file outside the sanctioned call sites contains a `#`-trimming conversion or reads `Glyph.Unit` as a path.
+- `cmd/lyx/tierpurity_test.go` gains `DeltaGit` in `bannedTokens`, with its own test proving an untagged file containing that token trips the guard.
+- `cmd/lyx/spawnobservability_test.go` gains the `DeltaGit`-as-spawn case, with its own test proving a `DeltaGit` call site that does not import `internal/logger` trips the guard.
+- `cmd/lyx/sandbox_coverage_test.go` passes for the new `quarry` module via a real `**Covers:**` scenario rather than an allowlist entry.
 
 ## Q&A log
 
@@ -509,4 +548,5 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
   Not `delta`, not `name` — `name` in an agent's hands is a glyph-spelling machine, which is the one thing the hard rule exists to prevent.
 - **Q:** How is the blocked quarry accessor handled? **A:** The disk-shaped checks become their own late cards with the merged accessor and the `go.mod` bump as their precondition; quarry task `glyph-unitpath` is already in motion.
   A temporary loomyard-side helper is banned outright, not deferred.
+- **Q:** How is quarry's in-quarry `git` spawn (`DeltaGit`) made visible to loomyard's two mechanical guards, which only scan loomyard's own source? **A:** [auto-pick] Extend both guards: a narrow `DeltaGit` token in `bannedTokens`, and a `DeltaGit`-as-spawn case in the observability guard so its call site must import `internal/logger`. **Why:** the tier-purity guard is a raw-substring scan of loomyard files and the observability guard AST-matches `exec.Command` in loomyard files, so a call whose spawn lives inside quarry's `internal/gitsrc` trips neither — leaving "anything reaching `DeltaGit` is integration-tagged" enforced by nothing and a real spawn reachable from `lyx webster record-batch` outside the observability invariant entirely; an allowlist exemption is unavailable because it applies only to a site structurally barred from importing `internal/logger`.
 - **Q:** Where does `internal/planglyph` — and the standalone `lyx quarry` verb group — get the repository root `quarry.Open` requires, under the Told-Geometry Invariant? **A:** [auto-pick] Told unconditionally, with all three call shapes named: producer rows and the validation pass take already-resolved paths from their caller, and `lyx quarry` probes tier 1 via `preflight.ResolveMode` against the current worktree only. **Why:** `quarry.Open(root)` needs an absolute root by construction, so `package-ownership` already answers the question the Constraints section left conditional; `planparser` is on the bound list with a plain `worktreeRoot string`, proving membership turns on deriving no paths rather than on carrying a `Geometry`; and refusing an arbitrary-repo flag keeps the planner and the validator resolving against the same tree, which is the copied-verbatim guarantee.
