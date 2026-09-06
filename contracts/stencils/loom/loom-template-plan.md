@@ -33,14 +33,19 @@ If the file is missing or empty, STOP and report that rather than inventing scop
 
 Before planning, read the relevant parts of the codebase: check recent commits, read `CONSTRAINTS.md` at the repo root if present, and follow existing patterns rather than inventing new ones.
 
-### No quarry inventory exists — do the lookups yourself
+### Look up glyphs with `lyx quarry` — never spell one from memory
 
-No quarry inventory is handed to you.
-This is the normal state, never an error and never a reason to stop — you perform the mechanical lookups yourself instead:
+`lyx quarry` is your only source of glyph spellings,
+and it answers against the current worktree only — it takes no repository-path flag, so a spelling it gives you is always from the tree the plan validator resolves against.
 
-- `go doc <pkg> <Symbol>` for a symbol's existence and definition.
-- A `grep -rn` scoped to the package that owns the symbol for its call sites.
-- A manual read of each call site's own enclosing function for blast radius.
+- `lyx quarry glyphs <dir>` is the flat index: every symbol under `<dir>`'s whole tree, depth-first, each with its own glyph spelling.
+  This is what you read a card's target spellings out of.
+- `lyx quarry resolve <glyph>...` checks that a spelling names something real — pass it one or more glyphs, positionally, in one call.
+- `lyx quarry toc <path>` and `lyx quarry expand <glyph>` are the structure and detail queries: `toc` for a directory's shape, and `expand` for a type's own head plus every member whose owner chain begins with it.
+
+**You never spell a glyph — you copy a line verbatim out of a quarry answer.**
+This is the hard rule behind the glyph spelling rules Step 3 spells out below: a bare package-qualified symbol (`pkg.Symbol`) is a hard finding precisely because it is the one spelling that cannot have come verbatim from a quarry answer.
+The four verbs above are the whole of what `lyx quarry` offers you — there is no fifth or sixth verb to ask for.
 
 ## Step 3 — Write the plan into `{{.plan_dir}}`
 
