@@ -10,6 +10,7 @@ package planglyph
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -105,6 +106,40 @@ func DetectDrift(plan *planparser.Plan, planDir, worktreeRoot string, delta quar
 				Card:     cardIDOf(c),
 				Detail:   fmt.Sprintf("card %d references %q, which the delta reports deleted with no corresponding rename", c.Number, s.ID),
 				Severity: SeverityBlocking,
+			})
+		}
+	}
+
+	// Evidence-tier candidates: gate two applies here too — a deleted symbol nothing in the
+	// remaining plan references gets no finding, exactly as an unreferenced exact-tier rename gets
+	// none above. This tier never calls RewriteRefs or AppendAmendment: an amendment records a
+	// repair, and no repair happens here — the rename-versus-genuine-delete decision is the
+	// reviewer's, never the pipeline's. Candidate order is quarry's own deterministic ordering,
+	// carried through unchanged: never re-sorted, re-ranked, or truncated.
+	for _, entry := range delta.RenameCandidates {
+		cards := refCards[entry.ID]
+		if len(cards) == 0 {
+			continue
+		}
+
+		var candidateParts []string
+		for _, cand := range entry.Candidates {
+			candidateParts = append(candidateParts, fmt.Sprintf(
+				"%s (file=%s, signature_identical_modulo_name=%v, body_token_similarity=%.4f, body_tokens_before=%d, body_tokens_after=%d, doc_identical=%v)",
+				cand.ID, cand.File, cand.Signals.SignatureIdenticalModuloName, cand.Signals.BodyTokenSimilarity,
+				cand.Signals.BodyTokensBefore, cand.Signals.BodyTokensAfter, cand.Signals.DocIdentical,
+			))
+		}
+
+		for _, c := range sortedCards(cards) {
+			findings = append(findings, Finding{
+				Check: "rename-candidate",
+				Card:  cardIDOf(c),
+				Detail: fmt.Sprintf(
+					"card %d references %q, deleted with %d evidence-tier rename candidate(s) — mechanical evidence only, the rename-versus-genuine-delete decision is the reviewer's, never the pipeline's: %s",
+					c.Number, entry.ID, len(entry.Candidates), strings.Join(candidateParts, "; "),
+				),
+				Severity: SeverityInformational,
 			})
 		}
 	}

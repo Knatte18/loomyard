@@ -138,3 +138,82 @@ func TestDetectDrift_DeletedAndStillReferencedProducesBlockingFinding(t *testing
 		t.Fatalf("findings = %+v; want exactly one blocking plan-references-deleted-symbol finding", findings)
 	}
 }
+
+// TestDetectDrift_EvidenceTierCandidatesInformationalWithSignals covers a candidate block
+// producing informational findings whose details carry every signal field, the plan bytes staying
+// byte-identical, and no amendment entry appended.
+func TestDetectDrift_EvidenceTierCandidatesInformationalWithSignals(t *testing.T) {
+	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Uses:**\n- `sub#Gone`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n",
+	})
+	before := readCardFile(t, dir, 1, "card1")
+
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		RenameCandidates: []quarry.RenameCandidateEntry{
+			{
+				ID: "sub#Gone",
+				Candidates: []quarry.RenameCandidate{
+					{
+						ID:   "sub#Renamed",
+						File: "sub/b.go",
+						Signals: quarry.RenameSignals{
+							SignatureIdenticalModuloName: true,
+							BodyTokenSimilarity:          0.875,
+							BodyTokensBefore:             10,
+							BodyTokensAfter:              11,
+							DocIdentical:                 false,
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	}
+	if len(findings) != 1 || findings[0].Check != "rename-candidate" || findings[0].Severity != SeverityInformational {
+		t.Fatalf("findings = %+v; want exactly one informational rename-candidate finding", findings)
+	}
+	for _, want := range []string{"sub#Renamed", "sub/b.go", "signature_identical_modulo_name=true", "body_token_similarity=0.8750", "body_tokens_before=10", "body_tokens_after=11", "doc_identical=false"} {
+		if !strings.Contains(findings[0].Detail, want) {
+			t.Errorf("finding detail = %q; want it to contain %q", findings[0].Detail, want)
+		}
+	}
+
+	after := readCardFile(t, dir, 1, "card1")
+	if before != after {
+		t.Errorf("plan bytes changed for an evidence-tier candidate:\nbefore: %s\nafter: %s", before, after)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, planparser.AmendmentsFileName)); statErr == nil {
+		t.Error("amendments file was created for an evidence-tier candidate; want none")
+	}
+}
+
+// TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding covers a candidate for a
+// symbol nothing in the remaining plan references producing no finding at all — gate two applies
+// to this tier too.
+func TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding(t *testing.T) {
+	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n",
+	})
+
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		RenameCandidates: []quarry.RenameCandidateEntry{
+			{ID: "sub#Gone", Candidates: []quarry.RenameCandidate{{ID: "sub#Renamed", File: "sub/b.go"}}},
+		},
+	}}
+
+	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v; want none — nothing references the deleted symbol", findings)
+	}
+}
