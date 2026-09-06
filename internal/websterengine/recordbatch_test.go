@@ -646,6 +646,36 @@ func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_DriftBlocksOnDeletedStillReferenced proves card 36's wiring: a symbol the delta
+// reports deleted, with no corresponding rename, that the plan still references returns
+// ErrCardNotDone and persists no terminal digest.
+func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	// A symbol must exist at the delta's START side to be reported deleted — the fixture's own
+	// StartSHA (base.txt only) predates internal/foo entirely, so the batch's own start boundary is
+	// moved to a commit that already carries the symbol, and a later commit removes it.
+	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
+	fx.Deps.State.Batches[1].StartSHA = withSymbol
+	if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
+		t.Fatalf("remove impl.go: %v", err)
+	}
+	mustGit(t, fx.Worktree, "add", "-A")
+	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
+	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	fx.Deps.Plan.Cards[0].Uses = []string{"internal/foo#WillGoAway"}
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrCardNotDone) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone)", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Error("BatchState.Terminal = true; want false — a plan-references-deleted-symbol finding must not persist a terminal digest")
+	}
+}
+
 // TestRecordBatch_DoneChecksPassOnLandedCreate proves the happy path: a Create target whose
 // symbol actually landed in the batch's own work commit passes the done-checks and the batch
 // still terminates cleanly.

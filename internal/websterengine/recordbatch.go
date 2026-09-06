@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -242,6 +243,22 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		for _, f := range planglyph.ScopeGuard(batch.Cards, delta) {
 			warnings = append(warnings, f.Error())
 		}
+	}
+
+	// Drift detection runs after binding and before the digest is persisted, on the delta's own
+	// deleted-symbols-still-referenced signal. actualHead is the same verified head SHA already
+	// cross-checked above against the worktree's actual HEAD, threaded through as the triggering
+	// SHA every exact-tier repair's own amendment records.
+	driftFindings, err := planglyph.DetectDrift(deps.Plan, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	var driftBlocking []string
+	for _, f := range driftFindings {
+		driftBlocking = append(driftBlocking, f.Error())
+	}
+	if len(driftBlocking) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
 	}
 
 	digest := distill(report)
