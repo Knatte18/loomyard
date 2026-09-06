@@ -192,11 +192,12 @@ func appendToSink(p []byte) (int, error) {
 	return f.Write(p)
 }
 
-// SetDurableSinkDir sets the durable sink directory for testing, resetting all sink state.
-func SetDurableSinkDir(dir string) {
-	sinkMu.Lock()
-	defer sinkMu.Unlock()
-
+// resetDurableSinkLocked resets all durable-sink state and sets the sink directory override to
+// dir. Callers must hold sinkMu.
+// It zeroes header and headerOnce as part of the reset, which is why
+// SetDurableSinkDirWithWorktreeRoot must set header.WorktreeRoot only after calling this, never
+// before -- a worktree root set beforehand would be silently wiped here.
+func resetDurableSinkLocked(dir string) {
 	sinkDirOverride = dir
 	sinkOnce = sync.Once{}
 	sinkPath = ""
@@ -205,6 +206,39 @@ func SetDurableSinkDir(dir string) {
 	headerOnce = sync.Once{}
 	sinkBytesWritten = 0
 	sinkTruncated = false
+}
+
+// SetDurableSinkDir sets the durable sink directory to dir with no worktree root supplied,
+// resetting all sink state.
+// It is the documented shorthand for "this directory, no worktree root supplied", used by tests
+// and by production alike; a caller that has a worktree root to supply should call
+// SetDurableSinkDirWithWorktreeRoot instead.
+// The directory only takes effect if it is set before the first record that arms the sink,
+// because ensureDurableSink is sync.Once-guarded and reads sinkDirOverride exactly once.
+func SetDurableSinkDir(dir string) {
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+
+	resetDurableSinkLocked(dir)
+}
+
+// SetDurableSinkDirWithWorktreeRoot sets the durable sink directory to dir and the trace header's
+// worktree root to worktreeRoot, resetting all other sink state, in one atomic call.
+// worktreeRoot is trace metadata answering "which repository was this process working on", a
+// separate concern from where the trace file lands -- the same distinction the comment beside
+// header.WorktreeRoot = layout.WorktreePath() in ensureDurableSink already draws.
+// The directory only takes effect if it is set before the first record that arms the sink,
+// because ensureDurableSink is sync.Once-guarded and reads sinkDirOverride exactly once.
+// The reset happens before the worktree root is set, never after: resetDurableSinkLocked zeroes
+// header as part of its reset, so setting worktreeRoot first would be silently wiped. Setting it
+// after the reset is safe because armHeader populates Command, Argv, TraceID, and PID only and
+// never writes WorktreeRoot.
+func SetDurableSinkDirWithWorktreeRoot(dir, worktreeRoot string) {
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+
+	resetDurableSinkLocked(dir)
+	header.WorktreeRoot = worktreeRoot
 }
 
 // NotifyExit opens the durable sink when the process exits with a non-zero code.
