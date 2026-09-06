@@ -1,17 +1,19 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (manifest/designs/plan-card-format.md), run in this fixed order.
-// ValidateFormat emits nineteen of the following distinct ValidationError.Check IDs, everything but
-// plan-unapproved; Validate emits all twenty: format-unrecognized (checkFormatRecognized),
+// ValidateFormat emits twenty-three of the following distinct ValidationError.Check IDs, everything
+// but plan-unapproved; Validate emits all twenty-four: format-unrecognized (checkFormatRecognized),
 // plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved),
 // index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing),
 // card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel),
 // card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget),
-// directory-target (checkDirectoryTarget), rename-format (checkRenameFormat),
-// rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField),
-// card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap),
-// impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target
-// (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing),
-// and commit-subject-mismatch (checkCommitSubjectMismatch).
+// directory-target (checkDirectoryTarget), rename-format (checkRenameFormat), handle-dangling,
+// handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed
+// (checkHandleMalformed), rename-mechanic-missing (checkRenameMechanicMissing),
+// card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty),
+// card-field-overlap (checkCardFieldOverlap), impact-summary-multiline
+// (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
+// (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch
+// (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -25,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -89,6 +92,8 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkBareSymbolTarget(plan)...)
 	findings = append(findings, checkDirectoryTarget(plan)...)
 	findings = append(findings, checkRenameFormat(plan)...)
+	findings = append(findings, checkHandleConsistency(plan)...)
+	findings = append(findings, checkHandleMalformed(plan)...)
 	findings = append(findings, checkRenameMechanicMissing(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldEmpty(plan)...)
@@ -443,6 +448,146 @@ func checkRenameFormat(plan *Plan) []ValidationError {
 					c.Number, raw,
 				),
 			})
+		}
+	}
+
+	return findings
+}
+
+// renameToHandles returns the set of every handle-shaped Pairs.New entry across plan, i.e. every
+// handle a Rename group's to-side names. checkHandleConsistency treats such a handle as if a
+// Create declaration existed for it, per the Batch-local decision that a Rename card's to-side
+// handle derives its declaration from the resolved old side rather than carrying one of its own.
+func renameToHandles(plan *Plan) map[string]bool {
+	toHandles := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, p := range c.Pairs {
+			if classifyRef(p.New) == refKindHandle {
+				toHandles[p.New] = true
+			}
+		}
+	}
+	return toHandles
+}
+
+// checkHandleConsistency implements handle-dangling, handle-collision, and handle-unreferenced,
+// all pure string work over the parsed model via declaredHandles/referencedHandles (handle.go).
+// These checks run under every plan.Language, including "none": a handle is loomyard grammar, not
+// glyph grammar, and its consistency is checkable without any alphabet.
+func checkHandleConsistency(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	declared := declaredHandles(plan)
+	referenced := referencedHandles(plan)
+	renameTo := renameToHandles(plan)
+
+	// handle-dangling: a referenced handle with no matching Create declaration and no matching
+	// Rename to-side.
+	handles := make([]string, 0, len(referenced))
+	for h := range referenced {
+		handles = append(handles, h)
+	}
+	sort.Strings(handles)
+	for _, handle := range handles {
+		if len(declared[handle]) > 0 || renameTo[handle] {
+			continue
+		}
+		for _, cid := range referenced[handle] {
+			findings = append(findings, ValidationError{
+				Check: "handle-dangling",
+				Card:  cid,
+				Detail: fmt.Sprintf(
+					"handle %q is referenced with no matching Create declaration and no matching Rename to-side",
+					handle,
+				),
+			})
+		}
+	}
+
+	// handle-collision: the same handle declared by more than one Create sub-bullet across the
+	// plan, one finding per colliding handle rather than one per declaring card.
+	declaredHandleNames := make([]string, 0, len(declared))
+	for h := range declared {
+		declaredHandleNames = append(declaredHandleNames, h)
+	}
+	sort.Strings(declaredHandleNames)
+	for _, handle := range declaredHandleNames {
+		cards := declared[handle]
+		if len(cards) <= 1 {
+			continue
+		}
+		findings = append(findings, ValidationError{
+			Check: "handle-collision",
+			Detail: fmt.Sprintf(
+				"handle %q is declared by more than one Create sub-bullet, on cards %s",
+				handle, strings.Join(cards, ", "),
+			),
+		})
+	}
+
+	// handle-unreferenced: a declared handle no card other than its own declaring card(s)
+	// references. A declaring card's own Create bullet contributes the handle to its own Targets
+	// too, so that self-reference must not count.
+	for _, handle := range declaredHandleNames {
+		decCards := declared[handle]
+		externallyReferenced := false
+		for _, rc := range referenced[handle] {
+			if !slices.Contains(decCards, rc) {
+				externallyReferenced = true
+				break
+			}
+		}
+		if externallyReferenced {
+			continue
+		}
+		for _, dc := range decCards {
+			findings = append(findings, ValidationError{
+				Check:  "handle-unreferenced",
+				Card:   dc,
+				Detail: fmt.Sprintf("card declares handle %q that no other card references", handle),
+			})
+		}
+	}
+
+	return findings
+}
+
+// checkHandleMalformed implements handle-malformed: every entry of a card's CreateRaw (a
+// "**Create:**" arrow bullet that failed the two-field declaration grammar), and every
+// handle-shaped Targets/Uses entry whose text after HandlePrefix carries no "#" and therefore
+// names no unit. Runs under every plan.Language, for the same reason checkHandleConsistency does.
+func checkHandleMalformed(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		for _, raw := range c.CreateRaw {
+			findings = append(findings, ValidationError{
+				Check: "handle-malformed",
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"card %d Create: entry %q does not match the required `plan:<handle>` -> `<declaration head>` grammar",
+					c.Number, raw,
+				),
+			})
+		}
+
+		for _, fields := range [][]string{c.Targets, c.Uses} {
+			for _, r := range fields {
+				if classifyRef(r) != refKindHandle {
+					continue
+				}
+				if _, ok := handleUnit(r); ok {
+					continue
+				}
+				findings = append(findings, ValidationError{
+					Check: "handle-malformed",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d handle %q carries no \"#\" after %q and therefore names no unit",
+						c.Number, r, HandlePrefix,
+					),
+				})
+			}
 		}
 	}
 

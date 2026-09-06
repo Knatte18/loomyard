@@ -484,6 +484,137 @@ func TestValidate_RenameFormat(t *testing.T) {
 	})
 }
 
+// TestValidate_HandleConsistency covers handle-dangling, handle-collision, and
+// handle-unreferenced, each firing exactly once on a minimal offending plan, and a well-formed
+// plan with one declaration and one reference producing none of them.
+func TestValidate_HandleConsistency(t *testing.T) {
+	t.Parallel()
+
+	t.Run("well-formed plan with one declaration and one reference produces no findings", func(t *testing.T) {
+		t.Parallel()
+		declarer := cardOfType(1, "declarer", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
+		declarer.Declarations = []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+		declarer.TargetGroups[0].Declarations = declarer.Declarations
+		referencer := validCard(2, "referencer")
+		referencer.HasUses = true
+		referencer.Uses = []string{"plan:internal/foo#NewThing"}
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{declarer, referencer}}
+		findings := planparser.Validate(plan, t.TempDir())
+		for _, check := range []string{"handle-dangling", "handle-collision", "handle-unreferenced"} {
+			if got := countFor(findings, check); got != 0 {
+				t.Errorf("countFor(findings, %q) = %d; want 0", check, got)
+			}
+		}
+	})
+
+	t.Run("handle-dangling: a referenced handle with no declaration", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.HasUses = true
+		card.Uses = []string{"plan:internal/foo#NewThing"}
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-dangling"); got != 1 {
+			t.Errorf("countFor(findings, handle-dangling) = %d; want 1", got)
+		}
+	})
+
+	t.Run("handle-dangling: exempt when satisfied by a Rename to-side", func(t *testing.T) {
+		t.Parallel()
+		renamer := cardOfType(1, "renamer", planparser.CardTypeRename, nil)
+		renamer.Pairs = []planparser.MovePair{{Old: "internal/foo#OldThing", New: "plan:internal/foo#NewThing"}}
+		renamer.Targets = []string{"internal/foo#OldThing", "plan:internal/foo#NewThing"}
+		renamer.TargetGroups[0].Pairs = renamer.Pairs
+		renamer.TargetGroups[0].Refs = renamer.Targets
+		card := validCard(2, "b")
+		card.HasUses = true
+		card.Uses = []string{"plan:internal/foo#NewThing"}
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{renamer, card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-dangling"); got != 0 {
+			t.Errorf("countFor(findings, handle-dangling) = %d; want 0", got)
+		}
+	})
+
+	t.Run("handle-collision: the same handle declared twice", func(t *testing.T) {
+		t.Parallel()
+		one := cardOfType(1, "one", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
+		one.Declarations = []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+		one.TargetGroups[0].Declarations = one.Declarations
+		two := cardOfType(2, "two", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
+		two.Declarations = []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+		two.TargetGroups[0].Declarations = two.Declarations
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{one, two}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-collision"); got != 1 {
+			t.Errorf("countFor(findings, handle-collision) = %d; want 1", got)
+		}
+	})
+
+	t.Run("handle-unreferenced: a declared handle no other card references", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
+		card.Declarations = []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+		card.TargetGroups[0].Declarations = card.Declarations
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-unreferenced"); got != 1 {
+			t.Errorf("countFor(findings, handle-unreferenced) = %d; want 1", got)
+		}
+	})
+
+	t.Run("runs under language: none", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.HasUses = true
+		card.Uses = []string{"plan:internal/foo#NewThing"}
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "none", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-dangling"); got != 1 {
+			t.Errorf("countFor(findings, handle-dangling) = %d; want 1 (handle checks run under language: none)", got)
+		}
+	})
+}
+
+// TestValidate_HandleMalformed covers handle-malformed: one finding per CreateRaw entry, and one
+// finding for a handle whose text after HandlePrefix carries no "#".
+func TestValidate_HandleMalformed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("clean", func(t *testing.T) {
+		t.Parallel()
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{validCard(1, "a")}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-malformed"); got != 0 {
+			t.Errorf("countFor(findings, handle-malformed) = %d; want 0", got)
+		}
+	})
+
+	t.Run("malformed Create arrow bullet", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeCreate, nil)
+		card.CreateRaw = []string{"this bullet has -> an arrow but no backticks"}
+		card.TargetGroups[0].CreateRaw = card.CreateRaw
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-malformed"); got != 1 {
+			t.Errorf("countFor(findings, handle-malformed) = %d; want 1", got)
+		}
+	})
+
+	t.Run("handle with no # names no unit", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.HasUses = true
+		card.Uses = []string{"plan:noUnitAtAll"}
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-malformed"); got != 1 {
+			t.Errorf("countFor(findings, handle-malformed) = %d; want 1", got)
+		}
+	})
+}
+
 // TestValidate_RenameMechanicMissing covers rename-mechanic-missing: a Rename card with an empty
 // Plan.RenameMechanic produces one plan-level finding, and a plan whose only cards are other
 // types produces none even with an empty section.
