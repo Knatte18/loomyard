@@ -65,3 +65,4 @@ Done-checks, drift detection (`internal/planglyph/drift.go`), and the `lyx quarr
 
 - [GitHub issue #226](https://github.com/Knatte18/loomyard/issues/226) — full proposal text.
 - [webster-parallel-execution.md](webster-parallel-execution.md) — the DAG-scheduler consumer waiting on symbol-derived edges.
+- `internal/planglyph/doc.go` — the canonical, enumerated list of every resolve-backed `Finding.Check` ID this package can raise, the parallel this package owes `planparser`'s own numbered checks list in [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md#validation-checks-as-implemented-by-internalplanparser).
