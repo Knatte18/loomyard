@@ -3,7 +3,7 @@
 ```yaml
 task: 'Reed and Fabric as standalone modules: public API design'
 slug: 'reed-fabric-standalone-api-design'
-approved: false
+approved: true
 started: '20260906-125124'
 parent: 'main'
 root: ""
