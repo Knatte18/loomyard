@@ -581,6 +581,106 @@ func TestParsePlan_Card_RenameGrammar(t *testing.T) {
 	}
 }
 
+// TestParsePlan_Card_CreateHandleGrammar covers the "**Create:**" field's two-field
+// `plan:<draft-handle>` -> `<declaration head>` arrow grammar: a well-formed declaration bullet
+// lands in both Declarations and Targets, a plain non-arrow ref still parses as today, and a
+// malformed arrow bullet lands in CreateRaw rather than being silently dropped.
+func TestParsePlan_Card_CreateHandleGrammar(t *testing.T) {
+	t.Parallel()
+
+	body := "# Card 1 — create handles\n\n**Create:**\n" +
+		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+		"- `internal/bar.go`\n" +
+		"- this bullet has -> an arrow but no backticks\n" +
+		"**Intent:** placeholder.\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	card := plan.Cards[0]
+
+	wantDecls := []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+	if !slices.Equal(card.Declarations, wantDecls) {
+		t.Errorf("card.Declarations = %+v; want %+v", card.Declarations, wantDecls)
+	}
+	wantTargets := []string{"plan:internal/foo#NewThing", "internal/bar.go#"}
+	if !slices.Equal(card.Targets, wantTargets) {
+		t.Errorf("card.Targets = %v; want %v", card.Targets, wantTargets)
+	}
+	wantRaw := []string{"this bullet has -> an arrow but no backticks"}
+	if !slices.Equal(card.CreateRaw, wantRaw) {
+		t.Errorf("card.CreateRaw = %v; want %v", card.CreateRaw, wantRaw)
+	}
+	if len(card.TargetGroups) != 1 {
+		t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+	}
+	if !slices.Equal(card.TargetGroups[0].Declarations, wantDecls) {
+		t.Errorf("card.TargetGroups[0].Declarations = %+v; want %+v", card.TargetGroups[0].Declarations, wantDecls)
+	}
+}
+
+// TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped is the regression
+// parseCreateField's own field parser exists to prevent: parseRefField calls stripBackticks on
+// each payload before returning it, so routing the arrow form through it would arrive with the
+// outer backtick pair already removed and could never match moveLineRe's two-backticked-token
+// shape. This proves a bullet whose backticks are intact reaches the arrow matcher unstripped.
+func TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped(t *testing.T) {
+	t.Parallel()
+
+	body := "# Card 1 — create handle\n\n**Create:**\n" +
+		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+		"**Intent:** placeholder.\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	card := plan.Cards[0]
+
+	if len(card.Declarations) != 1 {
+		t.Fatalf("len(card.Declarations) = %d; want 1 (backticks must reach the arrow matcher intact)", len(card.Declarations))
+	}
+	if len(card.CreateRaw) != 0 {
+		t.Errorf("card.CreateRaw = %v; want empty", card.CreateRaw)
+	}
+}
+
+// TestParsePlan_Card_HandleSurvivesNormalizeCard proves a handle-shaped Create target passes
+// through normalizeCard byte-identical, even under a non-"." root:, because classifyRef already
+// classifies it refKindHandle and normalizeRefIfPath gates on isPathRef.
+func TestParsePlan_Card_HandleSurvivesNormalizeCard(t *testing.T) {
+	t.Parallel()
+
+	const overview = `---
+format: 5
+approved: true
+root: internal/boardcli
+---
+
+# Plan: rooted
+
+Framing paragraph.
+
+## Card Index
+
+1 — only — the only card
+`
+	body := "# Card 1 — create handle\n\n**Create:**\n" +
+		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+		"**Intent:** placeholder.\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": overview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+
+	want := "plan:internal/foo#NewThing"
+	if got := plan.Cards[0].Targets[0]; got != want {
+		t.Errorf("plan.Cards[0].Targets[0] = %q; want %q (a handle must never pick up a root: prefix)", got, want)
+	}
+}
+
 // TestParsePlan_InlineFieldValueFailsLoud proves a bullet-only field carrying an inline value
 // (e.g. "**Edit:** `foo.go`") is a fail-loud ParsePlan error, never silently read as an empty
 // field — for both a type label and "**Uses:**".

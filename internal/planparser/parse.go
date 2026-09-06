@@ -551,6 +551,21 @@ func parseTypeLabelCase(card *Card, labelLine, label string, lines []string, sta
 		return next, err
 	}
 
+	if label == createLabel {
+		var refs []string
+		var decls []CardDeclaration
+		var raw []string
+		refs, decls, raw, next, err = parseCreateField(labelLine, lines, start)
+		card.Targets = append(card.Targets, refs...)
+		card.Declarations = append(card.Declarations, decls...)
+		card.CreateRaw = append(card.CreateRaw, raw...)
+		group.Refs = refs
+		group.Declarations = decls
+		group.CreateRaw = raw
+		card.TargetGroups = append(card.TargetGroups, group)
+		return next, err
+	}
+
 	var refs []string
 	refs, next, err = parseRefField(labelLine, label, lines, start)
 	card.Targets = append(card.Targets, refs...)
@@ -623,4 +638,47 @@ func parseRenameField(labelLine string, lines []string, start int) (pairs []Move
 		i++
 	}
 	return pairs, raw, i, nil
+}
+
+// parseCreateField parses a "**Create:**" field's sub-bullets, recognizing the two-field
+// `plan:<draft-handle>` -> `<declaration head>` arrow grammar alongside the plain
+// backtick-wrapped ref form every other type label admits. Like parseRenameField, it matches
+// splitHandleDeclaration (and, for the arrow-shaped-but-malformed case, the raw " -> " substring)
+// against each bullet's raw, unstripped payload before falling back to stripBackticks: parseRefField
+// calls stripBackticks first, which would remove the outer backtick pair the arrow grammar's own
+// two-backticked-token shape needs intact, so createLabel is given this own field parser instead
+// of routing through parseRefField.
+// For each sub-bullet: a payload matching splitHandleDeclaration contributes a CardDeclaration and
+// its handle alone to refs; a payload carrying the " -> " arrow but failing that grammar lands in
+// raw rather than being silently dropped; anything else falls back to today's stripBackticks
+// single-ref behaviour.
+func parseCreateField(labelLine string, lines []string, start int) (refs []string, decls []CardDeclaration, raw []string, next int, err error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, createLabel))
+	if rest != "" {
+		return nil, nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only \"- `ref`\" sub-bullets on the following lines", createLabel, rest)
+	}
+
+	refs = []string{}
+	i := start
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			i++
+			continue
+		}
+		if isCardLabelLine(lines[i]) || !strings.HasPrefix(trimmed, "- ") {
+			break
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+		if handle, decl, ok := splitHandleDeclaration(payload); ok {
+			decls = append(decls, CardDeclaration{Handle: handle, Decl: decl})
+			refs = append(refs, handle)
+		} else if strings.Contains(payload, " -> ") {
+			raw = append(raw, payload)
+		} else {
+			refs = append(refs, stripBackticks(payload))
+		}
+		i++
+	}
+	return refs, decls, raw, i, nil
 }
