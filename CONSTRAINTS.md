@@ -113,7 +113,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
 - Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`header --blocking`, `lyx loom status --watch`, `lyx loom run`/`lyx run`.
-- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviation: `stencilcli` → `internal/stencilstore`.
+- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`.
 
 ## Shuttle Provider-Seam Invariant
 
