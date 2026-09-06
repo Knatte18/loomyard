@@ -17,7 +17,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
@@ -67,11 +69,35 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 // under the derived state directory instead. This is the one property no untagged unit test in this
 // batch observes, since it requires a real Derive call and a real filesystem to assert an absence
 // against.
+//
+// It also positively asserts F22's fix: a trace-*.log file lands under the derived state directory's
+// standalonegeom.LogsDir, whose first line's worktree_root= field names target. That positive
+// assertion is the load-bearing half -- it fails against pre-fix source, where nothing is written
+// there at all -- while the target-directory emptiness assertion above pins the defect's actual
+// symptom. t.Setenv("LYX_TRACE", "1") lifts the durable sink's testing.Testing() suppression, since
+// without that lift the sink stays closed for the whole process and the positive assertion would pass
+// for the same wrong reason the emptiness assertion passes today while F22 is live.
+//
+// The cleanliness assertion above is deliberately scoped to "status", an invocation that reaches
+// wiring. It does NOT extend to an invocation that fails before standalonestate.Derive (a cobra
+// flag-parsing failure, a root pre-run failure, or a Derive failure itself): under the real lyx
+// binary, logger.NotifyExit force-arms the sink on a pre-redirect non-zero exit and the cwd fallback
+// then writes one trace file into the target over that bounded window. NotifyExit is called only
+// from cmd/lyx/main.go -- mentioned here, not read -- and this test drives RunCLIIn directly, so
+// NotifyExit never executes in this process at all; a broader "target always stays clean" claim would
+// be false of the shipped path even though this test could not observe it either way.
 func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("LYX_TRACE", "1")
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	stateDir, _, err := standalonestate.Derive(target)
+	if err != nil {
+		t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
+	}
 
 	before, err := os.ReadDir(target)
 	if err != nil {
@@ -96,6 +122,31 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Errorf("target directory %q gained entries from a standalone invocation: %v; want it byte-for-byte unchanged -- no hidden state tree, no lock file, no rendered prompt", target, names)
+	}
+
+	// "status" itself never logs at Info-or-above, so nothing arms the durable sink on its own; one
+	// forced logger.Info call after the invocation is what proves WHERE wireStandalone pointed the
+	// sink -- exactly the mechanism internal/webstercli/wiring_test.go's own sink-redirect tests use.
+	// Against pre-fix source (no redirect at all), this call falls back to the process's real cwd via
+	// ensureDurableSink's dir=="" branch (which LYX_TRACE=1 unblocks), landing the trace file
+	// somewhere other than logsDir below and failing this test's positive assertion correctly.
+	logger.Info("cli_integration_test: arm the sink")
+
+	logsDir := standalonegeom.LogsDir(stateDir)
+	matches, err := filepath.Glob(filepath.Join(logsDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", logsDir, err)
+	}
+	if len(matches) == 0 {
+		t.Fatalf("no trace-*.log file under %s; want the standalone invocation to have redirected the durable sink there", logsDir)
+	}
+	content, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("read %s: %v", matches[0], err)
+	}
+	firstLine := strings.SplitN(string(content), "\n", 2)[0]
+	if !strings.Contains(firstLine, "worktree_root="+target) {
+		t.Errorf("trace file %s first line = %q; want it to carry worktree_root=%s", matches[0], firstLine, target)
 	}
 }
 
