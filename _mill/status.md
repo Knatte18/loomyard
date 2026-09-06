@@ -31,7 +31,11 @@ implementing  '2026-09-06T13:31:51Z'
 ```yaml
 batches:
   - name: shared-frame-and-reed
-    state: pending
+    state: running
+    implementer_session: 9243aa9b-ef63-47eb-86e2-539d24dee0b8
+    start_sha: 33e3fb06bf7762631dad6e4a89b7af61104d07c1
+    verify_baseline_failures: []
   - name: fabric-creel-and-close
     state: pending
+    verify_baseline_failures: []
 ```
