@@ -132,7 +132,8 @@ Any future standalone verification — the campaign's own "what could not be ver
 ### log-sink-redirect-not-gitignore
 
 - Decision: fix F22 by **redirecting** the durable trace sink to the standalone state directory, at `<stateDir>/.lyx/logs`.
-  Nothing is written into the target repository at all.
+  Nothing is written into the target repository by any invocation that reaches standalone wiring.
+  One narrow residual is **accepted and documented rather than closed**: see the pre-redirect failure window below.
 - Rationale: the Durable-vs-Ephemeral State Invariant already names the answer — never-tracked files are siblings under the anchor, "hub: `BoardDir(hub)`; standalone: `standalonestate.Derive`".
   Today's behaviour is a straight violation of it, not merely an untidiness.
   Redirecting also fixes the *consequence* the crucible actually tripped over — `RecordBatch`'s dirty-worktree probe firing spuriously on every call — whereas an exclude entry only hides the files from `git status` while still writing into the operator's repository, and only for a repository whose `.git/info/exclude` lyx has taken it upon itself to mutate.
@@ -141,10 +142,18 @@ Any future standalone verification — the campaign's own "what could not be ver
   **(a) Seed `.git/info/exclude` in the target repository** — writes lyx state into a repository lyx does not own, and mutates that repository's git configuration as a side effect of a read-shaped command.
   **(b) Do both** — the exclude entry is dead weight once nothing is written there, and would leave a stale line behind in every repository ever touched.
   **(c) Disable the durable sink entirely in standalone mode** — throws away the trace log that made F16 and F22 diagnosable in the first place.
+- **Pre-redirect failure window — accepted residual.**
+  `cmd/lyx/main.go:57` calls `logger.NotifyExit(code)`, which force-arms the sink on any non-zero exit (`sink.go:211-216`).
+  For a standalone invocation that fails *before* `wireStandalone` sets the override, the override is still empty, so the cwd fallback writes one trace file into `<target>/.lyx/logs` exactly as today.
+  That window is bounded and small: cobra flag-parsing failures, a root pre-run failure, and a `standalonestate.Derive` failure — everything before the earliest point at which a state directory exists to redirect to.
+  It is accepted rather than closed because closing it means deriving a state directory before knowing the mode, which is the root-pre-run redesign this task explicitly scopes out;
+  and because in a `Derive` failure there is, by construction, nowhere else to put the trace.
+  The consequence for verification is stated in Testing: the "target repository is clean" assertion is scoped to invocations that reach wiring, and the plan must not write an assertion that a *failing* pre-wiring invocation leaves the target clean, because it does not.
 
 ### logs-dir-single-declarer
 
-- Decision: add `standalonegeom.LogsDir(stateDir) string` returning `<stateDir>/.lyx/logs`, built from `lyxdirs.DotLyxDirName`, as the sole construction site for the standalone logs directory — directly mirroring the existing `standalonegeom.StencilsDir(stateDir)`.
+- Decision: add `standalonegeom.LogsDir(stateDir) string` returning `<stateDir>/.lyx/logs`, built from `lyxdirs.DotLyxDirName`, as the sole construction site for the standalone **trace-log** directory — directly mirroring the existing `standalonegeom.StencilsDir(stateDir)`.
+  Reed's own `<stateDir>/logs` (`standalonegeom/reedgeom.go:26-29`, `reedengine.Geometry.LogsDir`, the shared server's runtime log directory) is a **different directory for a different producer and is deliberately unchanged** — the two must not be converged, and the new helper's doc comment must say so, since `standalonegeom` will then carry two same-shaped log-path constructions side by side.
 - Rationale: two call sites (`webstercli`, `burlercli`) need the same path, and the Lyxdirs Single-Declarer Invariant forbids naming `.lyx` in path-construction context outside `lyxdirs`.
   A pure function taking only `stateDir` keeps `standalonegeom` hermetic exactly as its package doc promises: no `Derive` call, no environment read, no disk touch.
   It is a path helper, not a geometry struct, so it fits beside `StencilsDir` rather than inside any `Geometry`.
@@ -155,9 +164,18 @@ Any future standalone verification — the campaign's own "what could not be ver
 
 ### logger-production-sink-api
 
-- Decision: promote `logger.SetDurableSinkDir` to a documented production API by rewriting its doc comment;
-  keep the name and the reset behaviour unchanged.
-  The one substantive change is that the production path must also carry the trace header's worktree root (see `redirected-sink-header-worktree-root`), so the API grows a way to supply it — whether as a second parameter, a sibling setter, or an options struct is the plan's call, since all three satisfy the decision equally.
+- Decision: add **one new production entry point that sets the sink directory and the header's worktree root in a single atomic call**, sharing `SetDurableSinkDir`'s existing reset body.
+  `SetDurableSinkDir(dir)` keeps its exact name and signature and becomes the documented shorthand for "this directory, no worktree root supplied" — so all twenty-one existing call sites are untouched — and its doc comment is rewritten from "for testing" to describe both uses.
+- Rationale: the three shapes are **not** interchangeable, and the deciding fact is `sink.go:196-208`: `SetDurableSinkDir` zeroes `header` and `headerOnce` as part of its reset.
+  A sibling setter called *before* it would therefore be silently wiped, so only an atomic call is correct;
+  and widening `SetDurableSinkDir`'s own signature would churn twenty-one call sites (nineteen in `internal/logger`'s own tests, two in `cmd/lyx/main_test.go`) for two production callers.
+  A second entry point delegating to the same body costs one function and leaves every existing test alone.
+  Whatever the final name, the constraint the plan must respect is stated here: **the worktree root must be supplied in the same call that sets the directory, never before it.**
+- Rejected:
+  **(a) A sibling setter alongside `SetDurableSinkDir`** — ordering-fragile by construction, since the reset wipes anything set first;
+  it would work only under a call convention nothing enforces.
+  **(b) Widening `SetDurableSinkDir`'s signature** — twenty-one call-site edits, against the same rationale that keeps the name.
+  **(c) An options struct** — over-built for two fields and two callers, and it still has to answer the same atomicity question.
 - Rationale: the function's body is already exactly what production needs — set the override, reset the `sync.Once` and all derived sink state — and the only thing marking it test-only is the words "for testing" in its doc comment.
   Renaming would churn the existing `cmd/lyx/main_test.go` call sites for no gain.
   The new comment must state both uses and, critically, must state the **ordering obligation**: the override only takes effect if it is set before the first record that arms the sink.
@@ -170,7 +188,14 @@ Any future standalone verification — the campaign's own "what could not be ver
 - Decision: call the sink redirect inside each `wireStandalone`, immediately after `standalonestate.Derive` returns and **before** any other work in that function that can log.
 - Rationale: `wireStandalone` is the only place `stateDir` exists, and module `PersistentPreRunE` hooks run **after** root's (`cobra.EnableTraverseRunHooks = true`, `cmd/lyx/main.go:78`), so the redirect lands after root pre-run and before any module work.
   Root pre-run's own logging risk is `seedStencils`, whose only log lines sit past `stencilSeedTarget`, which returns `ok == false` in standalone (no hub) — so it emits nothing and never arms the sink first.
-  That is a real dependency and the plan must pin it with a test rather than leave it as a comment, because an added log line in root pre-run would silently re-break F22 by arming the sink at the target repository before the override is set.
+  That is a real dependency, but it **cannot be pinned by any in-process Go test**, and the plan must not pretend otherwise.
+  `seedStencils` returns before resolving anything under `testing.Testing()` (`stencilseed.go:39-41`), `cmd/lyx/main.go:82` skips `MintOrAdoptAndExport`/`Arm` under the same guard, and `stencilseed.go:62-63` says outright that "a test can never observe the gate through it" — so a test asserting "root pre-run emits no Info+ record in standalone" would pass via the test guard, not via the standalone gate, and would keep passing after the dependency broke.
+  What **is** observable, and what the plan pins instead, is two things: `stencilSeedTarget` returning `ok == false` for a standalone location — the decision that function was extracted to make directly assertable — and a **source-level guard test** in `cmd/lyx` asserting that no `logger` Info/Warn/Error call appears in the root `PersistentPreRunE` body ahead of `seedStencils`.
+  The guard is the one that actually catches the regression, and `cmd/lyx` already establishes the pattern: `spawnobservability_test.go` walks the source tree for `exec.Command` call sites and `internal/logger` imports in exactly this way.
+- **Process-global sink state in tests.** `SetDurableSinkDir` mutates process-global state, and a non-empty override bypasses the `testing.Testing() && LYX_TRACE != "1"` suppression at `sink.go:77-84` — so a tier-1 wiring test that drives `wireStandalone` arms a live sink and leaves the override set for every later test in the same binary.
+  Every test that drives `wireStandalone` must therefore restore it, with `t.Cleanup(func() { logger.SetDurableSinkDir("") })`, exactly as `cmd/lyx/main_test.go:83` already does.
+  This is a stated obligation on the tests, not on production code.
+  Rejected: tightening the suppression so `testing.Testing()` short-circuits ahead of the override read — it would break all nineteen `internal/logger` tests, which depend on "override set implies the sink writes" to observe anything at all.
 - Rejected:
   **(a) Redirect in the root pre-run** — root pre-run does not resolve mode and does not derive a state directory;
   giving it both would move `standalonestate.Derive`'s call site and change every command's startup path, which is the larger design change this task explicitly scopes out.
@@ -190,6 +215,9 @@ Any future standalone verification — the campaign's own "what could not be ver
   **(b) Set it to the state directory** — that is where the trace file lives, not the repository the process was working on;
   it would answer the wrong question and duplicate information the file path already carries.
   **(c) Defer the choice to mill-plan** — the discussion is meant to be self-contained, and this is a semantic decision rather than an implementation detail.
+- Disposition of the test this changes: `internal/logger/sink_test.go:108-117`, `TestEnsureDurableSink_SeamPathLeavesWorktreeRootEmpty`, pins today's empty header on exactly this seam.
+  It is **kept and not rewritten**: it calls `SetDurableSinkDir(dir)`, which under the `logger-production-sink-api` decision remains the "no worktree root supplied" shorthand, so an empty header stays the correct expectation for it.
+  Update its name and doc comment to say "no worktree root supplied" rather than "geometry never resolved", since after this change an empty header is a *choice the caller made* rather than a property of the seam, and add the new-entry-point case beside it as the populated counterpart.
 
 ### documentation-surface
 
@@ -246,6 +274,9 @@ Its log calls are at `stencilseed.go:122`, `:131` and `:134`, all past that gate
 `internal/shuttleengine/run_inject_test.go:18-29` documents the fixture convention: anchor and worktree must be distinct paths so a swapped argument pair fails, while still satisfying the relation the validator asserts.
 `internal/webstercli/wiring_test.go` already drives both wiring branches with a told `preflight.Mode` and redirects `XDG_STATE_HOME` via `t.Setenv` (`:157-166` for the `hash8For` helper).
 `internal/webstercli/cli_integration_test.go` is the standalone end-to-end test, already redirecting `XDG_STATE_HOME` (`:27`, `:43-45`) and already asserting emptiness against a derived state directory (`:115`).
+`TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged` (`:70-99`) already asserts the target directory gains **no entries at all** from a standalone invocation — and it passes today, while F22 is live.
+That is not a contradiction, it is the reason F22 went unnoticed: the test drives `RunCLIIn` in-process, so `testing.Testing()` is true and `sink.go:79-84` suppresses the sink entirely unless an override is set or `LYX_TRACE=1`.
+Extending that existing test is the right move, and the extension's whole content is lifting that suppression deliberately — otherwise the new assertion passes vacuously for the same reason the old one does.
 `cmd/lyx/main_test.go:81-99` is the pattern for driving the durable sink in a test.
 
 **Gotchas.**
@@ -318,7 +349,9 @@ existing tables are extended rather than duplicated.
 
 - Setting the durable-sink directory before the first record puts the trace file there and none in the cwd-derived location.
 - Setting it *after* the sink is already armed does **not** move the file — pin the ordering obligation as a test, not just a doc sentence, so the constraint the wiring depends on is executable.
-- A redirected sink's header line carries the supplied worktree root, and a cwd-derived (hub) sink still carries `layout.WorktreePath()` as it does today.
+- The new atomic entry point sets directory and header worktree root together, and a redirected sink's header line carries the supplied worktree root;
+  a cwd-derived (hub) sink still carries `layout.WorktreePath()` as it does today.
+- `TestEnsureDurableSink_SeamPathLeavesWorktreeRootEmpty` (`sink_test.go:108-117`) still passes unchanged in substance — `SetDurableSinkDir` remains the no-worktree-root-supplied shorthand — with its name and comment updated per the `redirected-sink-header-worktree-root` decision.
 
 **`internal/webstercli` and `internal/burlercli`**
 
@@ -327,19 +360,24 @@ existing tables are extended rather than duplicated.
 - `wireStandalone` sets the durable-sink directory to `standalonegeom.LogsDir(stateDir)` for the derived state directory, with `XDG_STATE_HOME` redirected via `t.Setenv` exactly as the existing wiring tests do.
 - `wireHub` is unchanged in both packages: it still constructs through the containment-checked constructor, and it does **not** touch the sink directory.
   Assert both, so a later refactor cannot quietly route hub mode through the detached path.
+- **Every test in these two packages that drives `wireStandalone` must restore the sink override** with `t.Cleanup(func() { logger.SetDurableSinkDir("") })`, per the `redirect-call-site-and-ordering` decision — without it the override leaks into every later test in the same binary and defeats the `testing.Testing()` sink suppression for all of them.
 
 **`cmd/lyx`**
 
-- The root pre-run emits no Info+ record in a standalone (non-hub) invocation, so nothing arms the sink before a module hook can redirect it.
-  This is the executable form of the ordering dependency named in the `redirect-call-site-and-ordering` decision;
-  without it, an added log line in root pre-run silently re-breaks F22.
+- `stencilSeedTarget` reports `ok == false` for a standalone (non-hub) location, so `seedStencils` reaches none of its log calls there.
+- **Source-level guard:** the root `PersistentPreRunE` body contains no `logger` Info/Warn/Error call ahead of `seedStencils`, asserted by walking the source the way `spawnobservability_test.go` already walks it for `exec.Command` sites.
+  This is the assertion that actually catches the regression;
+  a behavioural "root pre-run logs nothing in standalone" test would pass vacuously via `testing.Testing()` and must not be written — see the `redirect-call-site-and-ordering` decision.
 
 **Integration (tier 2, `internal/webstercli/cli_integration_test.go`)**
 
-- After a standalone invocation against a real temporary git repository, the target repository contains no `.lyx` directory and `git status --porcelain` reports it clean.
-  This is F22's end-to-end regression test and the one that would have caught the eleven trace files the crucible run committed.
-- Trace files land under the derived state directory instead.
-  Drive the durable sink deliberately (`LYX_TRACE=1`, per `sink.go`'s testing gate) rather than relying on incidental logging, so the assertion cannot pass vacuously.
+- Extend `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged` (`:70-99`) rather than writing a parallel test: it already asserts the target directory gains no entries, and already redirects `XDG_STATE_HOME`/`LOCALAPPDATA`.
+- **The extension's substance is lifting the sink suppression**, with `t.Setenv("LYX_TRACE", "1")` per `sink.go:79-84`, so the durable sink actually resolves during the invocation.
+  Without that the assertion passes for the wrong reason — which is exactly why the existing test passes today while F22 is live.
+  Assert first that the un-redirected behaviour is what the test now exercises, so the test would fail against today's source: this is F22's end-to-end regression test and the one that would have caught the eleven trace files the crucible run committed.
+- The trace file lands under `<stateDir>/.lyx/logs` instead, and its header line carries the target repository as the worktree root.
+- Scope the cleanliness assertion to an invocation that **reaches wiring** (`status` is already the chosen verb for exactly this reason).
+  Do not assert cleanliness for an invocation that fails before `Derive` — per the accepted residual in `log-sink-redirect-not-gitignore`, `NotifyExit` writes into the target there, and a test claiming otherwise would be asserting a falsehood.
 
 **Whole-tree**
 
