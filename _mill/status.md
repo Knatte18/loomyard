@@ -70,7 +70,9 @@ batches:
     commit_sha: 12cb12eedec1830f2274041f60b9b89272063848
     verify_baseline_failures: []
   - name: planglyph
-    state: pending
+    state: running
+    implementer_session: 18291cf5-4ee0-4e1e-b607-8c162c5a9a9e
+    start_sha: 65c0b3b23ba932b9622c54b2a3174674dd7ebc20
     verify_baseline_failures: ["FAIL\t./internal/planglyph [setup failed]"]
   - name: gate-parity
     state: pending
