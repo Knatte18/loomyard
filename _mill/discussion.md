@@ -106,6 +106,24 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 - **Rejected:** `planparser` importing the facade and resolving inline — one package, but `planparser` stops being a pure leaf and both gate entry points start reading the repository.
   Also rejected: putting the resolve step only in `internal/loomshed`'s producer row, which breaks gate parity because `validate-plan` would no longer do the same work.
 
+### planglyph-root-resolution
+
+- **Decision:** `internal/planglyph` joins the Told-Geometry Invariant's bound-packages list **unconditionally**, in the same commit that creates it, and derives no path of its own — no import of `internal/lyxcwd`.
+  Each of its three call shapes sources the repository root explicitly:
+  - **The three `drift-boundaries` producer rows** (`begin-batch`, `record-batch`, `Plan-Revalidate`) — the root arrives **already resolved from the orchestrator**.
+    A producer needs none of the invariant's three tiers, so it resolves nothing itself.
+  - **The resolve-backed validation pass** — a told signature mirroring `planparser`'s own: the caller supplies the worktree root (and the anchor path where the plan directory is needed), exactly as `planparser.Validate(plan, worktreeRoot)` already does.
+  - **The standalone `lyx quarry` verb group** — probes **tier 1 only**, via `preflight.ResolveMode`, and operates on the **current worktree**.
+    No arbitrary-repo path flag, and **no plan need be in scope**: `toc`/`glyphs`/`resolve`/`expand` are repository queries, not plan queries, so they must answer before any plan exists — which is precisely when the planner needs them.
+- **Rationale:** `quarry.Open(root)` is the only way to a `*quarry.Repo`, and it takes an absolute root, so the question "where does the root come from" is settled by `package-ownership` the moment `planglyph` owns every `quarry.Repo` call.
+  Leaving it conditional would push an already-answered architectural question into planning, across three call sites that could each answer it differently.
+  Refusing an arbitrary-repo flag on `lyx quarry` matters for the same reason `dependency-mechanism` does: if the planner could point the verbs at a different tree than the validator resolves against, it could copy a spelling that is verbatim from *some* quarry answer but not from *this* repository's — breaking copied-verbatim exactly as version drift would.
+- **Precedent to follow, verified in-tree:** `internal/planparser` is already on the bound-packages list and takes a plain `worktreeRoot string` (`internal/planparser/validate.go:58,67`), so membership is not gated on carrying a `Geometry` struct — it is gated on deriving no paths.
+  `internal/loomshed`'s `NewPlanValidate(name, anchorPath, worktreeRoot string, requireApproved bool)` (`internal/loomshed/planvalidate.go:53`) is the exact shape to mirror, and it carries **two** separate path fields deliberately: `planparser.PlanDir` takes the anchor path while `Validate`/`ValidateFormat` take the worktree root.
+  `preflight.ResolveMode(cwd string) (*lyxcwd.Location, Mode, error)` (`internal/preflight/predicates.go:110`) is the tier-1 probe the invariant names for a standalone CLI.
+- **Rejected:** handing `planglyph` a `Geometry` struct from `internal/hubgeom`/`internal/standalonegeom` — uniform with the engines, but heavier than `planparser`'s own precedent requires for a package that needs two path strings.
+  Also rejected: an explicit repo-path flag on `lyx quarry`, for the copied-verbatim reason above.
+
 ### planner-glyph-source
 
 - **Decision:** a new `lyx quarry` command group is the planner's only source of glyphs, and the `Plan-Write` stencil's "No quarry inventory exists — do the lookups yourself" section is replaced by it.
@@ -403,7 +421,7 @@ From `CONSTRAINTS.md`, the ones this task is bound by:
 - **Gate Self-Check Parity Invariant** — a mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode, and adding a gate means adding its verb and its parity check in the same task.
 - **CLI / Cobra Invariant** — the new `lyx quarry` group goes through the module `Command()`/`RunCLI` seam, carries `Short` on every command, and updates the help-tree tests.
 - **Told-Geometry Invariant** — an engine is handed the absolute paths it operates on and derives none of its own; no direct import of `internal/lyxcwd`.
-  `internal/planglyph` is bound by this and must be added to the invariant's bound-packages list if it takes a geometry.
+  `internal/planglyph` is added to the invariant's bound-packages list **unconditionally**, in the commit that creates it — see the `planglyph-root-resolution` decision.
 - **Batcher Registry+Config Invariant** — webster's execution unit is the batchifier-derived batch; batching selection stays owned by `internal/batcher`.
 - **Config Strictness Invariant**, **Hermetic Git Test Environment Invariant**, **Documentation Lifecycle** — unchanged, but binding on anything this task adds.
 
@@ -491,3 +509,4 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
   Not `delta`, not `name` — `name` in an agent's hands is a glyph-spelling machine, which is the one thing the hard rule exists to prevent.
 - **Q:** How is the blocked quarry accessor handled? **A:** The disk-shaped checks become their own late cards with the merged accessor and the `go.mod` bump as their precondition; quarry task `glyph-unitpath` is already in motion.
   A temporary loomyard-side helper is banned outright, not deferred.
+- **Q:** Where does `internal/planglyph` — and the standalone `lyx quarry` verb group — get the repository root `quarry.Open` requires, under the Told-Geometry Invariant? **A:** [auto-pick] Told unconditionally, with all three call shapes named: producer rows and the validation pass take already-resolved paths from their caller, and `lyx quarry` probes tier 1 via `preflight.ResolveMode` against the current worktree only. **Why:** `quarry.Open(root)` needs an absolute root by construction, so `package-ownership` already answers the question the Constraints section left conditional; `planparser` is on the bound list with a plain `worktreeRoot string`, proving membership turns on deriving no paths rather than on carrying a `Geometry`; and refusing an arbitrary-repo flag keeps the planner and the validator resolving against the same tree, which is the copied-verbatim guarantee.
