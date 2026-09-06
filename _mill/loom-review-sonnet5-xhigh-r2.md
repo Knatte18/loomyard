@@ -123,7 +123,48 @@ spirit (stop, write `outcome: stuck`), or it might retry, or reason itself into 
 observed live (my demo run has not yet reached Webster); recorded here as a static-analysis finding pending
 whatever the live run's Webster phase shows.
 
-### F-plan1 (LOW-MEDIUM, PLAUSIBLE — pending live confirmation) — a Rename card's Old side cannot legally target a symbol the SAME plan creates in an earlier card, and nothing documents this
+### F-plan1 (NIT, CONFIRMED LIVE) — a Rename card's Old side cannot legally target a symbol the SAME plan creates in an earlier card, and nothing documents this (but the real system handles it gracefully)
+
+**UPDATE after observing the real Plan-Write session's output — this is now fully confirmed live, and the
+severity is downgraded from the original LOW-MEDIUM guess to NIT, because the real system's own self-check
+loop handled it exactly as designed, with no operator intervention and no wedge anywhere in the pipeline.**
+The real Plan-Write session (Opus, high effort) read the same decision record quoted above (which commits to
+an add-then-rename two-card sequence), explored the format, and produced a plan whose own `00-overview.md`
+`## Shared Decisions` section contains this, verbatim:
+
+> **Decision:** the helper is created as `FormatGreeting` in card 1. There is no intermediate `Greet` and no
+> rename card, and the two cards split on helper-versus-caller instead.
+> **Rationale:** the decision record sequences add-then-rename, but this plan format cannot express it: a
+> `Rename` pair's `Old` side must resolve against the current worktree (`rename-old-unresolved`), so a symbol
+> the same plan creates can never be a later card's rename source. ...
+
+This is an exact, independent match to my own static-analysis chain (`renameDeclSource` requiring the Old
+side to already resolve `found`; rows 8/10 running the unscoped whole-plan form) — the real agent apparently
+discovered it via its own stencil-mandated self-check (`lyx loom validate-plan`, Step 5 of
+`loom-template-plan.md`) hitting `rename-old-unresolved` during drafting, understood exactly why, and
+restructured cleanly rather than producing an invalid plan or getting stuck in the Plan-Review loop. `Plan-Validate`
+then passed clean on the very first attempt (`Plan-Validate → done`, no bounce). This is genuinely one of the
+most valuable data points this round produced: proof that the self-check loop correctly steers a real planner
+around a real format boundary condition, without ever surfacing as operator pain.
+
+Residual finding, now purely a documentation gap rather than a functional defect: nothing in
+`contracts/specs/loom-plan-spec.md`'s "Plan: handles" section or `loom-template-plan.md`'s stencil states this
+constraint explicitly ("a Rename's Old side must already exist before this plan starts executing, even if a
+same-plan Create would otherwise make it exist by the time execution reaches that card") — a real planner has
+to discover it by hitting `rename-old-unresolved` rather than reading it up front. Worth one added sentence to
+the spec's "Plan: handles" section for a planner that gets there before self-check catches it, or one wasted
+round-trip against quarry every time this shape is drafted.
+
+The resulting plan DOES exercise the `plan:` handle Create-declaration grammar for real, live, for the first
+time ever (see "What was tested" below): card 1 declares `` `plan:services/api#FormatGreeting` ->
+`func FormatGreeting(name string) string` ``, and card 2 references that same handle in its own `**Uses:**`
+field. It does NOT exercise the Rename mechanic (F2's fix) at all, since the real planner correctly avoided
+producing a Rename card given the task as stated — see "PRIMARY mission coverage" below for what this means
+for the round's stated goal of observing a Rename through Webster live.
+
+<details><summary>Original pre-live-confirmation write-up (kept for the record)</summary>
+
+Original finding text, before the live Plan-Write session's output was read:
 Traced through `contracts/specs/loom-plan-spec.md`'s "Plan: handles" section, `internal/planglyph/handle.go`'s
 `renameDeclSource` (derives the Rename pair's New-side declaration from the Old side's OWN resolved
 `Symbol.Signature` — i.e. the Old side must already be real and resolved), and `manifest/designs/loom.md`'s
@@ -147,6 +188,8 @@ around this (its own stencil's Step 5 self-check, `lyx loom validate-plan`, shou
 before Plan-Write ends its turn) is exactly what this round's live run is now testing. Recorded here
 provisionally; will be upgraded to CONFIRMED or downgraded/withdrawn once the live Plan-Write/Plan-Validate
 phase is observed.
+
+</details>
 
 ## Fork-assisted research (parent's own synthesis, independently spot-checked)
 
