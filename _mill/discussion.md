@@ -36,6 +36,7 @@ The deliverable is a design document, not code.
   No interface is introduced, no import is rewritten, no package is moved.
 - Any edit to `manifest/roadmap.md`.
   Whether a recommendation becomes a Planned or Someday item is a separate decision after the doc exists, per the task's own framing.
+  The doc lands deliberately entry-less and states its own deletion trigger — see the `doc-belongs-in-manifest-designs-despite-shipped-modules` decision.
 - Any change to `CONSTRAINTS.md`.
   The doc records that the `gitkit` Leaf Invariant is unaffected (finding below), which is an observation, not a new invariant.
 - Building the mailbox/`creel` module, or any part of it.
@@ -60,6 +61,12 @@ The deliverable is a design document, not code.
   It is therefore a planned-work doc that happens to be named after two existing modules, and it is deleted if and when the extraction it describes either lands or is formally abandoned.
 - Rejected: `docs/research/` (that directory holds transient port/fix logs, not design);
   `contracts/specs/` (reserved for cross-module schemas a real consumer honors — there is no consumer).
+- **Disposition of the entry-less doc, stated because the repo's own rules make it a live question.**
+  `manifest/roadmap.md`'s Maintenance section says detail belongs in "the entry's own `designs/<name>.md`", that Someday items get a designs doc "when there's real design behind them", and that the roadmap "is the single home for everything not scheduled … add new speculative ideas directly to Someday".
+  Read together, that scopes a designs doc to an owning roadmap entry, and this task deliberately lands one with no entry.
+  The disposition is: the doc is entry-less **on landing, by design**, because its whole content is the evidence needed to decide whether any roadmap entry is warranted — writing the entry first would presuppose the verdict the doc exists to reach.
+  The follow-up decision already named in Scope is exactly that call, and it has two legitimate outcomes: one or more Someday entries are added pointing at this doc (the likely candidates being the Reed preparation items and the Fabric pair-kernel/hub-layout split), or none is, in which case the doc is **deleted** rather than left orphaned.
+  The doc must state this disposition and that deletion trigger in its own text, so a later reader of an entry-less designs file knows it is intentional and knows what closes it.
 
 ### the-frozen-contract-is-the-type-set-not-an-interface
 
@@ -78,14 +85,19 @@ The deliverable is a design document, not code.
   Recommend the cheap in-repo preparation instead.
 - Rationale: Reed's external contract is 13 package-level identifiers across 9 direct production importers, most of them construction-only, and its public surface is one handle type with 17 methods.
   That is small enough to freeze.
-  But loomyard is its only user, three roadmap items still change it (`reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay`), and the quarry precedent shows what extracting ahead of a consumer buys: a separate release cadence and a dependency edge that, months later, still is not drawn.
+  But loomyard is its only user, and the quarry precedent shows what extracting ahead of a consumer buys: a separate release cadence and a dependency edge that, months later, still is not drawn.
+  Three further Reed items sit in `manifest/roadmap.md` — `reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay` — and the doc must be precise that all three are in the **Someday** section, committed but unscheduled, not Planned.
+  They are therefore a weak churn argument and must not be presented as imminent change;
+  the verdict stands on the second-consumer gate alone, with the Someday items as a secondary note that the surface is not finished, not as its load-bearing reason.
   The likelier trigger than "another project wants tmux orchestration" is the daemon story — watchdog plus Slack relay plus mailbox turns Reed into something with a lifecycle of its own, and that is when a repo boundary starts paying.
-- Rejected: extract now (no consumer, active churn, quarry's outcome is the counter-evidence);
+- Rejected: extract now (no consumer, and quarry's outcome is the counter-evidence);
   never extract (the code genuinely is close, and saying "never" discards a real option).
 
 ### reed-preparation-work-is-worth-doing-regardless
 
-- Decision: the doc recommends three in-repo changes as good hygiene independent of any extraction, each a roadmap candidate: (a) decouple `logger`, (b) rename the provider-specific `CleanClaudeEnv`, (c) give `loomcli` a named interface seam so no consumer holds `*reedengine.Engine` concretely except Reed's own CLI.
+- Decision: the doc recommends three in-repo changes as good hygiene independent of any extraction, each a roadmap candidate: (a) decouple `logger`, (b) rename the provider-specific `CleanClaudeEnv`, (c) give `loomcli` a named interface seam so that no consumer *retains* a concrete `*reedengine.Engine` as a struct field except Reed's own CLI.
+  The wording matters: `burlercli/wiring.go:99,158` and `shuttlecli/cli.go:86,94` both call `reedengine.New` and so hold the concrete value transiently before handing it to `shuttleengine.NewRunner`, and a seam cannot change that — construction always yields the concrete type.
+  What (c) removes is the *retained* field, of which `internal/loomcli/cli.go:44` is the only instance.
 - Rationale: each has a standalone justification.
   (a) `logger` is the sole reason `lyxcwd` and `gitexec` appear in `go list -deps ./internal/reedengine` at all — Reed's own doc comment already admits this honestly — and Reed is the module the Told-Geometry Invariant is proudest of.
   (b) `reedengine.CleanClaudeEnv` is a Claude-provider-specific name in the public API of a package the Shuttle Provider-Seam Invariant says never references Claude specifics;
@@ -98,7 +110,7 @@ The deliverable is a design document, not code.
 ### fabric-verdict-do-not-extract-and-say-why-precisely
 
 - Decision: do not extract Fabric, and state the reason as a size-and-shape mismatch rather than a "not yet".
-  What is generic is a roughly 2–3k-loc paired-repo coordination kernel living inside a 14.6k-loc engine;
+  What is generic is a paired-repo coordination kernel of roughly **6,275 production lines** living inside a 14,610-line engine;
   getting it out is a rewrite-by-subtraction, not a move.
 - Rationale: measured, not assumed.
   Fabric's external contract is 74 identifiers across 15 direct production importers, and the names themselves are hub-layout vocabulary, not git-coordination vocabulary: `BoardDir`, `BoardDirName` (`"_board"`), `HubSuffix` (`"-HUB"`), `HubReservedNames`, `HubScratchDir`, `PortalsDir`, `PortalLink`, `LauncherDir`, `WarpLyxLink`, `StencilsDir`, `StencilBaseByStamp`, `CommitSeededStencils`.
@@ -112,7 +124,14 @@ The deliverable is a design document, not code.
 
 ### fabric-recommendation-is-an-in-repo-seam-not-a-repo-boundary
 
-- Decision: the doc recommends, as a roadmap candidate with its own justification, splitting Fabric's surface *inside the repo* into a named generic kernel and a named hub-layout half — and explicitly does not tie that recommendation to any extraction.
+- Decision: the doc recommends, as a roadmap candidate with its own justification, splitting Fabric's surface *inside the repo* into two named halves — **the pair kernel** and **the hub-layout surface** — and explicitly does not tie that recommendation to any extraction.
+- Depth, stated so the follow-up item is not left to guess: the split is **file grouping inside `package fabricengine` plus a matching section split in `doc.go`, and deliberately NOT sub-packages.**
+  Sub-packages are ruled out by the package's own design, not by taste: `Fabric` holds unexported `warp *gitrepo.Repo` and `weft *gitrepo.Repo` fields that `internal/fabricengine/doc.go` says are "reachable only from inside this package", and every hub-layout verb reaches them.
+  A sub-package boundary would force exporting both, which would hand every caller the uncoordinated single-sided access the Fabric Git Invariant exists to prevent.
+  So the deliverable of that follow-up item is a file-naming convention, a doc-comment section split, and an enforcement test asserting which files may reference which — not a directory move.
+  Naming beyond the two half-names is left to the follow-up item;
+  what this doc fixes is the boundary and the mechanism, because those are what determine whether the item is worth picking up at all.
+- The boundary is drawn on the measured file partition recorded in Technical context: roughly 6,275 production lines fall on the pair-kernel side and 8,321 on the hub-layout side.
 - Rationale: the split has value on its own terms.
   It makes the Fabric Git Invariant's actual perimeter visible, it isolates the stencil/pattern coupling as a thing to be questioned rather than a thing to be inherited, and it is the only route by which the generic kernel would ever become extractable.
   Framing it as extraction prep would make it hostage to a trigger that will probably never fire.
@@ -311,10 +330,22 @@ The numbers should be re-stated in the doc as measured facts with their method n
   Naive grep says otherwise;
   the matches in `lyxcwd/lyxcwd.go` and `lyxcwd/anchor.go` are doc-comment prose.
 - The genuinely generic core, for the doc's kernel sketch: `CloneHub` (two plain git URLs), the `Fabric` handle over two `gitrepo.Repo` values, the `Warp-SHA` trailer and rebuildable correspondence index, the uniform `<branch>` ↔ `<branch>-weft` naming rule, and the two-sided commit/pull/push/merge surface — all described in `internal/fabricengine/doc.go`.
+- **Measured file partition** for the pair-kernel / hub-layout-surface split, and the correction of an earlier estimate.
+  A first draft of this discussion guessed the generic kernel at "2–3k loc" with no method;
+  measured, it is more than twice that, and the doc must carry the measurement rather than the guess.
+  Pair-kernel side, 6,275 production lines over 28 files:
+  `wc -l internal/fabricengine/{clone,fabric,commit,commitweftpaths,pull,corrindex,trailer,branchname,weftgit,diff,status,ancestors,warpprobe,pushanchored,coalesce,checkout,snapshot,dirtiness,index,revert,merge,mergeerrors,mergeguards,mergelifecycle,mergepaths,mergestage,mergestate,mergestateactive}.go`.
+  Of that, the merge surface alone is 2,209 lines (the same command minus the eight `merge*` entries returns 4,066).
+  Hub-layout-surface side, 8,321 production lines over 39 files:
+  `wc -l internal/fabricengine/{portals,launchers,launcher_content,boardweft,hubscratch,stencilcommit,stencilhistory,junction,junctionnames,warplayout,warpjunction,weftwiring,anchor,slug,topology,config,template,list,worktreelist,prune,remove,add,cleanup,reconcile,destroy,drift,spawn,origin,ready,hook,gitexclude,classify,refscanner,warpbinding,warpclean,warpforward,unwire,bolt,mutation,doc}.go`.
+  The two sum to 14,596 against the package's 14,610, the shortfall being a small number of files this partition does not assign;
+  the doc must state the partition as one defensible assignment with its command, not as a canonical answer.
+  Note also that the 6,275-line side is still not shippable as-is: those files carry most of the 33 `*lyxcwd.Location` signatures, which is why the kernel is a rewrite-by-subtraction and not a move.
 
 ### The quarry precedent — measured
 
-- The standalone repo is at `/home/knatte/Code/quarry/wts/quarry`, module `github.com/Knatte18/quarry`.
+- The module path is `github.com/Knatte18/quarry`, and that is what the doc must cite as the reference.
+  The layout and façade observations below were read off a local checkout, and the doc must say so, because a machine-local path (`/home/knatte/Code/quarry/wts/quarry` in this worktree's environment) is the one block of evidence no other reader can re-verify from this repo alone.
 - Layout: `quarry/` (public façade), `glyph/` (separately importable, cgo-free leaf), `internal/{cgoguard,cli,engine,gitsrc,mcpserver,repopath}`, `cmd/quarry`, `cmd/quarry-mcp`.
 - The façade re-exports internal types by alias (`type Symbol = engine.Symbol`, `const KindFunction = engine.KindFunction`) and keeps rendering separate from the model (`RenderResolveJSON`/`RenderResolveText`).
   A `Repo` handle is obtained via `quarry.Open(root)`.
@@ -387,7 +418,12 @@ Verification is entirely mechanical and consists of three checks:
 Scenarios a reviewer of the finished doc should confirm are covered, in addition to the above:
 
 - Both modules receive an explicit, unhedged extract-or-not verdict with a stated trigger condition, not a "revisit later".
-- Every quantitative claim names the command that produced it.
+- Every quantitative claim names the command that produced it, and no number appears without one.
+  The doc also carries the comment-prose caveat once, since two grep-derived figures in this discussion's own first draft were wrong for exactly that reason.
+- The Fabric split recommendation names both halves and states its depth (file grouping plus a `doc.go` section split, not sub-packages) with the reason sub-packages are ruled out.
+- The doc states its own entry-less-on-landing disposition and its deletion trigger, so an orphan designs file reads as intentional.
+- No claim rests on a machine-local path;
+  quarry is cited by module path with its layout observations marked as read off a local checkout.
 - The four corrections to the task's background notes are stated as corrections, with evidence: gitkit is not a Fabric dependency;
   Fabric's `lyxcwd` coupling is structural rather than incidental;
   the missing-interface framing misdiagnoses Fabric's blocker;
@@ -401,9 +437,9 @@ Scenarios a reviewer of the finished doc should confirm are covered, in addition
   two docs would duplicate them.
 - **Q:** Does a doc about two shipped modules belong under `manifest/designs/`, given the Documentation Lifecycle scopes that directory to unbuilt work? **A:** [auto-pick] Yes. **Why:** the doc describes an unbuilt possible extraction and its prerequisites, not the shipped modules — whose design already lives in their package doc comments.
 - **Q:** What is the extract-or-not verdict for Reed? **A:** [auto-pick] Do not extract now;
-  gate on a second consumer or on Reed becoming a service, and do the cheap in-repo preparation meanwhile. **Why:** the contract is small enough to freeze (15 identifiers, 9 importers), but there is no second consumer, three roadmap items still change it, and quarry shipped standalone months ago with loomyard's `go.mod` still carrying no dependency on it.
+  gate on a second consumer or on Reed becoming a service, and do the cheap in-repo preparation meanwhile. **Why:** the contract is small enough to freeze (13 package-level identifiers, 9 importers), but there is no second consumer, three Someday roadmap items say the surface is not finished, and quarry shipped standalone months ago with loomyard's `go.mod` still carrying no dependency on it.
 - **Q:** What is the extract-or-not verdict for Fabric? **A:** [auto-pick] Do not extract, on a size-and-shape mismatch rather than a "not yet". **Why:** 74 external identifiers across 15 importers, 33 signatures parameterized on `*lyxcwd.Location`, hub/board/portal/launcher/stencil vocabulary throughout the public names, and direct imports of `pattern` and `stencilstore`;
-  the generic part is a ~2–3k-loc kernel inside a 14.6k-loc engine, so extracting it is a rewrite-by-subtraction with no consumer to pay for it.
+  the generic part is a measured 6,275-line pair kernel inside a 14,610-line engine, still carrying most of the 33 `*lyxcwd.Location` signatures, so extracting it is a rewrite-by-subtraction with no consumer to pay for it.
 - **Q:** Where does the strand mailbox/messaging concept live? **A:** [auto-pick] A sibling module, not inside Reed. **Why:** Reed's own package doc defines it as the dumb carrier that reads no strand field semantically, a mailbox must read addresses semantically, and Reed's `Geometry` carries no slug, branch or role to address by.
 - **Q:** What layout would a standalone Reed repo take? **A:** [auto-pick] Mirror quarry — root `reed/` façade, separately-importable `render/` leaf, `internal/` including the CLI, `cmd/reed`. **Why:** quarry is the project's one completed extraction, its façade re-exports internal types by alias so no narrow interface had to be invented up front, and `reedengine/render` is already the exact analogue of quarry's `glyph` (773 lines, zero internal deps, `fmt` and `strings` only).
 - **Q:** Should the seam be published by Reed or defined by consumers? **A:** [auto-pick] Reed publishes named slices with compile-time proofs;
@@ -411,7 +447,9 @@ Scenarios a reviewer of the finished doc should confirm are covered, in addition
   The two overlap on three methods, which is correct: a slice describes one consumer's dependency, not a partition of the type.
 - **Q:** How does a standalone Reed shed `internal/logger`? **A:** [auto-pick] An injected `*slog.Logger` defaulting to a discard handler. **Why:** `logger` is the sole edge pulling `lyxcwd` and `gitexec` into Reed's transitive set;
   `log/slog` is stdlib, so the swap costs no dependency and loomyard keeps its own sink by passing a handler.
-- **Q:** What does the doc recommend for Fabric, given the no-extract verdict? **A:** [auto-pick] An in-repo split into a named generic kernel and a named hub-layout half, justified on its own terms and explicitly not framed as extraction prep. **Why:** it makes the Fabric Git Invariant's perimeter visible and isolates the stencil/pattern coupling as a question rather than an inheritance;
+- **Q:** How deep does the Fabric split recommendation go — sub-packages, file grouping, or documentation sectioning? **A:** [auto-resolved, discussion-review r2 gap] File grouping inside `package fabricengine` plus a matching `doc.go` section split and an enforcement test;
+  explicitly not sub-packages. **Why:** `Fabric`'s unexported `warp`/`weft` `*gitrepo.Repo` fields are documented as reachable only from inside the package, and every hub-layout verb reaches them — a sub-package boundary would force exporting both and hand callers exactly the uncoordinated single-sided access the Fabric Git Invariant exists to prevent.
+- **Q:** What does the doc recommend for Fabric, given the no-extract verdict? **A:** [auto-pick] An in-repo split into a named pair kernel and a named hub-layout surface, justified on its own terms and explicitly not framed as extraction prep. **Why:** it makes the Fabric Git Invariant's perimeter visible and isolates the stencil/pattern coupling as a question rather than an inheritance;
   tying it to extraction would make a justified refactor hostage to a trigger that may never fire.
 - **Q:** What are creel's addressing, message model, transport and sender universe? **A:** [auto-pick] Address `<worktree-slug>/<role>` resolved to a GUID at delivery time;
   durable FIFO inbox per address;
