@@ -143,8 +143,8 @@ this subsection remains the durable copy.
 
 ### Plan-Validate detail
 
-`lyx loom validate-plan` makes the same two leading `planparser` calls this row's `ShedProducer` makes, in the same order — `planparser.PlanDir`, then `planparser.ParsePlan` — and then the same third call, chosen from the identical pair: `planparser.ValidateFormat` when the row's `require_approved` config key is absent (matched by the verb's default, no `--require-approved` flag), or `planparser.Validate` when it is `true` (matched by the verb's `--require-approved` flag).
-The verb and the row call the identical `planparser` functions in each mode, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
+`lyx loom validate-plan` makes the same two leading `planparser` calls this row's `ShedProducer` makes, in the same order — `planparser.PlanDir`, then `planparser.ParsePlan` — and then the same third call, chosen from the identical `planglyph` pair: `planglyph.ValidateFormat` when the row's `require_approved` config key is absent (matched by the verb's default, no `--require-approved` flag), or `planglyph.Validate` when it is `true` (matched by the verb's `--require-approved` flag).
+The verb and the row call the identical `planglyph` functions in each mode, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
 The parity claim is now that the verb reaches every mode the row set uses: `Plan-Validate`'s format-only mode and `Plan-Revalidate`'s approval-enforcing mode both have a matching verb invocation.
 
 ### Plan-Review rubric
@@ -160,7 +160,7 @@ The subject under review is the current plan (`_lyx/plan/00-overview.md` and the
 Do not flag any of the following as a finding:
 
 - **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The seventeen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — sixteen of the seventeen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead;
+  Every check ID `contracts/specs/loom-plan-spec.md`'s own "Validation checks" section lists — see that section for the current, authoritative list rather than a count pinned here, which goes stale on the next check added — is enforced deterministically, all but `plan-unapproved` upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead;
   re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.

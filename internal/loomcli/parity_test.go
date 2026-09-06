@@ -14,6 +14,7 @@ package loomcli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -166,6 +167,7 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 		"format: 1\n" +
 		"approved: true\n" +
 		"root: \n" +
+		"language: none\n" +
 		"---\n\n" +
 		"# Plan: format-invalid fixture\n\n" +
 		"## Card Index\n\n" +
@@ -189,6 +191,67 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 	}}
 }
 
+// glyphRepoPlanFixture writes a syntactically complete, one-card language: go plan under
+// <anchorPath>/_lyx/plan/ whose sole card's Create group targets createTarget and, when useTarget
+// is non-empty, whose Uses: field also names useTarget, and returns a *loomCLI wired with
+// anchorPath and worktreeRoot -- duplicated from internal/loomcli/validate_test.go's own
+// glyphPlanFixture per the duplicate-test-helpers-rather-than-share-them Shared Decision, extended
+// with the optional Uses: field this parity table's fifth and sixth fixtures both need to reach the
+// resolve-backed half without the Uses target also tripping the Create-side inversion.
+func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, useTarget string) *loomCLI {
+	t.Helper()
+
+	planDir := filepath.Join(anchorPath, "_lyx", "plan")
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+
+	overview := "---\n" +
+		"format: 5\n" +
+		"approved: true\n" +
+		"language: go\n" +
+		"---\n\n" +
+		"# Plan: minimal glyph parity fixture\n\n" +
+		"## Card Index\n\n" +
+		"1 — validate-fixture — a minimal fixture card\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+
+	usesBlock := ""
+	if useTarget != "" {
+		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", useTarget)
+	}
+	card := fmt.Sprintf(
+		"# Card 1 — validate-fixture\n\n**Create:**\n- `%s`\n%s\n**Intent:** minimal fixture card for validate-plan tests.\n\n**Commit:** `1: validate-fixture`\n",
+		createTarget, usesBlock,
+	)
+	if err := os.WriteFile(filepath.Join(planDir, "01-validate-fixture.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	return &loomCLI{env: shedrecipe.Env{
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
+	}}
+}
+
+// writeGlyphRepoForParityTest writes files (keyed by repository-relative path) under dir --
+// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo per the
+// duplicate-test-helpers-rather-than-share-them Shared Decision.
+func writeGlyphRepoForParityTest(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for rel, content := range files {
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(full), err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) failed: %v", full, err)
+		}
+	}
+}
+
 // planParityCase is one fixture for TestGateParity_PlanValidate: build populates anchorPath and
 // worktreeRoot as needed and returns the single *loomCLI both the producer and the verb read their
 // paths from, so both halves run over the exact same on-disk fixture. want carries the verdict both
@@ -207,7 +270,7 @@ type planParityCase struct {
 //
 // The Stuck_Unapproved-turned-Unapproved cell is the load-bearing one: in the flag-absent mode it
 // must expect done, not stuck, because that is exactly what proves the F7 deadlock is gone --
-// planparser.ValidateFormat never runs the plan-unapproved check, so an unapproved plan is a clean
+// planglyph.ValidateFormat never runs the plan-unapproved check, so an unapproved plan is a clean
 // pre-review pass. The same fixture in --require-approved mode still expects stuck, because that
 // mode is what Plan-Revalidate uses to confirm the flag landed after review.
 func TestGateParity_PlanValidate(t *testing.T) {
@@ -240,6 +303,49 @@ func TestGateParity_PlanValidate(t *testing.T) {
 			name: "NoPlanDirectory",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				return &loomCLI{env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot}}
+			},
+			wantFlagAbsent:    verdictError,
+			wantRequireApprov: verdictError,
+		},
+		{
+			// GlyphNotResolving covers the resolve-backed half the move onto planglyph introduces: a
+			// Uses: entry naming a unit that exists but a member that does not resolves the blocking
+			// glyph-not-found finding, in both modes, over a real quarry-openable worktreeRoot. The
+			// Create target is its own brand-new, informational-only unit, so the blocking verdict
+			// this case asserts is attributable to the Uses: side alone.
+			name: "GlyphNotResolving",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+				return glyphRepoPlanFixture(t, anchorPath, worktreeRoot, "newpkg2#Baz", "sub#Missing")
+			},
+			wantFlagAbsent:    verdictStuck,
+			wantRequireApprov: verdictStuck,
+		},
+		{
+			// InformationalOnly covers the cell that would have caught the bounce loop had it
+			// existed before the move: a Create target introducing a brand-new package produces only
+			// the informational create-new-unit finding, and both sides must read that severity the
+			// same way, reaching done in both modes rather than bouncing on a condition Plan-Write
+			// cannot fix.
+			name: "InformationalOnly",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+				return glyphRepoPlanFixture(t, anchorPath, worktreeRoot, "newpkg3#Qux", "")
+			},
+			wantFlagAbsent:    verdictDone,
+			wantRequireApprov: verdictDone,
+		},
+		{
+			// QuarryUnavailable points both sides at a worktreeRoot that is not a repository, under
+			// language: go rather than language: none -- the declaration is what makes this fixture
+			// distinguishable from the four language: none fixtures above, which share the same kind
+			// of non-repository root and must stay clean. Both sides must report the same
+			// infrastructure-error disposition, proving it is symmetric across the pair rather than
+			// merely implemented twice.
+			name: "QuarryUnavailable",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				badRoot := filepath.Join(t.TempDir(), "does-not-exist")
+				return glyphRepoPlanFixture(t, anchorPath, badRoot, "sub#Foo", "")
 			},
 			wantFlagAbsent:    verdictError,
 			wantRequireApprov: verdictError,

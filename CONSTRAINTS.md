@@ -231,7 +231,7 @@ In production code, `internal/summaryparser` is the sole declarer of the final-s
 
 A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode.
 
-- Discussion-Validate ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Validate ↔ `validate-plan`: `planparser.ValidateFormat`. Plan-Revalidate ↔ `validate-plan --require-approved`: `planparser.Validate`.
+- Discussion-Validate ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Validate ↔ `validate-plan`: `planglyph.ValidateFormat`. Plan-Revalidate ↔ `validate-plan --require-approved`: `planglyph.Validate`.
 - Adding a mechanical gate means adding its verb and its parity check in the same task.
 
 ## Recipe-Format Sole-Parser Invariant
