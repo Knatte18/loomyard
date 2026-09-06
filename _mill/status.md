@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: reed-fabric-standalone-api-design
 branch: reed-fabric-standalone-api-design
 plan: _mill/plan
@@ -27,6 +27,7 @@ implementing  '2026-09-06T13:31:51Z'
 approved-shared-frame-and-reed  '2026-09-06T13:38:01Z'
 approved-fabric-creel-and-close  '2026-09-06T13:43:01Z'
 holistic-reviewing  '2026-09-06T13:43:48Z'
+holistic-fixing  '2026-09-06T13:47:29Z'
 ```
 
 ## Batches
