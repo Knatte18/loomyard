@@ -48,9 +48,9 @@ implementing  '2026-09-06T11:46:04Z'
 ```yaml
 batches:
   - name: quarry-dependency
-    state: pending
-    implementer_session: 3eb01588-7ff8-4d2b-84cc-41964efea8e7
-    start_sha: 005769bcc55e222b4e5e93220658deb83b112e0e
+    state: running
+    implementer_session: 6989065b-5b38-4441-854b-362989c6c323
+    start_sha: 0d51e7d228d6d003b121fc38f0cb23480007cfa4
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-06T11:38:01Z'
   - name: planparser-alphabet
