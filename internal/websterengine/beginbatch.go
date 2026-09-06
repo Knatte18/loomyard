@@ -99,6 +99,35 @@ type BeginResult struct {
 	Advisories []string
 }
 
+// completedCards returns every card belonging to a batch that has already reached a terminal
+// classification, in batches' own order.
+//
+// It is what scopes the dispatch-boundary re-resolution (and record-batch's drift detection) to work
+// that has NOT landed yet. A plan describes intended change, so a card already built necessarily
+// contradicts the tree it would otherwise be re-resolved against — its Create target now exists, its
+// Delete target is gone, its Rename's old side no longer resolves — and reporting that as a plan
+// defect wedged every multi-batch plan carrying one of those card types.
+// exclude, when non-zero, additionally counts that batch as completed: record-batch calls this while
+// the batch it is recording is still non-terminal, and that batch's own work has just landed.
+func completedCards(batches []batcher.Batch, st *State, exclude int) []planparser.Card {
+	if st == nil {
+		return nil
+	}
+
+	var done []planparser.Card
+	for _, b := range batches {
+		number, _ := batchIdentity(b)
+		if number != exclude {
+			bs, ok := st.Batches[number]
+			if !ok || bs == nil || !bs.Terminal {
+				continue
+			}
+		}
+		done = append(done, b.Cards...)
+	}
+	return done
+}
+
 // findBatch returns the batcher.Batch in batches whose identity matches number.
 func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	for _, b := range batches {
@@ -187,7 +216,9 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// below, so this adds no path derivation and no internal/lyxcwd import. An infrastructure error
 	// (errors.Is(err, planglyph.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
 	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
-	resolveFindings, err := planglyph.ValidateFormat(deps.Plan, deps.Geom.WorktreeRoot)
+	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
+	// re-resolving it reports the plan working correctly as a blocking defect.
+	resolveFindings, err := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, completedCards(deps.Batches, deps.State, 0))
 	if err != nil {
 		return nil, err
 	}

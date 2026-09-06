@@ -713,3 +713,63 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 		}
 	})
 }
+
+// TestBeginBatch_AlreadyBuiltCardsAreNotReResolved proves the dispatch-boundary re-resolution is
+// scoped to work that has not landed. A plan describes intended change, so a card already built
+// contradicts the tree by design: its Create target now exists, which the Create inversion reports
+// as blocking create-already-exists. Re-resolving the whole plan on every batch therefore wedged
+// every multi-batch plan carrying a Create, Delete or Rename card at its second batch.
+func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
+	fx := newBeginFixture(t)
+	// A symbol that genuinely exists in the worktree, so card 1's Create target resolves found.
+	commitFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+
+	built := planparser.Card{
+		Number:         1,
+		Slug:           "json-flag",
+		Type:           planparser.CardTypeCreate,
+		TypeLabelCount: 1,
+		HasType:        true,
+		HasIntent:      true,
+		Intent:         "placeholder intent",
+		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
+		Targets:        []string{"sub#Built"},
+	}
+	pending := planparser.Card{
+		Number:           2,
+		Slug:             "list-tests",
+		Type:             planparser.CardTypeEdit,
+		TypeLabelCount:   1,
+		HasType:          true,
+		HasIntent:        true,
+		Intent:           "placeholder intent",
+		HasImpactSummary: true,
+		ImpactSummary:    "touches the one symbol card 1 created",
+		TargetGroups:     []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"sub#Built"}}},
+		Targets:          []string{"sub#Built"},
+	}
+	fx.Deps.Plan.Cards = []planparser.Card{built, pending}
+	fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{built}}, {Cards: []planparser.Card{pending}}}
+
+	t.Run("card 1 still pending blocks, since its Create target already exists", func(t *testing.T) {
+		fx.Deps.State.Batches = map[int]*websterengine.BatchState{}
+
+		_, err := websterengine.BeginBatch(fx.Deps, 2)
+		if !errors.Is(err, websterengine.ErrPlanDrifted) {
+			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted) while card 1 is still pending", err)
+		}
+		if !strings.Contains(err.Error(), "create-already-exists") {
+			t.Errorf("BeginBatch() error = %v; want it to name create-already-exists", err)
+		}
+	})
+
+	t.Run("card 1 already built dispatches, since its own success is not a defect", func(t *testing.T) {
+		fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+			1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
+		}
+
+		if _, err := websterengine.BeginBatch(fx.Deps, 2); err != nil {
+			t.Fatalf("BeginBatch() error = %v; want nil once card 1's batch is terminal", err)
+		}
+	})
+}

@@ -166,6 +166,19 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
 }
 
+// addPendingCard appends a second card to fx's plan, in its own second batch that has no BatchState
+// and is therefore not terminal, referencing uses.
+//
+// Drift is defined against the REMAINING plan, and the batch being recorded is not remaining — its
+// work is exactly what the delta reports. A drift fixture therefore needs a genuinely pending card
+// to hold the reference; putting it on batch 1's own card tests a card drifting against itself,
+// which is never drift.
+func addPendingCard(fx *recordFixture, uses []string) {
+	pending := planparser.Card{Number: 2, Slug: "pending", Title: "pending", Intent: "the not-yet-built card", Uses: uses}
+	fx.Deps.Plan.Cards = append(fx.Deps.Plan.Cards, pending)
+	fx.Deps.Batches = append(fx.Deps.Batches, batcher.Batch{Cards: []planparser.Card{pending}})
+}
+
 // writeReport seeds fx's reportsDir with a batch-report YAML file for batch
 // 1 at its plan-format-pinned filename, using content verbatim.
 func writeReport(t *testing.T, reportsDir, content string) {
@@ -670,7 +683,7 @@ func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
 	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
 	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
-	fx.Deps.Plan.Cards[0].Uses = []string{"internal/foo#WillGoAway"}
+	addPendingCard(fx, []string{"internal/foo#WillGoAway"})
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrCardNotDone) {
@@ -698,7 +711,7 @@ func TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock(t *testing.T) {
 	// and offers it as a candidate instead.
 	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int {\n\ttotal := 1\n\ttotal += 0\n\treturn total\n}\n", "01.3: rename and rewrite")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
-	fx.Deps.Plan.Cards[0].Uses = []string{"internal/foo#WillMove"}
+	addPendingCard(fx, []string{"internal/foo#WillMove"})
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -715,6 +728,40 @@ func TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock(t *testing.T) {
 	}
 	if !surfaced {
 		t.Errorf("RecordResult.Warnings = %v; want the informational rename-candidate finding surfaced there", result.Warnings)
+	}
+}
+
+// TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift proves the batch being recorded is
+// excluded from drift detection. Its work is exactly what the delta reports, so a Delete card
+// referencing the symbol it just deleted was reporting its own success as
+// plan-references-deleted-symbol — and no Delete card could ever be recorded at all.
+func TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
+	fx.Deps.State.Batches[1].StartSHA = withSymbol
+	if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
+		t.Fatalf("remove impl.go: %v", err)
+	}
+	mustGit(t, fx.Worktree, "add", "-A")
+	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
+	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+
+	// The card being recorded IS the Delete card, and it names the symbol its own batch removed.
+	fx.Deps.Plan.Cards[0].Targets = []string{"internal/foo#WillGoAway"}
+	fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+		{Type: planparser.CardTypeDelete, Refs: []string{"internal/foo#WillGoAway"}},
+	}
+	fx.Deps.Batches[0].Cards = fx.Deps.Plan.Cards[:1]
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil — a Delete card's own deletion is its success, never drift", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
 }
 

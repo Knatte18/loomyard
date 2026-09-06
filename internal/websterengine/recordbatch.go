@@ -257,7 +257,14 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// deleted-symbols-still-referenced signal. actualHead is the same verified head SHA already
 	// cross-checked above against the worktree's actual HEAD, threaded through as the triggering
 	// SHA every exact-tier repair's own amendment records.
-	driftFindings, err := planglyph.DetectDrift(deps.Plan, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
+	// Drift runs against the REMAINING plan, which is DetectDrift's own stated signal: the delta's
+	// deleted symbols intersected with what the plan still has to do. Every already-built card is
+	// excluded, and so is THIS batch's own — its work is exactly what the delta reports, so without
+	// the exclusion a Delete card's own successful deletion came back as
+	// plan-references-deleted-symbol against the very card that asked for it, and no Delete card
+	// could ever be recorded.
+	pending := planglyph.PendingPlan(deps.Plan, completedCards(deps.Batches, deps.State, batchNumber))
+	driftFindings, err := planglyph.DetectDrift(pending, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}

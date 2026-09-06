@@ -90,7 +90,7 @@ func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
 	plan := minimalPlan(t, t.TempDir())
 	nonRepo := t.TempDir() + "/does-not-exist"
 
-	got, err := resolvePass(plan, nonRepo)
+	got, err := resolvePass(plan, nonRepo, nil)
 	if got != nil {
 		t.Errorf("resolvePass(...) findings = %+v; want nil under language: none", got)
 	}
