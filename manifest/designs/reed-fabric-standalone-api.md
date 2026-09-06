@@ -492,9 +492,11 @@ No follow-up task is proposed.
 
 - Whether any roadmap entry is warranted at all — the decision this document exists to inform, and whose negative outcome deletes this document.
 - The final identifier name for the renamed environment-cleaning function
-  (`StripEnvKeys`'s shape is fixed; its exact name is not).
+  (`StripEnvKeys`'s shape is fixed;
+  its exact name is not).
 - The two half-names for the Fabric split
-  (the pair-kernel/hub-layout boundary is fixed; naming beyond that is not).
+  (the pair-kernel/hub-layout boundary is fixed;
+  naming beyond that is not).
 - The durable address registry the mailbox section stops short of designing.
 
 ## Related
