@@ -71,7 +71,46 @@ per that prompt's "Log as you go" requirement.
   `lyx quarry resolve services/api#main` → `found` (real signature/doc returned correctly).
   `lyx quarry resolve services/api#Greet` → `{"error":"services/api#Greet: not_found","ok":false}` (`Greet`
   does not exist yet, as expected before card 1 lands).
-- **Continuing to monitor Plan-Write and beyond; this section will be appended as the run progresses.**
+- **Plan-Write's output, read in full:** two cards, `01-format-greeting-helper.md` (`**Create:** -
+  \`plan:services/api#FormatGreeting\` -> \`func FormatGreeting(name string) string\` - \`services/api/main_test.go\``)
+  and `02-main-greeting-wiring.md` (`**Edit:** - \`services/api#main\`` / `**Uses:** -
+  \`plan:services/api#FormatGreeting\``) — the FIRST real, live, `Plan-Write`-authored use of the `plan:` handle
+  Create-declaration grammar, ever. `Plan-Validate → done` on the very first attempt: the plan cleared the
+  initial gate cleanly.
+- **`Plan-Review` (round 1 seed, then judge):** the segment's own `round-1-focus.md` independently zeroed in on
+  the exact same structural question I had already flagged in F-plan1 (see below) — whether the plan's own
+  claim that "this format cannot express add-then-rename" is actually true against the spec — and explicitly
+  instructed the reviewer to verify it against source rather than accept it. The live judge round
+  (`round-1-review.md`) did exactly that, traced it to `internal/planglyph/handle.go:120`
+  (`renameDeclSource`), confirmed the plan's own rationale was correct, and said so explicitly rather than
+  raising a false finding — see F-plan2 below for the near-miss this surfaced. Round 1 raised three genuine,
+  unrelated findings (1 MEDIUM: card 1 had no per-card `Verify:` so its own bundled test never ran until the
+  the plan-level suite, which itself passed vacuously without a test file present; 2 LOW: same vacuous-pass
+  gap at the plan level, and a missing worktree-cleanliness check) — all three correctly fixed by the same
+  round's `Plan-Burler` fixer pass (verified myself: the fixes are real, targeted, and match the findings).
+  Round 2's judge pass verified the fixes against the actual files (not the fixer's own account) and returned
+  **APPROVED**.
+- **`Plan-Revalidate → done`, `Batchifier → done`** — both mechanical gates passed cleanly, no bounces.
+- **`Webster` — the actual primary-mission moment.** A real Master session spawned (confirmed via `tmux
+  list-panes`: `✳ Webster master orchestrator for lyx plan run`) and drove BOTH real batches to completion via
+  its own real `begin-batch`/fork/`await-batch`/`record-batch` loop — polled via `lyx webster status`, which
+  showed `current_batch: 2` (batch 1 already `"status":"done","terminal":true"`) partway through, then both
+  batches `done` shortly after. **Confirmed live, by reading the actual plan files after batch 1's
+  `record-batch` ran:** `01-format-greeting-helper.md`'s `plan:services/api#FormatGreeting` Create declaration
+  collapsed to the plain glyph `services/api#FormatGreeting` (exactly the "once bound" behavior the spec
+  describes), AND `02-main-greeting-wiring.md`'s `**Uses:** - \`plan:services/api#FormatGreeting\`` was ALSO
+  rewritten to the plain glyph — confirming `BindHandles`' single `RewriteRefs` call correctly propagated the
+  substitution to every referencing card, not just the declaring one, for real, for the first time ever
+  through the real orchestrator (not the standalone probe harness round 1 used). `git log` confirms both
+  commits landed with the exact `N: <name>` subject convention (`f235810 1: format-greeting-helper`,
+  `ed1263a 2: main-greeting-wiring`), and `services/api/main.go`'s actual diff matches the plan's cards
+  exactly. The plan-level `## verify:` integration suite then ran and reported `status: OK` in
+  `_lyx/webster/reports/integration.yaml` with `head_sha` matching the real final HEAD.
+- **Continuing to monitor through `Webster-Review`/`Publish`/`Finalize`; this section will be appended as the
+  run progresses.** (Pre-emptively edited `_lyx/config/landing.yaml` in the sandbox hub — an operator-owned
+  test-fixture config file, not loom's own source — setting `require_pr_to_base: []` so `Publish` direct-merges
+  into this disposable sandbox hub's own `main` rather than opening a real pull request against the public
+  `github.com/Knatte18/lyx-test` repository if the run reaches that far.)
 
 ## Findings — provisional, appended as spotted (severity/CONFIRMED-PLAUSIBLE finalized in the final report)
 
