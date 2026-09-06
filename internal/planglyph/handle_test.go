@@ -462,6 +462,39 @@ func TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard(t *testing
 	if strings.Contains(got2, "plan:sub#New") || !strings.Contains(got2, "sub#New") {
 		t.Errorf("card 2 (referencing) was not rewritten to the plain glyph: %s", got2)
 	}
+
+	// The declaring card's own bullet collapses to a plain ref rather than keeping the arrow.
+	// Substituting in place left "`sub#New` -> `func New() {}`", which is no longer a handle
+	// declaration but still carries the arrow, so the card parsed with a blocking handle-malformed
+	// and an empty Create target list -- and every later begin-batch refused the plan.
+	if !strings.Contains(got1, "- `sub#New`\n") {
+		t.Errorf("card 1's declaration bullet did not collapse to a plain ref: %s", got1)
+	}
+	if strings.Contains(got1, "->") {
+		t.Errorf("card 1 kept the declaration arrow after binding: %s", got1)
+	}
+
+	// The property that actually matters: the bound plan still parses, with the declaring card's
+	// Create group naming the real glyph and reporting no finding of its own.
+	reparsed, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan after binding returned error: %v", err)
+	}
+	for _, e := range planparser.ValidateFormat(reparsed, dir) {
+		switch e.Check {
+		case "handle-malformed", "card-field-empty", "handle-unreferenced", "handle-dangling":
+			t.Errorf("bound plan reports %s: %s", e.Check, e.Detail)
+		}
+	}
+	var createRefs []string
+	for _, g := range reparsed.Cards[0].TargetGroups {
+		if g.Type == planparser.CardTypeCreate {
+			createRefs = append(createRefs, g.Refs...)
+		}
+	}
+	if len(createRefs) != 1 || createRefs[0] != "sub#New" {
+		t.Errorf("card 1's Create refs after binding = %v; want exactly [sub#New]", createRefs)
+	}
 }
 
 // TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither covers two handles on one card

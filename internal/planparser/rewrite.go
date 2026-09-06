@@ -38,6 +38,8 @@ var singleRefLineRe = regexp.MustCompile("^`([^`]+)`$")
 // to contain the same string is never rewritten. A card file whose bytes do not actually change is
 // left byte-identical (not even rewritten with identical bytes), and an empty or fully-unmatched
 // subs map writes nothing at all.
+// The one shape-changing case -- a Create declaration bullet collapsing to a plain ref when its
+// handle binds to a real glyph -- is documented on rewriteBulletLine.
 func RewriteRefs(planDir string, subs map[string]string) error {
 	if len(subs) == 0 {
 		return nil
@@ -111,6 +113,19 @@ func cardLexemeSubs(plan *Plan, cardKey string, subs map[string]string) map[stri
 // "- `old` -> `new`" pair -- per lexemeSubs, and reports whether it changed anything. A line that is
 // not one of these two shapes, or whose payload carries no entry in lexemeSubs, reports false and
 // returns line unmodified.
+//
+// One arrow bullet is rewritten to a DIFFERENT shape rather than in place: a Create group's
+// declaration bullet, `plan:<handle>` -> `<declaration head>`, whose handle is being bound to its
+// real glyph. Substituting in place there leaves `<glyph>` -> `<declaration head>`, which is no
+// longer a handle declaration but still carries the arrow, so parseCreateField routes it to
+// CreateRaw and the card parses with a blocking handle-malformed AND an empty target list
+// (card-field-empty) -- observed live, and it wedged every batch after the one that bound the
+// handle. The declaration head existed only to compute the glyph that has now been computed, so the
+// bullet collapses to the plain `- <glyph>` ref every other Create target already uses.
+//
+// The collapse is deliberately narrow: it requires the LEFT token to be a handle whose replacement
+// is not one. Canonicalization substitutes one handle for another (still `plan:`-prefixed) and does
+// not collapse; a Rename pair's left side is a glyph by contract and does not collapse either.
 func rewriteBulletLine(line string, lexemeSubs map[string]string) (string, bool) {
 	trimmed := strings.TrimSpace(line)
 	if !strings.HasPrefix(trimmed, "- ") {
@@ -131,6 +146,9 @@ func rewriteBulletLine(line string, lexemeSubs map[string]string) (string, bool)
 		}
 		if !newChanged {
 			newNew = newRef
+		}
+		if oldChanged && strings.HasPrefix(oldRef, HandlePrefix) && !strings.HasPrefix(newOld, HandlePrefix) {
+			return leading + "- `" + newOld + "`", true
 		}
 		return leading + "- `" + newOld + "` -> `" + newNew + "`", true
 	}
