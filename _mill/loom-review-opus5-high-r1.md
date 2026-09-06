@@ -180,6 +180,62 @@ On scenario 4's "prevents blind parallel dispatch": **not provable as a prevente
   Mitigation actually taken: the Plan-Validate/Plan-Revalidate rows and the `lyx webster validate` verb call the **identical** `planglyph` functions by the Gate Self-Check Parity Invariant (`CONSTRAINTS.md`), and `begin-batch`/`record-batch` are the same processes Master itself invokes — so every row of the glyph surface was driven by its own real code path.
 - **The Claude fork-transcript audit** in runs 4–6 was seeded as a fixture rather than produced by a real Master session. It is upstream of and orthogonal to every glyph mechanism under review; the plan, git history, quarry resolve/delta, and both bracket verbs were all real.
 
+### Post-fix live re-verification (runs 7–10, on a fresh fixture)
+
+Every scenario was re-driven after the fixes, on a rebuilt fixture repository (`<scratch>/sbx2`, base `48ff7a69f`) against a freshly deployed binary. Teardown at the end removed the fixture repos, the three derived standalone state directories, and the seeded transcript fixtures.
+
+**Run 7 — scenario 4, all five branches in one plan.** `lyx webster validate` reported exactly:
+
+| severity | check | card |
+|---|---|---|
+| informational | `create-new-unit` | `1-new-unit-handle` — **now fires for a handle** (F14) |
+| — (no finding) | handle Create in an existing unit | `2-existing-unit-handle` |
+| blocking | `create-already-exists` | `3-already-exists-handle` — **now fires for a handle** (F14) |
+| blocking | `containment-file-overlap` | `4-member-edit` |
+| blocking | `containment-unit-overlap` | `4-member-edit` |
+
+**Run 8 — scenarios 1 and 2, a three-batch plan driven to completion.** Card 1 creates through a `plan:` handle, card 2 is a declared `Rename` whose to-side is a handle, card 3 uses both.
+
+- `begin-batch 1` ok, carrying the informational `create-new-unit` as an **advisory** rather than a refusal.
+- `record-batch 1` ok/done. Card 1's declaration collapsed to `` - `internal/gamma#Greet` ``; card 2's `Uses` bound to the same real glyph; **no `scope-outside-plan` false positive** for the created symbol (F11).
+- `begin-batch 2` ok — the wall that used to be `ErrFingerprintMismatch` then `handle-malformed`/`card-field-empty` (F3, F4, F17).
+- `record-batch 2` ok/done, and **card 2's `Old` side survived intact** with **no amendment file created** — gate one recognised the card's own declared rename (F2).
+- `begin-batch 3` ok, `record-batch 3` ok/done. `lyx webster status` reports all three batches `terminal: true, status: done`, and the fixture's `go build ./...` passes.
+
+**This is the sequence that had never completed before.**
+
+**Run 9 — scenario 3, all three sub-cases, sequentially on one fixture.**
+
+- **3a exact-tier auto-repair:** an out-of-band pure identifier rename of a symbol a pending card references → `record-batch` ok/done, the pending card auto-rewritten to `internal/alpha#Drifted`, exactly one `Tier: exact` amendment appended.
+- **3b evidence tier:** the same symbol renamed *and* rewritten so quarry classified it a candidate → `record-batch` **ok/done** (was `ErrCardNotDone`), the blocking `plan-references-deleted-symbol` **gone** (F18), and the informational finding surfaced verbatim in `RecordResult.Warnings` (F1):
+  `rename-candidate/2-edit-renamed[informational]: card 2 references "internal/alpha#Drifted", deleted with 1 evidence-tier rename candidate(s) — mechanical evidence only, the rename-versus-genuine-delete decision is the reviewer's, never the pipeline's: …`
+  The pending card was **not** rewritten and **no** amendment was appended, exactly as the tier's contract requires.
+- **3c plain blocking delete:** the symbol removed outright with no successor → `record-batch` refused with exactly one finding, `plan-references-deleted-symbol`. **The blocking case is not weakened.**
+
+Where the informational findings surface: `RecordResult.Warnings` → `internal/webstercli`'s `record-batch` JSON envelope → Master's own session, which is the reader of every bracket verb's output, and thence its summary. `BeginBatch`'s equivalents ride out on `BeginResult.Advisories` into the same envelope. Traced end to end and observed in the live envelopes above.
+
+**Run 10 — the method rename (F9).** The plan that previously failed `handle-name-failed: … member_too_deep (Counter.Tallyer.Count)` now validates `{"cards":2,"ok":true,"valid":true}`. Every declaration-head shape newly documented in the stencil (`type X struct`, `func f(...) T`, `type R interface`, `func (c *Cache) Get(...) (...)`) was separately verified live to canonicalize with no finding.
+
+### Gates after the fixes
+
+| Command | Result |
+|---|---|
+| `go build ./...` | clean |
+| `go vet <the 11 in-scope package sets>` | clean |
+| `go test -count=5 <the 11 sets> ./cmd/lyx/...` | 12 packages `ok`, 0 FAIL |
+| `go test ./...` (whole repo) | 0 FAIL |
+| `go test -tags integration ./internal/planglyph/... ./internal/planparser/... ./internal/websterengine/... ./internal/loomcli/... ./internal/loomshed/...` | all `ok` |
+| `go test -tags smoke ./internal/loomcli/... -run TestSmokeBootstrap_BringsUpSessionStrandAndDriver -count=1` | PASS (1.6s) |
+| `go test -tags smoke ./internal/loomcli/... -run TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed -count=1` | PASS (62.0s) |
+| `go test -tags smoke ./internal/loomcli/... -run TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit -count=1` | PASS (0.2s) |
+| `go test -tags smoke ./internal/loomcli/... -run TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning -count=1` | PASS (3.9s) |
+
+Each smoke test was named exactly and run one at a time; no bare `-run Smoke` was ever issued, and the banned `internal/burlerengine/smoke_cluster_test.go` tests were not run.
+
+### Teardown
+
+`tmux ls` shows only the operator's two pre-existing sessions (`0`, created 2026-09-02; `10`, created 16:30, both predating this round's first check). No `lyx` process, no loom driver, no orphaned `claude` process with a cwd under the fixture. The three derived standalone state directories, both fixture repositories, and both seeded transcript fixtures were removed; `/home/knatte/.local/state/lyx/11cb0661` remains and predates this round (2026-08-18). The worktree is clean.
+
 ## Findings
 
 ### F1 — `RecordBatch` treats an INFORMATIONAL drift finding as blocking (BLOCKING, CONFIRMED-by-trace)
