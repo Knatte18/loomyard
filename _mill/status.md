@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-fabric-standalone-api-design
 branch: reed-fabric-standalone-api-design
 plan: _mill/plan
@@ -33,6 +33,7 @@ holistic-fixing  '2026-09-06T13:54:41Z'
 nits-fixed-holistic  '2026-09-06T13:56:26Z'
 holistic-approved  '2026-09-06T13:56:38Z'
 done  '2026-09-06T13:58:23Z'
+pr-pending  '2026-09-06T13:59:20Z'
 ```
 
 ## Batches
