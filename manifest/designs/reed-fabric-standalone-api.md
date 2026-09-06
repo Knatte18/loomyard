@@ -50,3 +50,26 @@ Two metrics are rejected as the readiness measure, and each fails for a distinct
 
 - **Interface count** measures coupling and testability, not contract size — as `ReedOps` demonstrates above, an interface can exist and pin the same four types anyway.
 - **Raw importer count** measures the wrong axis of "extractable": Reed and Fabric have nearly identical transitive-dependent counts, 26 and 27 respectively, and are nowhere near equally extractable — Fabric's contract and size dwarf Reed's, as the per-module sections below measure.
+
+## Four corrections to the task's background notes
+
+This investigation found four background claims to be false.
+Each is recorded here as a correction, with its evidence, because the doc's value depends on being checkable, and because a naive re-check of any of these four is the obvious way for a later reader to get the same claim wrong again.
+
+1. **The `gitkit`/`gitrepo`/`gitexec` "trio" framing is wrong.**
+   `internal/gitkit` is not in Fabric's dependency set at all, transitively or directly — confirmed by `go list -deps ./internal/fabricengine`, which does not list it.
+   Its only non-test production importer anywhere in the repo is one file, `internal/hubforge/seed.go`; every other reference to `gitkit` is from a `_test.go` file, which is what makes it test-fixture machinery.
+   The `gitkit` Leaf Invariant (`CONSTRAINTS.md`) is therefore untouched by anything in this document.
+
+2. **Fabric's cwd coupling is structural, not incidental.**
+   True self-resolution of cwd is only two sites (`clone.go:403`, `unwire.go:53`, both calling `lyxcwd.Resolve(cwd)`).
+   But six further sites re-derive a `Location` from a stored path via `lyxcwd.ResolveWorktree` (`commit.go:138`, `mergelifecycle.go:199`, `merge.go:121`, `pull.go:456`, `warplayout.go:25`, `worktreelist.go:130`).
+   That makes the `lyxcwd` coupling structural typing across the package, not an incidental parameter on a couple of entry points.
+
+3. **The missing-interface framing misdiagnoses Fabric's blocker.**
+   See the extraction rubric section above: adding interfaces on the consumer side narrows coupling, never contract size, so "no interface seam anywhere on the consumer side" is not what stands between Fabric and extraction.
+
+4. **`internal/lyxcwd` does not import `internal/fabricengine`.**
+   A naive `grep -rl "internal/fabricengine"` lists two files under `internal/lyxcwd` (`lyxcwd.go`, `anchor.go`), but both matches are doc-comment prose, not import statements.
+   `go list -deps ./internal/lyxcwd` confirms that package's only internal import is `internal/gitexec`, exactly as the Cwd Resolution Invariant requires.
+   This correction is recorded precisely because it is the obvious thing a reader would suspect and the obvious way to get it wrong — the same comment-prose-contamination trap the measurement-method section above already named.
