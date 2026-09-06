@@ -103,3 +103,54 @@ None of this is free, even for a clean extraction candidate.
 **A caveat on this section's own verifiability.**
 The layout and façade observations above were read off a local checkout of the quarry repo, not from anything in this repository.
 That local-checkout read is the one block of evidence in this document no other reader can re-verify from this repo alone — it is not backed by a machine-local absolute path, and no claim in this document rests on one; a reader who wants to confirm the layout or façade shape must clone `github.com/Knatte18/quarry` and look themselves.
+
+## Reed — the measured contract today
+
+**Size.**
+`internal/reedengine` is 6,615 production lines (17,474 with tests, measured by `wc -l` over non-`_test.go` files).
+`internal/reedengine/render` adds 773 production lines (1,893 with tests).
+
+**Direct internal imports.**
+`configengine`, `lock`, `logger`, `lyxdirs`, `proc`, `shell`, `state`, `tokenvocab`, `reedengine/render` — from `internal/reedengine/doc.go` and `go list`.
+
+**Transitive internal dependency set.**
+`go list -deps ./internal/reedengine` adds `envsource`, `gitexec`, `lyxcwd`, `yamlengine`, `stencil`, `fsx` to the direct set above.
+`lyxcwd` and `gitexec` enter *only* through `internal/logger` (`internal/logger/sink.go:21-22`, `:88-93`, where `LogsDir` takes a `*lyxcwd.Location` and `ensureDurableSink` falls back to `lyxcwd.Getwd()`/`Resolve()`).
+`reedengine/doc.go` already documents this honestly and is quoted rather than re-derived: reed is told its geometry and derives none of it, so `internal/lyxcwd` is absent from reed's *direct* production imports even though it is present transitively.
+
+**Public surface.**
+7 free functions, 20 types, and `*Engine` with **17** exported methods and no value-receiver methods — `Socket`, `SessionName`, `TmuxPath`, `AddStrand`, `UpdateStrand`, `RemoveStrand`, `AttachArgv`, `SendText`, `SendKey`, `CapturePane`, `Up`, `Resume`, `Down`, `Status`, `Watch`, `HeaderText`, `ValidateHeader`.
+Producing command: `go doc ./internal/reedengine Engine | grep -c '^func (e \*Engine)'`.
+
+**External contract footprint.**
+**13 distinct exported package-level identifiers** are referenced *in code* by production packages outside `reedengine`: `AddSpec`, `ConfigTemplate`, `Engine`, `Geometry`, `LoadConfig`, `LoadState`, `New`, `Removed`, `ServerName`, `SessionName`, `StatusResult`, `Strand`, `StrandStatus`.
+The metric's definition is exactly that phrase — "referenced in code by production packages outside the module" — and it is stated here alongside the number because the same shape of count appears throughout this document.
+This footprint counts `render`'s own exported names (`Display`, `Strand`, `Box`, `Params`, and the `Anchor` constants) and the 17 methods reached through `*Engine` separately from the 13 above, not folded into it.
+
+A bare `grep -ro 'reedengine\.[A-Za-z0-9_]*'` over non-test files additionally returns three identifiers, none of which is a real external reference: `CleanClaudeEnv` and `AddStrand` appear only as doc-comment prose (`internal/burlerengine/doc.go:205`, `internal/reedcli/add.go:1,4`), and `requireSessionLocked` (`internal/reedcli/attach.go:52`) is not even exported.
+Counting these three is how the first draft of the underlying investigation reached 15 external identifiers instead of 13.
+
+**Direct production importers (9) and their consumer shapes.**
+`burlercli`, `configreg`, `hubgeom`, `loomcli`, `reedcli`, `shuttlecli`, `shuttleengine`, `standalonegeom`, `webstercli` — transitive dependents: 26 packages.
+Per-importer shape:
+
+- `webstercli` already holds Reed behind the transport interface — `shuttleengine.ReedOps` (`internal/webstercli/wiring.go:220,226`).
+- `burlercli` and `shuttlecli` construct and hand off: each calls `LoadConfig`+`New` and hands the engine to `shuttleengine.NewRunner`.
+- `hubgeom` and `standalonegeom` build the told-geometry value: `Geometry` (plus `ServerName`/`SessionName`).
+- `configreg` calls a config-template function only: `ConfigTemplate`.
+- `loomcli` is the sole consumer *retaining* a concrete `*reedengine.Engine` as a struct field (`internal/loomcli/cli.go:44`), using `Up`, `Status`, `AddStrand`, `RemoveStrand`, `TmuxPath` and `AttachArgv` (`internal/loomcli/run.go:145-320`, `drive.go:64`).
+- `reedcli` is Reed's own CLI and legitimately uses the whole surface.
+
+**Geometry.**
+`reedengine.Geometry` (`internal/reedengine/geometry.go`) is eight told string fields with a documented no-validation, no-derivation contract.
+Its two constructors — `hubgeom.ReedGeometry(*lyxcwd.Location)` and `standalonegeom.ReedGeometry(target, stateDir, hash8)` — would neither move into a standalone Reed, since both are hub/standalone-layout tellers, not Reed's own concern.
+
+**The one provider-specific name.**
+`reedengine.CleanClaudeEnv` (`internal/reedengine/env.go`) is the one provider-specific name in Reed's public API, and it has no caller outside its own package (`internal/reedengine/lifecycle.go:299`).
+
+```text
+internal/reedengine/doc.go
+internal/reedengine/env.go, lifecycle.go:299
+internal/reedengine/geometry.go
+internal/loomcli/cli.go:44
+```
