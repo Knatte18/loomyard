@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shared-frame-and-reed
+phase: approved-fabric-creel-and-close
 slug: reed-fabric-standalone-api-design
 branch: reed-fabric-standalone-api-design
 plan: _mill/plan
@@ -25,6 +25,7 @@ planning  '2026-09-06T12:55:06Z'
 planned  '2026-09-06T12:55:23Z'
 implementing  '2026-09-06T13:31:51Z'
 approved-shared-frame-and-reed  '2026-09-06T13:38:01Z'
+approved-fabric-creel-and-close  '2026-09-06T13:43:01Z'
 ```
 
 ## Batches
@@ -38,8 +39,9 @@ batches:
     commit_sha: b30f555f362bac2e33a696039c89609ca1dab899
     verify_baseline_failures: []
   - name: fabric-creel-and-close
-    state: running
+    state: approved
     implementer_session: 09d03661-189d-404f-b04c-dbb84d8ab68d
     start_sha: c4694bf549defbf63cf1f38639c2170807a0d100
+    commit_sha: 51b07bc34bdbe51f49fe3bbe7177cb09cdcf4327
     verify_baseline_failures: []
 ```
