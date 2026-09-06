@@ -71,6 +71,71 @@ func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg
 	}
 }
 
+// NewDetachedRunner returns a Runner for the legitimately-detached anchor/worktree pair that
+// standalone geometry produces: its anchor is deliberately OUTSIDE its worktree root, which is
+// standalone mode's real geometry rather than a swap that validateToldPaths would otherwise refuse.
+// Its only sanctioned callers are a standalone CLI's own wiring — anything else constructing a
+// Runner over a genuinely detached pair should be treated as a plan violation, not a pattern to
+// copy.
+// Like NewRunner it builds the same Runner literal, except paneCwd is the told parameter rather
+// than a copy of anchorPath, and the told-path verdict comes from validateDetachedToldPaths instead
+// of validateToldPaths.
+// disjointness catches hub geometry handed here by mistake in both of hub geometry's shapes: a
+// root-anchored hub gives anchorPath == worktreeRoot, and a subpath-anchored hub gives an anchor
+// strictly inside the worktree — both refused by validateDetachedToldPaths. What disjointness
+// cannot catch, stated plainly rather than implied away, is a pure swap of two already-disjoint
+// directories: a residual bounded only by there being exactly two call sites, both pinned by wiring
+// tests.
+// Like NewRunner it stays total — the verdict is held on toldErr and surfaced by every public entry
+// point, never returned from the constructor.
+func NewDetachedRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot, paneCwd string, cfg Config) *Runner {
+	return &Runner{
+		reed:         reed,
+		engine:       engine,
+		anchorPath:   anchorPath,
+		worktreeRoot: worktreeRoot,
+		paneCwd:      paneCwd,
+		cfg:          cfg,
+		toldErr:      validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd),
+		clock:        realClock{},
+	}
+}
+
+// validateDetachedToldPaths reports an error unless the told triple is one NewDetachedRunner can
+// spend.
+//
+// It keeps the non-empty and absolute-path checks validateToldPaths uses, extended to cover paneCwd
+// as a third path, but replaces the containment clause with strict disjointness: the call is
+// refused when anchorPath == worktreeRoot, when anchorPath is worktreeRoot or a subdirectory of it,
+// or when worktreeRoot is anchorPath or a subdirectory of it — computed the same way
+// validateToldPaths does, with filepath.Rel plus a ".." / ".."+separator prefix test, run in both
+// directions.
+// Every error string names NewDetachedRunner rather than NewRunner, so an operator reading a live
+// error can tell which constructor refused.
+//
+// paneCwd gets no relational assertion at all against the other two paths — it is non-empty and
+// absolute and nothing more — because it equals anchorPath under hub geometry and worktreeRoot under
+// standalone geometry, so any relation strong enough to be worth asserting would be false in one of
+// the two modes.
+func validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd string) error {
+	if anchorPath == "" || worktreeRoot == "" || paneCwd == "" {
+		return fmt.Errorf("shuttle: NewDetachedRunner was told an empty path (anchorPath %q, worktreeRoot %q, paneCwd %q); all three are required and none is derived", anchorPath, worktreeRoot, paneCwd)
+	}
+	if !filepath.IsAbs(anchorPath) || !filepath.IsAbs(worktreeRoot) || !filepath.IsAbs(paneCwd) {
+		return fmt.Errorf("shuttle: NewDetachedRunner was told a relative path (anchorPath %q, worktreeRoot %q, paneCwd %q): a relative value does not fail, it silently resolves the run directory, reed's state lookup, and the fork audit's transcript directory against whatever working directory the caller happens to have", anchorPath, worktreeRoot, paneCwd)
+	}
+	if anchorPath == worktreeRoot {
+		return fmt.Errorf("shuttle: NewDetachedRunner was told an anchor path %q equal to its worktree root: the two are supposed to be disjoint under standalone geometry, so an equal pair is most likely a root-anchored hub geometry handed to the wrong constructor", anchorPath)
+	}
+	if rel, err := filepath.Rel(worktreeRoot, anchorPath); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("shuttle: NewDetachedRunner was told an anchor path %q inside its worktree root %q: the two are supposed to be disjoint under standalone geometry, so an anchor inside the worktree is most likely a subpath-anchored hub geometry handed to the wrong constructor", anchorPath, worktreeRoot)
+	}
+	if rel, err := filepath.Rel(anchorPath, worktreeRoot); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("shuttle: NewDetachedRunner was told a worktree root %q inside its anchor path %q: the two are supposed to be disjoint under standalone geometry", worktreeRoot, anchorPath)
+	}
+	return nil
+}
+
 // validateToldPaths reports an error unless the told pair is one this package can spend.
 //
 // It exists because the two fields are ADJACENT PARAMETERS OF THE SAME TYPE with no structural
