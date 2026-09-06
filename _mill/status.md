@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r6
+phase: discussed
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: null
@@ -21,4 +21,5 @@ discussion-gap-fix-r3  '2026-09-06T10:04:52Z'
 discussion-gap-fix-r4  '2026-09-06T10:10:29Z'
 discussion-gap-fix-r5  '2026-09-06T10:16:12Z'
 discussion-gap-fix-r6  '2026-09-06T10:21:13Z'
+discussed  '2026-09-06T10:21:23Z'
 ```
