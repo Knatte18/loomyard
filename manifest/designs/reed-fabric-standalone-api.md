@@ -398,3 +398,73 @@ It makes the Fabric Git Invariant's perimeter visible, and it is the only route 
 
 - Recommending nothing — rejected: it leaves a real structural observation unrecorded.
 - Recommending the split as extraction step 1 — rejected: it couples a justified refactor to an unjustified goal.
+
+## creel — where strand messaging lives
+
+This section decides where the strand-messaging concept lives, answering placement, addressing, message model and sender universe — the four questions the task named — plus transport, and stating what it deliberately leaves unspecified.
+
+**Placement: a sibling module named `creel`, not part of Reed and not dropped.**
+Reed's own package documentation states its contract as the "dumb carrier" for its caller's strand data: it stores every field a caller writes into a strand and reads none of them semantically, and there is deliberately no domain `type` field on a strand.
+A mailbox must read addresses semantically, so putting it inside Reed contradicts the one invariant Reed states about itself.
+
+The structural argument is the same conclusion from a different angle: Reed's geometry type carries a worktree root, a repository name and a hub path, but no slug, no branch and no role, so the addressing a mailbox needs lives in webster's and loom's state, not Reed's.
+
+This is not "drop it": `manifest/roadmap.md`'s Someday section already carries `reed: daemon Slack relay`, which is bidirectional messaging by another name and would be `creel`'s first non-agent sender.
+
+**Addressing: `<worktree-slug>/<role>`, optionally with a round, resolved to a live strand identifier only at delivery time.
+An identifier is never an address.**
+The measured lifetime justifies this: the engine mints a fresh 128-bit random identifier on every strand add, and webster re-mints on every batch respawn — removing the prior strand by its persisted identifier and adding a fresh one.
+An identifier therefore names an *incarnation*, and an address must outlive one.
+
+The durable semantic identity already exists on both sides — in webster's per-role batch state and in the shuttle run record — and resolution at delivery time uses those records plus a liveness query.
+An address that resolves to nothing leaves the message queued, which is the point of a mailbox rather than a pipe.
+
+Two rejected addressing schemes:
+
+- Identifier addressing — rejected: it dies at every respawn.
+- tmux pane id — rejected: it is server-global and restarts at `%0` on every server rebirth.
+
+**Message model: a durable FIFO inbox per address;
+delivery appends a message and sends one keystroke notification;
+the recipient reads on its own turn boundary.
+No interrupt tier.**
+Interruption already exists as a separate, synchronous, explicitly-authorized operation sitting on the engine's key-send method.
+Folding it into the mailbox would make every queued message a potential context-destroying interrupt the recipient cannot distinguish from an ordinary one, while the sender universe is deliberately open — so the authority to interrupt would be granted to anyone who can write a file.
+Keeping the two separate means the module needs no authorization model beyond filesystem permissions.
+
+Two rejected models:
+
+- A two-tier model with an interrupt severity — rejected: it grants an open sender set the power to destroy an agent's context.
+- Polling with no notification — rejected: a recipient blocked on a tool call never checks.
+
+**Transport and sender universe: a directory of JSON files under the hub's scratch area, plus a CLI send verb for humans and non-Go processes, plus a Go API for in-process senders.
+No MCP server, no JSON-RPC, no socket.**
+This follows the task's own principle that a wire-format protocol earns its cost only across a real OS-process boundary with no shared substrate;
+here the filesystem is that shared substrate and is already this project's idiom for exactly this kind of state.
+It delivers the open sender universe for free: any process that can write a file and knows an address is a sender, with no client library, no schema negotiation and no daemon required.
+
+Two rejected transports:
+
+- A protocol server (MCP or JSON-RPC) — rejected: it pays a protocol cost for a boundary that does not exist.
+- In-memory queues — rejected: they lose everything on restart, defeating a mailbox whose recipients respawn.
+
+**Illustrative sketch — no shipped source, so this listing is not a measured or verifiable contract:**
+
+```go
+type Message struct {
+	To        string    // address: <worktree-slug>/<role>[/<round>]
+	From      string    // sender identity, opaque to creel
+	Body      string
+	SentAt    time.Time
+	MessageID string // opaque, sender- or creel-assigned
+}
+```
+
+**Naming rationale.**
+A creel is the rack holding one bobbin per feed position, which is the same object as a rack of per-address inboxes.
+The name is verified unused in this repo, as are seven other loom-vocabulary candidates the discussion lists: `heddle`, `temple`, `pirn`, `bobbin`, `selvedge`, `sley`, `beam`.
+This is a name proposed by a design document, not a rename instruction for any existing identifier.
+
+**What this section deliberately stops short of.**
+A full module design, which would need the durable address registry designed against webster's and loom's state — a task of its own.
+This card does not create a module directory, a config-registry entry or a CLI verb.
