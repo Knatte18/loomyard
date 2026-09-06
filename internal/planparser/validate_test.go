@@ -615,6 +615,84 @@ func TestValidate_HandleMalformed(t *testing.T) {
 	})
 }
 
+// renameCard returns a well-formed Rename Card at position number with slug carrying exactly one
+// Pairs entry (old -> new), for checkRenamePairShape's subtests.
+func renameCard(number int, slug, oldSide, newSide string) planparser.Card {
+	pairs := []planparser.MovePair{{Old: oldSide, New: newSide}}
+	refs := []string{oldSide, newSide}
+	card := cardOfType(number, slug, planparser.CardTypeRename, refs)
+	card.Pairs = pairs
+	card.TargetGroups[0].Pairs = pairs
+	return card
+}
+
+// TestValidate_RenamePairShape covers rename-to-not-handle and rename-from-not-glyph: a symbol
+// rename's old side must classify as a glyph and its new side must classify as a plan: handle,
+// with a file-rename pair (both endpoints self glyphs) exempt from both, and neither check running
+// under plan.Language "none".
+func TestValidate_RenamePairShape(t *testing.T) {
+	t.Parallel()
+
+	t.Run("symbol rename with a glyph old side and a handle new side passes", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "internal/foo#OldThing", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-to-not-handle"); got != 0 {
+			t.Errorf("countFor(findings, rename-to-not-handle) = %d; want 0", got)
+		}
+		if got := countFor(findings, "rename-from-not-glyph"); got != 0 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 0", got)
+		}
+	})
+
+	t.Run("symbol rename whose new side is a glyph produces rename-to-not-handle", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "internal/foo#OldThing", "internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-to-not-handle"); got != 1 {
+			t.Errorf("countFor(findings, rename-to-not-handle) = %d; want 1", got)
+		}
+	})
+
+	t.Run("symbol rename whose old side is a bare symbol produces rename-from-not-glyph", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "package.OldThing", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-from-not-glyph"); got != 1 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 1", got)
+		}
+	})
+
+	t.Run("file self-glyph pair on both sides produces neither", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "internal/foo/old.go#", "internal/foo/new.go#")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-to-not-handle"); got != 0 {
+			t.Errorf("countFor(findings, rename-to-not-handle) = %d; want 0", got)
+		}
+		if got := countFor(findings, "rename-from-not-glyph"); got != 0 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 0", got)
+		}
+	})
+
+	t.Run("language: none produces neither", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "package.OldThing", "internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "none", RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-to-not-handle"); got != 0 {
+			t.Errorf("countFor(findings, rename-to-not-handle) = %d; want 0", got)
+		}
+		if got := countFor(findings, "rename-from-not-glyph"); got != 0 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 0", got)
+		}
+	})
+}
+
 // TestValidate_RenameMechanicMissing covers rename-mechanic-missing: a Rename card with an empty
 // Plan.RenameMechanic produces one plan-level finding, and a plan whose only cards are other
 // types produces none even with an empty section.

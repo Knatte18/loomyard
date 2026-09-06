@@ -612,7 +612,12 @@ func parseRefField(labelLine, label string, lines []string, start int) ([]string
 	return refs, i, nil
 }
 
-// parseRenameField parses a Rename card's "**Rename:**" field, matching each bullet against moveLineRe.
+// parseRenameField parses a Rename card's "**Rename:**" field, matching each bullet against
+// moveLineRe. moveLineRe itself accepts any two backticked tokens on either side of the arrow, so
+// no grammar change is needed for a handle new side -- but the contract is not as permissive as
+// the regex: a symbol rename's own new side is expected to be a `plan:` handle (checkRenamePairShape
+// in validate.go enforces this at validation time), so a future reader must not mistake this
+// regex's permissiveness for a permissive contract.
 func parseRenameField(labelLine string, lines []string, start int) (pairs []MovePair, raw []string, next int, err error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, renameLabel))
 	if rest != "" {

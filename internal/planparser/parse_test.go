@@ -935,12 +935,12 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		{
 			number: 5, slug: "rowmapper-rename", summary: "rename the row mapper ahead of a later extraction",
 			typ: planparser.CardTypeRename, typeLabelCount: 1,
-			targets: []string{"internal/boardengine#MapRow", "internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"},
+			targets: []string{"internal/boardengine#MapRow", "plan:internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeRename, refs: []string{"internal/boardengine#MapRow", "internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"}},
+				{typ: planparser.CardTypeRename, refs: []string{"internal/boardengine#MapRow", "plan:internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"}},
 			},
 			pairs: []planparser.MovePair{
-				{Old: "internal/boardengine#MapRow", New: "internal/boardengine#MapRowJSON"},
+				{Old: "internal/boardengine#MapRow", New: "plan:internal/boardengine#MapRowJSON"},
 				{Old: "internal/boardengine/rows.go#", New: "internal/boardengine/rowsjson.go#"},
 			},
 			intent: "Rename the row mapper and its file to make the JSON-oriented behavior explicit ahead of a later extraction.",

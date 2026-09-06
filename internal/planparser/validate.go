@@ -1,14 +1,15 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (manifest/designs/plan-card-format.md), run in this fixed order.
-// ValidateFormat emits twenty-three of the following distinct ValidationError.Check IDs, everything
-// but plan-unapproved; Validate emits all twenty-four: format-unrecognized (checkFormatRecognized),
+// ValidateFormat emits twenty-five of the following distinct ValidationError.Check IDs, everything
+// but plan-unapproved; Validate emits all twenty-six: format-unrecognized (checkFormatRecognized),
 // plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved),
 // index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing),
 // card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel),
 // card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget),
 // directory-target (checkDirectoryTarget), rename-format (checkRenameFormat), handle-dangling,
 // handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed
-// (checkHandleMalformed), rename-mechanic-missing (checkRenameMechanicMissing),
+// (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both
+// checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing),
 // card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty),
 // card-field-overlap (checkCardFieldOverlap), impact-summary-multiline
 // (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
@@ -31,6 +32,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Knatte18/quarry/glyph"
 )
 
 // recognizedFormat is the only plan-format version Validate currently understands.
@@ -94,6 +97,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkRenameFormat(plan)...)
 	findings = append(findings, checkHandleConsistency(plan)...)
 	findings = append(findings, checkHandleMalformed(plan)...)
+	findings = append(findings, checkRenamePairShape(plan)...)
 	findings = append(findings, checkRenameMechanicMissing(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldEmpty(plan)...)
@@ -585,6 +589,71 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 					Detail: fmt.Sprintf(
 						"card %d handle %q carries no \"#\" after %q and therefore names no unit",
 						c.Number, r, HandlePrefix,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// isFileRenamePair reports whether p is a file-rename pair under lang: both p.Old and p.New
+// classify as refKindGlyph and both parse to a glyph whose IsSelf() reports true. A file-rename
+// pair has no declaration head to name and is exempt from both of checkRenamePairShape's checks —
+// it belongs in the same group as a plain path pair.
+func isFileRenamePair(lang glyph.Language, p MovePair) bool {
+	if classifyRef(p.Old) != refKindGlyph || classifyRef(p.New) != refKindGlyph {
+		return false
+	}
+	oldGlyph, err := parseGlyph(lang, p.Old)
+	if err != nil || !oldGlyph.IsSelf() {
+		return false
+	}
+	newGlyph, err := parseGlyph(lang, p.New)
+	if err != nil || !newGlyph.IsSelf() {
+		return false
+	}
+	return true
+}
+
+// checkRenamePairShape implements rename-to-not-handle and rename-from-not-glyph. On a symbol
+// rename the old side must be a glyph — it names something that exists and will be resolved — and
+// the new side must be a plan: handle, whose content batch 4's binding step computes and overwrites
+// at the validation boundary rather than trusting the planner's draft spelling. A Rename card
+// therefore needs no declaration head of its own, unlike a Create card, because the declaration is
+// derived from the resolved old side. isFileRenamePair exempts a file-rename pair from both checks.
+// Neither check runs when planLanguage reports not-ok (e.g. plan.Language "none").
+func checkRenamePairShape(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	lang, langOK := planLanguage(plan)
+	if !langOK {
+		return findings
+	}
+
+	for _, c := range plan.Cards {
+		for _, p := range c.Pairs {
+			if isFileRenamePair(lang, p) {
+				continue
+			}
+			if k := classifyRef(p.New); k == refKindGlyph || k == refKindSymbol {
+				findings = append(findings, ValidationError{
+					Check: "rename-to-not-handle",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d Rename pair %q -> %q has a new side that is not a plan: handle",
+						c.Number, p.Old, p.New,
+					),
+				})
+			}
+			if classifyRef(p.Old) == refKindSymbol {
+				findings = append(findings, ValidationError{
+					Check: "rename-from-not-glyph",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d Rename pair %q -> %q has an old side that is a bare symbol, not a glyph",
+						c.Number, p.Old, p.New,
 					),
 				})
 			}
