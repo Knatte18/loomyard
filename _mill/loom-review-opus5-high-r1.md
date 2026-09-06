@@ -1,11 +1,30 @@
 # `loom` crucible review — glyph-hardening campaign, ROUND 1 (opus5-high)
 
 > Independent review per `_mill/loom-review-prompt.md`. Clean-room: findings below were formed without reading any prior review file in this worktree.
-> Status: IN PROGRESS — appended incrementally as evidence lands.
+> Status: REVIEW COMPLETE. Job 1 closed before any production or test file was touched; fixes follow in the fixer report.
 
 ## Executive summary
 
-_(written last)_
+**Merge readiness: NOT MERGE-READY as landed.** The glyph plan alphabet is individually sound — every mechanism I drove in isolation behaves as its design doc says — but the *integration* into loom's phase machine, which nothing had ever driven live before this round, is broken in a way that stops the pipeline dead.
+
+**The headline: no multi-batch plan containing a `Create`, `Delete` or `Rename` card can complete through Webster.** Driven live, a two-card plan whose first card creates a symbol through a `plan:` handle — the exact shape `contracts/specs/loom-plan-spec.md` prescribes — reaches `begin-batch 2` and is refused, twice over, with no operator recourse but hand-editing the plan:
+
+1. Webster's own `BindHandles` rewrite trips webster's own plan-fingerprint staleness guard (**F4**). Its advised recourse, `lyx webster run --fresh`, restarts the same plan into the same wall.
+2. Past that, the same rewrite has stripped the `plan:` prefix out of the declaring card's *declaration* bullet, so the plan no longer parses as one — blocking `handle-malformed` plus `card-field-empty` (**F3**, **F17**).
+
+Beneath those sits one structural gap with three separate manifestations (**F5/F6/F7**): the dispatch-boundary re-resolution validates the **whole** plan against the **post-change** tree on every batch, so any card whose work already landed necessarily contradicts reality — a completed `Delete` target reads `glyph-not-found`, a completed `Rename`'s `Old` side reads `glyph-not-found` *and* `rename-old-unresolved`, a completed bare-glyph `Create` reads `create-already-exists`.
+
+Three more independent blockers:
+
+- **F2** — a declared `Rename` card's own expected outcome is misclassified as drift, because gate one compares a `plan:`-prefixed handle against a bare glyph and can never match for any plan that passes its own validator. Live, this clobbered the card's `Old` side and wrote a false `Tier: exact` amendment.
+- **F9** — `renameDeclSource` derives the new declaration with a first-*substring* replace, so `func (c *Counter) Count() int` becomes `func (c *Counter.Tallyer) Count() int`. **No method can be renamed through the glyph alphabet at all.**
+- **F1** + **F18** — the evidence tier is dead twice over: its `informational` finding is folded into a blocking error by `RecordBatch`, and even fixed, every candidate is unconditionally accompanied by a blocking `plan-references-deleted-symbol`.
+- **F15** — the declaration-head example in the stencil `Plan-Write` actually reads (`type RowJSON struct{...}`) does not parse as Go, so `quarry.Name` rejects it and blocks the plan — and `Plan-Validate`'s `Stuck` carries an empty pointer, so the respawned planner is never told why.
+
+**What works, proven live:** handle canonicalization including the plan-wide rewrite to non-declaring cards; binding of *referencing* cards; the Create inversion's blocking half and its new-unit branch; both containment tiers; exact-tier drift auto-repair; the plain-blocking deleted-and-referenced case; the `language: "none"` opt-out; and the infrastructure-error disposition (`ErrQuarryUnavailable` surfaces as "quarry could not answer", never as a plan finding — the specific disaster the design names is genuinely prevented).
+
+**Counts:** 12 BLOCKING, 5 MEDIUM, 2 LOW, 1 NIT — 20 findings.
+All four mission scenarios were driven live to completion; see the per-scenario table in "What was tested".
 
 ## What was tested
 
@@ -378,6 +397,40 @@ The same is true of the standalone verbs `lyx loom validate-plan` and `lyx webst
 
 A validator that silently rewrites its subject is a genuine operability surprise, and "no artifact, a gate signal only" is now simply false for both rows. The mechanism is deliberate and correct; only the documentation is wrong.
 
+### F20 — `handle-name-failed` carries no card attribution (NIT, CONFIRMED LIVE)
+
+`internal/planglyph/handle.go:130-143` — both branches construct the finding with no `Card` field, so the rendered envelope reads `{"card":"", …}` while every other finding in the package names its card. Observed verbatim in probe runs 2 and 3.
+`declSource` already carries only the handle; the card is available at the collection site (`handle.go:95-113`) and simply is not threaded through.
+
+### Additional live confirmations (no finding)
+
+- **`language: "none"` opts out correctly.** The same plan that reports a blocking `glyph-not-found` under `language: go` validates `{"cards":2,"ok":true,"valid":true}` under `language: none` — every glyph-aware check is a genuine no-op and no repository is opened.
+- **The infrastructure-error disposition holds.** Two induced quarry failures both surfaced as gate/infrastructure errors, never as plan findings:
+  - unreadable unit directory (`chmod 000 internal/alpha`) → `webster: quarry could not answer validating plan: planglyph: quarry could not answer: resolve: engine: read .gitignore … permission denied`
+  - absent worktree root → `webster: quarry could not answer … open "/nonexistent-abc" … no such file or directory`
+  Neither degraded into a `not_found` that would, under the Create inversion, silently mark a Create card done — the specific disaster `quarry-glyph-plan-alphabet.md`'s "infrastructure-error disposition" section exists to prevent. `DoneChecks` propagates the same wrapped error to `RecordBatch`, which returns it rather than passing the batch (traced, `recordbatch.go:195-198`).
+- **`glyph-not-found`'s unit branching is correct**: a missing member in an existing unit reported "unit exists but the member is missing", not the misspelled-unit wording.
+
 ## Scope assessment
 
-_(written last)_
+**Design intent vs. shipped.** `manifest/designs/quarry-glyph-plan-alphabet.md` describes eight mechanisms. Measured against what loom's phase machine actually reaches:
+
+| Mechanism | Shipped as designed? |
+|---|---|
+| Glyph/self-glyph/path alphabet, `language:` selector | Yes — verified live including the `none` opt-out |
+| Package-ownership seam (`planparser` pure, `planglyph` owns `quarry.Repo`) | Yes — no check implemented twice; the parity pair holds |
+| Handle lifecycle: draft → canonicalize | Yes — verified live, plan-wide |
+| Handle lifecycle: → bind | **Partially** — binds referencing cards correctly, corrupts the declaring card (F3/F17) |
+| Resolve status policy | Yes — verified live, correct unit branching |
+| Create inversion | **Partially** — blocking half and new-unit branch verified live, but `create-new-unit` is inert for the handle shape the format prescribes (F14) |
+| Both containment tiers | Yes — both verified live |
+| Infrastructure-error disposition | Yes — verified live in two ways |
+| Drift detection (later batch, same task) | **No** — gate one unreachable (F2), evidence tier unreachable (F1, F18); only the exact-tier undeclared-drift path and the plain-delete path work |
+
+**Deferred-that-should-be-fixed.** Nothing was deferred by the landing task that should have shipped. The gap is not omission but *un-exercised integration*: every defect above lives at the seam between `planglyph` and `websterengine`, and the landing task's own suite tests the two sides separately. `internal/planglyph/drift_integration_test.go:68` is the sharpest illustration — it pins gate one against a `Rename` pair shape (`sub#Old -> sub#New`) that the plan format itself rejects, so the test passes while the production path cannot.
+
+**Shipped-beyond-scope.** None found. `quarrycli`, `donecheck.go`, `drift.go` and the `lyx quarry` verb group are named in the design doc's own "Deliberately out of scope" as later batches of the same task, so their presence is scope-tracked, not scope-creep.
+
+**Docs accuracy.** `manifest/designs/loom.md` does not describe the glyph surface at all: its rows 8/10 still read "pass/fail — no artifact, a gate signal only" for producers that now rewrite the plan directory in place (F19), and its "Plan-Validate detail" section names the `planglyph` pair without mentioning canonicalization. `contracts/specs/loom-plan-spec.md`'s worked example teaches an illegal `Rename` shape (F13). The `Plan-Write` stencil teaches an unparseable declaration head (F15). The design doc `quarry-glyph-plan-alphabet.md` itself is accurate throughout — it describes the intended behaviour correctly; the code is what diverges.
+
+**Operability.** Two real gaps beyond the findings: `Plan-Validate`'s `Stuck` carries an empty pointer, so a planner respawned after a `handle-name-failed` is told nothing (this is a pre-existing, documented residual, but F15 makes it bite in a newly common case); and `ErrFingerprintMismatch`'s advised recourse (`--fresh`) is, under F4, a loop rather than a repair.
