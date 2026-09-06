@@ -2,17 +2,17 @@
 
 ```yaml
 phase: discussing
-slug: crucible-loom-glyph-hardening
-branch: crucible-loom-glyph-hardening
+slug: standalonegeom-webster-run-and-log-hygiene
+branch: standalonegeom-webster-run-and-log-hygiene
 plan: null
-parent: main
-task: 'Crucible hardening: loom against the new glyph plan-format'
+parent: crucible-loom-glyph-hardening
+task: 'webster standalone mode: run refuses to start Master; logs write untracked into target repo'
 task_description: |
-  Crucible hardening: loom against the new glyph plan-format
+  webster standalone mode: run refuses to start Master; logs write untracked into target repo
 ```
 
 ## Timeline
 
 ```text
-discussing  '2026-09-06T15:51:08Z'
+discussing  '2026-09-06T17:42:44Z'
 ```
