@@ -31,7 +31,7 @@ func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 	}
 
 	overview := fmt.Sprintf(
-		"---\nformat: 5\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
+		"---\nformat: 5\napproved: %t\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
 		approved,
 	)
 	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
@@ -56,7 +56,7 @@ func seedFormatInvalidPlanValidateFixture(t *testing.T, anchorPath string) {
 		t.Fatalf("write card file: %v", err)
 	}
 
-	overview := "---\nformat: 99\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n"
+	overview := "---\nformat: 99\napproved: true\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n"
 	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
 		t.Fatalf("write overview file: %v", err)
 	}
@@ -174,4 +174,117 @@ func TestPlanValidate_Call(t *testing.T) {
 			t.Errorf("Call(cancelled) outcome = %q; want no verdict alongside a cancellation error", outcome)
 		}
 	})
+
+	t.Run("QuarryUnavailableReturnsErrorNotStuck", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		seedGlyphPlanFixture(t, anchorPath, true, "sub#Foo", "")
+		// A language: go plan pointed at a worktreeRoot that does not exist: openRepo cannot open it,
+		// so the producer must return an error rather than mapping the outage to Stuck.
+		worktreeRoot := filepath.Join(t.TempDir(), "does-not-exist")
+
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot, true)
+		outcome, _, err := p.Call(context.Background())
+		if err == nil {
+			t.Fatalf("Call() error = nil; want non-nil error for a quarry-unavailable worktreeRoot")
+		}
+		if outcome == shedengine.Stuck {
+			t.Errorf("Call() outcome = %q; want no Stuck verdict for a quarry outage", outcome)
+		}
+	})
+
+	t.Run("InformationalOnlyFindingsAreDone", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		worktreeRoot := writeGlyphRepoFixture(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+		// "newpkg#Bar" resolves not_found with unit: not_found, which createFindings reports as the
+		// informational create-new-unit finding -- no blocking finding in this plan.
+		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "")
+
+		buf := captureGateWarnings(t)
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot, true)
+		outcome, pointer, err := p.Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if outcome != shedengine.Done {
+			t.Fatalf("Call() outcome = %q; want %q for an informational-only findings set", outcome, shedengine.Done)
+		}
+		wantPath := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
+		if pointer.Path != wantPath {
+			t.Errorf("Call() pointer.Path = %q; want %q", pointer.Path, wantPath)
+		}
+		logged := buf.String()
+		if !strings.Contains(logged, "create-new-unit") {
+			t.Errorf("log = %q; want it to surface the informational finding for visibility on the pass path", logged)
+		}
+	})
+
+	t.Run("MixedBlockingAndInformationalIsStuck", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		worktreeRoot := writeGlyphRepoFixture(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+		// "newpkg#Bar" is informational (create-new-unit); "sub#Missing" resolves not_found with
+		// unit: found, which statusFindings reports as the blocking glyph-not-found finding. The
+		// mixed set must map to Stuck: one blocking finding is enough to fail the gate.
+		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "sub#Missing")
+
+		p := NewPlanValidate("Plan-Validate", anchorPath, worktreeRoot, true)
+		outcome, _, err := p.Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if outcome != shedengine.Stuck {
+			t.Fatalf("Call() outcome = %q; want %q for a set carrying one blocking finding", outcome, shedengine.Stuck)
+		}
+	})
+}
+
+// writeGlyphRepoFixture writes files (keyed by repository-relative path) under a fresh t.TempDir()
+// and returns that directory's absolute path, ready to hand to NewPlanValidate as worktreeRoot --
+// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo per the
+// duplicate-test-helpers-rather-than-share-them Shared Decision.
+func writeGlyphRepoFixture(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for rel, content := range files {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(full), err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) failed: %v", full, err)
+		}
+	}
+	return root
+}
+
+// seedGlyphPlanFixture writes a syntactically complete, one-card language: go plan under
+// <anchorPath>/_lyx/plan/. createTarget names the card's sole Create group entry; when useTarget is
+// non-empty it also carries a Uses: entry naming useTarget, so a test can add a second glyph target
+// resolved outside the Create inversion.
+func seedGlyphPlanFixture(t *testing.T, anchorPath string, approved bool, createTarget, useTarget string) {
+	t.Helper()
+
+	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+
+	usesBlock := ""
+	if useTarget != "" {
+		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", useTarget)
+	}
+	cardBody := fmt.Sprintf(
+		"# Card 1 — first-card\n\n**Create:**\n- `%s`\n%s\n**Intent:** placeholder card.\n",
+		createTarget, usesBlock,
+	)
+	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(cardBody), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	overview := fmt.Sprintf(
+		"---\nformat: 5\napproved: %t\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
+		approved,
+	)
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview file: %v", err)
+	}
 }
