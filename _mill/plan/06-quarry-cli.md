@@ -5,7 +5,7 @@ task: "Adopt quarry's glyph alphabet as the plan alphabet"
 batch: "quarry-cli"
 number: 6
 cards: 5
-verify: go test ./internal/quarrycli/ ./cmd/lyx/
+verify: go test ./internal/quarrycli/ ./cmd/lyx/ ./internal/lyxcwd/
 depends-on: [5]
 ```
 
@@ -72,13 +72,16 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Edits:**
   - `cmd/lyx/main.go`
   - `cmd/lyx/helptree_test.go`
+  - `cmd/lyx/seamsignature_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Register the new subtree the way every other module is registered.
   In `cmd/lyx/main.go`, add the `internal/quarrycli` import and add `quarrycli.Command()` to the `root.AddCommand(...)` call, placed in the same alphabetical-by-module neighbourhood the existing entries sit in.
   In `cmd/lyx/helptree_test.go`, add a case to the module table with `module: "quarry"` and `wantSubs: []string{"toc", "glyphs", "resolve", "expand"}`, matching the shape of the `stencil` and `loom` cases already there.
-  Run the package's own guards after the edit and fix what they report rather than adjusting them: `registration_test.go` enforces that an existing module is registered, `longlist_test.go` skips cobra's own `help` and `completion` subtrees the same way the sandbox guard does, and `jsonhelp_test.go` and `seamsignature_test.go` check the envelope and seam shapes every module must satisfy.
+  In `cmd/lyx/seamsignature_test.go`, add `quarrycli.RunCLI` to the first blank-identifier slice and `quarrycli.RunCLIIn` to the second, and update the file's own doc comment counts.
+  This edit is required rather than incidental: the guard pins each module through two **hand-maintained** slices, so a newly registered module that is not added to them leaves the guard compiling and passing while covering nothing at all.
+  Run the package's other guards after the edit and fix what they report rather than adjusting them: `registration_test.go` enforces that an existing module is registered, `longlist_test.go` skips cobra's own `help` and `completion` subtrees the same way the sandbox guard does, and `jsonhelp_test.go` checks the envelope shape every module must satisfy.
   Do not add an entry to `cmd/lyx/sandbox_coverage_test.go`'s `excludedModules` map to silence that guard — card 28 satisfies it with a real scenario, which is the correct discharge for four read-only, trivially exercisable queries.
 - **Commit:** `27: feat(lyx): register the quarry module under the cobra root`
 
@@ -105,6 +108,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/quarrycli/cli.go`
   - `internal/planglyph/doc.go`
   - `cmd/lyx/main.go`
+  - `cmd/lyx/seamsignature_test.go`
 - **Edits:**
   - `CONSTRAINTS.md`
   - `docs/overview.md`
@@ -114,8 +118,10 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Requirements:** Record both `CONSTRAINTS.md` obligations the new subtree creates, in two distinct places within the same section.
   The CLI/Cobra Invariant's package-naming rule is `<module>cli` imports `<module>engine`; `quarrycli` imports `internal/planglyph`, which deviates.
   The invariant already records one such deviation, `stencilcli` → `internal/stencilstore`, so add `quarrycli` → `internal/planglyph` to that same line rather than starting a second convention.
-  Then recount the invariant's module-count line, which today reads that each module exposes `Command()` and `RunCLI` and "eleven of twelve also carry `RunCLIIn`": the subtree count rises by one and `quarrycli` does carry `RunCLIIn`, because its root resolution is cwd-dependent, so both halves of that sentence change.
-  Derive the new numbers by counting the entries in `cmd/lyx/main.go`'s `root.AddCommand(...)` call rather than by arithmetic on the old sentence, and note that `loomcli.RunAliasCommand()` is a second registration of an existing subtree's verb rather than a thirteenth module.
+  Then correct the invariant's module-count line, which today reads that each module exposes `Command()` and `RunCLI` and "eleven of twelve also carry `RunCLIIn`".
+  That sentence is already wrong before this task touches it, so correct it rather than incrementing it: derive both numbers from the two blank-identifier slices `cmd/lyx/seamsignature_test.go` pins — the `RunCLI` slice and the `RunCLIIn` slice — which card 27 has just extended, and which that file's own doc comment describes as eleven and ten respectively before this task, making the true post-task figures twelve and eleven.
+  Do **not** derive the numbers from `cmd/lyx/main.go`'s `root.AddCommand(...)` arity: that call also carries `loomcli.RunAliasCommand()`, a second registration of an existing subtree's verb rather than a module of its own, so counting it yields a figure one too high.
+  Note in the commit message that the old sentence was corrected, not merely incremented, so a later reader does not read the change as arithmetic.
   In `docs/overview.md`, add a `quarrycli` entry to the module list describing the four verbs, their read-only posture, and the deliberate absence of `delta` and `name`, and note that it imports `internal/planglyph` rather than a `quarryengine`.
 - **Commit:** `29: docs(constraints): record the quarrycli naming deviation and recount the RunCLIIn line`
 
@@ -143,5 +149,6 @@ Batch-local decisions, beyond `## Shared Decisions`:
 `verify: go test ./internal/quarrycli/ ./cmd/lyx/` covers the new package and the registration guards that police it.
 `./internal/quarrycli/` runs `cli_test.go` and `verbs_test.go`: the seam assertions and the per-verb runs against a fixture repository built under `t.TempDir()`, which reach `quarry.TOC`, `Glyphs`, `Resolve` and `Expand` — all file readers, none of which spawns a process, so the tests stay untagged and tier1-pure.
 `./cmd/lyx/` is where the batch's real gates live and is why it is in scope: `registration_test.go`, `longlist_test.go`, `helptree_test.go`, `jsonhelp_test.go`, `seamsignature_test.go` and `sandbox_coverage_test.go` each independently fail if the module is registered incorrectly, documented incorrectly, or left uncovered, and card 28's scenario is validated by that last one parsing `tools/sandbox/*SUITE.md` rather than by any assertion this batch writes itself.
-The two-package scope excludes `internal/planglyph` even though card 26 may add query wrappers there: batch 4's verify covers that package's own behaviour, and any wrapper added here is exercised through the verbs in this batch's own run, with the overview's module-wide `go build ./...` catching a compile break at this batch's boundary.
+The scope excludes `internal/planglyph` even though card 26 may add query wrappers there: batch 4's verify covers that package's own behaviour, and any wrapper added here is exercised through the verbs in this batch's own run, with the overview's module-wide `go build ./...` catching a compile break at this batch's boundary.
+`./internal/lyxcwd/` is in scope for one reason: the Markdown Link Integrity guard lives in `internal/lyxcwd/docslink_test.go` and scans `manifest/` and `docs/`, which this batch rewrites — without it a broken link would surface only at the hub's end-of-task done gate, several batches after the edit that caused it.
 </content>

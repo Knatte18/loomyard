@@ -5,7 +5,7 @@ task: "Adopt quarry's glyph alphabet as the plan alphabet"
 batch: "webster-drift"
 number: 7
 cards: 9
-verify: go test ./internal/planglyph/ ./internal/websterengine/ ./internal/webstercli/ ./cmd/lyx/ && go test -tags integration ./internal/planglyph/ ./internal/websterengine/
+verify: go test ./internal/planglyph/ ./internal/websterengine/ ./internal/webstercli/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration ./internal/planglyph/ ./internal/websterengine/
 depends-on: [6]
 ```
 
@@ -101,7 +101,9 @@ Batch-local decisions, beyond `## Shared Decisions`:
   An infrastructure error from the resolve **blocks the done-checks** rather than passing them: a `Create` done-check that could not resolve is indistinguishable from a `Create` that never happened, and passing it would be a false success.
   Return the wrapped error so the caller can tell the two apart.
   Note in the file comment that the `Delete` gate would ideally also want quarry's parked `assert-no-callers`, which is not available and is not in this task's scope, so a `Delete` whose target was in fact renamed is caught by card 36's detector rather than by this check.
-  In `internal/websterengine/recordbatch.go`, call `DoneChecks` after the report parse and head-SHA cross-check succeed and before the digest is persisted, using `deps.Geom.WorktreeRoot` for the root and the just-completed batch's own cards for the card set.
+  In `internal/websterengine/recordbatch.go`, add a `Plan *planparser.Plan` field to the `RecordDeps` struct, mirroring the field `BeginDeps` already carries: `DoneChecks` here and `BindHandles`/`DetectDrift` in cards 34 and 36 all need the parsed plan, and `RecordDeps` carries none today — `deps.Geom.PlanDir` reaches the directory but nothing reaches the plan.
+  Populate it at the one call site, `internal/webstercli/recordbatch.go`, from the `planparser.ParsePlan(c.geom.PlanDir)` call that verb already performs before sequencing, so no second parse is introduced.
+  Then call `DoneChecks` after the report parse and head-SHA cross-check succeed and before the digest is persisted, using `deps.Plan`, `deps.Geom.WorktreeRoot` for the root, and the just-completed batch's own cards for the card set.
   A blocking finding means the batch is not done: return it as a new `ErrCardNotDone` sentinel declared beside the file's existing `ErrNoBeginRecord`, and do not persist a terminal digest.
   In `internal/webstercli/recordbatch.go`, surface that sentinel as its own JSON error envelope naming the failing check IDs, distinct from the existing `no_report` ladder signal, which stays a success envelope and exit 0.
   Write the test in `donecheck_integration_test.go` behind a `//go:build integration` constraint alongside card 31's, since the same fixture machinery builds real commits.
@@ -266,4 +268,5 @@ The untagged half, `go test ./internal/planglyph/ ./internal/websterengine/ ./in
 The tagged half, `go test -tags integration ./internal/planglyph/ ./internal/websterengine/`, runs `delta_integration_test.go`, `donecheck_integration_test.go` and `drift_integration_test.go`, which build real fixture repositories and spawn git through `DeltaGit`; they are tagged for exactly that reason and run under `internal/planglyph`'s `TestMain` hermetic git environment from card 16.
 `./cmd/lyx/` is in scope for a second reason beyond card 38: after card 38 lands, any untagged test file in the module containing the literal `DeltaGit` fails the tier-purity guard, so this run is what proves the new tagged files are tagged correctly.
 The scope is four named packages rather than the module because those are the four this batch edits, and the hub's own `pipeline.done_gate` — `go test ./... && go test -tags integration ./...` — runs the whole repository in both modes before the task is marked done, which is what catches a regression in a package no batch verify covers.
+`./internal/lyxcwd/` is in scope for one reason: the Markdown Link Integrity guard lives in `internal/lyxcwd/docslink_test.go` and scans `manifest/` and `docs/`, which this batch rewrites — without it a broken link would surface only at the hub's end-of-task done gate, several batches after the edit that caused it.
 </content>

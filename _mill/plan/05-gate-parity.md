@@ -5,7 +5,7 @@ task: "Adopt quarry's glyph alphabet as the plan alphabet"
 batch: "gate-parity"
 number: 5
 cards: 3
-verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/
+verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/ ./internal/websterengine/ && go test -tags integration ./internal/websterengine/
 depends-on: [4]
 ```
 
@@ -19,7 +19,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
 
 - **Severity decides the verdict, not finding count.** Today's `if len(findings) > 0` gate predates a severity axis; with one, an informational-only set is a pass. This is the same rule card 32 applies to the identical `[]planglyph.Finding` type at `begin-batch`, and the two must not disagree about what a severity means.
 - **The infrastructure error is a producer error, never a `Stuck`.** `planValidate.Call` already draws that line for a `ParsePlan` failure — a plan that will not parse is not a plan the `Plan-Write` bounce target can be asked to improve — and a quarry outage is the same class: `Stuck` persists blocked and bounces, a returned error persists failed and aborts the run.
-- **`webstercli validate` moves too**, even though it is not half of a parity pair, because it runs the identical gate `websterengine.Run` runs before forking an implementer, and leaving it on `planparser` would make one of the three plan-checking surfaces answer a different question from the other two.
+- **All four plan-checking surfaces move together**, not only the parity pair: the producer row, `validate-plan`, `webstercli validate`, and `websterengine.Run`'s own pre-flight gate. `webstercli validate` exists as the lint-without-run mirror of `Run`'s gate, so moving the mirror without the gate would leave the two answering different questions — the exact drift this batch exists to prevent.
 
 ## Cards
 
@@ -49,7 +49,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Extend the existing tests with a case proving a quarry-unavailable error produces a returned error rather than `Stuck`; one proving an informational-only findings set produces `Done` and still logs; and one proving a set mixing one blocking and one informational finding produces `Stuck`.
 - **Commit:** `23: refactor(loomshed): run the plan gate through planglyph's resolve-backed entry points`
 
-### Card 24: move validate-plan and webster validate onto planglyph
+### Card 24: move validate-plan, webster validate and webster's own Run gate onto planglyph
 
 - **Context:**
   - `internal/planglyph/planglyph.go`
@@ -62,6 +62,8 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/loomcli/validate_test.go`
   - `internal/webstercli/validate.go`
   - `internal/webstercli/cli_test.go`
+  - `internal/websterengine/runlevel.go`
+  - `internal/websterengine/runlevel_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -72,7 +74,12 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Map a quarry-unavailable error onto `output.Err` with a message naming quarry rather than the plan, so an operator reading the envelope is never told the plan is invalid when quarry simply could not answer; this is the CLI-side half of card 23's producer-side rule and the two must agree, since parity binds them.
   Update the command's `Long` text, which today names `planparser.ValidateFormat` and `planparser.Validate` for the two modes.
   In `internal/webstercli/validate.go`, make the same substitution for `planglyph.Validate(plan, c.geom.WorktreeRoot)`, adapt `findingsEnvelope` to take `[]planglyph.Finding` and add the severity to each entry's map alongside `check`, `card` and `detail`, apply the same blocking-only gate to which envelope it emits, and update the command's `Long` text, which today pins a 17-check count that is no longer accurate.
-  Extend both packages' tests with a clean case; a blocking-findings case asserting the severity is present in the error envelope; an informational-only case asserting a success envelope that still carries the findings; and a quarry-unavailable case asserting the error envelope names quarry.
+  In `internal/websterengine/runlevel.go`, make the same substitution at the pre-flight gate inside `Run`, which calls `planparser.Validate(plan, deps.Geom.WorktreeRoot)` and refuses the run on any finding.
+  This is the **real** gate — `webstercli validate` is only its lint-without-run mirror — so leaving it on `planparser` while moving its mirror would make the standalone verb answer a different question from the run it exists to pre-flight, which is the opposite of the reason batch 5 exists.
+  Apply the same severity rule here too: refuse the run only when at least one blocking finding is present, and surface an informational-only set without refusing.
+  Give a quarry-unavailable error its own returned error naming quarry, distinct from the findings refusal, matching card 23's producer-side disposition.
+  Extend `runlevel_test.go` with a blocking-findings refusal, an informational-only run that proceeds, and a quarry-unavailable refusal.
+  Extend both CLI packages' tests with a clean case; a blocking-findings case asserting the severity is present in the error envelope; an informational-only case asserting a success envelope that still carries the findings; and a quarry-unavailable case asserting the error envelope names quarry.
 - **Commit:** `24: refactor(cli): run validate-plan and webster validate through planglyph`
 
 ### Card 25: update the parity invariant and its test
@@ -100,8 +107,9 @@ Batch-local decisions, beyond `## Shared Decisions`:
 
 ## Batch Tests
 
-`verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/` covers exactly the three packages this batch edits, and the parity test in `internal/loomcli` is the load-bearing one: it drives the producer and the verb over the same fixtures in both modes and fails if either side moved without the other.
+`verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/ ./internal/websterengine/ && go test -tags integration ./internal/websterengine/` covers exactly the four packages this batch edits — `internal/websterengine` joins them because card 24 moves `Run`'s own pre-flight gate, the real gate the other three mirror — and the parity test in `internal/loomcli` is the load-bearing one: it drives the producer and the verb over the same fixtures in both modes and fails if either side moved without the other.
 All three packages' untagged tests stay tier1-pure — the two new parity fixtures build a small repository under `t.TempDir()` and reach `quarry.Resolve`, which reads files rather than spawning, and the non-repository fixture never opens anything at all.
-`internal/webstercli`'s own `cli_integration_test.go` and `smoke_test.go` carry build tags and are out of this untagged run by construction; they exercise no plan-validation path this batch changes.
+The chained `-tags integration` half exists because `internal/websterengine/runlevel_test.go` is itself `integration`-tagged, so card 24's new gate cases would otherwise never execute; it is scoped to that one package rather than appended to the whole command, which would swap the untagged run out instead of adding to it.
+`internal/webstercli`'s own `cli_integration_test.go` and `smoke_test.go` carry build tags and stay out of the untagged half by construction; they exercise no plan-validation path this batch changes.
 The scope excludes `internal/planglyph` deliberately — batch 4's verify already covers it and nothing here changes it — while the overview's module-wide `go build ./...` catches any other caller of the two moved `planparser` functions that this batch missed, at this batch's own boundary.
 </content>

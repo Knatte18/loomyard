@@ -5,7 +5,7 @@ task: "Adopt quarry's glyph alphabet as the plan alphabet"
 batch: "planglyph"
 number: 4
 cards: 7
-verify: go test ./internal/planglyph/ ./internal/planparser/
+verify: go test ./internal/planglyph/ ./internal/planparser/ ./internal/lyxcwd/
 depends-on: [3]
 ```
 
@@ -203,5 +203,6 @@ Batch-local decisions, beyond `## Shared Decisions`:
 `verify: go test ./internal/planglyph/ ./internal/planparser/` runs the new package's whole test set plus the parser package it composes, because every card here layers onto `planparser`'s pure checks and a regression there surfaces as a `planglyph` failure that is easier to read with both packages in one run.
 The `internal/planglyph` tests added in this batch are untagged and tier1-safe: they build a small fixture repository under `t.TempDir()` and call `quarry.Open`/`Resolve`, which read files and spawn no process — only `DeltaGit` spawns `git`, and its first call site arrives in batch 7 under an `integration` tag.
 `testmain_test.go`'s `gitkit.HermeticGitEnv()` call from card 16 is in place ahead of those tagged tests, satisfying the Hermetic Git Test Environment Invariant before the first test that needs it exists.
-The two-package scope is right rather than module-wide: no package outside these two imports `planglyph` until batch 5, and the overview's module-wide `go build ./...` catches a compile break from the card 21 signature change at this batch's own boundary.
+The three-package scope is right rather than module-wide: no package outside these two imports `planglyph` until batch 5, and the overview's module-wide `go build ./...` catches a compile break from the card 21 signature change at this batch's own boundary.
+`./internal/lyxcwd/` is in scope for one reason: the Markdown Link Integrity guard lives in `internal/lyxcwd/docslink_test.go` and scans `manifest/` and `docs/`, which this batch rewrites — without it a broken link would surface only at the hub's end-of-task done gate, several batches after the edit that caused it.
 </content>

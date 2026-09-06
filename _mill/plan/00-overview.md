@@ -37,22 +37,22 @@ batches:
     name: planglyph
     file: 04-planglyph.md
     depends-on: [3]
-    verify: go test ./internal/planglyph/ ./internal/planparser/
+    verify: go test ./internal/planglyph/ ./internal/planparser/ ./internal/lyxcwd/
   - number: 5
     name: gate-parity
     file: 05-gate-parity.md
     depends-on: [4]
-    verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/
+    verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/ ./internal/websterengine/ && go test -tags integration ./internal/websterengine/
   - number: 6
     name: quarry-cli
     file: 06-quarry-cli.md
     depends-on: [5]
-    verify: go test ./internal/quarrycli/ ./cmd/lyx/
+    verify: go test ./internal/quarrycli/ ./cmd/lyx/ ./internal/lyxcwd/
   - number: 7
     name: webster-drift
     file: 07-webster-drift.md
     depends-on: [6]
-    verify: go test ./internal/planglyph/ ./internal/websterengine/ ./internal/webstercli/ ./cmd/lyx/ && go test -tags integration ./internal/planglyph/ ./internal/websterengine/
+    verify: go test ./internal/planglyph/ ./internal/websterengine/ ./internal/webstercli/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration ./internal/planglyph/ ./internal/websterengine/
 ```
 
 ## Shared Decisions
@@ -138,6 +138,7 @@ _Cross-cutting decisions every batch inherits._
 - `cmd/lyx/constraintchokepoint_test.go`
 - `cmd/lyx/helptree_test.go`
 - `cmd/lyx/main.go`
+- `cmd/lyx/seamsignature_test.go`
 - `cmd/lyx/spawnobservability_test.go`
 - `cmd/lyx/tierpurity_test.go`
 - `contracts/specs/loom-plan-spec.md`
@@ -217,6 +218,8 @@ _Cross-cutting decisions every batch inherits._
 - `internal/websterengine/beginbatch_test.go`
 - `internal/websterengine/recordbatch.go`
 - `internal/websterengine/recordbatch_test.go`
+- `internal/websterengine/runlevel.go`
+- `internal/websterengine/runlevel_test.go`
 - `manifest/designs/quarry-glyph-plan-alphabet.md`
 - `manifest/roadmap.md`
 - `tools/deploy/main.go`
