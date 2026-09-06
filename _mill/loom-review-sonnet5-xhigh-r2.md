@@ -191,6 +191,32 @@ phase is observed.
 
 </details>
 
+### F-plan2 (MEDIUM, CONFIRMED LIVE) — planglyph's own ~15 resolve-backed check IDs have no single canonical enumerated reference, and a real review round nearly mis-fired because of it
+
+`contracts/specs/loom-plan-spec.md`'s "Validation checks" section is an exhaustive, numbered, authoritative
+list of all 27 of `internal/planparser`'s own pure format checks — exactly the kind of reference a reviewing
+LLM (or a human) can check a claim against without reading Go source. **No equivalent list exists for
+`internal/planglyph`'s own resolve-backed findings** — `glyph-not-found`, `glyph-ambiguous`, `glyph-rejected`,
+`create-already-exists`, `create-new-unit`, `containment-file-overlap`, `handle-name-failed`,
+`handle-canonical-collision`, `bind-count-mismatch`, `rename-old-unresolved`, `plan-references-deleted-symbol`,
+`rename-candidate`, `scope-outside-plan`, `create-not-done`, `delete-not-done` — roughly fifteen check IDs,
+each documented only in its own package doc comment (`handle.go`, `create.go`, `resolve.go`, `containment.go`,
+`drift.go`, `scope.go`, `donecheck.go`) or in `manifest/designs/quarry-glyph-plan-alphabet.md`'s prose, never
+as one canonical enumerated reference the way `loom-plan-spec.md` serves `planparser`.
+
+**This round's own live Plan-Bouncer round-1 judge pass hit exactly this gap and nearly mis-fired because of
+it.** Its own review file (`round-1-review.md`, quoted in "What was tested" below) says, verbatim: "Checked
+the plan's most load-bearing claim — that this format cannot express add-then-rename — against the code
+rather than the spec text. `rename-old-unresolved` is absent from `loom-plan-spec.md`'s check list, which made
+the claim look fabricated, but it is a real blocking finding raised by `internal/planglyph/handle.go:120`...
+I nearly raised this as a finding and did not, because the substrate says the plan is right." A rigorous
+reviewer caught it by going all the way to the Go source; a less careful one would not have, and would have
+raised a false BLOCKING finding against a plan that was in fact correctly reasoned — precisely the
+over-flagging failure mode both rubrics warn against, caused here by a documentation gap rather than a
+judgment lapse. Worth a short canonical list (a new subsection of `manifest/designs/quarry-glyph-plan-alphabet.md`,
+or a `internal/planglyph/doc.go` addition) enumerating every resolve-backed check ID this package can raise,
+mirroring `loom-plan-spec.md`'s own table for `planparser`.
+
 ## Fork-assisted research (parent's own synthesis, independently spot-checked)
 
 Two research forks were used to widen static-analysis coverage in parallel with live-run monitoring — I
