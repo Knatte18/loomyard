@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: reed-fabric-standalone-api-design
 branch: reed-fabric-standalone-api-design
 plan: null
@@ -19,4 +19,6 @@ discussion-fix-r1  '2026-09-06T12:14:21Z'
 discussion-gap-fix-r2  '2026-09-06T12:19:24Z'
 discussion-fix-r3  '2026-09-06T12:24:32Z'
 discussion-fix-r4  '2026-09-06T12:26:39Z'
+discussion-fix-r5  '2026-09-06T12:29:20Z'
+discussed  '2026-09-06T12:29:20Z'
 ```

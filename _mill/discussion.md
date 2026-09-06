@@ -99,7 +99,10 @@ The deliverable is a design document, not code.
   The `logger` decoupling is deliberately **not** in this list — see the separate decision below for why it is standalone-only.
 - Rationale: each has a standalone justification.
   (a) `reedengine.CleanClaudeEnv` is a Claude-provider-specific name in the public API of a package the Shuttle Provider-Seam Invariant says never references Claude specifics;
-  it is the only such name, it has no caller outside `reedengine`, and the fix is a rename plus a parameter.
+  it is the only such name and it has no caller outside `reedengine`.
+  Its depth is fixed here, to the same standard the Fabric split decision sets, so the follow-up item is not left to invent it: the shape is a provider-neutral name taking the key set as a caller-supplied parameter — `StripEnvKeys(environ []string, exact []string, prefixes []string) (clean []string, stripped []string)`, with the `CLAUDECODE` / `CLAUDE_CODE_` values moving from the function body into `internal/reedengine/lifecycle.go`'s single call site, which is where the provider knowledge belongs.
+  The exact identifier name is the one thing left to the follow-up item;
+  the signature shape and the relocation of the Claude literals are not.
   (b) `webstercli` already holds Reed as `shuttleengine.ReedOps`, `burlercli` and `shuttlecli` construct and hand off, and only `loomcli` retains the concrete `*Engine` — for six methods Reed could publish as a second named slice.
   The wording of (b) matters: `burlercli/wiring.go:99,158` and `shuttlecli/cli.go:86,94` both call `reedengine.New` and so hold the concrete value transiently before handing it to `shuttleengine.NewRunner`, and a seam cannot change that — construction always yields the concrete type.
   What (b) removes is the *retained* field, of which `internal/loomcli/cli.go:44` is the only instance.
@@ -284,7 +287,9 @@ The deliverable is a design document, not code.
 - Rationale: this is an API-design document;
   its whole content is signatures.
   Prose descriptions of a method set are strictly less checkable than the method set.
-  Every listed signature is transcribed from the shipped code or derived from it, never invented, so a reader can verify each against the source.
+  The transcription rule is scoped, because two of the three listings have shipped source behind them and one does not.
+  The two Reed interface slices and the façade re-export shape are transcribed from shipped code or derived from it, never invented, so a reader can verify each against `internal/reedengine` and against quarry's `quarry/` package.
+  The creel message struct has no shipped source to transcribe from — the module is unbuilt — so the doc must label that listing explicitly as an **illustrative sketch**, subject to the `creel-is-sketched-not-specified` boundary, and must not present it as a measured or verifiable contract.
 - Rejected: prose only (unverifiable, and would make the doc longer, not shorter).
 
 ## Technical context
@@ -490,4 +495,5 @@ Scenarios a reviewer of the finished doc should confirm are covered, in addition
   promoting any of them is a separate decision afterwards. **Why:** the task brief says so explicitly, and `CLAUDE.md` moves the roadmap only on completing or adding a planned item.
 - **Q:** Do `fslink`/`yamlengine`/`githubclient` warrant a follow-up task? **A:** [auto-pick] No — one paragraph in the doc. **Why:** 410, fewer, and `proc`-dependent production lines respectively;
   a separate repo, module path, release cadence and CI never pays for that size without an external consumer, and the same gate that defers Reed defers all three more strongly.
-- **Q:** Should the doc contain real Go listings or prose? **A:** [auto-pick] Real listings, every signature transcribed from or derived from shipped code. **Why:** an API-design doc's content is signatures, and prose descriptions of a method set are not checkable.
+- **Q:** Should the doc contain real Go listings or prose, and does the transcription rule cover the unbuilt creel module? **A:** [auto-pick] Real listings;
+  the Reed slices and the façade shape are transcribed from or derived from shipped code, while the creel struct is labelled an illustrative sketch because there is no source to transcribe. **Why:** an API-design doc's content is signatures and prose descriptions of a method set are not checkable, but a verifiability rule cannot be asserted over a module that does not exist.
