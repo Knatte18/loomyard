@@ -62,15 +62,15 @@ func cardID(c Card) string {
 }
 
 // Validate runs every plan-format machine check against plan, including the plan-unapproved
-// approval gate, and returns every finding in fixed order: all twenty check IDs documented in
-// this file's package comment, with plan-unapproved at position three.
+// approval gate, and returns every finding in fixed order: all twenty-seven check IDs documented
+// in this file's package comment, with plan-unapproved at position three.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return validate(plan, worktreeRoot, true)
 }
 
 // ValidateFormat runs every plan-format machine check against plan except the plan-unapproved
-// approval gate, and returns every finding in fixed order: nineteen of the twenty check IDs
-// documented in this file's package comment, everything but plan-unapproved.
+// approval gate, and returns every finding in fixed order: twenty-six of the twenty-seven check
+// IDs documented in this file's package comment, everything but plan-unapproved.
 // Approval is deliberately not ValidateFormat's business: the approved: flag is written after the
 // review segment settles, so a pre-review caller must not be told the plan is unapproved.
 func ValidateFormat(plan *Plan, worktreeRoot string) []ValidationError {
