@@ -3,7 +3,7 @@
 ```yaml
 task: 'webster standalone mode: run refuses to start Master; logs write untracked into target repo'
 slug: 'standalonegeom-webster-run-and-log-hygiene'
-approved: false
+approved: true
 started: '20260906-181015'
 parent: 'crucible-loom-glyph-hardening'
 root: ""
@@ -53,7 +53,7 @@ Batch-local decisions live in each batch file._
 
 - **Decision:** no card changes hub-mode behaviour.
   `NewRunner` keeps its exact signature, its exact containment assertion, and its exact error strings;
-  `SetDurableSinkDir` keeps its exact name, signature, and body;
+  `SetDurableSinkDir` keeps its exact name, its exact signature, and its exact reset semantics — the observable call-site contract, not its literal body text, which batch 2 card 4 deliberately refactors into a shared `resetDurableSinkLocked` helper it then delegates to;
   neither `wireHub` gains a sink call.
   Every existing test that pins hub behaviour must keep passing without being edited, and the plan names those tests explicitly so an edit to one is visible as a plan violation rather than as ordinary churn.
 - **Rationale:** the task is two standalone-mode defects.

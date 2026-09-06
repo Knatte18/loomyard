@@ -59,8 +59,10 @@ Batch-local decisions:
   Add a third test asserting `wireHub` leaves the durable sink directory untouched, so a later refactor cannot quietly route hub mode through the standalone path.
   Observe that the same way: call `logger.SetDurableSinkDir(sentinelDir)` for a `t.TempDir()` sentinel before calling `wireHub`, emit one `logger.Info` afterwards, and assert the trace file landed in `sentinelDir`.
   A `wireHub` that had overwritten the override would have put the file somewhere else, and the setter's own reset of `sinkOnce` is what makes each such test arm a fresh sink rather than reusing an earlier test's.
-  Every test in this file that reaches `wireStandalone` — the new ones and the shipped ones alike — must register `t.Cleanup(func() { logger.SetDurableSinkDir("") })`, per the overview's `sink-override-is-process-global` decision;
+  Every test in this file that causes the override to be set — whether by reaching `wireStandalone` or by calling `logger.SetDurableSinkDir` directly — must register `t.Cleanup(func() { logger.SetDurableSinkDir("") })`, per the overview's `sink-override-is-process-global` decision;
   without it the override leaks into every later test in the same binary and defeats the `testing.Testing()` sink suppression for all of them.
+  The new `wireHub`-sentinel test is explicitly in that set: it never reaches `wireStandalone`, but it calls the process-global setter itself, so it carries the same cleanup.
+  Among the shipped tests that reach `wireStandalone` and therefore also need it: `TestWire_ModeStandaloneSelectsStandaloneMode`, `TestWire_PlanDirResolution`'s standalone subtests, `TestWire_StandaloneRootsResolveToTarget`, and `TestWire_MatcherNeverNilOpenerNilOnlyInStandalone`'s standalone subtest.
 - **Commit:** `fix(webstercli): wire standalone through the detached runner and redirect the trace sink`
 
 ### Card 6: switch burlercli's standalone wiring to the detached runner and redirect the trace sink
@@ -88,7 +90,8 @@ Batch-local decisions:
   Observe the sink directory exactly the way card 5 specifies — force a write and check the filesystem, never read `internal/logger`'s own state, which is unexported and has no accessor.
   For the standalone case that means one `logger.Info` call after `wireStandalone` returns (the non-empty override bypasses the `testing.Testing()` suppression, so no `LYX_TRACE` redirect is needed) followed by an assertion that a `trace-*.log` file exists under `standalonegeom.LogsDir(stateDir)`;
   for the hub case it means a `logger.SetDurableSinkDir(sentinelDir)` sentinel set before `wireHub`, one `logger.Info` after, and an assertion that the file landed in the sentinel directory.
-  Register `t.Cleanup(func() { logger.SetDurableSinkDir("") })` in every test in this file that reaches `wireStandalone`, including the shipped `TestWireStandalone_NeverReadsLoc`, `TestWire_ModeStandaloneSelectsStandaloneMode`, `TestWire_StandalonePinnedValues` and `TestWire_StencilsDirFlag`.
+  Register `t.Cleanup(func() { logger.SetDurableSinkDir("") })` in every test in this file that causes the override to be set — whether by reaching `wireStandalone` or by calling `logger.SetDurableSinkDir` directly.
+  That set includes the shipped `TestWireStandalone_NeverReadsLoc`, `TestWire_ModeStandaloneSelectsStandaloneMode`, `TestWire_StandalonePinnedValues` and `TestWire_StencilsDirFlag`, and it also includes the new `wireHub`-sentinel test, which never reaches `wireStandalone` but calls the process-global setter itself.
 - **Commit:** `fix(burlercli): wire standalone through the detached runner and redirect the trace sink`
 
 ### Card 7: add the source-level guard on root pre-run logging order
