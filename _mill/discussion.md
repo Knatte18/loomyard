@@ -103,6 +103,10 @@ Any future standalone verification — the campaign's own "what could not be ver
 - Rejected:
   **(a) No validation beyond absolute/non-empty** — loses the hub-geometry-by-mistake catch for free.
   **(b) Require the anchor to live under the OS state directory** — drags `standalonestate` (and `$XDG_STATE_HOME` reads) into an engine that is told its paths and derives none, breaking the Told-Geometry Invariant.
+- **`paneCwd`, the third told path, is validated too:** non-empty and absolute, on exactly the same reasoning as the other two.
+  It is the fork audit's workdir (`wait.go:431`), which is precisely the consumer whose failure mode `validateToldPaths` exists to catch — an empty or relative value does not fail, it silently resolves the provider's transcript directory against whatever working directory the process happens to have.
+  **No relational assertion is made** between `paneCwd` and the other two paths, and that is deliberate rather than an omission: in hub mode `paneCwd` equals `anchorPath` (`hubgeom.ReedGeometry` sets both to `l.AnchorPath()`), while in standalone it equals `worktreeRoot` (`standalonegeom.ReedGeometry` sets `PaneCwd = WorktreeRoot = target`), so any relation strong enough to be worth asserting would be false in one of the two modes.
+  `NewRunner` needs no new check here, since it derives `paneCwd = anchorPath` internally and that value is already validated.
 
 ### fork-audit-pane-cwd
 
@@ -176,12 +180,8 @@ Any future standalone verification — the campaign's own "what could not be ver
   it would work only under a call convention nothing enforces.
   **(b) Widening `SetDurableSinkDir`'s signature** — twenty-one call-site edits, against the same rationale that keeps the name.
   **(c) An options struct** — over-built for two fields and two callers, and it still has to answer the same atomicity question.
-- Rationale: the function's body is already exactly what production needs — set the override, reset the `sync.Once` and all derived sink state — and the only thing marking it test-only is the words "for testing" in its doc comment.
-  Renaming would churn the existing `cmd/lyx/main_test.go` call sites for no gain.
-  The new comment must state both uses and, critically, must state the **ordering obligation**: the override only takes effect if it is set before the first record that arms the sink.
-- Rejected:
-  **(a) Add a separate production wrapper delegating to the same body** — two names for one behaviour, with the test-only name still present and still misleading.
-  **(b) Make `ensureDurableSink` mode-aware by calling `preflight`/`standalonestate` itself** — `internal/logger` would then derive its own geometry, against the Cwd Resolution and Told-Geometry Invariants, and would pull a heavy dependency into the lowest-level package in the tree.
+  **(d) Make `ensureDurableSink` mode-aware by calling `preflight`/`standalonestate` itself** — `internal/logger` would then derive its own geometry, against the Cwd Resolution and Told-Geometry Invariants, and would pull a heavy dependency into the lowest-level package in the tree.
+- Doc-comment obligation: both entry points' comments must state the **ordering obligation** — the directory only takes effect if it is set before the first record that arms the sink — and `SetDurableSinkDir`'s must be rewritten from "for testing" to name it as the no-worktree-root-supplied shorthand, which is what it now is in both test and production use.
 
 ### redirect-call-site-and-ordering
 
@@ -221,8 +221,11 @@ Any future standalone verification — the campaign's own "what could not be ver
 
 ### documentation-surface
 
-- Decision: record the detached-anchor rule as a clause in `CONSTRAINTS.md` (extending the shuttle seam's entry rather than opening a new top-level invariant), and update the package/function doc comments that assert the old behaviour: `shuttleengine/doc.go`, `shuttleengine/run.go`'s `validateToldPaths` and `Runner` comments, `standalonegeom/doc.go`'s contract sentence, and `logger`'s sink comments.
+- Decision: record the detached-anchor rule as a bullet appended to `CONSTRAINTS.md`'s **Told-Geometry Invariant** — the existing heading, no new top-level invariant — and update the package/function doc comments that assert the old behaviour: `shuttleengine/doc.go`, `shuttleengine/run.go`'s `validateToldPaths` and `Runner` comments, `standalonegeom/doc.go`'s contract sentence, and `logger`'s sink comments.
   No `manifest/designs/` file changes and no `docs/overview.md` change.
+- Rationale for that host heading specifically: the **Shuttle Provider-Seam Invariant** is the only other shuttle-named entry and is exclusively about provider specifics living under `claudeengine` — it has no anchor/worktree-geometry content, so appending there would be a category error.
+  The Told-Geometry Invariant already binds `shuttleengine` in its bound-package list, already names `hubgeom`/`standalonegeom` as the only `Geometry`-struct constructors, and already carries the "told the absolute paths it operates on, derives none" rule the detached constructor is a special case of.
+  The clause to append says: a `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through the detached constructor, only from a standalone CLI's own wiring, and `NewRunner`'s containment assertion is never relaxed to accommodate it.
 - Rationale: `manifest/designs/` has no webster, shuttle, or standalone-mode document to update — the closest, `reed-fabric-standalone-api.md`, is about reed's fabric API rather than this geometry.
   `docs/overview.md`'s module table and execution stack are unchanged: no module is added, removed, or re-layered.
   Per `CLAUDE.md`, the roadmap moves only on completing or adding a planned item, and this is a bugfix.
@@ -333,8 +336,10 @@ existing tables are extended rather than duplicated.
 **`internal/shuttleengine`**
 
 - Detached constructor, accepted shapes: the standalone pair (two disjoint absolute directories) constructs a runner whose told-path verdict is clean, observed through a public entry point rather than by reading the struct.
-- Detached constructor, refused shapes — one table, mirroring `TestNewRunner_RefusesUnusableToldPaths`: empty either side, relative either side, the two paths equal, the anchor strictly inside the worktree, the worktree strictly inside the anchor.
-  The last three are the hub-geometry-by-mistake catch and are the point of the whole decision, so each gets its own row.
+- Detached constructor, refused shapes — one table, mirroring `TestNewRunner_RefusesUnusableToldPaths`: empty either side, relative either side, the two paths equal, the anchor strictly inside the worktree, the worktree strictly inside the anchor, **an empty `paneCwd`**, and **a relative `paneCwd`**.
+  The equality and two containment rows are the hub-geometry-by-mistake catch and are the point of the `detached-pair-validation` decision;
+  the two `paneCwd` rows pin the third told path against the same silent-resolution failure mode.
+  Add a positive row too: a `paneCwd` equal to `anchorPath` and one equal to `worktreeRoot` are both accepted, since those are exactly the hub and standalone shapes and no relational assertion is made.
 - `NewRunner` regression: the existing refusal table and `TestNewRunner_AcceptsHubGeometryShapes` must still pass **unchanged** — that is the load-bearing proof that hub mode did not move.
   Add a row asserting `NewRunner` still refuses the standalone pair, so the two constructors are provably not interchangeable.
 - Fork-audit workdir: a fake `Engine` records the workdir it is handed by `AuditForks`, driven once through a `NewRunner`-built runner (expect the anchor path, today's behaviour, in both a root-anchored and a subpath-anchored hub shape) and once through a detached runner built with a distinct pane cwd (expect the pane cwd).
@@ -388,7 +393,8 @@ existing tables are extended rather than duplicated.
 
 - **Q:** How should F16 be fixed — relax `shuttleengine.NewRunner`'s containment assertion, or express standalone's detached pair some other way? **A:** [auto-pick] Add an explicit detached-anchor constructor alongside `NewRunner`, and switch the standalone wirings to it. **Why:** the containment clause is a swap detector every hub caller relies on;
   a distinct constructor makes the "this pair is legitimately detached" claim explicit, greppable, and local to two call sites, instead of deleting the detector tree-wide to serve one mode.
-- **Q:** What should the detached constructor validate, given it cannot assert containment? **A:** [auto-pick] Non-empty and absolute as today, plus strict disjointness — not equal, neither containing the other. **Why:** it catches hub geometry handed to the detached constructor in both its shapes (root-anchored gives equality, subpath-anchored gives containment) without importing `standalonestate` into an engine that is told its paths and derives none.
+- **Q:** What should the detached constructor validate, given it cannot assert containment? **A:** [auto-pick] Non-empty and absolute as today, plus strict disjointness — not equal, neither containing the other — and, for the third told path `paneCwd`, non-empty and absolute with no relational assertion at all. **Why:** disjointness catches hub geometry handed to the detached constructor in both its shapes (root-anchored gives equality, subpath-anchored gives containment) without importing `standalonestate` into an engine that is told its paths and derives none;
+  `paneCwd` gets no relation because it equals `anchorPath` in hub and `worktreeRoot` in standalone, so any relation worth asserting would be false in one mode.
 - **Q:** Does this task fix `burlercli`'s standalone branch too, or webster only? **A:** [auto-pick] Both. **Why:** `burlercli/wiring.go:159` passes the identical non-containing pair from the identical `standalonegeom.ReedGeometry` call, so `lyx burler` standalone is broken the same way;
   the fix is the same two lines at a call site already being read and tested here.
 - **Q:** `shuttleengine/wait.go:431` passes `r.anchorPath` as the fork audit's workdir, but standalone panes start in the target repository. Fix here or defer? **A:** [auto-pick] Fix here, by carrying a told `paneCwd` on `Runner` — `NewRunner` sets it to `anchorPath`, preserving hub behaviour exactly. **Why:** otherwise F16's fix ships a `run` that starts and then audits the wrong transcript directory, which is not a fix.
@@ -396,12 +402,11 @@ existing tables are extended rather than duplicated.
 - **Q:** Fix F22 by redirecting the trace sink out of the target repository, or by seeding a `.git/info/exclude` entry in it? **A:** [auto-pick] Redirect to `<stateDir>/.lyx/logs`;
   write nothing into the target repository. **Why:** the Durable-vs-Ephemeral State Invariant already names the derived state directory as standalone's anchor, so today's location is an invariant violation rather than untidiness;
   and only redirecting stops `RecordBatch`'s dirty-worktree probe from firing, which an exclude entry would merely hide.
-- **Q:** `logger.SetDurableSinkDir` is documented "for testing" but its body is exactly what production needs. Promote it, wrap it, or avoid it? **A:** [auto-pick] Promote it — rewrite the doc comment, keep the name and body. **Why:** the defect is the comment, not the function;
-  a second name for one behaviour would leave the misleading one in place.
-  The new comment must state the ordering obligation, since the override only binds before the sink is armed.
+- **Q:** `logger.SetDurableSinkDir` is documented "for testing" but its body is exactly what production needs. Promote it, wrap it, or avoid it? **A:** [auto-pick, revised in review round 2] Add one atomic production entry point that sets the directory and the header's worktree root together, and keep `SetDurableSinkDir`'s name, signature and body as the no-worktree-root-supplied shorthand. **Why:** the initial answer — promote the existing function and change nothing else — did not survive the header decision: `SetDurableSinkDir` zeroes the header as part of its reset (`sink.go:196-208`), so the worktree root cannot be supplied by any separate call, and widening the signature would churn twenty-one call sites.
+  Both comments must state the ordering obligation, since the directory only binds before the sink is armed.
 - **Q:** Where does the redirect get called, given `standalonegeom` is documented as touching nothing? **A:** [auto-pick] In each `wireStandalone`, right after `standalonestate.Derive`, using a new pure `standalonegeom.LogsDir(stateDir)` path helper. **Why:** the path belongs at the single construction site (Lyxdirs Single-Declarer), the process-global effect belongs at the CLI wiring boundary, and module pre-run hooks run after root's so the ordering holds.
 - **Q:** How far does the F22 fix reach — every standalone-capable CLI, or the two that derive a state directory? **A:** [auto-pick] The two that derive one (`webstercli`, `burlercli`);
   record the rest explicitly as out of scope. **Why:** `lyx quarry` and parts of `lyx loom` resolve a non-hub mode without ever calling `standalonestate.Derive`, so covering them means either giving them a state directory or moving mode resolution into the root pre-run — a materially larger design change that deserves its own task rather than being smuggled into a two-defect bugfix.
-- **Q:** What documentation moves? **A:** [auto-pick] A `CONSTRAINTS.md` clause on the shuttle seam recording the detached-anchor rule, plus the package and function doc comments the fix falsifies;
+- **Q:** What documentation moves? **A:** [auto-pick, host heading settled in review round 3] A bullet appended to `CONSTRAINTS.md`'s **Told-Geometry Invariant** recording the detached-anchor rule — not the Shuttle Provider-Seam Invariant, which is about provider specifics under `claudeengine` and carries no geometry content — plus the package and function doc comments the fix falsifies;
   no `manifest/designs/` file and no roadmap entry. **Why:** no module is added or re-layered, so `docs/overview.md` is unchanged and the roadmap does not move for a bugfix;
   but `run.go`'s "the anchor is always the worktree root or a subdirectory of it" and its description of `anchorPath` as the pane's own process cwd both become false and must move in the same commit.
