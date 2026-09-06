@@ -1,5 +1,11 @@
-// repo.go is planglyph's one call site for quarry.Open and (*quarry.Repo).Resolve — the package's
-// two entry points into quarry.Repo — and declares Finding, this package's own finding type.
+// repo.go is planglyph's one call site for quarry.Open and every quarry.Repo query method (TOC,
+// Glyphs, Resolve, Expand) — the package's entry points into quarry.Repo — and declares Finding,
+// this package's own finding type.
+//
+// Beside openRepo and resolveTargets, this file exports four query wrappers — TOC, Glyphs,
+// Resolve and Expand — each taking worktreeRoot plus that verb's own argument, opening the
+// repository and delegating to the matching quarry.Repo method unchanged. internal/quarrycli calls
+// these rather than importing the facade directly, per the package-ownership-seam Shared Decision.
 
 package planglyph
 
@@ -83,4 +89,48 @@ func resolveTargets(repo *quarry.Repo, targets []string) ([]quarry.ResolveResult
 		return nil, fmt.Errorf("%w: resolve: %v", ErrQuarryUnavailable, err)
 	}
 	return results, nil
+}
+
+// TOC opens a quarry.Repo rooted at worktreeRoot and answers a table-of-contents query for target
+// under the zero quarry.TOCOptions — the same default the lyx quarry toc verb reports. It returns
+// quarry's own answer and error unchanged, so a caller distinguishes an infrastructure failure
+// from a negative query answer with errors.Is(err, ErrQuarryUnavailable) exactly as openRepo's
+// other callers do.
+func TOC(worktreeRoot, target string) (quarry.DirAnswer, error) {
+	repo, err := openRepo(worktreeRoot)
+	if err != nil {
+		return quarry.DirAnswer{}, err
+	}
+	return repo.TOC(target, quarry.TOCOptions{})
+}
+
+// Glyphs opens a quarry.Repo rooted at worktreeRoot and answers a glyphs query for target under
+// quarry.GlyphsOptions, the frozen preset (*quarry.Repo).Glyphs already queries under. It returns
+// quarry's own answer and error unchanged.
+func Glyphs(worktreeRoot, target string) (quarry.GlyphsAnswer, error) {
+	repo, err := openRepo(worktreeRoot)
+	if err != nil {
+		return quarry.GlyphsAnswer{}, err
+	}
+	return repo.Glyphs(target)
+}
+
+// Resolve opens a quarry.Repo rooted at worktreeRoot and resolves every entry of targets,
+// positionally, via resolveTargets. It returns quarry's own result slice and error unchanged.
+func Resolve(worktreeRoot string, targets []string) ([]quarry.ResolveResult, error) {
+	repo, err := openRepo(worktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	return resolveTargets(repo, targets)
+}
+
+// Expand opens a quarry.Repo rooted at worktreeRoot and answers an expand query for target. It
+// returns quarry's own answer and error unchanged.
+func Expand(worktreeRoot, target string) (quarry.ExpandAnswer, error) {
+	repo, err := openRepo(worktreeRoot)
+	if err != nil {
+		return quarry.ExpandAnswer{}, err
+	}
+	return repo.Expand(target)
 }
