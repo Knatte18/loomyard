@@ -215,6 +215,12 @@ A `Create:` label's sub-bullet may take either the plain single-ref form every o
 
 The left-hand token is the handle itself — `plan:<unit>#<member>`-shaped, the unit half being an ordinary repository-relative path — and the right-hand token is the declaration head: the symbol's own spelling and kind (e.g. a function signature), the text `internal/planglyph`'s resolve-backed layer hands to `quarry.Name` as a `{Unit, Decl}` pair once the handle is bound to a real glyph. Reusing the `` `old` -> `new` `` arrow grammar `Rename` already carries means a handle declaration needs no new punctuation, only a `plan:`-prefixed left-hand token.
 
+**The declaration head is parsed as source, not read as prose, and must declare exactly one symbol.**
+`quarry.Name` wraps it in a synthetic file and parses it with the same grammar the walk uses, so a placeholder body (`type RowJSON struct{...}` — `...` is not Go) fails to parse and is the blocking finding `handle-name-failed`, and a head declaring several symbols (`const A, B = 1, 2`, an interface written out with its methods) is rejected for that instead.
+A bare head is complete and is the form to write: `type RowJSON struct`, `func newRowJSON(r Row) RowJSON`, `type Reader interface`, and — for a method, receiver included — `func (c *Cache) Get(k string) (Row, bool)`.
+
+Once bound, a `Create` declaration bullet collapses to the plain `` - `<glyph>` `` ref form every other `Create` target uses: the declaration head existed only to compute the glyph that has now been computed, and keeping the arrow beside a non-handle left token would fail `handle-malformed`.
+
 A `Rename` group's two sides carry different obligations under this alphabet: the `Old` side must be a glyph — it names something real that will be resolved — and the `New` side must be a `plan:` handle, whose content a later binding step computes and overwrites at the validation boundary rather than trusting the planner's draft spelling. A `Rename` card therefore needs no declaration head of its own, unlike a `Create` card, because the declaration is derived from the resolved old side. A file-rename pair — both sides self glyphs — is exempt from this rule, since it has no declaration head to name and belongs in the same group as a plain path pair.
 
 Six checks keep this mechanism internally consistent: `handle-dangling`, `handle-collision`, `handle-unreferenced`, and `handle-malformed` (all keeping a `Create`-declared handle consistent with where it is referenced), and `rename-to-not-handle`/`rename-from-not-glyph` (keeping a `Rename` pair's two sides on their correct side of the handle/glyph line) — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below for each check's own row. All six run under every `language:`, including `"none"`, since a handle is loomyard's own grammar, not glyph grammar, and its consistency is checkable without any alphabet.
@@ -423,7 +429,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 # Card 5 — rowmapper-rename
 
 **Rename:**
-- `internal/boardengine#MapRow` -> `internal/boardengine#MapRowJSON`
+- `internal/boardengine#MapRow` -> `plan:internal/boardengine#MapRowJSON`
 - `//internal/boardengine/rows.go` -> `//internal/boardengine/rowsjson.go`
 
 **Intent:** Rename the row mapper and its file to make the JSON-oriented behavior explicit ahead of a later extraction.
@@ -454,7 +460,8 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 
 `list.go`/`doc.go`/`list_json_test.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/doc.go`/`internal/boardcli/list_json_test.go`, then canonicalize (per the plan's `language: go`) to the file self glyphs `internal/boardcli/list.go#`/`internal/boardcli/doc.go#`/`internal/boardcli/list_json_test.go#`;
 the `//`-prefixed entries (`envelope.go`, `emit.go`, `legacyrows.go`, `rows.go`, `rowsjson.go`, `helppins.go`, `boardcli-json.md`) stay worktree-root-relative regardless of `root:`, escaping it for the files each card needs outside the shared prefix, and canonicalize to their own file self glyphs the same way.
-`internal/boardcli#newListCmd`, `internal/boardcli#RowJSON`, `internal/output#emitJSON`, and `internal/boardengine#MapRow`/`internal/boardengine#MapRowJSON` are glyph-shaped entries already, copied verbatim from a quarry answer, and pass through every one of these resolution rules byte-identical — a glyph is never `root:`-joined and never re-canonicalized.
+`internal/boardcli#newListCmd`, `internal/boardcli#RowJSON`, `internal/output#emitJSON`, and `internal/boardengine#MapRow` are glyph-shaped entries already, copied verbatim from a quarry answer, and pass through every one of these resolution rules byte-identical — a glyph is never `root:`-joined and never re-canonicalized.
+Card 5's `New` side, `plan:internal/boardengine#MapRowJSON`, is a handle rather than a glyph, because a symbol `Rename`'s `New` side must be one (`rename-to-not-handle`, and [Plan: handles](#plan-handles) above): the renamed symbol does not exist until the rename lands, so its spelling is computed at the validation boundary rather than written here.
 
 ## Related
 
