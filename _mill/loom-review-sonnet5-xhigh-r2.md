@@ -106,10 +106,29 @@ per that prompt's "Log as you go" requirement.
   `ed1263a 2: main-greeting-wiring`), and `services/api/main.go`'s actual diff matches the plan's cards
   exactly. The plan-level `## verify:` integration suite then ran and reported `status: OK` in
   `_lyx/webster/reports/integration.yaml` with `head_sha` matching the real final HEAD.
-- **Continuing to monitor through `Webster-Review`/`Publish`/`Finalize`; this section will be appended as the
-  run progresses.** (Pre-emptively edited `_lyx/config/landing.yaml` in the sandbox hub — an operator-owned
-  test-fixture config file, not loom's own source — setting `require_pr_to_base: []` so `Publish` direct-merges
-  into this disposable sandbox hub's own `main` rather than opening a real pull request against the public
+- **`Webster-Review` (real, for the first time ever — round 1's standalone rig never reached this gate at
+  all).** A real `Webster-Bouncer` seed spawned, correctly derived its own review range from
+  `_lyx/loom/status.json`'s `product.parent` (`git merge-base main HEAD` = `861f0bf`, range `861f0bf..ed1263a`,
+  the exact two card commits), and its round-1 judge raised one genuine, real, MEDIUM finding: a stray,
+  untracked `api` ELF binary (2.4MB, mtime matching the card commits) sitting at the sandbox repo's root —
+  exactly the hazard the plan's own `gomodule-off-and-no-stray-binary` Shared Decision and its fifth
+  `## verify:` line exist to catch, left behind by a real fork's own incidental, unguarded `go build` during
+  its own turn (never by the card's own declared `**Verify:**` line, which correctly uses `-o "$OUT"`). This
+  is real, substrate-only evidence no fixture-based or hand-authored-plan test could produce: a genuine fork's
+  own incidental side effect, caught by the review's own re-run of the plan's verify block. The round's fixer
+  pass (`rm api`) resolved it; `git status --porcelain` was confirmed empty afterward. This is NOT a
+  glyph-alphabet defect (unrelated to `plan:` handles or the Rename mechanic) and is explicitly out of this
+  round's scope per "Loom's general pipeline mechanics… don't re-verify from scratch" — recorded here as a
+  positive demonstration of the review pipeline catching a real defect a synthetic test never could, not as a
+  formal finding requiring a code fix. The round's own per-card mechanical-check section also correctly
+  confirmed there was no `Rename` group anywhere in the plan (per the `final-name-lands-directly` decision),
+  so it correctly raised no AST-script-plus-grep obligation — the rubric's "confirm every group's own
+  mechanical check ran" logic degraded correctly to "none applicable" rather than hallucinating an
+  obligation that was not there.
+- **Continuing to monitor through `Publish`/`Finalize`; this section will be appended as the run progresses.**
+  (Pre-emptively edited `_lyx/config/landing.yaml` in the sandbox hub — an operator-owned test-fixture config
+  file, not loom's own source — setting `require_pr_to_base: []` so `Publish` direct-merges into this
+  disposable sandbox hub's own `main` rather than opening a real pull request against the public
   `github.com/Knatte18/lyx-test` repository if the run reaches that far.)
 
 ## Findings — provisional, appended as spotted (severity/CONFIRMED-PLAUSIBLE finalized in the final report)
