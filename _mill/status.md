@@ -6,6 +6,7 @@ slug: standalonegeom-webster-run-and-log-hygiene
 branch: standalonegeom-webster-run-and-log-hygiene
 plan: _mill/plan
 parent: crucible-loom-glyph-hardening
+module_verify_baseline: clean
 task: 'webster standalone mode: run refuses to start Master; logs write untracked into target repo'
 task_description: |
   webster standalone mode: run refuses to start Master; logs write untracked into target repo
@@ -33,9 +34,14 @@ implementing  '2026-09-06T18:35:29Z'
 ```yaml
 batches:
   - name: shuttle-detached-runner
-    state: pending
+    state: running
+    implementer_session: a608bb93-556c-460b-b5bf-cac0f66c20b5
+    start_sha: 8cf998ff1b2c8929e7e6a33d203cb2d81543594b
+    verify_baseline_failures: []
   - name: logs-dir-and-sink-api
     state: pending
+    verify_baseline_failures: []
   - name: standalone-wiring-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
