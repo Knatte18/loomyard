@@ -37,7 +37,7 @@ func writePlanFiles(t *testing.T, files map[string]string) string {
 // entry, used as the base fixture for tests that don't care about framing or
 // plan-level sections.
 const minimalOverview = `---
-format: 4
+format: 5
 approved: true
 ---
 
@@ -74,8 +74,8 @@ func TestParsePlan_Overview(t *testing.T) {
 	if plan.Dir != dir {
 		t.Errorf("plan.Dir = %q; want %q", plan.Dir, dir)
 	}
-	if plan.Format != 4 {
-		t.Errorf("plan.Format = %d; want 4", plan.Format)
+	if plan.Format != 5 {
+		t.Errorf("plan.Format = %d; want 5", plan.Format)
 	}
 	if !plan.Approved {
 		t.Errorf("plan.Approved = false; want true")
@@ -99,7 +99,7 @@ func TestParsePlan_Overview_ASCIIDashSeparators(t *testing.T) {
 	t.Parallel()
 
 	const overview = `---
-format: 4
+format: 5
 approved: true
 ---
 
@@ -154,27 +154,27 @@ func TestParsePlan_Overview_Errors(t *testing.T) {
 		},
 		{
 			name:       "unknown frontmatter key",
-			content:    "---\nformat: 4\napproved: true\nextra: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
+			content:    "---\nformat: 5\napproved: true\nextra: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
 			wantSubstr: "field extra not found",
 		},
 		{
 			name:       "duplicate frontmatter key",
-			content:    "---\nformat: 4\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
+			content:    "---\nformat: 5\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
 			wantSubstr: "already defined",
 		},
 		{
 			name:       "unterminated frontmatter fence",
-			content:    "---\nformat: 4\napproved: true\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
+			content:    "---\nformat: 5\napproved: true\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — a — b\n",
 			wantSubstr: "unterminated frontmatter fence",
 		},
 		{
 			name:       "missing card index heading",
-			content:    "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n",
+			content:    "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n",
 			wantSubstr: `missing "## Card Index" heading`,
 		},
 		{
 			name:       "unparseable card index line",
-			content:    "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\nnot a valid entry\n",
+			content:    "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\nnot a valid entry\n",
 			wantSubstr: "unparseable card index line",
 		},
 	}
@@ -327,15 +327,17 @@ func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 		if card.TargetGroups[1].Type != planparser.CardTypeDelete {
 			t.Errorf("card.TargetGroups[1].Type = %q; want %q", card.TargetGroups[1].Type, planparser.CardTypeDelete)
 		}
-		wantRefs0 := []string{"a.go"}
+		// Canonicalized to their file self glyph form: both carry a file extension, so
+		// ParsePlan's canonicalizeCard rewrites them under the default language: go.
+		wantRefs0 := []string{"a.go#"}
 		if !slices.Equal(card.TargetGroups[0].Refs, wantRefs0) {
 			t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, wantRefs0)
 		}
-		wantRefs1 := []string{"b.go"}
+		wantRefs1 := []string{"b.go#"}
 		if !slices.Equal(card.TargetGroups[1].Refs, wantRefs1) {
 			t.Errorf("card.TargetGroups[1].Refs = %v; want %v", card.TargetGroups[1].Refs, wantRefs1)
 		}
-		wantTargets := []string{"a.go", "b.go"}
+		wantTargets := []string{"a.go#", "b.go#"}
 		if !slices.Equal(card.Targets, wantTargets) {
 			t.Errorf("card.Targets = %v; want %v (concatenation of both groups' Refs, body order)", card.Targets, wantTargets)
 		}
@@ -408,7 +410,7 @@ func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
 			}
 			union = append(union, g.Refs...)
 		}
-		wantUnion := []string{"a.go", "b.go"}
+		wantUnion := []string{"a.go#", "b.go#"}
 		if !slices.Equal(union, wantUnion) {
 			t.Errorf("union of both groups' Refs = %v; want %v (equal to one merged group's refs)", union, wantUnion)
 		}
@@ -579,6 +581,106 @@ func TestParsePlan_Card_RenameGrammar(t *testing.T) {
 	}
 }
 
+// TestParsePlan_Card_CreateHandleGrammar covers the "**Create:**" field's two-field
+// `plan:<draft-handle>` -> `<declaration head>` arrow grammar: a well-formed declaration bullet
+// lands in both Declarations and Targets, a plain non-arrow ref still parses as today, and a
+// malformed arrow bullet lands in CreateRaw rather than being silently dropped.
+func TestParsePlan_Card_CreateHandleGrammar(t *testing.T) {
+	t.Parallel()
+
+	body := "# Card 1 — create handles\n\n**Create:**\n" +
+		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+		"- `internal/bar.go`\n" +
+		"- this bullet has -> an arrow but no backticks\n" +
+		"**Intent:** placeholder.\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	card := plan.Cards[0]
+
+	wantDecls := []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+	if !slices.Equal(card.Declarations, wantDecls) {
+		t.Errorf("card.Declarations = %+v; want %+v", card.Declarations, wantDecls)
+	}
+	wantTargets := []string{"plan:internal/foo#NewThing", "internal/bar.go#"}
+	if !slices.Equal(card.Targets, wantTargets) {
+		t.Errorf("card.Targets = %v; want %v", card.Targets, wantTargets)
+	}
+	wantRaw := []string{"this bullet has -> an arrow but no backticks"}
+	if !slices.Equal(card.CreateRaw, wantRaw) {
+		t.Errorf("card.CreateRaw = %v; want %v", card.CreateRaw, wantRaw)
+	}
+	if len(card.TargetGroups) != 1 {
+		t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+	}
+	if !slices.Equal(card.TargetGroups[0].Declarations, wantDecls) {
+		t.Errorf("card.TargetGroups[0].Declarations = %+v; want %+v", card.TargetGroups[0].Declarations, wantDecls)
+	}
+}
+
+// TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped is the regression
+// parseCreateField's own field parser exists to prevent: parseRefField calls stripBackticks on
+// each payload before returning it, so routing the arrow form through it would arrive with the
+// outer backtick pair already removed and could never match moveLineRe's two-backticked-token
+// shape. This proves a bullet whose backticks are intact reaches the arrow matcher unstripped.
+func TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped(t *testing.T) {
+	t.Parallel()
+
+	body := "# Card 1 — create handle\n\n**Create:**\n" +
+		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+		"**Intent:** placeholder.\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+	card := plan.Cards[0]
+
+	if len(card.Declarations) != 1 {
+		t.Fatalf("len(card.Declarations) = %d; want 1 (backticks must reach the arrow matcher intact)", len(card.Declarations))
+	}
+	if len(card.CreateRaw) != 0 {
+		t.Errorf("card.CreateRaw = %v; want empty", card.CreateRaw)
+	}
+}
+
+// TestParsePlan_Card_HandleSurvivesNormalizeCard proves a handle-shaped Create target passes
+// through normalizeCard byte-identical, even under a non-"." root:, because classifyRef already
+// classifies it refKindHandle and normalizeRefIfPath gates on isPathRef.
+func TestParsePlan_Card_HandleSurvivesNormalizeCard(t *testing.T) {
+	t.Parallel()
+
+	const overview = `---
+format: 5
+approved: true
+root: internal/boardcli
+---
+
+# Plan: rooted
+
+Framing paragraph.
+
+## Card Index
+
+1 — only — the only card
+`
+	body := "# Card 1 — create handle\n\n**Create:**\n" +
+		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+		"**Intent:** placeholder.\n"
+	dir := writePlanFiles(t, map[string]string{"00-overview.md": overview, "01-only.md": body})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	}
+
+	want := "plan:internal/foo#NewThing"
+	if got := plan.Cards[0].Targets[0]; got != want {
+		t.Errorf("plan.Cards[0].Targets[0] = %q; want %q (a handle must never pick up a root: prefix)", got, want)
+	}
+}
+
 // TestParsePlan_InlineFieldValueFailsLoud proves a bullet-only field carrying an inline value
 // (e.g. "**Edit:** `foo.go`") is a fail-loud ParsePlan error, never silently read as an empty
 // field — for both a type label and "**Uses:**".
@@ -653,7 +755,7 @@ func TestParsePlan_Card_SourcePath(t *testing.T) {
 		t.Parallel()
 
 		const overview = `---
-format: 4
+format: 5
 approved: true
 ---
 
@@ -718,7 +820,7 @@ func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	}
 }
 
-// goodPlanDir is this package's format-4 golden happy-path fixture, exercising all seven card
+// goodPlanDir is this package's format-5 golden happy-path fixture, exercising all seven card
 // types.
 func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")
@@ -726,10 +828,12 @@ func goodPlanDir() string {
 
 // TestParsePlan_GoldenFixture round-trips testdata/goodplan exactly: the overview's frontmatter,
 // framing, and every field of every one of the seven cards must match the fixture's own
-// byte-consistent content, including the root: internal/boardcli resolution and the // worktree-
-// root escape. It also pins this migration's sharpest possible regression: a symbol target must
-// survive normalization unmodified under the fixture's non-empty root:. Card 2 additionally
-// round-trips a multi-label card: an **Edit:** group followed by a **Create:** group.
+// canonicalized content, including the root: internal/boardcli resolution (for a plain path) and
+// the // worktree-root escape, both followed by glyph canonicalization under the fixture's
+// language: go. It also pins this migration's sharpest possible regression: a glyph copied
+// verbatim from the fixture must survive canonicalization byte-identical even though the fixture's
+// root: is non-empty — a glyph is never root:-joined. Card 2 additionally round-trips a multi-label
+// card: an **Edit:** group followed by a **Create:** group.
 func TestParsePlan_GoldenFixture(t *testing.T) {
 	t.Parallel()
 
@@ -738,8 +842,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		t.Fatalf("ParsePlan(%q) error = %v; want nil", goodPlanDir(), err)
 	}
 
-	if plan.Format != 4 {
-		t.Errorf("plan.Format = %d; want 4", plan.Format)
+	if plan.Format != 5 {
+		t.Errorf("plan.Format = %d; want 5", plan.Format)
 	}
 	if !plan.Approved {
 		t.Errorf("plan.Approved = false; want true")
@@ -787,9 +891,9 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		{
 			number: 1, slug: "json-row-type", summary: "define the RowJSON struct",
 			typ: planparser.CardTypeCreate, typeLabelCount: 1,
-			targets: []string{"boardcli.RowJSON"},
+			targets: []string{"internal/boardcli#RowJSON"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeCreate, refs: []string{"boardcli.RowJSON"}},
+				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli#RowJSON"}},
 			},
 			intent: "Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.",
 			commit: "1: json-row-type", verify: "go build ./...", hasVerify: true,
@@ -797,12 +901,12 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		{
 			number: 2, slug: "json-flag", summary: "add the --json bool flag and wire list.go",
 			typ: planparser.CardTypeEdit, typeLabelCount: 2,
-			targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go", "internal/boardcli/list_json_test.go"},
+			targets: []string{"internal/boardcli#newListCmd", "internal/boardcli/list.go#", "internal/boardcli/list_json_test.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeEdit, refs: []string{"boardcli.newListCmd", "internal/boardcli/list.go"}},
-				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli/list_json_test.go"}},
+				{typ: planparser.CardTypeEdit, refs: []string{"internal/boardcli#newListCmd", "internal/boardcli/list.go#"}},
+				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli/list_json_test.go#"}},
 			},
-			uses: []string{"internal/output/envelope.go"}, hasUses: true,
+			uses: []string{"internal/output/envelope.go#"}, hasUses: true,
 			intent:           "Add the `--json` bool flag to `newListCmd` and branch its row output between the table writer and the JSON path.",
 			impactSummary:    "Adds a --json flag to the list command and branches its row-emission path on it.",
 			hasImpactSummary: true,
@@ -810,19 +914,19 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		{
 			number: 3, slug: "json-emission", summary: "marshal each row through output.Ok when --json is set",
 			typ: planparser.CardTypeCustom, typeLabelCount: 1,
-			targets: []string{"boardcli.emitJSON", "internal/output/emit.go"},
+			targets: []string{"internal/output#emitJSON", "internal/output/emit.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeCustom, refs: []string{"boardcli.emitJSON", "internal/output/emit.go"}},
+				{typ: planparser.CardTypeCustom, refs: []string{"internal/output#emitJSON", "internal/output/emit.go#"}},
 			},
-			uses: []string{"internal/boardcli/list.go"}, hasUses: true,
+			uses: []string{"internal/boardcli/list.go#"}, hasUses: true,
 			intent: "Introduce `emitJSON`, a new helper in a new file, marshaling each row through `output.Ok` when `--json` is set.",
 		},
 		{
 			number: 4, slug: "legacy-rows-delete", summary: "remove the superseded legacy row-conversion file",
 			typ: planparser.CardTypeDelete, typeLabelCount: 1,
-			targets: []string{"internal/boardengine/legacyrows.go"},
+			targets: []string{"internal/boardengine/legacyrows.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeDelete, refs: []string{"internal/boardengine/legacyrows.go"}},
+				{typ: planparser.CardTypeDelete, refs: []string{"internal/boardengine/legacyrows.go#"}},
 			},
 			intent:           "Remove the legacy per-row conversion helper now that `boardengine.MapRowJSON` (card 5) supersedes it.",
 			impactSummary:    "Deletes the legacy row-conversion file; no remaining callers reference it.",
@@ -831,31 +935,31 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		{
 			number: 5, slug: "rowmapper-rename", summary: "rename the row mapper ahead of a later extraction",
 			typ: planparser.CardTypeRename, typeLabelCount: 1,
-			targets: []string{"boardengine.MapRow", "boardengine.MapRowJSON", "internal/boardengine/rows.go", "internal/boardengine/rowsjson.go"},
+			targets: []string{"internal/boardengine#MapRow", "plan:internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeRename, refs: []string{"boardengine.MapRow", "boardengine.MapRowJSON", "internal/boardengine/rows.go", "internal/boardengine/rowsjson.go"}},
+				{typ: planparser.CardTypeRename, refs: []string{"internal/boardengine#MapRow", "plan:internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"}},
 			},
 			pairs: []planparser.MovePair{
-				{Old: "boardengine.MapRow", New: "boardengine.MapRowJSON"},
-				{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"},
+				{Old: "internal/boardengine#MapRow", New: "plan:internal/boardengine#MapRowJSON"},
+				{Old: "internal/boardengine/rows.go#", New: "internal/boardengine/rowsjson.go#"},
 			},
 			intent: "Rename the row mapper and its file to make the JSON-oriented behavior explicit ahead of a later extraction.",
 		},
 		{
 			number: 6, slug: "helppins-move", summary: "relocate the pinned help-tree fixture",
 			typ: planparser.CardTypeMove, typeLabelCount: 1,
-			targets: []string{"cmd/lyx/helppins.go"},
+			targets: []string{"cmd/lyx/helppins.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeMove, refs: []string{"cmd/lyx/helppins.go"}},
+				{typ: planparser.CardTypeMove, refs: []string{"cmd/lyx/helppins.go#"}},
 			},
 			intent: "Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
 		},
 		{
 			number: 7, slug: "json-docs", summary: "update the package doc comment and the standalone docs page",
 			typ: planparser.CardTypeProsa, typeLabelCount: 1,
-			targets: []string{"internal/boardcli/doc.go", "docs/boardcli-json.md"},
+			targets: []string{"internal/boardcli/doc.go#", "docs/boardcli-json.md#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeProsa, refs: []string{"internal/boardcli/doc.go", "docs/boardcli-json.md"}},
+				{typ: planparser.CardTypeProsa, refs: []string{"internal/boardcli/doc.go#", "docs/boardcli-json.md#"}},
 			},
 			intent: "Update the package doc comment and the standalone docs page describing `--json` output.",
 		},
@@ -932,9 +1036,94 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		}
 	}
 
-	// The sharpest regression this migration can introduce: a symbol target must pass through
-	// normalization unmodified even though the fixture's root: is non-empty.
-	if got := plan.Cards[0].Targets[0]; got != "boardcli.RowJSON" {
-		t.Errorf("card 1 symbol target = %q; want %q unmodified despite non-empty root:", got, "boardcli.RowJSON")
+	// The sharpest regression this migration can introduce: a glyph copied verbatim from the
+	// fixture must pass through both normalization and canonicalization unmodified, even though
+	// the fixture's root: is non-empty — a glyph is never root:-joined.
+	if got := plan.Cards[0].Targets[0]; got != "internal/boardcli#RowJSON" {
+		t.Errorf("card 1 glyph target = %q; want %q unmodified despite non-empty root:", got, "internal/boardcli#RowJSON")
 	}
+
+	// SurfaceRefs records the pre-canonicalization surface lexeme for every canonicalized
+	// path-shaped ref, keyed by the owning card's own identity.
+	wantSurface := map[string]string{
+		"internal/boardcli/list.go#":           "internal/boardcli/list.go",
+		"internal/boardcli/list_json_test.go#": "internal/boardcli/list_json_test.go",
+		"internal/output/envelope.go#":         "internal/output/envelope.go",
+	}
+	gotSurface := plan.SurfaceRefs["2-json-flag"]
+	for canonical, wantRaw := range wantSurface {
+		if gotSurface[canonical] != wantRaw {
+			t.Errorf("plan.SurfaceRefs[%q][%q] = %q; want %q", "2-json-flag", canonical, gotSurface[canonical], wantRaw)
+		}
+	}
+	// A glyph copied verbatim from the fixture is never rewritten, so it never gains a
+	// SurfaceRefs entry of its own.
+	if _, ok := plan.SurfaceRefs["1-json-row-type"]; ok {
+		t.Errorf("plan.SurfaceRefs[%q] = %v; want no entry (card 1's own target is already a glyph)", "1-json-row-type", plan.SurfaceRefs["1-json-row-type"])
+	}
+}
+
+// TestParsePlan_Language covers the language: frontmatter key's effect on Plan.Language and on
+// canonicalization: absent defaults to "go" (and canonicalizes), an explicit "go" behaves
+// identically, and "none" leaves every ref byte-identical with an empty SurfaceRefs.
+func TestParsePlan_Language(t *testing.T) {
+	t.Parallel()
+
+	overviewWith := func(languageLine string) string {
+		return "---\nformat: 5\napproved: true\n" + languageLine + "---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n"
+	}
+
+	t.Run("absent defaults to go and canonicalizes", func(t *testing.T) {
+		t.Parallel()
+		dir := writePlanFiles(t, map[string]string{
+			"00-overview.md": overviewWith(""),
+			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+		})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		if plan.Language != "go" {
+			t.Errorf("plan.Language = %q; want %q", plan.Language, "go")
+		}
+		if want := "a.go#"; plan.Cards[0].Targets[0] != want {
+			t.Errorf("plan.Cards[0].Targets[0] = %q; want %q", plan.Cards[0].Targets[0], want)
+		}
+	})
+
+	t.Run("explicit go behaves identically to absent", func(t *testing.T) {
+		t.Parallel()
+		dir := writePlanFiles(t, map[string]string{
+			"00-overview.md": overviewWith("language: go\n"),
+			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+		})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		if want := "a.go#"; plan.Cards[0].Targets[0] != want {
+			t.Errorf("plan.Cards[0].Targets[0] = %q; want %q", plan.Cards[0].Targets[0], want)
+		}
+	})
+
+	t.Run("none leaves every ref byte-identical and SurfaceRefs empty", func(t *testing.T) {
+		t.Parallel()
+		dir := writePlanFiles(t, map[string]string{
+			"00-overview.md": overviewWith("language: none\n"),
+			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+		})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		if plan.Language != "none" {
+			t.Errorf("plan.Language = %q; want %q", plan.Language, "none")
+		}
+		if want := "a.go"; plan.Cards[0].Targets[0] != want {
+			t.Errorf("plan.Cards[0].Targets[0] = %q; want %q (byte-identical, no canonicalization)", plan.Cards[0].Targets[0], want)
+		}
+		if len(plan.SurfaceRefs) != 0 {
+			t.Errorf("len(plan.SurfaceRefs) = %d; want 0", len(plan.SurfaceRefs))
+		}
+	})
 }

@@ -1,5 +1,5 @@
-// seamsignature_test.go pins the eleven existing RunCLI(io.Writer, []string) int seam functions,
-// and the ten RunCLIIn(string, io.Writer, []string) int seam functions built alongside them, to
+// seamsignature_test.go pins the twelve existing RunCLI(io.Writer, []string) int seam functions,
+// and the eleven RunCLIIn(string, io.Writer, []string) int seam functions built alongside them, to
 // their exact signatures at compile time.
 // This test has no test function and no runtime body: the assertion is that the package compiles,
 // so a drifted RunCLI/RunCLIIn signature in any of these modules becomes a build failure instead of
@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
+	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
@@ -25,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/webstercli"
 )
 
-// The blank identifier below pins every module's RunCLI to the eleven-module RunCLI seam shape
+// The blank identifier below pins every module's RunCLI to the twelve-module RunCLI seam shape
 // declared by the CLI/Cobra Invariant. Nothing reads it; the compile itself is the assertion.
 var _ = []func(io.Writer, []string) int{
 	boardcli.RunCLI,
@@ -34,6 +35,7 @@ var _ = []func(io.Writer, []string) int{
 	fabriccli.RunCLI,
 	idecli.RunCLI,
 	loomcli.RunCLI,
+	quarrycli.RunCLI,
 	reedcli.RunCLI,
 	selfreportcli.RunCLI,
 	shuttlecli.RunCLI,
@@ -41,7 +43,7 @@ var _ = []func(io.Writer, []string) int{
 	webstercli.RunCLI,
 }
 
-// The blank identifier below pins every module's RunCLIIn to the ten-module RunCLIIn seam shape
+// The blank identifier below pins every module's RunCLIIn to the eleven-module RunCLIIn seam shape
 // declared by the CLI/Cobra Invariant. internal/selfreportcli is the one seam module deliberately
 // absent: it references lyxcwd nowhere, so a RunCLIIn there would accept a cwd argument nothing
 // reads. internal/loomcli is on this slice rather than joining that exception: loom resolves cwd
@@ -54,6 +56,7 @@ var _ = []func(string, io.Writer, []string) int{
 	fabriccli.RunCLIIn,
 	idecli.RunCLIIn,
 	loomcli.RunCLIIn,
+	quarrycli.RunCLIIn,
 	reedcli.RunCLIIn,
 	shuttlecli.RunCLIIn,
 	stencilcli.RunCLIIn,

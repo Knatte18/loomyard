@@ -224,6 +224,9 @@ See [docs/sandbox-howto.md](docs/sandbox-howto.md) for the runbook.
 
 - [Claude Code](https://claude.ai/code)
 - Go 1.26+
+- A C toolchain (gcc/clang on POSIX, mingw-w64 on Windows): `lyx` links quarry's tree-sitter grammars through cgo, so `CGO_ENABLED=1` and a C compiler on `PATH` are required.
+  `CGO_ENABLED` already defaults to `1` for a native build when a C compiler is on `PATH`, so nothing needs setting on an ordinary developer machine;
+  `go env -w CGO_ENABLED=1` pins it per-user but is machine-local and does not install a compiler.
 - Git 2.42+ (for `git worktree add --orphan`)
 - tmux (for the orchestration layers;
   on Windows via psmux)

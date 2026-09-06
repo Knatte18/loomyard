@@ -1,7 +1,8 @@
 ---
-format: 4
+format: 5
 approved: true
 root: internal/boardcli
+language: go
 ---
 
 # Plan: add --json to `lyx board list`

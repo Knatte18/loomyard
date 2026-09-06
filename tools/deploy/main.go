@@ -65,6 +65,10 @@ func run(dev bool, destArg string) error {
 	args = append(args, "./cmd/lyx")
 	build := exec.Command("go", args...)
 	build.Dir = root
+	// lyx links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1
+	// explicitly: an environment that has disabled cgo must fail here at the
+	// compiler rather than produce a binary silently missing that linkage.
+	build.Env = append(os.Environ(), "CGO_ENABLED=1")
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 	if err := build.Run(); err != nil {
 		return fmt.Errorf("go build: %w", err)

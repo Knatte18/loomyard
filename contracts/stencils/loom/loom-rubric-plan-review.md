@@ -41,14 +41,14 @@ Do not flag any of the following as a finding:
 ## Also flag
 
 - **Granularity.**
-  One card per independently reviewable/testable unit, not one card per literal symbol.
-  A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
-  an independently testable symbol gets its own card even when one card is its only consumer.
+  One card per independently reviewable/testable unit, not one card per literal glyph.
+  A private supporting type, or a constructor inseparable from its type, belongs in the other glyph's card;
+  an independently testable glyph gets its own card even when one card is its only consumer.
 - **`ImpactSummary` carries a real conclusion.**
   A one-line blast-radius conclusion — "3 callers, all local to the billing package, no cross-module effects" — never a restatement of `Intent`.
 - **`Custom` is a last resort.**
   Used only where none of `Create`, `Edit`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
-  A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target`, so a mistyped one silently escapes two checks the rest of the plan is held to.
+  A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target` — which under the glyph alphabet means a `Prosa` group may only target file and unit self glyphs, with a member glyph (or anything else that fails to parse as a self glyph) the finding — and, since the glyph alphabet's classification checks bind a card's flat `Targets`/`Uses` exactly as `path-missing` does, from `bare-symbol-target` and `directory-target` too — so a mistyped `Custom` card silently escapes four checks the rest of the plan is held to.
   A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
 - **Fidelity to the decision record.**
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.

@@ -76,7 +76,7 @@ func TestPlanValidate_StuckSurfacesItsFindings(t *testing.T) {
 	// reports as index-file-mismatch. This test's subject is that exactly one finding reaches the
 	// warn line -- plumbing, not mode behaviour -- so the fixture is kept mode-independent rather
 	// than keyed on the plan-unapproved check the mode table in planvalidate_test.go now owns.
-	overview := "---\nformat: 4\napproved: true\n---\n\n" +
+	overview := "---\nformat: 5\napproved: true\nlanguage: none\n---\n\n" +
 		"# Plan: add a helper\n\n" +
 		"## Card Index\n\n" +
 		"1 — add-helper — Add the helper\n\n" +

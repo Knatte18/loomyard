@@ -13,6 +13,8 @@ package planparser
 import (
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/quarry/glyph"
 )
 
 func TestNormalizeCardPath(t *testing.T) {
@@ -246,5 +248,128 @@ func TestNormalizeCard_PairsAndTargetsAgree(t *testing.T) {
 	}
 	if card.Targets[1] != card.Pairs[0].New {
 		t.Errorf("card.Targets[1] = %q; card.Pairs[0].New = %q; want them equal", card.Targets[1], card.Pairs[0].New)
+	}
+}
+
+// pipeline runs normalizeCard then canonicalizeCard on card, in the exact order ParsePlan runs
+// them, and returns the surface map canonicalizeCard populated.
+func pipeline(card *Card, root, cardKey string) map[string]map[string]string {
+	normalizeCard(card, root)
+	surface := make(map[string]map[string]string)
+	canonicalizeCard(card, cardKey, glyph.Go, surface)
+	return surface
+}
+
+// TestCanonicalizeCard_ExtensionGate proves the file-extension gate: an extension-carrying
+// path-shaped ref is canonicalized into its glyph string, while an extensionless one — a bare
+// filename under a non-"." root:, or a bare directory path — survives untouched, leaving card 4's
+// directory-target check something to classify.
+func TestCanonicalizeCard_ExtensionGate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("extension-carrying path canonicalizes", func(t *testing.T) {
+		t.Parallel()
+		card := Card{Targets: []string{"list.go"}}
+		pipeline(&card, "internal/boardcli", "1-a")
+		if want := "internal/boardcli/list.go#"; card.Targets[0] != want {
+			t.Errorf("card.Targets[0] = %q; want %q", card.Targets[0], want)
+		}
+	})
+
+	t.Run("bare extensionless filename under a non-\".\" root: resolves but does not canonicalize", func(t *testing.T) {
+		t.Parallel()
+		card := Card{Targets: []string{"Makefile"}}
+		pipeline(&card, "internal/boardcli", "1-a")
+		if want := "internal/boardcli/Makefile"; card.Targets[0] != want {
+			t.Errorf("card.Targets[0] = %q; want %q (root-joined, not canonicalized)", card.Targets[0], want)
+		}
+	})
+
+	t.Run("bare extensionless filename under an empty root: passes through verbatim", func(t *testing.T) {
+		t.Parallel()
+		card := Card{Targets: []string{"Makefile"}}
+		pipeline(&card, "", "1-a")
+		if want := "Makefile"; card.Targets[0] != want {
+			t.Errorf("card.Targets[0] = %q; want %q", card.Targets[0], want)
+		}
+	})
+
+	t.Run("extensionless directory path survives canonicalization untouched", func(t *testing.T) {
+		t.Parallel()
+		card := Card{Targets: []string{"internal/foo"}}
+		pipeline(&card, "", "1-a")
+		if want := "internal/foo"; card.Targets[0] != want {
+			t.Errorf("card.Targets[0] = %q; want %q (untouched, so directory-target still has something to classify)", card.Targets[0], want)
+		}
+	})
+}
+
+// TestCanonicalizeCard_GlyphNeverRootJoined proves a glyph-shaped ref copied verbatim from a
+// quarry answer is never touched by canonicalizeCard and never root:-joined by the preceding
+// normalizeCard: it is already a complete repository-relative string, and prefixing root: onto
+// one would corrupt it. This includes the documented consequence that a bare-filename surface
+// glyph such as "focus.go#" under a non-"." root: names the repository-root file and is left
+// alone.
+func TestCanonicalizeCard_GlyphNeverRootJoined(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "member glyph", raw: "internal/boardcli#RowJSON"},
+		{name: "unit self glyph", raw: "internal/boardcli#"},
+		{name: "file self glyph", raw: "internal/boardcli/list.go#"},
+		{name: "bare-filename surface glyph", raw: "focus.go#"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			card := Card{Targets: []string{tt.raw}}
+			pipeline(&card, "internal/boardcli", "1-a")
+			if card.Targets[0] != tt.raw {
+				t.Errorf("card.Targets[0] = %q; want %q unmodified", card.Targets[0], tt.raw)
+			}
+		})
+	}
+}
+
+// TestCanonicalizeCard_PlainPathAndFileSelfGlyphAgree proves a plain path and its own file self
+// glyph land on the identical canonical model string.
+func TestCanonicalizeCard_PlainPathAndFileSelfGlyphAgree(t *testing.T) {
+	t.Parallel()
+
+	plainPathCard := Card{Targets: []string{"list.go"}}
+	pipeline(&plainPathCard, "internal/boardcli", "1-a")
+
+	glyphCard := Card{Targets: []string{"internal/boardcli/list.go#"}}
+	pipeline(&glyphCard, "internal/boardcli", "2-b")
+
+	if plainPathCard.Targets[0] != glyphCard.Targets[0] {
+		t.Errorf("plain path canonical = %q; file self glyph canonical = %q; want them equal", plainPathCard.Targets[0], glyphCard.Targets[0])
+	}
+}
+
+// TestCanonicalizeCard_SurfaceRefs proves canonicalizeCard records the pre-canonicalization
+// surface lexeme under the owning card's own key, canonical string second, and that two cards
+// spelling one canonical string differently each keep their own entry.
+func TestCanonicalizeCard_SurfaceRefs(t *testing.T) {
+	t.Parallel()
+
+	cardA := Card{Targets: []string{"list.go"}}
+	surface := make(map[string]map[string]string)
+	normalizeCard(&cardA, "internal/boardcli")
+	canonicalizeCard(&cardA, "1-a", glyph.Go, surface)
+
+	cardB := Card{Targets: []string{"//internal/boardcli/list.go"}}
+	normalizeCard(&cardB, "unrelated/root")
+	canonicalizeCard(&cardB, "2-b", glyph.Go, surface)
+
+	const canonical = "internal/boardcli/list.go#"
+	if surface["1-a"][canonical] != "internal/boardcli/list.go" {
+		t.Errorf(`surface["1-a"][%q] = %q; want %q`, canonical, surface["1-a"][canonical], "internal/boardcli/list.go")
+	}
+	if surface["2-b"][canonical] != "internal/boardcli/list.go" {
+		t.Errorf(`surface["2-b"][%q] = %q; want %q`, canonical, surface["2-b"][canonical], "internal/boardcli/list.go")
 	}
 }

@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -242,7 +243,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	planDir := seedPlanDir(t)
 	fp := mustFingerprint(t, planDir)
 
-	plan := &planparser.Plan{Dir: planDir}
+	plan := &planparser.Plan{Dir: planDir, Format: 5}
 	batches := []batcher.Batch{
 		beginCard(1, "json-flag"),
 		beginCard(2, "list-tests"),
@@ -632,4 +633,83 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {
 		t.Errorf("Batches[1] = %+v; want a fresh non-terminal fork record with no strand", bs)
 	}
+}
+
+// TestBeginBatch_ReResolvesPlanAtDispatch covers card 32's re-resolution step: a clean plan
+// dispatches as today; a plan with one blocking finding returns ErrPlanDrifted and writes no
+// prompt file; a quarry-unavailable root returns the wrapped infrastructure error rather than
+// ErrPlanDrifted; and an informational-only findings set dispatches normally with the advisory
+// carried on the result.
+func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
+	t.Run("clean plan dispatches as today", func(t *testing.T) {
+		fx := newBeginFixture(t)
+
+		result, err := websterengine.BeginBatch(fx.Deps, 1)
+		if err != nil {
+			t.Fatalf("BeginBatch() error = %v; want nil", err)
+		}
+		if len(result.Advisories) != 0 {
+			t.Errorf("Advisories = %v; want none for a clean plan", result.Advisories)
+		}
+	})
+
+	t.Run("blocking finding returns ErrPlanDrifted and writes no prompt file", func(t *testing.T) {
+		fx := newBeginFixture(t)
+		// A bare package-qualified symbol in Uses trips bare-symbol-target under the default
+		// glyph-enabled language, a blocking finding.
+		fx.Deps.Plan.Cards = []planparser.Card{
+			{Number: 1, Slug: "json-flag", Uses: []string{"sub.Foo"}},
+		}
+
+		_, err := websterengine.BeginBatch(fx.Deps, 1)
+		if !errors.Is(err, websterengine.ErrPlanDrifted) {
+			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted)", err)
+		}
+		entries, readErr := os.ReadDir(fx.PromptDir)
+		if readErr != nil {
+			t.Fatalf("ReadDir(%q): %v", fx.PromptDir, readErr)
+		}
+		if len(entries) != 0 {
+			t.Errorf("PromptDir entries = %v; want none written on a plan-drifted refusal", entries)
+		}
+	})
+
+	t.Run("quarry-unavailable root returns the wrapped infrastructure error, not ErrPlanDrifted", func(t *testing.T) {
+		fx := newBeginFixture(t)
+		fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "does-not-exist")
+
+		_, err := websterengine.BeginBatch(fx.Deps, 1)
+		if !errors.Is(err, planglyph.ErrQuarryUnavailable) {
+			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, planglyph.ErrQuarryUnavailable)", err)
+		}
+		if errors.Is(err, websterengine.ErrPlanDrifted) {
+			t.Errorf("BeginBatch() error = %v; want NOT errors.Is(err, ErrPlanDrifted) for an infrastructure failure", err)
+		}
+	})
+
+	t.Run("informational-only findings dispatch normally with the advisory carried on the result", func(t *testing.T) {
+		fx := newBeginFixture(t)
+		// A Create target naming a brand-new unit is the informational create-new-unit finding.
+		fx.Deps.Plan.Cards = []planparser.Card{
+			{
+				Number:         1,
+				Slug:           "json-flag",
+				Type:           planparser.CardTypeCreate,
+				TypeLabelCount: 1,
+				HasType:        true,
+				HasIntent:      true,
+				Intent:         "placeholder intent",
+				TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"brandnew#Thing"}}},
+				Targets:        []string{"brandnew#Thing"},
+			},
+		}
+
+		result, err := websterengine.BeginBatch(fx.Deps, 1)
+		if err != nil {
+			t.Fatalf("BeginBatch() error = %v; want nil", err)
+		}
+		if len(result.Advisories) == 0 {
+			t.Error("Advisories = []; want at least one informational advisory")
+		}
+	})
 }

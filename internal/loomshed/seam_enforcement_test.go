@@ -27,11 +27,17 @@ import (
 // loomshedAllowedImports are the only non-stdlib import paths production code in this package may
 // use.
 var loomshedAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/shedengine":       true,
-	"github.com/Knatte18/loomyard/internal/shedadapters":     true,
-	"github.com/Knatte18/loomyard/internal/websterengine":    true,
-	"github.com/Knatte18/loomyard/internal/loomengine":       true,
-	"github.com/Knatte18/loomyard/internal/planparser":       true,
+	"github.com/Knatte18/loomyard/internal/shedengine":    true,
+	"github.com/Knatte18/loomyard/internal/shedadapters":  true,
+	"github.com/Knatte18/loomyard/internal/websterengine": true,
+	"github.com/Knatte18/loomyard/internal/loomengine":    true,
+	"github.com/Knatte18/loomyard/internal/planparser":    true,
+	// internal/planglyph is a genuine new dependency, not a loosened rule: planvalidate.go's producer
+	// now runs the gate through planglyph's resolve-backed entry points, and planglyph itself derives
+	// no path of its own and never imports internal/lyxcwd, per the told-geometry-for-planglyph
+	// Shared Decision -- so its transitive geometry footprint is exactly zero, same as
+	// internal/planparser's own membership above.
+	"github.com/Knatte18/loomyard/internal/planglyph":        true,
 	"github.com/Knatte18/loomyard/internal/discussionparser": true,
 	"github.com/Knatte18/loomyard/internal/batcher":          true,
 	"github.com/Knatte18/loomyard/internal/state":            true,

@@ -23,6 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -38,6 +39,13 @@ var ErrPaused = errors.New("webster: paused")
 // fingerprint disagrees with State.PlanFingerprint — webster's own crash/resume guard, with its own
 // sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
+
+// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
+// (planglyph.ValidateFormat, called against deps.Geom.WorktreeRoot) reports a non-empty blocking
+// findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a
+// caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
+// Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
+var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
 
 // Injector is the seam BeginBatch uses to switch Master's live pane to a different model: exactly
 // (*shuttleengine.Runner).Inject's signature, so production code passes a real
@@ -84,6 +92,11 @@ type BeginResult struct {
 	StartSHA string
 	// AssertedModel is the model BeginBatch asserted Master's pane onto for this batch.
 	AssertedModel string
+	// Advisories is every informational finding the dispatch-boundary re-resolution
+	// (planglyph.ValidateFormat) reported, rendered via Finding.Error, so an operator sees them
+	// without the run stopping — a non-empty blocking findings set never reaches this far, since it
+	// returns ErrPlanDrifted instead.
+	Advisories []string
 }
 
 // findBatch returns the batcher.Batch in batches whose identity matches number.
@@ -160,6 +173,28 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	if deps.State.PlanFingerprint != fp {
 		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run `lyx webster run --fresh` to archive the stale state and reports and start over", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint)
+	}
+
+	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
+	// deps.Geom.WorktreeRoot is the same root BeginBatch already reads for its head-SHA capture
+	// below, so this adds no path derivation and no internal/lyxcwd import. An infrastructure error
+	// (errors.Is(err, planglyph.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
+	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
+	resolveFindings, err := planglyph.ValidateFormat(deps.Plan, deps.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	var blocking []string
+	var advisories []string
+	for _, f := range resolveFindings {
+		if f.Severity == planglyph.SeverityBlocking {
+			blocking = append(blocking, f.Error())
+		} else {
+			advisories = append(advisories, f.Error())
+		}
+	}
+	if len(blocking) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrPlanDrifted, strings.Join(blocking, "; "))
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)
@@ -285,5 +320,6 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		PromptPath:    promptPath,
 		StartSHA:      head,
 		AssertedModel: deps.State.AssertedModel,
+		Advisories:    advisories,
 	}, nil
 }

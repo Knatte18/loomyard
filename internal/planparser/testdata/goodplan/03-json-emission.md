@@ -1,7 +1,7 @@
 # Card 3 — json-emission
 
 **Custom:**
-- `boardcli.emitJSON`
+- `internal/output#emitJSON`
 - `//internal/output/emit.go`
 
 **Uses:**

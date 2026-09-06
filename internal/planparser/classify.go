@@ -1,10 +1,13 @@
-// classify.go implements the format-4 card model's shape classifier: classifyRef decides, by
+// classify.go implements the format-5 card model's shape classifier: classifyRef decides, by
 // string shape alone, whether a card ref (a Targets/Uses entry, or one side of a Rename pair) is
-// a file path or a package-qualified symbol. Per the shape-classification-at-validation decision,
-// this is the package's sole classifier — normalizeCard (normalize.go) and the path-shaped
-// validator checks (validate.go) both gate on it, and it is never called at parse time. The
-// function performs string analysis only: it never stats the disk and never spawns a process, so
-// this file stays a tier1-pure leaf per the Test Tier Purity Invariant.
+// a plan: handle, a glyph, a file path, or a package-qualified symbol. Per the
+// shape-classification-at-validation decision, this is the package's sole classifier —
+// normalizeCard (normalize.go), canonicalizeCard (normalize.go), and the shape-gated validator
+// checks (validate.go) all gate on it, and it is never called at parse time to decide anything
+// other than shape. The function performs string analysis only: it never stats the disk and never
+// spawns a process, so this file stays a tier1-pure leaf per the Test Tier Purity Invariant. It
+// never calls glyph.Parse either — existence and grammar validation of a glyph-shaped ref is
+// glyphref.go's business, and (for a glyph's disk existence) internal/planglyph's.
 
 package planparser
 
@@ -16,22 +19,46 @@ type refKind int
 const (
 	// refKindPath marks a ref classified as a file path.
 	refKindPath refKind = iota
-	// refKindSymbol marks a ref classified as a package-qualified symbol.
+	// refKindSymbol marks a ref classified as a bare package-qualified symbol.
 	refKindSymbol
+	// refKindGlyph marks a ref classified as a glyph (contains "#").
+	refKindGlyph
+	// refKindHandle marks a ref classified as a "plan:"-prefixed handle.
+	refKindHandle
 )
 
-// classifyRef classifies raw by shape alone, applying exactly three rules in order:
-//  1. raw contains a "/" -> refKindPath (this also covers the "//" worktree-root escape, which
-//     always contains a slash).
-//  2. otherwise, if raw contains a "." and the segment after the final "." is non-empty and
-//     consists entirely of lowercase ASCII letters and ASCII digits -> refKindPath (a bare
-//     filename with a lowercase extension, e.g. "list.go").
-//  3. otherwise -> refKindSymbol. This is the explicit default for two distinct cases: an entry
-//     with no "." at all never reaches rule 2's test (e.g. "Lookup", "Makefile"), and an entry
-//     whose final dot-segment is not all-lowercase-alphanumeric falls through from rule 2 (e.g.
-//     "shedrecipe.Lookup"). "shedrecipe.lookup" is a documented misclassification: it reaches
-//     refKindPath because its final segment happens to be all-lowercase, exactly as rule 2 requires.
+// classifyRef classifies raw by shape alone, applying exactly five rules in order:
+//  1. raw begins with the literal prefix "plan:" -> refKindHandle.
+//  2. otherwise, raw contains "#" -> refKindGlyph. This rule must precede the path rules below,
+//     because every Go glyph contains a "/" in its unit half, so a "/"-based path rule reached
+//     first would send every Go glyph to refKindPath.
+//  3. otherwise, raw contains a "/", or raw contains a "." and the segment after the final "." is
+//     non-empty and consists entirely of lowercase ASCII letters and ASCII digits -> refKindPath (a
+//     nested path, or a bare filename with a lowercase extension, e.g. "list.go").
+//  4. otherwise, if raw contains no "." and no "/" -> refKindPath as well: an extensionless
+//     repository-root filename such as "Makefile", "LICENSE" or "Dockerfile". This rule is required
+//     rather than tidy — without it, such a filename would fall to rule 5's refKindSymbol with no
+//     legal spelling left, since the "//" worktree-root escape does not rescue it (normalizeCardPath
+//     strips the prefix and hands back the identical bare token).
+//  5. otherwise -> refKindSymbol. This is the explicit default for an entry whose final dot-segment
+//     is not all-lowercase-alphanumeric (e.g. "shedrecipe.Lookup"). "shedrecipe.lookup" is a
+//     documented misclassification: it reaches refKindPath at rule 3 because its final segment
+//     happens to be all-lowercase, exactly as that rule requires.
+//
+// Rule 4's consequence is worth stating plainly rather than leaving it to be discovered: a
+// refKindPath entry goes through normalizeRefIfPath, so under a non-"." root: a bare "Makefile" now
+// resolves to "<root>/Makefile" where a pre-glyph plan passed it through verbatim. That is the
+// intended behaviour — a bare filename under a declared root: means the file in that root, exactly
+// as every other relative path in the plan does.
 func classifyRef(raw string) refKind {
+	if strings.HasPrefix(raw, "plan:") {
+		return refKindHandle
+	}
+
+	if strings.Contains(raw, "#") {
+		return refKindGlyph
+	}
+
 	if strings.Contains(raw, "/") {
 		return refKindPath
 	}
@@ -41,6 +68,9 @@ func classifyRef(raw string) refKind {
 		if segment != "" && isLowerAlphanumeric(segment) {
 			return refKindPath
 		}
+	} else {
+		// No "." and (per the rule above) no "/": an extensionless repository-root filename.
+		return refKindPath
 	}
 
 	return refKindSymbol
@@ -62,4 +92,14 @@ func isLowerAlphanumeric(s string) bool {
 // isPathRef is a convenience wrapper reporting whether raw classifies as a path.
 func isPathRef(raw string) bool {
 	return classifyRef(raw) == refKindPath
+}
+
+// isGlyphRef is a convenience wrapper reporting whether raw classifies as a glyph.
+func isGlyphRef(raw string) bool {
+	return classifyRef(raw) == refKindGlyph
+}
+
+// isHandleRef is a convenience wrapper reporting whether raw classifies as a plan: handle.
+func isHandleRef(raw string) bool {
+	return classifyRef(raw) == refKindHandle
 }

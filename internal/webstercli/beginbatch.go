@@ -114,6 +114,10 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"paused": true}))
 					return nil
 				}
+				if errors.Is(err, websterengine.ErrPlanDrifted) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_drifted": true}))
+					return nil
+				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -141,6 +145,7 @@ Example:
 				"start_sha":   result.StartSHA,
 				"model":       result.AssertedModel,
 				"warnings":    ownerlessRunWarnings(c.geom.ScratchDir, nil),
+				"advisories":  result.Advisories,
 			}))
 			return nil
 		},

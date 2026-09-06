@@ -21,7 +21,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 - Three tiers: `lyxcwd.Resolve` → `preflight.Check` (fabric wired/synced/clean) → `loomengine.CheckSeed`.
 - A producer needs none of the tiers; an orchestrator needs tier 3; a standalone CLI probes tier 1 via `preflight.ResolveMode` only.
 - `internal/hubgeom`/`internal/standalonegeom` are the only `Geometry`-struct constructors.
-- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`.
+- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`.
 
 ## Lyxdirs Single-Declarer Invariant
 
@@ -113,7 +113,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
 - Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`header --blocking`, `lyx loom status --watch`, `lyx loom run`/`lyx run`.
-- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviation: `stencilcli` → `internal/stencilstore`.
+- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`.
 
 ## Shuttle Provider-Seam Invariant
 
@@ -210,7 +210,22 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 
 `internal/planparser` is the SOLE parser and writer of the on-disk plan format (`_lyx/plan/`).
 
-- Consumers read only from the `planparser.Plan` model. `SetApproved` is the one write path.
+- Consumers read only from the `planparser.Plan` model. `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), and `AppendAmendment` (the append-only amendment log) are the three write paths — and no others.
+
+## Glyph Conversion Chokepoint Invariant
+
+loomyard performs no glyph↔path conversion of its own.
+
+- `glyph.Self` is the only path→glyph call. `Glyph.UnitPath` is the only glyph→path call. `glyph.Parse` plus `Glyph.String` are the only glyph grammar.
+- Forbidden: a `#`-trimming suffix operation over a glyph-typed value, reading `Glyph.Unit` as a disk path, and a local regex over a glyph string.
+
+## Quarry CGO Requirement Invariant
+
+`lyx` is a cgo binary: `github.com/Knatte18/quarry`'s engine links tree-sitter's C grammars, and its own `internal/cgoguard` deliberately fails the build outright under `CGO_ENABLED=0` — a hard requirement this module cannot relax from this side, since quarry lives outside this worktree.
+
+- Every build of this module needs `CGO_ENABLED=1` and a C compiler on `PATH` (gcc/clang on POSIX, mingw-w64 on Windows). `CGO_ENABLED` already defaults to `1` for a native build when a compiler is on `PATH`.
+- `tools/deploy/main.go`'s build command sets `CGO_ENABLED=1` explicitly, so a deploy from a cgo-disabled environment fails at the compiler rather than shipping a broken binary.
+- `cmd/lyx/crosscompile_test.go`'s `TestCrossCompileLinux` builds for `GOOS=linux`/`GOARCH=amd64` under `CGO_ENABLED=1`, never `=0` — this module is no longer a static, cgo-free cross-compile target. On a host that is not natively linux/amd64, the gate needs a genuine linux/amd64 C cross-toolchain (signalled by `CC` being set) and skips rather than fails when one is not configured.
 
 ## Discussionparser Sole-Parser Invariant
 
@@ -224,7 +239,7 @@ In production code, `internal/summaryparser` is the sole declarer of the final-s
 
 A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode.
 
-- Discussion-Validate ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Validate ↔ `validate-plan`: `planparser.ValidateFormat`. Plan-Revalidate ↔ `validate-plan --require-approved`: `planparser.Validate`.
+- Discussion-Validate ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Validate ↔ `validate-plan`: `planglyph.ValidateFormat`. Plan-Revalidate ↔ `validate-plan --require-approved`: `planglyph.Validate`.
 - Adding a mechanical gate means adding its verb and its parity check in the same task.
 
 ## Recipe-Format Sole-Parser Invariant

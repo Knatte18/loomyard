@@ -123,9 +123,9 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	startSHA := commitFile(t, worktree, "base.txt", "base", "base commit")
 	headSHA := commitFile(t, worktree, "internal/foo/impl.go", "package foo\n", "01.1: add impl")
 
-	batches := []batcher.Batch{
-		{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
-	}
+	cards := []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}
+	batches := []batcher.Batch{{Cards: cards}}
+	plan := &planparser.Plan{Format: 5, Cards: cards}
 
 	reportsDir := t.TempDir()
 	contractDir := t.TempDir()
@@ -155,6 +155,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		OutcomePath: filepath.Join(contractDir, "outcome.yaml"),
 		SummaryPath: filepath.Join(contractDir, "summary.md"),
 		Sleeper:     sleeper,
+		Plan:        plan,
 	}
 
 	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
@@ -499,5 +500,204 @@ func TestRecordBatch_MissingSessionTranscriptNamesRecourse(t *testing.T) {
 		if !strings.Contains(err.Error(), needle) {
 			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), needle)
 		}
+	}
+}
+
+// TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring: a Create target that
+// still does not resolve against the worktree's actual post-card tree returns ErrCardNotDone and
+// persists no terminal digest.
+func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+		{Type: planparser.CardTypeCreate, Refs: []string{"internal/foo#NeverLanded"}},
+	}
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrCardNotDone) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone)", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Error("BatchState.Terminal = true; want false — a not-done card must not persist a terminal digest")
+	}
+}
+
+// writeRecordPlanDir writes a minimal, valid on-disk plan directory holding one card whose body is
+// cardBody, returning the directory and its freshly parsed *planparser.Plan — the record-batch
+// wiring test's own plan-fixture builder, package-local to this file since planglyph's own
+// writePlanFixture is unexported to its package.
+func writeRecordPlanDir(t *testing.T, cardBody string) (string, *planparser.Plan) {
+	t.Helper()
+	dir := t.TempDir()
+
+	content := "# Card 1 — json-flag\n\n" + cardBody + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "01-json-flag.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: test\n\nframing\n\n## Card Index\n\n1 — json-flag — summary\n"
+	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview file: %v", err)
+	}
+
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) returned error: %v", dir, err)
+	}
+	return dir, plan
+}
+
+// TestRecordBatch_BindsHandleFromDeltaEndToEnd proves card 34's wiring end to end: a Create
+// declaration whose symbol actually landed in the batch's own work commit is bound from the
+// record-batch delta and rewritten on disk to its plain glyph, with the batch still terminating
+// cleanly.
+func TestRecordBatch_BindsHandleFromDeltaEndToEnd(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+
+	planDir, plan := writeRecordPlanDir(t, "**Create:**\n- `plan:internal/foo#Bar` -> `func Bar() {}`\n\n**Intent:** add Bar\n")
+	fx.Deps.Geom.PlanDir = planDir
+	fx.Deps.Plan = plan
+	fx.Deps.Batches[0].Cards = plan.Cards
+
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+
+	data, readErr := os.ReadFile(filepath.Join(planDir, "01-json-flag.md"))
+	if readErr != nil {
+		t.Fatalf("read card file: %v", readErr)
+	}
+	if strings.Contains(string(data), "plan:internal/foo#Bar") {
+		t.Errorf("card file still carries the unbound handle: %s", data)
+	}
+	if !strings.Contains(string(data), "internal/foo#Bar") {
+		t.Errorf("card file does not carry the bound plain glyph: %s", data)
+	}
+}
+
+// TestRecordBatch_ScopeGuardFindingsLandInWarnings proves card 35's wiring: a symbol touched
+// outside the completed batch's own target glyphs lands as an informational finding in
+// RecordResult.Warnings, and the batch still terminates.
+func TestRecordBatch_ScopeGuardFindingsLandInWarnings(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	// A symbol added outside the plan's own declared targets.
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Surprise() {}\n", "01.2: add Surprise")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	fx.Deps.Plan.Cards[0].Targets = []string{"unrelated/thing#Nothing"}
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "scope-outside-plan") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RecordResult.Warnings = %v; want a scope-outside-plan finding", result.Warnings)
+	}
+}
+
+// TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable proves the guard's own degradation path: a
+// DeltaGit infrastructure error (an unresolvable start SHA) records the guard-could-not-run notice
+// and never panics — the batch still terminates, since neither the done-checks above (their own
+// Resolve, unaffected) nor BindHandles (this card's card carries no Create declaration) has
+// anything to block on.
+func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	fx.Deps.State.Batches[1].StartSHA = "does-not-exist-rev"
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil (the scope guard alone must degrade, not fail the run)", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "could not run") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RecordResult.Warnings = %v; want the guard-could-not-run notice", result.Warnings)
+	}
+}
+
+// TestRecordBatch_DriftBlocksOnDeletedStillReferenced proves card 36's wiring: a symbol the delta
+// reports deleted, with no corresponding rename, that the plan still references returns
+// ErrCardNotDone and persists no terminal digest.
+func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	// A symbol must exist at the delta's START side to be reported deleted — the fixture's own
+	// StartSHA (base.txt only) predates internal/foo entirely, so the batch's own start boundary is
+	// moved to a commit that already carries the symbol, and a later commit removes it.
+	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
+	fx.Deps.State.Batches[1].StartSHA = withSymbol
+	if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
+		t.Fatalf("remove impl.go: %v", err)
+	}
+	mustGit(t, fx.Worktree, "add", "-A")
+	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
+	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	fx.Deps.Plan.Cards[0].Uses = []string{"internal/foo#WillGoAway"}
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrCardNotDone) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone)", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Error("BatchState.Terminal = true; want false — a plan-references-deleted-symbol finding must not persist a terminal digest")
+	}
+}
+
+// TestRecordBatch_DoneChecksPassOnLandedCreate proves the happy path: a Create target whose
+// symbol actually landed in the batch's own work commit passes the done-checks and the batch
+// still terminates cleanly.
+func TestRecordBatch_DoneChecksPassOnLandedCreate(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	// newRecordFixture's own work commit adds internal/foo/impl.go with no declared symbol; add one
+	// the fixture's own Create target can resolve against.
+	commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.2: add Bar")
+	headSHA := commitFile(t, fx.Worktree, "base.txt", "base updated", "01.3: bump base")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+		{Type: planparser.CardTypeCreate, Refs: []string{"internal/foo#Bar"}},
+	}
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
 }

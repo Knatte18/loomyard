@@ -10,6 +10,12 @@ each module owns its own relative subpath), the **gitkit Leaf Invariant**, the *
 and the **Documentation Lifecycle**.
 Record any new cross-cutting invariant there, same commit.
 
+## Build prerequisite: cgo
+
+`lyx` links quarry's tree-sitter grammars through cgo, so building this repo requires `CGO_ENABLED=1` and a C compiler (gcc/clang on POSIX, mingw-w64 on Windows) on `PATH`.
+`CGO_ENABLED` already defaults to `1` for a native build when a C compiler is on `PATH`, so nothing needs setting on an ordinary developer machine;
+`go env -w CGO_ENABLED=1` pins it per-user but is machine-local and does not install a compiler.
+
 ## Persistent notes go in git, not file-memory
 
 This project is worked in short-lived mill **worktrees** torn down on merge — the file-based `memory/` store is per-worktree and vanishes with it.

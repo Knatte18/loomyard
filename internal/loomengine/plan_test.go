@@ -259,20 +259,30 @@ func TestPlanSpec_PromptStatesSkillLoads(t *testing.T) {
 	}
 }
 
-// TestPlanSpec_PromptStatesDegradedQuarryMode verifies the prompt states that no quarry inventory
-// is handed to the agent, that its absence is never an error, and that the agent performs the
-// mechanical lookups itself.
-func TestPlanSpec_PromptStatesDegradedQuarryMode(t *testing.T) {
+// TestPlanSpec_PromptStatesQuarryLookups verifies the prompt points the agent at the lyx quarry
+// verb group for every glyph lookup, states the copied-verbatim hard rule, and never mentions the
+// two pipeline-internal verbs the planner must not ask for.
+func TestPlanSpec_PromptStatesQuarryLookups(t *testing.T) {
 	prompt := renderedPlanPrompt(t)
 
 	for _, want := range []string{
-		"No quarry inventory is handed to you",
-		"never an error",
-		"go doc <pkg> <Symbol>",
-		"grep -rn",
+		"lyx quarry glyphs <dir>",
+		"lyx quarry resolve <glyph>...",
+		"lyx quarry toc <path>",
+		"lyx quarry expand <glyph>",
+		"you copy a line verbatim out of a quarry answer",
 	} {
 		if !strings.Contains(prompt, want) {
-			t.Errorf("PlanSpec(...).Prompt does not contain %q; the degraded quarry-inventory mode must reach the agent", want)
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the lyx quarry lookup instructions must reach the agent", want)
+		}
+	}
+
+	for _, unwanted := range []string{
+		"lyx quarry delta",
+		"lyx quarry name",
+	} {
+		if strings.Contains(prompt, unwanted) {
+			t.Errorf("PlanSpec(...).Prompt contains %q; delta and name are pipeline-internal and must never be named to the planner", unwanted)
 		}
 	}
 }
