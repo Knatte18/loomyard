@@ -6,6 +6,7 @@ slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Adopt quarry's glyph alphabet as the plan alphabet
 task_description: |
   Adopt quarry's glyph alphabet as the plan alphabet
@@ -44,17 +45,26 @@ implementing  '2026-09-06T11:35:13Z'
 ```yaml
 batches:
   - name: quarry-dependency
-    state: pending
+    state: running
+    implementer_session: ca406945-ff64-47dd-b6f9-58a8746ca40e
+    start_sha: 62abcda901c53544f20dea4f6440da19aa59b4fd
+    verify_baseline_failures: []
   - name: planparser-alphabet
     state: pending
+    verify_baseline_failures: []
   - name: planparser-handles
     state: pending
+    verify_baseline_failures: []
   - name: planglyph
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/planglyph [setup failed]"]
   - name: gate-parity
     state: pending
+    verify_baseline_failures: []
   - name: quarry-cli
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/quarrycli [setup failed]", "FAIL\t./internal/planglyph [setup failed]"]
   - name: webster-drift
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/planglyph [setup failed]"]
 ```
