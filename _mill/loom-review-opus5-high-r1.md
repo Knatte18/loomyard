@@ -23,7 +23,8 @@ Three more independent blockers:
 
 **What works, proven live:** handle canonicalization including the plan-wide rewrite to non-declaring cards; binding of *referencing* cards; the Create inversion's blocking half and its new-unit branch; both containment tiers; exact-tier drift auto-repair; the plain-blocking deleted-and-referenced case; the `language: "none"` opt-out; and the infrastructure-error disposition (`ErrQuarryUnavailable` surfaces as "quarry could not answer", never as a plan finding — the specific disaster the design names is genuinely prevented).
 
-**Counts:** 12 BLOCKING, 5 MEDIUM, 2 LOW, 1 NIT — 20 findings.
+**Counts:** 13 BLOCKING, 5 MEDIUM, 3 LOW, 1 NIT — 22 findings.
+(F21 and F22 were found while fixing, and are recorded in full below alongside the rest.)
 All four mission scenarios were driven live to completion; see the per-scenario table in "What was tested".
 
 ## What was tested
@@ -387,6 +388,22 @@ rename-candidate/…[informational]: card 2 references "internal/alpha#DriftedNa
 This is deeper than F1: even with `RecordBatch`'s severity filter fixed, the evidence tier could never be non-blocking, so the "review-surfaced, never auto-repaired" tier the design describes does not exist in practice.
 
 Fix: exclude from the `plan-references-deleted-symbol` sweep any deleted symbol that appears as a `RenameCandidates` entry ID — that symbol's disposition is the candidate finding's, not the delete check's — and say so in the function's own contract comment.
+
+### F21 — a `Delete` card's own successful deletion is reported as drift against itself (BLOCKING, CONFIRMED)
+
+Found while fixing F5/F6/F7, and it is the same root cause one step further in.
+
+`internal/websterengine/recordbatch.go` passed the **whole** plan to `DetectDrift`, including the cards of the batch currently being recorded. `DetectDrift`'s signal is `delta.Deleted` intersected with the plan's own references (`drift.go:98-111`), and the batch being recorded is exactly what the delta describes — so a `Delete` card whose batch has just removed its target still references that target, and the card's own success comes back as a blocking `plan-references-deleted-symbol` against the very card that asked for it.
+
+**No `Delete` card could ever be recorded at all.** The function's own contract already says the right thing — "the delta's deleted symbols intersected with the *remaining* plan's own references" — but nothing implemented "remaining".
+Reproduced by `TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift`, which fails on the unfixed code.
+
+### F22 — standalone mode writes trace logs into the target repository, unexcluded (LOW, CONFIRMED LIVE — out of loom's scope to fix)
+
+Every standalone `lyx` invocation writes `<target>/.lyx/logs/trace-*.log` into the repository named by `--target-dir`. In hub mode `.lyx` is held out of git by `fabricengine`'s `.git/info/exclude` seeding; standalone mode has no fabric and seeds no exclude, so the files show as untracked in the operator's own repository — and `RecordBatch`'s dirty-worktree probe reports "worktree is dirty after batch N's own commits" on every single call because of them.
+
+Observed throughout runs 4–6, and a plain `git add -A` in the fixture committed eleven of them.
+This is `standalonegeom`/`logger` scope on a path loom never takes (loom is always hub mode), so it is recorded rather than fixed here, alongside F16.
 
 ### F19 — `Plan-Validate`/`Plan-Revalidate` mutate the plan on disk, which no doc says (MEDIUM, CONFIRMED LIVE)
 
