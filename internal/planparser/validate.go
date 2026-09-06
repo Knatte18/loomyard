@@ -1,7 +1,7 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (manifest/designs/plan-card-format.md), run in this fixed order.
-// ValidateFormat emits twenty-five of the following distinct ValidationError.Check IDs, everything
-// but plan-unapproved; Validate emits all twenty-six: format-unrecognized (checkFormatRecognized),
+// ValidateFormat emits twenty-six of the following distinct ValidationError.Check IDs, everything
+// but plan-unapproved; Validate emits all twenty-seven: format-unrecognized (checkFormatRecognized),
 // plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved),
 // index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing),
 // card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel),
@@ -11,7 +11,8 @@
 // (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both
 // checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing),
 // card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty),
-// card-field-overlap (checkCardFieldOverlap), impact-summary-multiline
+// card-field-overlap (checkCardFieldOverlap), containment-unit-overlap
+// (syntacticContainment, containment.go), impact-summary-multiline
 // (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
 // (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch
 // (checkCommitSubjectMismatch).
@@ -102,6 +103,9 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldEmpty(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
+	if lang, ok := planLanguage(plan); ok {
+		findings = append(findings, syntacticContainment(plan, lang)...)
+	}
 	findings = append(findings, checkImpactSummaryMultiline(plan)...)
 	findings = append(findings, checkProsaSymbolTarget(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
