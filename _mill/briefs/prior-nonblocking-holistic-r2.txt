@@ -1,0 +1,3 @@
+- Stale check-count doc comments in planparser: **Location:** `internal/planparser/validate.go:64-75`; `internal/planparser/doc.go:98`
+- Design doc status line contradicts the now-Done roadmap entry: **Location:** `manifest/designs/quarry-glyph-plan-alphabet.md:3`
+- Stale "format 4" wording survives in the format-5 spec: **Location:** `contracts/specs/loom-plan-spec.md:102`, `:195`
