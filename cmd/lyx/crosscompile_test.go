@@ -10,6 +10,12 @@
 // `GOOS=linux go build ./...` does not belong in the offline loop (Test Tier Purity
 // Invariant); the per-batch `GOOS=linux go build` development gates it mirrors are
 // unchanged.
+//
+// The build no longer runs under CGO_ENABLED=0: `github.com/Knatte18/quarry` links
+// tree-sitter's C grammars and its own internal/cgoguard fails the compile outright under
+// CGO_ENABLED=0, deliberately and unconditionally — a hard requirement this module inherited
+// the moment it took quarry on as a dependency, and cannot relax from this side since quarry
+// lives outside this worktree. See CONSTRAINTS.md's Quarry CGO Requirement Invariant.
 
 package main
 
@@ -17,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -34,6 +41,16 @@ func TestCrossCompileLinux(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
+	// quarry's cgo requirement (see the file doc comment) means this build now needs a real C
+	// compiler targeting linux/amd64. That is just the host's own "cc" when the host already IS
+	// linux/amd64 — a native build, no cross-toolchain involved — but is a genuine linux/amd64
+	// cross C toolchain anywhere else, which this repo does not provide or assume any developer
+	// has configured. Skip there rather than fail on infrastructure this gate was never meant to
+	// require; CC set is this test's signal that one has been deliberately wired up.
+	if (runtime.GOOS != "linux" || runtime.GOARCH != "amd64") && os.Getenv("CC") == "" {
+		t.Skip("host is not linux/amd64 and CC is unset: no linux/amd64 C cross-toolchain is configured, and quarry hard-requires CGO_ENABLED=1")
+	}
+
 	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
@@ -45,10 +62,12 @@ func TestCrossCompileLinux(t *testing.T) {
 	}
 	moduleRoot := filepath.Dir(goMod)
 
-	// Build every package for GOOS=linux, GOARCH=amd64, and CGO_ENABLED=0 (static cross-compile).
+	// Build every package for GOOS=linux, GOARCH=amd64, CGO_ENABLED=1: quarry's own cgoguard
+	// refuses CGO_ENABLED=0 outright, so this can no longer be the static, cgo-free cross-compile
+	// it once was — see the file doc comment.
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./...")
 	cmd.Dir = moduleRoot
-	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
+	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=1")
 	buildOut, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("GOOS=linux go build ./... failed:\n%s", buildOut)

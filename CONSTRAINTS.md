@@ -219,6 +219,14 @@ loomyard performs no glyph↔path conversion of its own.
 - `glyph.Self` is the only path→glyph call. `Glyph.UnitPath` is the only glyph→path call. `glyph.Parse` plus `Glyph.String` are the only glyph grammar.
 - Forbidden: a `#`-trimming suffix operation over a glyph-typed value, reading `Glyph.Unit` as a disk path, and a local regex over a glyph string.
 
+## Quarry CGO Requirement Invariant
+
+`lyx` is a cgo binary: `github.com/Knatte18/quarry`'s engine links tree-sitter's C grammars, and its own `internal/cgoguard` deliberately fails the build outright under `CGO_ENABLED=0` — a hard requirement this module cannot relax from this side, since quarry lives outside this worktree.
+
+- Every build of this module needs `CGO_ENABLED=1` and a C compiler on `PATH` (gcc/clang on POSIX, mingw-w64 on Windows). `CGO_ENABLED` already defaults to `1` for a native build when a compiler is on `PATH`.
+- `tools/deploy/main.go`'s build command sets `CGO_ENABLED=1` explicitly, so a deploy from a cgo-disabled environment fails at the compiler rather than shipping a broken binary.
+- `cmd/lyx/crosscompile_test.go`'s `TestCrossCompileLinux` builds for `GOOS=linux`/`GOARCH=amd64` under `CGO_ENABLED=1`, never `=0` — this module is no longer a static, cgo-free cross-compile target. On a host that is not natively linux/amd64, the gate needs a genuine linux/amd64 C cross-toolchain (signalled by `CC` being set) and skips rather than fails when one is not configured.
+
 ## Discussionparser Sole-Parser Invariant
 
 `internal/discussionparser` is the sole reader of `_lyx/discussion/`'s on-disk format. Imports the standard library only.
