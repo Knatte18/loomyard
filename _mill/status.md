@@ -91,6 +91,8 @@ batches:
     commit_sha: a3d729617894bab15f068d8ffbe4b0f57153a213
     verify_baseline_failures: ["FAIL\t./internal/quarrycli [setup failed]", "FAIL\t./internal/planglyph [setup failed]"]
   - name: webster-drift
-    state: pending
+    state: running
+    implementer_session: aa3daf0d-5337-4c0d-b3f3-5de879946342
+    start_sha: 25aea82522298c830522c5b0a14e9761d4c126de
     verify_baseline_failures: ["FAIL\t./internal/planglyph [setup failed]"]
 ```
