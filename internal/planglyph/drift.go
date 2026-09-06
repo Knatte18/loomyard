@@ -19,6 +19,12 @@ import (
 
 // renameCardPairs indexes every declared Rename card's own Old->New pair, plan-wide, so
 // DetectDrift's gate one can recognize a rename that is a card's own expected outcome.
+//
+// The New side is normalized through resolveKeyFor (donecheck.go), because the plan format REQUIRES
+// a symbol Rename pair's New side to be a plan: handle -- the rename-to-not-handle check enforces
+// exactly that -- while quarry's delta reports the new symbol under its bare glyph. Comparing the
+// two verbatim can therefore never match for any plan that passes its own validator, which silently
+// turned every declared rename into detected drift.
 func renameCardPairs(plan *planparser.Plan) map[string]string {
 	pairs := make(map[string]string)
 	for _, c := range plan.Cards {
@@ -27,7 +33,7 @@ func renameCardPairs(plan *planparser.Plan) map[string]string {
 				continue
 			}
 			for _, p := range g.Pairs {
-				pairs[p.Old] = p.New
+				pairs[p.Old] = resolveKeyFor(p.New)
 			}
 		}
 	}

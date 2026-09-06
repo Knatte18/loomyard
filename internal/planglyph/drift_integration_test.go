@@ -61,11 +61,15 @@ func TestDetectDrift_ExactTierRenameAutoRepairsAndAmends(t *testing.T) {
 
 // TestDetectDrift_RenameMatchingCardPairProducesNoFindingNoAmendment covers a rename matching a
 // declared Rename card producing no drift finding and no amendment.
+//
+// The pair's New side is a plan: handle, not a bare glyph: the plan format REQUIRES that of a
+// symbol Rename pair (rename-to-not-handle), so a bare-glyph fixture here would test a shape no
+// real plan can carry -- which is exactly how gate one shipped unable to match anything.
 func TestDetectDrift_RenameMatchingCardPairProducesNoFindingNoAmendment(t *testing.T) {
 	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc New() {}\n"})
 
 	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Rename:**\n- `sub#Old` -> `sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
+		1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
 	})
 	before := readCardFile(t, dir, 1, "card1")
 
