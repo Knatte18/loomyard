@@ -63,7 +63,9 @@ batches:
     commit_sha: ecfd73e119ae166b7948ac4cfde7bcece66935d1
     verify_baseline_failures: []
   - name: planparser-handles
-    state: pending
+    state: running
+    implementer_session: 31181b28-54b0-4c76-8248-7b1319f09b66
+    start_sha: 1ba62dd347f2004cb57ec3301f411380f6c7e8b2
     verify_baseline_failures: []
   - name: planglyph
     state: pending
