@@ -108,7 +108,8 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/planparser/handle.go`
   - `internal/planparser/plan.go`
   - `internal/planparser/rewrite.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/planparser/handle.go`
 - **Creates:**
   - `internal/planglyph/handle.go`
   - `internal/planglyph/handle_test.go`
