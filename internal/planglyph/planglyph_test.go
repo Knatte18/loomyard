@@ -4,6 +4,8 @@
 package planglyph
 
 import (
+	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -24,14 +26,18 @@ func minimalPlan(t *testing.T, dir string) *planparser.Plan {
 }
 
 // TestValidateFormat_ConvertsFindingsUnchanged asserts ValidateFormat returns every
-// planparser.ValidateFormat finding unchanged apart from the SeverityBlocking stamp.
+// planparser.ValidateFormat finding unchanged apart from the SeverityBlocking stamp, with a nil
+// error under language: none.
 func TestValidateFormat_ConvertsFindingsUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	plan := minimalPlan(t, dir)
 	plan.Format = 4 // deliberately wrong, to force a format-unrecognized finding.
 
 	want := planparser.ValidateFormat(plan, dir)
-	got := ValidateFormat(plan, dir)
+	got, err := ValidateFormat(plan, dir)
+	if err != nil {
+		t.Fatalf("ValidateFormat(...) returned error: %v", err)
+	}
 
 	if len(got) != len(want) {
 		t.Fatalf("len(ValidateFormat(...)) = %d; want %d (matching planparser.ValidateFormat)", len(got), len(want))
@@ -52,8 +58,14 @@ func TestValidate_AddsPlanUnapproved(t *testing.T) {
 	dir := t.TempDir()
 	plan := minimalPlan(t, dir)
 
-	formatFindings := ValidateFormat(plan, dir)
-	validateFindings := Validate(plan, dir)
+	formatFindings, err := ValidateFormat(plan, dir)
+	if err != nil {
+		t.Fatalf("ValidateFormat(...) returned error: %v", err)
+	}
+	validateFindings, err := Validate(plan, dir)
+	if err != nil {
+		t.Fatalf("Validate(...) returned error: %v", err)
+	}
 
 	if len(validateFindings) != len(formatFindings)+1 {
 		t.Fatalf("len(Validate(...)) = %d; want len(ValidateFormat(...))+1 = %d", len(validateFindings), len(formatFindings)+1)
@@ -71,15 +83,35 @@ func TestValidate_AddsPlanUnapproved(t *testing.T) {
 }
 
 // TestResolvePass_LanguageNoneOpensNoRepository asserts resolvePass returns cleanly, with no
-// panic and no findings, when plan.Language is "none" even against a directory that is not a
-// quarry repository at all — proving no quarry call is made.
+// panic, no findings, and a nil error, when plan.Language is "none" even against a directory that
+// is not a quarry repository at all — proving no quarry call is made.
 func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
 	plan := minimalPlan(t, t.TempDir())
 	nonRepo := t.TempDir() + "/does-not-exist"
 
-	got := resolvePass(plan, nonRepo)
+	got, err := resolvePass(plan, nonRepo)
 	if got != nil {
-		t.Errorf("resolvePass(...) = %+v; want nil under language: none", got)
+		t.Errorf("resolvePass(...) findings = %+v; want nil under language: none", got)
+	}
+	if err != nil {
+		t.Errorf("resolvePass(...) error = %v; want nil under language: none", err)
+	}
+}
+
+// TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError asserts Validate returns
+// ErrQuarryUnavailable together with the pure findings it had already collected, when the
+// worktree root does not name a quarry repository at all.
+func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testing.T) {
+	dir := t.TempDir()
+	plan := &planparser.Plan{Dir: dir, Format: 4, Language: "go", Approved: false} // format 4 forces a pure finding too.
+	nonRepo := filepath.Join(t.TempDir(), "does-not-exist")
+
+	got, err := Validate(plan, nonRepo)
+	if !errors.Is(err, ErrQuarryUnavailable) {
+		t.Fatalf("Validate(...) error = %v; want errors.Is(err, ErrQuarryUnavailable)", err)
+	}
+	if len(got) == 0 {
+		t.Errorf("Validate(...) findings = %+v; want the pure findings collected before the quarry failure", got)
 	}
 }
 

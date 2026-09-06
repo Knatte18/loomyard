@@ -4,6 +4,7 @@
 package planglyph
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,18 +40,15 @@ func TestOpenRepo_Success(t *testing.T) {
 	}
 }
 
-// TestOpenRepo_NonRepository asserts openRepo wraps quarry.Open's own error with a "planglyph:"
-// prefix when the directory does not exist.
+// TestOpenRepo_NonRepository asserts openRepo's error against a directory that does not exist
+// satisfies errors.Is(err, ErrQuarryUnavailable), so a caller can distinguish an infrastructure
+// failure without string matching.
 func TestOpenRepo_NonRepository(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 
 	_, err := openRepo(missing)
-	if err == nil {
-		t.Fatalf("openRepo(%q) returned nil error; want an error", missing)
-	}
-	const wantPrefix = "planglyph:"
-	if got := err.Error(); len(got) < len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
-		t.Errorf("openRepo(%q) error = %q; want it to begin with %q", missing, got, wantPrefix)
+	if !errors.Is(err, ErrQuarryUnavailable) {
+		t.Errorf("openRepo(%q) error = %v; want errors.Is(err, ErrQuarryUnavailable)", missing, err)
 	}
 }
 

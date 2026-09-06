@@ -4,11 +4,26 @@
 package planglyph
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
+
+// ErrQuarryUnavailable marks a non-nil error from quarry.Open or (*quarry.Repo).Resolve: a
+// category distinct from any per-target verdict, so a caller distinguishes it with errors.Is
+// rather than by string matching. quarry's own contract draws exactly this line — the failure
+// envelope's own presence marks that quarry could not answer at all, never that the answer is
+// negative — and conflating the two would let a transport failure read as a clean not_found,
+// which is, under this package's Create inversion (create.go), a pass: a quarry outage would
+// silently mark every Create card done.
+//
+// Rejected, and worth stating so it is not reintroduced: degrading to format-only validation with
+// a warning is the exact failure mode where a plan looks validated and was not; and making the
+// error informational everywhere makes the outage invisible at precisely the boundaries whose
+// whole job is to be mechanical.
+var ErrQuarryUnavailable = errors.New("planglyph: quarry could not answer")
 
 // Severity is the closed vocabulary a Finding's own Severity is drawn from.
 type Severity string
@@ -36,22 +51,24 @@ func fromValidationError(v planparser.ValidationError) Finding {
 	return Finding{Check: v.Check, Card: v.Card, Detail: v.Detail, Severity: SeverityBlocking}
 }
 
-// openRepo opens a quarry.Repo rooted at worktreeRoot, wrapping any error with a "planglyph:"
-// prefix. It is this package's one call to quarry.Open.
+// openRepo opens a quarry.Repo rooted at worktreeRoot, wrapping any error with ErrQuarryUnavailable
+// so a caller distinguishes an infrastructure failure with errors.Is rather than by string
+// matching. It is this package's one call to quarry.Open.
 func openRepo(worktreeRoot string) (*quarry.Repo, error) {
 	repo, err := quarry.Open(worktreeRoot)
 	if err != nil {
-		return nil, fmt.Errorf("planglyph: open %q: %w", worktreeRoot, err)
+		return nil, fmt.Errorf("%w: open %q: %v", ErrQuarryUnavailable, worktreeRoot, err)
 	}
 	return repo, nil
 }
 
 // resolveTargets resolves every entry of targets against repo, positionally, wrapping any error
-// with a "planglyph:" prefix. It is this package's one call to (*quarry.Repo).Resolve.
+// with ErrQuarryUnavailable for the same reason openRepo does. It is this package's one call to
+// (*quarry.Repo).Resolve.
 func resolveTargets(repo *quarry.Repo, targets []string) ([]quarry.ResolveResult, error) {
 	results, err := repo.Resolve(targets)
 	if err != nil {
-		return nil, fmt.Errorf("planglyph: resolve: %w", err)
+		return nil, fmt.Errorf("%w: resolve: %v", ErrQuarryUnavailable, err)
 	}
 	return results, nil
 }

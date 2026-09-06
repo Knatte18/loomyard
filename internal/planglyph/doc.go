@@ -11,4 +11,13 @@
 // ValidateFormat calls planparser.ValidateFormat and Validate calls planparser.Validate, converts
 // every finding, and appends the same resolve-backed findings on top via one shared resolvePass —
 // no check exists in both packages.
+//
+// A caller's own answer is therefore a three-way split, never a two-way one: pure findings (from
+// planparser, stamped SeverityBlocking), resolve findings (from this package's own passes, either
+// severity), and an infrastructure error that is neither of the two — ErrQuarryUnavailable,
+// returned alongside whatever pure findings were already collected, so a quarry outage is never
+// mistaken for a clean answer. Rejected, and worth stating so it is not reintroduced: degrading to
+// format-only validation with a warning, the exact failure mode where a plan looks validated and
+// was not; and making the error informational everywhere, which makes the outage invisible at
+// precisely the boundaries whose whole job is to be mechanical. See repo.go and planglyph.go.
 package planglyph

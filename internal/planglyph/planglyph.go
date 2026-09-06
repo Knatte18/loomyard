@@ -5,6 +5,7 @@
 package planglyph
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -14,19 +15,27 @@ import (
 )
 
 // ValidateFormat runs planparser.ValidateFormat's pure checks against plan, converts every
-// finding, and appends the resolve-backed findings resolvePass collects on top.
-func ValidateFormat(plan *planparser.Plan, worktreeRoot string) []Finding {
+// finding, and appends the resolve-backed findings resolvePass collects on top. Its second return
+// is a non-nil ErrQuarryUnavailable-wrapped error exactly when resolvePass could not get a clean
+// answer from quarry — the pure findings already collected are still returned alongside it, since
+// the gate cannot certify a plan as valid against code it failed to read, and the error must
+// report as a gate/infrastructure failure rather than as a plan finding so nobody mistakes "quarry
+// broke" for "the plan is wrong".
+func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	findings := convertAll(planparser.ValidateFormat(plan, worktreeRoot))
-	findings = append(findings, resolvePass(plan, worktreeRoot)...)
-	return findings
+	resolveFindings, err := resolvePass(plan, worktreeRoot)
+	findings = append(findings, resolveFindings...)
+	return findings, err
 }
 
 // Validate runs planparser.Validate's pure checks against plan, including the plan-unapproved
-// approval gate, converts every finding, and appends the same resolve-backed findings on top.
-func Validate(plan *planparser.Plan, worktreeRoot string) []Finding {
+// approval gate, converts every finding, and appends the same resolve-backed findings on top,
+// with the same error contract ValidateFormat documents.
+func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	findings := convertAll(planparser.Validate(plan, worktreeRoot))
-	findings = append(findings, resolvePass(plan, worktreeRoot)...)
-	return findings
+	resolveFindings, err := resolvePass(plan, worktreeRoot)
+	findings = append(findings, resolveFindings...)
+	return findings, err
 }
 
 // convertAll converts every planparser.ValidationError in errs into a Finding, preserving order.
@@ -40,34 +49,39 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 
 // resolvePass is the resolve-backed half both ValidateFormat and Validate delegate to: the single
 // shared body that makes the parity pair one function in every mode. Under plan.Language "none" it
-// returns nil immediately, opening no repository at all — language: none degrades to today's
-// path-only behaviour, with no quarry call whatsoever.
+// returns nil findings and a nil error immediately, opening no repository at all — language: none
+// degrades to today's path-only behaviour, with no quarry call whatsoever.
 //
 // Otherwise it canonicalizes every draft plan: handle first (card 19's CanonicalizeHandles), so the
 // later passes — the resolve status policy (card 17's statusFindings), the Create inversion (card
 // 18's createFindings), and the resolve-backed containment tier (card 20's resolveContainment) —
 // see the canonical spellings rather than the draft ones, over the single batched Resolve call
 // every one of those passes shares.
-func resolvePass(plan *planparser.Plan, worktreeRoot string) []Finding {
+//
+// Its second return is a non-nil, ErrQuarryUnavailable-wrapped error whenever openRepo,
+// resolveTargets, or CanonicalizeHandles' own use of RewriteRefs fails — a category distinct from
+// every per-target verdict those passes report, so a quarry outage or a disk failure is never
+// mistaken for a clean answer.
+func resolvePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	lang, ok := resolveLanguage(plan)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	repo, err := openRepo(worktreeRoot)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	targets := collectGlyphTargets(plan, lang)
 	results, err := resolveTargets(repo, targets)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	handleFindings, err := CanonicalizeHandles(plan, plan.Dir, results)
 	if err != nil {
-		return handleFindings
+		return handleFindings, fmt.Errorf("%w: canonicalize handles: %v", ErrQuarryUnavailable, err)
 	}
 
 	current := plan
@@ -75,8 +89,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string) []Finding {
 		current = reloaded
 	}
 
-	var findings []Finding
-	findings = append(findings, handleFindings...)
+	findings := append([]Finding{}, handleFindings...)
 
 	createTargets := createTargetSet(current)
 	var nonCreateResults []quarry.ResolveResult
@@ -91,7 +104,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string) []Finding {
 	findings = append(findings, createFindings(current, results)...)
 	findings = append(findings, resolveContainment(current, results)...)
 
-	return findings
+	return findings, nil
 }
 
 // resolveLanguage maps plan.Language to the glyph.Language quarry's alphabet uses, mirroring
