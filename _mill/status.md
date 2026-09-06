@@ -84,7 +84,9 @@ batches:
     commit_sha: ea478794bab919e5dce39edad5c94c6f817c2064
     verify_baseline_failures: []
   - name: quarry-cli
-    state: pending
+    state: running
+    implementer_session: 6dc90bd7-b64c-48c3-97e1-13854b193efe
+    start_sha: e8a0080d40b3e7dbd99ec6914732979be03b82d4
     verify_baseline_failures: ["FAIL\t./internal/quarrycli [setup failed]", "FAIL\t./internal/planglyph [setup failed]"]
   - name: webster-drift
     state: pending
