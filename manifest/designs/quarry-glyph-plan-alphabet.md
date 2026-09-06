@@ -1,6 +1,6 @@
 # Adopt quarry's glyph alphabet as the plan alphabet
 
-> **Status: Implemented, in progress.**
+> **Status: Done.** See each package's own documentation for as-built detail — `manifest/roadmap.md`'s Done section is cleared regularly, not a durable record.
 > Full text lives in [GitHub issue #226](https://github.com/Knatte18/loomyard/issues/226) — this doc is the short pointer `manifest/roadmap.md`'s Maintenance section asks for, not a restatement.
 
 ## The alphabet
@@ -59,7 +59,7 @@ Execution DAG at symbol granularity, the resolve status policy and Create invers
 ## Deliberately out of scope
 
 No LSP-shaped tools in an agent's own hands; semantics enter only the mechanical layer.
-Done-checks, drift detection, and the `lyx quarry` CLI verb group land in later batches of this same task, not this doc's own scope.
+Done-checks, drift detection (`internal/planglyph/drift.go`), and the `lyx quarry` CLI verb group (`internal/quarrycli`) landed in later batches of this same now-Done task, not this doc's own scope.
 
 ## Related
 
