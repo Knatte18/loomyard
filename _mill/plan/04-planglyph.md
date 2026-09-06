@@ -31,7 +31,9 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/planparser/glyphref.go`
   - `internal/loomshed/planvalidate.go`
   - `CONSTRAINTS.md`
-- **Edits:** none
+- **Edits:**
+  - `go.mod`
+  - `go.sum`
 - **Creates:**
   - `internal/planglyph/doc.go`
   - `internal/planglyph/repo.go`
