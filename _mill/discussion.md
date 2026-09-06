@@ -36,7 +36,7 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 - `Rename` cards on the handle machinery, with the to-side glyph computed mechanically.
 - Drift detection at three boundaries, with exact-tier auto-repair and an append-only amendment log.
 - Mechanical consumers: done-checks, the glyph scope guard, and the cross-granularity containment check.
-- New producer rows plus their parity CLI verbs, per the Gate Self-Check Parity Invariant.
+- Extending the `Plan-Revalidate` row and its `validate-plan --require-approved` verb together, per the Gate Self-Check Parity Invariant, plus in-`websterengine` changes behind the existing `begin-batch`/`record-batch` bracket verbs — **no new `ShedProducer` rows and no new CLI verbs** (see `drift-boundaries`).
 - Docs landing in the same commits: `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/loom-template-plan.md`, `manifest/designs/quarry-glyph-plan-alphabet.md`, `docs/overview.md` (new module), `CONSTRAINTS.md` (new invariant), `README.md`/`CLAUDE.md` (cgo prerequisite), `manifest/roadmap.md` (Planned item completed).
 - Rewriting the golden fixture `internal/planparser/testdata/goodplan` and the worked example in the spec to glyph spelling.
 
@@ -267,6 +267,13 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 
 - **Decision:** one new `planparser` primitive — `RewriteRefs(planDir, map[string]string)` — is the single write path all three **rewrite** occasions call: handle canonicalization, handle binding at card completion, and drift auto-repair.
   The amendment append (`amendment-log`) is a separate, second new write path, not folded into this one: it appends to a file `RewriteRefs` never touches and substitutes nothing.
+- **Keyspace — model strings, with a surface lexeme retained per ref.**
+  `RewriteRefs`' map is keyed on **canonical model strings**, because that is the space its three callers natively work in: binding produces a real glyph from `Delta`, drift repair produces old→new glyph pairs, and canonicalization produces `plan:<expected-glyph>` from `Name`.
+  Making callers down-convert to on-disk spelling would spread the surface↔model gap across all three.
+  The gap is instead bridged **once**, in the parser: each parsed ref retains the **surface lexeme** it was written as, beside its canonical form, so `RewriteRefs` can locate the exact bytes to replace for a canonical key.
+- **Why this is load-bearing:** the `Plan` model holds canonicalized, root-resolved glyphs while `_lyx/plan/` bytes hold whatever the planner actually wrote — a plain path, a `root:`-relative path, or a file self glyph, all three of which `file-spelling` deliberately accepts.
+  A map keyed on model strings with no surface record would silently fail to match those bytes and quietly skip the entries it was called to rewrite, which is the worst possible failure mode for drift repair: a plan that reports itself repaired while still naming a deleted symbol.
+- **Rejected:** keying on on-disk lexemes (pushes the gap into all three callers); canonicalizing the whole file on first write (`parse-time-canonicalization` already rejected a full re-render, because `planparser` is deliberately lenient and a round-trip would normalize away the very defects the validator exists to report — and it would additionally rewrite backup-mode paths the operator chose to allow).
 - **Rationale:** issue #226 already says binding and rename propagation are one mechanism on two occasions, and canonicalization is the same old→new substitution.
   One write path keeps the Planparser Sole-Parser Invariant honest alongside `SetApproved`.
 - **Rejected:** three purpose-built writers (triples the surface that can rewrite `_lyx/plan/` bytes); a full re-render from the parsed model — `planparser` is deliberately *lenient* at the card level, preserving malformed bullets so the validator can enumerate every defect, so a round-trip would silently normalize away exactly the defects the validator exists to report.
@@ -325,6 +332,35 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
   Raw-substring is the right shape for the tier-purity half, matching that guard's own documented design; the observability half must stay AST-based, matching its own.
 - **Rejected:** a written allowlist entry in `spawnObservabilityAllowedSpawners` instead of logging — the invariant permits an exemption only for a site *structurally barred* from importing `internal/logger`, which `planglyph` is not, and an allowlist entry would record "this spawns without logging, and we accepted it" when logging costs one line.
   Also rejected: relying on tagging discipline with no guard change, which is precisely the unenforced state this decision exists to end.
+- **Stated limit, not a claimed cure:** `bannedTokens` is a raw-substring scan of untagged `*_test.go` files, so it catches a **direct textual** `DeltaGit` call site only.
+  A test calling a `planglyph` wrapper that reaches `DeltaGit` transitively contains no such token and still passes.
+  The existing tokens accept exactly this limit and this one inherits it: the guard narrows the gap, it does not close it.
+  Do not let a later change restate this as full coverage.
+
+### prosa-target-rule
+
+- **Decision:** `prosa-symbol-target` is **redefined in glyph terms**, not retired.
+  Under a glyph-enabled `language:`, a `Prosa` group may target **file self glyphs** and **unit self glyphs** (`internal/foo#`), and a **member glyph** is the finding.
+  Under `language: none` the check keeps today's behaviour unchanged: path-shaped refs pass, symbol-shaped refs are the finding.
+- **Rationale:** the check as implemented (`internal/planparser/validate.go:491`) flags any `Prosa` ref where `isPathRef` is false.
+  After `parse-time-canonicalization` every file ref is a glyph, so the check as written would fire on **every** `Prosa` card in a glyph-enabled plan — a stale check producing a wall of false findings.
+  Retiring it instead would be an over-correction: its actual purpose is that a `Prosa` card documents *files and packages*, never individual symbols, and that purpose survives the alphabet change intact.
+  `IsSelf()` is exactly the predicate the new rule needs, so the redefinition is one call, not a new grammar.
+- **Note for the plan:** `package-spelling` deliberately wants a `Prosa` card to be able to target `internal/foo#`, so the unit self glyph must be on the allowed side — a rule permitting only file self glyphs would contradict that decision.
+
+### root-and-canonicalization-order
+
+- **Decision:** `root:`/`//` resolution runs **first**, while a surface ref is still path-shaped; canonicalization to a glyph runs **after**.
+  A **surface glyph is always repository-root-relative** and is never `root:`-joined, exactly as a `//` path never is.
+- **Rationale:** `normalizeRefIfPath` (`internal/planparser/normalize.go:88`) is classifier-gated — it applies `normalizeCardPath` only when `isPathRef` says path, and its own comment names the regression that gate exists to prevent ("without this gate, a non-empty `root:` would turn `shedrecipe.Lookup` into `internal/boardcli/shedrecipe.Lookup`").
+  Canonicalizing before root-joining would put every ref on the non-path side of that gate and silently switch `root:` off for the whole plan.
+  Ordering it the other way keeps the existing gate doing exactly the job it already does.
+  Glyphs are exempt from `root:` for a different and stronger reason: a glyph is copied verbatim from a quarry answer, and quarry answers are always complete repository-relative strings, so prefixing `root:` onto one would corrupt a string that is by definition already whole.
+- **Consequence, stated so it is not discovered:** under a non-`.` `root:`, a surface glyph with a bare filename unit — `focus.go#` — names the file `focus.go` at the **repository root**, not `<root>/focus.go`.
+  That is a legal glyph and almost never what the author meant, but it fails loudly at `path-missing` / `Resolve` rather than resolving to the wrong file silently.
+  The planner never hits this in practice because it copies glyphs from `lyx quarry glyphs`, which emits full repository-relative units.
+- **Rejected:** applying `root:` to a glyph's unit — corrupts a verbatim quarry answer, which is the one thing `bare-symbol-is-hard-finding` exists to protect.
+  Also rejected: rejecting surface glyphs outright whenever `root:` is non-`.` — strict and safe, but it forbids pasting a correct quarry answer into a plan that happens to use the shorthand, which is exactly the workflow this task is building.
 
 ### drift-boundaries
 
@@ -436,7 +472,7 @@ The engine requires `CGO_ENABLED=1`; `internal/cgoguard` enforces it with a read
 `_lyx/plan/` is untracked weft content; nothing matches on `origin/main`.
 The rewrite surface is the golden fixture, the spec's worked example, and the stencil.
 
-**Docs that must land in the same commits as the code that changes them**, per this repo's Task-completion rule: `contracts/specs/loom-plan-spec.md` (format 5, the new checks, the worked example), `contracts/stencils/loom/loom-template-plan.md` (glyph spelling, the hard rule, the `lyx quarry` verbs replacing the `go doc`/`grep` section), `manifest/designs/quarry-glyph-plan-alphabet.md`, `docs/overview.md` (the new `internal/planglyph` and `internal/quarrycli` modules in the module table), `README.md` and `CLAUDE.md` (the cgo/C-toolchain prerequisite), and `manifest/roadmap.md` (the Planned item completes).
+**Docs that must land in the same commits as the code that changes them**, per this repo's Task-completion rule: `contracts/specs/loom-plan-spec.md` (format 5, the new checks, the worked example), `contracts/stencils/loom/loom-template-plan.md` (glyph spelling, the hard rule, the `lyx quarry` verbs replacing the `go doc`/`grep` section), `contracts/stencils/webster/webster-body-implementer.md` (its deviation-union paragraph tells the implementer to resolve "a package-qualified symbol to its file" itself in "one read" — invalidated by glyph refs, and superseded by the mechanical glyph scope guard), `contracts/stencils/loom/loom-rubric-plan-review.md` (it names `prosa-symbol-target` and carries per-symbol card-granularity guidance, both of which move under `prosa-target-rule` and the glyph alphabet), `manifest/designs/quarry-glyph-plan-alphabet.md`, `docs/overview.md` (the new `internal/planglyph` and `internal/quarrycli` modules in the module table), `README.md` and `CLAUDE.md` (the cgo/C-toolchain prerequisite), and `manifest/roadmap.md` (the Planned item completes).
 `CONSTRAINTS.md` takes **three** separate edits, not one: the new Glyph Conversion Chokepoint Invariant; the Planparser Sole-Parser bullet, which today reads "`SetApproved` is the one write path" and must name `RewriteRefs` and the amendment append; and the CLI/Cobra package-naming line, which must record the `quarrycli` → `internal/planglyph` deviation beside `stencilcli`'s.
 
 ## Constraints
@@ -503,7 +539,8 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
 
 **Gate parity and CLI.**
 
-- The existing parity test extends to every new producer row / verb pair.
+- The existing parity test still covers `Plan-Revalidate` ↔ `validate-plan --require-approved` once that pair's function gains the batched `Resolve`; no new row/verb pair is added, so no new parity case appears.
+  The two webster boundaries are tested as `websterengine` functions through their existing bracket verbs.
 - Help-tree tests cover the four `lyx quarry` verbs; a golden test pins that each verb's output is the facade's answer unmodified.
 
 **Cross-cutting.**
@@ -548,5 +585,7 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
   Not `delta`, not `name` — `name` in an agent's hands is a glyph-spelling machine, which is the one thing the hard rule exists to prevent.
 - **Q:** How is the blocked quarry accessor handled? **A:** The disk-shaped checks become their own late cards with the merged accessor and the `go.mod` bump as their precondition; quarry task `glyph-unitpath` is already in motion.
   A temporary loomyard-side helper is banned outright, not deferred.
+- **Q:** Does `root:`/`//` resolution run before or after glyph canonicalization, and is a surface glyph under a non-`.` `root:` legal? **A:** [auto-pick] `root:` resolves first, while the ref is still path-shaped; canonicalization runs after; a surface glyph is always repository-root-relative and never `root:`-joined. **Why:** `normalizeRefIfPath` is classifier-gated, so canonicalizing first would put every ref on the non-path side of that gate and silently switch `root:` off plan-wide; and a glyph copied verbatim from a quarry answer is already a complete repository-relative string, so `root:`-joining one would corrupt it. A bare-filename surface glyph under a non-`.` root therefore names a repo-root file and fails loudly rather than resolving to the wrong file silently.
+- **Q:** Is `RewriteRefs` keyed on canonical model strings or on the on-disk lexemes the planner actually wrote? **A:** [auto-pick] Model strings, with the parser retaining each ref's surface lexeme beside its canonical form so the writer can find the exact bytes. **Why:** all three callers — canonicalization, binding, drift repair — natively produce canonical glyphs, so keying on lexemes would push the surface↔model gap into every one of them; bridging it once in the parser avoids the worst failure mode, a drift repair that reports success while silently skipping the refs it could not byte-match.
 - **Q:** How is quarry's in-quarry `git` spawn (`DeltaGit`) made visible to loomyard's two mechanical guards, which only scan loomyard's own source? **A:** [auto-pick] Extend both guards: a narrow `DeltaGit` token in `bannedTokens`, and a `DeltaGit`-as-spawn case in the observability guard so its call site must import `internal/logger`. **Why:** the tier-purity guard is a raw-substring scan of loomyard files and the observability guard AST-matches `exec.Command` in loomyard files, so a call whose spawn lives inside quarry's `internal/gitsrc` trips neither — leaving "anything reaching `DeltaGit` is integration-tagged" enforced by nothing and a real spawn reachable from `lyx webster record-batch` outside the observability invariant entirely; an allowlist exemption is unavailable because it applies only to a site structurally barred from importing `internal/logger`.
 - **Q:** Where does `internal/planglyph` — and the standalone `lyx quarry` verb group — get the repository root `quarry.Open` requires, under the Told-Geometry Invariant? **A:** [auto-pick] Told unconditionally, with all three call shapes named: producer rows and the validation pass take already-resolved paths from their caller, and `lyx quarry` probes tier 1 via `preflight.ResolveMode` against the current worktree only. **Why:** `quarry.Open(root)` needs an absolute root by construction, so `package-ownership` already answers the question the Constraints section left conditional; `planparser` is on the bound list with a plain `worktreeRoot string`, proving membership turns on deriving no paths rather than on carrying a `Geometry`; and refusing an arbitrary-repo flag keeps the planner and the validator resolving against the same tree, which is the copied-verbatim guarantee.
