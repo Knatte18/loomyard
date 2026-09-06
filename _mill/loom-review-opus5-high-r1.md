@@ -21,6 +21,37 @@ Run at review start, on the clean `crucible-loom-glyph-hardening` tree (HEAD `61
 
 Baseline is green; nothing red before the glyph scenarios started, so no pre-existing-redness finding.
 
+### Live driving — the standalone probe harness
+
+`lyx loom run` cannot be driven without spawning LLM sessions, but the glyph surface itself is reachable through real CLI verbs against a real git repository with real quarry, at zero LLM cost, via webster's **standalone mode** (`--target-dir`/`--plan-dir`, `internal/webstercli/wiring.go`).
+`lyx webster validate` calls `planglyph.Validate` — byte-for-byte the function `Plan-Revalidate` (recipe row 10, `require_approved: true`) runs, per the Gate Self-Check Parity Invariant. So every observation below is the real row's own behaviour.
+
+Fixture: a real Go module at `<scratch>/sbx`, real `git init`/commit, base SHA `42878ec60`:
+
+- `internal/alpha/alpha.go` — `func Existing() string`, `func ToRename() int`
+- `internal/beta/beta.go` — `func BetaOne() string`
+
+Dev binary deployed with `./deploy-dev` → `/home/knatte/Code/loomyard/wts/crucible-loom-glyph-hardening/.dev-bin/lyx` (built at `a4723e91e`).
+
+**Run 1** — probe plan with a `Create`-in-new-unit handle card, a `Create`-in-existing-unit handle card, a `Create` on an already-existing glyph, and a member-glyph/file-self-glyph card pair:
+
+```
+env -C <sbx> .dev-bin/lyx webster validate --plan-dir <sbx>/plan
+```
+
+Result (verbatim, 2 findings):
+
+- `create-already-exists` / `3-already-exists-create` — "Create target \"internal/alpha#Existing\" already resolves found", blocking. **Create inversion's blocking half: works live.**
+- `containment-file-overlap` / `4-member-edit` — "card 4's member glyph physically overlaps card 5-file-self-edit's own file self glyph naming \"internal/beta/beta.go\"", blocking. **Resolve-backed containment tier: works live**, reading `ResolveResult.Symbols[].File` as designed.
+- **No `create-new-unit` finding** for card 1's `plan:internal/gamma#NewThing` in a package that does not exist → finding F14.
+
+The three handle-bearing card files were rewritten on disk by the same call (mtimes advanced), confirming that `Plan-Validate`/`Plan-Revalidate` **mutate the plan directory** as a side effect of validation.
+
+**Run 2** — card 1's draft handle changed to a deliberately non-canonical `plan:internal/gamma#DraftSpelling` (declaration head `func NewThing() string`), card 2's declaration head changed to the stencil's own literal `type AddedHere struct{...}`:
+
+- Card 1's declaration rewrote to `plan:internal/gamma#NewThing`, **and card 2's `Uses` reference to the same handle rewrote with it**. **Scenario 1's canonicalization half — plan-wide rewrite via `planparser.RewriteRefs`, reaching a non-declaring card — works live.**
+- New blocking finding `handle-name-failed`: "handle \"plan:internal/alpha#AddedHere\" failed naming: declaration does not parse (parse)" → finding F15.
+
 ## Findings
 
 ### F1 — `RecordBatch` treats an INFORMATIONAL drift finding as blocking (BLOCKING, CONFIRMED-by-trace)
@@ -139,6 +170,53 @@ The fixture predates PR #230 and the `Plan` field it added to `RecordDeps`; noth
 `internal/websterengine/recordbatch_test.go`'s only `RecordDeps` constructor does pass a plan, which is why the hermetic tier stays green.
 
 Strictly `webstercli`'s test is outside loom's module scope, but the defect is a direct consequence of the surface under review and the nil-guard gap is in `planglyph` itself, so both halves are recorded here and fixed this round.
+
+### F13 — the plan spec's worked example teaches an illegal `Rename` pair (MEDIUM, CONFIRMED)
+
+`contracts/specs/loom-plan-spec.md`'s worked example, card 5:
+
+```
+**Rename:**
+- `internal/boardengine#MapRow` -> `internal/boardengine#MapRowJSON`
+```
+
+The `New` side is a glyph. The same document's own line 218 and its check 16 (`rename-to-not-handle`) require it to be a `plan:` handle, and the golden fixture the example claims to be "byte-consistent with" — `internal/planparser/testdata/goodplan/05-rowmapper-rename.md` — correctly writes `` `internal/boardengine#MapRow` -> `plan:internal/boardengine#MapRowJSON` ``.
+So the spec's example is the one artifact in the repo teaching the illegal form, and it is the document `Plan-Review`'s rubric and the plan-format contract both point at.
+(`contracts/stencils/loom/loom-template-plan.md:103`, which `Plan-Write` actually reads, states the rule correctly — so this is doc-only, not a live planner hazard.)
+
+### F14 — `create-new-unit` never fires for a handle-declared `Create` (MEDIUM, CONFIRMED LIVE)
+
+`internal/planglyph/create.go:65-68`: `createFindings` looks each Create ref up in the resolve index and `continue`s when absent — "a `plan:` handle target is never looked up here at all".
+
+But a handle is the shape the plan format prescribes for creating something genuinely new (`loom-template-plan.md:90-101`), so in exactly the case the check exists for, it is silently inert.
+The design doc's stated purpose — "a misspelled unit cannot silently create a package nobody intended" (`quarry-glyph-plan-alphabet.md:37`) — is therefore unmet for every handle-declared Create.
+
+Confirmed live: card 1 of the probe plan declares `plan:internal/gamma#NewThing` in a package that does not exist on disk, and `lyx webster validate` reported **no** `create-new-unit` finding (transcript in "What was tested" below).
+Fix: resolve a handle's canonicalized expected glyph (`strings.TrimPrefix(handle, HandlePrefix)`, the normalisation `donecheck.go:34` already performs) so the inversion applies to handles too.
+
+### F15 — the `Plan-Write` stencil's own `Create` declaration-head example does not parse, and blocks the plan (BLOCKING, CONFIRMED LIVE)
+
+`contracts/stencils/loom/loom-template-plan.md:98` is the one worked example `Plan-Write` reads for the declaration grammar:
+
+```
+**Create:**
+- `plan:internal/boardcli#RowJSON` -> `type RowJSON struct{...}`
+```
+
+`quarry.Name` parses the declaration head as real Go source (`package q\n\n<Decl>\n`, one retry appending `" {}"`). A literal `struct{...}` is not Go: `...` is not a valid struct body. `Name` returns `error: "declaration does not parse"`, `reason: "parse"`, and `CanonicalizeHandles` turns that into a **blocking** `handle-name-failed` (`internal/planglyph/handle.go:137-143`).
+
+Confirmed live against the probe plan — verbatim envelope:
+
+```json
+{"card":"","check":"handle-name-failed",
+ "detail":"handle \"plan:internal/alpha#AddedHere\" failed naming: declaration does not parse (parse)",
+ "severity":"blocking"}
+```
+
+A planner copying the stencil's own example therefore produces a plan that `Plan-Validate` blocks — and `Plan-Validate`'s `Stuck` carries an **empty pointer** with the findings only written to the driver log (`internal/loomshed/planvalidate.go:133-134`), so `Plan-Write` is respawned with no idea what was wrong and will reproduce the same shape until the bounce budget escalates to a human.
+Two fixes are needed: correct the stencil's example to a head that parses (`type RowJSON struct`), and state the constraint explicitly — the declaration head must be a single, parseable Go declaration head.
+
+Sub-finding (LOW): the `handle-name-failed` finding carries an empty `Card` (`handle.go:130-143`, both branches), unlike every other finding in the package, so the operator is not told which card to look at.
 
 ## Scope assessment
 
