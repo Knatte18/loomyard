@@ -73,3 +73,33 @@ Each is recorded here as a correction, with its evidence, because the doc's valu
    A naive `grep -rl "internal/fabricengine"` lists two files under `internal/lyxcwd` (`lyxcwd.go`, `anchor.go`), but both matches are doc-comment prose, not import statements.
    `go list -deps ./internal/lyxcwd` confirms that package's only internal import is `internal/gitexec`, exactly as the Cwd Resolution Invariant requires.
    This correction is recorded precisely because it is the obvious thing a reader would suspect and the obvious way to get it wrong — the same comment-prose-contamination trap the measurement-method section above already named.
+
+## The quarry precedent — this project's one completed extraction
+
+This project has one completed extraction to learn from: `lyx scout` became the standalone `github.com/Knatte18/quarry` repo, cited here by module path as the reference.
+
+**Layout.**
+Quarry's shipped shape is a root façade package (`quarry/`), a separately-importable cgo-free leaf (`glyph/`), an `internal/` tree holding the CLI among other packages (`internal/{cgoguard,cli,engine,gitsrc,mcpserver,repopath}`), and its `cmd/` binaries (`cmd/quarry`, `cmd/quarry-mcp`).
+
+**Façade mechanism.**
+The façade re-exports internal types by alias rather than by hand-designed interface, so the extraction never required designing a narrow seam up front — it curated *what* is exported rather than *how*:
+
+```go
+type Symbol = engine.Symbol
+const KindFunction = engine.KindFunction
+```
+
+The façade never had to invent a narrower method set than the engine already had, only decide which of the engine's types the façade's own names re-export.
+
+**The evidence on extraction timing, stated plainly.**
+This repo's `go.mod` still carries no requirement on `github.com/Knatte18/quarry`, and adoption is a single unstarted item in `manifest/roadmap.md`'s Planned section ("Adopt quarry's glyph alphabet as the plan alphabet").
+Quarry shipped as a standalone repo months before this document was written, and loomyard — the only real candidate consumer — has still not drawn the dependency edge to it.
+That is the measured cost of extracting before a consumer exists, and it is the one piece of evidence this document weighs most heavily against extracting Reed or Fabric now.
+
+**Residue cost.**
+The port's own record, `docs/research/quarry-holistic-fix-log.md`, documents real cleanup cost after the port: loomyard-internal references surviving in ported comments, a stale checksum file (`go.sum`), and cross-repo review rounds needing a two-repo authorization decision.
+None of this is free, even for a clean extraction candidate.
+
+**A caveat on this section's own verifiability.**
+The layout and façade observations above were read off a local checkout of the quarry repo, not from anything in this repository.
+That local-checkout read is the one block of evidence in this document no other reader can re-verify from this repo alone — it is not backed by a machine-local absolute path, and no claim in this document rests on one; a reader who wants to confirm the layout or façade shape must clone `github.com/Knatte18/quarry` and look themselves.
