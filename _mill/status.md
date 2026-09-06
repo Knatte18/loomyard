@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: self-resolved-verify-logic
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -38,6 +38,7 @@ plan-review-r6  '2026-09-06T11:31:19Z'
 plan-fix-r6  '2026-09-06T11:34:30Z'
 planned  '2026-09-06T11:34:40Z'
 implementing  '2026-09-06T11:35:13Z'
+self-resolved-verify-logic  '2026-09-06T11:38:01Z'
 ```
 
 ## Batches

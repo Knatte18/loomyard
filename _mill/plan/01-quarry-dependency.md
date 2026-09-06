@@ -9,6 +9,10 @@ verify: go build ./...
 depends-on: []
 ```
 
+## Prior failure
+
+- Round 1: quarry main carries only archive/* tags (no semver tag); card 1 requires stopping rather than inventing a version — quarry-side precondition unmet
+
 ## Batch Scope
 
 This batch makes `github.com/Knatte18/quarry` reachable from loomyard's own Go code and records the build-posture change that follows from it.
