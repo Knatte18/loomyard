@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -53,6 +53,7 @@ holistic-fixing  '2026-09-06T14:21:22Z'
 holistic-reviewing  '2026-09-06T14:28:47Z'
 holistic-approved  '2026-09-06T14:33:01Z'
 done  '2026-09-06T14:49:59Z'
+pr-pending  '2026-09-06T14:52:39Z'
 ```
 
 ## Batches
