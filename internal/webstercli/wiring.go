@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildinfo"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -135,9 +136,13 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag,
 
 // wireStandalone builds the engine stack for standalone mode: the already-absolute --target-dir
 // (defaulted to cwd when unset), standalonestate.Derive over it -- the only place Derive is ever
-// called -- standalonegeom's geometry builders over the derived state directory, every module config
-// and the model registry loaded over the same state directory, a pinned websterengine.NeverMatches
-// RefMatcher, and a nil fabric opener.
+// called -- an immediate redirect of the durable trace sink to standalonegeom.LogsDir(stateDir),
+// which is what keeps a standalone invocation from writing trace files into the operator's
+// repository, standalonegeom's geometry builders over the derived state directory, every module
+// config and the model registry loaded over the same state directory, a pinned
+// websterengine.NeverMatches RefMatcher, a shuttleengine.NewDetachedRunner-constructed runner --
+// standalone's anchor (the derived state directory) is deliberately outside its worktree root (the
+// target), which NewRunner's containment assertion would refuse -- and a nil fabric opener.
 func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
 	target, err := resolveStandaloneTarget(cwd, targetDirFlag)
 	if err != nil {
@@ -148,6 +153,11 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 	if err != nil {
 		return err
 	}
+	// The redirect runs before any other statement in this function because the durable sink is
+	// armed lazily on the first Info-or-above record: if anything below logged first, the sink
+	// would already be bound to the operator's target repository and this redirect would be too
+	// late to matter.
+	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
 
 	geom := standalonegeom.WebsterGeometry(target, stateDir)
 	reedGeom := standalonegeom.ReedGeometry(target, stateDir, hash8)
@@ -197,7 +207,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.New()
-	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 
 	c.setRunner(runner, claudeEngine, reedEngine)
 	c.shuttleCfg = shuttleCfg

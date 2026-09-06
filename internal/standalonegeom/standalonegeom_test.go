@@ -49,6 +49,26 @@ func TestStencilsDir(t *testing.T) {
 	}
 }
 
+func TestLogsDir(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+
+	got := LogsDir(stateDir)
+
+	if want := filepath.Join(stateDir, lyxdirs.DotLyxDirName, "logs"); got != want {
+		t.Errorf("LogsDir(%q) = %q; want %q", stateDir, got, want)
+	}
+
+	// LogsDir and ReedGeometry's LogsDir field are deliberately different directories for
+	// different producers -- pin the non-convergence the doc comment records.
+	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
+	hash8 := "abcd1234"
+	if reedLogsDir := ReedGeometry(target, stateDir, hash8).LogsDir; got == reedLogsDir {
+		t.Errorf("LogsDir(%q) = %q; want != ReedGeometry(...).LogsDir %q", stateDir, got, reedLogsDir)
+	}
+}
+
 func TestReedGeometry(t *testing.T) {
 	t.Parallel()
 

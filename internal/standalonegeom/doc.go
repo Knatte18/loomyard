@@ -18,6 +18,7 @@
 // converting a told target, stateDir, and (for reed) hash8 into a reedengine.Geometry,
 // websterengine.Geometry, or burlerengine.Geometry
 // respectively, plus the StencilsDir helper, which converts a told stateDir alone into the
-// standalone stencils directory path. Neither engine imports this package back — the told
-// direction stays one-way.
+// standalone stencils directory path, and the LogsDir helper, which converts a told stateDir
+// alone into the standalone trace-log directory path. Neither engine imports this package back —
+// the told direction stays one-way.
 package standalonegeom

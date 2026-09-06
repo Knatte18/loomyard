@@ -105,14 +105,101 @@ func TestEnsureDurableSink_FilenameGrammarAndFields(t *testing.T) {
 	}
 }
 
-func TestEnsureDurableSink_SeamPathLeavesWorktreeRootEmpty(t *testing.T) {
+// TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty pins that an empty
+// header.WorktreeRoot is now a choice the caller made by picking the no-worktree-root-supplied
+// shorthand (SetDurableSinkDir), not a property of the seam itself.
+func TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 
 	ensureDurableSink()
 
 	if header.WorktreeRoot != "" {
-		t.Errorf("header.WorktreeRoot = %q; want empty on the SetDurableSinkDir seam path (geometry never resolved)", header.WorktreeRoot)
+		t.Errorf("header.WorktreeRoot = %q; want empty when SetDurableSinkDir (no-worktree-root-supplied shorthand) was called", header.WorktreeRoot)
+	}
+}
+
+// TestEnsureDurableSink_WorktreeRootSuppliedReachesHeaderAndFile is the populated counterpart to
+// TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty: SetDurableSinkDirWithWorktreeRoot
+// leaves header.WorktreeRoot equal to the supplied value, and the trace file's first line carries
+// it.
+func TestEnsureDurableSink_WorktreeRootSuppliedReachesHeaderAndFile(t *testing.T) {
+	dir := t.TempDir()
+	worktreeRoot := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
+	SetDurableSinkDirWithWorktreeRoot(dir, worktreeRoot)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	ensureDurableSink()
+
+	if header.WorktreeRoot != worktreeRoot {
+		t.Errorf("header.WorktreeRoot = %q; want %q", header.WorktreeRoot, worktreeRoot)
+	}
+
+	files := listSinkDirFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one file", files)
+	}
+	first := readSinkFirstLine(t, filepath.Join(dir, files[0]))
+	if !strings.Contains(first, "worktree_root="+worktreeRoot) {
+		t.Errorf("header line = %q; want it to contain worktree_root=%s", first, worktreeRoot)
+	}
+}
+
+// TestSetDurableSinkDirWithWorktreeRoot_RedirectsSinkFileLocation pins that the override actually
+// redirects the trace file: with the override set before the first record, the file lands in the
+// given directory and no file appears in the cwd-derived location.
+func TestSetDurableSinkDirWithWorktreeRoot_RedirectsSinkFileLocation(t *testing.T) {
+	dir := t.TempDir()
+	worktreeRoot := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
+	SetDurableSinkDirWithWorktreeRoot(dir, worktreeRoot)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	ok := ensureDurableSink()
+	if !ok {
+		t.Fatalf("ensureDurableSink() ok = false; want true")
+	}
+
+	if _, err := os.Stat(sinkPath); err != nil {
+		t.Fatalf("os.Stat(sinkPath=%q) = %v; want the sink file to exist under the overridden directory", sinkPath, err)
+	}
+	if filepath.Dir(sinkPath) != dir {
+		t.Errorf("filepath.Dir(sinkPath) = %q; want %q (the overridden directory)", filepath.Dir(sinkPath), dir)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd() error = %v; want nil", err)
+	}
+	if cwd == dir {
+		t.Fatalf("cwd = %q equals overridden dir %q; test fixture invalid", cwd, dir)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".lyx", "logs")); err == nil {
+		t.Errorf("cwd-derived sink location %q exists; want no file there when the override redirects the sink", filepath.Join(cwd, ".lyx", "logs"))
+	}
+}
+
+// TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile is the ordering
+// obligation as an executable assertion: setting the directory after the sink is already armed
+// does not move the file that was already opened.
+func TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile(t *testing.T) {
+	firstDir := t.TempDir()
+	SetDurableSinkDir(firstDir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	ok := ensureDurableSink()
+	if !ok {
+		t.Fatalf("ensureDurableSink() ok = false; want true")
+	}
+	armedPath := sinkPath
+
+	secondDir := t.TempDir()
+	SetDurableSinkDirWithWorktreeRoot(secondDir, "irrelevant-worktree-root")
+
+	if sinkPath != "" {
+		t.Errorf("sinkPath after SetDurableSinkDirWithWorktreeRoot = %q; want reset to empty until the sink is re-armed", sinkPath)
+	}
+	if _, err := os.Stat(armedPath); err != nil {
+		t.Errorf("os.Stat(armedPath=%q) = %v; want the already-opened file to remain untouched", armedPath, err)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -120,6 +121,14 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, targetDirFlag
 // would otherwise resurface much later as an opaque prompt-render error. The empty fourth Reconcile
 // argument is the "no source tree here" value that keeps the port-back drift warning silent --
 // standalone genuinely has no contracts/stencils source tree beside it.
+//
+// Immediately after standalonestate.Derive succeeds, wireStandalone redirects the durable trace sink
+// to standalonegeom.LogsDir(stateDir), which is what keeps a standalone invocation from writing trace
+// files into the operator's repository -- placement matters because the sink is armed lazily on the
+// first Info-or-above record, so the redirect only binds if it runs before anything else in this
+// function can log. Its runner is also built via shuttleengine.NewDetachedRunner rather than
+// NewRunner, since standalone's anchor (the derived state directory) is deliberately outside its
+// worktree root (the target), which NewRunner's containment assertion would refuse.
 func (c *burlerCLI) wireStandalone(cwd, stencilsDirFlag, targetDirFlag string) error {
 	target, err := resolveStandaloneTarget(cwd, targetDirFlag)
 	if err != nil {
@@ -130,6 +139,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirFlag, targetDirFlag string) e
 	if err != nil {
 		return err
 	}
+	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
 
 	var stencilsDir string
 	if stencilsDirFlag != "" {
@@ -156,7 +166,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirFlag, targetDirFlag string) e
 
 	reedGeom := standalonegeom.ReedGeometry(target, stateDir, hash8)
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 
 	c.engine = burlerengine.New(runner, standalonegeom.BurlerGeometry(target, stateDir), burlerCfg, stencilsDir)
 	c.mode = "standalone"
