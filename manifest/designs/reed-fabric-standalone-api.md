@@ -205,3 +205,91 @@ The logging decoupling is deliberately **not** in this list — see the standalo
 - Bundling (a) and (b) into the extraction itself — rejected: each stops being independently justifiable and stalls behind a decision with no trigger date.
 - Doing nothing until a trigger fires — rejected: leaves two unrelated defects unfixed for no reason.
 - Keeping the logging decoupling in this list — rejected: it is not cheap, unlike (a) and (b); see below for why.
+
+## Reed — the standalone repo shape, its published seams, and the logging price
+
+### Layout
+
+A standalone Reed mirrors quarry's shipped shape directly: a root façade package, a separately-importable dependency-light render leaf, an `internal/` tree including the CLI, and one `cmd/` binary — `reed/` (façade), `render/` (leaf), `internal/` (everything else including the CLI), `cmd/reed`.
+
+The render leaf is the exact analogue of quarry's cgo-free `glyph/` leaf: 773 production lines, zero internal dependencies, and stdlib-only imports.
+Producing command: `for f in $(ls internal/reedengine/render/*.go | grep -v _test); do awk '/^import/,/^\)/' $f; done | grep '"'`.
+That command's import set is exactly three stdlib packages — `fmt`, `sort`, `strings` (`sort` is used in `policy.go`, so shortening the list to "`fmt` and `strings`" is wrong) — and the leaf is already consumed independently by three packages: `loomcli`, `shuttleengine`, and `shuttlecli`.
+
+The façade re-export shape, derived from quarry's alias mechanism:
+
+```go
+package reed
+
+import "github.com/Knatte18/reed/internal/engine"
+
+type Engine = engine.Engine
+type Geometry = engine.Geometry
+type AddSpec = engine.AddSpec
+type Strand = engine.Strand
+
+func New(cfg Config) (*Engine, error) {
+	return engine.New(cfg)
+}
+```
+
+### Published seams
+
+A standalone Reed publishes **two** named interface slices with compile-time satisfaction proofs — a transport slice and a session-lifecycle slice — as the documented contract, while consumers stay free to define their own narrower interfaces.
+
+The transport slice is `shuttleengine.ReedOps`, transcribed verbatim from `internal/shuttleengine/reed.go`:
+
+```go
+type Transport interface {
+	AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error)
+	RemoveStrand(guid string, recursive bool) (reedengine.Removed, error)
+	Status() (reedengine.StatusResult, error)
+	SendText(guid, text string, submit bool) error
+	SendKey(guid, key string) error
+	CapturePane(guid string) (string, error)
+}
+
+var _ Transport = (*Engine)(nil)
+```
+
+The session-lifecycle slice is exactly the six methods `loomcli` calls today, derived by `grep -ohE 'c\.reed\.[A-Za-z]+\(' $(ls internal/loomcli/*.go | grep -v _test) | sort -u`:
+
+```go
+type Session interface {
+	Up() error
+	Status() (StatusResult, error)
+	AddStrand(spec AddSpec) (Strand, error)
+	RemoveStrand(guid string, recursive bool) (Removed, error)
+	TmuxPath() (string, error)
+	AttachArgv() ([]string, error)
+}
+
+var _ Session = (*Engine)(nil)
+```
+
+The two slices deliberately overlap on three methods — `AddStrand`, `RemoveStrand`, `Status` — and that overlap is permitted, not a defect.
+A reader's first instinct is that two seams over one type should partition its methods; they do not.
+Each slice states one consumer's real dependency, and a method two consumers both need legitimately appears in both.
+
+Both slices are declared in the provider package — `reed` in a standalone repo, `reedengine` if the seam is retrofitted in-repo first — not in a consumer, because that placement is what makes the compile-time proof line live next to the type it constrains.
+
+This document does **not** claim a wider lifecycle slice covering the four further session methods (`Down`, `Resume`, `SessionName`, `Socket`): the only consumer calling any of them is Reed's own CLI, which holds the concrete `*Engine` and needs no slice at all.
+
+### The logging decoupling
+
+A standalone Reed takes an optional standard-library structured logger on its config or constructor, defaulting to a discard handler, and drops `internal/logger` entirely.
+`internal/logger` is the single edge that pulls three further packages — `lyxcwd`, `gitexec`, `lyxdirs` — into Reed's transitive dependency set.
+
+**This is a standalone-repo design point, not in-repo preparation**, and its in-repo price is written out here rather than worked around.
+The Live-Substrate Spawn Observability constraint (`CONSTRAINTS.md`) names `internal/logger` by name and is enforced mechanically, as a file-level import check, by `cmd/lyx/spawnobservability_test.go`: a production file under `internal/` or `cmd/` that contains a real `exec.Command`/`exec.CommandContext` call must either import `internal/logger` or carry a written-reason entry in `spawnObservabilityAllowedSpawners`.
+Removing `internal/logger` from `reedengine` in-repo would therefore fail that shipped test unless three allowlist entries were added — one each for `lifecycle.go`, `overlay.go`, `attach.go`, the three files that carry real spawns — and `CONSTRAINTS.md` were amended to document the new exemptions, which this task's scope bars.
+
+The allowlist's own first entry documents the very import cycle at issue, and is worth quoting directly:
+
+> "structurally barred: internal/logger imports internal/lyxcwd, which imports internal/gitexec, so importing logger here would close an import cycle; gitexec.Run already returns a *GitError carrying args, dir, exit code, and stderr, so the diagnostic is not actually lost"
+
+**Three rejected options.**
+
+- A hand-rolled `Logger` interface — rejected: it reinvents `log/slog`'s own `Handler` interface for no benefit.
+- Extracting `internal/logger` too — rejected: that is a second extraction with its own trace-id and retention machinery, to avoid one import.
+- Listing the decoupling as cheap in-repo hygiene — rejected: it collides with a shipped enforcement test and a `CONSTRAINTS.md` amendment this task's scope bars, so it is not cheap.
