@@ -16,8 +16,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -27,6 +30,12 @@ import (
 // This is the bracket-discipline fail-loud check: a fork's own report, however legitimate it looks,
 // is never trusted without Go's own record that begin-batch actually opened this batch first.
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
+
+// ErrCardNotDone is the sentinel RecordBatch returns when card 33's DoneChecks report a blocking
+// finding against the just-completed batch's own cards — a Create target that still does not
+// resolve, or a Delete target that still does — meaning the batch is not done and no terminal
+// digest is persisted. webster's own sentinel, per the webster-owns-its-own-domain-types decision.
+var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
 // RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently:
 // Batches is the batchifier-derived execution batches (see RunDeps.Batcher) `run` computed
@@ -53,6 +62,11 @@ type RecordDeps struct {
 	OutcomePath string
 	SummaryPath string
 	Sleeper     Sleeper
+	// Plan is the already-parsed plan — mirroring the field BeginDeps already carries. DoneChecks
+	// here, and BindHandles/DetectDrift in cards 34 and 36, all need the parsed plan, and RecordDeps
+	// carried none before this field: deps.Geom.PlanDir reaches the directory but nothing reached
+	// the plan itself.
+	Plan *planparser.Plan
 }
 
 // RecordResult is what one successful RecordBatch call hands back to its caller
@@ -172,6 +186,21 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 	if actualHead != report.HeadSHA {
 		return nil, fmt.Errorf("webster: batch report %s: head_sha %q does not match the worktree's actual HEAD %q", reportPath, report.HeadSHA, actualHead)
+	}
+
+	// A card's completion has a mechanical verdict: a Create target that still does not resolve,
+	// or a Delete target that still does, blocks — neither is a judgment call. This runs its own
+	// batched Resolve against the post-card tree, distinct from card 34's single delta call below.
+	doneFindings, err := planglyph.DoneChecks(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	var doneChecks []string
+	for _, f := range doneFindings {
+		doneChecks = append(doneChecks, f.Error())
+	}
+	if len(doneChecks) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(doneChecks, "; "))
 	}
 
 	digest := distill(report)

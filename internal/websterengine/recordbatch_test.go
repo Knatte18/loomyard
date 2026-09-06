@@ -123,9 +123,9 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	startSHA := commitFile(t, worktree, "base.txt", "base", "base commit")
 	headSHA := commitFile(t, worktree, "internal/foo/impl.go", "package foo\n", "01.1: add impl")
 
-	batches := []batcher.Batch{
-		{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
-	}
+	cards := []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}
+	batches := []batcher.Batch{{Cards: cards}}
+	plan := &planparser.Plan{Format: 5, Cards: cards}
 
 	reportsDir := t.TempDir()
 	contractDir := t.TempDir()
@@ -155,6 +155,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		OutcomePath: filepath.Join(contractDir, "outcome.yaml"),
 		SummaryPath: filepath.Join(contractDir, "summary.md"),
 		Sleeper:     sleeper,
+		Plan:        plan,
 	}
 
 	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
@@ -499,5 +500,52 @@ func TestRecordBatch_MissingSessionTranscriptNamesRecourse(t *testing.T) {
 		if !strings.Contains(err.Error(), needle) {
 			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), needle)
 		}
+	}
+}
+
+// TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring: a Create target that
+// still does not resolve against the worktree's actual post-card tree returns ErrCardNotDone and
+// persists no terminal digest.
+func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+		{Type: planparser.CardTypeCreate, Refs: []string{"internal/foo#NeverLanded"}},
+	}
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrCardNotDone) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone)", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Error("BatchState.Terminal = true; want false — a not-done card must not persist a terminal digest")
+	}
+}
+
+// TestRecordBatch_DoneChecksPassOnLandedCreate proves the happy path: a Create target whose
+// symbol actually landed in the batch's own work commit passes the done-checks and the batch
+// still terminates cleanly.
+func TestRecordBatch_DoneChecksPassOnLandedCreate(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	// newRecordFixture's own work commit adds internal/foo/impl.go with no declared symbol; add one
+	// the fixture's own Create target can resolve against.
+	commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.2: add Bar")
+	headSHA := commitFile(t, fx.Worktree, "base.txt", "base updated", "01.3: bump base")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+		{Type: planparser.CardTypeCreate, Refs: []string{"internal/foo#Bar"}},
+	}
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
 }
