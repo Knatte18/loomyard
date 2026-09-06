@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -36,4 +36,25 @@ plan-fix-r5  '2026-09-06T11:25:21Z'
 plan-review-r6  '2026-09-06T11:31:19Z'
 plan-fix-r6  '2026-09-06T11:34:30Z'
 planned  '2026-09-06T11:34:40Z'
+implementing  '2026-09-06T11:35:13Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: quarry-dependency
+    state: pending
+  - name: planparser-alphabet
+    state: pending
+  - name: planparser-handles
+    state: pending
+  - name: planglyph
+    state: pending
+  - name: gate-parity
+    state: pending
+  - name: quarry-cli
+    state: pending
+  - name: webster-drift
+    state: pending
 ```
