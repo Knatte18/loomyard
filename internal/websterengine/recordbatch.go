@@ -253,9 +253,20 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	// DetectDrift is the one planglyph call in this sequence that returns a MIXED severity set:
+	// plan-references-deleted-symbol is blocking, while the evidence tier's rename-candidate is
+	// informational by construction — drift.go's own contract is that the rename-versus-genuine-delete
+	// decision is the reviewer's, never the pipeline's. Failing the batch on it would destroy the very
+	// tier it belongs to, since a finding that kills the batch never reaches a reviewer at all.
+	// So the split here mirrors BeginBatch's own: blocking fails, informational rides out on Warnings
+	// exactly as ScopeGuard's findings already do.
 	var driftBlocking []string
 	for _, f := range driftFindings {
-		driftBlocking = append(driftBlocking, f.Error())
+		if f.Severity == planglyph.SeverityBlocking {
+			driftBlocking = append(driftBlocking, f.Error())
+			continue
+		}
+		warnings = append(warnings, f.Error())
 	}
 	if len(driftBlocking) > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))

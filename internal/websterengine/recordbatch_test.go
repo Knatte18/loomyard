@@ -676,6 +676,43 @@ func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock proves DetectDrift's mixed severity set is
+// split rather than blanket-blocked: an inexact rename quarry classifies as an evidence-tier
+// candidate rather than an exact pair produces an informational rename-candidate finding, which
+// must ride out on Warnings and let the batch terminate — a finding that kills the batch never
+// reaches the reviewer whose decision the tier exists to inform.
+func TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	// The symbol must exist at the delta's start side to be reported deleted, so the batch's own
+	// start boundary moves to a commit that already carries it.
+	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillMove() int { return 1 }\n", "01.2: add WillMove")
+	fx.Deps.State.Batches[1].StartSHA = withSymbol
+	// Renamed AND rewritten: the token streams differ in length, so quarry's exact tier declines it
+	// and offers it as a candidate instead.
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int {\n\ttotal := 1\n\ttotal += 0\n\treturn total\n}\n", "01.3: rename and rewrite")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	fx.Deps.Plan.Cards[0].Uses = []string{"internal/foo#WillMove"}
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil — an informational rename-candidate must never fail the batch", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	var surfaced bool
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "rename-candidate") {
+			surfaced = true
+		}
+	}
+	if !surfaced {
+		t.Errorf("RecordResult.Warnings = %v; want the informational rename-candidate finding surfaced there", result.Warnings)
+	}
+}
+
 // TestRecordBatch_DoneChecksPassOnLandedCreate proves the happy path: a Create target whose
 // symbol actually landed in the batch's own work commit passes the done-checks and the batch
 // still terminates cleanly.
