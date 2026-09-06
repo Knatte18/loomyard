@@ -48,6 +48,8 @@ batches:
     commit_sha: e70f007303f236dee640302fe08d03112b0784d9
     verify_baseline_failures: []
   - name: standalone-wiring-and-docs
-    state: pending
+    state: running
+    implementer_session: 58de4b23-4f7d-42a0-a5dc-84dd1315e3ae
+    start_sha: 39791734a3f0c0be1c879648fb033ab0402329aa
     verify_baseline_failures: []
 ```
