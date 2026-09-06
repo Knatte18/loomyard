@@ -18,7 +18,7 @@ The strings are also LLM-authored end to end: the `Plan-Write` stencil currently
 
 **Why now.**
 quarry has shipped every primitive this needs.
-Its public Go facade (`github.com/Knatte18/quarry`, package `quarry`) exposes all six queries — `TOC`, `Resolve`, `Expand`, `Delta`/`DeltaGit`, `Name`, `Glyphs` — and the pure, stdlib-only `glyph` package defines the alphabet itself.
+Its public Go facade — import path `github.com/Knatte18/quarry/quarry`, package `quarry` — exposes all six queries — `TOC`, `Resolve`, `Expand`, `Delta`/`DeltaGit`, `Name`, `Glyphs` — and the pure, stdlib-only `glyph` package defines the alphabet itself.
 The three primitives GitHub issue #226 listed as "planned" (the `glyphs` flat index, the glyph-maker, and diff-to-symbols) are all merged.
 Nothing in the adoption is blocked on quarry any more except one small additive accessor, tracked separately (see the `quarry-unitpath-precondition` decision).
 
@@ -208,7 +208,8 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 - **Decision:** canonicalization runs once, at parse time, and the `planparser.Plan` model holds **glyphs**.
   The path-shaped checks convert back when they need to test the disk.
 - **Rationale:** `deriveEdges` and every other consumer then see exactly one spelling per thing by construction, and it keeps canonicalization where the existing `root:`/`//` normalization already runs.
-- **Rejected:** canonicalizing on read in each consumer (the one consumer that forgets reintroduces the split-node bug silently); storing both forms per ref (a two-field ref type rippling through `Targets`/`Uses`/`Pairs` and every consumer).
+- **Rejected:** canonicalizing on read in each consumer (the one consumer that forgets reintroduces the split-node bug silently); turning each ref into a **two-field struct** carrying both forms, which would ripple through `Targets`/`Uses`/`Pairs` and every consumer that reads them as `[]string`.
+  Note this rejects the *struct-per-ref* shape specifically, not the retention of surface spellings as such: `rewrite-write-path` keeps them in a single `Plan`-level side map precisely so the slices stay `[]string` and no consumer changes.
 
 ### glyph-conversion-chokepoint
 
@@ -234,6 +235,11 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 - **Status:** the quarry side is already in motion — quarry task `glyph-unitpath`, mill-quick-sized, spawned 2026-09-06 — and is expected merged before planning ends.
 - **Verified absent:** `Glyph` today exposes `Lang`, `Unit`, `Owner`, `Name`, `Params` and the methods `IsSelf`/`String`.
   Nothing maps a unit back to a disk path.
+- **Interim posture — the classifier rewrite and the disk-check repair land in the SAME card.**
+  `path-missing` and `card-path-malformed` are both gated on `isPathRef` (`internal/planparser/validate.go`), so the moment the classifier is rewritten and refs canonicalize to glyphs, both checks stop matching anything.
+  Splitting them apart would land merges with two checks silently dead — worse than either a delay or a gap, because the plan would look validated while two of its seventeen checks answered nothing.
+  So they are one card, and that single card carries the `Glyph.UnitPath()` precondition.
+  If the accessor is not merged when the plan reaches that card, **that card** blocks; every other card in the plan proceeds, which is the whole point of isolating the blocked edge.
 
 ### create-declaration-grammar
 
@@ -270,7 +276,10 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 - **Keyspace — model strings, with a surface lexeme retained per ref.**
   `RewriteRefs`' map is keyed on **canonical model strings**, because that is the space its three callers natively work in: binding produces a real glyph from `Delta`, drift repair produces old→new glyph pairs, and canonicalization produces `plan:<expected-glyph>` from `Name`.
   Making callers down-convert to on-disk spelling would spread the surface↔model gap across all three.
-  The gap is instead bridged **once**, in the parser: each parsed ref retains the **surface lexeme** it was written as, beside its canonical form, so `RewriteRefs` can locate the exact bytes to replace for a canonical key.
+  The gap is instead bridged **once**, in the parser.
+- **Storage shape — a `Plan`-level side map, not a struct per ref.**
+  The surface lexemes live in one `Plan`-level canonical→surface map (per card where a card's spellings can differ), and `Card.Targets`/`Uses`/`Pairs` stay **`[]string` of canonical glyphs**, unchanged in type.
+  This is what keeps `websterengine.deriveEdges`/`refsIntersect` — which consume plain `[]string` — untouched, and it is why this does not contradict `parse-time-canonicalization`'s rejection of a two-field ref type: that decision rejects the struct-per-ref shape and its ripple through every consumer, not the retention of the surface spelling itself.
 - **Why this is load-bearing:** the `Plan` model holds canonicalized, root-resolved glyphs while `_lyx/plan/` bytes hold whatever the planner actually wrote — a plain path, a `root:`-relative path, or a file self glyph, all three of which `file-spelling` deliberately accepts.
   A map keyed on model strings with no surface record would silently fail to match those bytes and quietly skip the entries it was called to rewrite, which is the worst possible failure mode for drift repair: a plan that reports itself repaired while still naming a deleted symbol.
 - **Rejected:** keying on on-disk lexemes (pushes the gap into all three callers); canonicalizing the whole file on first write (`parse-time-canonicalization` already rejected a full re-render, because `planparser` is deliberately lenient and a round-trip would normalize away the very defects the validator exists to report — and it would additionally rewrite backup-mode paths the operator chose to allow).
@@ -366,8 +375,15 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
 
 - **Decision:** three boundaries re-resolve, but they sit on **two different seams**, and the distinction is load-bearing:
   - `begin-batch` — the dispatch boundary re-resolves; never cached.
-  - `record-batch` — done-checks, `Delta`-driven handle binding, and the scope guard.
-  - `Plan-Revalidate` — one batched `Resolve` over the remaining plan after each card merge.
+  - `record-batch` — done-checks, `Delta`-driven handle binding, the scope guard, **and** the batched `Resolve` over the remaining plan.
+  - `Plan-Revalidate` — a **one-shot pre-Webster baseline** `Resolve` over the whole plan.
+- **Boundary correction — `Plan-Revalidate` never fires post-merge.**
+  `contracts/recipes/loom-recipe.yaml` places the row once, after the review segment, with `on_done: Batchifier` and `Batchifier`'s own `on_done: Webster` — so it runs strictly **before** any card has merged.
+  Its "remaining plan" is the whole plan, and it cannot be the per-merge boundary.
+  Issue #226's phrase "one batched `Resolve` revalidates the remaining plan after each card merge" describes an intent, not a row that exists here.
+  In loomyard's actual structure the issue's per-merge boundary and its done-check boundary are the **same** boundary: webster runs cards sequentially and `record-batch` fires after each one, holding `StartSHA` and the verified `HeadSHA`.
+  So the per-merge `Resolve` folds into `record-batch` rather than needing a row of its own — consistent with this task adding no new `ShedProducer` rows.
+  `Plan-Revalidate`'s own value is unchanged and worth keeping: it is the baseline that catches a plan already stale against the code before a single card is dispatched.
 - **Seam correction — only `Plan-Revalidate` is a `ShedProducer` row.**
   `internal/shedrecipe`'s registry holds no `BeginBatch`/`RecordBatch` entries (`internal/shedrecipe/registry.go` — the fourteen names are `Preflight`, `Publish`, `Finalize`, `LoomPreflight`, `Batchifier`, `DiscussionValidate`, `DiscussionWrite`, `PlanValidate`, `PlanWrite`, `Stub`, `Webster`, `SingleLLM`, `Bouncer`, `BurlerRound`).
   `begin-batch` and `record-batch` are **Master's bracket CLI verbs** in `internal/webstercli` over `internal/websterengine` functions — `beginbatch.go`'s own `Short` reads "Master's bracket call immediately before forking one batch's implementer".
@@ -460,9 +476,10 @@ The fork-return contract is `status: OK|FAILED`, a `head_sha`, and an informatio
 
 **quarry's surface, as verified in `/home/knatte/Code/quarry/wts/quarry`.**
 Module `github.com/Knatte18/quarry`, Go 1.26, public on GitHub, **no release tags today**.
-Package `quarry` (the facade): `Open(root)`, `(*Repo).TOC`, `.Glyphs`, `.Resolve([]string) ([]ResolveResult, error)`, `.Expand`, `.Delta([]DeltaEntry)`, `.DeltaGit(from, to, target)`, package-level `Name([]Declaration) []NameResult`, `GlyphsOptions()`, plus JSON/text renderers.
+There is **no package at the module root** — spell both import paths verbatim: the facade is `github.com/Knatte18/quarry/quarry` and the alphabet is `github.com/Knatte18/quarry/glyph`.
+Package `quarry` (the facade, `github.com/Knatte18/quarry/quarry`): `Open(root)`, `(*Repo).TOC`, `.Glyphs`, `.Resolve([]string) ([]ResolveResult, error)`, `.Expand`, `.Delta([]DeltaEntry)`, `.DeltaGit(from, to, target)`, package-level `Name([]Declaration) []NameResult`, `GlyphsOptions()`, plus JSON/text renderers.
 `Declaration` is `{Unit, Decl}`; `NameResult` is `{Unit, Target, ID, Kind, Error, Reason}` — positional, always the same length as the input, `ID`/`Kind` on success only, `Error`/`Reason` on failure only.
-Package `glyph` (pure, stdlib-only): `Parse(lang, s)`, `Self(lang, path)`, `Glyph{Lang, Unit, Owner, Name, Params}`, `(Glyph).IsSelf()`, `(Glyph).String()`, `Language`/`Go`, `Reason`/`Reasons`/`ParseError`.
+Package `glyph` (pure, stdlib-only, `github.com/Knatte18/quarry/glyph`): `Parse(lang, s)`, `Self(lang, path)`, `Glyph{Lang, Unit, Owner, Name, Params}`, `(Glyph).IsSelf()`, `(Glyph).String()`, `Language`/`Go`, `Reason`/`Reasons`/`ParseError`.
 The engine requires `CGO_ENABLED=1`; `internal/cgoguard` enforces it with a readable compile error.
 `internal/gitsrc` uses `exec.Command("git", ...)`, which is what makes `DeltaGit` a process-spawning call.
 
@@ -585,6 +602,7 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
   Not `delta`, not `name` — `name` in an agent's hands is a glyph-spelling machine, which is the one thing the hard rule exists to prevent.
 - **Q:** How is the blocked quarry accessor handled? **A:** The disk-shaped checks become their own late cards with the merged accessor and the `go.mod` bump as their precondition; quarry task `glyph-unitpath` is already in motion.
   A temporary loomyard-side helper is banned outright, not deferred.
+- **Q:** `Plan-Revalidate` sits once before `Batchifier`/`Webster`, so it never fires after a card merge — where does the per-merge batched `Resolve` actually live? **A:** [auto-pick] Restate `Plan-Revalidate` as a one-shot pre-Webster baseline and fold the per-merge `Resolve` into `record-batch`. **Why:** webster runs cards sequentially and `record-batch` already fires after each one holding both SHAs, so issue #226's per-merge boundary and its done-check boundary are the same boundary in loomyard's real structure — no new row, consistent with this task adding none, and `Plan-Revalidate` keeps its own value as the pre-dispatch staleness baseline.
 - **Q:** Does `root:`/`//` resolution run before or after glyph canonicalization, and is a surface glyph under a non-`.` `root:` legal? **A:** [auto-pick] `root:` resolves first, while the ref is still path-shaped; canonicalization runs after; a surface glyph is always repository-root-relative and never `root:`-joined. **Why:** `normalizeRefIfPath` is classifier-gated, so canonicalizing first would put every ref on the non-path side of that gate and silently switch `root:` off plan-wide; and a glyph copied verbatim from a quarry answer is already a complete repository-relative string, so `root:`-joining one would corrupt it. A bare-filename surface glyph under a non-`.` root therefore names a repo-root file and fails loudly rather than resolving to the wrong file silently.
 - **Q:** Is `RewriteRefs` keyed on canonical model strings or on the on-disk lexemes the planner actually wrote? **A:** [auto-pick] Model strings, with the parser retaining each ref's surface lexeme beside its canonical form so the writer can find the exact bytes. **Why:** all three callers — canonicalization, binding, drift repair — natively produce canonical glyphs, so keying on lexemes would push the surface↔model gap into every one of them; bridging it once in the parser avoids the worst failure mode, a drift repair that reports success while silently skipping the refs it could not byte-match.
 - **Q:** How is quarry's in-quarry `git` spawn (`DeltaGit`) made visible to loomyard's two mechanical guards, which only scan loomyard's own source? **A:** [auto-pick] Extend both guards: a narrow `DeltaGit` token in `bannedTokens`, and a `DeltaGit`-as-spawn case in the observability guard so its call site must import `internal/logger`. **Why:** the tier-purity guard is a raw-substring scan of loomyard files and the observability guard AST-matches `exec.Command` in loomyard files, so a call whose spawn lives inside quarry's `internal/gitsrc` trips neither — leaving "anything reaching `DeltaGit` is integration-tagged" enforced by nothing and a real spawn reachable from `lyx webster record-batch` outside the observability invariant entirely; an allowlist exemption is unavailable because it applies only to a site structurally barred from importing `internal/logger`.
