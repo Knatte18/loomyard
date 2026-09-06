@@ -85,7 +85,7 @@ func TestCanonicalizeHandles_BatchedCallCoversBothSources(t *testing.T) {
 		t.Fatalf("plan.Dir = %q; want %q", plan.Dir, dir)
 	}
 
-	findings, err := CanonicalizeHandles(plan, dir, results)
+	findings, _, err := CanonicalizeHandles(plan, dir, results)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestCanonicalizeHandles_PositionalMatchingOutOfOrder(t *testing.T) {
 		2: "**Create:**\n- `plan:sub#A` -> `func ActualA() {}`\n\n**Intent:** two\n",
 	})
 
-	findings, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestCanonicalizeHandles_RenameDraftSpellingWrongStillRewrites(t *testing.T)
 		1: "**Rename:**\n- `sub#Old` -> `plan:wrongpkg#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
 	})
 
-	findings, err := CanonicalizeHandles(plan, dir, results)
+	findings, _, err := CanonicalizeHandles(plan, dir, results)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration(t *testing.T)
 		1: "**Rename:**\n- `sub#Counter.Count` -> `plan:sub#Counter.Tally`\n\n**Intent:** one\n\n## Rename mechanic\n",
 	})
 
-	findings, err := CanonicalizeHandles(plan, dir, results)
+	findings, _, err := CanonicalizeHandles(plan, dir, results)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 	})
 
 	// No result at all for "sub#DoesNotExist": the same as it never resolving found.
-	findings, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten(t *testi
 		2: "**Create:**\n- `plan:sub#Bad` -> `this is not valid go at all {{{`\n\n**Intent:** two\n",
 	})
 
-	findings, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestCanonicalizeHandles_CanonicalCollisionRewritesNeither(t *testing.T) {
 		2: "**Create:**\n- `plan:sub#Two` -> `func Same() {}`\n\n**Intent:** two\n",
 	})
 
-	findings, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestCanonicalizeHandles_RewriteLandsOnEveryReferencingCard(t *testing.T) {
 		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
 	})
 
-	findings, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -428,7 +428,7 @@ func TestCanonicalizeHandles_LanguageNoneNoOp(t *testing.T) {
 	dir := t.TempDir()
 	plan := &planparser.Plan{Dir: dir, Language: "none"}
 
-	findings, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}

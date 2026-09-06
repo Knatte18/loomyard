@@ -6,6 +6,7 @@ package planglyph
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -115,35 +116,76 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 	}
 }
 
-// TestValidateFormat_UnreadablePlanAfterCanonicalizationIsAnInfrastructureError asserts the
-// post-canonicalization reload's failure is reported rather than swallowed. It used to degrade
-// silently to the stale in-memory plan, so the three resolve-backed passes ran against bytes that
-// were no longer on disk and the gate reported a clean-looking verdict over them.
-func TestValidateFormat_UnreadablePlanAfterCanonicalizationIsAnInfrastructureError(t *testing.T) {
+// TestCanonicalizeHandles_ReportsWhetherItRewrote pins the signal resolvePass hangs its reload on.
+// resolvePass must re-read the plan exactly when canonicalization changed it on disk, and must
+// treat a failure of that re-read as an infrastructure error rather than silently falling back to
+// the stale in-memory copy — which would run the resolve-backed passes against bytes no longer on
+// disk and report a clean verdict over them. Both halves depend on this second return being
+// truthful.
+func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
+	t.Run("a plan carrying no handle rewrites nothing", func(t *testing.T) {
+		dir, plan := writePlanFixture(t, map[int]string{
+			1: "**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n",
+		})
+
+		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if rewrote {
+			t.Error("CanonicalizeHandles reported a rewrite for a plan carrying no handle")
+		}
+	})
+
+	t.Run("a plan carrying a handle rewrites", func(t *testing.T) {
+		dir, plan := writePlanFixture(t, map[int]string{
+			1: "**Create:**\n- `plan:sub#Draft` -> `func Actual() {}`\n\n**Intent:** one\n",
+			2: "**Uses:**\n- `plan:sub#Draft`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n\n**ImpactSummary:** none\n",
+		})
+
+		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if !rewrote {
+			t.Fatal("CanonicalizeHandles reported no rewrite despite canonicalizing a draft handle")
+		}
+		if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "plan:sub#Actual") {
+			t.Errorf("card 1 = %q; want the canonical handle plan:sub#Actual", got)
+		}
+	})
+}
+
+// TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError asserts a plan directory that cannot
+// be read reports as a gate/infrastructure failure, never as a plan finding — the gate could not
+// read the artifact, it did not find a defect in it.
+func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) {
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-	// A plan carrying no handles at all, so CanonicalizeHandles returns before it rewrites anything
-	// and the reload below is the only thing that can fail.
-	planDir := filepath.Join(t.TempDir(), "plan")
+	planDir := filepath.Join(t.TempDir(), "never-created")
 	plan := &planparser.Plan{
 		Dir:      planDir,
 		Format:   5,
 		Language: "go",
 		Approved: true,
-		Cards:    []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}},
+		Cards: []planparser.Card{{
+			Number:       1,
+			Slug:         "one",
+			Targets:      []string{"plan:sub#Draft"},
+			Declarations: []planparser.CardDeclaration{{Handle: "plan:sub#Draft", Decl: "func Actual() {}"}},
+		}},
 	}
 
-	// planDir was never created, so ParsePlan cannot read an overview there.
 	got, err := ValidateFormat(plan, root)
 	if !errors.Is(err, ErrQuarryUnavailable) {
 		t.Fatalf("ValidateFormat(...) error = %v; want errors.Is(err, ErrQuarryUnavailable) for an unreadable plan directory", err)
 	}
 	// The pure findings already collected are still returned alongside the error, per this package's
 	// documented contract; what must NOT appear is any resolve-backed finding, since those passes
-	// would have run against the stale in-memory plan.
+	// would have had to run against a plan the gate could not confirm.
 	for _, f := range got {
 		switch f.Check {
 		case "glyph-not-found", "glyph-ambiguous", "glyph-rejected", "create-already-exists", "create-new-unit", "containment-file-overlap":
-			t.Errorf("ValidateFormat(...) reported resolve-backed finding %+v; the passes must not run against a stale plan", f)
+			t.Errorf("ValidateFormat(...) reported resolve-backed finding %+v; want none when the plan could not be read", f)
 		}
 	}
 }

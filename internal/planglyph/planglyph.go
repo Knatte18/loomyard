@@ -79,20 +79,27 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) 
 		return nil, err
 	}
 
-	handleFindings, err := CanonicalizeHandles(plan, plan.Dir, results)
+	handleFindings, rewrote, err := CanonicalizeHandles(plan, plan.Dir, results)
 	if err != nil {
 		return handleFindings, fmt.Errorf("%w: canonicalize handles: %v", ErrQuarryUnavailable, err)
 	}
 
-	// The reload is not optional and its failure is not recoverable: CanonicalizeHandles has just
-	// rewritten planDir, so a plan that no longer parses means the three passes below would run
-	// against the stale in-memory copy and report a clean verdict over bytes that are no longer on
-	// disk -- the "a plan looks validated and was not" failure mode repo.go's own ErrQuarryUnavailable
-	// rationale names as rejected. It reports as an infrastructure failure rather than a plan finding
-	// for the same reason: the gate could not read the artifact, it did not find a defect in it.
-	current, rerr := planparser.ParsePlan(plan.Dir)
-	if rerr != nil {
-		return handleFindings, fmt.Errorf("%w: re-parse plan after handle canonicalization: %v", ErrQuarryUnavailable, rerr)
+	// The reload happens only when canonicalization actually rewrote the plan on disk -- otherwise
+	// there is nothing new to read and the in-memory plan is already current.
+	//
+	// When it does happen its failure is NOT recoverable. Falling back to the stale in-memory copy
+	// would run the three passes below against bytes that are no longer on disk and report a clean
+	// verdict over them: the "a plan looks validated and was not" failure mode repo.go's own
+	// ErrQuarryUnavailable rationale names as deliberately rejected. It reports as an infrastructure
+	// failure rather than a plan finding for the same reason -- the gate could not read the artifact,
+	// it did not find a defect in it.
+	current := plan
+	if rewrote {
+		reloaded, rerr := planparser.ParsePlan(plan.Dir)
+		if rerr != nil {
+			return handleFindings, fmt.Errorf("%w: re-parse plan after handle canonicalization: %v", ErrQuarryUnavailable, rerr)
+		}
+		current = reloaded
 	}
 
 	findings := append([]Finding{}, handleFindings...)

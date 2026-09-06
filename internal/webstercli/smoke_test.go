@@ -330,11 +330,17 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 	// NeverMatches is the pinned supplier for a mode with no fabric repo -- this fixture is a bare
 	// git repo, never a wired hub -- and the field must be non-nil either way, since CheckParent
 	// and CheckFork call Matches unguarded.
+	cards := []planparser.Card{{Number: 1, Slug: "alpha"}}
 	deps := websterengine.RecordDeps{
-		Batches:     []batcher.Batch{{Cards: []planparser.Card{{Number: 1, Slug: "alpha"}}}},
-		State:       state,
-		Engine:      eng,
-		Geom:        websterengine.Geometry{WorktreeRoot: dir, ReportsDir: reportsDir},
+		Batches: []batcher.Batch{{Cards: cards}},
+		State:   state,
+		Engine:  eng,
+		Geom:    websterengine.Geometry{WorktreeRoot: dir, ReportsDir: reportsDir},
+		// RecordBatch's glyph passes (DoneChecks, BindHandles, DetectDrift) all take the parsed plan,
+		// so a nil Plan is refused outright. The card carries no targets, so every one of those passes
+		// is a clean no-op here and this fixture stays about the crashed-session report it exists to
+		// test.
+		Plan:        &planparser.Plan{Format: 5, Language: "go", Cards: cards},
 		RefMatcher:  websterengine.NeverMatches{},
 		OutcomePath: filepath.Join(dir, "outcome.yaml"),
 		SummaryPath: filepath.Join(dir, "summary.md"),

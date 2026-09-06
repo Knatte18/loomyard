@@ -88,6 +88,14 @@ type RecordResult struct {
 // fork-audit policy checks, transcript-attribution advance, report parse, and digest persistence.
 // The caller persists deps.State via SaveState once RecordBatch returns successfully.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
+	// The plan is a hard precondition, refused loudly rather than dereferenced several frames down
+	// inside planglyph. Every production caller parses it (internal/webstercli's record-batch verb),
+	// so a nil here is a wiring mistake in a test or a new caller, and a nil-pointer panic out of
+	// DoneChecks names neither the missing field nor the verb that failed to supply it.
+	if deps.Plan == nil {
+		return nil, fmt.Errorf("webster: record-batch requires a parsed plan; RecordDeps.Plan is nil")
+	}
+
 	bs, ok := deps.State.Batches[batchNumber]
 	if !ok || bs == nil || bs.Terminal {
 		return nil, ErrNoBeginRecord

@@ -163,6 +163,13 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
 func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
+	// The plan is a hard precondition, refused loudly rather than dereferenced below, for the same
+	// reason RecordBatch refuses one: a nil here is a wiring mistake in a caller, and a nil-pointer
+	// panic names neither the missing field nor the verb that failed to supply it.
+	if deps.Plan == nil {
+		return nil, fmt.Errorf("webster: begin-batch requires a parsed plan; BeginDeps.Plan is nil")
+	}
+
 	if PauseRequested(deps.Geom.ScratchDir) {
 		return nil, ErrPaused
 	}

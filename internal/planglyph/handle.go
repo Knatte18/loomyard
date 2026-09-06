@@ -161,9 +161,14 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 //
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite.
-func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry.ResolveResult) ([]Finding, error) {
+//
+// Its second return reports whether planDir's bytes were actually handed to RewriteRefs, so
+// resolvePass knows whether re-reading the plan from disk can tell it anything new -- and therefore
+// whether a failure to re-read it is a real infrastructure failure or merely an in-memory plan that
+// was never on disk to begin with.
+func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry.ResolveResult) ([]Finding, bool, error) {
 	if _, ok := resolveLanguage(plan); !ok {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	resultIndex := resultByTarget(results)
@@ -195,7 +200,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	}
 
 	if len(sources) == 0 {
-		return findings, nil
+		return findings, false, nil
 	}
 
 	decls := make([]quarry.Declaration, len(sources))
@@ -251,14 +256,14 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	}
 
 	if len(subs) == 0 {
-		return findings, nil
+		return findings, false, nil
 	}
 
 	if err := planparser.RewriteRefs(planDir, subs); err != nil {
-		return findings, err
+		return findings, false, err
 	}
 
-	return findings, nil
+	return findings, true, nil
 }
 
 // BindHandles turns a handle into the real glyph the card actually created, from the record-batch
