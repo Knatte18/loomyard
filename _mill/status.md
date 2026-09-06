@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-fabric-standalone-api-design
 branch: reed-fabric-standalone-api-design
 plan: _mill/plan
@@ -23,4 +23,15 @@ discussion-fix-r5  '2026-09-06T12:29:20Z'
 discussed  '2026-09-06T12:29:20Z'
 planning  '2026-09-06T12:55:06Z'
 planned  '2026-09-06T12:55:23Z'
+implementing  '2026-09-06T13:31:51Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shared-frame-and-reed
+    state: pending
+  - name: fabric-creel-and-close
+    state: pending
 ```
