@@ -5,7 +5,7 @@ task: "Adopt quarry's glyph alphabet as the plan alphabet"
 batch: "quarry-cli"
 number: 6
 cards: 5
-verify: go test ./internal/quarrycli/ ./cmd/lyx/ ./internal/lyxcwd/
+verify: go test ./internal/quarrycli/ ./internal/planglyph/ ./cmd/lyx/ ./internal/lyxcwd/
 depends-on: [5]
 ```
 
@@ -77,8 +77,10 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Register the new subtree the way every other module is registered.
-  In `cmd/lyx/main.go`, add the `internal/quarrycli` import and add `quarrycli.Command()` to the `root.AddCommand(...)` call, placed in the same alphabetical-by-module neighbourhood the existing entries sit in.
-  In `cmd/lyx/helptree_test.go`, add a case to the module table with `module: "quarry"` and `wantSubs: []string{"toc", "glyphs", "resolve", "expand"}`, matching the shape of the `stencil` and `loom` cases already there.
+  In `cmd/lyx/main.go`, make **two** edits, not one: add the `internal/quarrycli` import and add `quarrycli.Command()` to the `root.AddCommand(...)` call; and add `quarry` to the `Available modules:` line inside that same function's `root.Long` string.
+  The second edit is not cosmetic — `cmd/lyx/longlist_test.go` asserts that `root.Long` names every registered module and fails otherwise.
+  Append the new entry rather than trying to slot it alphabetically: the existing order is board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, run, which is not alphabetical and is not worth reordering here.
+  In `cmd/lyx/helptree_test.go`, make **two** edits as well: add a case to the module table with `module: "quarry"` and `wantSubs: []string{"toc", "glyphs", "resolve", "expand"}`, matching the shape of the `stencil` and `loom` cases already there; and add `"quarry"` to that file's hand-maintained `requiredModules` slice, which is a separate list from the module table and is checked against the root help output.
   In `cmd/lyx/seamsignature_test.go`, add `quarrycli.RunCLI` to the first blank-identifier slice and `quarrycli.RunCLIIn` to the second, and update the file's own doc comment counts.
   This edit is required rather than incidental: the guard pins each module through two **hand-maintained** slices, so a newly registered module that is not added to them leaves the guard compiling and passing while covering nothing at all.
   Run the package's other guards after the edit and fix what they report rather than adjusting them: `registration_test.go` enforces that an existing module is registered, `longlist_test.go` skips cobra's own `help` and `completion` subtrees the same way the sandbox guard does, and `jsonhelp_test.go` checks the envelope shape every module must satisfy.
@@ -146,9 +148,9 @@ Batch-local decisions, beyond `## Shared Decisions`:
 
 ## Batch Tests
 
-`verify: go test ./internal/quarrycli/ ./cmd/lyx/` covers the new package and the registration guards that police it.
+`verify: go test ./internal/quarrycli/ ./internal/planglyph/ ./cmd/lyx/ ./internal/lyxcwd/` covers the new package, the `planglyph` wrappers card 26 adds to it, and the registration guards that police the module.
 `./internal/quarrycli/` runs `cli_test.go` and `verbs_test.go`: the seam assertions and the per-verb runs against a fixture repository built under `t.TempDir()`, which reach `quarry.TOC`, `Glyphs`, `Resolve` and `Expand` — all file readers, none of which spawns a process, so the tests stay untagged and tier1-pure.
 `./cmd/lyx/` is where the batch's real gates live and is why it is in scope: `registration_test.go`, `longlist_test.go`, `helptree_test.go`, `jsonhelp_test.go`, `seamsignature_test.go` and `sandbox_coverage_test.go` each independently fail if the module is registered incorrectly, documented incorrectly, or left uncovered, and card 28's scenario is validated by that last one parsing `tools/sandbox/*SUITE.md` rather than by any assertion this batch writes itself.
-The scope excludes `internal/planglyph` even though card 26 may add query wrappers there: batch 4's verify covers that package's own behaviour, and any wrapper added here is exercised through the verbs in this batch's own run, with the overview's module-wide `go build ./...` catching a compile break at this batch's boundary.
+`./internal/planglyph/` is in scope because card 26 adds the four query wrappers there and requires `internal/planglyph/repo_test.go` to cover them: batch 4's verify has already run by this point and batch 7's runs later, so without it the tests this batch adds would never execute in the batch that adds them.
 `./internal/lyxcwd/` is in scope for one reason: the Markdown Link Integrity guard lives in `internal/lyxcwd/docslink_test.go` and scans `manifest/` and `docs/`, which this batch rewrites — without it a broken link would surface only at the hub's end-of-task done gate, several batches after the edit that caused it.
 </content>

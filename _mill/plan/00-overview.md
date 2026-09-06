@@ -47,7 +47,7 @@ batches:
     name: quarry-cli
     file: 06-quarry-cli.md
     depends-on: [5]
-    verify: go test ./internal/quarrycli/ ./cmd/lyx/ ./internal/lyxcwd/
+    verify: go test ./internal/quarrycli/ ./internal/planglyph/ ./cmd/lyx/ ./internal/lyxcwd/
   - number: 7
     name: webster-drift
     file: 07-webster-drift.md

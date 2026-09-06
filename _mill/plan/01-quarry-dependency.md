@@ -50,7 +50,7 @@ Card 1 proves the module resolves and builds; the first real facade call site ar
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Document the new build prerequisite and make the repo's own build path honour it.
-  In `README.md`, extend the `## Building` section's prerequisite list (which currently reads `- Go 1.26+`) with a C toolchain entry stating that `lyx` links quarry's tree-sitter grammars through cgo, so `CGO_ENABLED=1` and a C compiler (gcc/clang on POSIX, mingw-w64 on Windows) are required.
+  In `README.md`, extend the `## Requirements` section's bullet list — the one that currently reads `- Go 1.26+`, and **not** the `## Building` section, which is a fenced shell block carrying no bullet list — with a C toolchain entry stating that `lyx` links quarry's tree-sitter grammars through cgo, so `CGO_ENABLED=1` and a C compiler (gcc/clang on POSIX, mingw-w64 on Windows) are required.
   State the fact that `CGO_ENABLED` already defaults to `1` for a native build when a C compiler is on PATH, so nothing needs setting on an ordinary developer machine, and that `go env -w CGO_ENABLED=1` pins it per-user but is machine-local and does not install a compiler. No file read needed.
   In `CLAUDE.md`, add a short `## Build prerequisite: cgo` section carrying the same two facts, so an agent reading only `CLAUDE.md` learns it before its first build.
   In `tools/deploy/main.go`, set `CGO_ENABLED=1` explicitly on the `build` command the deploy path runs: after `build.Dir = root` is assigned, assign `build.Env = append(os.Environ(), "CGO_ENABLED=1")`, so a deploy from an environment that has disabled cgo fails at the compiler rather than producing a broken binary.
