@@ -29,6 +29,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/stencilcli/cli.go`
   - `internal/planglyph/doc.go`
   - `internal/preflight/predicates.go`
+  - `internal/webstercli/wiring.go`
   - `internal/output/output.go`
   - `internal/clihelp/exec.go`
   - `CONSTRAINTS.md`
@@ -48,7 +49,10 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Requirements:** Create the module as an ordinary cobra subtree following the CLI/Cobra Invariant's seam, mirroring `internal/stencilcli/cli.go`'s shape.
   In `cli.go`, expose `Command() *cobra.Command` returning the `quarry` subtree, `RunCLI(out io.Writer, args []string) int`, and `RunCLIIn(cwd string, out io.Writer, args []string) int` delegating to `clihelp.Execute`/`clihelp.ExecuteIn` exactly as `stencilcli` does.
   `RunCLIIn` is required here, not optional: the group's root resolution is cwd-dependent.
-  Resolve the repository root once in the parent's `PersistentPreRunE`, skipping it when `cmd.Name()` is `quarry` so a bare `lyx quarry` listing never requires a git repository, via `preflight.ResolveMode(cwd)` — the tier-1 probe the Told-Geometry Invariant names for a standalone CLI — and use the returned location's worktree path as the root.
+  Resolve the repository root once in the parent's `PersistentPreRunE`, skipping it when `cmd.Name()` is `quarry` so a bare `lyx quarry` listing never requires a git repository, via `preflight.ResolveMode(cwd)` — the tier-1 probe the Told-Geometry Invariant names for a standalone CLI.
+  Branch on the returned `Mode`, and never dereference the returned location unconditionally: `ResolveMode` returns a **nil** `*lyxcwd.Location` at every one of its three `ModeStandalone` return sites, so reading a worktree path off it would nil-deref the first time `lyx quarry` runs against a plain non-hub repository.
+  In hub mode take the root from the returned location's own worktree-path accessor; in standalone mode take the root from `cwd` itself.
+  This is the same two-mode split `internal/webstercli/wiring.go` already makes — it threads the raw `cwd` through and uses it directly on the standalone side rather than reaching for the location — so follow that precedent rather than inventing a second convention.
   Add no repository-path flag to any verb.
   These are repository queries rather than plan queries and must answer before any plan exists, which is precisely when the planner needs them, so none of the four requires a plan to be in scope.
   Add the four subcommands, each with a non-empty `Short` and a `Long` carrying an example, each checking `clihelp.ShouldAbort` first, and each reporting errors as JSON via `internal/output`: `toc <path>`, `glyphs <dir>`, `resolve <glyph>...` accepting one or more targets in one call, and `expand <glyph>`.
