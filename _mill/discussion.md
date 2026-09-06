@@ -76,7 +76,7 @@ The deliverable is a design document, not code.
 - Decision: do not extract Reed now.
   The gate is not code readiness — Reed is already close to ready — it is the existence of a second consumer, or Reed becoming a long-running service rather than a library.
   Recommend the cheap in-repo preparation instead.
-- Rationale: Reed's external contract is 15 identifiers across 9 direct production importers, most of them construction-only, and its public surface is one handle type with 18 methods.
+- Rationale: Reed's external contract is 13 package-level identifiers across 9 direct production importers, most of them construction-only, and its public surface is one handle type with 17 methods.
   That is small enough to freeze.
   But loomyard is its only user, three roadmap items still change it (`reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay`), and the quarry precedent shows what extracting ahead of a consumer buys: a separate release cadence and a dependency edge that, months later, still is not drawn.
   The likelier trigger than "another project wants tmux orchestration" is the daemon story — watchdog plus Slack relay plus mailbox turns Reed into something with a lifecycle of its own, and that is when a repo boundary starts paying.
@@ -151,7 +151,13 @@ The deliverable is a design document, not code.
 
 - Decision: a standalone Reed publishes two named interface slices with compile-time satisfaction proofs — a transport slice and a session-lifecycle slice — as the documented contract, while consumers stay free to define their own narrower interfaces.
 - Rationale: publishing them is what "a frozen contract to verify against" means for a versioned module, and the proof line (`var _ Transport = (*Engine)(nil)`) is what makes a breaking change fail the build in the provider's own repo rather than in a consumer's.
-  The slices are read off real usage, not invented: the transport slice is `shuttleengine.ReedOps` verbatim (`AddStrand`, `RemoveStrand`, `Status`, `SendText`, `SendKey`, `CapturePane`), and the session slice is exactly what `loomcli` reaches for today (`Up`, `Down`, `Resume`, `Status`, `SessionName`, `Socket`, `TmuxPath`, `AttachArgv`).
+  The slices are read off real usage, not invented: the transport slice is `shuttleengine.ReedOps` verbatim (`AddStrand`, `RemoveStrand`, `Status`, `SendText`, `SendKey`, `CapturePane`), and the session slice is exactly the six methods `loomcli` calls today — `Up`, `Status`, `AddStrand`, `RemoveStrand`, `TmuxPath`, `AttachArgv`, derived by `grep -ohE 'c\.reed\.[A-Za-z]+\(' $(ls internal/loomcli/*.go | grep -v _test) | sort -u`.
+  The two slices deliberately overlap on `AddStrand`, `RemoveStrand` and `Status`;
+  the doc must say so explicitly and state that overlap is permitted, because a reader's first instinct is that two seams over one type should partition its methods.
+  They do not: each slice is a statement about one consumer's real dependency, and a method two consumers both need appears in both.
+  Both slices are declared in the provider package (`reed`, in a standalone repo;
+  `reedengine` if the seam is retrofitted in-repo first), not in a consumer — that placement is what makes the compile-time proof line live next to the type it constrains.
+  The doc must NOT claim a wider lifecycle slice (`Down`, `Resume`, `SessionName`, `Socket`): `loomcli` calls none of the four, and the only consumer that does is `reedcli`, Reed's own CLI, which legitimately holds the concrete `*Engine` and needs no slice at all.
   Keeping consumer-side definition legal preserves Go's accept-interfaces idiom and is what `shuttleengine` already does.
 - Rejected: provider-side interfaces as the only permitted form (fights the language's idiom for no gain);
   consumer-side only (a versioned module with no published interface has nothing to prove compatibility against).
@@ -255,9 +261,17 @@ The numbers should be re-stated in the doc as measured facts with their method n
   `lyxcwd` and `gitexec` enter *only* through `internal/logger` (`internal/logger/sink.go:21-22`, `:88-93`).
   `reedengine/doc.go` already documents this honestly and should be quoted rather than re-derived.
 - The brief's claim that Reed imports `tokenvocab` is correct (`geometry.go`, `header.go`, `headertemplate.go`), and `tokenvocab` pulls in `internal/stencil`.
-- Public surface: 7 free functions, 20 types, and `*Engine` with 18 methods (`internal/reedengine/lifecycle.go`, `strand.go`, `io.go`, `attach.go`, `watchloop.go`).
-- External contract footprint: **15 distinct exported identifiers** referenced by production code outside the package — `AddSpec`, `AddStrand`, `CleanClaudeEnv`, `ConfigTemplate`, `Engine`, `Geometry`, `LoadConfig`, `LoadState`, `New`, `Removed`, `ServerName`, `SessionName`, `StatusResult`, `Strand`, `StrandStatus`.
-  Plus `render`'s `Display`, `Strand`, `Box`, `Params` and the `Anchor` constants.
+- Public surface: 7 free functions, 20 types, and `*Engine` with **17** exported methods — `Socket`, `SessionName`, `TmuxPath`, `AddStrand`, `UpdateStrand`, `RemoveStrand`, `AttachArgv`, `SendText`, `SendKey`, `CapturePane`, `Up`, `Resume`, `Down`, `Status`, `Watch`, `HeaderText`, `ValidateHeader`, and no value-receiver methods.
+  Producing command: `go doc ./internal/reedengine Engine | grep -c '^func (e \*Engine)'`.
+- External contract footprint: **13 distinct exported package-level identifiers** referenced *in code* by production packages outside `reedengine` — `AddSpec`, `ConfigTemplate`, `Engine`, `Geometry`, `LoadConfig`, `LoadState`, `New`, `Removed`, `ServerName`, `SessionName`, `StatusResult`, `Strand`, `StrandStatus`.
+  Plus `render`'s `Display`, `Strand`, `Box`, `Params` and the `Anchor` constants, and the 17 methods reached through `Engine`, counted separately above.
+- The metric is deliberately "referenced in code by production packages", and the doc must state that definition alongside the number.
+  A bare `grep -ro 'reedengine\.[A-Za-z0-9_]*'` over non-test files also returns `CleanClaudeEnv`, `AddStrand` and `requireSessionLocked`, all three of which are **doc-comment prose only** — `internal/burlerengine/doc.go:205`, `internal/reedcli/add.go:1,4`, `internal/reedcli/attach.go:52` — and `requireSessionLocked` is not even exported.
+  None is a real external reference, and counting them is how the first draft of this discussion reached 15 instead of 13.
+  The same trap produced the false `lyxcwd`→`fabricengine` edge recorded below;
+  the doc should name comment-prose contamination once, as a shared caveat on its grep-derived numbers.
+- `CleanClaudeEnv` is therefore exported but referenced only inside `reedengine` (`lifecycle.go:299`).
+  That does not weaken the rename recommendation — it is still a provider-specific name on a public API — it only means the rename breaks no external caller, which strengthens it.
 - Direct production importers (9): `burlercli`, `configreg`, `hubgeom`, `loomcli`, `reedcli`, `shuttlecli`, `shuttleengine`, `standalonegeom`, `webstercli`.
   Transitive dependents: 26 packages.
 - Consumer shapes, per grep of each importer: `webstercli` already holds Reed as `shuttleengine.ReedOps` (`internal/webstercli/wiring.go:220,226`);
@@ -358,7 +372,10 @@ Verification is entirely mechanical and consists of three checks:
 
 - **Link integrity.**
   `go test ./internal/lyxcwd/ -run TestEnforcement_MarkdownLinks` must pass with the new doc in place, and no entry may be added to `docsLinkAllowlist`.
-  Every cross-reference the doc makes — to `docs/overview.md#documentation-lifecycle`, to sibling docs under `manifest/designs/`, to GitHub issues — must resolve as written, and anchors must match a real heading under GitHub's slug rule.
+  Every *repo-relative* cross-reference the doc makes — to `docs/overview.md#documentation-lifecycle`, to sibling docs under `manifest/designs/` — must resolve as written, and anchors must match a real heading under GitHub's slug rule.
+  **External links are not covered by this test.**
+  `internal/lyxcwd/docslink_test.go:363` skips every `http://`, `https://` and `mailto:` target, and a dedicated subtest asserts that skip.
+  So any GitHub-issue or external URL the doc carries — the quarry repo, any issue reference — is a manual-review item, verified by reading, never by `go test`.
 - **Repo-wide build and test are unaffected.**
   `go build ./...` and `go test ./...` must be unchanged from `main`, since no `.go` file is touched.
   This is the check that catches an accidental code edit.
@@ -390,7 +407,8 @@ Scenarios a reviewer of the finished doc should confirm are covered, in addition
 - **Q:** Where does the strand mailbox/messaging concept live? **A:** [auto-pick] A sibling module, not inside Reed. **Why:** Reed's own package doc defines it as the dumb carrier that reads no strand field semantically, a mailbox must read addresses semantically, and Reed's `Geometry` carries no slug, branch or role to address by.
 - **Q:** What layout would a standalone Reed repo take? **A:** [auto-pick] Mirror quarry — root `reed/` façade, separately-importable `render/` leaf, `internal/` including the CLI, `cmd/reed`. **Why:** quarry is the project's one completed extraction, its façade re-exports internal types by alias so no narrow interface had to be invented up front, and `reedengine/render` is already the exact analogue of quarry's `glyph` (773 lines, zero internal deps, `fmt` and `strings` only).
 - **Q:** Should the seam be published by Reed or defined by consumers? **A:** [auto-pick] Reed publishes named slices with compile-time proofs;
-  consumers may still define their own. **Why:** a versioned module needs something to prove compatibility against, and both slices are read off real usage — the transport slice is `shuttleengine.ReedOps` verbatim, the session slice is exactly what `loomcli` reaches for.
+  consumers may still define their own. **Why:** a versioned module needs something to prove compatibility against, and both slices are read off real usage — the transport slice is `shuttleengine.ReedOps` verbatim, the session slice is the six methods `loomcli` actually calls.
+  The two overlap on three methods, which is correct: a slice describes one consumer's dependency, not a partition of the type.
 - **Q:** How does a standalone Reed shed `internal/logger`? **A:** [auto-pick] An injected `*slog.Logger` defaulting to a discard handler. **Why:** `logger` is the sole edge pulling `lyxcwd` and `gitexec` into Reed's transitive set;
   `log/slog` is stdlib, so the swap costs no dependency and loomyard keeps its own sink by passing a handler.
 - **Q:** What does the doc recommend for Fabric, given the no-extract verdict? **A:** [auto-pick] An in-repo split into a named generic kernel and a named hub-layout half, justified on its own terms and explicitly not framed as extraction prep. **Why:** it makes the Fabric Git Invariant's perimeter visible and isolates the stencil/pattern coupling as a question rather than an inheritance;
