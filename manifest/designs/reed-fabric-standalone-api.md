@@ -293,3 +293,108 @@ The allowlist's own first entry documents the very import cycle at issue, and is
 - A hand-rolled `Logger` interface — rejected: it reinvents `log/slog`'s own `Handler` interface for no benefit.
 - Extracting `internal/logger` too — rejected: that is a second extraction with its own trace-id and retention machinery, to avoid one import.
 - Listing the decoupling as cheap in-repo hygiene — rejected: it collides with a shipped enforcement test and a `CONSTRAINTS.md` amendment this task's scope bars, so it is not cheap.
+
+## Fabric — the measured contract today
+
+**Size.**
+`internal/fabricengine` is 14,610 production lines (49,608 with tests, measured by `wc -l` over non-`_test.go` files) — the largest package in the repo.
+
+**Direct internal imports.**
+`configengine`, `fslink`, `gitexec`, `gitrepo`, `lock`, `logger`, `lyxcwd`, `lyxdirs`, `pattern`, `proc`, `state`, `stencilstore`, `weftname` — from `internal/fabricengine/doc.go` and `go list`.
+
+**Public surface.**
+Roughly 50 free functions, roughly 60 types, 7 constants, 6 sentinel errors, roughly 10 error types, and one handle type, `*Fabric`, with 26 methods.
+
+**External contract footprint.**
+**74 distinct exported identifiers** are referenced by production code outside the package, of which `fabriccli` alone accounts for 40.
+The 15 direct production importers are `cmd/lyx`, `boardcli`, `boardengine`, `burlercli`, `configreg`, `fabriccli`, `hubforge`, `hubgeom`, `ideengine`, `landingshed`, `loomcli`, `mergeresolve`, `preflight`, `stencilcli`, `webstercli`.
+
+**The core observation: the names are hub-layout vocabulary, not git-coordination vocabulary.**
+The measured hub-layout identifiers on the public surface are `BoardDir`, `BoardDirName` (`"_board"`), `BoardWriteLockPath`, `HubSuffix` (`"-HUB"`), `HubPath`, `HubLogsDir`, `HubScratchDir`, `HubReservedNames`, `IsReservedHubName`, `PortalsDir`, `PortalLink`, `LauncherDir`, `WarpLyxLink`, `WarpLyxLinkHere`, `WarpBindingFileName` (`".lyx-warp"`), `StencilsDir`, `StencilBaseByStamp`, `CommitSeededStencils`.
+
+33 exported signatures are parameterized on `*lyxcwd.Location`, a four-field type describing lyx's own directory model — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — so the API is parameterized on lyx's directory model, not on two git URLs.
+
+**What genuinely is generic, per the package's own documentation.**
+The hub-clone entry point taking two plain git URLs (`CloneHub`), the handle over two repository values (`Fabric`, holding `warp *gitrepo.Repo` and `weft *gitrepo.Repo`), the `Warp-SHA` commit trailer and its rebuildable correspondence index, the uniform `<branch>` / `<branch>-weft` branch-naming rule, and the two-sided commit/pull/push/merge surface.
+
+**The two prompt-template package imports, named individually, because they land on opposite sides of the split card below draws.**
+
+```text
+internal/fabricengine/stencilhistory.go   -- stencilstore.RelPath, stencilstore.BodyHash
+internal/fabricengine/pull.go:23          -- import; single code use at pull.go:464
+internal/fabricengine/pull.go:423, :441   -- doc-comment prose, not use sites
+internal/fabricengine/stencilcommit.go    -- imports neither
+```
+
+```text
+grep -ln "loomyard/internal/pattern" $(ls internal/fabricengine/*.go | grep -v _test)
+grep -ln "loomyard/internal/stencilstore" $(ls internal/fabricengine/*.go | grep -v _test)
+```
+
+`internal/stencilstore` enters through **`stencilhistory.go` alone**, on the hub-layout side, which is the expected placement.
+`internal/pattern` enters through **`pull.go` alone**, which is a *pair-kernel* file, with exactly one code use, `pattern.PathspecFile`/`PathspecDir` at `pull.go:464`;
+the two further occurrences at `pull.go:423` and `:441` are doc-comment prose naming the same identifiers and must not be cited as use sites.
+`stencilcommit.go`, the file a reader would most likely assume puts stencil versioning in the engine, imports neither `pattern` nor `stencilstore` — it takes only `gitrepo`, `lock` and `lyxdirs` — so the widely-assumed "`stencilcommit.go`/`stencilhistory.go` put stencil versioning in the engine" framing is half wrong, and this document does not repeat it.
+
+**Candidate travelling companions, and why none simply moves.**
+`gitrepo` (1,614 production lines) and `gitexec` (134 production lines) are the two candidates that would have to accompany a pair-kernel extraction, and both have non-Fabric production consumers — `websterengine/gitwrap.go`, `landingshed/publish.go`, `gitrepo/push.go` — and `gitexec` is additionally pinned to `internal/lyxcwd` by the Cwd Resolution Invariant.
+Neither could simply move.
+The `gitkit`/`gitrepo`/`gitexec` "trio" framing itself is addressed in the corrections section above rather than restated here.
+
+## Fabric — the verdict and the in-repo split recommendation
+
+**Verdict: do not extract Fabric.**
+This is explicit and unhedged, stated as a **size-and-shape mismatch rather than a "not yet"**.
+
+What is generic is a paired-repo coordination kernel of roughly **6,275 production lines** living inside a 14,610-line engine, and getting it out is a rewrite-by-subtraction, not a move.
+
+**The measured file partition — one defensible assignment, never a canonical answer.**
+Pair-kernel side, 6,275 production lines over 28 files, of which the merge surface alone is 2,209 lines:
+
+```text
+wc -l internal/fabricengine/{clone,fabric,commit,commitweftpaths,pull,corrindex,trailer,branchname,weftgit,diff,status,ancestors,warpprobe,pushanchored,coalesce,checkout,snapshot,dirtiness,index,revert,merge,mergeerrors,mergeguards,mergelifecycle,mergepaths,mergestage,mergestate,mergestateactive}.go
+```
+
+Hub-layout-surface side, 8,321 production lines over 39 files:
+
+```text
+wc -l internal/fabricengine/{portals,launchers,launcher_content,boardweft,hubscratch,stencilcommit,stencilhistory,junction,junctionnames,warplayout,warpjunction,weftwiring,anchor,slug,topology,config,template,list,worktreelist,prune,remove,add,cleanup,reconcile,destroy,drift,spawn,origin,ready,hook,gitexclude,classify,refscanner,warpbinding,warpclean,warpforward,unwire,bolt,mutation,doc}.go
+```
+
+The two sum to 14,596 against the package's 14,610, the shortfall being a small number of files the partition does not assign.
+The kernel side is still not shippable as-is, because those files carry most of the 33 `*lyxcwd.Location`-typed signatures — which is precisely why it is a rewrite-by-subtraction.
+
+**The consequence the discussion requires, because it cuts against the split's own rationale: the pair kernel is not domain-free.**
+The `pattern` import identified above exists to populate `PullResult.PatternResidue`, a report naming which post-anchor weft commits touch `_lyx/PATTERN.md`/`_lyx/pattern/` and therefore need review after a warp history rewrite — a loomyard-domain feature living in the most generic-looking file in the package.
+`internal/pattern` itself depends on `lyxdirs`, `stencilstore` and `stencil`, so the edge drags the whole prompt-template subtree into the kernel with it.
+
+The honest conclusion: the split isolates the stencil-versioning coupling cleanly on the hub-layout side and does **not** isolate the pattern coupling, which would have to be cut separately by making residue reporting a caller-supplied predicate rather than a package import.
+This is a further argument for the no-extract verdict rather than against it.
+
+**Two rejected alternatives.**
+
+- Extract the whole engine — rejected: it ships lyx's hub layout, board, portals, launchers and prompt-stencil versioning as someone else's public API.
+- "Defer, revisit later" with no verdict — rejected: the measurements support a genuine call, and a genuine call is what this document exists to make.
+
+### Recommendation: an in-repo split, not tied to any extraction
+
+The recommendation, offered as a roadmap candidate with its own justification, is to split Fabric's surface *inside the repo* into two named halves — a pair kernel and a hub-layout surface.
+This is explicitly **not** tied to any extraction.
+
+**Depth, fixed here so the follow-up item need not guess.**
+The split is file grouping inside the single package, plus a matching section split in the package's own documentation file (`doc.go`), plus an enforcement test asserting which files may reference which — and deliberately **not** sub-packages.
+
+**Why sub-packages are ruled out by the package's own design, not by taste.**
+The `Fabric` handle holds unexported `warp *gitrepo.Repo` and `weft *gitrepo.Repo` fields the package documentation says are reachable only from inside the package, and every hub-layout verb reaches them.
+A sub-package boundary would force exporting both and hand every caller exactly the uncoordinated single-sided access the Fabric Git Invariant exists to prevent.
+
+Naming beyond the two half-names is left to the follow-up item.
+What this document fixes is the boundary and the mechanism, because those are what determine whether the item is worth picking up.
+
+**Justification, on the split's own terms.**
+It makes the Fabric Git Invariant's perimeter visible, and it is the only route by which the pair kernel would ever become extractable.
+
+**Two rejected options.**
+
+- Recommending nothing — rejected: it leaves a real structural observation unrecorded.
+- Recommending the split as extraction step 1 — rejected: it couples a justified refactor to an unjustified goal.
