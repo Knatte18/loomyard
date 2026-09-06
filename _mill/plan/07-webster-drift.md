@@ -226,6 +226,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Edits:**
   - `cmd/lyx/tierpurity_test.go`
   - `cmd/lyx/spawnobservability_test.go`
+  - `internal/planglyph/testmain_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -239,6 +240,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   In `cmd/lyx/spawnobservability_test.go`, extend `fileHasUnloggedSpawn` to count a `DeltaGit` call expression as a spawning call alongside `exec.Command`/`exec.CommandContext`, keeping the AST match rather than a substring one so a doc-comment mention is still not a call — matching that guard's own documented design, which is deliberately different from the tier-purity half's.
   Do **not** add an entry to `spawnObservabilityAllowedSpawners`: the invariant permits an exemption only for a site structurally barred from importing `internal/logger`, which `internal/planglyph` is not.
   Extend each guard's own table-driven sub-tests with a case proving the new detection fires: an untagged test file containing the `DeltaGit` token tripping the tier-purity guard, and a `DeltaGit` call site that does not import `internal/logger` tripping the observability guard.
+  Card 31's own `internal/planglyph/testmain_test.go` doc comment already names `DeltaGit` in prose, which the new raw-substring token trips; reword that one mention (its meaning is unchanged) rather than adding an allowlist entry, since it is exactly the doc-comment-mention case the tier-purity guard's own raw-substring design accepts tripping on.
 - **Commit:** `38: test(guards): make quarry's DeltaGit spawn visible to the tier-purity and observability guards`
 
 ### Card 39: update the two remaining stencils and close the roadmap item
