@@ -591,7 +591,20 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			t.Setenv("WEFT_SKIP_GIT", "1")
 			fx := newVerbsFixture(t)
 			st := fx.initState(t, "master-model")
-			startSHA := commitFile(t, fx.Worktree, "internal/only/impl.go", "package only\n", "01.1: add impl")
+			// DoneChecks resolves a card's Create target against
+			// deps.Geom.WorktreeRoot, which hubgeom.WebsterGeometry fills
+			// with layout.AnchorPath() (fx.Worktree + anchorRel), not
+			// fx.Worktree itself -- quarry.Resolve is a live filesystem
+			// walk rooted there, so the file must physically exist under
+			// that anchored directory, not merely under fx.Worktree.
+			// commitFile therefore runs with the anchored path itself as
+			// its git working directory (seedAnchoredGitLink's gitlink
+			// makes that a valid, shared-history checkout) rather than
+			// fx.Worktree plus a path prefix: git treats a nested ".git"
+			// file as an embedded-repository boundary, so `git add`
+			// invoked from fx.Worktree silently refuses to descend into
+			// it and stages nothing.
+			startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 			st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 			st.CurrentBatch = 1
 			if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
