@@ -32,6 +32,7 @@ Batch-local decisions:
   - `internal/standalonegeom/logsdir.go`
   - `internal/standalonegeom/reedgeom.go`
   - `internal/logger/sink.go`
+  - `internal/logger/logger.go`
 - **Edits:**
   - `internal/webstercli/wiring.go`
   - `internal/webstercli/wiring_test.go`
@@ -52,7 +53,12 @@ Batch-local decisions:
   This is F16's direct regression test and it fails against today's source;
   a test that only checks the runner is non-nil proves nothing, because `NewRunner`/`NewDetachedRunner` hold their verdict on `toldErr` and surface it only when a verb runs.
   Add a second test asserting the durable sink directory was set to `standalonegeom.LogsDir(stateDir)` for the derived state directory, redirecting `XDG_STATE_HOME` and `LOCALAPPDATA` with `t.Setenv` and resolving the expected `stateDir` through the file's existing `hash8For` helper convention, exactly as the shipped standalone cases already do.
+  Observe the directory by forcing a write and checking the filesystem, never by reading `internal/logger`'s own state: `sinkDirOverride` is unexported, `internal/logger` exposes no accessor for it, and `internal/webstercli` is a different package, so there is nothing to read from here.
+  The mechanism is that a non-empty override bypasses the `testing.Testing()` sink suppression in `ensureDurableSink` — that suppression is reached only on the empty-override branch — so after `wireStandalone` returns, one `logger.Info` call from the test arms the sink at whatever directory the override names, with no `LYX_TRACE` redirect needed.
+  Assert a `trace-*.log` file then exists under `standalonegeom.LogsDir(stateDir)`.
   Add a third test asserting `wireHub` leaves the durable sink directory untouched, so a later refactor cannot quietly route hub mode through the standalone path.
+  Observe that the same way: call `logger.SetDurableSinkDir(sentinelDir)` for a `t.TempDir()` sentinel before calling `wireHub`, emit one `logger.Info` afterwards, and assert the trace file landed in `sentinelDir`.
+  A `wireHub` that had overwritten the override would have put the file somewhere else, and the setter's own reset of `sinkOnce` is what makes each such test arm a fresh sink rather than reusing an earlier test's.
   Every test in this file that reaches `wireStandalone` — the new ones and the shipped ones alike — must register `t.Cleanup(func() { logger.SetDurableSinkDir("") })`, per the overview's `sink-override-is-process-global` decision;
   without it the override leaks into every later test in the same binary and defeats the `testing.Testing()` sink suppression for all of them.
 - **Commit:** `fix(webstercli): wire standalone through the detached runner and redirect the trace sink`
@@ -65,6 +71,7 @@ Batch-local decisions:
   - `internal/standalonegeom/logsdir.go`
   - `internal/standalonegeom/reedgeom.go`
   - `internal/logger/sink.go`
+  - `internal/logger/logger.go`
 - **Edits:**
   - `internal/burlercli/wiring.go`
   - `internal/burlercli/wiring_test.go`
@@ -78,6 +85,9 @@ Batch-local decisions:
   This function's doc comment carries a "Two asymmetries are worth calling out" paragraph that exists to stop a later reader simplifying the stencils handling away;
   keep that paragraph intact and fold the two new steps into the enumeration above it, the same way card 5 does for the webster copy.
   In `internal/burlercli/wiring_test.go`, add the same three assertions card 5 adds, adapted to this package's own fixtures: a `wireStandalone` runner that reaches a public entry point without a told-path error, a sink directory set to `standalonegeom.LogsDir(stateDir)`, and a `wireHub` that leaves the sink directory untouched.
+  Observe the sink directory exactly the way card 5 specifies — force a write and check the filesystem, never read `internal/logger`'s own state, which is unexported and has no accessor.
+  For the standalone case that means one `logger.Info` call after `wireStandalone` returns (the non-empty override bypasses the `testing.Testing()` suppression, so no `LYX_TRACE` redirect is needed) followed by an assertion that a `trace-*.log` file exists under `standalonegeom.LogsDir(stateDir)`;
+  for the hub case it means a `logger.SetDurableSinkDir(sentinelDir)` sentinel set before `wireHub`, one `logger.Info` after, and an assertion that the file landed in the sentinel directory.
   Register `t.Cleanup(func() { logger.SetDurableSinkDir("") })` in every test in this file that reaches `wireStandalone`, including the shipped `TestWireStandalone_NeverReadsLoc`, `TestWire_ModeStandaloneSelectsStandaloneMode`, `TestWire_StandalonePinnedValues` and `TestWire_StencilsDirFlag`.
 - **Commit:** `fix(burlercli): wire standalone through the detached runner and redirect the trace sink`
 
@@ -94,7 +104,8 @@ Batch-local decisions:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Create `cmd/lyx/prerunlogging_test.go` in package `main`, untagged, containing one test that parses `cmd/lyx/main.go` and asserts the root command's `PersistentPreRunE` function body contains no `logger.Info`, `logger.Warn`, or `logger.Error` call ahead of its `seedStencils(cmd)` call.
+  Create `cmd/lyx/prerunlogging_test.go` in package `main`, untagged, containing one test that parses `cmd/lyx/main.go` and asserts the root command's `PersistentPreRunE` function body contains no `logger.Info` or `logger.Warn` call ahead of its `seedStencils(cmd)` call.
+  Those two are the whole set to guard against: `internal/logger` exports `Debug`, `Info` and `Warn` and no `Error` at all, and `Debug` is below the Info-or-above threshold that arms the sink, so a `Debug` call in the pre-run is harmless and must not fail this guard.
   Parse with `go/parser` and walk the resulting AST rather than scanning for substrings, following the precedent `cmd/lyx/spawnobservability_test.go` establishes in this same package and for the same reason it gives: a doc-comment mention is not a call, and a substring guard would demand allowlist entries for files that call nothing.
   The file header comment must record why this guard exists and why it is a source-level guard rather than a behavioural one.
   The two standalone `wireStandalone` redirects added by cards 5 and 6 run in a module `PersistentPreRunE`, which cobra runs after root's because `cobra.EnableTraverseRunHooks` is true, so the redirect binds only if nothing in root's pre-run has already armed the sink by emitting an Info-or-above record.
@@ -118,11 +129,14 @@ Batch-local decisions:
   Extend the shipped `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged` in `internal/webstercli/cli_integration_test.go` rather than adding a parallel test beside it: it already redirects `XDG_STATE_HOME` and `LOCALAPPDATA`, already asserts the target directory gains no entries, and already drives the `status` verb for exactly the reason this extension needs.
   The extension's whole substance is lifting the durable sink's suppression, with `t.Setenv("LYX_TRACE", "1")` before the `RunCLIIn` call.
   Without that lift the sink is suppressed entirely under `testing.Testing()` and the new assertion would pass for the same wrong reason the shipped emptiness assertion passes today while F22 is live.
-  After the invocation, assert positively that a `trace-*.log` file exists under `standalonegeom.LogsDir(stateDir)` for the derived `stateDir` the test already computes via `standalonestate.Derive(target)`, and that the file's first line carries the target repository as its `worktree_root=` field.
+  The extension must add its own `stateDir, _, err := standalonestate.Derive(target)` call, mirroring the sibling `TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate` in the same file.
+  `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged` does not compute `stateDir` today — it redirects `XDG_STATE_HOME` and `LOCALAPPDATA` but never calls `Derive` — so the value has to be introduced before it can be asserted against.
+  After the invocation, assert positively that a `trace-*.log` file exists under `standalonegeom.LogsDir(stateDir)` for that derived `stateDir`, and that the file's first line carries the target repository as its `worktree_root=` field.
   That positive assertion is the load-bearing one — it is what fails against today's source, where nothing is written there at all — while the shipped "target gained no entries" assertion is what pins the defect's actual symptom.
   Keep the cleanliness assertion scoped to `status`, an invocation that reaches wiring.
-  Do not add an assertion that an invocation failing before `standalonestate.Derive` leaves the target clean: `logger.NotifyExit` force-arms the sink on a non-zero exit, and before the redirect is set the cwd fallback still writes one trace file into the target, so such an assertion would be asserting a falsehood.
-  Record that accepted residual in the test's doc comment, naming its bounded extent — cobra flag-parsing failures, a root pre-run failure, and a `Derive` failure — so a later reader does not mistake the scoping for an oversight.
+  Do not add an assertion that an invocation failing before `standalonestate.Derive` leaves the target clean.
+  Attribute that residual to the shipped `lyx` binary rather than to this test's own call path, and say so in the doc comment in exactly those terms: `logger.NotifyExit` is called only from `cmd/lyx/main.go` — mentioned, not read — and this test drives `RunCLIIn` directly, so `NotifyExit` never executes here at all.
+  What the doc comment records is therefore why the assertion is scoped rather than a mechanism the test itself exercises: under the real binary a pre-redirect non-zero exit force-arms the sink and the cwd fallback writes one trace file into the target, over a bounded window — cobra flag-parsing failures, a root pre-run failure, and a `Derive` failure — so a broader claim would be false of the shipped path even though this test could not observe it either way.
   Register `t.Cleanup(func() { logger.SetDurableSinkDir("") })`, since `LYX_TRACE=1` plus a live override arms a real sink for the rest of the binary otherwise.
   Add the `logger`, `standalonegeom` and `filepath` imports the extension needs;
   `standalonestate`, `os`, `strings` and `filepath` handling already exist in the file.

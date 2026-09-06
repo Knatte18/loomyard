@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: standalonegeom-webster-run-and-log-hygiene
 branch: standalonegeom-webster-run-and-log-hygiene
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussion-gap-fix-r3  '2026-09-06T18:07:48Z'
 discussed  '2026-09-06T18:07:48Z'
 planning  '2026-09-06T18:13:58Z'
 plan-review-r1  '2026-09-06T18:22:23Z'
+plan-fix-r1  '2026-09-06T18:24:38Z'
 ```
