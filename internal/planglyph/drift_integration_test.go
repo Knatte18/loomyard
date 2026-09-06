@@ -193,6 +193,38 @@ func TestDetectDrift_EvidenceTierCandidatesInformationalWithSignals(t *testing.T
 	}
 }
 
+// TestDetectDrift_EvidenceTierCandidateSuppressesTheDeletedSymbolFinding covers the collision the
+// evidence tier has with the deleted-symbol sweep: quarry leaves an evidence-tier candidate's
+// endpoints in Deleted, so the same symbol would otherwise report a blocking
+// plan-references-deleted-symbol beside the informational candidate that contradicts it — and the
+// blocking half would kill the batch before any reviewer saw the evidence.
+func TestDetectDrift_EvidenceTierCandidateSuppressesTheDeletedSymbolFinding(t *testing.T) {
+	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Uses:**\n- `sub#Gone`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n",
+	})
+
+	// The same ID in both arrays, exactly as quarry emits it for an unresolved candidate.
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		Deleted: []quarry.Symbol{{ID: "sub#Gone"}},
+		RenameCandidates: []quarry.RenameCandidateEntry{
+			{ID: "sub#Gone", Candidates: []quarry.RenameCandidate{{ID: "sub#Renamed", File: "sub/b.go"}}},
+		},
+	}}
+
+	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("findings = %+v; want exactly one — the informational candidate alone", findings)
+	}
+	if findings[0].Check != "rename-candidate" || findings[0].Severity != SeverityInformational {
+		t.Fatalf("findings[0] = %+v; want the informational rename-candidate, never a blocking deleted-symbol finding beside it", findings[0])
+	}
+}
+
 // TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding covers a candidate for a
 // symbol nothing in the remaining plan references producing no finding at all — gate two applies
 // to this tier too.

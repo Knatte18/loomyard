@@ -66,7 +66,9 @@ type driftRepair struct {
 // finding, check ID plan-references-deleted-symbol. This never collides with the exact-tier
 // handling above: quarry's own delta engine removes an exact pair's constituents from Deleted
 // entirely, so a symbol reaching this check was never renamed under quarry's own AST-exact
-// conditions.
+// conditions. It does NOT get that exclusion for free at the evidence tier, where quarry
+// deliberately leaves both endpoints in place, so this function excludes every RenameCandidates
+// entry from the sweep itself.
 //
 // now and sha are taken as parameters rather than read from a clock or a repository inside this
 // function, so the whole detector is deterministic and testable without a fixture.
@@ -95,7 +97,22 @@ func DetectDrift(plan *planparser.Plan, planDir, worktreeRoot string, delta quar
 		repairs = append(repairs, driftRepair{oldID: oldID, newID: newID, cards: cards})
 	}
 
+	// Every symbol quarry offered evidence-tier rename candidates for is excluded from the
+	// deleted-symbol sweep below. Quarry deliberately leaves an evidence-tier candidate's endpoints
+	// in Created and Deleted — suppressing either for a pair it has not resolved would be a silent
+	// pick in disguise — so without this exclusion the same symbol reports both a blocking
+	// "deleted with no corresponding rename" and the informational candidate block that directly
+	// contradicts it, and the blocking half kills the batch before any reviewer sees the evidence.
+	// Its disposition belongs to the candidate finding alone.
+	hasCandidates := make(map[string]bool, len(delta.RenameCandidates))
+	for _, entry := range delta.RenameCandidates {
+		hasCandidates[entry.ID] = true
+	}
+
 	for _, s := range delta.Deleted {
+		if hasCandidates[s.ID] {
+			continue
+		}
 		cards := refCards[s.ID]
 		if len(cards) == 0 {
 			continue
