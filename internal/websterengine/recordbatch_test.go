@@ -524,6 +524,68 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	}
 }
 
+// writeRecordPlanDir writes a minimal, valid on-disk plan directory holding one card whose body is
+// cardBody, returning the directory and its freshly parsed *planparser.Plan — the record-batch
+// wiring test's own plan-fixture builder, package-local to this file since planglyph's own
+// writePlanFixture is unexported to its package.
+func writeRecordPlanDir(t *testing.T, cardBody string) (string, *planparser.Plan) {
+	t.Helper()
+	dir := t.TempDir()
+
+	content := "# Card 1 — json-flag\n\n" + cardBody + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "01-json-flag.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: test\n\nframing\n\n## Card Index\n\n1 — json-flag — summary\n"
+	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview file: %v", err)
+	}
+
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) returned error: %v", dir, err)
+	}
+	return dir, plan
+}
+
+// TestRecordBatch_BindsHandleFromDeltaEndToEnd proves card 34's wiring end to end: a Create
+// declaration whose symbol actually landed in the batch's own work commit is bound from the
+// record-batch delta and rewritten on disk to its plain glyph, with the batch still terminating
+// cleanly.
+func TestRecordBatch_BindsHandleFromDeltaEndToEnd(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+
+	planDir, plan := writeRecordPlanDir(t, "**Create:**\n- `plan:internal/foo#Bar` -> `func Bar() {}`\n\n**Intent:** add Bar\n")
+	fx.Deps.Geom.PlanDir = planDir
+	fx.Deps.Plan = plan
+	fx.Deps.Batches[0].Cards = plan.Cards
+
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+
+	data, readErr := os.ReadFile(filepath.Join(planDir, "01-json-flag.md"))
+	if readErr != nil {
+		t.Fatalf("read card file: %v", readErr)
+	}
+	if strings.Contains(string(data), "plan:internal/foo#Bar") {
+		t.Errorf("card file still carries the unbound handle: %s", data)
+	}
+	if !strings.Contains(string(data), "internal/foo#Bar") {
+		t.Errorf("card file does not carry the bound plain glyph: %s", data)
+	}
+}
+
 // TestRecordBatch_DoneChecksPassOnLandedCreate proves the happy path: a Create target whose
 // symbol actually landed in the batch's own work commit passes the done-checks and the batch
 // still terminates cleanly.

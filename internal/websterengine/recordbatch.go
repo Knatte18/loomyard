@@ -203,6 +203,35 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(doneChecks, "; "))
 	}
 
+	// The batch's single delta call: BindHandles here, ScopeGuard (card 35) and DetectDrift (card
+	// 36) all consume this one quarry.GitDeltaAnswer rather than each spawning their own. bs.StartSHA
+	// is the begin-batch record's captured start SHA, and actualHead is the fork's self-reported
+	// head already cross-checked above against the worktree's real HEAD — that cross-check is why
+	// the delta can be trusted here and nowhere earlier.
+	// A DeltaGit infrastructure error does not abort the call sequence: card 35 degrades its own
+	// scope guard to an informational notice on this same deltaErr, while card 33's done-checks
+	// above already ran on their own Resolve and are unaffected. delta itself is the zero value on
+	// error, so BindHandles correctly cannot confirm any handle bound and reports bind-count-mismatch
+	// for every card that declared one — an unconfirmed Create is exactly a not-done card.
+	delta, deltaErr := planglyph.Delta(deps.Geom.WorktreeRoot, bs.StartSHA, actualHead)
+	if deltaErr != nil && !errors.Is(deltaErr, planglyph.ErrQuarryUnavailable) {
+		return nil, deltaErr
+	}
+
+	// Binding runs after the done-checks above, so a card that already failed create-not-done is
+	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
+	bindFindings, err := planglyph.BindHandles(deps.Plan, deps.Geom.PlanDir, delta, batch.Cards)
+	if err != nil {
+		return nil, err
+	}
+	var bindBlocking []string
+	for _, f := range bindFindings {
+		bindBlocking = append(bindBlocking, f.Error())
+	}
+	if len(bindBlocking) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(bindBlocking, "; "))
+	}
+
 	digest := distill(report)
 	digest.Batch = polledID
 

@@ -177,3 +177,77 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 
 	return findings, nil
 }
+
+// BindHandles turns a handle into the real glyph the card actually created, from the record-batch
+// delta rather than from anyone's spelling: for each completed card's own Create declarations, its
+// canonical handle's expected glyph — the substring after planparser.HandlePrefix, already
+// canonicalized by CanonicalizeHandles before this call ever runs — is matched against delta's
+// Created symbols by Symbol.ID.
+//
+// A card's whole set of handles binds together or not at all: a count mismatch — a card declaring
+// N handles whose delta matches fewer — is the blocking finding bind-count-mismatch, and suppresses
+// the rewrite for every one of that card's handles, matched or not, so the plan is never half-bound.
+// A handle whose expected glyph matches nothing at all is exactly the case that produces the
+// mismatch; it degrades to card 37's candidate path rather than binding silently, and this
+// function raises no separate finding for it beyond the card's own bind-count-mismatch.
+//
+// Every card that binds cleanly contributes its substitutions to one shared map, applied through
+// exactly one planparser.RewriteRefs(planDir, subs) call across the whole plan — never one call per
+// card — so the plan bytes are rewritten once and a handle's rewrite reaches every referencing
+// card, not only its declaring one.
+//
+// Under plan.Language "none" this function returns nil findings and performs no call and no
+// rewrite, mirroring CanonicalizeHandles.
+func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, error) {
+	if _, ok := resolveLanguage(plan); !ok {
+		return nil, nil
+	}
+
+	created := make(map[string]bool, len(delta.Created))
+	for _, s := range delta.Created {
+		created[s.ID] = true
+	}
+
+	var findings []Finding
+	subs := make(map[string]string)
+
+	for _, c := range cards {
+		if len(c.Declarations) == 0 {
+			continue
+		}
+
+		cardSubs := make(map[string]string, len(c.Declarations))
+		matched := 0
+		for _, d := range c.Declarations {
+			expected := strings.TrimPrefix(d.Handle, planparser.HandlePrefix)
+			if created[expected] {
+				matched++
+				cardSubs[d.Handle] = expected
+			}
+		}
+
+		if matched < len(c.Declarations) {
+			findings = append(findings, Finding{
+				Check:    "bind-count-mismatch",
+				Card:     cardIDOf(c),
+				Detail:   fmt.Sprintf("card %d declared %d handle(s) but the record-batch delta matched only %d", c.Number, len(c.Declarations), matched),
+				Severity: SeverityBlocking,
+			})
+			continue // Suppress the rewrite for this card entirely; never half-bound.
+		}
+
+		for h, id := range cardSubs {
+			subs[h] = id
+		}
+	}
+
+	if len(subs) == 0 {
+		return findings, nil
+	}
+
+	if err := planparser.RewriteRefs(planDir, subs); err != nil {
+		return findings, err
+	}
+
+	return findings, nil
+}

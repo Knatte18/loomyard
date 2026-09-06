@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/quarry/quarry"
 )
 
 // writePlanFixture writes a minimal, valid on-disk plan directory from cards (keyed by card
@@ -288,6 +289,117 @@ func TestCanonicalizeHandles_LanguageNoneNoOp(t *testing.T) {
 	findings, err := CanonicalizeHandles(plan, dir, nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+	}
+	if findings != nil {
+		t.Errorf("findings = %+v; want nil under language: none", findings)
+	}
+}
+
+// TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard covers one handle bound from a
+// matching Created symbol and rewritten on both the declaring and the referencing card.
+func TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Create:**\n- `plan:sub#New` -> `func New() {}`\n\n**Intent:** one\n",
+		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
+	})
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#New"}}}}
+
+	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v; want none", findings)
+	}
+
+	got1 := readCardFile(t, dir, 1, "card1")
+	got2 := readCardFile(t, dir, 2, "card2")
+	if strings.Contains(got1, "plan:sub#New") || !strings.Contains(got1, "sub#New") {
+		t.Errorf("card 1 was not rewritten to the plain glyph: %s", got1)
+	}
+	if strings.Contains(got2, "plan:sub#New") || !strings.Contains(got2, "sub#New") {
+		t.Errorf("card 2 (referencing) was not rewritten to the plain glyph: %s", got2)
+	}
+}
+
+// TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither covers two handles on one card
+// with only one delta match, producing bind-count-mismatch and rewriting neither.
+func TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Create:**\n- `plan:sub#One` -> `func One() {}`\n- `plan:sub#Two` -> `func Two() {}`\n\n**Intent:** one\n",
+	})
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#One"}}}}
+
+	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 1 || findings[0].Check != "bind-count-mismatch" {
+		t.Fatalf("findings = %+v; want exactly one bind-count-mismatch", findings)
+	}
+
+	got := readCardFile(t, dir, 1, "card1")
+	if !strings.Contains(got, "plan:sub#One") || !strings.Contains(got, "plan:sub#Two") {
+		t.Errorf("card was rewritten despite the count mismatch: %s", got)
+	}
+}
+
+// TestBindHandles_ZeroHandleCardNoFindingNoWrite covers a zero-handle card producing no finding
+// and no write.
+func TestBindHandles_ZeroHandleCardNoFindingNoWrite(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Edit:**\n- `sub/a.go`\n\n**Intent:** one\n",
+	})
+	before := readCardFile(t, dir, 1, "card1")
+
+	findings, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, plan.Cards)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v; want none", findings)
+	}
+	after := readCardFile(t, dir, 1, "card1")
+	if before != after {
+		t.Errorf("card file was rewritten despite carrying zero handles:\nbefore: %s\nafter: %s", before, after)
+	}
+}
+
+// TestBindHandles_SubstitutionReachesCardOutsideTheCompletedBatch covers the substitution reaching
+// a card outside the completed batch: RewriteRefs rewrites the whole plan directory, so a
+// referencing card not itself passed in cards still gets rewritten.
+func TestBindHandles_SubstitutionReachesCardOutsideTheCompletedBatch(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Create:**\n- `plan:sub#New` -> `func New() {}`\n\n**Intent:** one\n",
+		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
+	})
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#New"}}}}
+
+	// Only card 1 (the declaring card) is passed as the "completed batch" — card 2 is outside it.
+	completedOnly := []planparser.Card{plan.Cards[0]}
+
+	findings, err := BindHandles(plan, dir, delta, completedOnly)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v; want none", findings)
+	}
+
+	got2 := readCardFile(t, dir, 2, "card2")
+	if strings.Contains(got2, "plan:sub#New") {
+		t.Errorf("card 2, outside the completed batch, was not reached by the plan-wide rewrite: %s", got2)
+	}
+}
+
+// TestBindHandles_LanguageNoneNoOp mirrors CanonicalizeHandles' own no-op under language: none.
+func TestBindHandles_LanguageNoneNoOp(t *testing.T) {
+	dir := t.TempDir()
+	plan := &planparser.Plan{Dir: dir, Language: "none"}
+
+	findings, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, nil)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
 	if findings != nil {
 		t.Errorf("findings = %+v; want nil under language: none", findings)
