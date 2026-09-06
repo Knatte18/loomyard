@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-quarry-dependency
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -41,6 +41,7 @@ implementing  '2026-09-06T11:35:13Z'
 self-resolved-verify-logic  '2026-09-06T11:38:01Z'
 blocked  '2026-09-06T11:39:18Z'
 implementing  '2026-09-06T11:46:04Z'
+approved-quarry-dependency  '2026-09-06T11:52:58Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ implementing  '2026-09-06T11:46:04Z'
 ```yaml
 batches:
   - name: quarry-dependency
-    state: running
+    state: approved
     implementer_session: 6989065b-5b38-4441-854b-362989c6c323
     start_sha: 0d51e7d228d6d003b121fc38f0cb23480007cfa4
+    commit_sha: 33bc8da2d52d0fcf76b10ef6dcc2868759bd8379
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-06T11:38:01Z'
   - name: planparser-alphabet
