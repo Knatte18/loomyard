@@ -49,6 +49,19 @@ func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
 	}
 }
 
+// TestScopeGuard_HandleTargetCoversTheSymbolItStandsFor covers a Create card whose target is a
+// plan: handle: the symbol that card just created is inside the plan, not outside it, even though
+// the delta reports it under its bare glyph while the card still spells it as a handle.
+func TestScopeGuard_HandleTargetCoversTheSymbolItStandsFor(t *testing.T) {
+	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"plan:sub#Foo"}}}
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#Foo", File: "sub/a.go"}}}}
+
+	got := ScopeGuard(cards, delta)
+	if len(got) != 0 {
+		t.Errorf("ScopeGuard(handle target) = %+v; want none — the card asked for exactly this symbol", got)
+	}
+}
+
 // TestScopeGuard_EmptyDeltaNoFindingsNoPanic covers the caller's degradation path input: a
 // zero-value delta produces no findings and no panic.
 func TestScopeGuard_EmptyDeltaNoFindingsNoPanic(t *testing.T) {

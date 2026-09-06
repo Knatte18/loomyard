@@ -15,11 +15,17 @@ import (
 
 // targetGlyphUnion returns the union of cards' own flat Targets, the comparison set ScopeGuard
 // checks every touched symbol against.
+//
+// Each target is normalized through resolveKeyFor (donecheck.go), so a plan: handle contributes the
+// expected glyph it stands for rather than its literal handle text. Without that, a Create card's
+// handle-shaped target never matched the bare glyph quarry's delta reports for the symbol that card
+// just created, and ScopeGuard flagged every handle-created symbol as touched outside the plan --
+// the exact opposite of what the check is for.
 func targetGlyphUnion(cards []planparser.Card) map[string]bool {
 	union := make(map[string]bool)
 	for _, c := range cards {
 		for _, t := range c.Targets {
-			union[t] = true
+			union[resolveKeyFor(t)] = true
 		}
 	}
 	return union
