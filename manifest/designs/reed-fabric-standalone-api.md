@@ -154,3 +154,54 @@ internal/reedengine/env.go, lifecycle.go:299
 internal/reedengine/geometry.go
 internal/loomcli/cli.go:44
 ```
+
+## Reed — the verdict, its trigger, and the cheap in-repo preparation
+
+**Verdict: do not extract Reed now.**
+This is an explicit, unhedged call with a stated trigger — not a "revisit later."
+
+The gate is not code readiness — Reed is already close to ready, per the measured contract above.
+The gate is the existence of a second consumer, or Reed becoming a long-running service rather than a library.
+
+**Reasoning.**
+Reed's contract is small enough to freeze: 13 external identifiers across 9 direct production importers, most of them construction-only, with one handle type carrying 17 methods.
+But loomyard is Reed's only user, and the quarry precedent measures what extracting ahead of a consumer buys — a separate release cadence and a dependency edge that, months later, still is not drawn.
+
+Three further Reed items sit in `manifest/roadmap.md`'s Someday section — `reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay` — and all three are Someday, committed but unscheduled, **not Planned**.
+They are a weak churn argument and must not be read as imminent change.
+The verdict stands on the second-consumer gate alone; the Someday items are a secondary note that the surface is not finished, not the load-bearing reason.
+
+The likelier trigger than "another project wants tmux orchestration" is the daemon story: watchdog plus relay plus mailbox together give Reed a lifecycle of its own, and that is when a repo boundary starts paying.
+
+**Two rejected alternatives.**
+
+- **Extract now** — rejected: there is no consumer, and the quarry precedent is the counter-evidence for extracting ahead of one.
+- **Never extract** — rejected: the code genuinely is close to ready, and saying "never" discards a real option the second-consumer gate would open.
+
+### Cheap in-repo preparation
+
+Two in-repo changes are recommended as cheap hygiene independent of any extraction, each a roadmap candidate with its own standalone justification.
+
+**(a) Rename the provider-specific environment-cleaning function.**
+`reedengine.CleanClaudeEnv`'s name is the only Claude-specific identifier in the public API of a package the Shuttle Provider-Seam Invariant says never references provider specifics.
+The depth is fixed here so the follow-up item need not invent it: a provider-neutral name taking the key set as a caller-supplied parameter,
+
+```go
+func StripEnvKeys(environ []string, exact []string, prefixes []string) (clean []string, stripped []string)
+```
+
+with the `CLAUDECODE`/`CLAUDE_CODE_` literals moving out of the function body into `internal/reedengine/lifecycle.go`'s single call site, which is where the provider knowledge belongs.
+Only the identifier's final name is left to the follow-up item; the signature shape and the relocation of the Claude literals are not.
+
+**(b) Give the one retaining consumer a named interface seam.**
+`loomcli` is the only consumer that retains a concrete `*reedengine.Engine` as a struct field; give it a named interface seam so that no consumer retains the concrete type except Reed's own CLI.
+Stated precisely: two other consumers, `burlercli` and `shuttlecli`, construct the engine and hold it transiently before handing it off, and a seam cannot change that — construction always yields the concrete type.
+What (b) removes is the *retained field*, of which `internal/loomcli/cli.go:44` is the only instance.
+
+The logging decoupling is deliberately **not** in this list — see the standalone-layout section below for why.
+
+**Three rejected options for the preparation work.**
+
+- Bundling (a) and (b) into the extraction itself — rejected: each stops being independently justifiable and stalls behind a decision with no trigger date.
+- Doing nothing until a trigger fires — rejected: leaves two unrelated defects unfixed for no reason.
+- Keeping the logging decoupling in this list — rejected: it is not cheap, unlike (a) and (b); see below for why.
