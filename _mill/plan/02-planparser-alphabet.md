@@ -5,7 +5,7 @@ task: "Adopt quarry's glyph alphabet as the plan alphabet"
 batch: "planparser-alphabet"
 number: 2
 cards: 6
-verify: go test ./internal/planparser/
+verify: go test ./internal/planparser/ ./internal/loomcli/ ./internal/loomshed/ ./internal/webstercli/ ./internal/loomrecipe/ && go test -tags integration ./internal/websterengine/
 depends-on: [1]
 ```
 
@@ -71,6 +71,8 @@ Batch-local decisions, beyond `## Shared Decisions`:
   The new rule order in `classifyRef` is: a ref beginning with the literal prefix `plan:` is `refKindHandle`; a ref containing `#` is `refKindGlyph`; a ref containing `/` or whose final dot-segment is all-lowercase-alphanumeric (the existing `isLowerAlphanumeric` test, kept verbatim) is `refKindPath`; a ref containing **no** `.` and **no** `/` is `refKindPath` as well — an extensionless repository-root filename such as `Makefile`, `LICENSE` or `Dockerfile`; everything else is `refKindSymbol`.
   That fourth rule is required rather than tidy: today's `classifyRef` doc comment records that a dot-free, slash-free entry falls to `refKindSymbol` and names `Makefile` as its own example, so without the rule card 4's `bare-symbol-target` would make every such filename a hard finding with **no legal spelling left** — the `//` worktree-root escape does not rescue it, since `normalizeCardPath` strips the prefix and hands back the identical bare token.
   A `refKindSymbol` entry therefore always contains a `.`, which is exactly the `pkg.Symbol` shape the hard rule exists to catch.
+  State the consequence rule 4 carries rather than leaving it to be discovered: a `refKindPath` entry goes through `normalizeRefIfPath`, so under a non-`.` `root:` a bare `Makefile` now resolves to `<root>/Makefile` where today it passes through verbatim.
+  That is the intended behaviour — a bare filename under a declared `root:` means the file in that root, exactly as every other relative path in the plan does — but it is a behaviour change and must be written down and tested rather than inferred.
   Keep `isPathRef` as the convenience wrapper reporting `refKindPath`, and add `isGlyphRef` and `isHandleRef` wrappers beside it.
   In the new file `glyphref.go`, put the glyph-side helpers so `classify.go` stays a shape-only file: `parseGlyph(lang, raw string) (glyph.Glyph, error)` delegating to `glyph.Parse` with no local grammar, and `planLanguage(plan *Plan) (glyph.Language, bool)` mapping `Plan.Language` `"go"` to `glyph.Go` and `"none"` to the not-ok second return. No file read needed.
   Never write a `strings.TrimSuffix(raw, "#")`, never read `Glyph.Unit` as a disk path, and never add a regex over a glyph string — the glyph-conversion-chokepoint Shared Decision forbids all three, and card 15 adds a constraint test that fails the build if one appears.
@@ -114,7 +116,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Do not call `planLanguage` here — that helper takes a `*Plan` and exists for the post-parse callers in `validate.go`, which run against a fully built plan; `ParsePlan` maps `fm.Language` to a `glyph.Language` directly, applying the same absent-defaults-to-`go` rule card 3 states. No file read needed.
   Then thread the map through: allocate it once, pass it plus the card's own `N-<slug>` key into each card's `canonicalizeCard` call placed immediately after the existing `normalizeCard(&card, root)` line, and assign it onto the returned `Plan`.
   When `plan.Language` is `none`, canonicalization is a complete no-op: no `glyph.Self` call runs and `SurfaceRefs` stays empty. No file read needed.
-  Cover in tests: an extensionless path ref surviving canonicalization untouched, so card 4's `directory-target` still fires on it; a plain path and its file self glyph landing on the identical model string; a non-`.` `root:` still applying to a plain path and never to a surface glyph; the documented consequence that a bare-filename surface glyph such as `focus.go#` under a non-`.` `root:` names the repository-root file and is left alone; `language: none` leaving every ref byte-identical; and `SurfaceRefs` recording the original lexeme for a canonicalized path under its own card's key, with two cards spelling one canonical string differently each keeping their own entry.
+  Cover in tests: a bare extensionless filename such as `Makefile` under a non-`.` `root:` resolving to `<root>/Makefile`, and the same token under an empty `root:` passing through verbatim; an extensionless path ref surviving canonicalization untouched, so card 4's `directory-target` still fires on it; a plain path and its file self glyph landing on the identical model string; a non-`.` `root:` still applying to a plain path and never to a surface glyph; the documented consequence that a bare-filename surface glyph such as `focus.go#` under a non-`.` `root:` names the repository-root file and is left alone; `language: none` leaving every ref byte-identical; and `SurfaceRefs` recording the original lexeme for a canonicalized path under its own card's key, with two cards spelling one canonical string differently each keeping their own entry.
 - **Commit:** `5: feat(planparser): canonicalize path refs to glyphs after root: resolution`
 
 ### Card 6: re-express the disk-shaped checks over glyphs
@@ -133,7 +135,10 @@ Batch-local decisions, beyond `## Shared Decisions`:
   This card is the one card in the plan carrying the `Glyph.UnitPath()` precondition from the two-preconditions-outside-this-worktree Shared Decision: it is the only place a glyph is mapped back to a file on disk.
   If `Glyph.UnitPath` is absent from the linked quarry version, stop and report that this card blocks — do **not** implement a local `#`-trimming helper as an interim, which the chokepoint decision rejects outright rather than defers, and do **not** read `Glyph.Unit` as a path, which encodes the same Go-only assumption without the trim.
   In `validate.go`, change `checkPathMissing` and `checkCardPathMalformed` to gate on `isGlyphRef` in addition to `isPathRef`, and for a glyph-shaped entry obtain its disk path from `parseGlyph` followed by `Glyph.UnitPath()`; a not-ok second return means the glyph's unit is not path-shaped and the entry is skipped by both checks rather than reported.
-  `pathExistsOnDisk`, `cardPathMalformedReason`, `createTargetsUnion` and `renameTargetsUnion` all keep their current bodies and are simply fed the mapped path instead of the raw ref.
+  `pathExistsOnDisk` and `cardPathMalformedReason` keep their current bodies and are simply fed the mapped path instead of the raw ref.
+  `createTargetsUnion` and `renameTargetsUnion` do **not**: neither takes a ref at all — both walk the plan themselves and filter on `isPathRef` — so after card 5 every glyph-shaped `Create` target silently drops out of the union while `checkPathMissing`'s own `satisfied` closure looks up a `UnitPath`-mapped path, manufacturing `path-missing` findings on exactly the `Create` targets that canonicalization exists to keep consistent.
+  Give both union builders the same `isGlyphRef` branch this card adds to the two checks, and key each union on the identical mapped value `satisfied` looks up, so the two sides of the comparison are in one vocabulary.
+  Cover that pairing directly: a glyph `Create` target in one card satisfying a glyph `Uses` reference in another must produce no finding.
   Under `plan.Language` `none` both checks keep exactly today's `isPathRef`-only behaviour. No file read needed.
   Cover in tests: a file self glyph whose file exists passing `path-missing`; one whose file does not exist and is not a `Create` target failing it; a member glyph resolving to its unit's directory being skipped rather than reported; a unit self glyph for a package that exists passing; and the whole `none`-language path being byte-for-byte today's behaviour.
 - **Commit:** `6: fix(planparser): re-express path-missing and card-path-malformed over glyphs`
@@ -160,7 +165,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Cover in tests: a `Prosa` group targeting a file self glyph passing; one targeting a unit self glyph passing; one targeting a member glyph producing the finding; the `none`-language behaviour unchanged; and a plan declaring `format: 4` producing exactly one `format-unrecognized` finding.
 - **Commit:** `7: feat(planparser): redefine prosa-symbol-target over self glyphs and bump format to 5`
 
-### Card 8: rewrite the spec, the stencil's spelling rules, and the golden fixture
+### Card 8: rewrite the spec and stencil, and sweep every format-4 fixture to format 5
 
 - **Context:**
   - `internal/planparser/classify.go`
@@ -178,6 +183,17 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/planparser/testdata/goodplan/05-rowmapper-rename.md`
   - `internal/planparser/testdata/goodplan/06-helppins-move.md`
   - `internal/planparser/testdata/goodplan/07-json-docs.md`
+  - `internal/planparser/approve_test.go`
+  - `internal/planparser/parse_test.go`
+  - `internal/planparser/sections_test.go`
+  - `internal/planparser/validate_test.go`
+  - `internal/loomcli/validate_test.go`
+  - `internal/loomshed/planvalidate_test.go`
+  - `internal/loomshed/gatefindings_test.go`
+  - `internal/webstercli/cli_test.go`
+  - `internal/websterengine/runlevel_test.go`
+  - `internal/loomrecipe/fixture_test.go`
+  - `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -191,11 +207,17 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Leave the stencil's `### No quarry inventory exists — do the lookups yourself` section alone in this card — card 30 replaces it once the `lyx quarry` verbs exist to replace it with.
   Rewrite the eight `internal/planparser/testdata/goodplan` files so the fixture declares `format: 5`, carries a `language: go` key, and spells every symbol-shaped ref as a glyph; keep its card structure, numbering and `Commit:` subjects unchanged so the existing round-trip assertions keep their shape.
   Verify the fixture is clean under the new check set by running the package's own tests — a fixture that trips one of the three new checks is the fixture's defect, not the check's.
-- **Commit:** `8: docs(plan-format): move the spec, stencil and golden fixture to format 5 glyph spelling`
+  Then sweep **every other** `format: 4` fixture in the repository to `format: 5`, in this same card, because card 7's `recognizedFormat` bump makes each one produce a `format-unrecognized` finding the moment it lands: `internal/planparser/approve_test.go`, `internal/planparser/parse_test.go`, `internal/planparser/sections_test.go` and `internal/planparser/validate_test.go` (the last two of which cards 3–7 already edit); `internal/loomcli/validate_test.go`; `internal/loomshed/planvalidate_test.go` and `internal/loomshed/gatefindings_test.go`; `internal/webstercli/cli_test.go`; `internal/websterengine/runlevel_test.go`; `internal/loomrecipe/fixture_test.go`; and the plan overview embedded in `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`.
+  Change only the `format:` value in each — no `language:` key is added here, because absent correctly defaults to `go` and batch 5 is where the fixtures that need `language: none` get it.
+  Locate the full set with `grep -rn "format: 4"` across the module rather than trusting this list, and report any file it finds that is not named above.
+  This sweep belongs in this batch rather than a later one: the bump is what breaks them, and `go build ./...` compiles tests without running them, so nothing else would catch the break at its own boundary.
+- **Commit:** `8: docs(plan-format): move the spec, stencil and every fixture to format 5 glyph spelling`
 
 ## Batch Tests
 
-`verify: go test ./internal/planparser/` runs the whole `internal/planparser` package, which is the exact surface every card in this batch touches and nothing more.
+`verify: go test ./internal/planparser/ ./internal/loomcli/ ./internal/loomshed/ ./internal/webstercli/ ./internal/loomrecipe/ && go test -tags integration ./internal/websterengine/` runs `internal/planparser` — the surface cards 3 through 7 touch — plus every other package holding a plan fixture card 8's format-5 sweep rewrites.
+The wider scope is card 8's doing and is the point: `recognizedFormat` moving to 5 makes every un-swept `format: 4` fixture fail, and those fixtures live in five packages outside `planparser`, so a verify scoped to `planparser` alone would let the break escape to the hub done gate several batches later.
+The chained `-tags integration` half covers `internal/websterengine/runlevel_test.go`, which carries that tag on its own first line and holds one of the swept fixtures.
 The package is tier1-pure and untagged — no `gitexec.Run`, no `exec.Command`, no `gitkit.Copy*`, no `hubforge.NewHub` — and this batch adds no spawn to it, since `glyph` is stdlib-only and `parseGlyph` reads no source.
 The files the command covers are `classify_test.go`, `glyphref_test.go`, `normalize_test.go`, `parse_test.go`, `validate_test.go`, `approve_test.go`, `sections_test.go` and `planpath_test.go`, plus the golden-fixture round-trip that reads `testdata/goodplan`.
 The scope is deliberately the single package rather than the module: nothing outside `internal/planparser` compiles against a symbol this batch changes, and the overview's module-wide `go build ./...` catches it at this batch's boundary if that assumption is wrong.

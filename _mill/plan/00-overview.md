@@ -3,7 +3,7 @@
 ```yaml
 task: "Adopt quarry's glyph alphabet as the plan alphabet"
 slug: "quarry-glyph-plan-alphabet"
-approved: false
+approved: true
 started: "20260906T104500Z"
 parent: "main"
 root: ""
@@ -27,7 +27,7 @@ batches:
     name: planparser-alphabet
     file: 02-planparser-alphabet.md
     depends-on: [1]
-    verify: go test ./internal/planparser/
+    verify: go test ./internal/planparser/ ./internal/loomcli/ ./internal/loomshed/ ./internal/webstercli/ ./internal/loomrecipe/ && go test -tags integration ./internal/websterengine/
   - number: 3
     name: planparser-handles
     file: 03-planparser-handles.md
@@ -42,7 +42,7 @@ batches:
     name: gate-parity
     file: 05-gate-parity.md
     depends-on: [4]
-    verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/ ./internal/websterengine/ && go test -tags integration ./internal/websterengine/
+    verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/ ./internal/websterengine/ ./internal/loomrecipe/ && go test -tags integration ./internal/websterengine/
   - number: 6
     name: quarry-cli
     file: 06-quarry-cli.md
@@ -151,6 +151,8 @@ _Cross-cutting decisions every batch inherits._
 - `internal/loomcli/parity_test.go`
 - `internal/loomcli/validate.go`
 - `internal/loomcli/validate_test.go`
+- `internal/loomrecipe/fixture_test.go`
+- `internal/loomshed/gatefindings_test.go`
 - `internal/loomshed/planvalidate.go`
 - `internal/loomshed/planvalidate_test.go`
 - `internal/planglyph/containment.go`
@@ -177,6 +179,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/planglyph/testmain_test.go`
 - `internal/planparser/amendment.go`
 - `internal/planparser/amendment_test.go`
+- `internal/planparser/approve_test.go`
 - `internal/planparser/classify.go`
 - `internal/planparser/classify_test.go`
 - `internal/planparser/containment.go`
@@ -193,6 +196,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/planparser/plan.go`
 - `internal/planparser/rewrite.go`
 - `internal/planparser/rewrite_test.go`
+- `internal/planparser/sections_test.go`
 - `internal/planparser/testdata/goodplan/00-overview.md`
 - `internal/planparser/testdata/goodplan/01-json-row-type.md`
 - `internal/planparser/testdata/goodplan/02-json-flag.md`
@@ -211,18 +215,19 @@ _Cross-cutting decisions every batch inherits._
 - `internal/quarrycli/toc.go`
 - `internal/quarrycli/verbs_test.go`
 - `internal/webstercli/beginbatch.go`
+- `internal/webstercli/cli_test.go`
 - `internal/webstercli/recordbatch.go`
 - `internal/webstercli/validate.go`
-- `internal/webstercli/cli_test.go`
 - `internal/websterengine/beginbatch.go`
 - `internal/websterengine/beginbatch_test.go`
 - `internal/websterengine/recordbatch.go`
 - `internal/websterengine/recordbatch_test.go`
 - `internal/websterengine/runlevel.go`
 - `internal/websterengine/runlevel_test.go`
+- `manifest/designs/loom.md`
+- `manifest/designs/plan-card-format.md`
 - `manifest/designs/quarry-glyph-plan-alphabet.md`
 - `manifest/roadmap.md`
 - `tools/deploy/main.go`
 - `tools/sandbox/SANDBOX-CORE-SUITE.md`
-</content>
-</invoke>
+- `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`

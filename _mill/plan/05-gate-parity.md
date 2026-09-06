@@ -5,7 +5,7 @@ task: "Adopt quarry's glyph alphabet as the plan alphabet"
 batch: "gate-parity"
 number: 5
 cards: 3
-verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/ ./internal/websterengine/ && go test -tags integration ./internal/websterengine/
+verify: go test ./internal/loomshed/ ./internal/loomcli/ ./internal/webstercli/ ./internal/websterengine/ ./internal/loomrecipe/ && go test -tags integration ./internal/websterengine/
 depends-on: [4]
 ```
 
@@ -34,6 +34,8 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Edits:**
   - `internal/loomshed/planvalidate.go`
   - `internal/loomshed/planvalidate_test.go`
+  - `internal/loomshed/gatefindings_test.go`
+  - `internal/loomrecipe/fixture_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -47,7 +49,8 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Emit the `logger.Warn` line on any non-empty set, blocking or not, so an informational finding stays visible even on the pass path; word it so the two cases are distinguishable rather than reusing the failure phrasing for both.
   This is the identical rule card 32 applies to the same `[]planglyph.Finding` type at `begin-batch`, and the two boundaries must not disagree about what a severity means.
   Update the file's package comment, which today names `planparser.ValidateFormat` and `planparser.Validate` for the two modes.
-  Add `language: none` to every existing fixture overview in `internal/loomshed/planvalidate_test.go`, whose `worktreeRoot` is a bare `t.TempDir()`: without it, card 21's `openRepo` would wrap `ErrQuarryUnavailable` on that non-repository directory and every existing case would flip from its recorded verdict to an error.
+  Add `language: none` to every existing fixture overview in `internal/loomshed/planvalidate_test.go` and `internal/loomshed/gatefindings_test.go`, and to the overview `buildSequenceFixture` writes in `internal/loomrecipe/fixture_test.go` — that builder drives the **real** `Plan-Validate` row over a bare `t.TempDir()` anchor, so without the key this card's own change would turn its `Done` into an `ErrQuarryUnavailable` error and break every sequencing test that depends on the row passing.
+  Each of these has a `worktreeRoot` that is a bare `t.TempDir()`: without it, card 21's `openRepo` would wrap `ErrQuarryUnavailable` on that non-repository directory and every existing case would flip from its recorded verdict to an error.
   Under `language: none` the resolve pass opens nothing, so those cases keep testing the gate wiring they were written to test, unchanged.
   Extend the existing tests with a case proving a quarry-unavailable error — a `language: go` fixture pointed at a non-repository root — produces a returned error rather than `Stuck`; one proving an informational-only findings set produces `Done` and still logs; and one proving a set mixing one blocking and one informational finding produces `Stuck`.
 - **Commit:** `23: refactor(loomshed): run the plan gate through planglyph's resolve-backed entry points`
@@ -63,6 +66,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Edits:**
   - `internal/loomcli/validate.go`
   - `internal/loomcli/validate_test.go`
+  - `internal/loomcli/parity_test.go`
   - `internal/webstercli/validate.go`
   - `internal/webstercli/cli_test.go`
   - `internal/websterengine/runlevel.go`
@@ -82,6 +86,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Apply the same severity rule here too: refuse the run only when at least one blocking finding is present, and surface an informational-only set without refusing.
   Give a quarry-unavailable error its own returned error naming quarry, distinct from the findings refusal, matching card 23's producer-side disposition.
   Extend `runlevel_test.go` with a blocking-findings refusal, an informational-only run that proceeds, and a quarry-unavailable refusal.
+  Add `language: none` to the overview `planFixture` writes in `internal/loomcli/validate_test.go`: that helper — not `parity_test.go` — is what builds the `CleanApproved` and `Unapproved` fixtures card 25's parity table drives, so the key has to go in where the bytes are written, and both files are in this card's `Edits:` for that reason.
   Extend both CLI packages' tests with a clean case; a blocking-findings case asserting the severity is present in the error envelope; an informational-only case asserting a success envelope that still carries the findings; and a quarry-unavailable case asserting the error envelope names quarry.
 - **Commit:** `24: refactor(cli): run validate-plan and webster validate through planglyph`
 
@@ -90,10 +95,13 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Context:**
   - `internal/loomshed/planvalidate.go`
   - `internal/loomcli/validate.go`
+  - `internal/loomcli/validate_test.go`
   - `internal/planglyph/planglyph.go`
 - **Edits:**
   - `CONSTRAINTS.md`
   - `internal/loomcli/parity_test.go`
+  - `manifest/designs/loom.md`
+  - `manifest/designs/plan-card-format.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -101,13 +109,17 @@ Batch-local decisions, beyond `## Shared Decisions`:
   In `CONSTRAINTS.md`, edit the `## Gate Self-Check Parity Invariant` section's first bullet, which today spells `planparser.ValidateFormat` for the `Plan-Validate` ↔ `validate-plan` pair and `planparser.Validate` for the `Plan-Revalidate` ↔ `validate-plan --require-approved` pair, so both name the `planglyph` equivalents instead.
   Leave the `Discussion-Validate` ↔ `validate-discussion` pair naming `discussionparser.Validate`, which this task does not touch, and leave the second bullet about adding a gate meaning adding its verb and its parity check unchanged, since this task adds no gate.
   In `internal/loomcli/parity_test.go`, `TestGateParity_PlanValidate` already drives both sides over four fixtures crossed with both modes and asserts the mapped verdicts agree in each cell.
-  Add `language: none` to each of those four fixtures' overviews first — they are built over a bare `t.TempDir()` worktree root, so without it every cell would flip to an error verdict once the roots reach `planglyph` — and then keep every existing cell's expectation, because under `language: none` the moved functions compose exactly the same pure checks and must therefore produce exactly the same verdicts.
+  Card 24 has already added `language: none` to `planFixture` in `internal/loomcli/validate_test.go`, which is where the `CleanApproved` and `Unapproved` overviews are actually written; add it to `planFixtureInvalidFormat` in this file for the `FormatInvalid` fixture, and confirm the `NoPlanDirectory` case needs none since it writes no overview at all.
+  Without the key every cell would flip to an error verdict once the roots reach `planglyph`; with it, keep every existing cell's expectation, because under `language: none` the moved functions compose exactly the same pure checks and must therefore produce exactly the same verdicts.
   The `Unapproved` fixture's flag-absent cell stays `verdictDone` — that cell is the load-bearing one, proving the format-only mode never runs the `plan-unapproved` check — and its `--require-approved` cell stays `verdictStuck`.
   Add a fifth fixture that declares `language: go` and seeds a real quarry-openable repository at its worktree root, carrying a glyph that does not resolve, expecting `verdictStuck` in both modes, so the test covers the resolve-backed half the move introduces rather than only re-proving the pure half.
   Seed the repository with `gitkit.HermeticGitEnv`-compatible machinery and place this fixture's cases behind the `integration` tag if seeding requires spawning git; if a plain directory of `.go` files suffices for `quarry.Open`, keep it untagged.
   Add a sixth fixture, also `language: go` over a seeded repository, whose plan is clean apart from one informational `create-new-unit` finding, expecting `verdictDone` in both modes: that cell is what proves both sides read severity the same way, and it is the cell that would have caught the bounce loop had it existed before the move.
   Add a seventh case declaring `language: go` and pointing both sides at a worktree root that is not a repository, expecting `verdictError` in both modes — the `language: go` declaration is what makes it distinguishable from the four `language: none` fixtures above, which share the same non-repository root and must stay clean — which is what proves the infrastructure-error disposition is symmetric across the pair and not just implemented twice.
   Update the test's own doc comment, which names the two `planparser` functions.
+  Then bring the two design docs this batch and batch 2 falsify onto the new reality, in this same commit per the repository's docs-land-together rule.
+  In `manifest/designs/loom.md`, restate the `Plan-Validate` detail paragraph that today says the verb and the row make the same third call chosen from `planparser.ValidateFormat`/`planparser.Validate`, so it names the `planglyph` pair instead; and drop the pinned "seventeen check IDs … sixteen of the seventeen upstream" count, replacing it with a pointer to `contracts/specs/loom-plan-spec.md`'s own validation-checks section rather than a number that goes stale on the next check added — batch 2 and batch 3 together add at least seven IDs.
+  In `manifest/designs/plan-card-format.md`, drop the same seventeen-ID claim for the same reason and point at the spec.
 - **Commit:** `25: docs(constraints): move the plan parity pairs onto planglyph and cover the resolve half`
 
 ## Batch Tests
