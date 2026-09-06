@@ -31,8 +31,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -129,6 +131,7 @@ func TestWire_ModeStandaloneSelectsStandaloneMode(t *testing.T) {
 			stateHome := t.TempDir()
 			t.Setenv("XDG_STATE_HOME", stateHome)
 			t.Setenv("LOCALAPPDATA", t.TempDir())
+			t.Cleanup(func() { logger.SetDurableSinkDir("") })
 			seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
 
 			c := &websterCLI{}
@@ -188,6 +191,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
 		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 		hash8 := hash8For(t, target)
 		defaultPlanDir := filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan")
 		seedStandalonePlanDir(t, defaultPlanDir)
@@ -220,6 +224,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
 		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 		override := t.TempDir()
 		seedStandalonePlanDir(t, override)
 
@@ -237,6 +242,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
 		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 		// Deliberately never seed the default plan dir: it stays absent.
 
 		c := &websterCLI{}
@@ -288,6 +294,7 @@ func TestWire_StandaloneRootsResolveToTarget(t *testing.T) {
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 	hash8 := hash8For(t, target)
 	stateDir := filepath.Join(stateHome, "lyx", hash8)
 	seedStandalonePlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
@@ -347,6 +354,7 @@ func TestWire_MatcherNeverNilOpenerNilOnlyInStandalone(t *testing.T) {
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
 		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 		hash8 := hash8For(t, target)
 		seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan"))
 
@@ -361,4 +369,101 @@ func TestWire_MatcherNeverNilOpenerNilOnlyInStandalone(t *testing.T) {
 			t.Error("openFabric != nil; want nil in standalone mode")
 		}
 	})
+}
+
+// TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError is F16's direct regression
+// test. It fails against pre-fix source, where wireStandalone constructed its runner via
+// shuttleengine.NewRunner: NewRunner's containment assertion refuses standalone's deliberately
+// detached anchor/worktree-root pair (the derived state directory sits outside the target
+// repository), setting the runner's held toldErr, which every public entry point returns
+// immediately without ever reaching reed. A runner that is merely non-nil proves nothing here --
+// NewRunner and NewDetachedRunner both always return a non-nil *shuttleengine.Runner and hold
+// their verdict on toldErr, surfacing it only when a verb runs -- so this test drives a public
+// entry point (Interrupt, with a guid no strand will ever match) and asserts the returned error is
+// the ordinary "not a shuttle strand" verdict rather than a told-path refusal.
+func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *testing.T) {
+	target := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+	hash8 := hash8For(t, target)
+	seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan"))
+
+	c := &websterCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	err := c.runner.Interrupt("no-such-strand-guid")
+	if err == nil {
+		t.Fatal("runner.Interrupt() error = nil; want \"not a shuttle strand\", since no such strand exists")
+	}
+	if strings.Contains(err.Error(), "NewRunner") || strings.Contains(err.Error(), "NewDetachedRunner") {
+		t.Fatalf("runner.Interrupt() error = %v; want the ordinary \"not a shuttle strand\" verdict, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
+	}
+	if !strings.Contains(err.Error(), "not a shuttle strand") {
+		t.Errorf("runner.Interrupt() error = %v; want it to name \"not a shuttle strand\"", err)
+	}
+}
+
+// TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir is F22's direct regression test. It
+// observes the sink directory the only way this package can: by forcing a write and checking the
+// filesystem, never by reading internal/logger's own state (sinkDirOverride is unexported and
+// internal/logger exposes no accessor). The mechanism is that a non-empty override bypasses the
+// testing.Testing() sink suppression in ensureDurableSink, so one logger.Info call after
+// wireStandalone returns arms the sink at whatever directory the override names, with no
+// LYX_TRACE redirect needed.
+func TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir(t *testing.T) {
+	target := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+	stateDir := filepath.Join(stateHome, "lyx", hash8For(t, target))
+	seedStandalonePlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+
+	c := &websterCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	logger.Info("wiring_test: arm the sink")
+
+	wantDir := standalonegeom.LogsDir(stateDir)
+	matches, err := filepath.Glob(filepath.Join(wantDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", wantDir, err)
+	}
+	if len(matches) == 0 {
+		t.Errorf("no trace-*.log file under %s; want wireStandalone to have redirected the durable sink there", wantDir)
+	}
+}
+
+// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
+// mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
+// then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
+// the override would have put the trace file somewhere else.
+func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
+	sentinelDir := t.TempDir()
+	logger.SetDurableSinkDir(sentinelDir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	hub := t.TempDir()
+	loc := hubLocation(hub, "warp", ".")
+
+	c := &websterCLI{}
+	if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	logger.Info("wiring_test: arm the sink")
+
+	matches, err := filepath.Glob(filepath.Join(sentinelDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", sentinelDir, err)
+	}
+	if len(matches) == 0 {
+		t.Errorf("no trace-*.log file under sentinel dir %s; want wireHub to have left the sink override untouched", sentinelDir)
+	}
 }
