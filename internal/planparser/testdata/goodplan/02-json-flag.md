@@ -1,7 +1,7 @@
 # Card 2 — json-flag
 
 **Edit:**
-- `boardcli.newListCmd`
+- `internal/boardcli#newListCmd`
 - `list.go`
 
 **Create:**

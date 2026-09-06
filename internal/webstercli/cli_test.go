@@ -222,7 +222,7 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 // seedValidPlanDir writes a valid format-4 plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
-	overview := "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
 		"1 — only — placeholder card\n"
 	card := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n\n**Intent:** placeholder card.\n"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -272,7 +272,7 @@ func TestValidateCmd_MissingPlan(t *testing.T) {
 // seedMissingIntentPlanDir writes a format-4 plan with a card missing the **Intent:** label.
 func seedMissingIntentPlanDir(t *testing.T, dir string) {
 	t.Helper()
-	overview := "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
 		"1 — only — placeholder card\n"
 	card := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n"
 	if err := os.MkdirAll(dir, 0o755); err != nil {

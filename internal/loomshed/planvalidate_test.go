@@ -31,7 +31,7 @@ func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
 	}
 
 	overview := fmt.Sprintf(
-		"---\nformat: 4\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
+		"---\nformat: 5\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
 		approved,
 	)
 	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {

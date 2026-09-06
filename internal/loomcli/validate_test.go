@@ -175,7 +175,7 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 	}
 
 	overview := "---\n" +
-		"format: 4\n" +
+		"format: 5\n" +
 		"approved: " + strconvBool(approved) + "\n" +
 		"root: \n" +
 		"---\n\n" +

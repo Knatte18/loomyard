@@ -1,6 +1,6 @@
 # Loom plan-spec — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the seventeen checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the twenty checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
 
 ## Producer and contract
 
@@ -55,9 +55,10 @@ _lyx/plan/
 `00-overview.md` frontmatter carries **scalar-only** keys:
 
 ```yaml
-format: 4
+format: 5
 approved: true
 root: <optional worktree-relative dir>   # optional; see Card path resolution below
+language: go                             # optional; "go" (default) or "none" — see The shape classifier below
 ```
 
 The body carries a short task-framing paragraph, an ordered **Card Index** whose entries read `N — <card-slug> — <one-line intent>`,
@@ -77,7 +78,7 @@ Each card lives in its own file, and the file's content is:
 
    ```markdown
    **Edit:**
-   - `boardcli.newListCmd`
+   - `internal/boardcli#newListCmd`
    - `list.go`
    ```
 
@@ -131,19 +132,28 @@ A multi-label card composes this table's four columns as follows, one rule per c
 
 ## The shape classifier
 
-A card's own target/`Uses`/`Rename`-pair entries mix symbols and file paths in one flat list, distinguished by shape alone, in this fixed three-rule order:
+A card's own target/`Uses`/`Rename`-pair entries mix **glyphs**, `plan:` handles, file paths, and bare symbols in one flat list, distinguished by shape alone, in this fixed five-rule order:
 
-1. A separator (`/`) present anywhere in the entry makes it a path — this also covers the `//` worktree-root escape, since it always contains a slash.
-2. Otherwise, an all-lowercase-ASCII-alphanumeric final dot-segment makes it a path (a bare filename with a lowercase extension, e.g. `list.go`).
-3. Otherwise, it is a symbol — the explicit default for an entry with no `.` at all (`Lookup`, `Makefile`) and for an entry whose final dot-segment is not all-lowercase-alphanumeric (`shedrecipe.Lookup`).
+1. A ref beginning with the literal prefix `plan:` is a **handle**.
+2. Otherwise, a ref containing `#` is a **glyph** — the unit-then-member string `internal/foo#Bar` names, per quarry's `glyph` package (`docs/glyph.md`). This rule must precede the path rules below, because every Go glyph's unit half contains a `/`, so a slash-based path rule reached first would misclassify every glyph as a path.
+3. Otherwise, a separator (`/`) present anywhere in the entry makes it a **path** — this also covers the `//` worktree-root escape, since it always contains a slash — and so does an all-lowercase-ASCII-alphanumeric final dot-segment (a bare filename with a lowercase extension, e.g. `list.go`).
+4. Otherwise, an entry with no `.` and no `/` at all is a **path** too: an extensionless repository-root filename such as `Makefile`, `LICENSE`, or `Dockerfile`. Without this rule such a filename would have no legal spelling left under the `bare-symbol-target` hard rule below, since the `//` worktree-root escape does not rescue it.
+5. Otherwise, it is a **bare symbol** — the explicit default for an entry whose final dot-segment is not all-lowercase-alphanumeric (`shedrecipe.Lookup`).
+
+The overview frontmatter's optional `language:` key gates this alphabet: `"go"` (the default when the key is absent) enables `glyph.Go`'s grammar for rules 1-2 and the two hard rules below; `"none"` opts a plan out of the glyph alphabet entirely, keeping a bare-symbol entry legal exactly as it was before this alphabet existed.
+
+**Two hard rules, both skipped under `language: none`:**
+
+- `bare-symbol-target` — any bare-symbol-shaped entry is a hard finding, under any card type. A bare package-qualified symbol is the one spelling that cannot have come verbatim from a quarry answer — not because the form is uglier, but because quarry never emits one. The fix is always to spell it as a glyph.
+- `directory-target` — a path-shaped entry containing a `/` with no file extension names a directory rather than a file; spell it as a unit glyph (e.g. `internal/foo#`) if it is a package, or list the files instead if it is not code. The `/` condition keeps rule 4's extensionless repository-root filenames out of this finding; a slash-free extensionless directory at the repository root is not caught here — narrower coverage than the slashed case, accepted rather than papered over.
 
 This is a deliberate, partial deviation from the design doc's own classification clause.
 The design doc resolves ambiguity "against ground truth (`go doc` for a symbol, file existence for a path)";
 this spec takes that clause in its **shape half only** — a process spawn (`go doc`) is barred from tier1 by the Test Tier Purity Invariant and would stop the parser being a leaf (the Planparser Sole-Parser Invariant).
-The **file-existence half survives**, but at validation time rather than classification time, as the `path-missing` check below — existence never decides an entry's shape, only whether a path-shaped entry's target is satisfied.
+The **file-existence half survives**, but at validation time rather than classification time, as the `path-missing` check below — existence never decides an entry's shape, only whether a path- or self-glyph-shaped entry's target is satisfied. `internal/planparser` itself never calls `quarry.Resolve` or any other `quarry.Repo` method — that belongs to `internal/planglyph`, the resolve-backed layer above it — and it performs exactly one glyph conversion in each direction: `glyph.Self` (path -> glyph, at canonicalization time) and `Glyph.UnitPath` (glyph -> path, used only by the two disk-existence checks below on a **self** glyph; a member glyph is skipped by both, since member existence is `internal/planglyph`'s resolve-backed business, not this package's).
 
-**Known limitation:** an unexported symbol reference whose final dot-segment happens to be all-lowercase (e.g. `shedrecipe.lookup`) misclassifies as a path under rule 2, and surfaces as a loud `path-missing` finding rather than a silent misparse.
-The author resolves it by writing the exported name, or by `//`-escaping the entry so it is unambiguously a path.
+**Known limitation:** an unexported symbol reference whose final dot-segment happens to be all-lowercase (e.g. `shedrecipe.lookup`) misclassifies as a path under rule 3, and surfaces as a loud `path-missing` finding rather than a silent misparse.
+The author resolves it by writing the exported name (as a glyph), or by `//`-escaping the entry so it is unambiguously a path.
 
 ## Card path resolution: `root:` and `//`
 
@@ -153,9 +163,13 @@ This is purely a token-economy shorthand for a plan whose cards repeat the same 
 The degenerate `root: "."` case (the worktree root itself) resolves a card path to the raw path unchanged, rather than the unclean `"./<raw>"` a literal string join would produce.
 
 Normalization applies to **path-shaped entries only**: the parser normalizes every card path to a plain worktree-relative, forward-slash path exactly once, at parse time.
-A **symbol-shaped entry passes through verbatim, regardless of `root:`** — the shape classifier gates normalization, so `root:` never gets prepended onto a symbol reference.
-The validator and any future consumer never see `root:` or `//` again, only normalized paths (or verbatim symbols).
-A single-`/` prefix or a `..` segment in a card path is malformed and is flagged by the `card-path-malformed` check.
+A **glyph- or bare-symbol-shaped entry passes through verbatim, regardless of `root:`** — the shape classifier gates normalization, so `root:` never gets prepended onto one.
+
+**Ordering is load-bearing: `root:`/`//` resolution runs first, while a ref is still path-shaped; canonicalization to a glyph runs strictly after, on the same ref.** Immediately after normalization, and only under a glyph-enabled `language:`, the parser canonicalizes every extension-carrying path-shaped entry into its glyph string via `glyph.Self` — the one path-to-glyph call this package makes. An extensionless path-shaped entry (a bare directory, or a bare repository-root filename) is left as a plain path, so the `directory-target` check above still has something to classify. **A surface glyph is always repository-root-relative and is never `root:`-joined** — canonicalization only ever touches a ref classified as a path in the first place, and a glyph is never that shape.
+The parser records each canonicalized entry's pre-canonicalization surface lexeme in `Plan.SurfaceRefs`, keyed by the owning card's own identity and the resulting canonical string, so a later rewrite of the underlying files can restore the exact byte-form the card's own file carried.
+
+The validator and any future consumer never see `root:` or `//` again, only normalized-then-canonicalized paths (or verbatim glyphs/symbols).
+A single-`/` prefix or a `..` segment in a card path is malformed and is flagged by the `card-path-malformed` check — now applied, per the shape classifier's disk-mapping rule above, to a path- or self-glyph-shaped entry alike.
 
 ## Rename and Move
 
@@ -208,8 +222,7 @@ The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape
 
 ## Deferred / forward-compat
 
-The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note; a file-list mismatch against this union is always informational, never blocking on its own) — is, under format 4: every path-shaped target entry across the batch's cards, plus the files holding every symbol-shaped target entry.
-`Uses:` is excluded from this union because it names what a card reads, not what it changes.
+The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note; a file-list mismatch against this union is always informational, never blocking on its own) — is, under format 5, restated over glyphs rather than paths-plus-symbol-files: a mechanical guard compares the delta's changed files against the batch's own target glyphs' `UnitPath`-mapped files directly, rather than this spec defining a files-union to compare against. The mismatch stays exactly as informational, never blocking on its own, and `Uses:` stays excluded from the comparison because it names what a card reads, not what it changes.
 See `internal/websterengine`'s package documentation for the verification semantics.
 This union is defined over each card's flat target set (the union across all of that card's own `TargetGroups`), so it is unchanged by multi-label: a card carrying two groups contributes both groups' targets exactly as it always contributed one group's.
 
@@ -220,39 +233,42 @@ A parked, more aggressive parallel-execution idea also exists — see [../../man
 
 ## Validation checks (as implemented by `internal/planparser`)
 
-Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — seventeen rows, seventeen IDs.
+Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — twenty rows, twenty IDs.
 This figure counts distinct IDs rather than presentation rows, which resolves the row-count-versus-ID-count divergence the repo's former "14" carried (a 14-row list whose row 1 bundled two distinct IDs).
-The seventeen IDs are split across two entry points, `ValidateFormat` and `Validate`: sixteen of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 2 below) is additionally checked by `Validate`, the full entry point.
-The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-two slot in that order even though it alone belongs to the wider entry point:
+The twenty IDs are split across two entry points, `ValidateFormat` and `Validate`: nineteen of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 3 below) is additionally checked by `Validate`, the full entry point.
+The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
-1. `format-unrecognized` — `format:` is a recognized version (currently only `4`); else refuse to run.
-2. `plan-unapproved` — `approved: true`; else refuse to run.
+1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
+2. `plan-language-unrecognized` — `language:` (when present) is `"go"` or `"none"`; else flagged, naming the offending value and the two legal ones. Absent defaults to `"go"` and is never flagged.
+3. `plan-unapproved` — `approved: true`; else refuse to run.
    This is a consumer guard, and its "else refuse to run" is deliberately not enforced by every caller: `Plan-Revalidate` (the post-segment mechanical row) and every standalone plan consumer (`internal/websterengine`, `internal/webstercli`, `internal/batcher`) enforce it, while the pre-review gate, `Plan-Validate`, deliberately does not — the plan writer is forbidden from setting the flag, and the review segment (`Plan-Bouncer`'s approved settle) is what writes it, so a pre-review caller demanding it would be demanding something only review itself can produce.
-3. `index-file-mismatch` — Card Index ↔ card files consistent (numbering, slugs, no gaps, no orphaned file on disk).
+4. `index-file-mismatch` — Card Index ↔ card files consistent (numbering, slugs, no gaps, no orphaned file on disk).
    This check covers the card count because there is no separate `(C cards)` segment to cross-check;
    the index itself IS the card list.
-4. `card-type-missing` — every card carries at least one recognized type label; zero is flagged.
-5. `card-custom-not-alone` — a card carrying a `Custom` group alongside a group whose `Type` differs from `Custom` is flagged, once per offending card regardless of how many differently-typed groups it carries.
+5. `card-type-missing` — every card carries at least one recognized type label; zero is flagged.
+6. `card-custom-not-alone` — a card carrying a `Custom` group alongside a group whose `Type` differs from `Custom` is flagged, once per offending card regardless of how many differently-typed groups it carries.
    Two `Custom` groups on one card, with nothing else, stays legal.
-6. `card-retired-label` — a card body carries a format-3 label (`**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**`, or the lowercase `**verify:**`); each occurrence is its own finding.
-7. `card-path-malformed` — this check is card-generic, not group-scoped.
-   Every path-shaped entry in a card's own flat `Targets`/`Uses`, once normalized (`root:`/`//` resolution applied), is non-empty, relative, clean, and free of `..` escapes, regardless of which group contributed it.
-8. `rename-format` — every non-well-formed `Rename:` sub-bullet fails the `` `old` -> `new` `` grammar, checked per `Rename` group.
-9. `rename-mechanic-missing` — the plan has at least one card carrying a `Rename` group but `00-overview.md` has no `## Rename mechanic` section (plan-level);
+7. `card-retired-label` — a card body carries a format-3 label (`**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**`, or the lowercase `**verify:**`); each occurrence is its own finding.
+8. `card-path-malformed` — this check is card-generic, not group-scoped.
+   Every path- or self-glyph-shaped entry in a card's own flat `Targets`/`Uses`, once normalized (`root:`/`//` resolution applied) and mapped to its disk path (a self glyph via `Glyph.UnitPath`), is non-empty, relative, clean, and free of `..` escapes, regardless of which group contributed it. A member glyph is skipped.
+9. `bare-symbol-target` — see [The shape classifier](#the-shape-classifier) above. Skipped entirely under `language: none`.
+10. `directory-target` — see [The shape classifier](#the-shape-classifier) above. Skipped entirely under `language: none`.
+11. `rename-format` — every non-well-formed `Rename:` sub-bullet fails the `` `old` -> `new` `` grammar, checked per `Rename` group.
+12. `rename-mechanic-missing` — the plan has at least one card carrying a `Rename` group but `00-overview.md` has no `## Rename mechanic` section (plan-level);
    a `Rename` group on an otherwise multi-label card still counts.
-10. `card-missing-field` — a card lacks `Intent:` (card-generic), or lacks `ImpactSummary:` when any of its own groups is `Edit` or `Delete` (group-triggered, but the missing field itself is still one card-level field).
-11. `card-field-empty` — a label present with no content under it: an empty target list is checked per group, so a card carrying a populated group alongside an empty one is still flagged for the empty group, while an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value are each card-generic.
-12. `card-field-overlap` — the same entry appears in both a card's own flat target list and its own `Uses:` field; card-generic, per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged.
-13. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
+13. `card-missing-field` — a card lacks `Intent:` (card-generic), or lacks `ImpactSummary:` when any of its own groups is `Edit` or `Delete` (group-triggered, but the missing field itself is still one card-level field).
+14. `card-field-empty` — a label present with no content under it: an empty target list is checked per group, so a card carrying a populated group alongside an empty one is still flagged for the empty group, while an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value are each card-generic.
+15. `card-field-overlap` — the same entry appears in both a card's own flat target list and its own `Uses:` field; card-generic, per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged.
+16. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
     Card-generic, since `ImpactSummary` is one field per card regardless of how many groups require it.
-14. `prosa-symbol-target` — a `Prosa` group's own target list holds a symbol-shaped entry; group-scoped, so a symbol in the same card's non-`Prosa` group is never flagged by this rule.
-15. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
+17. `prosa-symbol-target` — under a glyph-enabled `language:`, a `Prosa` group's own target list holds an entry that is not a self glyph (a member glyph, or anything that fails to parse as a glyph at all — a plain path or a bare symbol); under `language: none`, a symbol-shaped entry, exactly as before this alphabet. Group-scoped, so an offending entry in the same card's non-`Prosa` group is never flagged by this rule.
+18. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
     Card-generic.
-16. `path-missing` — a path-shaped entry that does not exist on disk and is not satisfied by any card's `Create`-group target or `Rename`-group destination in the same plan.
-    A card's `Uses:` entries are checked card-generically, and within a card, its own groups are then walked one at a time, and a group's own path-shaped targets are checked only when that group's own `Type` is `Edit`, `Delete`, `Move`, or `Prosa`.
+19. `path-missing` — a path- or self-glyph-shaped entry that does not exist on disk (mapped via `Glyph.UnitPath` for a self glyph) and is not satisfied by any card's `Create`-group target or `Rename`-group destination (mapped the same way) in the same plan. A member glyph is skipped, not resolved — member existence is `internal/planglyph`'s resolve-backed business.
+    A card's `Uses:` entries are checked card-generically, and within a card, its own groups are then walked one at a time, and a group's own path-/self-glyph-shaped targets are checked only when that group's own `Type` is `Edit`, `Delete`, `Move`, or `Prosa`.
     A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
-17. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
+20. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
 
 ## Worked example
 
@@ -264,9 +280,10 @@ Card 2 is additionally the multi-label example: it carries an `**Edit:**` group 
 
 ```markdown
 ---
-format: 4
+format: 5
 approved: true
 root: internal/boardcli
+language: go
 ---
 
 # Plan: add --json to `lyx board list`
@@ -316,7 +333,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 # Card 1 — json-row-type
 
 **Create:**
-- `boardcli.RowJSON`
+- `internal/boardcli#RowJSON`
 
 **Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
 
@@ -330,7 +347,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 # Card 2 — json-flag
 
 **Edit:**
-- `boardcli.newListCmd`
+- `internal/boardcli#newListCmd`
 - `list.go`
 
 **Create:**
@@ -350,7 +367,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 # Card 3 — json-emission
 
 **Custom:**
-- `boardcli.emitJSON`
+- `internal/output#emitJSON`
 - `//internal/output/emit.go`
 
 **Uses:**
@@ -378,7 +395,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 # Card 5 — rowmapper-rename
 
 **Rename:**
-- `boardengine.MapRow` -> `boardengine.MapRowJSON`
+- `internal/boardengine#MapRow` -> `internal/boardengine#MapRowJSON`
 - `//internal/boardengine/rows.go` -> `//internal/boardengine/rowsjson.go`
 
 **Intent:** Rename the row mapper and its file to make the JSON-oriented behavior explicit ahead of a later extraction.
@@ -407,13 +424,13 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 **Intent:** Update the package doc comment and the standalone docs page describing `--json` output.
 ```
 
-`list.go`/`doc.go`/`list_json_test.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/doc.go`/`internal/boardcli/list_json_test.go`;
-the `//`-prefixed entries (`envelope.go`, `emit.go`, `legacyrows.go`, `rows.go`, `rowsjson.go`, `helppins.go`, `boardcli-json.md`) stay worktree-root-relative regardless of `root:`, escaping it for the files each card needs outside the shared prefix.
-`boardcli.newListCmd`, `boardcli.RowJSON`, `boardcli.emitJSON`, and `boardengine.MapRow`/`boardengine.MapRowJSON` are symbol-shaped entries and pass through every one of these resolution rules verbatim.
+`list.go`/`doc.go`/`list_json_test.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/doc.go`/`internal/boardcli/list_json_test.go`, then canonicalize (per the plan's `language: go`) to the file self glyphs `internal/boardcli/list.go#`/`internal/boardcli/doc.go#`/`internal/boardcli/list_json_test.go#`;
+the `//`-prefixed entries (`envelope.go`, `emit.go`, `legacyrows.go`, `rows.go`, `rowsjson.go`, `helppins.go`, `boardcli-json.md`) stay worktree-root-relative regardless of `root:`, escaping it for the files each card needs outside the shared prefix, and canonicalize to their own file self glyphs the same way.
+`internal/boardcli#newListCmd`, `internal/boardcli#RowJSON`, `internal/output#emitJSON`, and `internal/boardengine#MapRow`/`internal/boardengine#MapRowJSON` are glyph-shaped entries already, copied verbatim from a quarry answer, and pass through every one of these resolution rules byte-identical — a glyph is never `root:`-joined and never re-canonicalized.
 
 ## Related
 
 - [webster-spec.md](webster-spec.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - `contracts/stencils/loom/loom-template-plan.md` — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
-- [manifest/designs/plan-card-format.md](../../manifest/designs/plan-card-format.md) — the design doc this spec's format-4 rewrite implements.
+- [manifest/designs/plan-card-format.md](../../manifest/designs/plan-card-format.md) — the design doc this spec's format-4 rewrite implements. Format 5's glyph alphabet is a later, additive rewrite on top of it.

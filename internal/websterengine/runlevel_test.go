@@ -200,7 +200,7 @@ func seedRunPlanDir(t *testing.T, numCards int) string {
 		)
 		files[file] = body
 	}
-	files["00-overview.md"] = "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+	files["00-overview.md"] = "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
 		index.String()
 
 	for name, content := range files {

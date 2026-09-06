@@ -53,7 +53,7 @@ func TestParsePlan_PlanLevelSections_AbsentAreEmpty(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	overview := "---\nformat: 4\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
+	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
 	card := "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
 	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
 		t.Fatalf("write overview fixture: %v", err)
