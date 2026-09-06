@@ -35,6 +35,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/loomshed/planvalidate.go`
   - `internal/loomshed/planvalidate_test.go`
   - `internal/loomshed/gatefindings_test.go`
+  - `internal/loomshed/seam_enforcement_test.go`
   - `internal/loomrecipe/fixture_test.go`
 - **Creates:** none
 - **Deletes:** none
