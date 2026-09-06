@@ -1,0 +1,30 @@
+MILL_REVIEW_BEGIN
+# Review: webster standalone mode: run refuses to start Master; logs write untracked into target repo — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-06
+```
+
+## Findings
+
+No findings.
+
+Verified against all three batches and their Shared Decisions:
+
+- `shuttleengine.NewDetachedRunner`/`validateDetachedToldPaths` (run.go) match the exact signature, disjointness semantics, and error-string naming the plan specifies; `NewRunner`'s body, signature, and error strings are byte-identical to before. `paneCwd` is placed immediately after `worktreeRoot` in the struct. `wait.go`'s `finalize` now passes `run.runner.paneCwd` to `AuditForks`; `runDirRoot`/reed's state lookup/`FindRun` still read `anchorPath`. Doc comments on `Runner`, `NewRunner`, `NewDetachedRunner`, and `validateToldPaths` were all updated exactly as the plan's card 2 specifies. Test coverage (refusal table, acceptance table, both-`paneCwd`-position test, the direct-assignment `paneCwd`-divergence fork-audit test) matches card requirements, and the pre-existing hub-mode tests (`TestNewRunner_RefusesUnusableToldPaths`'s five original rows, `TestNewRunner_AcceptsHubGeometryShapes`, `wait_test.go`'s `anchorPath` assertion) are untouched.
+- `standalonegeom.LogsDir` (logsdir.go) is a pure `filepath.Join(stateDir, lyxdirs.DotLyxDirName, "logs")`, doc-commented with the non-convergence-with-`ReedGeometry.LogsDir` sentence, and enumerated in doc.go. `standalonegeom_test.go`'s `TestLogsDir` matches the shape and the non-convergence assertion.
+- `logger.sink.go`'s `resetDurableSinkLocked` extraction, `SetDurableSinkDir` delegation, and `SetDurableSinkDirWithWorktreeRoot`'s reset-then-set ordering are exactly as specified; `ensureDurableSink`/`headerLine`/`NotifyExit` untouched. `sink_test.go`'s rename, three new tests, and cleanup registrations all match.
+- `webstercli`/`burlercli` `wireStandalone` both switch to `NewDetachedRunner` and call `SetDurableSinkDirWithWorktreeRoot` immediately after `Derive` succeeds, before any other statement; `wireHub` is untouched in both. Doc comments fold in both new steps at the right positions (burler's "two asymmetries" paragraph preserved). Every test that sets the process-global sink override (directly or via `wireStandalone`) registers the `t.Cleanup` per the `sink-override-is-process-global` decision — verified across every case in both `wiring_test.go` files.
+- `cmd/lyx/prerunlogging_test.go` is a genuine AST-based guard (mirroring `spawnobservability_test.go`'s precedent, not a substring scan), correctly targets `Info`/`Warn` only (not `Debug`), and `tierpurity_test.go` carries the matching allowlist entry. `main.go`'s root `PersistentPreRunE` logs nothing before `seedStencils(cmd)`, consistent with the guard.
+- `webstercli/cli_integration_test.go`'s extension to `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged` lifts `LYX_TRACE=1`, computes `stateDir` via its own `Derive` call, and asserts both the positive trace-file-with-`worktree_root=` claim and the pre-existing emptiness assertion, scoped to `status` exactly as required.
+- `CONSTRAINTS.md`'s new bullet lands under the Told-Geometry Invariant (not the Shuttle Provider-Seam Invariant), phrased as the plan specifies.
+- No out-of-plan files present; the "All Files Touched" union in `00-overview.md` matches every file actually delivered.
+
+## Verdict
+
+APPROVE
+Every batch's cards are faithfully realized, cross-batch contracts hold, and no constraint is violated.
+MILL_REVIEW_END

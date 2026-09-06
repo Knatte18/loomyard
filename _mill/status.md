@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: standalonegeom-webster-run-and-log-hygiene
 branch: standalonegeom-webster-run-and-log-hygiene
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-shuttle-detached-runner  '2026-09-06T18:41:52Z'
 approved-logs-dir-and-sink-api  '2026-09-06T18:45:23Z'
 approved-standalone-wiring-and-docs  '2026-09-06T18:59:57Z'
 holistic-reviewing  '2026-09-06T19:00:36Z'
+holistic-approved  '2026-09-06T19:03:57Z'
 ```
 
 ## Batches
