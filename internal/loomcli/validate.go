@@ -7,9 +7,12 @@
 package loomcli
 
 import (
+	"errors"
+
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/spf13/cobra"
 )
@@ -67,6 +70,18 @@ Example:
 	}
 }
 
+// planFindingsHaveBlocking reports whether findings carries at least one planglyph.SeverityBlocking
+// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding: severity, not finding
+// count, decides the verdict on both sides of this parity pair.
+func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
+	for _, f := range findings {
+		if f.Severity == planglyph.SeverityBlocking {
+			return true
+		}
+	}
+	return false
+}
+
 // validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the Plan-Validate/
 // Plan-Revalidate mechanical gate, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
@@ -76,13 +91,14 @@ func (c *loomCLI) validatePlanCmd() *cobra.Command {
 		Use:   "validate-plan",
 		Short: "run the Plan-Validate gate's checks standalone against the current plan",
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
-two modes. With no flags, it runs planparser.ValidateFormat -- the same
+two modes. With no flags, it runs planglyph.ValidateFormat -- the same
 format-only check set the Plan-Validate mechanical gate runs before review,
 and the mode the plan writer calls before handoff. With --require-approved,
-it runs planparser.Validate -- the same full check set, including the
+it runs planglyph.Validate -- the same full check set, including the
 plan-unapproved approval gate, that the Plan-Revalidate mechanical gate runs
 after review settles. Either way it reports the result as one JSON
-envelope. It takes no arguments.
+envelope, carrying any informational findings under their own envelope key
+even on the success path. It takes no arguments.
 
 Example:
   lyx loom validate-plan
@@ -101,22 +117,37 @@ Example:
 				return nil
 			}
 
-			var findings []planparser.ValidationError
+			var findings []planglyph.Finding
 			if requireApproved {
-				findings = planparser.Validate(plan, c.env.WorktreeRoot)
+				findings, err = planglyph.Validate(plan, c.env.WorktreeRoot)
 			} else {
-				findings = planparser.ValidateFormat(plan, c.env.WorktreeRoot)
+				findings, err = planglyph.ValidateFormat(plan, c.env.WorktreeRoot)
 			}
-			if len(findings) > 0 {
+			if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
+				// Named for quarry, not the plan: an operator reading this envelope must never be
+				// told the plan is invalid when quarry simply could not answer -- this is the
+				// CLI-side half of loomshed's producer-side disposition, and the two must agree.
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: quarry could not answer validating plan at "+planDir+": "+err.Error()))
+				return nil
+			}
+
+			if planFindingsHaveBlocking(findings) {
 				clihelp.SetExit(cmd.Context(), output.ErrFields(out, "loom: plan is not yet valid", map[string]any{
 					"findings": renderFindings(findings),
 				}))
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+			fields := map[string]any{
 				"plan_dir": planDir,
-			}))
+			}
+			if len(findings) > 0 {
+				// Informational-only: surfaced for visibility on the pass path, under its own key
+				// rather than dropped, so a plan that introduces a new package is never silently
+				// reported as if nothing had been said about it.
+				fields["findings"] = renderFindings(findings)
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil
 		},
 	}

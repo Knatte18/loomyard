@@ -175,9 +175,10 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 	}
 
 	overview := "---\n" +
-		"format: 4\n" +
+		"format: 5\n" +
 		"approved: " + strconvBool(approved) + "\n" +
 		"root: \n" +
+		"language: none\n" +
 		"---\n\n" +
 		"# Plan: minimal validate-plan fixture\n\n" +
 		"## Card Index\n\n" +
@@ -207,6 +208,118 @@ func strconvBool(b bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+// glyphPlanFixture writes a syntactically complete, one-card language: go plan under
+// <anchorPath>/_lyx/plan/, whose sole card's Create group targets createTarget, and returns a
+// *loomCLI wired with anchorPath and worktreeRoot -- duplicated from
+// internal/loomshed/planvalidate_test.go's own seedGlyphPlanFixture per the
+// duplicate-test-helpers-rather-than-share-them Shared Decision.
+func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget string) *loomCLI {
+	t.Helper()
+
+	planDir := filepath.Join(anchorPath, "_lyx", "plan")
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+
+	overview := "---\n" +
+		"format: 5\n" +
+		"approved: true\n" +
+		"language: go\n" +
+		"---\n\n" +
+		"# Plan: minimal glyph validate-plan fixture\n\n" +
+		"## Card Index\n\n" +
+		"1 — validate-fixture — a minimal fixture card\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+
+	card := "# Card 1 — validate-fixture\n\n" +
+		"**Create:**\n" +
+		"- `" + createTarget + "`\n\n" +
+		"**Intent:** minimal fixture card for validate-plan tests.\n\n" +
+		"**Commit:** `1: validate-fixture`\n"
+	if err := os.WriteFile(filepath.Join(planDir, "01-validate-fixture.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	return &loomCLI{env: shedrecipe.Env{
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
+	}}
+}
+
+// writeGlyphRepoForCLITest writes files (keyed by repository-relative path) under a fresh
+// t.TempDir() and returns that directory's absolute path -- duplicated from
+// internal/planglyph/repo_test.go's writeFixtureRepo per the
+// duplicate-test-helpers-rather-than-share-them Shared Decision.
+func writeGlyphRepoForCLITest(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for rel, content := range files {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(full), err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) failed: %v", full, err)
+		}
+	}
+	return root
+}
+
+// TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess asserts that an informational-only
+// findings set (card 18's create-new-unit, on a Create target introducing a brand-new package)
+// still reports a success envelope, carrying the findings under their own key rather than dropping
+// them, per the severity-decides-the-verdict rule this CLI verb shares with the Plan-Validate
+// producer.
+func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
+	anchorPath := t.TempDir()
+	worktreeRoot := writeGlyphRepoForCLITest(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	c := glyphPlanFixture(t, anchorPath, worktreeRoot, "newpkg#Bar")
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d; want 0 (output: %q)", exitCode, out.String())
+	}
+
+	env := decodeSingleEnvelope(t, out.String())
+	if ok, _ := env["ok"].(bool); !ok {
+		t.Fatalf("envelope ok = %v; want true", env["ok"])
+	}
+	findings, hasFindings := env["findings"]
+	if !hasFindings {
+		t.Fatalf("envelope findings key absent; want the informational finding surfaced on the pass path (envelope: %v)", env)
+	}
+	if !envelopeContains(findings, "create-new-unit") {
+		t.Errorf("envelope findings does not mention %q; got: %v", "create-new-unit", env)
+	}
+}
+
+// TestValidatePlanCmd_QuarryUnavailableNamesQuarry asserts that a quarry-unavailable error maps to
+// output.Err with a message naming quarry rather than the plan, so an operator reading the envelope
+// is never told the plan is invalid when quarry simply could not answer.
+func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
+	anchorPath := t.TempDir()
+	worktreeRoot := filepath.Join(t.TempDir(), "does-not-exist")
+	c := glyphPlanFixture(t, anchorPath, worktreeRoot, "sub#Foo")
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil)
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+	}
+
+	env := decodeSingleEnvelope(t, out.String())
+	if ok, _ := env["ok"].(bool); ok {
+		t.Fatalf("envelope ok = %v; want false", env["ok"])
+	}
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "quarry") {
+		t.Errorf("envelope error = %q; want it to name quarry rather than the plan", errMsg)
+	}
 }
 
 // TestValidatePlanCmd_RequireApprovedFlagRegistered asserts the flag itself is registered on the
@@ -249,8 +362,11 @@ func TestValidatePlanCmd(t *testing.T) {
 		},
 		{
 			// Unapproved is the load-bearing case: the default (flag-absent) mode now succeeds --
-			// planparser.ValidateFormat never runs the plan-unapproved check -- while
+			// planglyph.ValidateFormat never runs the plan-unapproved check -- while
 			// --require-approved still reports the plan-unapproved finding, matching Plan-Revalidate.
+			// The findings substring pins the rendered severity too ("[blocking]"), asserting the
+			// blocking-findings case's severity is present in the error envelope, not just the check
+			// name.
 			name: "Unapproved",
 			build: func(anchorPath, worktreeRoot string) *loomCLI {
 				return planFixture(t, anchorPath, worktreeRoot, false)
@@ -261,7 +377,7 @@ func TestValidatePlanCmd(t *testing.T) {
 			wantExitRequire:  1,
 			wantOKRequire:    false,
 			wantFindRequire:  true,
-			wantFindingsName: "plan-unapproved",
+			wantFindingsName: "plan-unapproved[blocking]",
 		},
 		{
 			name: "ParseFault_NoPlanDirectory",

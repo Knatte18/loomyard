@@ -2,10 +2,20 @@
 // under `_lyx/plan/` (see contracts/specs/loom-plan-spec.md, the pinned spec this package
 // implements). No other package may read or write `_lyx/plan/` directly — every consumer
 // (the batcher, webster's master, and fork prompt rendering) goes through
-// planparser.ParsePlan and the Plan/Card model it returns, and the package's one write
-// path, SetApproved, is the only place any `_lyx/plan/` byte is ever rewritten — so the
-// on-disk grammar has exactly one reader and one writer, and the rest of webster never
-// re-derives it.
+// planparser.ParsePlan and the Plan/Card model it returns, and the package's three write
+// paths -- SetApproved (the approval flag), RewriteRefs (ref substitution across the plan,
+// rewrite.go), and AppendAmendment (the append-only amendment log, amendment.go) -- are the
+// only places any `_lyx/plan/` byte is ever rewritten — so the on-disk grammar has exactly
+// one reader and three named writers, and the rest of webster never re-derives it.
+//
+// # The Glyph Conversion Chokepoint Invariant
+//
+// This package is also bound by CONSTRAINTS.md's Glyph Conversion Chokepoint Invariant:
+// glyph.Self (glyphref.go) is the only path->glyph call, Glyph.UnitPath is the only
+// glyph->path call, and glyph.Parse plus Glyph.String are the only glyph grammar this
+// package uses. No `strings.TrimSuffix(s, "#")`, no reading Glyph.Unit as a disk path, and
+// no local regex over a glyph string anywhere in this package or its callers --
+// cmd/lyx/constraintchokepoint_test.go guards this mechanically.
 //
 // # Path ownership
 //
@@ -38,11 +48,16 @@
 // HasImpactSummary, HasVerify), its RetiredLabels (one entry per format-3 label the
 // card body still carried), and the optional Commit and Verify fields.
 //
-// Only path-shaped Targets/Uses/Pairs entries are normalized (see below); a
-// symbol-shaped entry is stored verbatim. Classification is by shape alone, at
-// validation time, via this package's own pure classifier (classify.go's
-// classifyRef/isPathRef) — never `go doc`, never a process spawn, so the package
-// stays a tier1-pure leaf per the Test Tier Purity Invariant.
+// Only path-shaped Targets/Uses/Pairs entries are normalized (see below), and
+// only an extension-carrying path-shaped entry is further canonicalized into
+// its glyph string at parse time; a glyph-, handle-, or symbol-shaped entry is
+// stored verbatim. Classification is by shape alone, via this package's own
+// pure classifier (classify.go's classifyRef/isPathRef/isGlyphRef/isHandleRef)
+// — never `go doc`, never a process spawn, so the package stays a tier1-pure
+// leaf per the Test Tier Purity Invariant. glyphref.go holds the sole
+// path->glyph call (glyph.Self) and the sole glyph->path call
+// (Glyph.UnitPath, used only by validate.go's disk-existence checks), per the
+// glyph-conversion-chokepoint Shared Decision.
 //
 // # The root:/// resolution rule
 //
@@ -80,8 +95,21 @@
 // pass instead of stopping at the first one. ParsePlan fails loud only on
 // document-structure errors — a missing or undecodable overview file, an unparseable
 // Card Index line, a missing card file, an unparseable card heading, or an inline
-// value where a field admits only a bullet list. The plan format's 17 validation
-// checks (card type presence, card-custom-not-alone, path malformation, the Rename
-// pair grammar, on-disk existence, and so on) are implemented by Validate in
-// validate.go, not by ParsePlan itself.
+// value where a field admits only a bullet list. The plan format's 27 validation
+// checks (card type presence, card-custom-not-alone, path malformation, the bare
+// package-qualified symbol and directory-target hard rules, the Rename pair
+// grammar, the plan: handle consistency checks, on-disk existence, and so on)
+// are implemented by Validate in validate.go, not by ParsePlan itself.
+//
+// # The language: key and the glyph alphabet
+//
+// The overview's optional `language:` frontmatter key names the alphabet a
+// plan's Targets/Uses/Pairs symbol-shaped entries are spelled in: "go" (the
+// default when the key is absent) enables glyph.Go's alphabet, and "none"
+// opts a plan out of it entirely, keeping every pre-glyph symbol-shaped
+// behavior unchanged. Under "go", ParsePlan canonicalizes every
+// extension-carrying path-shaped entry into its glyph string immediately
+// after root:/// resolution, and Plan.SurfaceRefs records each canonicalized
+// entry's pre-canonicalization surface lexeme, keyed by the owning card's
+// identity and the resulting canonical string.
 package planparser

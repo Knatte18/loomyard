@@ -254,7 +254,7 @@ const planFixtureCard = "# Card 1 — first-card\n\n**Create:**\n- `internal/fir
 // never drift apart.
 func planFixtureOverview(approved bool) string {
 	return fmt.Sprintf(
-		"---\nformat: 4\napproved: %t\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
+		"---\nformat: 5\napproved: %t\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
 		approved,
 	)
 }

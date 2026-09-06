@@ -16,8 +16,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -27,6 +31,12 @@ import (
 // This is the bracket-discipline fail-loud check: a fork's own report, however legitimate it looks,
 // is never trusted without Go's own record that begin-batch actually opened this batch first.
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
+
+// ErrCardNotDone is the sentinel RecordBatch returns when card 33's DoneChecks report a blocking
+// finding against the just-completed batch's own cards — a Create target that still does not
+// resolve, or a Delete target that still does — meaning the batch is not done and no terminal
+// digest is persisted. webster's own sentinel, per the webster-owns-its-own-domain-types decision.
+var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
 // RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently:
 // Batches is the batchifier-derived execution batches (see RunDeps.Batcher) `run` computed
@@ -53,6 +63,11 @@ type RecordDeps struct {
 	OutcomePath string
 	SummaryPath string
 	Sleeper     Sleeper
+	// Plan is the already-parsed plan — mirroring the field BeginDeps already carries. DoneChecks
+	// here, and BindHandles/DetectDrift in cards 34 and 36, all need the parsed plan, and RecordDeps
+	// carried none before this field: deps.Geom.PlanDir reaches the directory but nothing reached
+	// the plan itself.
+	Plan *planparser.Plan
 }
 
 // RecordResult is what one successful RecordBatch call hands back to its caller
@@ -172,6 +187,78 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 	if actualHead != report.HeadSHA {
 		return nil, fmt.Errorf("webster: batch report %s: head_sha %q does not match the worktree's actual HEAD %q", reportPath, report.HeadSHA, actualHead)
+	}
+
+	// A card's completion has a mechanical verdict: a Create target that still does not resolve,
+	// or a Delete target that still does, blocks — neither is a judgment call. This runs its own
+	// batched Resolve against the post-card tree, distinct from card 34's single delta call below.
+	doneFindings, err := planglyph.DoneChecks(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	var doneChecks []string
+	for _, f := range doneFindings {
+		doneChecks = append(doneChecks, f.Error())
+	}
+	if len(doneChecks) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(doneChecks, "; "))
+	}
+
+	// The batch's single delta call: BindHandles here, ScopeGuard (card 35) and DetectDrift (card
+	// 36) all consume this one quarry.GitDeltaAnswer rather than each spawning their own. bs.StartSHA
+	// is the begin-batch record's captured start SHA, and actualHead is the fork's self-reported
+	// head already cross-checked above against the worktree's real HEAD — that cross-check is why
+	// the delta can be trusted here and nowhere earlier.
+	// A DeltaGit infrastructure error does not abort the call sequence: card 35 degrades its own
+	// scope guard to an informational notice on this same deltaErr, while card 33's done-checks
+	// above already ran on their own Resolve and are unaffected. delta itself is the zero value on
+	// error, so BindHandles correctly cannot confirm any handle bound and reports bind-count-mismatch
+	// for every card that declared one — an unconfirmed Create is exactly a not-done card.
+	delta, deltaErr := planglyph.Delta(deps.Geom.WorktreeRoot, bs.StartSHA, actualHead)
+	if deltaErr != nil && !errors.Is(deltaErr, planglyph.ErrQuarryUnavailable) {
+		return nil, deltaErr
+	}
+
+	// Binding runs after the done-checks above, so a card that already failed create-not-done is
+	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
+	bindFindings, err := planglyph.BindHandles(deps.Plan, deps.Geom.PlanDir, delta, batch.Cards)
+	if err != nil {
+		return nil, err
+	}
+	var bindBlocking []string
+	for _, f := range bindFindings {
+		bindBlocking = append(bindBlocking, f.Error())
+	}
+	if len(bindBlocking) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(bindBlocking, "; "))
+	}
+
+	// The informational glyph scope guard: it stays informational and never blocks, and degrades
+	// explicitly on the same deltaErr above rather than running against a zero-value delta that
+	// would otherwise look like a real, empty one — an unavailable diff costs visibility, not
+	// correctness, and the done-checks above have already blocked on the same infrastructure error.
+	if deltaErr != nil {
+		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", polledID, deltaErr))
+	} else {
+		for _, f := range planglyph.ScopeGuard(batch.Cards, delta) {
+			warnings = append(warnings, f.Error())
+		}
+	}
+
+	// Drift detection runs after binding and before the digest is persisted, on the delta's own
+	// deleted-symbols-still-referenced signal. actualHead is the same verified head SHA already
+	// cross-checked above against the worktree's actual HEAD, threaded through as the triggering
+	// SHA every exact-tier repair's own amendment records.
+	driftFindings, err := planglyph.DetectDrift(deps.Plan, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	var driftBlocking []string
+	for _, f := range driftFindings {
+		driftBlocking = append(driftBlocking, f.Error())
+	}
+	if len(driftBlocking) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
 	}
 
 	digest := distill(report)

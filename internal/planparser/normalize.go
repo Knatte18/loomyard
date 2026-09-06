@@ -9,12 +9,20 @@
 // ParsePlan calls normalizeCard exactly once per card, right after that card's body is parsed, so
 // every downstream consumer — Validate included — only ever sees plain, forward-slash,
 // worktree-relative paths for the refs that are paths at all.
+//
+// This file also implements canonicalizeCard, which ParsePlan calls immediately after
+// normalizeCard, on the same card, to canonicalize an extension-carrying path-shaped ref into its
+// glyph string via the one path->glyph call, glyph.Self — see canonicalizeCard's own doc comment
+// for why the ordering and the file-extension gate are both load-bearing.
 
 package planparser
 
 import (
 	"path"
 	"path/filepath"
+	"strings"
+
+	"github.com/Knatte18/quarry/glyph"
 )
 
 // normalizeCardPath resolves one card file-op path per the plan-format three-case rule: "//" paths are always worktree-root-relative; otherwise join with root unless root is "."; malformed paths (absolute, ".." escapes) are left in place for Validate's card-path-malformed check.
@@ -90,4 +98,70 @@ func normalizeRefIfPath(root, raw string) string {
 		return raw
 	}
 	return normalizeCardPath(root, raw)
+}
+
+// hasFileExtension reports whether raw's final path segment (its base name) carries a "." — the
+// gate canonicalizeCard uses to decide whether a path-shaped ref is eligible for glyph
+// canonicalization at all. The gate is load-bearing, not an optimization: without it, canonicalizeCard
+// would rewrite a bare directory path such as "internal/foo" into the perfectly valid unit self
+// glyph "internal/foo#", leaving card 4's directory-target check nothing left to classify.
+func hasFileExtension(raw string) bool {
+	base := raw
+	if idx := strings.LastIndex(raw, "/"); idx != -1 {
+		base = raw[idx+1:]
+	}
+	return strings.Contains(base, ".")
+}
+
+// canonicalizeCard rewrites every path-shaped ref on card that also carries a file extension into
+// its canonical glyph string, and records the pre-canonicalization surface lexeme into
+// surface[cardKey][canonicalString]. It runs strictly after normalizeCard on the same card, walking
+// the identical field set: the card-level Targets, Uses and both endpoints of every Pairs entry,
+// and every TargetGroups[i].Refs entry and both endpoints of every TargetGroups[i].Pairs entry — the
+// group-level half is not optional, since checkProsaSymbolTarget, checkPathMissing,
+// checkCardFieldEmpty and createTargetsUnion all read group Refs rather than the card-level union.
+//
+// A ref not classified as refKindPath (a glyph, a plan: handle, or a symbol) is left byte-identical:
+// a glyph is already a complete repository-relative string, so prefixing it through glyph.Self would
+// corrupt it — this is also why a glyph is never root:-joined. A path-shaped ref carrying no file
+// extension (hasFileExtension false) is left untouched too, per the directory-target-preserving gate
+// documented on hasFileExtension. A glyph.Self error on an eligible path-shaped ref leaves the ref
+// untouched and is not a parse failure: the classification checks from classify.go already report a
+// malformed entry, and planparser is deliberately lenient at card level.
+func canonicalizeCard(card *Card, cardKey string, lang glyph.Language, surface map[string]map[string]string) {
+	canon := func(raw string) string {
+		if !isPathRef(raw) || !hasFileExtension(raw) {
+			return raw
+		}
+		g, err := glyph.Self(lang, raw)
+		if err != nil {
+			return raw
+		}
+		canonical := g.String()
+		if surface[cardKey] == nil {
+			surface[cardKey] = make(map[string]string)
+		}
+		surface[cardKey][canonical] = raw
+		return canonical
+	}
+
+	canonicalizeRefSlice(card.Targets, canon)
+	canonicalizeRefSlice(card.Uses, canon)
+	for i, p := range card.Pairs {
+		card.Pairs[i] = MovePair{Old: canon(p.Old), New: canon(p.New)}
+	}
+	for i := range card.TargetGroups {
+		canonicalizeRefSlice(card.TargetGroups[i].Refs, canon)
+		for j, p := range card.TargetGroups[i].Pairs {
+			card.TargetGroups[i].Pairs[j] = MovePair{Old: canon(p.Old), New: canon(p.New)}
+		}
+	}
+}
+
+// canonicalizeRefSlice applies canon to every element of refs in place, preserving the nil vs
+// empty-slice distinction normalizeRefSlice already preserves.
+func canonicalizeRefSlice(refs []string, canon func(string) string) {
+	for i, r := range refs {
+		refs[i] = canon(r)
+	}
 }

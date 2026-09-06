@@ -199,15 +199,19 @@ func fileImportsLogger(file *ast.File) bool {
 	return false
 }
 
-// fileHasSpawnCall reports whether file contains a real *ast.CallExpr whose Fun is an
-// *ast.SelectorExpr selecting Command or CommandContext off the file's own os/exec import name
-// (respecting an import alias). A file with no os/exec import has no spawn site by construction, and a
-// doc-comment mention of exec.Command is never a *ast.CallExpr in the first place.
+// fileHasSpawnCall reports whether file contains a real *ast.CallExpr that is either
+// exec.Command/exec.CommandContext off the file's own os/exec import name (respecting an import
+// alias), or a DeltaGit call expression — quarry's own (*quarry.Repo).DeltaGit spawns git via its
+// internal/gitsrc exactly as exec.Command does, so a call site reaching it is a real spawn this
+// guard must see too. The DeltaGit half is matched on the selector's own method name alone, an AST
+// match rather than a substring one (matching this guard's own documented design, deliberately
+// different from the tier-purity half's raw-substring one), so a doc-comment mention is still not a
+// call; it deliberately does not check the receiver's static type, mirroring the exec.Command half's
+// own reliance on the selector name plus the file's own import rather than full type information. A
+// file with no os/exec import and no DeltaGit call has no spawn site by construction, and a
+// doc-comment mention of either is never a *ast.CallExpr in the first place.
 func fileHasSpawnCall(file *ast.File) bool {
-	execName, ok := execImportName(file)
-	if !ok {
-		return false
-	}
+	execName, hasExec := execImportName(file)
 
 	found := false
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -220,6 +224,13 @@ func fileHasSpawnCall(file *ast.File) bool {
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
 		if !ok {
+			return true
+		}
+		if sel.Sel.Name == "DeltaGit" {
+			found = true
+			return false
+		}
+		if !hasExec {
 			return true
 		}
 		ident, ok := sel.X.(*ast.Ident)
@@ -311,6 +322,42 @@ func run() {
 }
 `,
 			want: true,
+		},
+		{
+			name: "DeltaGit call site with no logger import is reported",
+			src: `package p
+
+import "github.com/Knatte18/quarry/quarry"
+
+func run(r *quarry.Repo) {
+	r.DeltaGit("from", "to", ".")
+}
+`,
+			want: true,
+		},
+		{
+			name: "DeltaGit call site with a logger import is not reported",
+			src: `package p
+
+import (
+	"github.com/Knatte18/quarry/quarry"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+)
+
+func run(r *quarry.Repo) {
+	logger.Info("p: spawn")
+	r.DeltaGit("from", "to", ".")
+}
+`,
+			want: false,
+		},
+		{
+			name: "DeltaGit mention only in a doc comment is not a call",
+			src: `// Package p spawns via DeltaGit internally.
+package p
+`,
+			want: false,
 		},
 	}
 	for _, tt := range tests {

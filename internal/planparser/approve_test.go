@@ -16,7 +16,7 @@ import (
 // a plan-level "## Shared Decisions" body section, with approved: set to approvedValue.
 func richOverview(approvedValue string) string {
 	return "---\n" +
-		"format: 4\n" +
+		"format: 5\n" +
 		"approved: " + approvedValue + "\n" +
 		"root: internal/foo\n" +
 		"---\n" +
@@ -68,7 +68,7 @@ func TestSetApproved(t *testing.T) {
 		{
 			name: "missing approved key gets one inserted",
 			overview: "---\n" +
-				"format: 4\n" +
+				"format: 5\n" +
 				"root: internal/foo\n" +
 				"---\n" +
 				"\n" +
@@ -81,7 +81,7 @@ func TestSetApproved(t *testing.T) {
 				"1 — only — the only card\n",
 			withCardFile: true,
 			wantContent: "---\n" +
-				"format: 4\n" +
+				"format: 5\n" +
 				"root: internal/foo\n" +
 				"approved: true\n" +
 				"---\n" +

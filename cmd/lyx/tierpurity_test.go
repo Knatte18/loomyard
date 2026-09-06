@@ -57,11 +57,21 @@ var knownTierTags = []string{"integration", "smoke"}
 // untagged test calling it is exactly the expensive-spawn violation this guard exists to catch.
 // hubforge.SeedConfig and hubforge.SeedFabricConfig need no separate entries — both take a *Hub that
 // only NewHub can produce, so this token already covers every package that can reach them.
+// DeltaGit is deliberately narrow and deliberately NOT quarry.Open: only DeltaGit spawns a
+// process, while Resolve, TOC, Glyphs and Expand read files and Name performs no I/O at all, so
+// banning the constructor would force integration tags onto tests that spawn nothing. Raw-substring
+// is the right shape here, matching this guard's own documented design.
+// bannedTokens scans untagged *_test.go files, so it catches a DIRECT TEXTUAL DeltaGit call site
+// only — a test calling a planglyph wrapper that reaches DeltaGit transitively contains no such
+// token and still passes. The existing tokens accept exactly this limit and this one inherits it;
+// the guard narrows the gap, it does not close it, and a later change must not restate this as full
+// coverage.
 var bannedTokens = []string{
 	"gitexec.Run",
 	"exec.Command",
 	"gitkit.Copy",
 	"hubforge.NewHub",
+	"DeltaGit",
 }
 
 // tierPuritySkipDirs names directories the walk never descends into: version control
@@ -204,6 +214,28 @@ func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 			got := isTierTagged([]byte(tt.line))
 			if got != tt.want {
 				t.Errorf("isTierTagged(%q) = %v; want %v", tt.line, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFirstBannedToken_RecognizesDeltaGit proves the new token detection fires: an untagged test
+// file's raw source containing the literal DeltaGit token trips the guard exactly like every other
+// bannedTokens entry.
+func TestFirstBannedToken_RecognizesDeltaGit(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"direct DeltaGit call", "package p\n\nfunc f() { repo.DeltaGit(from, to, \".\") }\n", true},
+		{"no banned token at all", "package p\n\nfunc f() { repo.Resolve(targets) }\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, got := firstBannedToken([]byte(tt.src))
+			if got != tt.want {
+				t.Errorf("firstBannedToken(%q) bad = %v; want %v", tt.src, got, tt.want)
 			}
 		})
 	}

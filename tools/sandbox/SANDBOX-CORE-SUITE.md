@@ -252,6 +252,24 @@ Does `lyx loom pause` set `pause_requested` true while leaving every other field
 
 ---
 
+### S9 -- Glyph alphabet queries over the sandbox's own tree
+
+**Goal:** "Walk quarry's four read-only glyph queries against the sandbox repository itself,
+copying a glyph out of `glyphs`' own output rather than typing one by hand."
+
+**Covers:** quarry
+
+**Watch:** Does `lyx quarry toc <a package directory>` render a well-formed JSON table-of-contents answer for that directory?
+Does `lyx quarry glyphs <that same directory>` render a flat, non-empty glyph index -- a `symbols` list with an `id` on each entry?
+Copy one entry's `id` value verbatim from that output, rather than typing a spelling by hand.
+Does `lyx quarry resolve <that copied glyph>` report it `found`?
+Pick a type glyph from the same index (or a directory glyph, if none of the package's exported symbols are a type) and does `lyx quarry expand <that glyph>` report its head plus its members?
+Do all four commands run against the sandbox's own worktree with no repository-path flag, and does each answer read as quarry's own rendering rather than something reshaped or filtered?
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox/reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
 
 ## Session log format
@@ -271,6 +289,7 @@ S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 S7: <OK|WARN|FAIL> -- <one-line note if not OK>
 S8: <OK|WARN|FAIL> -- <one-line note if not OK>
+S9: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

@@ -10,6 +10,7 @@ package webstercli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -109,12 +110,17 @@ Example:
 				OutcomePath: websterengine.OutcomePath(c.geom.WebsterDir),
 				SummaryPath: summaryparser.Path(c.geom.WebsterDir),
 				Sleeper:     realSleeper{},
+				Plan:        plan,
 			}
 
 			result, err := websterengine.RecordBatch(deps, batchNumber)
 			if err != nil {
 				_ = mutateLock.Release()
 				mutateHeld = false
+				if errors.Is(err, websterengine.ErrCardNotDone) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"card_not_done": true}))
+					return nil
+				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}

@@ -46,11 +46,29 @@ type Plan struct {
 	// Root mirrors the overview frontmatter's optional root: field.
 	Root string
 
+	// Language mirrors the overview frontmatter's optional language: key. Legal values are the
+	// alphabets the glyph package implements (today "go") plus the literal "none", opting a plan
+	// out of the glyph alphabet entirely. Absent defaults to "go".
+	Language string
+
 	// Framing is the task-framing paragraph(s) between the overview's title heading and its "## Card Index" heading.
 	Framing string
 
 	// Cards is every card the Card Index lists, in index order.
 	Cards []Card
+
+	// SurfaceRefs records, for a canonicalized path-shaped ref, the pre-canonicalization surface
+	// lexeme that ref's own card actually carried on disk. It is keyed card identity first
+	// (the same "N-<slug>" string cardID builds), canonical model string second — the two-level
+	// shape matters: two cards may legitimately spell one canonical string differently (a plain
+	// path on one card, its file self glyph on another), and a flat one-level map would silently
+	// lose one of them.
+	// Card.Targets/Uses/Pairs stay []string/[]MovePair and unchanged in type, holding the
+	// canonicalized glyph strings, so websterengine.deriveEdges and refsIntersect never see the
+	// difference; a later batch's RewriteRefs is SurfaceRefs' only consumer.
+	// A glyph-shaped ref copied verbatim from a quarry answer, or any ref under Language "none",
+	// never appears here at all.
+	SurfaceRefs map[string]map[string]string
 
 	// SharedDecisions is the raw body text of the overview's optional "## Shared Decisions" section.
 	SharedDecisions string
@@ -112,6 +130,17 @@ type Card struct {
 	// Retained because downstream consumers and the card-generic checks read it.
 	RenameRaw []string
 
+	// Declarations is the flat union across every Create group's own Declarations, in body
+	// order: one entry per "**Create:**" sub-bullet written in the two-field
+	// `plan:<draft-handle>` -> `<declaration head>` arrow grammar.
+	Declarations []CardDeclaration
+
+	// CreateRaw is the flat union across every Create group's own CreateRaw, in body order: one
+	// entry per "**Create:**" sub-bullet whose payload carries the " -> " arrow but fails the
+	// two-field declaration grammar, named the way RenameRaw is named and read by
+	// checkHandleMalformed (validate.go).
+	CreateRaw []string
+
 	// Uses is the card's "**Uses:**" field: refs the card reads or depends on without targeting.
 	Uses []string
 
@@ -167,6 +196,23 @@ type TargetGroup struct {
 	// RenameRaw is every sub-bullet under this group's own "**Rename:**" label that failed the
 	// two-symbol pair grammar. Populated when Type is CardTypeRename only.
 	RenameRaw []string
+
+	// Declarations is every "**Create:**" sub-bullet this group's own label carried in the
+	// two-field `plan:<draft-handle>` -> `<declaration head>` arrow grammar. Populated when
+	// Type is CardTypeCreate only.
+	Declarations []CardDeclaration
+
+	// CreateRaw is every sub-bullet under this group's own "**Create:**" label whose payload
+	// carries the " -> " arrow but fails the two-field declaration grammar. Populated when Type
+	// is CardTypeCreate only.
+	CreateRaw []string
+}
+
+// CardDeclaration is one "**Create:**" sub-bullet's handle and declaration head, both verbatim:
+// the handle is the `plan:<draft-handle>` token left of the arrow, and Decl is the declaration
+// head text right of it.
+type CardDeclaration struct {
+	Handle, Decl string
 }
 
 // MovePair is one well-formed "old -> new" sub-bullet: a Rename card declaring that Old is
