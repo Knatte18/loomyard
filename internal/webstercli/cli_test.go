@@ -311,6 +311,119 @@ func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
 	}
 }
 
+// seedGlyphPlanDir writes a syntactically complete, one-card language: go plan into dir, whose sole
+// card's Create group targets createTarget. It also writes worktreeRoot/sub/a.go so a glyph target
+// naming the "sub" unit resolves, and returns nothing -- callers read back through c.geom.PlanDir /
+// c.geom.WorktreeRoot exactly as seedValidPlanDir's other callers do.
+func seedGlyphPlanDir(t *testing.T, planDir, worktreeRoot, createTarget string) {
+	t.Helper()
+
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — only — placeholder card\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	card := "# Card 1 — only\n\n**Create:**\n- `" + createTarget + "`\n\n**Intent:** placeholder card.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "01-only.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	subDir := filepath.Join(worktreeRoot, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "a.go"), []byte("package sub\n\nfunc Foo() {}\n"), 0o644); err != nil {
+		t.Fatalf("write sub/a.go: %v", err)
+	}
+}
+
+// TestValidateCmd_InformationalFindingsSurfaceOnSuccess asserts that an informational-only findings
+// set (create-new-unit, on a Create target introducing a brand-new package) still reports a
+// success envelope, carrying the findings under their own key rather than dropping them.
+func TestValidateCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
+	c, _ := newTestCLI(t)
+	seedGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot, "newpkg#Bar")
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+	if exitCode != 0 {
+		t.Fatalf("validate on an informational-only plan = %d; want 0, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"valid":true`) {
+		t.Errorf("output missing valid:true; got %q", got)
+	}
+	if !strings.Contains(got, "create-new-unit") {
+		t.Errorf("output missing the surfaced informational finding create-new-unit; got %q", got)
+	}
+}
+
+// TestValidateCmd_BlockingFindingCarriesSeverity asserts a blocking finding's error envelope
+// carries the finding's own severity alongside check/card/detail.
+func TestValidateCmd_BlockingFindingCarriesSeverity(t *testing.T) {
+	c, _ := newTestCLI(t)
+	// "sub#Missing" resolves not_found with unit: found -- statusFindings' blocking glyph-not-found.
+	seedGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot, "sub#Foo")
+	card := "# Card 1 — only\n\n**Create:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Missing`\n\n**Intent:** placeholder card.\n"
+	if err := os.WriteFile(filepath.Join(c.geom.PlanDir, "01-only.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+	if exitCode != 1 {
+		t.Fatalf("validate on a blocking-findings plan = %d; want 1, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"ok":false`) {
+		t.Errorf("output missing ok:false; got %q", got)
+	}
+	if !strings.Contains(got, `"check":"glyph-not-found"`) {
+		t.Errorf("output missing check:glyph-not-found; got %q", got)
+	}
+	if !strings.Contains(got, `"severity":"blocking"`) {
+		t.Errorf("output missing severity:blocking on the blocking finding; got %q", got)
+	}
+}
+
+// TestValidateCmd_QuarryUnavailableNamesQuarry asserts that a quarry-unavailable error maps to
+// output.Err with a message naming quarry rather than the plan.
+func TestValidateCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
+	c, _ := newTestCLI(t)
+	planDir := c.geom.PlanDir
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — only — placeholder card\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	card := "# Card 1 — only\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** placeholder card.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "01-only.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+	// c.geom is a plain struct value, so this field write reaches only this test's *websterCLI;
+	// pointing WorktreeRoot at a path that does not exist, decoupled from planDir's own real
+	// on-disk location, is what makes quarry.Open fail without disturbing ParsePlan's own read.
+	c.geom.WorktreeRoot = filepath.Join(t.TempDir(), "does-not-exist")
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+	if exitCode != 1 {
+		t.Fatalf("validate with an unopenable worktreeRoot = %d; want 1, output: %s", exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), "quarry") {
+		t.Errorf("output does not name quarry; want it to name quarry rather than the plan; got %q", out.String())
+	}
+}
+
 func TestStatusCmd_NotInitialized(t *testing.T) {
 	c, _ := newTestCLI(t)
 

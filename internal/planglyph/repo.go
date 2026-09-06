@@ -45,6 +45,18 @@ type Finding struct {
 	Severity Severity
 }
 
+// Error implements the error interface, formatted as "check[/card]: detail", exactly as
+// planparser.ValidationError.Error does, plus its own Severity — so a caller rendering a mixed
+// []planglyph.Finding set (via renderFindings in internal/loomcli/validate.go) can distinguish an
+// informational create-new-unit from a blocking glyph-not-found in the one string that record
+// exists.
+func (f Finding) Error() string {
+	if f.Card == "" {
+		return fmt.Sprintf("%s[%s]: %s", f.Check, f.Severity, f.Detail)
+	}
+	return fmt.Sprintf("%s/%s[%s]: %s", f.Check, f.Card, f.Severity, f.Detail)
+}
+
 // fromValidationError converts v into a Finding stamped SeverityBlocking — the severity every
 // planparser check reports today, per the plan's blocking-policy Shared Decision.
 func fromValidationError(v planparser.ValidationError) Finding {

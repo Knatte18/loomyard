@@ -339,6 +339,31 @@ func addCardUses(t *testing.T, planDir string, cardNumber int, ref string) {
 	}
 }
 
+// addCardCreateTarget rewrites an already-seeded card file under planDir to add target as an
+// additional bullet under the card's existing "**Create:**" group, ahead of its own
+// seedRunPlanDir-written path target -- so a test can add a glyph-shaped Create target alongside
+// the plain-path one every seedRunPlanDir card already carries, without disturbing it.
+func addCardCreateTarget(t *testing.T, planDir string, cardNumber int, target string) {
+	t.Helper()
+	slug := fmt.Sprintf("batch%d", cardNumber)
+	path := filepath.Join(planDir, fmt.Sprintf("%02d-%s.md", cardNumber, slug))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read card fixture %s: %v", path, err)
+	}
+	const marker = "**Create:**\n"
+	body := string(data)
+	idx := strings.Index(body, marker)
+	if idx == -1 {
+		t.Fatalf("card fixture %s carries no **Create:** marker to splice an extra target under", path)
+	}
+	insertAt := idx + len(marker)
+	newBody := body[:insertAt] + fmt.Sprintf("- `%s`\n", target) + body[insertAt:]
+	if err := os.WriteFile(path, []byte(newBody), 0o644); err != nil {
+		t.Fatalf("write card fixture with an extra Create target: %v", err)
+	}
+}
+
 // seedMatchingState saves st into fx's webster dir after stamping its
 // PlanFingerprint to match fx's own on-disk plan directory (and defaulting
 // its Batches map when nil), so Run's own fingerprint gate passes and the
@@ -403,6 +428,82 @@ func TestRun_ZeroBatchPlanRefusedLoud(t *testing.T) {
 	}
 	if fx.Starter.callCount() != 0 {
 		t.Errorf("Starter was reached (%d calls) for a zero-batch plan; want zero", fx.Starter.callCount())
+	}
+}
+
+// TestRun_BlockingGlyphFindingRefusesRun proves that a blocking planglyph finding -- glyph-not-found,
+// from a Uses: entry naming a unit that exists but a member that does not -- refuses the run before
+// ever spawning Master, exactly as the pre-existing planparser-only findings already did, matching
+// the pre-flight gate this batch moves onto planglyph.
+func TestRun_BlockingGlyphFindingRefusesRun(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	addCardUses(t, fx.PlanDir, 1, "sub#Missing")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() error = nil; want a plan-validation refusal for the blocking glyph-not-found finding")
+	}
+	if !strings.Contains(err.Error(), "glyph-not-found") {
+		t.Errorf("Run() error = %v; want it to name glyph-not-found", err)
+	}
+	if fx.Starter.callCount() != 0 {
+		t.Errorf("Starter was reached (%d calls) for a blocking-findings plan; want zero", fx.Starter.callCount())
+	}
+}
+
+// TestRun_InformationalFindingsDoNotRefuseRun proves that an informational-only findings set --
+// create-new-unit, on a Create target introducing a brand-new package -- does not refuse the run:
+// Run reaches the Master spawn exactly as it would for a plan carrying no findings at all, per the
+// severity-decides-the-verdict rule this pre-flight gate shares with the Plan-Validate producer and
+// the validate-plan/validate CLI verbs.
+func TestRun_InformationalFindingsDoNotRefuseRun(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	addCardCreateTarget(t, fx.PlanDir, 1, "newpkg#Bar")
+
+	wantSessionID := "master-session-informational"
+	wantRunDir := "/run/dir/informational"
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-informational",
+		result: shuttleengine.Result{
+			Outcome:              shuttleengine.OutcomeAsking,
+			SessionID:            wantSessionID,
+			RunDir:               wantRunDir,
+			LastAssistantMessage: "why do you ask?",
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-informational", wantSessionID)
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	var target *websterengine.MasterAskingError
+	if !errors.As(err, &target) {
+		t.Fatalf("Run() error = %v; want a *MasterAskingError, proving the informational-only findings set never refused the run before the spawn", err)
+	}
+	if fx.Starter.callCount() != 1 {
+		t.Errorf("Starter.callCount() = %d; want 1 -- an informational-only findings set must reach the Master spawn", fx.Starter.callCount())
+	}
+}
+
+// TestRun_QuarryUnavailableRefusesRunNamingQuarry proves that a quarry-unavailable error -- an
+// unopenable WorktreeRoot -- refuses the run before ever spawning Master, with an error message
+// naming quarry rather than the plan, matching internal/loomshed/planvalidate.go's producer-side
+// disposition and internal/loomcli/validate.go and internal/webstercli/validate.go's CLI-side halves
+// of this same parity.
+func TestRun_QuarryUnavailableRefusesRunNamingQuarry(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "does-not-exist")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() error = nil; want a quarry-unavailable refusal")
+	}
+	if !strings.Contains(err.Error(), "quarry") {
+		t.Errorf("Run() error = %v; want it to name quarry rather than the plan", err)
+	}
+	if fx.Starter.callCount() != 0 {
+		t.Errorf("Starter was reached (%d calls) for a quarry-unavailable worktreeRoot; want zero", fx.Starter.callCount())
 	}
 }
 
@@ -1170,18 +1271,13 @@ func runToDone(t *testing.T, fx *runFixture, strandGUID, sessionID string, forks
 func TestRun_ReorderingIsObservableInMasterPrompt(t *testing.T) {
 	fx := newRunFixture(t, 2)
 
-	// Card 1 Uses card 2's own Create target, so batch 2 must run before
-	// batch 1. The path is a Create target of card 2 within the same plan
-	// (satisfied by planparser's own createTargetsUnion check), but this also
-	// creates the file for real under the worktree, mirroring a genuine
-	// cross-card file dependency.
+	// Card 1 Uses card 2's own Create target, so batch 2 must run before batch 1. The path is a
+	// Create target of card 2 within the same plan, satisfied by planparser's own
+	// createTargetsUnion check -- and deliberately NOT also seeded for real under the worktree:
+	// under this fixture's default language: go, a Create target's own self-glyph would then
+	// resolve found against the real repo, tripping the blocking create-already-exists finding this
+	// batch's move onto planglyph now checks for real, which is not what this test is about.
 	addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
-	if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "batch2"), 0o755); err != nil {
-		t.Fatalf("mkdir internal/batch2: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "batch2", "new.go"), []byte("package batch2\n"), 0o644); err != nil {
-		t.Fatalf("seed internal/batch2/new.go: %v", err)
-	}
 
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
@@ -1213,19 +1309,13 @@ func TestRun_ReorderingIsObservableInMasterPrompt(t *testing.T) {
 func TestRun_CycleReportingSurfacesOnRunResultButNeverFails(t *testing.T) {
 	fx := newRunFixture(t, 2)
 
-	// Card 1 Uses card 2's target and card 2 Uses card 1's target: a mutual
-	// dependency SequenceBatches condenses into one cycle.
+	// Card 1 Uses card 2's target and card 2 Uses card 1's target: a mutual dependency
+	// SequenceBatches condenses into one cycle. Neither path is also seeded for real under the
+	// worktree, for the same reason TestRun_ReorderingIsObservableInMasterPrompt's own doc comment
+	// gives: doing so would trip the blocking create-already-exists finding this batch's move onto
+	// planglyph now checks for real, over a Create target's own default-language self-glyph.
 	addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
 	addCardUses(t, fx.PlanDir, 2, "internal/batch1/new.go")
-	for _, slug := range []string{"batch1", "batch2"} {
-		dir := filepath.Join(fx.Worktree, "internal", slug)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir internal/%s: %v", slug, err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "new.go"), []byte("package "+slug+"\n"), 0o644); err != nil {
-			t.Fatalf("seed internal/%s/new.go: %v", slug, err)
-		}
-	}
 
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{

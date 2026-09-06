@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -167,6 +168,20 @@ type RunResult struct {
 	// SequenceBatches condensed for this run — always informational, never
 	// a failure, and empty for the overwhelmingly common acyclic plan.
 	Cycles []Cycle
+}
+
+// hasBlockingFinding reports whether findings carries at least one planglyph.SeverityBlocking
+// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and
+// internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides
+// the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the
+// other three mirror.
+func hasBlockingFinding(findings []planglyph.Finding) bool {
+	for _, f := range findings {
+		if f.Severity == planglyph.SeverityBlocking {
+			return true
+		}
+	}
+	return false
 }
 
 // newRunGUID returns a 128-bit random identifier, hex-encoded, generated
@@ -331,7 +346,14 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
-	if findings := planparser.Validate(plan, deps.Geom.WorktreeRoot); len(findings) > 0 {
+	findings, err := planglyph.Validate(plan, deps.Geom.WorktreeRoot)
+	if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
+		// Its own returned error, named for quarry rather than the plan, distinct from the findings
+		// refusal below -- a gate that could not read the code has not found a plan defect to refuse
+		// the run over, matching internal/loomshed/planvalidate.go's producer-side disposition.
+		return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w", deps.Geom.PlanDir, err)
+	}
+	if hasBlockingFinding(findings) {
 		msgs := make([]string, len(findings))
 		for i, f := range findings {
 			msgs[i] = f.Error()
