@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shuttle-detached-runner
 slug: standalonegeom-webster-run-and-log-hygiene
 branch: standalonegeom-webster-run-and-log-hygiene
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-review-r2  '2026-09-06T18:33:40Z'
 plan-fix-r2  '2026-09-06T18:34:39Z'
 planned  '2026-09-06T18:34:48Z'
 implementing  '2026-09-06T18:35:29Z'
+approved-shuttle-detached-runner  '2026-09-06T18:41:52Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ implementing  '2026-09-06T18:35:29Z'
 ```yaml
 batches:
   - name: shuttle-detached-runner
-    state: running
+    state: approved
     implementer_session: a608bb93-556c-460b-b5bf-cac0f66c20b5
     start_sha: 8cf998ff1b2c8929e7e6a33d203cb2d81543594b
+    commit_sha: 9271a1c0851204c4a4991102a42b725529205056
     verify_baseline_failures: []
   - name: logs-dir-and-sink-api
     state: pending
