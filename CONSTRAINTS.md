@@ -210,7 +210,14 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 
 `internal/planparser` is the SOLE parser and writer of the on-disk plan format (`_lyx/plan/`).
 
-- Consumers read only from the `planparser.Plan` model. `SetApproved` is the one write path.
+- Consumers read only from the `planparser.Plan` model. `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), and `AppendAmendment` (the append-only amendment log) are the three write paths — and no others.
+
+## Glyph Conversion Chokepoint Invariant
+
+loomyard performs no glyph↔path conversion of its own.
+
+- `glyph.Self` is the only path→glyph call. `Glyph.UnitPath` is the only glyph→path call. `glyph.Parse` plus `Glyph.String` are the only glyph grammar.
+- Forbidden: a `#`-trimming suffix operation over a glyph-typed value, reading `Glyph.Unit` as a disk path, and a local regex over a glyph string.
 
 ## Discussionparser Sole-Parser Invariant
 

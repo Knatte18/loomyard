@@ -2,10 +2,20 @@
 // under `_lyx/plan/` (see contracts/specs/loom-plan-spec.md, the pinned spec this package
 // implements). No other package may read or write `_lyx/plan/` directly — every consumer
 // (the batcher, webster's master, and fork prompt rendering) goes through
-// planparser.ParsePlan and the Plan/Card model it returns, and the package's one write
-// path, SetApproved, is the only place any `_lyx/plan/` byte is ever rewritten — so the
-// on-disk grammar has exactly one reader and one writer, and the rest of webster never
-// re-derives it.
+// planparser.ParsePlan and the Plan/Card model it returns, and the package's three write
+// paths -- SetApproved (the approval flag), RewriteRefs (ref substitution across the plan,
+// rewrite.go), and AppendAmendment (the append-only amendment log, amendment.go) -- are the
+// only places any `_lyx/plan/` byte is ever rewritten — so the on-disk grammar has exactly
+// one reader and three named writers, and the rest of webster never re-derives it.
+//
+// # The Glyph Conversion Chokepoint Invariant
+//
+// This package is also bound by CONSTRAINTS.md's Glyph Conversion Chokepoint Invariant:
+// glyph.Self (glyphref.go) is the only path->glyph call, Glyph.UnitPath is the only
+// glyph->path call, and glyph.Parse plus Glyph.String are the only glyph grammar this
+// package uses. No `strings.TrimSuffix(s, "#")`, no reading Glyph.Unit as a disk path, and
+// no local regex over a glyph string anywhere in this package or its callers --
+// cmd/lyx/constraintchokepoint_test.go guards this mechanically.
 //
 // # Path ownership
 //
