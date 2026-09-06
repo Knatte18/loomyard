@@ -47,9 +47,10 @@ self-resolved-verify-logic  '2026-09-06T11:38:01Z'
 batches:
   - name: quarry-dependency
     state: running
-    implementer_session: ca406945-ff64-47dd-b6f9-58a8746ca40e
-    start_sha: 62abcda901c53544f20dea4f6440da19aa59b4fd
+    implementer_session: 3eb01588-7ff8-4d2b-84cc-41964efea8e7
+    start_sha: 005769bcc55e222b4e5e93220658deb83b112e0e
     verify_baseline_failures: []
+    self_resolve_remint_at: '2026-09-06T11:38:01Z'
   - name: planparser-alphabet
     state: pending
     verify_baseline_failures: []
