@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
+phase: implementing
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -40,6 +40,7 @@ planned  '2026-09-06T11:34:40Z'
 implementing  '2026-09-06T11:35:13Z'
 self-resolved-verify-logic  '2026-09-06T11:38:01Z'
 blocked  '2026-09-06T11:39:18Z'
+implementing  '2026-09-06T11:46:04Z'
 ```
 
 ## Batches
@@ -47,10 +48,9 @@ blocked  '2026-09-06T11:39:18Z'
 ```yaml
 batches:
   - name: quarry-dependency
-    state: blocked
+    state: pending
     implementer_session: 3eb01588-7ff8-4d2b-84cc-41964efea8e7
     start_sha: 005769bcc55e222b4e5e93220658deb83b112e0e
-    blocked_reason: 'verify/logic: unresolved after retry'
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-06T11:38:01Z'
   - name: planparser-alphabet
