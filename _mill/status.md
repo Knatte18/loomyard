@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-alphabet
+phase: approved-planparser-handles
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -43,6 +43,7 @@ blocked  '2026-09-06T11:39:18Z'
 implementing  '2026-09-06T11:46:04Z'
 approved-quarry-dependency  '2026-09-06T11:52:58Z'
 approved-planparser-alphabet  '2026-09-06T12:14:38Z'
+approved-planparser-handles  '2026-09-06T12:37:43Z'
 ```
 
 ## Batches
@@ -63,9 +64,10 @@ batches:
     commit_sha: ecfd73e119ae166b7948ac4cfde7bcece66935d1
     verify_baseline_failures: []
   - name: planparser-handles
-    state: running
+    state: approved
     implementer_session: 31181b28-54b0-4c76-8248-7b1319f09b66
     start_sha: 1ba62dd347f2004cb57ec3301f411380f6c7e8b2
+    commit_sha: 12cb12eedec1830f2274041f60b9b89272063848
     verify_baseline_failures: []
   - name: planglyph
     state: pending
