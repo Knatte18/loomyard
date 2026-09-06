@@ -38,6 +38,8 @@ batches:
     commit_sha: b30f555f362bac2e33a696039c89609ca1dab899
     verify_baseline_failures: []
   - name: fabric-creel-and-close
-    state: pending
+    state: running
+    implementer_session: 09d03661-189d-404f-b04c-dbb84d8ab68d
+    start_sha: c4694bf549defbf63cf1f38639c2170807a0d100
     verify_baseline_failures: []
 ```
