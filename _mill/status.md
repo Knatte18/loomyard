@@ -41,7 +41,9 @@ batches:
     commit_sha: 9271a1c0851204c4a4991102a42b725529205056
     verify_baseline_failures: []
   - name: logs-dir-and-sink-api
-    state: pending
+    state: running
+    implementer_session: 88fc30b8-f510-4167-843c-c68aaf6214a2
+    start_sha: 0f7f586ff8e083ad331eab81cf1b73f826f360f0
     verify_baseline_failures: []
   - name: standalone-wiring-and-docs
     state: pending
