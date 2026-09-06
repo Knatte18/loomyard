@@ -1,1 +1,0 @@
-- Mid-line semicolons left unbroken despite card 11's own verification pass: Location: manifest/designs/reed-fabric-standalone-api.md:61,105,172,194,197,207,271,487,488; nine lines joined two independent clauses with a mid-line semicolon instead of a semantic line break.
