@@ -586,6 +586,66 @@ func TestRecordBatch_BindsHandleFromDeltaEndToEnd(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_ScopeGuardFindingsLandInWarnings proves card 35's wiring: a symbol touched
+// outside the completed batch's own target glyphs lands as an informational finding in
+// RecordResult.Warnings, and the batch still terminates.
+func TestRecordBatch_ScopeGuardFindingsLandInWarnings(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	// A symbol added outside the plan's own declared targets.
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Surprise() {}\n", "01.2: add Surprise")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	fx.Deps.Plan.Cards[0].Targets = []string{"unrelated/thing#Nothing"}
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "scope-outside-plan") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RecordResult.Warnings = %v; want a scope-outside-plan finding", result.Warnings)
+	}
+}
+
+// TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable proves the guard's own degradation path: a
+// DeltaGit infrastructure error (an unresolvable start SHA) records the guard-could-not-run notice
+// and never panics — the batch still terminates, since neither the done-checks above (their own
+// Resolve, unaffected) nor BindHandles (this card's card carries no Create declaration) has
+// anything to block on.
+func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	fx.Deps.State.Batches[1].StartSHA = "does-not-exist-rev"
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil (the scope guard alone must degrade, not fail the run)", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "could not run") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RecordResult.Warnings = %v; want the guard-could-not-run notice", result.Warnings)
+	}
+}
+
 // TestRecordBatch_DoneChecksPassOnLandedCreate proves the happy path: a Create target whose
 // symbol actually landed in the batch's own work commit passes the done-checks and the batch
 // still terminates cleanly.

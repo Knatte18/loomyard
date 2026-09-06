@@ -232,6 +232,18 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(bindBlocking, "; "))
 	}
 
+	// The informational glyph scope guard: it stays informational and never blocks, and degrades
+	// explicitly on the same deltaErr above rather than running against a zero-value delta that
+	// would otherwise look like a real, empty one — an unavailable diff costs visibility, not
+	// correctness, and the done-checks above have already blocked on the same infrastructure error.
+	if deltaErr != nil {
+		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", polledID, deltaErr))
+	} else {
+		for _, f := range planglyph.ScopeGuard(batch.Cards, delta) {
+			warnings = append(warnings, f.Error())
+		}
+	}
+
 	digest := distill(report)
 	digest.Batch = polledID
 
