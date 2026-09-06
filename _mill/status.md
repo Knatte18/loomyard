@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: standalonegeom-webster-run-and-log-hygiene
 branch: standalonegeom-webster-run-and-log-hygiene
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-standalone-wiring-and-docs  '2026-09-06T18:59:57Z'
 holistic-reviewing  '2026-09-06T19:00:36Z'
 holistic-approved  '2026-09-06T19:03:57Z'
 done  '2026-09-06T19:05:34Z'
+pr-pending  '2026-09-06T19:07:53Z'
 ```
 
 ## Batches
