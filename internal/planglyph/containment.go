@@ -9,6 +9,7 @@ package planglyph
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
@@ -44,7 +45,17 @@ func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) [
 	var members []memberEntry
 	var selves []selfEntry
 
-	for target, cards := range byTarget {
+	// byTarget is a map, and a Go map range is randomised, so walking it directly made the finding
+	// order differ between two runs over an identical plan whenever more than one overlap existed.
+	// Every sibling pass in this package sorts deliberately; this one now does too.
+	targets := make([]string, 0, len(byTarget))
+	for target := range byTarget {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+
+	for _, target := range targets {
+		cards := sortedCards(byTarget[target])
 		g, err := glyph.Parse(lang, target)
 		if err != nil {
 			continue // not glyph-shaped: a path, a symbol, or a plan: handle.
