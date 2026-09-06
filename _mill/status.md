@@ -56,7 +56,9 @@ batches:
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-06T11:38:01Z'
   - name: planparser-alphabet
-    state: pending
+    state: running
+    implementer_session: bdc01873-2594-490b-8a4c-33916338348e
+    start_sha: 8a175d0085da289011e2f49be768992975b25d28
     verify_baseline_failures: []
   - name: planparser-handles
     state: pending
