@@ -20,4 +20,30 @@
 // format-only validation with a warning, the exact failure mode where a plan looks validated and
 // was not; and making the error informational everywhere, which makes the outage invisible at
 // precisely the boundaries whose whole job is to be mechanical. See repo.go and planglyph.go.
+//
+// Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks
+// a claim against without reading Go source — the parallel this package owes planparser's own
+// exhaustively numbered "Validation checks" section in contracts/specs/loom-plan-spec.md, since
+// nothing enumerated these anywhere else:
+//
+//   - glyph-not-found, glyph-ambiguous, glyph-rejected — the resolve status policy (resolve.go),
+//     blocking, over every glyph target a Create group does not own.
+//   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
+//     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
+//   - containment-file-overlap (blocking) — the resolve-backed containment tier (containment.go),
+//     the member-vs-file overlap the syntactic tier cannot see.
+//   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
+//     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the
+//     same glyph.
+//   - rename-old-unresolved (blocking) — renameDeclSource (handle.go), a Rename pair's Old side
+//     that does not resolve found, so no declaration can be derived for its handle-shaped New side.
+//   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose declared handles the
+//     record-batch delta matched fewer of than it declared.
+//   - plan-references-deleted-symbol (blocking), rename-candidate (informational) — DetectDrift
+//     (drift.go), the exact-tier and evidence-tier halves of drift detection.
+//   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
+//     delta touched outside its own cards' declared targets.
+//   - create-not-done, delete-not-done (both blocking) — DoneChecks (donecheck.go), a Create target
+//     that still does not resolve or a Delete target that still does, after the batch that was
+//     supposed to build or remove it.
 package planglyph

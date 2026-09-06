@@ -403,6 +403,19 @@ func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
 	requireContains(t, text, "The audit is")
 }
 
+// TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck asserts the embedded master template's
+// bytes carry a scripted response to begin-batch's plan_drifted refusal, the same class of
+// structured non-done outcome as paused/policy-violation/fabric-sync but previously undocumented:
+// Master must be told to stop rather than retry the verb, exactly as it already is for a
+// fabric-sync failure.
+func TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck(t *testing.T) {
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+
+	requireContains(t, text, "## A plan-drift refusal ends your run as stuck")
+	requireContains(t, text, `"plan_drifted": true`)
+	requireContains(t, text, "do not retry the verb")
+}
+
 // TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal asserts the master template's
 // bytes carry the harness-grounding statements that preempt the observed live spawn-killer (round
 // fable-r1, crucible): on current Claude Code, a freshly spawned Master classified the injected

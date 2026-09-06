@@ -14,10 +14,10 @@ they are out of scope, and a finding raised against one is never legitimate.
 
 The format contract is `contracts/specs/loom-plan-spec.md`, and the Card model it implements is described in `manifest/designs/plan-card-format.md`.
 This rubric points at both and restates neither.
-The mechanical checks over that contract are already enforced — sixteen of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+The mechanical checks over that contract are already enforced — twenty-six of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
-Sitting directly downstream of a seventeen-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
+Sitting directly downstream of a twenty-seven-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
 
 **`support-log.md` is outside this review entirely.**
 It appears in neither the artifact list nor the answer key, and it must not be read or reasoned from.
@@ -28,7 +28,7 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 Do not flag any of the following as a finding:
 
 - **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The seventeen check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — sixteen of the seventeen upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+  The twenty-seven check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-six of the twenty-seven upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
@@ -41,9 +41,9 @@ Do not flag any of the following as a finding:
 ## Also flag
 
 - **Granularity.**
-  One card per independently reviewable/testable unit, not one card per literal glyph.
-  A private supporting type, or a constructor inseparable from its type, belongs in the other glyph's card;
-  an independently testable glyph gets its own card even when one card is its only consumer.
+  One card per independently reviewable/testable unit, not one card per literal symbol.
+  A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
+  an independently testable symbol gets its own card even when one card is its only consumer.
 - **`ImpactSummary` carries a real conclusion.**
   A one-line blast-radius conclusion — "3 callers, all local to the billing package, no cross-module effects" — never a restatement of `Intent`.
 - **`Custom` is a last resort.**

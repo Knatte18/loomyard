@@ -130,6 +130,13 @@ Once every batch in your card list above has reached a terminal `done` (never re
 If `begin-batch` refuses with a paused result (`{"paused": true}`), do not retry it and do not try another batch: write `outcome: paused` to `{{.outcome_path}}` right away (see the outcome file below) and stop.
 A pause is operational, not something for you to judge.
 
+## A plan-drift refusal ends your run as stuck — do not retry the verb
+
+If `begin-batch` refuses with `{"plan_drifted": true}`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have built a pack — found a blocking defect: the plan changed since it was approved, in a way the tree now contradicts.
+This is NOT a batch outcome for you to work around: you never edit the plan yourself (see "What you never do" below), so there is nothing for you to fix.
+Do not retry the verb and do not try another batch: write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's own message verbatim, then stop.
+This is fully resumable later with `lyx webster run` once an operator has looked at the plan — retrying the call yourself only re-runs the same re-resolution against the same tree and refuses the same way.
+
 ## A policy violation ends your run as stuck
 
 `record-batch` and `run` audit your whole session and every fork's transcript.

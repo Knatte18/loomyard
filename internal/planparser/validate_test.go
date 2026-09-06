@@ -682,6 +682,16 @@ func TestValidate_RenamePairShape(t *testing.T) {
 		}
 	})
 
+	t.Run("symbol rename whose old side is a plan: handle produces rename-from-not-glyph", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "plan:internal/foo#OldThing", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-from-not-glyph"); got != 1 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 1", got)
+		}
+	})
+
 	t.Run("file self-glyph pair on both sides produces neither", func(t *testing.T) {
 		t.Parallel()
 		card := renameCard(1, "a", "internal/foo/old.go#", "internal/foo/new.go#")

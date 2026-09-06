@@ -638,6 +638,14 @@ func isFileRenamePair(lang glyph.Language, p MovePair) bool {
 // therefore needs no declaration head of its own, unlike a Create card, because the declaration is
 // derived from the resolved old side. isFileRenamePair exempts a file-rename pair from both checks.
 // Neither check runs when planLanguage reports not-ok (e.g. plan.Language "none").
+//
+// rename-from-not-glyph fires on both wrong shapes a symbol Rename's old side can take: a bare
+// symbol (refKindSymbol) and a plan: handle (refKindHandle) — the latter is the mirror image of the
+// new-side mistake rename-to-not-handle catches, confusing which side of the pair takes a handle.
+// Catching it here, at this free pre-resolve layer, gives a precise diagnosis; left uncaught, a
+// handle-shaped old side still fails downstream in planglyph's resolve-backed pass (rename-old-unresolved,
+// since a handle is excluded from resolution and so never resolves found) but with a less specific
+// message that names the symptom rather than the shape mistake that caused it.
 func checkRenamePairShape(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -661,13 +669,17 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 					),
 				})
 			}
-			if classifyRef(p.Old) == refKindSymbol {
+			if k := classifyRef(p.Old); k == refKindSymbol || k == refKindHandle {
+				shape := "a bare symbol"
+				if k == refKindHandle {
+					shape = "a plan: handle"
+				}
 				findings = append(findings, ValidationError{
 					Check: "rename-from-not-glyph",
 					Card:  cardID(c),
 					Detail: fmt.Sprintf(
-						"card %d Rename pair %q -> %q has an old side that is a bare symbol, not a glyph",
-						c.Number, p.Old, p.New,
+						"card %d Rename pair %q -> %q has an old side that is %s, not a glyph",
+						c.Number, p.Old, p.New, shape,
 					),
 				})
 			}
