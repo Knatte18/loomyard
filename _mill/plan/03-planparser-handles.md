@@ -88,6 +88,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/planparser/validate.go`
   - `internal/planparser/parse_test.go`
   - `internal/planparser/validate_test.go`
+  - `internal/planparser/testdata/goodplan/05-rowmapper-rename.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -99,6 +100,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Under `plan.Language` `none` neither check runs. No file read needed.
   In `parse.go`, no grammar change is needed — `moveLineRe` already accepts any two backticked tokens — but extend `parseRenameField`'s doc comment to record that the to-side is expected to be a handle, so the next reader does not mistake the permissive regex for a permissive contract.
   Cover in tests: a symbol rename with a glyph old side and a handle new side passing; a symbol rename whose new side is a glyph producing `rename-to-not-handle`; one whose old side is a bare symbol producing `rename-from-not-glyph`; a file self-glyph pair on both sides producing neither; and `language: none` producing neither.
+  The golden fixture's own Rename card (`testdata/goodplan/05-rowmapper-rename.md`) predates this card's grammar and spells its symbol pair's new side as a bare glyph, which now trips `rename-to-not-handle` and breaks `TestValidate_GoldenFixture_ZeroFindings`: respell it as `plan:internal/boardengine#MapRowJSON` and update every parse_test.go/validate_test.go assertion pinning that pair's literal spelling to match.
 - **Commit:** `11: feat(planparser): require a handle on a Rename group's to-side`
 
 ### Card 12: add RewriteRefs, the plan's second write path
