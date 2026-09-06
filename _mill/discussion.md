@@ -156,7 +156,8 @@ Any future standalone verification — the campaign's own "what could not be ver
 ### logger-production-sink-api
 
 - Decision: promote `logger.SetDurableSinkDir` to a documented production API by rewriting its doc comment;
-  keep the name and the body unchanged.
+  keep the name and the reset behaviour unchanged.
+  The one substantive change is that the production path must also carry the trace header's worktree root (see `redirected-sink-header-worktree-root`), so the API grows a way to supply it — whether as a second parameter, a sibling setter, or an options struct is the plan's call, since all three satisfy the decision equally.
 - Rationale: the function's body is already exactly what production needs — set the override, reset the `sync.Once` and all derived sink state — and the only thing marking it test-only is the words "for testing" in its doc comment.
   Renaming would churn the existing `cmd/lyx/main_test.go` call sites for no gain.
   The new comment must state both uses and, critically, must state the **ordering obligation**: the override only takes effect if it is set before the first record that arms the sink.
@@ -174,6 +175,21 @@ Any future standalone verification — the campaign's own "what could not be ver
   **(a) Redirect in the root pre-run** — root pre-run does not resolve mode and does not derive a state directory;
   giving it both would move `standalonestate.Derive`'s call site and change every command's startup path, which is the larger design change this task explicitly scopes out.
   **(b) Redirect lazily on first use** — reintroduces exactly the ordering hazard the eager call removes.
+
+### redirected-sink-header-worktree-root
+
+- Decision: the standalone redirect also supplies the trace header's worktree-root field, set to the **target repository** — the same value `standalonegeom.WebsterGeometry`/`ReedGeometry` use as `WorktreeRoot`.
+  It is not left empty, and it is not left to plan-write time.
+- Rationale: `ensureDurableSink` sets `header.WorktreeRoot = layout.WorktreePath()` only on its cwd-derived fallback path (`internal/logger/sink.go:99-101`), so a redirected sink records nothing there today.
+  The field is trace *metadata* answering "which repository was this process working on", which the sink's own comment already separates from "where does the trace file land" — and in standalone the honest answer to the first question is the target repository, exactly as it is in hub mode.
+  Leaving it empty would make standalone traces strictly less diagnosable than hub traces for no gain, in the one mode whose defects are hardest to reproduce.
+  Populating it needs the production sink API to accept the value alongside the directory, which is a signature question the plan resolves;
+  *what* the value is, is settled here.
+- Rejected:
+  **(a) Leave it empty** — silently degrades standalone trace metadata, and would have to be revisited the first time someone reads a standalone trace.
+  **(b) Set it to the state directory** — that is where the trace file lives, not the repository the process was working on;
+  it would answer the wrong question and duplicate information the file path already carries.
+  **(c) Defer the choice to mill-plan** — the discussion is meant to be self-contained, and this is a semantic decision rather than an implementation detail.
 
 ### documentation-surface
 
@@ -213,8 +229,8 @@ These are the **only** two `standalonestate.Derive` call sites in the tree — b
 **The log sink.**
 `internal/logger/sink.go:33-35` is `LogsDir(l *lyxcwd.Location)`, the hub-mode path.
 `sink.go:71-135` is `ensureDurableSink`: it reads `sinkDirOverride` first, and only falls back to `lyxcwd.Getwd()` + `lyxcwd.Resolve()` + `LogsDir(layout)` when the override is empty — which is the whole mechanism the fix uses.
-Note it also sets `header.WorktreeRoot = layout.WorktreePath()` on the fallback path only, so a redirected sink's header currently records no worktree root;
-the plan should decide whether the standalone redirect also supplies that value (the target repository is the honest answer) or leaves it empty, and pin whichever it picks.
+Note it also sets `header.WorktreeRoot = layout.WorktreePath()` on the fallback path only (`sink.go:99-101`), so a redirected sink's header currently records no worktree root;
+per the `redirected-sink-header-worktree-root` decision the standalone redirect must supply it, set to the target repository, which means the production sink API takes that value alongside the directory.
 `sink.go:196-208` is `SetDurableSinkDir`.
 The sink is armed lazily on the first Info+ record, `sync.Once`-guarded, and the whole trace machinery is suppressed under `testing.Testing()` unless `LYX_TRACE=1` (`sink.go:79-84`) — which is exactly how a test drives it, and how `cmd/lyx/main_test.go:81-83` already does.
 
@@ -302,6 +318,7 @@ existing tables are extended rather than duplicated.
 
 - Setting the durable-sink directory before the first record puts the trace file there and none in the cwd-derived location.
 - Setting it *after* the sink is already armed does **not** move the file — pin the ordering obligation as a test, not just a doc sentence, so the constraint the wiring depends on is executable.
+- A redirected sink's header line carries the supplied worktree root, and a cwd-derived (hub) sink still carries `layout.WorktreePath()` as it does today.
 
 **`internal/webstercli` and `internal/burlercli`**
 

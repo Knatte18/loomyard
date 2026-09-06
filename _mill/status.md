@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: standalonegeom-webster-run-and-log-hygiene
 branch: standalonegeom-webster-run-and-log-hygiene
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-06T17:42:44Z'
+discussion-fix-r1  '2026-09-06T17:55:39Z'
 ```
