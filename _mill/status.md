@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -49,6 +49,7 @@ approved-gate-parity  '2026-09-06T13:28:40Z'
 approved-quarry-cli  '2026-09-06T13:46:41Z'
 approved-webster-drift  '2026-09-06T14:14:40Z'
 holistic-reviewing  '2026-09-06T14:15:07Z'
+holistic-fixing  '2026-09-06T14:21:22Z'
 ```
 
 ## Batches
