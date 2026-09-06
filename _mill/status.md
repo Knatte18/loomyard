@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-handles
+phase: approved-planglyph
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -44,6 +44,7 @@ implementing  '2026-09-06T11:46:04Z'
 approved-quarry-dependency  '2026-09-06T11:52:58Z'
 approved-planparser-alphabet  '2026-09-06T12:14:38Z'
 approved-planparser-handles  '2026-09-06T12:37:43Z'
+approved-planglyph  '2026-09-06T13:07:53Z'
 ```
 
 ## Batches
@@ -70,9 +71,10 @@ batches:
     commit_sha: 12cb12eedec1830f2274041f60b9b89272063848
     verify_baseline_failures: []
   - name: planglyph
-    state: running
+    state: approved
     implementer_session: 18291cf5-4ee0-4e1e-b607-8c162c5a9a9e
     start_sha: 65c0b3b23ba932b9622c54b2a3174674dd7ebc20
+    commit_sha: 719d14b1f7ab8b2a82b3dafc023f302d6a98b548
     verify_baseline_failures: ["FAIL\t./internal/planglyph [setup failed]"]
   - name: gate-parity
     state: pending
