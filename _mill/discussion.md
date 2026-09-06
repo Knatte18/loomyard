@@ -95,17 +95,18 @@ The deliverable is a design document, not code.
 
 ### reed-preparation-work-is-worth-doing-regardless
 
-- Decision: the doc recommends three in-repo changes as good hygiene independent of any extraction, each a roadmap candidate: (a) decouple `logger`, (b) rename the provider-specific `CleanClaudeEnv`, (c) give `loomcli` a named interface seam so that no consumer *retains* a concrete `*reedengine.Engine` as a struct field except Reed's own CLI.
-  The wording matters: `burlercli/wiring.go:99,158` and `shuttlecli/cli.go:86,94` both call `reedengine.New` and so hold the concrete value transiently before handing it to `shuttleengine.NewRunner`, and a seam cannot change that — construction always yields the concrete type.
-  What (c) removes is the *retained* field, of which `internal/loomcli/cli.go:44` is the only instance.
+- Decision: the doc recommends **two** in-repo changes as cheap hygiene independent of any extraction, each a roadmap candidate: (a) rename the provider-specific `CleanClaudeEnv`, (b) give `loomcli` a named interface seam so that no consumer *retains* a concrete `*reedengine.Engine` as a struct field except Reed's own CLI.
+  The `logger` decoupling is deliberately **not** in this list — see the separate decision below for why it is standalone-only.
 - Rationale: each has a standalone justification.
-  (a) `logger` is the sole reason `lyxcwd` and `gitexec` appear in `go list -deps ./internal/reedengine` at all — Reed's own doc comment already admits this honestly — and Reed is the module the Told-Geometry Invariant is proudest of.
-  (b) `reedengine.CleanClaudeEnv` is a Claude-provider-specific name in the public API of a package the Shuttle Provider-Seam Invariant says never references Claude specifics;
-  it is the only such name and the fix is a rename plus a parameter.
-  (c) `webstercli` already holds Reed as `shuttleengine.ReedOps`, `burlercli` and `shuttlecli` construct and hand off, and only `loomcli` holds the concrete `*Engine` — for six methods Reed could publish as a second named slice.
-  Doing these makes a later extraction a mechanical move, which is exactly the "prototype in-repo first" posture quarry's ancestor had.
+  (a) `reedengine.CleanClaudeEnv` is a Claude-provider-specific name in the public API of a package the Shuttle Provider-Seam Invariant says never references Claude specifics;
+  it is the only such name, it has no caller outside `reedengine`, and the fix is a rename plus a parameter.
+  (b) `webstercli` already holds Reed as `shuttleengine.ReedOps`, `burlercli` and `shuttlecli` construct and hand off, and only `loomcli` retains the concrete `*Engine` — for six methods Reed could publish as a second named slice.
+  The wording of (b) matters: `burlercli/wiring.go:99,158` and `shuttlecli/cli.go:86,94` both call `reedengine.New` and so hold the concrete value transiently before handing it to `shuttleengine.NewRunner`, and a seam cannot change that — construction always yields the concrete type.
+  What (b) removes is the *retained* field, of which `internal/loomcli/cli.go:44` is the only instance.
+  Doing these makes a later extraction more mechanical, which is the "prototype in-repo first" posture quarry's ancestor had.
 - Rejected: bundling them into the extraction (they stop being independently justifiable and stall behind a decision with no trigger date);
-  doing nothing until the extraction is triggered (leaves three unrelated defects unfixed).
+  doing nothing until the extraction is triggered (leaves two unrelated defects unfixed);
+  keeping the `logger` decoupling in this list (it is not cheap — see below).
 
 ### fabric-verdict-do-not-extract-and-say-why-precisely
 
@@ -117,8 +118,17 @@ The deliverable is a design document, not code.
   33 exported functions take `*lyxcwd.Location`, a four-field struct describing lyx's hub layout — so the API is parameterized on lyx's directory model, not on two git URLs.
   `CloneHub(cwd, opts)` genuinely is generic;
   almost nothing else on the surface is.
-  On top of that, `fabricengine` directly imports `internal/pattern` and `internal/stencilstore` — LLM prompt-template packages — because `stencilcommit.go`/`stencilhistory.go` put stencil versioning inside the git-coordination engine.
-  A standalone "paired git repos" library cannot ship those.
+  On top of that, `fabricengine` directly imports `internal/pattern` and `internal/stencilstore` — the LLM prompt-template packages — and the doc must name the two real import sites, because they land on opposite sides of the split and only one of them is where a reader would guess.
+  `internal/stencilstore` enters through **`stencilhistory.go` alone** (`stencilstore.RelPath`, `stencilstore.BodyHash`), on the hub-layout side, which is the expected placement.
+  `internal/pattern` enters through **`pull.go` alone** (`pattern.PathspecFile`/`PathspecDir` at `pull.go:423,441,464`), and `pull.go` is a **pair-kernel** file.
+  `stencilcommit.go` imports neither — it takes only `gitrepo`, `lock` and `lyxdirs` — so the widely-assumed "`stencilcommit.go`/`stencilhistory.go` put stencil versioning in the engine" framing is half wrong and the doc must not repeat it.
+  Producing command: `grep -ln "loomyard/internal/pattern" $(ls internal/fabricengine/*.go | grep -v _test)`, and the same for `stencilstore`.
+  A standalone "paired git repos" library cannot ship either package.
+- **Consequence the doc must draw, because it cuts against the split's own rationale:** the pair kernel is *not* domain-free.
+  `pull.go`'s use of `pattern` exists to populate `PullResult.PatternResidue` — the report naming which post-anchor weft commits touch `_lyx/PATTERN.md`/`_lyx/pattern/` and therefore need review after a warp history rewrite.
+  That is a loomyard-domain feature living in the most generic-looking file in the package, and `internal/pattern` itself depends on `lyxdirs`, `stencilstore` and `stencil`, so the edge drags the whole prompt-template subtree into the kernel with it.
+  The honest statement is therefore: the split isolates the **stencil-versioning** coupling cleanly on the hub-layout side, and does **not** isolate the **pattern** coupling, which would have to be cut separately by making residue reporting a caller-supplied predicate rather than a `pattern` import.
+  This is a further argument for the no-extract verdict, not against it — even the coordination half carries domain the extraction would have to strip.
 - Rejected: extract the whole engine (ships lyx's hub layout, board, portals, launchers and prompt-stencil versioning as someone else's public API);
   "defer, revisit later" with no verdict (the task asked for a genuine call, and the call is available from the measurements).
 
@@ -133,7 +143,9 @@ The deliverable is a design document, not code.
   what this doc fixes is the boundary and the mechanism, because those are what determine whether the item is worth picking up at all.
 - The boundary is drawn on the measured file partition recorded in Technical context: roughly 6,275 production lines fall on the pair-kernel side and 8,321 on the hub-layout side.
 - Rationale: the split has value on its own terms.
-  It makes the Fabric Git Invariant's actual perimeter visible, it isolates the stencil/pattern coupling as a thing to be questioned rather than a thing to be inherited, and it is the only route by which the generic kernel would ever become extractable.
+  It makes the Fabric Git Invariant's actual perimeter visible, it isolates the stencil-versioning coupling on the hub-layout side as a thing to be questioned rather than inherited, and it is the only route by which the pair kernel would ever become extractable.
+  It does not isolate the `pattern` coupling — `pull.go` is a kernel file and imports `internal/pattern` — and the doc must say so rather than overclaim;
+  cutting that edge is a separate, named piece of work (make PATTERN-residue reporting a caller-supplied predicate), not a side effect of the split.
   Framing it as extraction prep would make it hostage to a trigger that will probably never fire.
 - Rejected: recommending nothing (leaves a real structural observation unrecorded);
   recommending the split as extraction step 1 (couples a justified refactor to an unjustified goal).
@@ -162,7 +174,8 @@ The deliverable is a design document, not code.
 - Rationale: quarry is this project's one completed extraction and its layout is the tested answer.
   Its `quarry/` package is a curated façade that re-exports `internal/engine` types by alias (`type Symbol = engine.Symbol`), which means the extraction never required hand-designing a narrow interface up front — it curated *what* is exported rather than *how*.
   Its `glyph/` package is a cgo-free leaf published separately for consumers who want only the identifier grammar.
-  `internal/reedengine/render` is already the exact analogue: 773 production lines, zero internal dependencies, imports only `fmt` and `strings`, and already consumed independently by `loomcli`, `shuttleengine` and `shuttlecli`.
+  `internal/reedengine/render` is already the exact analogue: 773 production lines, zero internal dependencies, stdlib-only imports (`fmt`, `sort`, `strings` — `sort` is in `policy.go`, so "only `fmt` and `strings`" is wrong and must not be written), and already consumed independently by `loomcli`, `shuttleengine` and `shuttlecli`.
+  Producing command: `for f in $(ls internal/reedengine/render/*.go | grep -v _test); do awk '/^import/,/^\)/' $f; done | grep '"'`.
 - Rejected: one flat package (loses the render leaf, which is the best-shaped piece);
   separate engine and CLI repos (quarry keeps `internal/cli` in-repo and there is no reason to differ).
 
@@ -186,9 +199,17 @@ The deliverable is a design document, not code.
 - Decision: a standalone Reed takes an optional `*slog.Logger` on `Config` or `New`, defaulting to a discard handler, and drops `internal/logger` entirely.
 - Rationale: `internal/logger` is the single edge that pulls `lyxcwd`, `gitexec` and `lyxdirs` into Reed's transitive dependency set — `logger/sink.go` exposes `LogsDir(*lyxcwd.Location)` and falls back to `lyxcwd.Getwd()`+`Resolve()`.
   `log/slog` is stdlib, so the swap adds no dependency, and loomyard keeps its own logging by passing a handler that writes where `internal/logger` writes today.
-  The Live-Substrate Spawn Observability invariant is satisfied by the injected logger exactly as it is by the package-level one — the invariant requires that spawns are logged, not which package logs them.
+- **This is a standalone-repo design point, not in-repo prep, and the doc must say so explicitly.**
+  The earlier claim that Live-Substrate Spawn Observability "requires that spawns are logged, not which package logs them" is wrong as stated for the in-repo case.
+  `CONSTRAINTS.md` names `internal/logger` by name, and `cmd/lyx/spawnobservability_test.go` enforces it *mechanically as a file-level import check* — `spawnObservabilityLoggerImportPath` (`:59`) is the literal `github.com/Knatte18/loomyard/internal/logger`, and any file containing a real `exec.Command`/`exec.CommandContext` without that import must appear in `spawnObservabilityAllowedSpawners` (`:64`) with a written structural reason.
+  `internal/reedengine/lifecycle.go`, `overlay.go` and `attach.go` all carry real spawns, so removing `internal/logger` from `reedengine` **in-repo** fails that test unless three allowlist entries are added and `CONSTRAINTS.md` is amended — and this task's Scope bars CONSTRAINTS.md edits.
+  So the decision is: the injection seam is what a **standalone** Reed ships (it has no `internal/logger` to import and no such invariant);
+  in-repo, Reed keeps `internal/logger`.
+  If someone later wants the in-repo removal anyway, the doc must record its real price — a CONSTRAINTS.md amendment plus three allowlist entries — so it is never presented as cost-free hygiene.
+  The allowlist's own first entry is worth quoting in the doc, because it documents the very cycle at issue: `internal/gitexec/gitexec.go` is exempt because "`internal/logger` imports `internal/lyxcwd`, which imports `internal/gitexec`, so importing logger here would close an import cycle".
 - Rejected: a hand-rolled `Logger` interface (reinvents `slog.Handler`);
-  extracting `internal/logger` too (a second extraction with its own trace-id and retention machinery, to avoid one import).
+  extracting `internal/logger` too (a second extraction with its own trace-id and retention machinery, to avoid one import);
+  listing the decoupling as cheap in-repo prep (it collides with a shipped enforcement test).
 
 ### mailbox-lives-in-a-sibling-module-named-creel
 
@@ -375,8 +396,12 @@ From `CONSTRAINTS.md`, the ones this task touches:
 - **Fabric Vocabulary Invariant** — *warp*/*weft* name the two sides, *Fabric* names the wired composite, "repo" alone never substitutes for warp, and `host` is retired.
   The doc is not in the owner set, so it must use *Fabric* for the composite and only say *warp*/*weft* where the two must be told apart.
 - **gitkit Leaf Invariant** — the doc records that nothing here changes it, per the `gitkit-does-not-travel-with-fabric` decision.
-- **Cwd Resolution Invariant**, **Told-Geometry Invariant**, **Shuttle Provider-Seam Invariant**, **Live-Substrate Spawn Observability** — cited by the doc as facts about the current design;
+- **Cwd Resolution Invariant**, **Told-Geometry Invariant**, **Shuttle Provider-Seam Invariant** — cited by the doc as facts about the current design;
   none is modified.
+- **Live-Substrate Spawn Observability** — not merely cited, it actively bounds one recommendation.
+  It is enforced mechanically by `cmd/lyx/spawnobservability_test.go` as a file-level check for the literal `internal/logger` import in any file carrying a real `exec.Command`, with an allowlist requiring a written structural reason per entry.
+  This is why the `logger` decoupling is scoped standalone-only;
+  the doc must state the constraint, not work around it, and must not propose anything that would need a `CONSTRAINTS.md` amendment, which Scope bars.
 
 From `CLAUDE.md`:
 
@@ -424,6 +449,8 @@ Scenarios a reviewer of the finished doc should confirm are covered, in addition
 - The doc states its own entry-less-on-landing disposition and its deletion trigger, so an orphan designs file reads as intentional.
 - No claim rests on a machine-local path;
   quarry is cited by module path with its layout observations marked as read off a local checkout.
+- Every recommendation the doc makes is checked against the shipped enforcement tests it would have to pass — in particular `cmd/lyx/spawnobservability_test.go` for anything touching `internal/logger` imports — and any recommendation that would fail one is either scoped away from in-repo or carries its real price in writing.
+- The `pattern` and `stencilstore` import sites are named individually (`pull.go` and `stencilhistory.go`), and the doc does not claim the pair kernel is domain-free.
 - The four corrections to the task's background notes are stated as corrections, with evidence: gitkit is not a Fabric dependency;
   Fabric's `lyxcwd` coupling is structural rather than incidental;
   the missing-interface framing misdiagnoses Fabric's blocker;
@@ -445,7 +472,8 @@ Scenarios a reviewer of the finished doc should confirm are covered, in addition
 - **Q:** Should the seam be published by Reed or defined by consumers? **A:** [auto-pick] Reed publishes named slices with compile-time proofs;
   consumers may still define their own. **Why:** a versioned module needs something to prove compatibility against, and both slices are read off real usage — the transport slice is `shuttleengine.ReedOps` verbatim, the session slice is the six methods `loomcli` actually calls.
   The two overlap on three methods, which is correct: a slice describes one consumer's dependency, not a partition of the type.
-- **Q:** How does a standalone Reed shed `internal/logger`? **A:** [auto-pick] An injected `*slog.Logger` defaulting to a discard handler. **Why:** `logger` is the sole edge pulling `lyxcwd` and `gitexec` into Reed's transitive set;
+- **Q:** How does a standalone Reed shed `internal/logger`, and is the same change worth doing in-repo? **A:** [auto-pick] An injected `*slog.Logger` defaulting to a discard handler — **standalone only**;
+  in-repo, Reed keeps `internal/logger`, because `cmd/lyx/spawnobservability_test.go` enforces that import at file level and removing it would cost three allowlist entries plus a `CONSTRAINTS.md` amendment. **Why:** `logger` is the sole edge pulling `lyxcwd` and `gitexec` into Reed's transitive set;
   `log/slog` is stdlib, so the swap costs no dependency and loomyard keeps its own sink by passing a handler.
 - **Q:** How deep does the Fabric split recommendation go — sub-packages, file grouping, or documentation sectioning? **A:** [auto-resolved, discussion-review r2 gap] File grouping inside `package fabricengine` plus a matching `doc.go` section split and an enforcement test;
   explicitly not sub-packages. **Why:** `Fabric`'s unexported `warp`/`weft` `*gitrepo.Repo` fields are documented as reachable only from inside the package, and every hub-layout verb reaches them — a sub-package boundary would force exporting both and hand callers exactly the uncoordinated single-sided access the Fabric Git Invariant exists to prevent.
