@@ -79,14 +79,19 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
   `go env -w CGO_ENABLED=1` pins it per-user in `go env GOENV`, but it is machine-local, not checked in, and it does not install a compiler — on a Windows box without mingw-w64 it merely swaps `cgoguard`'s readable message for "gcc not found".
   Document the toolchain prerequisite in `README.md` and `CLAUDE.md`, and have `tools/deploy` pass `CGO_ENABLED=1` explicitly on the build it runs.
   No CI is at risk: this repo has no `.github/workflows`.
-- **Rejected:** a second, cgo-only binary in loomyard's module keeping `lyx` pure Go — quarantines the toolchain requirement but adds a spawn seam and a two-binary deploy for no correctness gain.
+- **Not chosen now, recorded as the named retreat:** a second, cgo-only binary in loomyard's own module (`cmd/lyxq` or similar), keeping `lyx` pure Go and cross-compilable.
+  It is not chosen today because it adds a spawn seam and a two-binary deploy for no correctness gain, but it stays payable if Windows toolchain pain ever materializes — and the `package-ownership` seam is what keeps it cheap: every in-process quarry call lives inside `internal/planglyph`, so swapping them for calls to a spawned binary is contained to that package plus the `lyx quarry` verb group, with no other call site noticing.
+  Recording the retreat is what makes accepting cgo a reversible decision rather than a dogmatic one.
 
 ### quarry-version-pin
 
 - **Decision:** cut a real semver tag in quarry and require that tag.
 - **Rationale:** quarry is a public repository with no release tags today (only `archive/*` names), so the alternative is a pseudo-version on `main`, which silently turns every quarry commit into a loomyard upgrade decision.
 - **Note:** version *numbers* are not the point and nothing here is published — the tag exists to make the plan-format contract reproducible.
-  The `go.mod` bump to the quarry version carrying `Glyph.UnitPath()` is part of the disk-check cards' own precondition (see `quarry-unitpath-precondition`).
+- **Status and owner:** cutting the tag is a quarry-side operator action, outside this worktree per the worktree-isolation rule, so it is a precondition this plan states rather than performs.
+  The operator cuts it on quarry `main`, **preferably after `glyph-unitpath` merges**, so a single tag serves both preconditions at once: the initial `go.mod` require and the disk-check cards' bump to the version carrying `Glyph.UnitPath()` (see `quarry-unitpath-precondition`).
+  If the tag is cut first instead, there are two tag moments and the disk-check cards carry a second `go.mod` bump of their own.
+  Either way the card that adds the initial `go.mod` require names an **existing** tag as its precondition — it never introduces a pseudo-version as a stopgap.
 - **Rejected:** a `replace` directive to the local worktree — unbuildable for anyone else.
 
 ### package-ownership
@@ -95,6 +100,9 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
   A new package `internal/planglyph` owns every `quarry.Repo` call and the resolve-backed validation pass.
 - **Rationale:** keeps `planparser` a tier1-pure leaf under the Test Tier Purity Invariant and preserves the `ValidateFormat`/`Validate` split the Gate Self-Check Parity Invariant depends on.
   `glyph` is stdlib-only with no dependencies, so importing it costs `planparser` nothing.
+- **Composition, not duplication:** `planglyph`'s resolve-backed entry point **calls** `planparser`'s pure `ValidateFormat`/`Validate` and adds only resolve findings on top.
+  No check is implemented twice.
+  This matters because the Gate Self-Check Parity Invariant makes the producer row and its CLI verb call the same package function: if the resolve-backed pass reimplemented any pure check, the two entry points could drift and parity would hold by convention rather than by construction.
 - **Rejected:** `planparser` importing the facade and resolving inline — one package, but `planparser` stops being a pure leaf and both gate entry points start reading the repository.
   Also rejected: putting the resolve step only in `internal/loomshed`'s producer row, which breaks gate parity because `validate-plan` would no longer do the same work.
 
