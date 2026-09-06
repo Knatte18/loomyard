@@ -87,6 +87,23 @@ Leave it at `"go"` unless the task is explicitly non-Go.
 
 **A symbol target is always spelled as a glyph, never as a bare `pkg.Symbol` string.** A glyph is `<unit>#<member>` — the package or file's own repository-relative path, a `#`, then the symbol's own name (e.g. `internal/boardcli#newListCmd`, or `internal/boardcli#` to name the whole package). A bare package-qualified symbol is a hard finding (`bare-symbol-target`) because it is the one spelling that cannot have come verbatim from a quarry answer — not because the form is uglier. A file path (`list.go`, `internal/boardcli/list.go`) stays a plain path — the parser canonicalizes it into its own file self glyph automatically; you never hand-write the `#`-suffixed form for a plain file.
 
+### Declaring a symbol that does not exist yet: `plan:` handles
+
+`lyx quarry` can only answer with glyphs for symbols that already exist — it never invents one. When a card creates a brand-new symbol or file, `quarry` has nothing to look up, so you invent a draft placeholder spelling instead: a `plan:` handle, `plan:<unit>#<member>`, where `<unit>` is the new symbol's own repository-relative path.
+
+Write it on the `**Create:**` sub-bullet using the two-field declaration grammar, reusing the same `` `x` -> `y` `` arrow shape a `**Rename:**` pair uses:
+
+```markdown
+**Create:**
+- `plan:internal/boardcli#RowJSON` -> `type RowJSON struct{...}`
+```
+
+The left-hand token is the handle you just invented; the right-hand token is the declaration head — the symbol's own spelling and kind (a struct/func/const signature, in your own words), the text a later resolve step needs to turn your handle into a real glyph. Every later card that targets this same not-yet-real symbol references it by the identical handle string, never by guessing what its eventual glyph will be.
+
+On a `**Rename:**` pair renaming an existing symbol, the grammar is asymmetric: the `Old` side is always a real glyph (looked up via `lyx quarry`, exactly like any other target), and the `New` side is always a `plan:` handle you invent for the renamed name — never a glyph, since the symbol under its new name does not exist until the rename lands. A file-rename pair (old and new both plain file paths) is unaffected by this rule.
+
+A handle you declare but no other card ever references, a handle referenced but never declared, or two `Create:` bullets declaring the same handle are each hard findings (`handle-unreferenced`, `handle-dangling`, `handle-collision`) — every handle you invent must be declared exactly once and used by at least one later card.
+
 Always write `approved: false` — you never self-approve;
 `Plan-Bouncer`'s approved settle writes it to `true`.
 Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required when any card is type `Rename`), `## verify:`.

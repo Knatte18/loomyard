@@ -49,6 +49,7 @@ Whoever executes the plan (webster today, or a hypothetical future parallel exec
 _lyx/plan/
   00-overview.md       # frontmatter + Card Index + task framing + optional plan-level sections
   NN-<card-slug>.md    # one file per card (NN = zero-padded card order)
+  amendments.md        # optional; append-only handle-substitution log, see Plan: handles below
   ...
 ```
 
@@ -99,7 +100,7 @@ Each card lives in its own file, and the file's content is:
 5. **`**ImpactSummary:**`**, required for `Edit` and `Delete` cards only, taking its value inline on the label line — a hard-capped one-line blast-radius conclusion, never the card's main content.
 6. Optionally, **`**Commit:**`** and **`**Verify:**`** — see [Numbering and commit subject](#numbering-and-commit-subject) and [verify model](#verify-model) below.
 
-**A field with no content is omitted entirely** — format 4 admits no `none` sentinel on any field.
+**A field with no content is omitted entirely** — this format admits no `none` sentinel on any field.
 An optional field a card has nothing to say under simply does not appear in that card's file;
 a required field a card omits — every type label (a card must carry at least one), `Intent:`, or `ImpactSummary:` when any of the card's own groups is `Edit` or `Delete` — is a `card-missing-field` finding, and a label that is present but carries no bullets/prose under it is the distinct `card-field-empty` finding.
 
@@ -192,13 +193,33 @@ The section's text is CANONICAL — reproduce it verbatim (adjusted only for the
    git history exactly as an unstructured create+delete pair would.
 ```
 
-Step 3 names a separate `Create` card rather than the removed `Creates:` field — format 4 has no typed file-op fields, so "genuinely new content" is always its own card under the `Create` label, never a bullet folded into another card's field.
+Step 3 names a separate `Create` card rather than the removed `Creates:` field — this format has no typed file-op fields, so "genuinely new content" is always its own card under the `Create` label, never a bullet folded into another card's field.
 
 This is the repo's own `git mv` + surgical-edits convention made declarable in a plan and mechanically checkable, rather than an unstated expectation an implementer might miss.
 
 **Accepted false positive:** because a `Move` card's destination lives in `Intent` prose rather than in its own target list, there is no third union (parallel to the `Create`/`Rename` target unions below) for `path-missing` to check a `Move` destination against.
 A later card naming a file an earlier `Move` card relocated into place therefore produces a false-positive `path-missing` finding — the earlier `Move`'s destination is real on disk by the time the later card runs, but nothing in the plan model records that.
 The author resolves it by reordering the cards, or by naming the file's pre-move path in the later card instead.
+
+## Plan: handles
+
+A `plan:` handle (shape rule 1 of [The shape classifier](#the-shape-classifier) above) is a draft, plan-local placeholder spelling for a symbol or file that does not exist yet, so no quarry answer could ever have named it.
+Letting the planner invent a handle's *draft* spelling is safe in a way that letting it invent a real glyph is not, because a handle carries no reality to point at — it only has to be internally consistent within the plan, which is fully mechanically checkable, and `quarry` never sees one.
+
+A `Create:` label's sub-bullet may take either the plain single-ref form every other type label admits, or the two-field declaration grammar:
+
+```markdown
+**Create:**
+- `plan:<draft-handle>` -> `<declaration head>`
+```
+
+The left-hand token is the handle itself — `plan:<unit>#<member>`-shaped, the unit half being an ordinary repository-relative path — and the right-hand token is the declaration head: the symbol's own spelling and kind (e.g. a function signature), the text `internal/planglyph`'s resolve-backed layer hands to `quarry.Name` as a `{Unit, Decl}` pair once the handle is bound to a real glyph. Reusing the `` `old` -> `new` `` arrow grammar `Rename` already carries means a handle declaration needs no new punctuation, only a `plan:`-prefixed left-hand token.
+
+A `Rename` group's two sides carry different obligations under this alphabet: the `Old` side must be a glyph — it names something real that will be resolved — and the `New` side must be a `plan:` handle, whose content a later binding step computes and overwrites at the validation boundary rather than trusting the planner's draft spelling. A `Rename` card therefore needs no declaration head of its own, unlike a `Create` card, because the declaration is derived from the resolved old side. A file-rename pair — both sides self glyphs — is exempt from this rule, since it has no declaration head to name and belongs in the same group as a plain path pair.
+
+Six checks keep this mechanism internally consistent: `handle-dangling`, `handle-collision`, `handle-unreferenced`, and `handle-malformed` (all keeping a `Create`-declared handle consistent with where it is referenced), and `rename-to-not-handle`/`rename-from-not-glyph` (keeping a `Rename` pair's two sides on their correct side of the handle/glyph line) — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below for each check's own row. All six run under every `language:`, including `"none"`, since a handle is loomyard's own grammar, not glyph grammar, and its consistency is checkable without any alphabet.
+
+A plan carrying at least one `plan:` handle also gains a companion write path once that handle is bound to a real glyph: `internal/planparser.RewriteRefs` substitutes the handle for its resolved glyph string, in place, across every card file that referenced it, and `internal/planparser.AppendAmendment` appends a record of that substitution to the plan directory's own append-only `amendments.md` log (a known non-card file, exempt from `index-file-mismatch` the same way `00-overview.md` is). Neither write path is part of the plan-format grammar itself — a card author never writes to either — but both exist because this format admits a handle in the first place, so a reader of a plan carrying handles should expect an `amendments.md` file to appear beside it once review resolves them.
 
 ## Numbering and commit subject
 
@@ -233,9 +254,9 @@ A parked, more aggressive parallel-execution idea also exists — see [../../man
 
 ## Validation checks (as implemented by `internal/planparser`)
 
-Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — twenty rows, twenty IDs.
+Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — twenty-seven rows, twenty-seven IDs.
 This figure counts distinct IDs rather than presentation rows, which resolves the row-count-versus-ID-count divergence the repo's former "14" carried (a 14-row list whose row 1 bundled two distinct IDs).
-The twenty IDs are split across two entry points, `ValidateFormat` and `Validate`: nineteen of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 3 below) is additionally checked by `Validate`, the full entry point.
+The twenty-seven IDs are split across two entry points, `ValidateFormat` and `Validate`: twenty-six of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 3 below) is additionally checked by `Validate`, the full entry point.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
@@ -254,21 +275,28 @@ The rows below stay in one fixed order regardless of which entry point runs them
 9. `bare-symbol-target` — see [The shape classifier](#the-shape-classifier) above. Skipped entirely under `language: none`.
 10. `directory-target` — see [The shape classifier](#the-shape-classifier) above. Skipped entirely under `language: none`.
 11. `rename-format` — every non-well-formed `Rename:` sub-bullet fails the `` `old` -> `new` `` grammar, checked per `Rename` group.
-12. `rename-mechanic-missing` — the plan has at least one card carrying a `Rename` group but `00-overview.md` has no `## Rename mechanic` section (plan-level);
+12. `handle-dangling` — a `plan:` handle appearing in some card's `Targets` or `Uses` with no matching `Create`-group declaration on any card and no matching `Rename`-group to-side. See [Plan: handles](#plan-handles) below.
+13. `handle-collision` — the same `plan:` handle declared by more than one `Create` sub-bullet across the plan; one finding per colliding handle, not per declaring card.
+14. `handle-unreferenced` — a declared `plan:` handle that no card other than its own declaring card(s) references.
+15. `handle-malformed` — a `Create:` sub-bullet whose payload carries the `` -> `` arrow but fails the two-field `` `plan:<draft-handle>` -> `<declaration head>` `` grammar, or a handle-shaped entry whose text after the `plan:` prefix carries no `#` and therefore names no unit.
+16. `rename-to-not-handle` — a symbol `Rename` pair's `New` side classifies as a glyph or a bare symbol rather than a `plan:` handle. A file-rename pair (both sides self glyphs) is exempt.
+17. `rename-from-not-glyph` — a symbol `Rename` pair's `Old` side classifies as a bare symbol rather than a glyph. A file-rename pair is exempt.
+18. `rename-mechanic-missing` — the plan has at least one card carrying a `Rename` group but `00-overview.md` has no `## Rename mechanic` section (plan-level);
    a `Rename` group on an otherwise multi-label card still counts.
-13. `card-missing-field` — a card lacks `Intent:` (card-generic), or lacks `ImpactSummary:` when any of its own groups is `Edit` or `Delete` (group-triggered, but the missing field itself is still one card-level field).
-14. `card-field-empty` — a label present with no content under it: an empty target list is checked per group, so a card carrying a populated group alongside an empty one is still flagged for the empty group, while an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value are each card-generic.
-15. `card-field-overlap` — the same entry appears in both a card's own flat target list and its own `Uses:` field; card-generic, per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged.
-16. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
+19. `card-missing-field` — a card lacks `Intent:` (card-generic), or lacks `ImpactSummary:` when any of its own groups is `Edit` or `Delete` (group-triggered, but the missing field itself is still one card-level field).
+20. `card-field-empty` — a label present with no content under it: an empty target list is checked per group, so a card carrying a populated group alongside an empty one is still flagged for the empty group, while an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value are each card-generic.
+21. `card-field-overlap` — the same entry appears in both a card's own flat target list and its own `Uses:` field; card-generic, per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged.
+22. `containment-unit-overlap` — a member glyph on one card's own target list physically overlaps another card's own self glyph naming the same unit — the syntactic half of the cross-granularity containment check; the member→file half is `internal/planglyph`'s resolve-backed business, not this package's. Skipped entirely under `language: none`. See [Plan: handles](#plan-handles) below for the write paths this batch adds alongside it.
+23. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
     Card-generic, since `ImpactSummary` is one field per card regardless of how many groups require it.
-17. `prosa-symbol-target` — under a glyph-enabled `language:`, a `Prosa` group's own target list holds an entry that is not a self glyph (a member glyph, or anything that fails to parse as a glyph at all — a plain path or a bare symbol); under `language: none`, a symbol-shaped entry, exactly as before this alphabet. Group-scoped, so an offending entry in the same card's non-`Prosa` group is never flagged by this rule.
-18. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
+24. `prosa-symbol-target` — under a glyph-enabled `language:`, a `Prosa` group's own target list holds an entry that is not a self glyph (a member glyph, or anything that fails to parse as a glyph at all — a plain path or a bare symbol); under `language: none`, a symbol-shaped entry, exactly as before this alphabet. Group-scoped, so an offending entry in the same card's non-`Prosa` group is never flagged by this rule.
+25. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
     Card-generic.
-19. `path-missing` — a path- or self-glyph-shaped entry that does not exist on disk (mapped via `Glyph.UnitPath` for a self glyph) and is not satisfied by any card's `Create`-group target or `Rename`-group destination (mapped the same way) in the same plan. A member glyph is skipped, not resolved — member existence is `internal/planglyph`'s resolve-backed business.
+26. `path-missing` — a path- or self-glyph-shaped entry that does not exist on disk (mapped via `Glyph.UnitPath` for a self glyph) and is not satisfied by any card's `Create`-group target or `Rename`-group destination (mapped the same way) in the same plan. A member glyph is skipped, not resolved — member existence is `internal/planglyph`'s resolve-backed business.
     A card's `Uses:` entries are checked card-generically, and within a card, its own groups are then walked one at a time, and a group's own path-/self-glyph-shaped targets are checked only when that group's own `Type` is `Edit`, `Delete`, `Move`, or `Prosa`.
     A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
-20. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
+27. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
 
 ## Worked example
 
