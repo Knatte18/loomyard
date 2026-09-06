@@ -161,6 +161,16 @@ func checkApproved(plan *Plan) []ValidationError {
 	return findings
 }
 
+// knownNonCardFiles is the explicit allowlist of on-disk plan-directory filenames
+// checkIndexFileConsistency's scan never treats as an orphaned card file, because each one is a
+// plan-level file with its own dedicated owner: overviewFileName (ParsePlan/SetApproved) and
+// AmendmentsFileName (AppendAmendment). Named as an allowlist entry per file, not a heuristic over
+// the filename's shape, so a future non-card file only needs one line added here.
+var knownNonCardFiles = map[string]bool{
+	overviewFileName:   true,
+	AmendmentsFileName: true,
+}
+
 // checkIndexFileConsistency implements index-file-mismatch: every *.md file on disk must be named by some parsed card, and card numbers must run 1..M with no gaps or duplicates.
 func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	var findings []ValidationError
@@ -174,7 +184,7 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	if err == nil {
 		var onDisk []string
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || e.Name() == overviewFileName {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || knownNonCardFiles[e.Name()] {
 				continue
 			}
 			if !indexed[e.Name()] {
