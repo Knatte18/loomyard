@@ -45,7 +45,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
@@ -73,10 +75,15 @@ func hash8For(t *testing.T, target string) string {
 // setStandaloneStateRoot redirects both env vars standalonestate.Derive reads to fresh t.TempDir()
 // values, so a case that reaches wireStandalone stays hermetic. Not t.Parallel() -- t.Setenv panics
 // under a parallel test.
+// It also registers the sink-override cleanup every caller here needs, per the overview's
+// sink-override-is-process-global decision: every case that calls this helper reaches wireStandalone,
+// which now sets the process-global durable sink override, and a leaked override would defeat the
+// testing.Testing() sink suppression for every later test in this binary.
 func setStandaloneStateRoot(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 }
 
 // TestWire_ModeHubSelectsHubMode covers the (loc non-nil, ModeHub) row: wire must select hub mode and
@@ -319,6 +326,106 @@ func readDirNames(t *testing.T, dir string) ([]string, error) {
 		names[i] = e.Name()
 	}
 	return names, nil
+}
+
+// TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError is F16's direct regression
+// test. It fails against pre-fix source, where wireStandalone constructed its runner via
+// shuttleengine.NewRunner: NewRunner's containment assertion refuses standalone's deliberately
+// detached anchor/worktree-root pair (the derived state directory sits outside the target
+// repository), setting the runner's held toldErr, which every public entry point returns
+// immediately without ever reaching reed. A runner that is merely non-nil proves nothing here, so
+// this test drives the one public entry point reachable from this package -- c.engine.Run, with a
+// minimal but validate()-passing Profile -- and asserts the returned error is an ordinary reed
+// "no session" verdict rather than a told-path refusal. It reaches no live reed session (none was
+// ever started, so requireSessionLocked fails fast) and spawns no process: claudeengine.Prepare only
+// writes prompt/settings files before AddStrand's pre-flight rejects the call.
+func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *testing.T) {
+	target := t.TempDir()
+	setStandaloneStateRoot(t)
+
+	fixture := filepath.Join(target, "fixture.md")
+	if err := os.WriteFile(fixture, []byte("placeholder"), 0o644); err != nil {
+		t.Fatalf("write fixture file: %v", err)
+	}
+
+	c := &burlerCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	profile := burlerengine.Profile{
+		Target:          burlerengine.FileSet{Paths: []string{fixture}},
+		Fasit:           burlerengine.FileSet{Paths: []string{fixture}},
+		Rubric:          "placeholder rubric",
+		FixScope:        burlerengine.FixScopeOverlay,
+		ReviewPath:      "review.md",
+		FixerReportPath: "fixer.md",
+	}
+
+	_, err := c.engine.Run(profile, burlerengine.RunOpts{})
+	if err == nil {
+		t.Fatal("engine.Run() error = nil; want a reed \"no session\" error, since no reed session was ever started")
+	}
+	if strings.Contains(err.Error(), "NewRunner") || strings.Contains(err.Error(), "NewDetachedRunner") {
+		t.Fatalf("engine.Run() error = %v; want the ordinary reed \"no session\" verdict, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
+	}
+}
+
+// TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir is F22's direct regression test. It
+// observes the sink directory the only way this package can: by forcing a write and checking the
+// filesystem, never by reading internal/logger's own state (sinkDirOverride is unexported and
+// internal/logger exposes no accessor). The mechanism is that a non-empty override bypasses the
+// testing.Testing() sink suppression in ensureDurableSink, so one logger.Info call after
+// wireStandalone returns arms the sink at whatever directory the override names, with no LYX_TRACE
+// redirect needed.
+func TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir(t *testing.T) {
+	target := t.TempDir()
+	setStandaloneStateRoot(t)
+	stateDir, _ := hash8AndStateDir(t, target)
+
+	c := &burlerCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	logger.Info("wiring_test: arm the sink")
+
+	wantDir := standalonegeom.LogsDir(stateDir)
+	matches, err := filepath.Glob(filepath.Join(wantDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", wantDir, err)
+	}
+	if len(matches) == 0 {
+		t.Errorf("no trace-*.log file under %s; want wireStandalone to have redirected the durable sink there", wantDir)
+	}
+}
+
+// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
+// mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
+// then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
+// the override would have put the trace file somewhere else.
+func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
+	sentinelDir := t.TempDir()
+	logger.SetDurableSinkDir(sentinelDir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	hub := t.TempDir()
+	loc := hubLocation(hub, "warp", ".")
+
+	c := &burlerCLI{}
+	if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	logger.Info("wiring_test: arm the sink")
+
+	matches, err := filepath.Glob(filepath.Join(sentinelDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", sentinelDir, err)
+	}
+	if len(matches) == 0 {
+		t.Errorf("no trace-*.log file under sentinel dir %s; want wireHub to have left the sink override untouched", sentinelDir)
+	}
 }
 
 // TestResolveStandaloneTarget covers resolveStandaloneTarget's three rows: unset returns cwd,
