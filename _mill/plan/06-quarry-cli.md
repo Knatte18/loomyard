@@ -136,6 +136,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `contracts/specs/loom-plan-spec.md`
 - **Edits:**
   - `contracts/stencils/loom/loom-template-plan.md`
+  - `internal/loomengine/plan_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -146,6 +147,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   State that `lyx quarry` answers against the current worktree only and takes no repository-path flag, so a copied spelling is always from the tree the validator resolves against.
   Do not mention `lyx quarry delta` or `lyx quarry name` — neither exists, and naming them would invite the planner to ask for them.
   Keep the surrounding sections' structure and voice, and keep the glyph spelling rules card 8 already wrote into this file rather than restating them here, per the Producer Pointer-Rule Invariant's spirit that an instruction file points rather than duplicates.
+  `internal/loomengine/plan_test.go`'s `TestPlanSpec_PromptStatesDegradedQuarryMode` pins the exact old sentences this section replaces; update it (rename it and its assertions) to pin the new section's own sentences instead of the removed degraded-mode text, rather than leaving a broken pre-existing test.
 - **Commit:** `30: docs(stencil): replace the planner's do-the-lookups-yourself section with the lyx quarry verbs`
 
 ## Batch Tests
