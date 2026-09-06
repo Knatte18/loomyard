@@ -21,16 +21,22 @@ import (
 
 // Runner is the provider-invariant run loop: it drives one Engine implementation over the file
 // contract through the ReedOps seam, so a caller (review, loom) constructs exactly one Runner per
-// (reed, engine, anchorPath, worktreeRoot, cfg) combination and calls Start/Run for every agent
-// spawn.
-// Runner is told its anchor path and worktree root as plain strings and derives neither;
-// populating both with usable absolute paths is the caller's obligation.
+// (reed, engine, anchorPath, worktreeRoot, paneCwd, cfg) combination and calls Start/Run for every
+// agent spawn.
+// Runner is told its anchor path, worktree root, and pane cwd as plain strings and derives none of
+// them;
+// populating all three with usable absolute paths is the caller's obligation.
 type Runner struct {
 	reed         ReedOps
 	engine       Engine
 	anchorPath   string
 	worktreeRoot string
-	cfg          Config
+	// paneCwd is the pane's own process cwd that the fork audit derives the provider's transcript
+	// directory from. NewRunner sets it to a copy of anchorPath, since hub geometry's pane always
+	// runs at the anchor; NewDetachedRunner is told it explicitly, since standalone geometry's pane
+	// runs at the worktree root while the anchor sits outside it.
+	paneCwd string
+	cfg     Config
 	// toldErr is validateToldPaths' verdict on the pair this Runner was constructed with, computed
 	// once and returned by every public entry point. It is held rather than returned from
 	// NewRunner because a constructor that cannot fail is what every caller already writes.
@@ -46,6 +52,10 @@ type Runner struct {
 // worktreeRoot and cfg's tuning knobs.
 // NewRunner is told anchorPath and worktreeRoot as plain strings and derives neither;
 // populating both with usable absolute paths is the caller's obligation.
+// paneCwd is derived here rather than told: it is set to a copy of anchorPath, which is hub
+// geometry's shape (the pane always runs at the anchor).
+// NewDetachedRunner is the constructor for the standalone shape, where the pane's cwd is the
+// worktree root rather than the anchor.
 // The pair is validated here (see validateToldPaths) and an unusable one is reported by every
 // public method rather than by this constructor, which stays total.
 func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg Config) *Runner {
@@ -54,6 +64,7 @@ func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg
 		engine:       engine,
 		anchorPath:   anchorPath,
 		worktreeRoot: worktreeRoot,
+		paneCwd:      anchorPath,
 		cfg:          cfg,
 		toldErr:      validateToldPaths(anchorPath, worktreeRoot),
 		clock:        realClock{},
@@ -63,12 +74,13 @@ func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg
 // validateToldPaths reports an error unless the told pair is one this package can spend.
 //
 // It exists because the two fields are ADJACENT PARAMETERS OF THE SAME TYPE with no structural
-// distinction between them, while their four consumers are semantically distinct: anchorPath sites
-// the run-dir root (.lyx is the anchor-side sibling of _lyx), is where reed keeps the reed.json the
-// orphan sweep reads, and is the pane's own process cwd that the fork audit derives the provider's
-// transcript directory from; worktreeRoot is what a relative OutputFiles entry resolves against, as
-// the run verb's own help promises. A caller that swaps them compiles cleanly and, in a
-// subpath-anchored worktree, silently puts all three of the first three somewhere real but wrong.
+// distinction between them, while their consumers are semantically distinct: anchorPath sites the
+// run-dir root (.lyx is the anchor-side sibling of _lyx) and is where reed keeps the reed.json the
+// orphan sweep reads; worktreeRoot is what a relative OutputFiles entry resolves against, as the run
+// verb's own help promises. (paneCwd, the fork audit's workdir, is a third told path — see Runner's
+// own doc comment — but NewRunner derives it from anchorPath rather than taking it as a parameter
+// here, so it plays no part in this validation.) A caller that swaps anchorPath and worktreeRoot
+// compiles cleanly and, in a subpath-anchored worktree, silently puts both somewhere real but wrong.
 // reed hardened the same seam from the other side (validateToldAnchorPath, server.go), on the same
 // reasoning: an empty or relative value does not fail, it succeeds against the WRONG tree.
 //

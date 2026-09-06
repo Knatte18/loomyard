@@ -1085,6 +1085,60 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath pins that finalize hands AuditForks the runner's
+// paneCwd rather than its anchorPath, for the one shape where the two differ: a detached runner
+// whose pane runs at the worktree root while its anchor sits outside it (standalone geometry).
+// TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone above already covers the hub shape, where
+// paneCwd == anchorPath by construction and the two fields cannot be told apart by this assertion
+// alone; this test builds a runner whose paneCwd is assigned directly (NewDetachedRunner does not
+// exist until card 2) so the two paths are provably distinct.
+func TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	cannedAudit := ForkAudit{SpawnCalls: 1, NamedSpawns: 0}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, AuditForksResult: cannedAudit}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	// Detach paneCwd from anchorPath, exactly as NewDetachedRunner will for the standalone shape.
+	runner.paneCwd = t.TempDir()
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+	}
+
+	if len(engine.AuditForksCalls) != 1 {
+		t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
+	}
+	call := engine.AuditForksCalls[0]
+	if call.Workdir != runner.paneCwd {
+		t.Errorf("AuditForks called with workdir %q; want paneCwd %q", call.Workdir, runner.paneCwd)
+	}
+	if call.Workdir == runner.anchorPath {
+		t.Errorf("AuditForks called with workdir %q == anchorPath; want it to differ, proving the fix moved off anchorPath", call.Workdir)
+	}
+}
+
 // TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome is R2-F2's regression guard.
 //
 // A fork-mode run that satisfies the file contract has reached OutcomeDone before AuditForks is ever

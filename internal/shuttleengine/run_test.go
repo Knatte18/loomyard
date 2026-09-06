@@ -24,7 +24,9 @@ import (
 // worktree, with tuning knobs small enough that any later Wait-driving test
 // built on top of it runs fast. anchorPath and worktreeRoot are distinct
 // values (never the same temp dir twice) so a swapped NewRunner argument
-// pair fails a test rather than passing.
+// pair fails a test rather than passing. The fixture's paneCwd is anchorPath
+// by construction, since it is built through NewRunner rather than
+// NewDetachedRunner.
 func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (runner *Runner, anchorPath, worktreeRoot string) {
 	t.Helper()
 	worktreeRoot = t.TempDir()
