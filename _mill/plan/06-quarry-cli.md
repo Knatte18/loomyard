@@ -121,9 +121,11 @@ Batch-local decisions, beyond `## Shared Decisions`:
   The CLI/Cobra Invariant's package-naming rule is `<module>cli` imports `<module>engine`; `quarrycli` imports `internal/planglyph`, which deviates.
   The invariant already records one such deviation, `stencilcli` → `internal/stencilstore`, so add `quarrycli` → `internal/planglyph` to that same line rather than starting a second convention.
   Then correct the invariant's module-count line, which today reads that each module exposes `Command()` and `RunCLI` and "eleven of twelve also carry `RunCLIIn`".
-  That sentence is already wrong before this task touches it, so correct it rather than incrementing it: derive both numbers from the two blank-identifier slices `cmd/lyx/seamsignature_test.go` pins — the `RunCLI` slice and the `RunCLIIn` slice — which card 27 has just extended, and which that file's own doc comment describes as eleven and ten respectively before this task, making the true post-task figures twelve and eleven.
+  That sentence is wrong **today** — `cmd/lyx/main.go` registers eleven module `Command()` calls and `cmd/lyx/seamsignature_test.go` pins eleven `RunCLI` and ten `RunCLIIn` entries — but this task adds exactly one module carrying both, so the post-task figures are twelve and eleven and the existing text becomes correct on its own.
+  **Verify the numbers; do not edit them.** Derive both from the two blank-identifier slices `seamsignature_test.go` pins, which card 27 has just extended, confirm they read twelve and eleven, and leave the sentence byte-identical if they do.
+  Change it only if the derivation disagrees, and say which way in the commit message.
   Do **not** derive the numbers from `cmd/lyx/main.go`'s `root.AddCommand(...)` arity: that call also carries `loomcli.RunAliasCommand()`, a second registration of an existing subtree's verb rather than a module of its own, so counting it yields a figure one too high.
-  Note in the commit message that the old sentence was corrected, not merely incremented, so a later reader does not read the change as arithmetic.
+  Note in the commit message that the sentence was verified against the pinned slices rather than incremented, so a later reader does not mistake an unchanged line for an overlooked one.
   In `docs/overview.md`, add a `quarrycli` entry to the module list describing the four verbs, their read-only posture, and the deliberate absence of `delta` and `name`, and note that it imports `internal/planglyph` rather than a `quarryengine`.
 - **Commit:** `29: docs(constraints): record the quarrycli naming deviation and recount the RunCLIIn line`
 

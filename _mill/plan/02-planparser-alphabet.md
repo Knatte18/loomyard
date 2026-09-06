@@ -42,7 +42,9 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Note that `parseOverviewFrontmatter` decodes with `dec.KnownFields(true)`, so without this struct field a plan carrying `language:` fails the whole parse rather than reaching validation.
   In `plan.go`, add a `Language string` field to `Plan` with a doc comment stating that legal values are the alphabets the `glyph` package implements (today `go`) plus the literal `none`, and that absent defaults to `go`.
   In `validate.go`, add a new check `checkLanguageRecognized(plan *Plan) []ValidationError` emitting check ID `plan-language-unrecognized` when `plan.Language` is neither `"go"` nor `"none"`, with a detail naming the offending value and the two legal ones. No file read needed.
-  Wire it into `validate`'s fixed dispatch list immediately after `checkFormatRecognized`, and update this file's package comment and `Validate`/`ValidateFormat`'s doc comments, which currently name a seventeen/sixteen check count, to the new counts.
+  Wire it into `validate`'s fixed dispatch list immediately after `checkFormatRecognized`, which places it **ahead** of the `requireApproved` `checkApproved` call.
+  That displaces `plan-unapproved` from position two, so update `Validate`'s doc comment sentence naming "plan-unapproved at position two" along with the counts — leaving it would make the doc comment false about ordering while being true about totals, which is the harder kind of stale comment to notice.
+  Also update this file's package comment and `ValidateFormat`'s doc comment, which currently name a seventeen/sixteen check count, to the new counts.
   This is a pure string check: it calls no `Resolve`, stats no disk, and keeps the package tier1-safe.
   Add table-driven tests covering `go` accepted, `none` accepted, absent defaulting to `go`, and an unknown value producing exactly one `plan-language-unrecognized` finding.
 - **Commit:** `3: feat(planparser): add the language: frontmatter key and its recognition check`

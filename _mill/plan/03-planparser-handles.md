@@ -92,7 +92,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Make a `**Rename:**` group's two sides carry their different obligations.
-  On a symbol rename the old side must be a glyph — it names something that exists and will be resolved — and the new side must be a `plan:` handle, whose content the pipeline computes and overwrites in batch 7 rather than trusting the planner's draft spelling.
+  On a symbol rename the old side must be a glyph — it names something that exists and will be resolved — and the new side must be a `plan:` handle, whose content batch 4's card 19 computes and overwrites at the validation boundary rather than trusting the planner's draft spelling.
   A `Rename` card therefore needs no declaration head of its own, unlike a `Create` card, because the declaration is derived from the resolved old side.
   In `validate.go`, add `checkRenamePairShape(plan *Plan) []ValidationError` emitting check ID `rename-to-not-handle` when a pair's `New` classifies as `refKindGlyph` or `refKindSymbol` rather than `refKindHandle`, and check ID `rename-from-not-glyph` when a pair's `Old` classifies as `refKindSymbol`.
   File-rename pairs stay exempt from both: when both `Old` and `New` classify as `refKindGlyph` **and** both parse to glyphs whose `IsSelf()` reports true, the pair is a file rename, which has no declaration head to name and belongs in the same group as a plain path pair.
