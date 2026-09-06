@@ -21,3 +21,32 @@ That deletion trigger is named here explicitly, so a later reader of an entry-le
 
 This document's lifecycle classification follows the [docs/overview.md](../../docs/overview.md#documentation-lifecycle) Documentation Lifecycle rule: `manifest/designs/<module>.md` is scoped to planned, not-yet-built work, deleted when the module lands or the plan is abandoned.
 This document describes a possible future extraction and its prerequisites, not the shipped Reed and Fabric modules themselves — so it satisfies that rule even though both named modules are already shipped.
+
+## The extraction rubric — the frozen contract is the exported type set
+
+For a Go module, the extraction contract is the set of exported identifiers consumers reference in code — not an interface.
+A consumer-side interface narrows *coupling* and buys testability, but it does not narrow that contract by one name.
+
+The shipped example that grounds this: `shuttleengine.ReedOps` (`internal/shuttleengine/reed.go`) is held up as the model narrow seam.
+
+```go
+type ReedOps interface {
+	AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error)
+	RemoveStrand(guid string, recursive bool) (reedengine.Removed, error)
+	Status() (reedengine.StatusResult, error)
+	SendText(guid, text string, submit bool) error
+	SendKey(guid, key string) error
+	CapturePane(guid string) (string, error)
+}
+```
+
+Yet every one of its six methods takes or returns a type from the provider package — `reedengine.AddSpec`, `reedengine.Strand`, `reedengine.Removed`, `reedengine.StatusResult` — so a consumer behind this interface still pins four exported types from `reedengine`.
+
+The consequence: the background framing that Fabric's blocker is "no interface seam anywhere on the consumer side" misdiagnoses the problem.
+Adding fifteen consumer-side interfaces to Fabric's consumers would not shrink its 74-identifier contract by one name.
+What shrinks a contract is deleting or unexporting identifiers, or moving them behind a façade that re-exports a curated subset.
+
+Two metrics are rejected as the readiness measure, and each fails for a distinct reason:
+
+- **Interface count** measures coupling and testability, not contract size — as `ReedOps` demonstrates above, an interface can exist and pin the same four types anyway.
+- **Raw importer count** measures the wrong axis of "extractable": Reed and Fabric have nearly identical transitive-dependent counts, 26 and 27 respectively, and are nowhere near equally extractable — Fabric's contract and size dwarf Reed's, as the per-module sections below measure.
