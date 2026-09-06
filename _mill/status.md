@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-quarry-cli
+phase: approved-webster-drift
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -47,6 +47,7 @@ approved-planparser-handles  '2026-09-06T12:37:43Z'
 approved-planglyph  '2026-09-06T13:07:53Z'
 approved-gate-parity  '2026-09-06T13:28:40Z'
 approved-quarry-cli  '2026-09-06T13:46:41Z'
+approved-webster-drift  '2026-09-06T14:14:40Z'
 ```
 
 ## Batches
@@ -91,8 +92,9 @@ batches:
     commit_sha: a3d729617894bab15f068d8ffbe4b0f57153a213
     verify_baseline_failures: ["FAIL\t./internal/quarrycli [setup failed]", "FAIL\t./internal/planglyph [setup failed]"]
   - name: webster-drift
-    state: running
+    state: approved
     implementer_session: aa3daf0d-5337-4c0d-b3f3-5de879946342
     start_sha: 25aea82522298c830522c5b0a14e9761d4c126de
+    commit_sha: e426c1e37b7fa9f5b2d34721e12fa8c16ff3ebdf
     verify_baseline_failures: ["FAIL\t./internal/planglyph [setup failed]"]
 ```
