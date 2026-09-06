@@ -286,7 +286,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
 14. `handle-unreferenced` — a declared `plan:` handle that no card other than its own declaring card(s) references.
 15. `handle-malformed` — a `Create:` sub-bullet whose payload carries the `` -> `` arrow but fails the two-field `` `plan:<draft-handle>` -> `<declaration head>` `` grammar, or a handle-shaped entry whose text after the `plan:` prefix carries no `#` and therefore names no unit.
 16. `rename-to-not-handle` — a symbol `Rename` pair's `New` side classifies as a glyph or a bare symbol rather than a `plan:` handle. A file-rename pair (both sides self glyphs) is exempt.
-17. `rename-from-not-glyph` — a symbol `Rename` pair's `Old` side classifies as a bare symbol rather than a glyph. A file-rename pair is exempt.
+17. `rename-from-not-glyph` — a symbol `Rename` pair's `Old` side classifies as a bare symbol or a `plan:` handle rather than a glyph. A file-rename pair is exempt.
 18. `rename-mechanic-missing` — the plan has at least one card carrying a `Rename` group but `00-overview.md` has no `## Rename mechanic` section (plan-level);
    a `Rename` group on an otherwise multi-label card still counts.
 19. `card-missing-field` — a card lacks `Intent:` (card-generic), or lacks `ImpactSummary:` when any of its own groups is `Edit` or `Delete` (group-triggered, but the missing field itself is still one card-level field).
