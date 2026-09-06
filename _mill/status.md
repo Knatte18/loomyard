@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
-plan: null
+plan: _mill/plan
 parent: main
 task: Adopt quarry's glyph alphabet as the plan alphabet
 task_description: |
@@ -22,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-06T10:10:29Z'
 discussion-gap-fix-r5  '2026-09-06T10:16:12Z'
 discussion-gap-fix-r6  '2026-09-06T10:21:13Z'
 discussed  '2026-09-06T10:21:23Z'
+planning  '2026-09-06T10:37:49Z'
 ```
