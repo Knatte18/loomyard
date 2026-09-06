@@ -3,6 +3,7 @@ module github.com/Knatte18/loomyard
 go 1.26
 
 require (
+	github.com/Knatte18/quarry v0.1.0
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/gofrs/flock v0.8.1
 	github.com/google/go-cmp v0.7.0
@@ -16,7 +17,6 @@ require (
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
-	github.com/Knatte18/quarry v0.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect

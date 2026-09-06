@@ -46,11 +46,29 @@ type Plan struct {
 	// Root mirrors the overview frontmatter's optional root: field.
 	Root string
 
+	// Language mirrors the overview frontmatter's optional language: key. Legal values are the
+	// alphabets the glyph package implements (today "go") plus the literal "none", opting a plan
+	// out of the glyph alphabet entirely. Absent defaults to "go".
+	Language string
+
 	// Framing is the task-framing paragraph(s) between the overview's title heading and its "## Card Index" heading.
 	Framing string
 
 	// Cards is every card the Card Index lists, in index order.
 	Cards []Card
+
+	// SurfaceRefs records, for a canonicalized path-shaped ref, the pre-canonicalization surface
+	// lexeme that ref's own card actually carried on disk. It is keyed card identity first
+	// (the same "N-<slug>" string cardID builds), canonical model string second — the two-level
+	// shape matters: two cards may legitimately spell one canonical string differently (a plain
+	// path on one card, its file self glyph on another), and a flat one-level map would silently
+	// lose one of them.
+	// Card.Targets/Uses/Pairs stay []string/[]MovePair and unchanged in type, holding the
+	// canonicalized glyph strings, so websterengine.deriveEdges and refsIntersect never see the
+	// difference; a later batch's RewriteRefs is SurfaceRefs' only consumer.
+	// A glyph-shaped ref copied verbatim from a quarry answer, or any ref under Language "none",
+	// never appears here at all.
+	SurfaceRefs map[string]map[string]string
 
 	// SharedDecisions is the raw body text of the overview's optional "## Shared Decisions" section.
 	SharedDecisions string

@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/quarry/glyph"
 	"gopkg.in/yaml.v3"
 )
 
@@ -84,6 +85,7 @@ type overviewFrontmatter struct {
 	Format   *int    `yaml:"format"`
 	Approved *bool   `yaml:"approved"`
 	Root     *string `yaml:"root"`
+	Language *string `yaml:"language"`
 }
 
 // cardIndexEntry is one parsed "## Card Index" line's machine-readable fields before the card file is read.
@@ -129,6 +131,22 @@ func ParsePlan(planDir string) (*Plan, error) {
 		root = *fm.Root
 	}
 
+	language := "go"
+	if fm.Language != nil {
+		language = *fm.Language
+	}
+
+	// lang/langOK map language to the glyph package's own Language type, applying the same
+	// absent-defaults-to-"go" rule as above. langOK is false for "none" and for any value this
+	// package does not recognize (checkLanguageRecognized reports that separately) — canonicalizeCard
+	// is simply never called for such a card, rather than called with a meaningless lang.
+	// planLanguage is deliberately not called here: it takes a *Plan and exists for the post-parse
+	// callers in validate.go, which run against a fully built plan; ParsePlan has no *Plan to hand it
+	// until after this loop finishes.
+	lang, langOK := glyph.Go, language == "go"
+
+	surfaceRefs := make(map[string]map[string]string)
+
 	cards := make([]Card, 0, len(entries))
 	for _, entry := range entries {
 		card, err := parseCardFile(planDir, entry)
@@ -137,14 +155,22 @@ func ParsePlan(planDir string) (*Plan, error) {
 		}
 		// Resolve every card path's root:/// shorthand exactly once so every downstream consumer sees normalized paths.
 		normalizeCard(&card, root)
+		if langOK {
+			// Canonicalize strictly after normalizeCard, on the same card, never before: canonicalization
+			// is gated on isPathRef exactly as normalizeRefIfPath is, and canonicalizing first would put
+			// every ref on the non-path side of that gate, silently switching root: off plan-wide.
+			canonicalizeCard(&card, cardID(card), lang, surfaceRefs)
+		}
 		cards = append(cards, card)
 	}
 
 	plan := &Plan{
-		Dir:     planDir,
-		Framing: framing,
-		Cards:   cards,
-		Root:    root,
+		Dir:         planDir,
+		Framing:     framing,
+		Cards:       cards,
+		Root:        root,
+		Language:    language,
+		SurfaceRefs: surfaceRefs,
 	}
 	if fm.Format != nil {
 		plan.Format = *fm.Format
