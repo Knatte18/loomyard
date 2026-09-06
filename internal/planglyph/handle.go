@@ -9,18 +9,22 @@ package planglyph
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// declSource pairs one quarry.Declaration with the draft handle it derives from, so quarry.Name's
-// positional NameResult slice can be matched back to its originating handle by index after the
-// batched call.
+// declSource pairs one quarry.Declaration with the draft handle it derives from, plus the card that
+// declares it, so quarry.Name's positional NameResult slice can be matched back to its originating
+// handle by index after the batched call and any resulting finding can name the card an operator
+// has to go and edit.
 type declSource struct {
 	handle string
+	card   string
 	decl   quarry.Declaration
 }
 
@@ -35,36 +39,111 @@ func draftHandleMember(handle string) (string, bool) {
 	return handle[idx+1:], true
 }
 
+// draftHandleIdentifier returns the bare declared identifier a plan: handle's member half names:
+// its last dot-separated component. A member is "Name" for a free declaration and "Owner.Name" for
+// a method, and only the Name half ever appears in a declaration head — a method's owner is carried
+// by its receiver clause, not by its identifier. Substituting the qualified form into a signature
+// produces text like "func (c *Counter) Counter.Tally() int", which quarry.Name then rejects as
+// member_too_deep. Like draftHandleMember this is local string work over loomyard's own plan:
+// token, never glyph grammar.
+func draftHandleIdentifier(handle string) (string, bool) {
+	member, ok := draftHandleMember(handle)
+	if !ok || member == "" {
+		return "", false
+	}
+	if idx := strings.LastIndex(member, "."); idx != -1 {
+		member = member[idx+1:]
+	}
+	if member == "" {
+		return "", false
+	}
+	return member, true
+}
+
+// identifierPattern caches one compiled word-boundary matcher per identifier, so renameSignature
+// does not recompile the same pattern for every Rename pair in a plan.
+var identifierPattern sync.Map // string -> *regexp.Regexp
+
+// identifierMatcher returns a matcher for name as a whole word, so a declaration whose receiver
+// type merely CONTAINS the identifier is not mistaken for the identifier itself.
+func identifierMatcher(name string) *regexp.Regexp {
+	if cached, ok := identifierPattern.Load(name); ok {
+		return cached.(*regexp.Regexp)
+	}
+	re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
+	identifierPattern.Store(name, re)
+	return re
+}
+
+// renameSignature rewrites signature's own declared identifier from oldName to newName, and reports
+// whether it found one to rewrite.
+//
+// It is deliberately not a plain first-occurrence replace. A method's signature carries its receiver
+// clause verbatim — quarry's Symbol.Signature runs from the declaration's first byte to its body —
+// so the first textual occurrence of the identifier is frequently inside the receiver TYPE rather
+// than at the declared name: "func (c *Counter) Count() int" renamed to Tally became
+// "func (c *Counter.Tallyer) Count() int", which no method could survive. Two rules fix that: the
+// search starts after the receiver clause when one is present, and it matches the identifier only
+// as a whole word.
+func renameSignature(signature, oldName, newName string) (string, bool) {
+	searchFrom := 0
+	if strings.HasPrefix(signature, "func (") {
+		// A Go receiver clause admits no nested parentheses — a type parameter list uses brackets —
+		// so the first ")" closes it, and the declared name is the next identifier after it.
+		if close := strings.Index(signature, ")"); close != -1 {
+			searchFrom = close + 1
+		}
+	}
+
+	loc := identifierMatcher(oldName).FindStringIndex(signature[searchFrom:])
+	if loc == nil {
+		return "", false
+	}
+	start, end := searchFrom+loc[0], searchFrom+loc[1]
+	return signature[:start] + newName + signature[end:], true
+}
+
 // renameDeclSource derives a Rename pair's to-side declaration from its resolved Old glyph: the
 // Old side's own found declaration text (Symbol.Signature, verbatim), with the declared identifier
-// (Symbol.Glyph.Name) swapped for the member name the draft to-side handle itself carries. The
-// derived Declaration's Unit is Old's own resolved unit (Symbol.Glyph.Unit) — a Rename keeps its
-// symbol in the same package — never the draft handle's own unit half, so a draft that misspells
-// the unit is corrected by canonicalization rather than propagated. Only the identifier is taken
-// from the draft handle, never its glyph spelling — the spelling is what quarry.Name computes. It
-// reports ok false, with a rename-old-unresolved Finding, when Old did not resolve found or the
-// new-side handle carries no member name.
-func renameDeclSource(oldRef, newHandle string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
+// (Symbol.Glyph.Name) swapped for the bare identifier the draft to-side handle itself carries, via
+// renameSignature. The derived Declaration's Unit is Old's own resolved unit (Symbol.Glyph.Unit) —
+// a Rename keeps its symbol in the same package — never the draft handle's own unit half, so a
+// draft that misspells the unit is corrected by canonicalization rather than propagated. Only the
+// identifier is taken from the draft handle, never its glyph spelling — the spelling is what
+// quarry.Name computes. It reports ok false, with a rename-old-unresolved Finding, when Old did not
+// resolve found, when the new-side handle carries no member name, or when Old's own signature
+// carries no occurrence of the identifier it is supposed to declare.
+func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
 	r, resolved := results[oldRef]
 	if !resolved || r.Status != quarry.StatusFound || len(r.Symbols) == 0 {
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",
+			Card:     card,
 			Detail:   fmt.Sprintf("Rename pair's old side %q did not resolve found; nothing to derive the new declaration from", oldRef),
 			Severity: SeverityBlocking,
 		}, false
 	}
 
-	member, ok := draftHandleMember(newHandle)
+	identifier, ok := draftHandleIdentifier(newHandle)
 	if !ok {
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",
+			Card:     card,
 			Detail:   fmt.Sprintf("Rename pair's new side %q carries no member name to derive a declaration from", newHandle),
 			Severity: SeverityBlocking,
 		}, false
 	}
 
 	sym := r.Symbols[0]
-	decl := strings.Replace(sym.Signature, sym.Glyph.Name, member, 1)
+	decl, renamed := renameSignature(sym.Signature, sym.Glyph.Name, identifier)
+	if !renamed {
+		return declSource{}, Finding{
+			Check:    "rename-old-unresolved",
+			Card:     card,
+			Detail:   fmt.Sprintf("Rename pair's old side %q declares %q, which does not appear in its own signature %q; no declaration can be derived", oldRef, sym.Glyph.Name, sym.Signature),
+			Severity: SeverityBlocking,
+		}, false
+	}
 	return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: decl}}, Finding{}, true
 }
 
@@ -93,22 +172,24 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	var sources []declSource
 
 	for _, c := range plan.Cards {
+		card := cardIDOf(c)
 		for _, d := range c.Declarations {
 			unit, ok := planparser.HandleUnit(d.Handle)
 			if !ok {
 				continue // handle-malformed already reports this; nothing to derive.
 			}
-			sources = append(sources, declSource{handle: d.Handle, decl: quarry.Declaration{Unit: unit, Decl: d.Decl}})
+			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Unit: unit, Decl: d.Decl}})
 		}
 		for _, p := range c.Pairs {
 			if !strings.HasPrefix(p.New, planparser.HandlePrefix) {
 				continue
 			}
-			src, finding, ok := renameDeclSource(p.Old, p.New, resultIndex)
+			src, finding, ok := renameDeclSource(card, p.Old, p.New, resultIndex)
 			if !ok {
 				findings = append(findings, finding)
 				continue
 			}
+			src.card = card
 			sources = append(sources, src)
 		}
 	}
@@ -129,6 +210,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 		if res.Unit != src.decl.Unit || res.Target != src.decl.Decl {
 			findings = append(findings, Finding{
 				Check:    "handle-name-failed",
+				Card:     src.card,
 				Detail:   fmt.Sprintf("Name result for handle %q did not echo its own input", src.handle),
 				Severity: SeverityBlocking,
 			})
@@ -137,7 +219,8 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 		if res.Error != "" {
 			findings = append(findings, Finding{
 				Check:    "handle-name-failed",
-				Detail:   fmt.Sprintf("handle %q failed naming: %s (%s)", src.handle, res.Error, res.Reason),
+				Card:     src.card,
+				Detail:   fmt.Sprintf("handle %q failed naming its declaration %q: %s (%s)", src.handle, src.decl.Decl, res.Error, res.Reason),
 				Severity: SeverityBlocking,
 			})
 			continue

@@ -173,6 +173,148 @@ func TestCanonicalizeHandles_RenameDraftSpellingWrongStillRewrites(t *testing.T)
 	}
 }
 
+// TestRenameSignature covers the receiver-clause hazard: quarry's Symbol.Signature carries a
+// method's receiver verbatim, so the first textual occurrence of the declared identifier is
+// frequently inside the receiver TYPE rather than at the declared name.
+func TestRenameSignature(t *testing.T) {
+	cases := []struct {
+		name      string
+		signature string
+		oldName   string
+		newName   string
+		want      string
+		wantOK    bool
+	}{
+		{
+			name:      "free function",
+			signature: "func ToRename() int",
+			oldName:   "ToRename",
+			newName:   "Renamed",
+			want:      "func Renamed() int",
+			wantOK:    true,
+		},
+		{
+			name:      "receiver type contains the method name as a substring",
+			signature: "func (c *Counter) Count() int",
+			oldName:   "Count",
+			newName:   "Tally",
+			want:      "func (c *Counter) Tally() int",
+			wantOK:    true,
+		},
+		{
+			name:      "receiver type equals the method name",
+			signature: "func (r *Resolve) Resolve() error",
+			oldName:   "Resolve",
+			newName:   "Answer",
+			want:      "func (r *Resolve) Answer() error",
+			wantOK:    true,
+		},
+		{
+			name:      "value receiver with type parameters",
+			signature: "func (b Box[T]) Boxed() T",
+			oldName:   "Boxed",
+			newName:   "Wrapped",
+			want:      "func (b Box[T]) Wrapped() T",
+			wantOK:    true,
+		},
+		{
+			name:      "interface method has no receiver clause",
+			signature: "Read() (int, error)",
+			oldName:   "Read",
+			newName:   "Fetch",
+			want:      "Fetch() (int, error)",
+			wantOK:    true,
+		},
+		{
+			name:      "parameter name merely contains the identifier",
+			signature: "func Emit(emitter io.Writer) error",
+			oldName:   "Emit",
+			newName:   "Write",
+			want:      "func Write(emitter io.Writer) error",
+			wantOK:    true,
+		},
+		{
+			name:      "identifier absent from the signature",
+			signature: "func Other() int",
+			oldName:   "Missing",
+			newName:   "Renamed",
+			wantOK:    false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := renameSignature(tc.signature, tc.oldName, tc.newName)
+			if ok != tc.wantOK {
+				t.Fatalf("renameSignature(%q, %q, %q) ok = %v; want %v", tc.signature, tc.oldName, tc.newName, ok, tc.wantOK)
+			}
+			if ok && got != tc.want {
+				t.Errorf("renameSignature(%q, %q, %q) = %q; want %q", tc.signature, tc.oldName, tc.newName, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDraftHandleIdentifier covers the qualified-member case: a method handle's member half is
+// "Owner.Name", and only the Name half ever belongs in a declaration head.
+func TestDraftHandleIdentifier(t *testing.T) {
+	cases := []struct {
+		handle string
+		want   string
+		wantOK bool
+	}{
+		{handle: "plan:internal/alpha#Renamed", want: "Renamed", wantOK: true},
+		{handle: "plan:internal/alpha#Counter.Tally", want: "Tally", wantOK: true},
+		{handle: "plan:internal/alpha#", wantOK: false},
+		{handle: "plan:internal/alpha", wantOK: false},
+	}
+
+	for _, tc := range cases {
+		got, ok := draftHandleIdentifier(tc.handle)
+		if ok != tc.wantOK {
+			t.Fatalf("draftHandleIdentifier(%q) ok = %v; want %v", tc.handle, ok, tc.wantOK)
+		}
+		if ok && got != tc.want {
+			t.Errorf("draftHandleIdentifier(%q) = %q; want %q", tc.handle, got, tc.want)
+		}
+	}
+}
+
+// TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration proves a method Rename pair
+// canonicalizes end to end against a real repository. Before renameSignature this produced the
+// declaration "func (c *Counter.Tallyer) Count() int", which quarry rejected as member_too_deep,
+// so no method could be renamed through the glyph alphabet at all.
+func TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{
+		"sub/a.go": "package sub\n\ntype Counter struct{ n int }\n\nfunc (c *Counter) Count() int { return c.n }\n",
+	})
+	repo, err := openRepo(root)
+	if err != nil {
+		t.Fatalf("openRepo(%q) returned error: %v", root, err)
+	}
+	results, err := resolveTargets(repo, []string{"sub#Counter.Count"})
+	if err != nil {
+		t.Fatalf("resolveTargets(...) returned error: %v", err)
+	}
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub#Counter.Count` -> `plan:sub#Counter.Tally`\n\n**Intent:** one\n\n## Rename mechanic\n",
+	})
+
+	findings, err := CanonicalizeHandles(plan, dir, results)
+	if err != nil {
+		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v; want none — a method rename must canonicalize cleanly", findings)
+	}
+
+	got := readCardFile(t, dir, 1, "card1")
+	if !strings.Contains(got, "plan:sub#Counter.Tally") {
+		t.Errorf("canonical method handle plan:sub#Counter.Tally missing after rewrite: %s", got)
+	}
+}
+
 func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub#DoesNotExist` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
