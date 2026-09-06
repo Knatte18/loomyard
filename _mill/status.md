@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r6
+phase: planned
 slug: quarry-glyph-plan-alphabet
 branch: quarry-glyph-plan-alphabet
 plan: _mill/plan
@@ -35,4 +35,5 @@ plan-review-r5  '2026-09-06T11:23:24Z'
 plan-fix-r5  '2026-09-06T11:25:21Z'
 plan-review-r6  '2026-09-06T11:31:19Z'
 plan-fix-r6  '2026-09-06T11:34:30Z'
+planned  '2026-09-06T11:34:40Z'
 ```
