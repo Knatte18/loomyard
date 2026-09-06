@@ -186,6 +186,8 @@ Batch-local decisions, beyond `## Shared Decisions`:
 - **Edits:**
   - `CONSTRAINTS.md`
   - `internal/planparser/doc.go`
+  - `contracts/specs/loom-plan-spec.md`
+  - `contracts/stencils/loom/loom-template-plan.md`
 - **Creates:**
   - `cmd/lyx/constraintchokepoint_test.go`
 - **Deletes:** none
@@ -195,6 +197,8 @@ Batch-local decisions, beyond `## Shared Decisions`:
   Then add a new `## Glyph Conversion Chokepoint Invariant` section stating that loomyard performs no glyph↔path conversion of its own, with bullets naming `glyph.Self` as the only path→glyph call, `Glyph.UnitPath` as the only glyph→path call, and `glyph.Parse` plus `Glyph.String` as the only glyph grammar, and forbidding a `#`-trimming suffix operation, reading `Glyph.Unit` as a disk path, and a local regex over a glyph string. No file read needed.
   Place it near the other parser invariants rather than at the end, so a reader scanning for plan-format rules finds it beside them.
   In `internal/planparser/doc.go`, extend the package documentation to name the two new write paths and point at the chokepoint invariant.
+  In `contracts/specs/loom-plan-spec.md`, document the `plan:` handle mechanism this batch adds — the `Create:` two-field declaration-head arrow grammar, the six new handle/rename checks, and the two new write paths (`RewriteRefs`, `AppendAmendment`) — and update the "Validation checks" section's row/ID count from twenty to twenty-seven, splitting `ValidateFormat`'s twenty-six from `Validate`'s twenty-seven the way `validate.go`'s own package comment already does.
+  In `contracts/stencils/loom/loom-template-plan.md`, add the LLM-facing instructions for writing a `plan:` handle declaration on a `Create:` card, so `Plan-Write` has the one grammar this task adds for declaring a symbol that does not exist yet.
   Create `cmd/lyx/constraintchokepoint_test.go` enforcing the new invariant the way this repository's sibling guards do, with one deliberate choice about how it finds its scan root: resolve the module root from `runtime.Caller(0)`, the way `cmd/lyx/registration_test.go` and `cmd/lyx/sandbox_coverage_test.go` both do, and **not** via `exec.Command("go", "env", "GOMOD")`.
   The `GOMOD` route is what forces every sibling guard using it onto `tierpurity_test.go`'s `allowedSpawners` allowlist; `runtime.Caller(0)` spawns nothing, so this guard needs no allowlist entry and stays tier1-pure on its own terms.
   Then walk every non-test `.go` file under `internal/` and `cmd/`, skipping the same directories `tierPuritySkipDirs` names, and fail any file that contains a `#`-trimming suffix call over a glyph-typed value, or that reads a `glyph.Glyph` value's `Unit` field in a `filepath`/`os` path-construction context. No file read needed.
