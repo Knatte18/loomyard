@@ -122,6 +122,24 @@ Marked PLAUSIBLE pending a live check of what `Symbol.Signature` actually contai
 Every sibling in this package sorts deliberately (`sortedCards`, `sort.Strings(canonicals)`, `sort.Strings(targets)`); this one does not.
 Consequence: a gate's rendered findings list is not reproducible, so two runs over an identical plan produce different operator output and any test asserting more than one overlap is inherently flaky.
 
+### F11 — `ScopeGuard` reports every handle-created symbol as out-of-plan (LOW, CONFIRMED-by-trace)
+
+`internal/planglyph/scope.go:18-26` builds the comparison union from `Card.Targets` verbatim.
+A `Create` card declaring `plan:internal/foo#NewThing` has exactly that handle-shaped string in `Targets` (`internal/planparser/parse.go:680`), while `delta.Created[i].ID` is the bare glyph `internal/foo#NewThing`.
+`union[id]` therefore misses, and `ScopeGuard` emits an informational `scope-outside-plan` finding for **every symbol the plan explicitly asked to be created** — the exact opposite of the check's purpose.
+`RecordBatch` runs `ScopeGuard` on `batch.Cards`, which are parsed at CLI entry and so still carry the handle even after `BindHandles`' on-disk rewrite (recordbatch.go:243).
+Fix: normalise the union through the same handle-stripping `donecheck.go:34`'s `resolveKeyFor` performs.
+
+### F12 — `planglyph`'s entry points nil-deref on a nil plan, and the glyph landing left a smoke fixture panicking (MEDIUM, CONFIRMED-by-trace)
+
+`internal/planglyph/planglyph.go:115-116`: `resolveLanguage` dereferences `plan.Language` with no nil guard, and `DoneChecks`, `CanonicalizeHandles`, `BindHandles`, `DetectDrift`, `ValidateFormat` and `Validate` all call it first.
+
+`internal/webstercli/smoke_test.go:333-344` constructs `websterengine.RecordDeps` with **no `Plan` field** — nil — and calls `RecordBatch`, which reaches `planglyph.DoneChecks(deps.Plan, …)` at `recordbatch.go:195`. That is an unconditional nil-pointer panic.
+The fixture predates PR #230 and the `Plan` field it added to `RecordDeps`; nothing updated it, and the smoke tier is not part of any routine gate, so it went unnoticed.
+`internal/websterengine/recordbatch_test.go`'s only `RecordDeps` constructor does pass a plan, which is why the hermetic tier stays green.
+
+Strictly `webstercli`'s test is outside loom's module scope, but the defect is a direct consequence of the surface under review and the nil-guard gap is in `planglyph` itself, so both halves are recorded here and fixed this round.
+
 ## Scope assessment
 
 _(written last)_
