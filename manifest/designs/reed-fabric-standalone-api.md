@@ -58,7 +58,8 @@ Each is recorded here as a correction, with its evidence, because the doc's valu
 
 1. **The `gitkit`/`gitrepo`/`gitexec` "trio" framing is wrong.**
    `internal/gitkit` is not in Fabric's dependency set at all, transitively or directly — confirmed by `go list -deps ./internal/fabricengine`, which does not list it.
-   Its only non-test production importer anywhere in the repo is one file, `internal/hubforge/seed.go`; every other reference to `gitkit` is from a `_test.go` file, which is what makes it test-fixture machinery.
+   Its only non-test production importer anywhere in the repo is one file, `internal/hubforge/seed.go`;
+   every other reference to `gitkit` is from a `_test.go` file, which is what makes it test-fixture machinery.
    The `gitkit` Leaf Invariant (`CONSTRAINTS.md`) is therefore untouched by anything in this document.
 
 2. **Fabric's cwd coupling is structural, not incidental.**
@@ -102,7 +103,8 @@ None of this is free, even for a clean extraction candidate.
 
 **A caveat on this section's own verifiability.**
 The layout and façade observations above were read off a local checkout of the quarry repo, not from anything in this repository.
-That local-checkout read is the one block of evidence in this document no other reader can re-verify from this repo alone — it is not backed by a machine-local absolute path, and no claim in this document rests on one; a reader who wants to confirm the layout or façade shape must clone `github.com/Knatte18/quarry` and look themselves.
+That local-checkout read is the one block of evidence in this document no other reader can re-verify from this repo alone — it is not backed by a machine-local absolute path, and no claim in this document rests on one;
+a reader who wants to confirm the layout or façade shape must clone `github.com/Knatte18/quarry` and look themselves.
 
 ## Reed — the measured contract today
 
@@ -169,7 +171,8 @@ But loomyard is Reed's only user, and the quarry precedent measures what extract
 
 Three further Reed items sit in `manifest/roadmap.md`'s Someday section — `reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay` — and all three are Someday, committed but unscheduled, **not Planned**.
 They are a weak churn argument and must not be read as imminent change.
-The verdict stands on the second-consumer gate alone; the Someday items are a secondary note that the surface is not finished, not the load-bearing reason.
+The verdict stands on the second-consumer gate alone;
+the Someday items are a secondary note that the surface is not finished, not the load-bearing reason.
 
 The likelier trigger than "another project wants tmux orchestration" is the daemon story: watchdog plus relay plus mailbox together give Reed a lifecycle of its own, and that is when a repo boundary starts paying.
 
@@ -191,10 +194,12 @@ func StripEnvKeys(environ []string, exact []string, prefixes []string) (clean []
 ```
 
 with the `CLAUDECODE`/`CLAUDE_CODE_` literals moving out of the function body into `internal/reedengine/lifecycle.go`'s single call site, which is where the provider knowledge belongs.
-Only the identifier's final name is left to the follow-up item; the signature shape and the relocation of the Claude literals are not.
+Only the identifier's final name is left to the follow-up item;
+the signature shape and the relocation of the Claude literals are not.
 
 **(b) Give the one retaining consumer a named interface seam.**
-`loomcli` is the only consumer that retains a concrete `*reedengine.Engine` as a struct field; give it a named interface seam so that no consumer retains the concrete type except Reed's own CLI.
+`loomcli` is the only consumer that retains a concrete `*reedengine.Engine` as a struct field;
+give it a named interface seam so that no consumer retains the concrete type except Reed's own CLI.
 Stated precisely: two other consumers, `burlercli` and `shuttlecli`, construct the engine and hold it transiently before handing it off, and a seam cannot change that — construction always yields the concrete type.
 What (b) removes is the *retained field*, of which `internal/loomcli/cli.go:44` is the only instance.
 
@@ -204,7 +209,8 @@ The logging decoupling is deliberately **not** in this list — see the standalo
 
 - Bundling (a) and (b) into the extraction itself — rejected: each stops being independently justifiable and stalls behind a decision with no trigger date.
 - Doing nothing until a trigger fires — rejected: leaves two unrelated defects unfixed for no reason.
-- Keeping the logging decoupling in this list — rejected: it is not cheap, unlike (a) and (b); see below for why.
+- Keeping the logging decoupling in this list — rejected: it is not cheap, unlike (a) and (b);
+  see below for why.
 
 ## Reed — the standalone repo shape, its published seams, and the logging price
 
@@ -268,7 +274,8 @@ var _ Session = (*Engine)(nil)
 ```
 
 The two slices deliberately overlap on three methods — `AddStrand`, `RemoveStrand`, `Status` — and that overlap is permitted, not a defect.
-A reader's first instinct is that two seams over one type should partition its methods; they do not.
+A reader's first instinct is that two seams over one type should partition its methods;
+they do not.
 Each slice states one consumer's real dependency, and a method two consumers both need legitimately appears in both.
 
 Both slices are declared in the provider package — `reed` in a standalone repo, `reedengine` if the seam is retrofitted in-repo first — not in a consumer, because that placement is what makes the compile-time proof line live next to the type it constrains.
@@ -484,8 +491,10 @@ No follow-up task is proposed.
 ## Open questions
 
 - Whether any roadmap entry is warranted at all — the decision this document exists to inform, and whose negative outcome deletes this document.
-- The final identifier name for the renamed environment-cleaning function (`StripEnvKeys`'s shape is fixed; its exact name is not).
-- The two half-names for the Fabric split (the pair-kernel/hub-layout boundary is fixed; naming beyond that is not).
+- The final identifier name for the renamed environment-cleaning function
+  (`StripEnvKeys`'s shape is fixed; its exact name is not).
+- The two half-names for the Fabric split
+  (the pair-kernel/hub-layout boundary is fixed; naming beyond that is not).
 - The durable address registry the mailbox section stops short of designing.
 
 ## Related
