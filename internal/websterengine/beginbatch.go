@@ -204,6 +204,13 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("%w: %s", ErrPlanDrifted, strings.Join(blocking, "; "))
 	}
 
+	// The re-resolution above canonicalizes handles, which rewrites the plan on disk, so the
+	// fingerprint captured at run entry no longer describes it. Re-baseline before returning, or the
+	// next begin-batch refuses this run's own sanctioned rewrite as a foreign edit.
+	if err := restampFingerprint(deps.State, deps.Plan.Dir); err != nil {
+		return nil, err
+	}
+
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
 		return nil, err

@@ -129,6 +129,10 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 
 	reportsDir := t.TempDir()
 	contractDir := t.TempDir()
+	// A real (empty) plan directory: RecordBatch re-baselines the plan fingerprint over it after its
+	// own BindHandles and DetectDrift rewrites, so this is a genuine read rather than an invented
+	// path. No card here declares a handle, so nothing is ever written into it.
+	planDir := t.TempDir()
 
 	engine := &recordFakeEngine{scripted: scripted}
 	sleeper := &recordFakeSleeper{}
@@ -150,6 +154,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
 			ReportsDir:   reportsDir,
+			PlanDir:      planDir,
 		},
 		RefMatcher:  websterengine.NeverMatches{},
 		OutcomePath: filepath.Join(contractDir, "outcome.yaml"),

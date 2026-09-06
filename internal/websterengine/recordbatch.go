@@ -280,6 +280,14 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
 	}
 
+	// BindHandles above and DetectDrift's exact-tier repair both rewrite the plan on disk, and the
+	// repair additionally creates the amendment log. Re-baseline the staleness guard before this
+	// batch is marked terminal, or the next begin-batch refuses this run's own sanctioned rewrite as
+	// a foreign edit and sends the operator round a `--fresh` loop that hits the same wall.
+	if err := restampFingerprint(deps.State, deps.Geom.PlanDir); err != nil {
+		return nil, err
+	}
+
 	digest := distill(report)
 	digest.Batch = polledID
 
