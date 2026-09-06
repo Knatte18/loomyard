@@ -52,6 +52,42 @@ The three handle-bearing card files were rewritten on disk by the same call (mti
 - Card 1's declaration rewrote to `plan:internal/gamma#NewThing`, **and card 2's `Uses` reference to the same handle rewrote with it**. **Scenario 1's canonicalization half — plan-wide rewrite via `planparser.RewriteRefs`, reaching a non-declaring card — works live.**
 - New blocking finding `handle-name-failed`: "handle \"plan:internal/alpha#AddedHere\" failed naming: declaration does not parse (parse)" → finding F15.
 
+**Run 3** — a `Rename`-focused plan: card 1 renames the free function `internal/alpha#ToRename`, card 2 renames the method `internal/alpha#Counter.Count`, card 3 is a bare-glyph `Create` in a brand-new unit, cards 4/5 are a member glyph and its own unit self glyph.
+
+- `containment-unit-overlap` / `4-member-edit` — "card 4's member glyph in unit \"internal/beta\" physically overlaps card 5-unit-self-edit's own self glyph naming the same unit", blocking. **Syntactic containment tier: works live.**
+- `create-new-unit` / `3-bare-glyph-new-unit` — "Create target \"internal/delta#Fresh\" introduces a new unit", informational, unit named correctly. **Create inversion's new-unit branch: works live** — for a *bare glyph* target (contrast F14).
+- `handle-name-failed`, blocking, verbatim:
+  `handle "plan:internal/alpha#Counter.Tally" failed naming: glyph: parse "internal/alpha#Counter.Tallyer.Count" as go: member has more components than the language allows (Counter.Tallyer.Count) (member_too_deep)`
+  → **F9 confirmed live in its worst form.** `func (c *Counter) Count() int` with `Glyph.Name == "Count"` has its first substring hit inside the receiver type `Counter`, so the derived declaration became `func (c *Counter.Tallyer) Count() int`. **No method can be renamed through the glyph plan alphabet.**
+- Card 1's free-function rename produced no finding, and re-running with a deliberately misspelled draft (`plan:wrongunit#RenamedThing`) rewrote it to `plan:internal/alpha#RenamedThing` in the declaring card **and** in card 2's `Uses`. **A `Rename` to-side handle canonicalizes correctly for a free function.**
+
+**Run 4 — the two-batch Webster drive (the headline).**
+
+Standalone `lyx webster run` cannot start Master at all on this host — see F16 — so the bracket verbs were driven directly, exactly as Master drives them. `state.json` was hand-written (schema `internal/websterengine/state.go:101-137`) with the real recomputed plan fingerprint, and the Claude fork transcript was seeded as a fixture. Everything else — the plan, the git repository, the commits, quarry's resolve and delta, and both bracket verbs themselves — is real, and both verbs ran as real `lyx` processes.
+
+Plan (validated clean first: `{"cards":2,"ok":true,"valid":true}`):
+
+- card 1 `greet-helper` — `**Create:** - \`plan:internal/gamma#Greet\` -> \`func Greet() string\``
+- card 2 `beta-uses-greet` — `**Edit:** internal/beta#BetaOne`, `**Uses:** plan:internal/gamma#Greet`
+
+Sequence and observed results:
+
+1. `lyx webster begin-batch 1` → **ok**, `start_sha c035ebe16`, no advisories.
+2. Batch 1's work performed for real: `internal/gamma/gamma.go` written with `func Greet() string`, committed as `905efb59f`.
+3. `lyx webster record-batch 1` → **ok**, `status done`. Warnings included, verbatim:
+   `scope-outside-plan[informational]: symbol "internal/gamma#Greet" in file "internal/gamma/gamma.go" was touched outside the completed batch's own target glyphs`
+   → **F11 confirmed live**: the symbol the plan explicitly asked to be created is reported as out-of-scope.
+4. Plan on disk after `BindHandles`. Card 2's `Uses` bound correctly to `internal/gamma#Greet` — **the second half of scenario 1 works.** But card 1's own declaration became
+   ``- `internal/gamma#Greet` -> `func Greet() string` `` — the `plan:` prefix stripped out of the *declaration* bullet.
+5. `lyx webster begin-batch 2` → **refused**:
+   `webster: on-disk plan fingerprint does not match this run's recorded state: … 65c13544… does not match … 3bc6f3ef…; the plan changed since state.json was created — re-run "lyx webster run --fresh" …`
+   → **F4 confirmed live.** Webster's own `BindHandles` rewrite tripped webster's own staleness guard. The advised recourse (`--fresh`) archives state and starts the same plan over, hitting the same wall again.
+6. Fingerprint re-stamped by hand to get past F4; `lyx webster begin-batch 2` again → **refused**:
+   `webster: plan re-resolution at begin-batch reported a blocking finding: handle-malformed/1-greet-helper[blocking]: card 1 Create: entry "\`internal/gamma#Greet\` -> \`func Greet() string\`" does not match the required \`plan:<handle>\` -> \`<declaration head>\` grammar; card-field-empty/1-greet-helper[blocking]: card 1's **Create:** label carries no targets`
+   → **F3 confirmed live**, plus a second consequence not predicted from the read: the Create group's ref list is emptied too, so `card-field-empty` fires as well.
+
+**Conclusion of run 4: a two-card plan whose first card creates a symbol through a `plan:` handle — the exact shape the plan format prescribes — cannot reach its second batch. Webster wedges permanently, twice over, and neither wall has an operator recourse short of hand-editing the plan.**
+
 ## Findings
 
 ### F1 — `RecordBatch` treats an INFORMATIONAL drift finding as blocking (BLOCKING, CONFIRMED-by-trace)
@@ -217,6 +253,30 @@ A planner copying the stencil's own example therefore produces a plan that `Plan
 Two fixes are needed: correct the stencil's example to a head that parses (`type RowJSON struct`), and state the constraint explicitly — the declaration head must be a single, parseable Go declaration head.
 
 Sub-finding (LOW): the `handle-name-failed` finding carries an empty `Card` (`handle.go:130-143`, both branches), unlike every other finding in the package, so the operator is not told which card to look at.
+
+### F16 — standalone `lyx webster run` cannot start Master at all (BLOCKING, CONFIRMED LIVE — out of loom's scope to fix)
+
+```
+lyx webster run --plan-dir <plan>          # cwd = a plain git checkout, standalone mode
+{"error":"webster: start master: shuttle: NewRunner was told an anchor path
+ \"/home/knatte/.local/state/lyx/267a789e\" outside its worktree root
+ \"<repo>\": the anchor is always the worktree root or a subdirectory of it,
+ so this pair is most likely swapped — …","ok":false}
+```
+
+Standalone mode derives its state directory under `$XDG_STATE_HOME/lyx/<hash>` (`internal/standalonestate.Derive`) while `--target-dir` names a wholly separate repository, so `standalonegeom.WebsterGeometry`'s `AnchorRoot` is by construction outside `WorktreeRoot` — and `shuttleengine.NewRunner`'s containment assertion refuses exactly that pair.
+The mode is therefore dead on its documented entry point, the one `lyx webster --help` gives as its own example (`internal/webstercli/cli.go:186-187`).
+`begin-batch`, `record-batch` and `validate` all work standalone; only `run` (the Master spawn) does not.
+
+This is `webster`/`standalonegeom`'s own bug, on a path loom never takes (loom always runs hub mode), so per "Explicitly OUT of scope" it is recorded rather than fixed here — but it is a real, shipped, blocking defect and it is what forced run 4 to drive the bracket verbs directly rather than through `run`.
+
+### F17 — a `Create` group's ref list is emptied by binding, not only malformed (BLOCKING, CONFIRMED LIVE)
+
+Observed alongside F3 in run 4 step 6: besides `handle-malformed`, `begin-batch 2` also reported
+`card-field-empty/1-greet-helper[blocking]: card 1's **Create:** label carries no targets`.
+
+`parseCreateField` (`internal/planparser/parse.go:678-685`) appends to `refs` only on the handle branch and the plain-ref branch; the arrow-but-not-a-handle branch appends to `raw` and to nothing else. A card whose only Create sub-bullet took that branch therefore parses with an **empty** `Refs`, which `checkCardFieldEmpty` reports blocking in its own right.
+It shares F3's root cause and F3's fix, but it is a distinct check ID and a distinct message the operator sees, so it is recorded separately.
 
 ## Scope assessment
 
