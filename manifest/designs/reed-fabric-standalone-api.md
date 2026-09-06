@@ -468,3 +468,30 @@ This is a name proposed by a design document, not a rename instruction for any e
 **What this section deliberately stops short of.**
 A full module design, which would need the durable address registry designed against webster's and loom's state — a task of its own.
 This card does not create a module directory, a config-registry entry or a CLI verb.
+
+## Other modules — a note, not a follow-up task
+
+Three further leaf packages are clean but poor extraction candidates, each for a measured reason.
+`internal/fslink` is 410 production lines with zero internal dependencies and five consumers.
+`internal/yamlengine` is smaller, with four consumers.
+`internal/githubclient` wraps an external binary (`gh`), depends on `internal/proc`, and exists to satisfy the GitHub Auth Invariant rather than to be reusable.
+
+The economics are plain: a separate repository, module path, release cadence and CI never pays for that size absent an external consumer, and the same second-consumer gate that defers Reed defers all three more strongly.
+
+`internal/reedengine/render` is the best-shaped extraction candidate in the repo — it is already stdlib-only and pure, and it is the piece that would ship first if Reed ever ships.
+No follow-up task is proposed.
+
+## Open questions
+
+- Whether any roadmap entry is warranted at all — the decision this document exists to inform, and whose negative outcome deletes this document.
+- The final identifier name for the renamed environment-cleaning function (`StripEnvKeys`'s shape is fixed; its exact name is not).
+- The two half-names for the Fabric split (the pair-kernel/hub-layout boundary is fixed; naming beyond that is not).
+- The durable address registry the mailbox section stops short of designing.
+
+## Related
+
+- [docs/overview.md](../../docs/overview.md#documentation-lifecycle) — the Documentation Lifecycle rule this document's placement and deletion trigger satisfy.
+- [loom.md](loom.md) — describes `internal/reedengine`'s and `internal/shuttleengine`'s roles in the agent-execution stack this document's Reed section measures.
+- [semantic-index.md](semantic-index.md) — the sibling standalone-vs-baked-in question, asked of a different module, with the same lean-build-inside-first posture.
+- [`internal/reedengine/doc.go`](../../internal/reedengine/doc.go) — Reed's own package documentation, quoted rather than re-derived throughout the Reed sections above.
+- [`internal/fabricengine/doc.go`](../../internal/fabricengine/doc.go) — Fabric's own package documentation, quoted rather than re-derived throughout the Fabric sections above.
