@@ -101,7 +101,9 @@ Batch-local decisions:
   - `cmd/lyx/main.go`
   - `cmd/lyx/stencilseed.go`
   - `cmd/lyx/stencilseed_integration_test.go`
-- **Edits:** none
+  - `cmd/lyx/tierpurity_test.go`
+- **Edits:**
+  - `cmd/lyx/tierpurity_test.go`
 - **Creates:**
   - `cmd/lyx/prerunlogging_test.go`
 - **Deletes:** none

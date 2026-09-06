@@ -92,6 +92,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 
 - `CONSTRAINTS.md`
 - `cmd/lyx/prerunlogging_test.go`
+- `cmd/lyx/tierpurity_test.go`
 - `internal/burlercli/wiring.go`
 - `internal/burlercli/wiring_test.go`
 - `internal/logger/sink.go`
