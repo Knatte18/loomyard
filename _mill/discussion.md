@@ -100,8 +100,12 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
   A new package `internal/planglyph` owns every `quarry.Repo` call and the resolve-backed validation pass.
 - **Rationale:** keeps `planparser` a tier1-pure leaf under the Test Tier Purity Invariant and preserves the `ValidateFormat`/`Validate` split the Gate Self-Check Parity Invariant depends on.
   `glyph` is stdlib-only with no dependencies, so importing it costs `planparser` nothing.
-- **Composition, not duplication:** `planglyph`'s resolve-backed entry point **calls** `planparser`'s pure `ValidateFormat`/`Validate` and adds only resolve findings on top.
+- **Composition, not duplication:** `planglyph`'s resolve-backed entry points **call** `planparser`'s pure `ValidateFormat`/`Validate` and add only resolve findings on top.
   No check is implemented twice.
+- **The two named entry points, mirroring `planparser`'s own pair:** `planglyph.ValidateFormat(plan, worktreeRoot)` and `planglyph.Validate(plan, worktreeRoot)`.
+  These become the **shared functions the Gate Self-Check Parity Invariant names**: `Plan-Validate` ↔ `validate-plan` both call `planglyph.ValidateFormat`, and `Plan-Revalidate` ↔ `validate-plan --require-approved` both call `planglyph.Validate`.
+  CONSTRAINTS.md's parity bullet currently spells `planparser.ValidateFormat`/`planparser.Validate` for those pairs and must be updated in the same commit — a **fourth** CONSTRAINTS.md edit beyond the three listed in Technical context.
+  Under `language: none` both entry points still run and simply skip the resolve pass, so the parity pair is one function in every mode rather than branching by plan language.
   This matters because the Gate Self-Check Parity Invariant makes the producer row and its CLI verb call the same package function: if the resolve-backed pass reimplemented any pure check, the two entry points could drift and parity would hold by convention rather than by construction.
 - **Rejected:** `planparser` importing the facade and resolving inline — one package, but `planparser` stops being a pure leaf and both gate entry points start reading the repository.
   Also rejected: putting the resolve step only in `internal/loomshed`'s producer row, which breaks gate parity because `validate-plan` would no longer do the same work.
@@ -298,6 +302,22 @@ Adopting glyphs closes the ambiguity, makes "does this plan still describe the c
   Rejecting `multipart` would reject `internal/logger#init` and every C# partial type as defects, which the contract says they are not.
   Downgrading `ambiguous` to a warning would let a plan proceed against a target nobody has picked — the ambiguity GitHub issue #225 existed to kill.
 
+### quarry-error-disposition
+
+- **Decision:** an **infrastructure error** — a non-nil `error` from `quarry.Open`, `(*Repo).Resolve`, or `(*Repo).DeltaGit` — is a category distinct from any per-target verdict, and it never silently passes:
+  - **`Plan-Revalidate`** (pre-Webster baseline) — **blocks**.
+    The gate cannot certify a plan as valid against code it failed to read.
+    It reports as a gate/infrastructure failure, not as a plan finding, so nobody mistakes "quarry broke" for "the plan is wrong".
+  - **`begin-batch`** (dispatch) — **blocks**.
+    Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
+  - **`record-batch`** (post-card) — **blocks the done-checks**, because a `Create` done-check that could not resolve is indistinguishable from a `Create` that never happened, and passing it would be a false success.
+    If only `DeltaGit` failed, the **scope guard degrades to informational**, consistent with `blocking-policy`'s split: the scope guard is already informational, so an unavailable diff costs visibility, not correctness.
+- **Rationale:** quarry's own contract draws exactly this line — `quarry`'s package documentation states the failure envelope's `ok` key "marks that quarry could not answer at all, and never that the answer is negative", with `not_found`/`ambiguous` being ordinary payloads carrying a status word.
+  `resolve-status-policy` governs the payload half; this decision governs the envelope half, and conflating them is what would let a transport failure be read as a clean `not_found` — which, under `create-target-verdict`, is a **pass**.
+  That is the specific disaster this decision prevents: a quarry outage silently marking every `Create` card done.
+- **Rejected:** degrading to format-only validation with a warning — the exact failure mode where a plan looks validated and was not.
+  Also rejected: informational everywhere, which makes the outage invisible at precisely the boundaries whose whole job is to be mechanical.
+
 ### create-target-verdict
 
 - **Decision:** per-group inversion.
@@ -490,7 +510,12 @@ The engine requires `CGO_ENABLED=1`; `internal/cgoguard` enforces it with a read
 The rewrite surface is the golden fixture, the spec's worked example, and the stencil.
 
 **Docs that must land in the same commits as the code that changes them**, per this repo's Task-completion rule: `contracts/specs/loom-plan-spec.md` (format 5, the new checks, the worked example), `contracts/stencils/loom/loom-template-plan.md` (glyph spelling, the hard rule, the `lyx quarry` verbs replacing the `go doc`/`grep` section), `contracts/stencils/webster/webster-body-implementer.md` (its deviation-union paragraph tells the implementer to resolve "a package-qualified symbol to its file" itself in "one read" — invalidated by glyph refs, and superseded by the mechanical glyph scope guard), `contracts/stencils/loom/loom-rubric-plan-review.md` (it names `prosa-symbol-target` and carries per-symbol card-granularity guidance, both of which move under `prosa-target-rule` and the glyph alphabet), `manifest/designs/quarry-glyph-plan-alphabet.md`, `docs/overview.md` (the new `internal/planglyph` and `internal/quarrycli` modules in the module table), `README.md` and `CLAUDE.md` (the cgo/C-toolchain prerequisite), and `manifest/roadmap.md` (the Planned item completes).
-`CONSTRAINTS.md` takes **three** separate edits, not one: the new Glyph Conversion Chokepoint Invariant; the Planparser Sole-Parser bullet, which today reads "`SetApproved` is the one write path" and must name `RewriteRefs` and the amendment append; and the CLI/Cobra package-naming line, which must record the `quarrycli` → `internal/planglyph` deviation beside `stencilcli`'s.
+`CONSTRAINTS.md` takes **four** separate edits, not one:
+(1) the new Glyph Conversion Chokepoint Invariant;
+(2) the Planparser Sole-Parser bullet, which today reads "`SetApproved` is the one write path" and must name `RewriteRefs` and the amendment append;
+(3) the CLI/Cobra Invariant, in **two** places — its package-naming line must record the `quarrycli` → `internal/planglyph` deviation beside `stencilcli`'s, and its module-count line ("eleven of twelve also carry `RunCLIIn`") must be recounted for the added subtree.
+`quarrycli` does carry `RunCLIIn`, because its root resolution is cwd-dependent (`planglyph-root-resolution`);
+(4) the Gate Self-Check Parity bullet, which today spells `planparser.ValidateFormat`/`planparser.Validate` for the two plan pairs and must name `planglyph.ValidateFormat`/`planglyph.Validate` instead (`package-ownership`).
 
 ## Constraints
 
@@ -503,6 +528,7 @@ From `CONSTRAINTS.md`, the ones this task is bound by:
 - **Test Tier Purity Invariant** — untagged test files perform no `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`.
   `planparser` stays a tier1-pure leaf; `quarry.DeltaGit` spawns `git`, so every test that reaches it is `integration`- or `smoke`-tagged.
 - **Gate Self-Check Parity Invariant** — a mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode, and adding a gate means adding its verb and its parity check in the same task.
+  The two plan pairs move from `planparser.ValidateFormat`/`planparser.Validate` to `planglyph.ValidateFormat`/`planglyph.Validate`, so the invariant's own bullet is edited in the same commit.
 - **CLI / Cobra Invariant** — the new `lyx quarry` group goes through the module `Command()`/`RunCLI` seam, carries `Short` on every command, and updates the help-tree tests.
   Its `quarrycli` → `internal/planglyph` pairing is a naming deviation and joins the invariant's existing `stencilcli` → `internal/stencilstore` deviation on the same line.
 - **Sandbox Suite Coverage** — registering `quarry` as a module obliges either a `**Covers:**` scenario or an allowlist entry; this task adds a scenario (`cmd/lyx/sandbox_coverage_test.go`).
@@ -556,7 +582,7 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
 
 **Gate parity and CLI.**
 
-- The existing parity test still covers `Plan-Revalidate` ↔ `validate-plan --require-approved` once that pair's function gains the batched `Resolve`; no new row/verb pair is added, so no new parity case appears.
+- The existing parity test still covers both plan pairs once they call `planglyph.ValidateFormat`/`planglyph.Validate` instead of the `planparser` equivalents; no new row/verb pair is added, so no new parity case appears — but the test's expected function names change, and so does the CONSTRAINTS.md bullet it mirrors.
   The two webster boundaries are tested as `websterengine` functions through their existing bracket verbs.
 - Help-tree tests cover the four `lyx quarry` verbs; a golden test pins that each verb's output is the facade's answer unmodified.
 
@@ -602,6 +628,7 @@ This is the TDD-heaviest surface and the natural place to lead with tests.
   Not `delta`, not `name` — `name` in an agent's hands is a glyph-spelling machine, which is the one thing the hard rule exists to prevent.
 - **Q:** How is the blocked quarry accessor handled? **A:** The disk-shaped checks become their own late cards with the merged accessor and the `go.mod` bump as their precondition; quarry task `glyph-unitpath` is already in motion.
   A temporary loomyard-side helper is banned outright, not deferred.
+- **Q:** What happens when a quarry call *errors* — `Open`, `Resolve` and `DeltaGit` all return one — as opposed to returning a negative verdict? **A:** [auto-pick] An infrastructure error blocks at `Plan-Revalidate` and `begin-batch`, blocks the done-checks at `record-batch`, and degrades only the scope guard to informational; it is never treated as a plan finding. **Why:** quarry's own contract separates "could not answer at all" from a negative answer, and conflating them would let a transport failure read as a clean `not_found` — which under `create-target-verdict` is a **pass**, so a quarry outage would silently mark every `Create` card done.
 - **Q:** `Plan-Revalidate` sits once before `Batchifier`/`Webster`, so it never fires after a card merge — where does the per-merge batched `Resolve` actually live? **A:** [auto-pick] Restate `Plan-Revalidate` as a one-shot pre-Webster baseline and fold the per-merge `Resolve` into `record-batch`. **Why:** webster runs cards sequentially and `record-batch` already fires after each one holding both SHAs, so issue #226's per-merge boundary and its done-check boundary are the same boundary in loomyard's real structure — no new row, consistent with this task adding none, and `Plan-Revalidate` keeps its own value as the pre-dispatch staleness baseline.
 - **Q:** Does `root:`/`//` resolution run before or after glyph canonicalization, and is a surface glyph under a non-`.` `root:` legal? **A:** [auto-pick] `root:` resolves first, while the ref is still path-shaped; canonicalization runs after; a surface glyph is always repository-root-relative and never `root:`-joined. **Why:** `normalizeRefIfPath` is classifier-gated, so canonicalizing first would put every ref on the non-path side of that gate and silently switch `root:` off plan-wide; and a glyph copied verbatim from a quarry answer is already a complete repository-relative string, so `root:`-joining one would corrupt it. A bare-filename surface glyph under a non-`.` root therefore names a repo-root file and fails loudly rather than resolving to the wrong file silently.
 - **Q:** Is `RewriteRefs` keyed on canonical model strings or on the on-disk lexemes the planner actually wrote? **A:** [auto-pick] Model strings, with the parser retaining each ref's surface lexeme beside its canonical form so the writer can find the exact bytes. **Why:** all three callers — canonicalization, binding, drift repair — natively produce canonical glyphs, so keying on lexemes would push the surface↔model gap into every one of them; bridging it once in the parser avoids the worst failure mode, a drift repair that reports success while silently skipping the refs it could not byte-match.
