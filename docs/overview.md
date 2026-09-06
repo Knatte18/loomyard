@@ -303,6 +303,7 @@ User-facing modules each get one `lyx <module>` namespace:
   See [webster-spec.md](../contracts/specs/webster-spec.md).
 - **planparser** — the sole parser of the on-disk flat card-list plan format (`_lyx/plan/`, see [loom-plan-spec.md](../contracts/specs/loom-plan-spec.md));
   no other package reads that tree directly, and it also declares where that tree *is* — the worktree-relative form (`PlanDirName`/`PlanDirRel`) and the absolute told-anchor form (`PlanDir`/`PlanOverview`), with the caller supplying the anchor path (`internal/planparser`). ✅ Implemented.
+- **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks: `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`). ✅ Implemented.
 - **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections and the support log's existence);
   it takes told absolute paths and declares no location of its own — deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location`, which this stdlib-only leaf may not import.
   Consumed by `loomshed.discussionValidate` and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
