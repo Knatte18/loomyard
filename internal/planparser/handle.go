@@ -44,6 +44,14 @@ func handleUnit(handle string) (string, bool) {
 	return rest[:idx], true
 }
 
+// HandleUnit is handleUnit's exported form: internal/planglyph's CanonicalizeHandles needs a
+// Create declaration's own unit half to build the quarry.Declaration it hands to quarry.Name, and
+// this is the one accessor for that split, so planglyph never re-implements handle.go's own
+// grammar.
+func HandleUnit(handle string) (string, bool) {
+	return handleUnit(handle)
+}
+
 // declaredHandles maps every handle declared by some card's own Create group (via
 // CardDeclaration) to every card ID that declares it, in card order. A handle declared twice by
 // the same card appears once per declaration, matching handle-collision's own per-declaration
