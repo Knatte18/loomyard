@@ -100,9 +100,11 @@ _Cross-cutting decisions every batch inherits._
   Done-check failures **block**: a `Create` target that still does not resolve, a `Delete` target that still resolves, a card-count mismatch on binding.
   Evidence-tier drift candidates and the glyph scope guard stay **informational**.
   An infrastructure error from `quarry.Open`/`Resolve`/`DeltaGit` is a third category that blocks at `Plan-Revalidate` and `begin-batch`, blocks the done-checks at `record-batch`, and degrades only the scope guard to informational.
+  **Severity governs every gate verdict, at every boundary.** A findings set carrying no blocking finding is a pass: `Plan-Validate`/`Plan-Revalidate` report `Done`, `validate-plan` and `webster validate` emit a success envelope, and `begin-batch` dispatches — each still surfacing the informational findings for visibility.
 - **Rationale:** mirrors quarry's own two-tier philosophy — block on what is mechanically asserted, stay informational on what quarry itself refuses to decide.
   Conflating an infrastructure error with a `not_found` payload would let a quarry outage silently mark every `Create` card done.
-- **Applies to:** batches 4 and 7.
+  The severity rule is load-bearing rather than tidy: `create-new-unit` fires on every plan that adds a brand-new package — including this task's own `internal/planglyph` and `internal/quarrycli` — and nothing about creating a package is something `Plan-Write` can fix, so bouncing on it would resubmit an unchanged plan until the segment's bounce budget escalated to a human over a condition that was never wrong.
+- **Applies to:** batches 4, 5 and 7.
 
 ### Decision: no-new-rows-no-new-verbs
 

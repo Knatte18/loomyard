@@ -16,7 +16,7 @@ _This batch contains no `Moves:` entry; the section is retained for the batch te
 ## Batch Scope
 
 This batch adds the two webster re-resolution boundaries and everything they carry: the `DeltaGit` call site, the done-checks, handle binding at card completion, the glyph scope guard, and drift detection with exact-tier auto-repair and evidence-tier surfacing.
-It is one batch because all six consumers read the **same** `record-batch` delta — one `DeltaGit(BatchState.StartSHA, report.HeadSHA, ".")` call serving handle binding, done-checks and the scope guard at once — and splitting them would mean either three delta calls or a half-wired boundary that reports success it did not verify.
+It is one batch because its consumers all hang off one `record-batch` invocation: a single `DeltaGit(BatchState.StartSHA, report.HeadSHA, ".")` call serves handle binding, the scope guard and drift detection, while the done-checks run their own batched `Resolve` against the post-card tree within that same invocation — and splitting them would mean either several delta calls or a half-wired boundary that reports success it did not verify.
 The two guard extensions and the two stencil rewrites land here too, because they are only true once the `DeltaGit` call site and the mechanical scope guard exist.
 
 Batch-local decisions, beyond `## Shared Decisions`:
