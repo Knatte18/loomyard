@@ -41,9 +41,9 @@ Do not flag any of the following as a finding:
 ## Also flag
 
 - **Granularity.**
-  One card per independently reviewable/testable unit, not one card per literal glyph.
-  A private supporting type, or a constructor inseparable from its type, belongs in the other glyph's card;
-  an independently testable glyph gets its own card even when one card is its only consumer.
+  One card per independently reviewable/testable unit, not one card per literal symbol.
+  A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
+  an independently testable symbol gets its own card even when one card is its only consumer.
 - **`ImpactSummary` carries a real conclusion.**
   A one-line blast-radius conclusion — "3 callers, all local to the billing package, no cross-module effects" — never a restatement of `Intent`.
 - **`Custom` is a last resort.**
