@@ -77,7 +77,9 @@ batches:
     commit_sha: 719d14b1f7ab8b2a82b3dafc023f302d6a98b548
     verify_baseline_failures: ["FAIL\t./internal/planglyph [setup failed]"]
   - name: gate-parity
-    state: pending
+    state: running
+    implementer_session: 2d43da5e-e076-401e-b3d0-f41e1fa20187
+    start_sha: 96708c934c48753d9a148babb185f20495f77374
     verify_baseline_failures: []
   - name: quarry-cli
     state: pending
