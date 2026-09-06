@@ -84,9 +84,15 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) 
 		return handleFindings, fmt.Errorf("%w: canonicalize handles: %v", ErrQuarryUnavailable, err)
 	}
 
-	current := plan
-	if reloaded, rerr := planparser.ParsePlan(plan.Dir); rerr == nil {
-		current = reloaded
+	// The reload is not optional and its failure is not recoverable: CanonicalizeHandles has just
+	// rewritten planDir, so a plan that no longer parses means the three passes below would run
+	// against the stale in-memory copy and report a clean verdict over bytes that are no longer on
+	// disk -- the "a plan looks validated and was not" failure mode repo.go's own ErrQuarryUnavailable
+	// rationale names as rejected. It reports as an infrastructure failure rather than a plan finding
+	// for the same reason: the gate could not read the artifact, it did not find a defect in it.
+	current, rerr := planparser.ParsePlan(plan.Dir)
+	if rerr != nil {
+		return handleFindings, fmt.Errorf("%w: re-parse plan after handle canonicalization: %v", ErrQuarryUnavailable, rerr)
 	}
 
 	findings := append([]Finding{}, handleFindings...)

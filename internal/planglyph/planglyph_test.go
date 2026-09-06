@@ -115,6 +115,39 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 	}
 }
 
+// TestValidateFormat_UnreadablePlanAfterCanonicalizationIsAnInfrastructureError asserts the
+// post-canonicalization reload's failure is reported rather than swallowed. It used to degrade
+// silently to the stale in-memory plan, so the three resolve-backed passes ran against bytes that
+// were no longer on disk and the gate reported a clean-looking verdict over them.
+func TestValidateFormat_UnreadablePlanAfterCanonicalizationIsAnInfrastructureError(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	// A plan carrying no handles at all, so CanonicalizeHandles returns before it rewrites anything
+	// and the reload below is the only thing that can fail.
+	planDir := filepath.Join(t.TempDir(), "plan")
+	plan := &planparser.Plan{
+		Dir:      planDir,
+		Format:   5,
+		Language: "go",
+		Approved: true,
+		Cards:    []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}},
+	}
+
+	// planDir was never created, so ParsePlan cannot read an overview there.
+	got, err := ValidateFormat(plan, root)
+	if !errors.Is(err, ErrQuarryUnavailable) {
+		t.Fatalf("ValidateFormat(...) error = %v; want errors.Is(err, ErrQuarryUnavailable) for an unreadable plan directory", err)
+	}
+	// The pure findings already collected are still returned alongside the error, per this package's
+	// documented contract; what must NOT appear is any resolve-backed finding, since those passes
+	// would have run against the stale in-memory plan.
+	for _, f := range got {
+		switch f.Check {
+		case "glyph-not-found", "glyph-ambiguous", "glyph-rejected", "create-already-exists", "create-new-unit", "containment-file-overlap":
+			t.Errorf("ValidateFormat(...) reported resolve-backed finding %+v; the passes must not run against a stale plan", f)
+		}
+	}
+}
+
 // TestCollectGlyphTargets_DeduplicatesAcrossCards asserts a glyph referenced by two cards
 // collapses into one target, and that non-glyph-shaped refs (a path, a bare symbol, a plan:
 // handle) are excluded.
