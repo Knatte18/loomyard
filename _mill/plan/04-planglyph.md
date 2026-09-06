@@ -173,6 +173,7 @@ Batch-local decisions, beyond `## Shared Decisions`:
   - `internal/planglyph/planglyph.go`
   - `internal/planglyph/repo_test.go`
   - `internal/planglyph/planglyph_test.go`
+  - `internal/planglyph/doc.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
