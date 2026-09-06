@@ -204,8 +204,21 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 		nonCreateResults = append(nonCreateResults, r)
 	}
 
+	// The Create inversion needs one answer per Create target INCLUDING the handle-shaped ones, whose
+	// expected glyph only became knowable once CanonicalizeHandles computed it above — so its index
+	// is the batched glyph answers plus one further batched call for the handles, keyed by the ref
+	// each card actually spells.
+	createIndex := resultByTarget(results)
+	handleResults, err := createHandleResults(repo, current)
+	if err != nil {
+		return findings, err
+	}
+	for handle, r := range handleResults {
+		createIndex[handle] = r
+	}
+
 	findings = append(findings, statusFindings(current, nonCreateResults)...)
-	findings = append(findings, createFindings(current, results)...)
+	findings = append(findings, createFindings(current, createIndex)...)
 	findings = append(findings, resolveContainment(current, results)...)
 
 	return findings, nil
