@@ -88,6 +88,78 @@ Sequence and observed results:
 
 **Conclusion of run 4: a two-card plan whose first card creates a symbol through a `plan:` handle — the exact shape the plan format prescribes — cannot reach its second batch. Webster wedges permanently, twice over, and neither wall has an operator recourse short of hand-editing the plan.**
 
+**Run 5 — a declared `Rename` card, driven through `record-batch` (scenario 2).**
+
+Plan: card 1 `**Rename:** internal/alpha#ToRename -> plan:internal/alpha#RenamedThing` (with the required `## Rename mechanic` section); card 2 `**Edit:** internal/beta#BetaOne`, `**Uses:** plan:internal/alpha#RenamedThing`. Validated clean.
+`begin-batch 1` ok. The rename was then performed for real as a pure identifier rename (AST-exact), committed as `ad1c8e928`, report written, `record-batch 1` run.
+
+`record-batch 1` returned **ok/done**, and left behind:
+
+- card 1 rewritten to ``- `internal/alpha#RenamedThing` -> `plan:internal/alpha#RenamedThing` `` — its `Old` side **clobbered**, leaving a self-referential pair that no longer records what the card renames;
+- `amendments.md` created with, verbatim:
+  `- Timestamp: 2026-09-06T16:24:48Z, Card: 1-rename-torename, OldGlyph: internal/alpha#ToRename, NewGlyph: internal/alpha#RenamedThing, Tier: exact, SHA: ad1c8e928…`
+  — a "repair" amendment for a rename that was the card's own declared, expected outcome.
+
+→ **F2 confirmed live.** Gate one never fired; the plan's own working-as-designed rename was recorded as drift and auto-"repaired".
+`begin-batch 2` then failed with `ErrFingerprintMismatch` again — **F4 confirmed a second time, with no `Create` card anywhere in the plan**, driven purely by the drift rewrite and the new `amendments.md`.
+
+**Run 6a — undeclared exact-tier drift (scenario 3, first sub-scenario). WORKS.**
+
+Plan: card 1 `**Edit:** internal/gamma#Greet`; card 2 `**Edit:** internal/alpha#ToRename`. Batch 1's commit edited gamma **and**, out of band, renamed `ToRename` → `DriftedName` as a pure identifier rename.
+
+`record-batch 1` → **ok/done**, and:
+
+- card 2's target auto-rewrote to `internal/alpha#DriftedName`, with no human intervention;
+- exactly one amendment appended: `Card: 2-edit-torename, OldGlyph: internal/alpha#ToRename, NewGlyph: internal/alpha#DriftedName, Tier: exact, SHA: e413fd02e…`.
+
+**Exact-tier auto-repair works live, end to end, exactly as designed** — gate one correctly did not match (no `Rename` card pairs it), gate two correctly did.
+
+**Run 6b — evidence-tier drift (scenario 3, second sub-scenario). BROKEN, two ways.**
+
+Same plan; batch 1 renamed `DriftedName` → `Wobbled` *and* changed its body enough that quarry's token streams differ in length, so quarry classified it a `RenameCandidate` rather than an exact `Renamed` (observed `body_token_similarity=0.4000`, `body_tokens_before=4`, `body_tokens_after=10`).
+
+`record-batch 1` → **refused**, verbatim:
+
+```
+webster: record-batch's done-checks reported a blocking finding:
+plan-references-deleted-symbol/2-edit-torename[blocking]: card 2 references
+"internal/alpha#DriftedName", which the delta reports deleted with no corresponding rename;
+rename-candidate/2-edit-torename[informational]: card 2 references "internal/alpha#DriftedName",
+deleted with 1 evidence-tier rename candidate(s) — mechanical evidence only, the
+rename-versus-genuine-delete decision is the reviewer's, never the pipeline's:
+internal/alpha#Wobbled (file=internal/alpha/alpha.go, signature_identical_modulo_name=true,
+body_token_similarity=0.4000, body_tokens_before=4, body_tokens_after=10, doc_identical=false)
+```
+
+→ **F1 confirmed live**: the `[informational]` finding is folded into the blocking error and fails the batch.
+→ and **F18** (new, below): the *same* symbol simultaneously produced the blocking `plan-references-deleted-symbol`, whose text ("deleted with no corresponding rename") directly contradicts the candidate finding printed beside it.
+
+**Run 6c — a genuine delete, still referenced (scenario 3, third sub-scenario). WORKS.**
+
+Batch 1 removed `internal/alpha#Wobbled` outright with no successor. `record-batch 1` → refused with exactly one finding:
+`plan-references-deleted-symbol/2-edit-torename[blocking]: card 2 references "internal/alpha#Wobbled", which the delta reports deleted with no corresponding rename`
+**The plain-blocking case behaves correctly and does block.**
+
+### Per-scenario verdict — was it driven live to completion?
+
+| # | Scenario | Driven live? | Outcome |
+|---|---|---|---|
+| 1 | `Create` card `plan:` handle → canonicalize → bind | **Yes** | Canonicalization ✓ (plan-wide, reaching non-declaring cards). Binding of *referencing* cards ✓. Binding of the *declaring* card corrupts it (F3/F17), and the run then wedges (F3, F4). |
+| 2 | `Rename` to-side handle, exact-tier gate one | **Yes** | Broken: gate one never matches (F2). Method renames impossible at all (F9). |
+| 3 | Drift: exact auto-repair / evidence tier / plain delete | **Yes, all three** | Exact-tier auto-repair ✓. Plain-blocking delete ✓. Evidence tier broken (F1, F18). |
+| 4 | Create inversion (3 ways) + both containment tiers | **Yes** | `create-already-exists` ✓, `create-new-unit` ✓ for a bare glyph but never for a handle (F14), `containment-unit-overlap` ✓, `containment-file-overlap` ✓. |
+
+On scenario 4's "prevents blind parallel dispatch": **not provable as a prevented race.** `internal/websterengine`'s batch loop is strictly sequential (`manifest/designs/webster-parallel-execution.md`), so no two cards can actually race today. What is proved is that both containment findings fire correctly and block the plan. Stated explicitly rather than overclaimed.
+
+### What could NOT be verified, and why
+
+- **A full `lyx loom run` through the whole seventeen-row recipe with real LLM sessions.** Three compounding environment gaps, not a cost objection:
+  1. Standalone `lyx webster run` cannot start Master at all on this host (F16), so the no-hub route is closed.
+  2. There is no lyx hub on this machine whose warp repository contains Go source — the only hub present (`/home/knatte/Code/lyx-test-HUB`) has no Go files, so quarry can resolve no glyph in it, and a glyph scenario cannot exist there.
+  3. The `lyx` on `PATH` (`/home/knatte/go/bin/lyx`, dated 2026-08-28) **predates the glyph landing entirely.** Every agent loom spawns resolves `lyx` from its own shell PATH (`manifest/designs/loom.md`'s "Agent execution" hazard), so a hub run would have its agents call a pre-glyph binary — and would additionally have that binary rewrite and commit the hub's stencils. A hub run under this condition would produce misleading evidence, not better evidence.
+  Mitigation actually taken: the Plan-Validate/Plan-Revalidate rows and the `lyx webster validate` verb call the **identical** `planglyph` functions by the Gate Self-Check Parity Invariant (`CONSTRAINTS.md`), and `begin-batch`/`record-batch` are the same processes Master itself invokes — so every row of the glyph surface was driven by its own real code path.
+- **The Claude fork-transcript audit** in runs 4–6 was seeded as a fixture rather than produced by a real Master session. It is upstream of and orthogonal to every glyph mechanism under review; the plan, git history, quarry resolve/delta, and both bracket verbs were all real.
+
 ## Findings
 
 ### F1 — `RecordBatch` treats an INFORMATIONAL drift finding as blocking (BLOCKING, CONFIRMED-by-trace)
@@ -277,6 +349,34 @@ Observed alongside F3 in run 4 step 6: besides `handle-malformed`, `begin-batch 
 
 `parseCreateField` (`internal/planparser/parse.go:678-685`) appends to `refs` only on the handle branch and the plain-ref branch; the arrow-but-not-a-handle branch appends to `raw` and to nothing else. A card whose only Create sub-bullet took that branch therefore parses with an **empty** `Refs`, which `checkCardFieldEmpty` reports blocking in its own right.
 It shares F3's root cause and F3's fix, but it is a distinct check ID and a distinct message the operator sees, so it is recorded separately.
+
+### F18 — an evidence-tier rename candidate always collides with a blocking deleted-symbol finding (BLOCKING, CONFIRMED LIVE)
+
+`internal/planglyph/drift.go:98-111` iterates `delta.Deleted` and reports blocking `plan-references-deleted-symbol` for every still-referenced entry, with no exclusion for entries that also carry rename candidates.
+
+The file's own contract argues this "never collides with the exact-tier handling above: quarry's own delta engine removes an exact pair's constituents from Deleted entirely" (`drift.go:66-69`). That reasoning is correct for the **exact** tier and false for the **evidence** tier: quarry deliberately leaves an evidence-tier candidate's endpoints in `Created`/`Deleted`, because "suppressing either for a candidate quarry has not resolved would be a silent pick in disguise" (quarry's `internal/engine/delta.go`).
+
+So every evidence-tier candidate is accompanied by a blocking finding, and the two contradict each other in the same message — confirmed live in run 6b:
+
+```
+plan-references-deleted-symbol/…[blocking]: card 2 references "internal/alpha#DriftedName",
+  which the delta reports deleted with no corresponding rename;
+rename-candidate/…[informational]: card 2 references "internal/alpha#DriftedName",
+  deleted with 1 evidence-tier rename candidate(s) …
+```
+
+This is deeper than F1: even with `RecordBatch`'s severity filter fixed, the evidence tier could never be non-blocking, so the "review-surfaced, never auto-repaired" tier the design describes does not exist in practice.
+
+Fix: exclude from the `plan-references-deleted-symbol` sweep any deleted symbol that appears as a `RenameCandidates` entry ID — that symbol's disposition is the candidate finding's, not the delete check's — and say so in the function's own contract comment.
+
+### F19 — `Plan-Validate`/`Plan-Revalidate` mutate the plan on disk, which no doc says (MEDIUM, CONFIRMED LIVE)
+
+`manifest/designs/loom.md`'s producer table describes row 8's output as "pass/fail, also callable standalone as `lyx loom validate-plan`" and row 10's as "pass/fail — no artifact, a gate signal only".
+
+Both rows in fact rewrite the plan directory in place: `planglyph.ValidateFormat`/`Validate` → `resolvePass` → `CanonicalizeHandles` → `planparser.RewriteRefs` (`internal/planglyph/planglyph.go:82`). Confirmed live — probe run 1 advanced the mtime of every handle-bearing card file, and run 2 rewrote a draft handle's spelling plan-wide.
+The same is true of the standalone verbs `lyx loom validate-plan` and `lyx webster validate`, whose help text ("lint the plan without running anything", "checks it… reports the result") gives no hint that they write.
+
+A validator that silently rewrites its subject is a genuine operability surprise, and "no artifact, a gate signal only" is now simply false for both rows. The mechanism is deliberate and correct; only the documentation is wrong.
 
 ## Scope assessment
 
