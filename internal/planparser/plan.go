@@ -1,5 +1,5 @@
 // plan.go defines planparser's public struct model: Plan (the whole parsed `_lyx/plan/` directory)
-// and Card (one flat, format-4 plan-format card), plus CardType (a card's own type label),
+// and Card (one flat, format-5 plan-format card), plus CardType (a card's own type label),
 // TargetGroup (one type label's own occurrence on a card), and MovePair (the normalized-path pair
 // a Rename group's Pairs field carries).
 // No parsing logic lives here — see parse.go, normalize.go, and sections.go for how these types are
@@ -37,7 +37,7 @@ type Plan struct {
 	Dir string
 
 	// Format is the plan-format version the plan is written against from the frontmatter.
-	// The only version Validate currently recognizes is 4.
+	// The only version Validate currently recognizes is 5.
 	Format int
 
 	// Approved mirrors the overview frontmatter's approved: field.
@@ -80,7 +80,7 @@ type Plan struct {
 	Verify string
 }
 
-// Card is one flat, format-4 plan-format card: the Card Index entry's fields plus everything
+// Card is one flat, format-5 plan-format card: the Card Index entry's fields plus everything
 // parsed from the card's own file — its type label and target list, its Uses list, its Intent
 // prose and ImpactSummary, and its optional Commit/Verify fields.
 type Card struct {
