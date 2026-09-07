@@ -1,0 +1,69 @@
+# loom review — round 3 (fable5-high-r3) — glyph-hardening campaign, TWO MISSIONS
+
+Reviewer-fixer: crucible round agent (Fable 5, high effort), 2026-09-07.
+Mission A: adversarial review + live verification of `d7c52df6c` (webster standalone mode: `NewDetachedRunner` for F16, `standalonegeom.LogsDir` sink redirect for F22).
+Mission B: third-pass safety sweep over loom's glyph surface + attempt to close the live Rename-through-Webster gap.
+
+Status: JOB 1 IN PROGRESS — provisional findings recorded as spotted, per the log-as-you-go rule.
+
+## Executive summary
+
+(to be completed at end of Job 1)
+
+## Findings (provisional until Job 1 closes)
+
+### F1 [Mission B] — resolvePass raises blocking `glyph-not-found` on a file-rename pair's New side — any plan carrying a file rename fails validation
+
+- **Where:** `internal/planglyph/planglyph.go` (`collectGlyphTargets` collects `p.New` unconditionally; `resolvePass` excludes only Create targets from `statusFindings`), `internal/planglyph/resolve.go` (`statusFindings` reports `not_found` as blocking).
+- **Scenario:** a plan carries a file-rename pair, e.g. `` `//internal/boardengine/rows.go` -> `//internal/boardengine/rowsjson.go` `` (the exact shape the spec's own worked example, card 5 of `contracts/specs/loom-plan-spec.md`, demonstrates). Both sides canonicalize at parse time to file self glyphs (`normalize.go`'s `canonicalizeCard` runs on both `Pairs` endpoints). The New side (`internal/boardengine/rowsjson.go#`) names a file that only exists AFTER the rename lands, so quarry resolves it `not_found` — and `statusFindings` reports that as the blocking finding `glyph-not-found`. `Plan-Validate`, `Plan-Revalidate`, webster's run-entry gate, and every `ValidateDispatch` before the rename card lands all refuse the plan.
+- **Contrast with the pure layer:** `planparser.checkPathMissing` deliberately never checks `Pairs.New` ("its Refs are skipped entirely (so a Rename's New side is never checked)") and maintains `renameTargetsUnion` to satisfy LATER cards' refs to the destination. The resolve-backed layer forgot the same exclusion.
+- **Severity:** BLOCKING. **Confidence:** CONFIRMED by code trace; live/unit repro pending (see What was tested).
+- **Fix:** exclude Rename pairs' New-side refs from `statusFindings`' input, mirroring the Create-target exclusion (a `renameNewTargetSet` alongside `createTargetSet`); keep resolving them is fine but their `not_found` must not report. Add an integration test with a file-rename plan.
+
+### F2 [Mission B] — `websterengine.Run` validates the WHOLE plan at entry — a mid-plan resume with any completed Create/Delete/Rename card is permanently wedged
+
+- **Where:** `internal/websterengine/runlevel.go:349` — `planglyph.Validate(plan, deps.Geom.WorktreeRoot)` runs before `LoadState`, unscoped by completed cards.
+- **Scenario:** a run completes batch 1 (a Create card; its symbol now exists), Master crashes (laptop reboot, session killed). Operator resumes via `lyx webster run` — the resume path the master stencil itself advertises twice ("fully resumable later with `lyx webster run`"). Run entry re-resolves the whole plan: the completed Create target resolves `found` → blocking `create-already-exists` → run refused. Same for a completed Delete (`glyph-not-found`) or Rename (`glyph-not-found` + `rename-old-unresolved`). `--fresh` does not help (it only fires on fingerprint mismatch, and would discard the run anyway). This is the exact wedge round 1 fixed at the begin-batch boundary (`ValidateDispatch`), left open at the run-entry boundary. It hits hub mode too: loom's `Webster` row re-invokes `websterengine.Run` on shed resume, and Webster carries no `on_stuck` — a human is the only recovery.
+- **Severity:** BLOCKING. **Confidence:** CONFIRMED by code trace (validation at line 349 precedes state load at 407; resume-with-matching-fingerprint proceeds without re-init); live repro pending.
+- **Fix:** load state first (or peek), compute `completedCards(batches, st, 0)`, validate via `ValidateDispatch`; keep the approval gate (ValidateDispatch runs the format-only pure set — assert `plan.Approved` alongside, or validate whole-plan only when `st == nil`/fresh). Add a state-seeded regression test.
+
+### F3 [Mission B] — no `rename-not-done` done-check: a fork that skips its Rename card records clean
+
+- **Where:** `internal/planglyph/donecheck.go` (`DoneChecks` covers Create/Delete groups only), `internal/planglyph/handle.go` (`BindHandles` covers Create declarations only), `internal/websterengine/recordbatch.go` (no other rename-completion gate).
+- **Scenario:** a batch's card carries `Rename: old -> plan:new`. The fork commits something unrelated (or nothing rename-shaped), writes `status: done`. `DoneChecks` finds no Create/Delete groups → passes. `BindHandles` finds no Declarations → passes. The delta contains no rename → `DetectDrift` has nothing to intersect → passes. The batch records terminal `done` with the rename never performed. Later cards referencing the to-side handle are excluded from resolve (handle-shaped), so no later gate catches it either — the failure surfaces only when an agent hits the missing symbol, or never.
+- **Contrast:** Create has `create-not-done`, Delete has `delete-not-done`; Rename has the same mechanical verdict available (old must no longer resolve; the to-side handle's expected glyph must resolve) and lacks it.
+- **Severity:** MEDIUM. **Confidence:** CONFIRMED by code reading (no gate exists); live repro not required to establish absence.
+- **Fix:** extend `DoneChecks` with `rename-not-done`: for each Rename group pair, the Old side still resolving found/multipart blocks, and the New side (via `resolveKeyFor`) still not resolving blocks. File-rename pairs (self glyphs) get the same treatment — old file glyph must stop resolving, new one must resolve.
+
+### F4 [Mission B] — identity substitutions: already-canonical handles are "rewritten" (byte-identical) on every validation pass, contradicting RewriteRefs' own no-op contract
+
+- **Where:** `internal/planglyph/handle.go` (`CanonicalizeHandles` builds `subs[owners[0]] = canonical` even when `owners[0] == canonical`), `internal/planparser/rewrite.go` (`rewriteBulletLine` reports `changed` for an identity substitution; `rewriteCardFile` then writes byte-identical content, violating the doc claim "A card file whose bytes do not actually change is left byte-identical (not even rewritten with identical bytes)").
+- **Scenario:** every `ValidateDispatch`/`ValidateFormat` call over a plan whose handles are already canonical (i.e. every call after the first) re-runs `quarry.Name`, produces identity subs, calls `RewriteRefs` (rewrites every declaring card file with identical bytes, bumping mtimes), reports `rewrote=true`, and forces a full plan re-parse — every begin-batch, every gate, forever.
+- **Severity:** LOW (wasted work + doc/behavior mismatch; no incorrect output). **Confidence:** CONFIRMED by code trace.
+- **Fix:** skip identity pairs when building `subs` in `CanonicalizeHandles` (one-line filter), and/or make `rewriteBulletLine` report unchanged when the rebuilt line equals the input.
+
+### F5 [Mission B] — stale "format-4" doc comments in `planparser/plan.go` while `recognizedFormat = 5`
+
+- **Where:** `internal/planparser/plan.go` — file header ("one flat, format-4 plan-format card"), `Plan.Format` field doc ("The only version Validate currently recognizes is 4"), `Card` doc ("one flat, format-4 plan-format card"). `internal/planparser/validate.go` has `recognizedFormat = 5`; the spec and stencils say `format: 5`.
+- **Severity:** NIT. **Confidence:** CONFIRMED.
+- **Fix:** update the three comments to format-5.
+
+### F6 [Mission B] — `renameCardPairs` claims "plan-wide" but receives the pending plan; DetectDrift's gate one can never see the executing batch's own Rename card
+
+- **Where:** `internal/planglyph/drift.go` (`renameCardPairs` doc: "indexes every declared Rename card's own Old->New pair, plan-wide"), `internal/websterengine/recordbatch.go:266` (passes `PendingPlan(...)` which excludes the recording batch's own cards).
+- **Scenario:** the executing batch's Rename card's own delta entry never matches gate one (its pair is not in the pending plan); it is instead absorbed by gate two (nothing pending references the old glyph in a well-formed plan) — safe in the well-formed case. In the ill-formed case (a pending card still referencing the OLD glyph), the declared rename is auto-repaired as if it were drift, with an "exact"-tier amendment recorded for a change that was a declared card outcome, not drift. Behavior is safe either way; the semantics and the doc claim are wrong, and gate one is reachable only for a rename executed AHEAD of its declaring pending card.
+- **Severity:** LOW (doc/semantics; amendment log mislabels a declared rename as drift in the ill-formed-plan case). **Confidence:** CONFIRMED by code trace.
+- **Fix:** thread the full plan into `renameCardPairs` (e.g. `DetectDrift(fullPlan, pending, ...)` or pass the pair index separately), so a declared pair is recognized regardless of its card's completion state; align the doc comment.
+
+### Mission A — statically clean so far
+
+`NewRunner`'s containment assertion is byte-untouched by `d7c52df6c` (`validateToldPaths` unchanged; all four hub callers — `burlercli` hub, `webstercli` hub, `shuttlecli` (hub-only, requires `lyxcwd.Resolve`), `loomcli` — still construct via `NewRunner`). `NewDetachedRunner` validates strict disjointness in both directions plus non-empty/absolute on all three paths, and error strings name the constructor. `wait.go`'s `AuditForks(sessionID, paneCwd)` is behavior-preserving in hub mode (`NewRunner` sets `paneCwd = anchorPath`). The sink redirect resets `sinkOnce`, so even a pre-redirect arming attempt (which fails in a plain repo — `lyxcwd.Resolve` refuses) cannot pin the sink to the wrong directory; the AST guard (`cmd/lyx/prerunlogging_test.go`) pins root pre-run ordering. `sweepOrphansOpportunistic` reads reed state at `anchorPath/.lyx` = `stateDir/.lyx`, matching `reedengine`'s own `stateDir()` derivation for standalone geometry. Live verification pending.
+
+## Scope assessment
+
+- Mission A: the fix is narrow and matches its CONSTRAINTS.md claim; nothing shipped beyond scope spotted in the diff (18 files, all accounted for: the two wirings, logger's atomic set-with-worktree-root, the detached constructor + its validator, LogsDir, tests, tier-purity allowlist entry, CONSTRAINTS line).
+- Mission B: design-intent vs shipped is aligned for the surfaces read (spec ↔ validate.go check set ↔ planglyph doc.go ID list ↔ recipe row wiring ↔ stencils), with the exceptions recorded as findings above.
+
+## What was tested
+
+(appended incrementally below)
