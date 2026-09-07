@@ -349,6 +349,51 @@ func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
 	})
 }
 
+// TestWireStandalone_RefusesStateDirNestedInTarget is R4-25's direct regression test for this
+// module. A standalone target that CONTAINS its own derived state directory -- a dotfiles repository
+// rooted at the home directory, or an XDG_STATE_HOME pointed somewhere inside the checkout -- used to
+// reach shuttleengine.NewDetachedRunner's containment assertion, which fires only once a tmux server
+// has been booted, blames a hub geometry that was never involved, and names no lever the operator
+// can pull.
+//
+// The sentinel-sink assertion is what proves the refusal lands EARLY: wireStandalone redirects the
+// durable trace sink to a directory under stateDir, which in this geometry sits inside the
+// operator's own repository, so a trace file appearing anywhere but the sentinel would mean the
+// guard ran after that redirect.
+func TestWireStandalone_RefusesStateDirNestedInTarget(t *testing.T) {
+	target := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", filepath.Join(target, ".local", "state"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(target, "AppData", "Local"))
+
+	sentinelDir := t.TempDir()
+	logger.SetDurableSinkDir(sentinelDir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	c := &burlerCLI{}
+	err := c.wire(nil, preflight.ModeStandalone, target, "", "")
+	if err == nil {
+		t.Fatal("wire() error = nil; want a refusal naming the nested state directory")
+	}
+	if !strings.Contains(err.Error(), "XDG_STATE_HOME") {
+		t.Errorf("wire() error = %v; want it to name XDG_STATE_HOME, the only lever an operator has here", err)
+	}
+	if !strings.Contains(err.Error(), target) {
+		t.Errorf("wire() error = %v; want it to name the target %q", err, target)
+	}
+	if strings.Contains(err.Error(), "hub geometry") {
+		t.Errorf("wire() error = %v; want the real cause, not NewDetachedRunner's hub-geometry guess", err)
+	}
+
+	logger.Info("wiring_test: arm the sink")
+	matches, err := filepath.Glob(filepath.Join(sentinelDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", sentinelDir, err)
+	}
+	if len(matches) == 0 {
+		t.Error("no trace-*.log file under the sentinel dir; want the nesting refusal to fire before wireStandalone redirects the durable sink into the operator's own repository")
+	}
+}
+
 // readDirNames returns the entry names inside dir, creating no directory of its own.
 func readDirNames(t *testing.T, dir string) ([]string, error) {
 	t.Helper()

@@ -10,6 +10,7 @@ package burlercli
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/buildinfo"
@@ -154,6 +155,9 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	if err != nil {
 		return err
 	}
+	if err := refuseNestedStandaloneGeometry("burler", target, stateDir); err != nil {
+		return err
+	}
 	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
 
 	var stencilsDir string
@@ -197,6 +201,47 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	c.stateDir = stateDir
 	c.stencilsDir = stencilsDir
 	return nil
+}
+
+// refuseNestedStandaloneGeometry refuses a standalone target and derived state directory that are
+// not disjoint, naming module in every message so an operator reading a live error knows which CLI
+// refused.
+//
+// Standalone geometry's whole premise is a state directory OUTSIDE the repository being reviewed:
+// burler's instruction directory, shuttle run directories and trace logs all land under it, and none
+// of them may appear inside the operator's own checkout.
+// shuttleengine.NewDetachedRunner asserts the same disjointness -- but it asserts it LATE, on a
+// Runner already constructed after this CLI has booted a tmux server, and its message blames "a
+// subpath-anchored hub geometry handed to the wrong constructor", which is not what happened here
+// and offers the operator no lever at all.
+//
+// What actually happened is a state home nested under the target: a dotfiles repository rooted at
+// the home directory, or an XDG_STATE_HOME deliberately pointed somewhere inside the checkout. That
+// is an environment fact, it is fixable, and the fix is named here -- before any substrate is
+// booted, which is the only point at which a refusal costs nothing to recover from.
+//
+// The reverse nesting (a target inside the state directory) is refused by the same guard for the
+// same reason, with its own message: the lever there is the target, not the state home.
+func refuseNestedStandaloneGeometry(module, target, stateDir string) error {
+	if pathContains(target, stateDir) {
+		return fmt.Errorf("%s: the derived state directory %s lies inside the standalone target %s: standalone mode keeps its instruction files, shuttle run directories and trace logs strictly outside the repository it reviews, so the two must be disjoint. The state home is nested under the target -- a repository rooted at your home directory is the usual cause. Point XDG_STATE_HOME (LOCALAPPDATA on Windows) at a directory outside %s and re-run", module, stateDir, target, target)
+	}
+	if pathContains(stateDir, target) {
+		return fmt.Errorf("%s: the standalone target %s lies inside the derived state directory %s: standalone mode keeps its instruction files, shuttle run directories and trace logs strictly outside the repository it reviews, so the two must be disjoint. Review a target outside the state home, or point XDG_STATE_HOME (LOCALAPPDATA on Windows) elsewhere, and re-run", module, target, stateDir)
+	}
+	return nil
+}
+
+// pathContains reports whether inner is outer itself or a descendant of it, computed the way
+// shuttleengine's own told-path assertions compute it -- filepath.Rel plus a ".." prefix test -- so
+// the CLI-boundary refusal and the constructor assertion it front-runs agree about what "nested"
+// means. Both paths are already absolute and cleaned by their producers.
+func pathContains(outer, inner string) bool {
+	rel, err := filepath.Rel(outer, inner)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty
