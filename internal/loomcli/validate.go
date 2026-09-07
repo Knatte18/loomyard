@@ -123,11 +123,18 @@ Example:
 			} else {
 				findings, err = planglyph.ValidateFormat(plan, c.env.WorktreeRoot)
 			}
-			if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
+			if err != nil {
 				// Named for quarry, not the plan: an operator reading this envelope must never be
 				// told the plan is invalid when quarry simply could not answer -- this is the
 				// CLI-side half of loomshed's producer-side disposition, and the two must agree.
-				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: quarry could not answer validating plan at "+planDir+": "+err.Error()))
+				// Any OTHER validator error still fails the verb rather than being dropped, with
+				// its own wording: reporting "valid" over a validation that did not finish is the
+				// failure mode internal/planglyph/repo.go's rationale rejects outright.
+				if errors.Is(err, planglyph.ErrQuarryUnavailable) {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: quarry could not answer validating plan at "+planDir+": "+err.Error()))
+					return nil
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validating plan at "+planDir+" failed: "+err.Error()))
 				return nil
 			}
 

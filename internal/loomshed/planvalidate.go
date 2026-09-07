@@ -9,7 +9,6 @@ package loomshed
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -82,10 +81,11 @@ func NewPlanValidate(name, anchorPath, worktreeRoot string, requireApproved bool
 //
 // A ParsePlan error maps to a returned error, never to Stuck: a plan that will not parse is not a
 // plan the Plan-Write bounce target can be asked to improve, and the two dispositions differ
-// materially -- Stuck persists blocked, a returned error persists failed and aborts the run. A
-// quarry-unavailable error from planglyph -- errors.Is(err, planglyph.ErrQuarryUnavailable) -- maps
-// to the same returned-error disposition and for the same reason: a gate that could not read the
-// code has not found a plan defect to bounce.
+// materially -- Stuck persists blocked, a returned error persists failed and aborts the run. EVERY
+// error from planglyph maps to the same returned-error disposition, for the same reason: a gate that
+// could not read the code has not found a plan defect to bounce. That includes the quarry-unavailable
+// one this gate used to single out -- singling it out dropped every other error on the floor and
+// reported the plan clean over a validation that never finished.
 func (p *planValidate) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -106,7 +106,12 @@ func (p *planValidate) Call(ctx context.Context) (shedengine.Outcome, shedengine
 	} else {
 		findings, err = planglyph.ValidateFormat(plan, p.worktreeRoot)
 	}
-	if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
+	// Any validator error fails the gate, not only the quarry-named one. Conjoining errors.Is here
+	// dropped every other error on the floor, and an unrecognized error with an empty findings set
+	// then returned Done with the plan directory as its pointer — "the plan is clean" reported for a
+	// validator that never finished, which is exactly the failure mode internal/planglyph/repo.go's
+	// own rationale names as deliberately rejected.
+	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}

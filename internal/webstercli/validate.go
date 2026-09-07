@@ -94,10 +94,17 @@ Example:
 			}
 
 			findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
-			if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
+			if err != nil {
 				// Named for quarry, not the plan: an operator reading this envelope must never be
-				// told the plan is invalid when quarry simply could not answer.
-				clihelp.SetExit(cmd.Context(), output.Err(out, "webster: quarry could not answer validating plan: "+err.Error()))
+				// told the plan is invalid when quarry simply could not answer. Any OTHER validator
+				// error still fails the verb rather than being dropped — printing "valid": true over
+				// a validation that did not finish is the failure mode internal/planglyph/repo.go's
+				// own rationale rejects outright.
+				if errors.Is(err, planglyph.ErrQuarryUnavailable) {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "webster: quarry could not answer validating plan: "+err.Error()))
+					return nil
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, "webster: validating plan failed: "+err.Error()))
 				return nil
 			}
 
