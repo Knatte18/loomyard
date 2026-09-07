@@ -105,6 +105,49 @@ func TestEnsureDurableSink_FilenameGrammarAndFields(t *testing.T) {
 	}
 }
 
+// TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory is R4-09's end-to-end guard, the
+// one that shows why the alphabet check in trace.go is a containment property and not a cosmetic
+// one: ensureDurableSink interpolates header.TraceID into the filename and hands the result to
+// filepath.Join, which CLEANS it -- so an adopted 'ci-run/../../pwned' used to place the trace file
+// two levels above the logs directory. The assertion is positional, not textual: whatever the
+// filename ends up being, it must sit inside dir, and dir's grandparent must stay empty.
+func TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory(t *testing.T) {
+	grandparent := t.TempDir()
+	parent := filepath.Join(grandparent, "state", ".lyx")
+	dir := filepath.Join(parent, "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(%q) error = %v; want nil", dir, err)
+	}
+
+	resetTraceState(t)
+	t.Setenv("LYX_TRACE_ID", "ci-run/../../pwned")
+	SetDurableSinkDir(dir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	if ok := ensureDurableSink(); !ok {
+		t.Fatalf("ensureDurableSink() ok = false; want true")
+	}
+
+	if got := filepath.Dir(sinkPath); got != dir {
+		t.Errorf("filepath.Dir(sinkPath=%q) = %q; want %q -- the adopted trace ID walked the write out of the logs directory", sinkPath, got, dir)
+	}
+	if files := listSinkDirFiles(t, dir); len(files) != 1 {
+		t.Errorf("listSinkDirFiles(dir) = %v; want exactly one file inside the logs directory", files)
+	}
+	for _, escaped := range []string{parent, grandparent} {
+		if files := listSinkDirFiles(t, escaped); len(files) != 0 {
+			t.Errorf("listSinkDirFiles(%q) = %v; want empty -- no trace file may land above the logs directory", escaped, files)
+		}
+	}
+
+	// A filename Sweep cannot match is the second, independent half of R4-09: the file would never
+	// be ranked or removed and the logs directory would grow without bound.
+	files := listSinkDirFiles(t, dir)
+	if len(files) == 1 && !sinkTestFilePattern.MatchString(files[0]) {
+		t.Errorf("filename %q does not match the retention-sweepable grammar; Sweep would never reclaim it", files[0])
+	}
+}
+
 // TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty pins that an empty
 // header.WorktreeRoot is now a choice the caller made by picking the no-worktree-root-supplied
 // shorthand (SetDurableSinkDir), not a property of the seam itself.
