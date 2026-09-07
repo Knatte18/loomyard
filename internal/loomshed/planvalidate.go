@@ -9,7 +9,6 @@ package loomshed
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -23,14 +22,13 @@ import (
 // validate-plan"'s envelope describe a violation identically and an informational
 // create-new-unit is distinguishable from a blocking glyph-not-found in the one place this record
 // exists.
+// It calls each Finding's own Error() rather than re-deriving its layout, which is what makes the
+// "describe a violation identically" promise above hold by construction rather than by two copies of
+// one format string agreeing today; formatDiscussionFindings in discussionvalidate.go does the same.
 func formatPlanFindings(findings []planglyph.Finding) string {
 	parts := make([]string, len(findings))
 	for i, f := range findings {
-		if f.Card == "" {
-			parts[i] = fmt.Sprintf("%s[%s]: %s", f.Check, f.Severity, f.Detail)
-		} else {
-			parts[i] = fmt.Sprintf("%s/%s[%s]: %s", f.Check, f.Card, f.Severity, f.Detail)
-		}
+		parts[i] = f.Error()
 	}
 	return strings.Join(parts, "; ")
 }
