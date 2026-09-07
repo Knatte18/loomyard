@@ -10,7 +10,9 @@
 
 ## Current state
 
-**Rounds 1, 2, and 3 are all CLOSED-AND-VERIFIED.** Working tree is clean, HEAD is `43278a098` (round 3's final reports commit). Nothing pushed. **Next: decide on round 4 (Opus/high, the pre-approved final safety pass) — see "Next action" at the end of this file, which carries an operator-raised recalibration for how round 4 should be seeded.**
+**Rounds 1, 2, and 3 are all CLOSED-AND-VERIFIED.** Working tree is clean, HEAD is `67c2bcc6d` (this handoff's own last refresh, on top of round 3's final reports commit `43278a098`). Nothing pushed.
+
+**PAUSED HERE, awaiting explicit operator go-ahead to spawn round 4.** The orchestrator has already presented round 3's verification summary and the recalibrated round-4 plan (see "Next action" below) to the operator and asked whether to proceed — as of this refresh, no explicit yes has been given yet in the live conversation. **Do not spawn round 4 on your own initiative from this file alone** — if you are a fresh orchestrator picking this up after a context reset, re-confirm with the operator before spawning, since the live conversation this pause happened in is not visible to you. If the operator HAS since said yes (in a part of the conversation you can see), proceed straight to seeding and spawning per "Next action" below — no need to ask again.
 
 ## `#004` mill-task gate — CLEARED (corrected understanding)
 
