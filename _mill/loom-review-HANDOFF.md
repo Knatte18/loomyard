@@ -10,7 +10,7 @@
 
 ## Current state
 
-**Round 1 CLOSED-AND-VERIFIED. Round 2 CLOSED-AND-VERIFIED. The `#004` mill-task gate has CLEARED — round 3 is spawning next, with an EXPANDED mission (see "Round 3 seed" below).** Working tree is clean, HEAD is `d7c52df6c` (the squash-merged `#004` fix, landed directly into THIS branch). Nothing pushed.
+**Rounds 1, 2, and 3 are all CLOSED-AND-VERIFIED.** Working tree is clean, HEAD is `43278a098` (round 3's final reports commit). Nothing pushed. **Next: decide on round 4 (Opus/high, the pre-approved final safety pass) — see "Next action" at the end of this file, which carries an operator-raised recalibration for how round 4 should be seeded.**
 
 ## `#004` mill-task gate — CLEARED (corrected understanding)
 
@@ -48,14 +48,36 @@
 
 **Full detail:** `_mill/loom-review-sonnet5-xhigh-r2.md`, `_mill/loom-review-sonnet5-xhigh-r2-fixer-report.md`.
 
-## What remains open / unproven after round 2
+## What remained open after round 2 — CLOSED by round 3
 
-- A declared `Rename` card executing through a real Webster batch, live — round 2's real `Plan-Write` session correctly determined the given task couldn't be expressed as same-plan Create-then-Rename (now documented, F-plan1) and produced a Create-only plan instead. The Rename mechanic remains proven only at round 1's code/standalone-rig level plus round 2's live `Plan-Review` judge independently re-confirming the same constraint against source. A second live run seeded from a worktree with a pre-existing symbol to rename would close this gap (~20-40 min real wall-clock) — not attempted, judged non-essential given the triangulated evidence.
-- `Finalize` — never reached (blocked on the human-gated PR).
-- `DetectDrift`'s exact-tier auto-repair path specifically, live through a real Webster fork — not triggered this round (no out-of-band rename occurred); remains verified only at round 1's level.
-- PR #1's actual disposition (see discrepancy above) — unresolved as of this handoff.
+- ~~A declared `Rename` card executing through a real Webster batch, live~~ — **CLOSED.** Round 3's real `Plan-Write` session authored two declared Rename cards against a pre-existing symbol; a real Webster fork executed both; the pipeline ran to `Finalize → done`. Independently confirmed via the real commit (`0d26ff0`) in the sandbox hub.
+- ~~`Finalize` — never reached~~ — **CLOSED.** First live `Finalize → done` completion, same run as above.
+- `DetectDrift`'s exact-tier auto-repair path specifically, live through a real Webster fork — still not triggered by any round's live driving (no out-of-band rename occurred in any live run yet); remains verified only at round 1's standalone-rig level. Candidate for round 4 if a genuinely adversarial pass wants new live territory.
+- PR #1's actual disposition — resolved (operator confirmed they closed it deliberately, unmerged; sandbox test infrastructure).
 
-## Round 3 seed — TWO missions (both required, per the operator's explicit instruction)
+## What round 3 leaves open (deliberately deferred, not fixed)
+
+- Full `--plan-dir` override propagation into Master's in-pane verb invocations (standalone mode) — a cross-cutting design decision touching reed's spawn environment; F-A3's loud refusal covers the operator today.
+- `lyx reed` standalone support (attach/status against a derived-geometry session) — operator can reach it via raw `tmux -L lyx-<hash8> attach` today; its own module task if wanted.
+- `burlercli`'s standalone reed bring-up was wired but not live-verified this round (no standalone burler scenario was in scope) — same seam as `webstercli`'s, which WAS live-verified.
+
+## Round 3 (fable-high-r3) — CLOSED-AND-VERIFIED
+
+**Two missions, both delivered.** Mission A: `#004`'s own fix (`d7c52df6c`) only partially solved F16 — three more BLOCKING layers were live-found and fixed (F-A1: no reed session existed for standalone Master to spawn into; F-A3: a `--plan-dir` override spawned a Master that could never see its own plan; F-A4: every rendered prompt hardcoded hub-relative paths). Result: the first-ever completed standalone `lyx webster run`. Mission B: two real BLOCKING defects two prior rounds missed (F1: file-rename plans failed validation on a false `glyph-not-found`; **F2: `websterengine.Run` validated the WHOLE plan at entry, unscoped by completed cards, permanently wedging any resume after a landed Create/Delete/Rename card — hits hub mode too, since loom's own Webster row re-invokes `Run` on shed resume**), plus the Rename-through-Webster gap CLOSED live all the way to `Finalize → done` (first-ever, closing round 2's residual too).
+
+**Counts:** 12 findings — 5 BLOCKING (F1, F2, F-A1, F-A4, F-B8), 3 MEDIUM (F3, F-A3, F-B7), 3 LOW (F1b, F4, F6), 1 NIT (F5) — all fixed across ~15 commits (`c2bcaa4e1`..`7f16dde7e`, docs `4acbdea4d`, reports `85a941cef`/`43278a098`).
+
+**Independent verification (this orchestrator) — the most thorough of the three rounds so far:**
+- **10/10 sabotage-proofs PASS** (every finding: F1+F1b, F2, F3, F4, F6, F-A1, F-A3, F-A4, F-B7, F-B8) — production hunk reverted, regression test fails at the intended assertion (or, for two multi-file signature changes, fails to compile without the fix — an even stronger proof), restored, empty diff confirmed each time.
+- **The decisive check, going beyond what the round itself proved**: the operator specifically raised whether crash-resilience was proven by a genuine process death or just a clean re-invocation. Round 3's own F2 proof was the latter (re-running `lyx webster run` over an already-completed run). This orchestrator's verification instead built a real 2-card Create plan, ran a real standalone webster session, and **`kill -9`'d the driver AND the tmux server hosting the live Master `claude` process** the moment batch 1's commit landed (confirmed via `pgrep` catching the live process before the kill, confirmed gone after; `state.json` showed batch 1 done, batch 2 never started, **no `outcome.yaml` written** — proof of an unclean death, not a graceful stop). Resuming with a plain `lyx webster run` did NOT refuse — it continued and completed batch 2 cleanly. **This is genuine, reproduced crash resilience, independently confirmed with a real kill, not narrative.**
+- **Both headline live claims confirmed genuine via real artifacts still on disk**: the standalone E2E's commits (`00489fe`/`cefc499` in `/home/knatte/Code/lyx-r3-standalone`, `func Farewell` present, target `go test` green) and the hub Finalize run's commit (`0d26ff0` in `/home/knatte/Code/lyx-test-HUB/glyph-rename-format`, real rename diff, zero `FormatGreeting` occurrences left, genuinely pushed to `origin/glyph-rename-format`).
+- All cold gates green (`go build`, `go vet` on the 16-package expanded set, `go test -count=5`, `-tags integration` on 7 packages, whole-repo `go test ./...` — 81 ok). `docs/overview.md:303` confirmed carrying the new webster-standalone behavior text. All 7 regression spot-checks against rounds 1+2's fixes (r1-F1, r1-F4, r1-F9, r1-F17, r1-F18, r2-F-parse1, r2-F-webster1) confirmed present and unregressed at current HEAD. Teardown clean.
+
+**Nothing failed. Round 3's 12 fixes are genuinely closed — this is the strongest verification pass of the campaign so far, precisely because it went one step past what the round itself proved on the crash-resilience question.**
+
+**Full detail:** `_mill/loom-review-fable5-high-r3.md`, `_mill/loom-review-fable5-high-r3-fixer-report.md`.
+
+## Round 3's seed, as spawned (historical record — round 3 is now closed, see above)
 
 **A) Review the newly-merged `#004` fix (`d7c52df6c`) for the first time — it has never been through a crucible round.** Read the full diff (`git show d7c52df6c`). Files: `internal/shuttleengine/run.go` (new `NewDetachedRunner`, containment assertion untouched for `NewRunner`), `internal/shuttleengine/wait.go`, `internal/standalonegeom/logsdir.go` (new — the `.lyx/logs/` fix for F22), `internal/standalonegeom/doc.go`, `internal/webstercli/wiring.go`, `internal/burlercli/wiring.go`, `internal/logger/sink.go`, `CONSTRAINTS.md` (new invariant line, quoted above). Be adversarial: this is unreviewed code from outside the original glyph-hardening scope, landed via a different task's own mill-go pipeline, not via this campaign's own discipline. Live-verify F16 and F22 are ACTUALLY fixed now: a real standalone `lyx webster run --target-dir <repo> --plan-dir <dir>` should now actually start Master (previously refused outright); standalone mode's `.lyx/logs/` should no longer appear as untracked in the target repo's `git status`. **This is a genuinely separate LLM-driving live scenario from loom's own hub-mode work** — budget for it the same way (one real session at a time, foreground, cost declaration applies) since starting Master standalone was exactly what was broken before.
 
@@ -66,3 +88,20 @@
 3. Spawn `crucible-reviewer-high`, `model: fable`, tag `fable-high-r3`.
 4. Verify independently exactly as rounds 1 and 2 were verified (sabotage-proofs, cold gate re-runs, live-claim verification via real artifacts, not narrative) — do not relax the bar for either mission.
 5. If round 3 converges clean on both missions, the pre-approved rotation calls for one more round (Opus/high, final safety pass, r4) — but per the README's own guidance, convergence (a safety pass + this orchestrator's gates + an operator-assisted check all agreeing) can close the campaign before using all four rounds. Surface merge-readiness and let the operator decide whether r4 is still wanted.
+
+## Next action — seed round 4 (Opus/high), with an operator-raised recalibration
+
+**Round 4 is the pre-approved final safety pass in the rotation (Opus/high, capping the four-round budget).** Before seeding it, the operator raised a real methodological point worth encoding into the seed, not just remembering: **round 2 ran on Sonnet, and Sonnet's own "0 BLOCKING" result is weaker evidence of convergence than the same result from a more capable model** — precisely why crucible rotates models and puts the strongest one last. Round 3 (Fable) already found 2 real BLOCKING defects (F1, F2) in territory round 2 never actually drove (file-rename plans, mid-plan resume) — which doesn't yet prove Sonnet missed anything WITHIN its own tested territory (the real hub-mode run, handle canonicalization, Plan-Review, Webster-Review), but it does mean that question is still genuinely open.
+
+**Consequence for round 4's seed: it must NOT be a formality "confirm merge-readiness, no known residual" pass.** It should be a genuinely adversarial full pass over EVERYTHING — including round 2's own territory that no prior round has re-examined skeptically — not just the residuals rounds 2/3 happened to leave named. Concretely, round 4's high-yield focus should include:
+1. A genuinely skeptical re-look at round 2's own hub-mode run and its handle-canonicalization/Plan-Review claims — not re-running the same scenario, but reading the code paths round 2 exercised with fresh, adversarial eyes, the way round 3 did for Mission A's supposedly-already-reviewed `#004` fix.
+2. `DetectDrift`'s exact-tier auto-repair path live through a real Webster fork — still never triggered by any round's live driving (see "What round 3 leaves open" above).
+3. Whatever a third-model, fourth-round pass turns up that three prior passes (Opus, Sonnet, Fable) across two different effort tiers didn't.
+4. A genuine crash-resilience sweep beyond F2's specific fix — this campaign's crash-recovery evidence is now strong for ONE scenario (kill mid-Webster-batch, standalone) but round 4 could extend it: kill mid-batch in HUB mode specifically (not yet done with a real kill — round 3's kill test was standalone), and/or kill during a review segment (Bouncer/Burler round) on a glyph-bearing plan.
+
+List rounds 1, 2, and 3's now-CLOSED-AND-VERIFIED findings (this file has the full evidence for all three) so round 4 does not re-litigate what's already proven — but "already proven" should mean "independently verified," not "self-reported," and round 2's territory has only ever been independently verified for the SPECIFIC fixes it made, never adversarially re-reviewed the way rounds 1's and 3's own material has now effectively been (each round implicitly re-examines the prior rounds' surface as part of driving live scenarios through it).
+
+1. Rewrite `_mill/loom-review-prompt.md` for round 4 incorporating the above.
+2. Spawn `crucible-reviewer-high`, `model: opus`, tag `opus-high-r4`.
+3. Verify independently exactly as rounds 1–3 were verified — sabotage-proofs, cold gate re-runs, real-artifact checks for any new live claims. This is the FINAL round in the pre-approved budget — hold the bar at least as high as round 3's, which was the most rigorous so far (the real kill-9 crash test set a new standard; match or exceed it for whatever round 4's own headline claims turn out to be).
+4. If round 4 comes back clean (a genuine adversarial pass finding nothing, or finding and fixing only minor residue) and this orchestrator's own verification agrees: the campaign has converged. Per the README's own convergence bar, surface merge-readiness to the operator explicitly, including this campaign's own stated limits (Windows path behavior never reachable from this Linux host; `DetectDrift`'s exact-tier live-fork path, if round 4 also doesn't reach it) — do not claim more than what was actually proven.
