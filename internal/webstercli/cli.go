@@ -233,6 +233,29 @@ Example (standalone, outside any lyx hub):
 	return parent
 }
 
+// persistPlanFingerprintRebaseline saves st when the bracket verb that just failed had already
+// re-baselined the plan-staleness fingerprint, and returns the save's own error.
+//
+// Both bracket verbs re-baseline State.PlanFingerprint the instant a sanctioned plan rewrite lands
+// on disk — handle canonicalization inside begin-batch's ValidateDispatch, handle binding and
+// exact-tier drift repair inside record-batch — and either verb can then fail on a later step of
+// the same call. The rewrite is a durable fact about the run, so discarding the re-baseline along
+// with the failed call left the plan on disk carrying webster's own edit while state.json still
+// recorded the pre-rewrite fingerprint: every later bracket verb then refused that edit as a
+// foreign one, and the advised `--fresh` recourse refused the run outright over the cards that had
+// already landed.
+//
+// fingerprintBefore is the value read out of st immediately before the verb ran. An unchanged
+// fingerprint means no rewrite happened, so nothing is written at all — which is what keeps a
+// genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
+// Callers invoke this while still holding the state-mutation lease.
+func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websterengine.State, fingerprintBefore string) error {
+	if st == nil || st.PlanFingerprint == fingerprintBefore {
+		return nil
+	}
+	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st)
+}
+
 // RunCLI is the public seam for the webster module CLI.
 //
 // It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer

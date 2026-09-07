@@ -873,3 +873,61 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 		t.Errorf("output contains \"plan overview not found\"; got %q -- a WorktreePath()-based resolution at cli.go's c.planDir assignment would look under the un-anchored worktree root and produce exactly that error", got)
 	}
 }
+
+// TestPersistPlanFingerprintRebaseline covers the round-4 review's R4-01 CLI half: both bracket
+// verbs re-baseline State.PlanFingerprint the instant a sanctioned plan rewrite lands on disk, and
+// either verb can then fail on a later step of the same call. Discarding that re-baseline with the
+// failed call left the plan on disk carrying webster's own edit while state.json recorded the
+// pre-rewrite fingerprint, which every later bracket verb then refused as a foreign edit.
+//
+// The unchanged-fingerprint case must write nothing at all: that is what keeps a genuine foreign
+// edit failing ErrFingerprintMismatch exactly as it did.
+func TestPersistPlanFingerprintRebaseline(t *testing.T) {
+	newGeom := func(t *testing.T) websterengine.Geometry {
+		t.Helper()
+		websterDir := t.TempDir()
+		return websterengine.Geometry{WebsterDir: websterDir, ScratchDir: t.TempDir()}
+	}
+
+	t.Run("unchanged fingerprint writes nothing", func(t *testing.T) {
+		geom := newGeom(t)
+		st := &websterengine.State{RunGUID: "g1", PlanFingerprint: "same"}
+
+		if err := persistPlanFingerprintRebaseline(geom, st, "same"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
+		}
+		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+		if err != nil {
+			t.Fatalf("LoadState() error = %v", err)
+		}
+		if loaded != nil {
+			t.Errorf("LoadState() = %+v; want nil — an unchanged fingerprint must write no state at all", loaded)
+		}
+	})
+
+	t.Run("changed fingerprint is persisted", func(t *testing.T) {
+		geom := newGeom(t)
+		st := &websterengine.State{RunGUID: "g2", PlanFingerprint: "after the rewrite"}
+
+		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
+		}
+		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+		if err != nil {
+			t.Fatalf("LoadState() error = %v", err)
+		}
+		if loaded == nil {
+			t.Fatal("LoadState() = nil; want the re-baselined state persisted so the next bracket verb reads it")
+		}
+		if loaded.PlanFingerprint != "after the rewrite" {
+			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
+		}
+	})
+
+	t.Run("nil state writes nothing", func(t *testing.T) {
+		geom := newGeom(t)
+		if err := persistPlanFingerprintRebaseline(geom, nil, "anything"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline(nil) error = %v; want nil", err)
+		}
+	})
+}

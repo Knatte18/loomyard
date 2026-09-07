@@ -229,9 +229,21 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
 	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
-	bindFindings, err := planglyph.BindHandles(deps.Plan, deps.Geom.PlanDir, delta, batch.Cards)
-	if err != nil {
+	bindFindings, bindErr := planglyph.BindHandles(deps.Plan, deps.Geom.PlanDir, delta, batch.Cards)
+	// BindHandles' plan-wide RewriteRefs lands on disk BEFORE it reports either a finding or an
+	// error — the substitutions come from delta.Created while a bind-count-mismatch comes from a
+	// card whose handle matched nothing, so one call routinely does both — which is why the
+	// staleness re-baseline runs HERE rather than once past every refusal below. Restamping only on
+	// the clean path wedged the run permanently: the plan on disk carried webster's own sanctioned
+	// rewrite while state.json still recorded the pre-rewrite fingerprint, so every later
+	// begin-batch refused it as a foreign edit, and the advised `--fresh` recourse then refused the
+	// run outright over the cards that had already landed.
+	// A restamp failure never masks bindErr: the caller is already returning for that reason.
+	if err := restampFingerprint(deps.State, deps.Geom.PlanDir); err != nil && bindErr == nil {
 		return nil, err
+	}
+	if bindErr != nil {
+		return nil, bindErr
 	}
 	var bindBlocking []string
 	for _, f := range bindFindings {
@@ -267,9 +279,15 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// declared Rename outcome — the pending view excludes exactly the cards whose renames the
 	// delta reports.
 	pending := planglyph.PendingPlan(deps.Plan, completedCards(deps.Batches, deps.State, batchNumber))
-	driftFindings, err := planglyph.DetectDrift(deps.Plan, pending, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
-	if err != nil {
+	driftFindings, driftErr := planglyph.DetectDrift(deps.Plan, pending, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
+	// The exact-tier repair's own RewriteRefs lands on disk before this call reports anything, and
+	// its blocking plan-references-deleted-symbol finding is computed from a different part of the
+	// same delta, so re-baseline here for exactly the reason BindHandles does above.
+	if err := restampFingerprint(deps.State, deps.Geom.PlanDir); err != nil && driftErr == nil {
 		return nil, err
+	}
+	if driftErr != nil {
+		return nil, driftErr
 	}
 	// DetectDrift is the one planglyph call in this sequence that returns a MIXED severity set:
 	// plan-references-deleted-symbol is blocking, while the evidence tier's rename-candidate is
@@ -290,13 +308,10 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
 	}
 
-	// BindHandles above and DetectDrift's exact-tier repair both rewrite the plan on disk, and the
-	// repair additionally creates the amendment log. Re-baseline the staleness guard before this
-	// batch is marked terminal, or the next begin-batch refuses this run's own sanctioned rewrite as
-	// a foreign edit and sends the operator round a `--fresh` loop that hits the same wall.
-	if err := restampFingerprint(deps.State, deps.Geom.PlanDir); err != nil {
-		return nil, err
-	}
+	// No third restamp: the two above already cover every rewrite this call can perform, and each
+	// runs immediately after its own rewriting call rather than past the refusals between them.
+	// The amendment log the exact-tier repair also writes is deliberately excluded from the
+	// fingerprint (see fingerprint's own doc comment), so it needs no re-baseline of its own.
 
 	digest := distill(report)
 	digest.Batch = polledID

@@ -790,3 +790,87 @@ func TestRecordBatch_DoneChecksPassOnLandedCreate(t *testing.T) {
 		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
 }
+
+// seedDriftPlanDir writes a real, parseable two-card plan directory whose second card's Uses field
+// names every ref in uses. RecordBatch's own drift repair calls planparser.RewriteRefs against this
+// directory, which re-parses it from disk rather than reading RecordDeps.Plan, so a repair scenario
+// needs genuine card files here and not only the in-memory plan newRecordFixture builds.
+func seedDriftPlanDir(t *testing.T, uses []string) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n" +
+		"# Plan: drift fixture\n\nA two-card fixture whose second card is still pending.\n\n" +
+		"## Card Index\n\n1 — json-flag — the recorded batch's own card\n2 — pending — the not-yet-built card\n"
+	card1 := "# Card 1 — json-flag\n\n**Prosa:**\n- `//base.txt`\n\n**Intent:** The recorded batch's own card.\n"
+
+	var usesBullets string
+	for _, u := range uses {
+		usesBullets += "- `" + u + "`\n"
+	}
+	card2 := "# Card 2 — pending\n\n**Prosa:**\n- `//base.txt`\n\n**Uses:**\n" + usesBullets +
+		"\n**Intent:** The not-yet-built card that still references what batch 1 moved out from under it.\n"
+
+	for name, content := range map[string]string{
+		"00-overview.md":  overview,
+		"01-json-flag.md": card1,
+		"02-pending.md":   card2,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("seed drift plan dir %s: %v", name, err)
+		}
+	}
+	return dir
+}
+
+// TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks is the regression test for the round-4
+// review's R4-01. BindHandles and DetectDrift both rewrite the plan on disk BEFORE they report a
+// finding, and a single call routinely does both: here the delta carries an exact-tier rename the
+// pending card references (repaired, so planparser.RewriteRefs rewrites 02-pending.md) alongside a
+// deletion the same card references (blocking, so RecordBatch returns ErrCardNotDone).
+//
+// With the re-baseline positioned after the refusal, state.json kept the pre-rewrite fingerprint
+// while the plan on disk carried webster's own sanctioned edit, so every later begin-batch refused
+// it as a foreign edit — and `--fresh`, the advised recourse, then refused the run outright over the
+// cards that had already landed. The run was unrecoverable without hand-editing state.json.
+func TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+
+	planDir := seedDriftPlanDir(t, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
+	fx.Deps.Geom.PlanDir = planDir
+	seeded := mustFingerprint(t, planDir)
+	fx.Deps.State.PlanFingerprint = seeded
+
+	// Both symbols must exist at the delta's start side, so the batch's own start boundary moves to
+	// a commit that already carries them.
+	withSymbols := commitFile(t, fx.Worktree, "internal/foo/impl.go",
+		"package foo\n\nfunc WillMove() int { return 1 }\n\nfunc WillGoAway() {}\n", "01.2: add both symbols")
+	fx.Deps.State.Batches[1].StartSHA = withSymbols
+	// One exact-tier rename (identical body, so quarry asserts the pair) plus one genuine deletion.
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go",
+		"package foo\n\nfunc Moved() int { return 1 }\n", "01.3: rename one, delete the other")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	addPendingCard(fx, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrCardNotDone) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone) — the deleted-and-still-referenced symbol must block", err)
+	}
+
+	repaired, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+	if readErr != nil {
+		t.Fatalf("read 02-pending.md: %v", readErr)
+	}
+	if !strings.Contains(string(repaired), "internal/foo#Moved") {
+		t.Fatalf("02-pending.md = %q; want the exact-tier repair to have rewritten the renamed glyph — the fixture is not exercising a rewrite at all", repaired)
+	}
+
+	if fx.Deps.State.PlanFingerprint == seeded {
+		t.Error("State.PlanFingerprint still carries its pre-call value after a call that rewrote the plan on disk; every later begin-batch would refuse webster's own sanctioned rewrite as a foreign edit")
+	}
+	if fx.Deps.State.PlanFingerprint == "" {
+		t.Error("State.PlanFingerprint was cleared rather than re-baselined")
+	}
+}

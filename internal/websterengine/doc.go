@@ -77,6 +77,34 @@
 // from its cards' own gates, mirroring the plan-format card model
 // directly.
 //
+// # the plan-staleness guard re-baselines at the rewrite, not at the return
+//
+// begin-batch compares the plan directory's fingerprint against the one
+// state.json records, so a plan edited from outside the run between two
+// batches is refused. The run itself also rewrites the plan, though —
+// handle canonicalization inside begin-batch's own ValidateDispatch, handle
+// binding and exact-tier drift repair inside record-batch — and the guard
+// cannot tell those apart from a foreign edit. The rule that resolves it:
+// EVERY sanctioned rewrite is re-baselined immediately after the call that
+// performed it, before any finding or error that call also reports is
+// examined, and the caller persists that re-baseline even when the call
+// then fails.
+//
+// Both halves are load-bearing, and each was a real wedge on its own.
+// Re-baselining after the refusals meant a call that rewrote the plan AND
+// blocked left state.json describing the pre-rewrite bytes — routine, since
+// BindHandles' substitutions come from the delta's created symbols while
+// its bind-count-mismatch comes from a card that matched nothing, and
+// DetectDrift's repair and its plan-references-deleted-symbol finding read
+// different parts of one delta. Persisting only on success dropped the
+// re-baseline for the same reason. Either way every later begin-batch
+// failed ErrFingerprintMismatch on webster's own edit, and the advised
+// `--fresh` recourse then refused the run outright over the cards that had
+// already landed — unrecoverable without hand-editing state.json.
+// Comparing against the fingerprint read immediately before the call is
+// what keeps the persist narrow: an unchanged fingerprint writes nothing,
+// so a genuine foreign edit still fails exactly as it did.
+//
 // # bracket verbs, not spawn/poll
 //
 // Because the fork runs inside Master's own session, there is nothing for
