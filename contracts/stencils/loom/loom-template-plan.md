@@ -89,7 +89,7 @@ Leave it at `"go"` unless the task is explicitly non-Go.
 
 ### Declaring a symbol that does not exist yet: `plan:` handles
 
-`lyx quarry` can only answer with glyphs for symbols that already exist — it never invents one. When a card creates a brand-new symbol or file, `quarry` has nothing to look up, so you invent a draft placeholder spelling instead: a `plan:` handle, `plan:<unit>#<member>`, where `<unit>` is the new symbol's own repository-relative path.
+`lyx quarry` can only answer with glyphs for symbols that already exist — it never invents one. When a card creates a brand-new symbol or file, `quarry` has nothing to look up, so you invent a draft placeholder spelling instead: a `plan:` handle, `plan:<unit>#<member>`, where `<unit>` is the new symbol's own repository-relative PACKAGE DIRECTORY — never the `.go` file it will live in (`plan:internal/boardcli#RowJSON`, not `plan:internal/boardcli/rowjson.go#RowJSON`; a file-unit member spelling can never resolve, and the validator refuses it as `handle-malformed`).
 
 Write it on the `**Create:**` sub-bullet using the two-field declaration grammar, reusing the same `` `x` -> `y` `` arrow shape a `**Rename:**` pair uses:
 

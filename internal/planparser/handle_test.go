@@ -5,6 +5,7 @@ package planparser
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -145,5 +146,41 @@ func TestReferencedHandles(t *testing.T) {
 	}
 	if _, ok := referenced["internal/foo/other.go#"]; ok {
 		t.Errorf("referencedHandles() carries an entry for a non-handle ref")
+	}
+}
+
+// TestCheckHandleMalformed_FileUnitHandle is F-B8's (round fable5-high-r3) regression test: a
+// handle whose unit half names a ".go" file canonicalizes (via quarry.Name, which accepts it) to a
+// member spelling quarry's Resolve can never answer, so the plan validated clean and the run then
+// wedged at the creating card's own record-batch done-check — the pure layer must refuse the
+// spelling up front, naming the package-directory fix.
+func TestCheckHandleMalformed_FileUnitHandle(t *testing.T) {
+	plan := &Plan{
+		Language: "go",
+		Cards: []Card{{
+			Number: 1, Slug: "one",
+			Targets:      []string{"plan:greeter/farewell.go#Farewell"},
+			Declarations: []CardDeclaration{{Handle: "plan:greeter/farewell.go#Farewell", Decl: "func Farewell(name string) string"}},
+		}},
+	}
+
+	got := checkHandleMalformed(plan)
+	if len(got) != 1 || got[0].Check != "handle-malformed" {
+		t.Fatalf("checkHandleMalformed(file-unit handle) = %+v; want exactly one handle-malformed finding", got)
+	}
+	if !strings.Contains(got[0].Detail, "greeter/farewell.go") || !strings.Contains(got[0].Detail, `"greeter"`) {
+		t.Errorf("finding detail = %q; want it to name the file unit and the package-directory fix", got[0].Detail)
+	}
+
+	plan.Language = "none"
+	if got := checkHandleMalformed(plan); len(got) != 0 {
+		t.Errorf("checkHandleMalformed(language none) = %+v; want the file-unit rule gated off", got)
+	}
+
+	plan.Language = "go"
+	plan.Cards[0].Targets = []string{"plan:greeter#Farewell"}
+	plan.Cards[0].Declarations = []CardDeclaration{{Handle: "plan:greeter#Farewell", Decl: "func Farewell(name string) string"}}
+	if got := checkHandleMalformed(plan); len(got) != 0 {
+		t.Errorf("checkHandleMalformed(package-unit handle) = %+v; want no findings", got)
 	}
 }

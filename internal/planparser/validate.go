@@ -571,11 +571,24 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 }
 
 // checkHandleMalformed implements handle-malformed: every entry of a card's CreateRaw (a
-// "**Create:**" arrow bullet that failed the two-field declaration grammar), and every
-// handle-shaped Targets/Uses entry whose text after HandlePrefix carries no "#" and therefore
-// names no unit. Runs under every plan.Language, for the same reason checkHandleConsistency does.
+// "**Create:**" arrow bullet that failed the two-field declaration grammar), every handle-shaped
+// Targets/Uses entry whose text after HandlePrefix carries no "#" and therefore names no unit,
+// and — under a glyph-enabled plan.Language only — every handle whose unit half names a ".go"
+// FILE rather than a package directory. The first two rules run under every plan.Language, for
+// the same reason checkHandleConsistency does; the file-unit rule is alphabet knowledge and so is
+// language-gated.
+//
+// The file-unit rule exists because quarry's Name and Resolve disagree over that spelling: Name
+// accepts a file unit and echoes `pkg/file.go#Symbol` as the canonical ID, but Resolve answers
+// members under their PACKAGE unit only, so the canonicalized handle can never resolve — the plan
+// validates clean (the Create inversion reads not_found as the expected pre-create answer) and
+// the run then wedges at the creating card's own record-batch done-check, with no earlier
+// diagnostic naming the actual mistake. Proven live in crucible round fable5-high-r3's standalone
+// E2E (F-B8).
 func checkHandleMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
+
+	_, langOK := planLanguage(plan)
 
 	for _, c := range plan.Cards {
 		for _, raw := range c.CreateRaw {
@@ -594,17 +607,28 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 				if classifyRef(r) != refKindHandle {
 					continue
 				}
-				if _, ok := handleUnit(r); ok {
+				unit, ok := handleUnit(r)
+				if !ok {
+					findings = append(findings, ValidationError{
+						Check: "handle-malformed",
+						Card:  cardID(c),
+						Detail: fmt.Sprintf(
+							"card %d handle %q carries no \"#\" after %q and therefore names no unit",
+							c.Number, r, HandlePrefix,
+						),
+					})
 					continue
 				}
-				findings = append(findings, ValidationError{
-					Check: "handle-malformed",
-					Card:  cardID(c),
-					Detail: fmt.Sprintf(
-						"card %d handle %q carries no \"#\" after %q and therefore names no unit",
-						c.Number, r, HandlePrefix,
-					),
-				})
+				if langOK && strings.HasSuffix(unit, ".go") {
+					findings = append(findings, ValidationError{
+						Check: "handle-malformed",
+						Card:  cardID(c),
+						Detail: fmt.Sprintf(
+							"card %d handle %q names the file %q as its unit; a symbol's unit is its package directory (e.g. %q) — a file-unit member spelling can never resolve",
+							c.Number, r, unit, filepath.ToSlash(filepath.Dir(unit)),
+						),
+					})
+				}
 			}
 		}
 	}
