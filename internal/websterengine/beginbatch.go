@@ -297,7 +297,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// WorktreeRoot, not AnchorRoot, is correct in both modes here: hub
 	// mode's WorktreeRoot is the anchor path, the exact value this call
 	// rendered before this Geometry split.
-	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
+	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}

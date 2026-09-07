@@ -524,12 +524,16 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// must find its integration prompt already on disk — found live in
 	// crucible round fable-r1, where a Master correctly refused to improvise
 	// one and the stage was unreachable.
+	// The integration-report path is resolved unconditionally: the Master prompt renders it as its
+	// own {{.integration_report_path}} marker regardless of whether the plan carries a "## verify:"
+	// section, with the surrounding prose gating when it matters.
+	integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.Geom.ReportsDir))
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
+	}
+
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
-		integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.Geom.ReportsDir))
-		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
-		}
 		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir)
 		if err != nil {
 			return RunResult{}, err
@@ -546,7 +550,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
 	if err != nil {
 		return RunResult{}, err
 	}
