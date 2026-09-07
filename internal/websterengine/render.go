@@ -335,8 +335,13 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 	var lines []string
 	for _, b := range batches {
 		number, slug := batchIdentity(b)
+		// The nil-value check is not redundant with ok: a state.json carrying an explicit null for a
+		// batch key parses to a present-but-nil entry, and every other reader of this map
+		// (completedCards, verifyEveryBatchDone, accumulatedCardSHAs, reclaimEntryTimeStrands,
+		// predecessorDigestLine) already guards it. Without it this line panics INSIDE Run's Master
+		// prompt render, taking the run down instead of surfacing a diagnosable error.
 		bs, ok := st.Batches[number]
-		if !ok || !bs.Terminal {
+		if !ok || bs == nil || !bs.Terminal {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("%02d-%s: %s", number, slug, bs.Status))

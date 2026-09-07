@@ -62,6 +62,14 @@ Example:
 			batches := make([]map[string]any, 0, len(numbers))
 			for _, n := range numbers {
 				bs := st.Batches[n]
+				if bs == nil {
+					// A state.json carrying an explicit null for a batch key parses to a
+					// present-but-nil entry. Reporting the key with no detail keeps `lyx webster
+					// status` — the verb an operator reaches for when a run looks wrong — answering
+					// at all, where dereferencing it panicked the one diagnostic they had left.
+					batches = append(batches, map[string]any{"number": n, "malformed": true})
+					continue
+				}
 				batches = append(batches, map[string]any{
 					"number":     n,
 					"slug":       bs.Slug,

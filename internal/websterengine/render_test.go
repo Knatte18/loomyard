@@ -7,8 +7,10 @@ package websterengine
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -43,5 +45,28 @@ func TestRenderCardPointers_ReRootsOntoPlanDirDisplay(t *testing.T) {
 	abs := filepath.Join(string(filepath.Separator), "state", "plan")
 	if got, want := renderCardPointers(cards, abs), "- `"+abs+"/01-alpha.md`\n- `"+abs+"/02-beta.md`"; got != want {
 		t.Errorf("renderCardPointers(standalone display) = %q; want %q", got, want)
+	}
+}
+
+// TestRenderProgress_NilBatchStateIsSkippedNotPanicked covers the round-4 review's R4-15. A
+// state.json carrying an explicit null for a batch key parses to a present-but-nil entry; every
+// other reader of this map already guards it, and this one panicked INSIDE Run's Master prompt
+// render, taking the run down rather than surfacing a diagnosable error.
+func TestRenderProgress_NilBatchStateIsSkippedNotPanicked(t *testing.T) {
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{{Number: 1, Slug: "one"}}},
+		{Cards: []planparser.Card{{Number: 2, Slug: "two"}}},
+	}
+	st := &State{Batches: map[int]*BatchState{
+		1: nil,
+		2: {Slug: "two", Terminal: true, Status: DigestStatusDone},
+	}}
+
+	got := RenderProgress(batches, st)
+	if strings.Contains(got, "01-one") {
+		t.Errorf("RenderProgress() = %q; want the nil entry skipped rather than reported", got)
+	}
+	if !strings.Contains(got, "02-two") {
+		t.Errorf("RenderProgress() = %q; want the well-formed terminal batch still reported", got)
 	}
 }
