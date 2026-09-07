@@ -53,13 +53,18 @@ type websterCLI struct {
 	reed   shuttleengine.ReedOps
 
 	// reedUp brings the standalone reed session up, idempotently, and is set by wireStandalone
-	// alone — the run verb calls it immediately before spawning Master, because standalone mode has
-	// no other way to a live session: `lyx reed up` is hub-only (its pre-run requires
-	// lyxcwd.Resolve), so the session on standalone's own geometry (socket "lyx-<hash8>", state
-	// under the derived state directory) can only be booted in-process, mirroring what
-	// internal/loomcli's run/drive verbs already do for hub mode. It stays nil in hub mode, where
-	// bringing reed up remains the operator's (or loom's) own act — and it is called by run alone,
-	// never from wiring, so a read-only verb (status, validate) still boots no tmux server.
+	// alone — run calls it immediately before spawning Master and recover-batch immediately before
+	// spawning its cold recovery strand, because standalone mode has no other way to a live session:
+	// `lyx reed up` is hub-only (its pre-run requires lyxcwd.Resolve), so the session on standalone's
+	// own geometry (socket "lyx-<hash8>", state under the derived state directory) can only be booted
+	// in-process, mirroring what internal/loomcli's run/drive verbs already do for hub mode. It stays
+	// nil in hub mode, where bringing reed up remains the operator's (or loom's) own act.
+	//
+	// It is called by those two spawning verbs alone, never from wiring, so validate, status, pause
+	// and await-batch still boot no tmux server. The membership rule is "does this verb start an OS
+	// process of its own", not "does it write": begin-batch and record-batch mutate state but only
+	// inject into or read around a pane Master already owns, so a session they could reach exists by
+	// construction whenever they are legitimately called.
 	reedUp func() error
 
 	// standalonePlanDirOverridden reports whether --plan-dir moved the plan off standalone's

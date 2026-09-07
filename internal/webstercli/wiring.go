@@ -220,9 +220,10 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
-	// `lyx reed up` is hub-only — so the run verb boots it in-process through this seam (see the
-	// field's own doc comment). Assigned here, executed only by run: wiring runs for every verb,
-	// and a read-only verb must not boot a tmux server.
+	// `lyx reed up` is hub-only — so the verbs that need one boot it in-process through this seam
+	// (see the field's own doc comment). Assigned here, executed by the two verbs that spawn an
+	// agent themselves, run and recover-batch: wiring runs for EVERY verb, and validate, status,
+	// pause and await-batch must boot no tmux server at all.
 	c.reedUp = func() error {
 		_, err := reedEngine.Up()
 		return err

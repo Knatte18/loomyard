@@ -527,6 +527,55 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	})
 }
 
+// TestRecoverBatchCmd_BootsStandaloneReedSessionFirst is R4-11's direct regression test.
+// recover-batch spawns a COLD recovery strand through reed.AddStrand, which needs a live reed
+// session, but it never called the in-process bring-up seam wireStandalone arms. In standalone mode
+// the session is gone once a run ends, so the verb failed inside AddStrand advising `lyx reed up` —
+// a hub-only verb that cannot reach standalone geometry at all.
+//
+// Batch 99 exists in no plan, so RecoverSpawnOrAttach's own findBatch refuses it immediately. That
+// is what makes this test an ordering proof rather than a mere presence one: the bring-up message
+// can only win over the batch-not-found message if the guard runs before the spawn machinery.
+func TestRecoverBatchCmd_BootsStandaloneReedSessionFirst(t *testing.T) {
+	identity, err := batcher.Select("identity")
+	if err != nil {
+		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
+	}
+
+	c, _ := newTestCLI(t)
+	c.batcher = identity
+	seedValidPlanDir(t, c.geom.PlanDir)
+	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, &websterengine.State{
+		RunGUID: "run-guid",
+		Batches: map[int]*websterengine.BatchState{},
+	}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	bringUps := 0
+	c.reedUp = func() error {
+		bringUps++
+		return errors.New("no tmux server available in this test")
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.recoverBatchCmd(), &out, []string{"99", "--wait", "1ns"})
+
+	if bringUps != 1 {
+		t.Fatalf("c.reedUp calls = %d; want exactly 1 -- recover-batch spawns an agent and must boot standalone's own reed session first", bringUps)
+	}
+	if exitCode != 1 {
+		t.Fatalf("recover-batch with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "bring up the standalone reed session") {
+		t.Errorf("output does not name the reed bring-up failure; got %q", got)
+	}
+	if strings.Contains(got, "not found in the plan's execution batches") {
+		t.Errorf("output reports the batch-not-found refusal, so the bring-up ran too late to matter; got %q", got)
+	}
+}
+
 func TestStatusCmd_NotInitialized(t *testing.T) {
 	c, _ := newTestCLI(t)
 
