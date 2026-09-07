@@ -10,6 +10,7 @@ package shedengine
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,6 +186,53 @@ func TestRun_CommitStatusErrorHaltsRunWithWriteAlreadyDurable(t *testing.T) {
 	}
 	if got.CurrentProducer != "A" {
 		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, "A")
+	}
+}
+
+// TestRun_PersistFailureOnAFailedTerminalSurfacesBothErrors is the guard against a persist fault
+// swallowing the failure that actually halted the run. Both failed terminals -- a producer that
+// returned an error, and one that returned an unrecognised outcome -- write the run's epitaph
+// through persist, so a CommitStatus fault there once replaced the whole envelope with a git-seam
+// error, leaving an operator reading about a push while the producer failure they could act on went
+// unmentioned.
+func TestRun_PersistFailureOnAFailedTerminalSurfacesBothErrors(t *testing.T) {
+	persistErr := errors.New("commitstatus: push failed")
+
+	tests := []struct {
+		name        string
+		producer    ShedProducer
+		wantHaltMsg string
+	}{
+		{
+			name:        "ProducerError",
+			producer:    &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) { return "", OutputPointer{}, errors.New("plan agent died") }},
+			wantHaltMsg: "plan agent died",
+		},
+		{
+			name:        "UnrecognisedOutcome",
+			producer:    &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) { return Outcome("approved"), OutputPointer{}, nil }},
+			wantHaltMsg: "unrecognised outcome",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			shed.CommitStatus = func(producer, state string) error { return persistErr }
+			shed.Producers = []ProducerDef{{Name: "Plan-Write", Producer: tt.producer}}
+			seedStatus(t, statusPath, statusLockPath, commonSeed("Plan-Write"))
+
+			_, err := shed.Run(context.Background())
+			if err == nil {
+				t.Fatal("Run(...) error = nil; want non-nil")
+			}
+			if !errors.Is(err, persistErr) {
+				t.Errorf("Run(...) error = %v; want it to carry the persist failure %v", err, persistErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantHaltMsg) {
+				t.Errorf("Run(...) error = %q; want it to still name the failure that halted the run (%q)", err.Error(), tt.wantHaltMsg)
+			}
+		})
 	}
 }
 
