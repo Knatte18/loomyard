@@ -773,3 +773,68 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 		}
 	})
 }
+
+// seedRewritingPlanDir writes a real, parseable plan directory whose first card declares a draft
+// plan: handle spelled differently from what quarry.Name computes for its own declaration head, so
+// begin-batch's ValidateDispatch canonicalizes it and rewrites the card file on disk. Its second
+// card names a glyph that cannot resolve against the fixture's worktree, so the same call also
+// reports a blocking finding — the co-occurrence R4-01/R4-02's re-baseline ordering turns on.
+func seedRewritingPlanDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	files := map[string]string{
+		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n" +
+			"# Plan: canonicalization fixture\n\nTwo cards: one rewrites, one blocks.\n\n" +
+			"## Card Index\n\n1 — json-flag — declares a draft handle whose canonical spelling differs\n" +
+			"2 — list-tests — references a glyph that does not resolve\n",
+		"01-json-flag.md": "# Card 1 — json-flag\n\n**Create:**\n- `plan:internal/foo#Barr` -> `func Bar()`\n\n" +
+			"**Intent:** Declare a draft handle whose canonical spelling differs from the draft.\n",
+		"02-list-tests.md": "# Card 2 — list-tests\n\n**Edit:**\n- `internal/foo#Missing`\n\n" +
+			"**Intent:** Reference a glyph that does not resolve against the tree.\n\n" +
+			"**ImpactSummary:** None — the target does not exist.\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("seed rewriting plan dir %s: %v", name, err)
+		}
+	}
+	return dir
+}
+
+// TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts is the regression test for the round-4
+// review's R4-02. ValidateDispatch's resolve pass canonicalizes handles — rewriting the plan on
+// disk — and then keeps going, so one call routinely both rewrites and reports a blocking finding.
+// With the re-baseline positioned after the ErrPlanDrifted return, state.json kept the pre-rewrite
+// fingerprint while the plan on disk carried webster's own sanctioned edit, and every later
+// begin-batch refused that edit as a foreign one.
+func TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts(t *testing.T) {
+	fx := newBeginFixture(t)
+
+	planDir := seedRewritingPlanDir(t)
+	plan, err := planparser.ParsePlan(planDir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) error = %v", planDir, err)
+	}
+	fx.Deps.Plan = plan
+	fx.Deps.Geom.PlanDir = planDir
+	seeded := mustFingerprint(t, planDir)
+	fx.Deps.State.PlanFingerprint = seeded
+
+	_, err = websterengine.BeginBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrPlanDrifted) {
+		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted) — the unresolvable glyph must block", err)
+	}
+
+	rewritten, readErr := os.ReadFile(filepath.Join(planDir, "01-json-flag.md"))
+	if readErr != nil {
+		t.Fatalf("read 01-json-flag.md: %v", readErr)
+	}
+	if !strings.Contains(string(rewritten), "plan:internal/foo#Bar`") {
+		t.Fatalf("01-json-flag.md = %q; want the draft handle canonicalized on disk — the fixture is not exercising a rewrite at all", rewritten)
+	}
+
+	if fx.Deps.State.PlanFingerprint == seeded {
+		t.Error("State.PlanFingerprint still carries its pre-call value after a call that canonicalized handles on disk; every later begin-batch would refuse webster's own sanctioned rewrite as a foreign edit")
+	}
+}

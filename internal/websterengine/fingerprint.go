@@ -76,3 +76,15 @@ func restampFingerprint(st *State, planDir string) error {
 	st.PlanFingerprint = fp
 	return nil
 }
+
+// restampAndSaveFingerprint is restampFingerprint followed by SaveState, for Run — the one
+// re-baseline site that owns its own state persistence rather than handing the state back to a CLI
+// verb to save. Both halves are needed together: a re-baseline held only in memory is discarded by
+// every path that returns before Run's later saves, which is exactly the wedge the re-baseline
+// exists to prevent.
+func restampAndSaveFingerprint(geom Geometry, st *State) error {
+	if err := restampFingerprint(st, geom.PlanDir); err != nil {
+		return err
+	}
+	return SaveState(geom.WebsterDir, geom.ScratchDir, st)
+}

@@ -464,6 +464,14 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
 	// set deliberately omits, already fired at entry above.
 	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, completedCards(batches, st, 0))
+	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
+	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
+	// and is persisted immediately. Restamping only past the refusals left state.json describing the
+	// pre-rewrite bytes, and the first begin-batch then refused this run's own edit as a foreign one.
+	// See this package's doc.go. A restamp or save failure never masks err.
+	if rebaseErr := restampAndSaveFingerprint(deps.Geom, st); rebaseErr != nil && err == nil {
+		return RunResult{}, rebaseErr
+	}
 	if err != nil {
 		if errors.Is(err, planglyph.ErrQuarryUnavailable) {
 			// Its own returned error, named for quarry rather than the plan — a gate that could not
@@ -480,15 +488,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
 	}
-	// The re-resolution above canonicalizes handles, which can rewrite the plan on disk. Re-baseline
-	// the recorded fingerprint and persist it, or the first begin-batch refuses this run's own
-	// sanctioned rewrite as a foreign edit.
-	if err := restampFingerprint(st, deps.Geom.PlanDir); err != nil {
-		return RunResult{}, err
-	}
-	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
-		return RunResult{}, err
-	}
+	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
+	// of both refusals, and persisted itself.
 
 	// Clear any leftover pause flag now that the run has passed every
 	// refusal gate (validation, the plan-fingerprint check) and is

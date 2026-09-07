@@ -218,9 +218,20 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
 	// re-resolving it reports the plan working correctly as a blocking defect.
-	resolveFindings, err := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, completedCards(deps.Batches, deps.State, 0))
-	if err != nil {
+	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, completedCards(deps.Batches, deps.State, 0))
+	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it
+	// then keeps going: the status, Create-inversion and containment passes all run after the
+	// rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the
+	// rewrite also survives the pass's own hard-error paths. The staleness re-baseline therefore runs
+	// HERE, ahead of every refusal below, rather than once past them — otherwise state.json keeps the
+	// pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit, and every
+	// later begin-batch refuses it as a foreign one. See this package's doc.go.
+	// A restamp failure never masks resolveErr: the caller is already returning for that reason.
+	if err := restampFingerprint(deps.State, deps.Plan.Dir); err != nil && resolveErr == nil {
 		return nil, err
+	}
+	if resolveErr != nil {
+		return nil, resolveErr
 	}
 	var blocking []string
 	var advisories []string
@@ -233,13 +244,6 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	if len(blocking) > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrPlanDrifted, strings.Join(blocking, "; "))
-	}
-
-	// The re-resolution above canonicalizes handles, which rewrites the plan on disk, so the
-	// fingerprint captured at run entry no longer describes it. Re-baseline before returning, or the
-	// next begin-batch refuses this run's own sanctioned rewrite as a foreign edit.
-	if err := restampFingerprint(deps.State, deps.Plan.Dir); err != nil {
-		return nil, err
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)
