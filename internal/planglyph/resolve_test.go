@@ -142,3 +142,24 @@ func TestStatusFindings(t *testing.T) {
 		}
 	})
 }
+
+// TestTargetCards_IndexesACardOncePerTarget is F1b's (round fable5-high-r3) regression test: both
+// endpoints of every Pairs entry are also projected into Targets, so a Rename card references its
+// own endpoints twice — and targetCards must still attribute one finding per card, not one per
+// occurrence.
+func TestTargetCards_IndexesACardOncePerTarget(t *testing.T) {
+	card := planparser.Card{
+		Number:  1,
+		Slug:    "one",
+		Targets: []string{"sub/a.go#", "sub/b.go#"},
+		Pairs:   []planparser.MovePair{{Old: "sub/a.go#", New: "sub/b.go#"}},
+	}
+	plan := &planparser.Plan{Cards: []planparser.Card{card}}
+
+	index := targetCards(plan)
+	for _, ref := range []string{"sub/a.go#", "sub/b.go#"} {
+		if got := len(index[ref]); got != 1 {
+			t.Errorf("targetCards(...)[%q] has %d entries; want 1 — one attribution per card, not per occurrence", ref, got)
+		}
+	}
+}

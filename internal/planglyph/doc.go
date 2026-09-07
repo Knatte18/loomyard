@@ -27,7 +27,9 @@
 // nothing enumerated these anywhere else:
 //
 //   - glyph-not-found, glyph-ambiguous, glyph-rejected — the resolve status policy (resolve.go),
-//     blocking, over every glyph target a Create group does not own.
+//     blocking, over every glyph target that neither a Create group owns nor a Rename pair names as
+//     its New side (a rename destination only exists after the card runs, mirroring planparser's
+//     own path-missing rule that never checks Pairs.New).
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
 //     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
 //   - containment-file-overlap (blocking) — the resolve-backed containment tier (containment.go),

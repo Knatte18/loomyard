@@ -206,3 +206,24 @@ func TestCollectGlyphTargets_DeduplicatesAcrossCards(t *testing.T) {
 		t.Errorf("collectGlyphTargets(...) = %v; want exactly [%q]", got, "sub#Foo")
 	}
 }
+
+// TestResolvePass_FileRenameNewSideIsNotAFinding is F1's (round fable5-high-r3) regression test: a
+// FILE-rename pair's New side canonicalizes to the self glyph of a file that only exists once the
+// rename lands, so it resolves not_found against the pre-rename tree — and the status policy must
+// treat that exactly as planparser's own path-missing check treats Pairs.New: never a finding.
+// Against pre-fix source this reported blocking glyph-not-found (twice, per F1b) and wedged every
+// plan carrying a file rename, including the plan spec's own worked example.
+func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
+	_, plan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub/a.go` -> `sub/b.go`\n\n**Intent:** rename the file\n",
+	})
+
+	got, err := resolvePass(plan, root, nil)
+	if err != nil {
+		t.Fatalf("resolvePass(...) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("resolvePass(file-rename plan) = %+v; want no findings — the pair's New side names the post-rename destination", got)
+	}
+}

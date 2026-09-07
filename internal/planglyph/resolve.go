@@ -23,9 +23,21 @@ func cardIDOf(c planparser.Card) string {
 // targetCards indexes plan's cards by every glyph target they reference — Targets, Uses, and both
 // Pairs endpoints alike — so a resolve-backed finding can be attributed to every card that
 // references the target, one finding per referencing card, rather than one unattributed finding.
+// A card referencing the same target more than once (both endpoints of every Pairs entry are also
+// projected into Targets, so a Rename card always does) is indexed once per target, never once per
+// occurrence — otherwise one defect reported as two identical findings against the same card.
 func targetCards(plan *planparser.Plan) map[string][]planparser.Card {
 	index := make(map[string][]planparser.Card)
+	seen := make(map[string]map[string]bool)
 	add := func(c planparser.Card, ref string) {
+		id := cardIDOf(c)
+		if seen[ref][id] {
+			return
+		}
+		if seen[ref] == nil {
+			seen[ref] = make(map[string]bool)
+		}
+		seen[ref][id] = true
 		index[ref] = append(index[ref], c)
 	}
 	for _, c := range plan.Cards {

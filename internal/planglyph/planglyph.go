@@ -195,10 +195,18 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 
 	findings := append([]Finding{}, handleFindings...)
 
+	// Rename pairs' New sides are excluded from the status policy exactly as Create targets are,
+	// and for the same reason: both name something that only exists AFTER the card runs. A symbol
+	// rename's New side is a plan: handle and never reaches the resolve set at all, but a
+	// FILE-rename pair's New side is a self glyph of the destination file, which resolves
+	// not_found against the pre-rename tree — the pure layer's path-missing check deliberately
+	// never checks Pairs.New (and satisfies later refs via its renameTargetsUnion), so reporting
+	// blocking glyph-not-found here wedged every plan carrying a file rename.
 	createTargets := createTargetSet(current)
+	renameNewTargets := renameNewTargetSet(current)
 	var nonCreateResults []quarry.ResolveResult
 	for _, r := range results {
-		if createTargets[r.Target] {
+		if createTargets[r.Target] || renameNewTargets[r.Target] {
 			continue
 		}
 		nonCreateResults = append(nonCreateResults, r)
@@ -236,6 +244,21 @@ func resolveLanguage(plan *planparser.Plan) (glyph.Language, bool) {
 	default:
 		return glyph.Language(""), false
 	}
+}
+
+// renameNewTargetSet returns the set of every Rename pair's New-side ref across plan, matching the
+// spelling the card carries. resolvePass excludes these from statusFindings, mirroring the pure
+// layer's own rule that a Rename's New side is never existence-checked (planparser's path-missing
+// check skips Pairs.New): the destination only exists once the rename lands, so a not_found answer
+// against the pre-rename tree is the plan working as designed, not a defect.
+func renameNewTargetSet(plan *planparser.Plan) map[string]bool {
+	set := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, p := range c.Pairs {
+			set[p.New] = true
+		}
+	}
+	return set
 }
 
 // collectGlyphTargets returns every distinct glyph-shaped ref plan's cards reference across their
