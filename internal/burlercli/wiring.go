@@ -143,11 +143,14 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 // argument is the "no source tree here" value that keeps the port-back drift warning silent --
 // standalone genuinely has no contracts/stencils source tree beside it.
 //
-// Immediately after standalonestate.Derive succeeds, wireStandalone redirects the durable trace sink
-// to standalonegeom.LogsDir(stateDir), which is what keeps a standalone invocation from writing trace
-// files into the operator's repository -- placement matters because the sink is armed lazily on the
-// first Info-or-above record, so the redirect only binds if it runs before anything else in this
-// function can log. Its runner is also built via shuttleengine.NewDetachedRunner rather than
+// Once standalonestate.Derive has succeeded and the nested-geometry refusal has passed,
+// wireStandalone redirects the durable trace sink to standalonegeom.LogsDir(stateDir), which is what
+// keeps a standalone invocation from writing trace files into the operator's repository -- placement
+// matters because the sink is armed lazily on the first Info-or-above record, so the redirect only
+// binds if it runs before anything else in this function can log. It is deliberately not the FIRST
+// statement: it cannot be, since it is Derive's own stateDir that tells it where to point, and every
+// statement above it is path arithmetic, a filesystem read, or an error return, none of which logs.
+// Its runner is also built via shuttleengine.NewDetachedRunner rather than
 // NewRunner, since standalone's anchor (the derived state directory) is deliberately outside its
 // worktree root (the target), which NewRunner's containment assertion would refuse.
 //

@@ -181,10 +181,16 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	if err := refuseNestedStandaloneGeometry("webster", target, stateDir); err != nil {
 		return err
 	}
-	// The redirect runs before any other statement in this function because the durable sink is
-	// armed lazily on the first Info-or-above record: if anything below logged first, the sink
-	// would already be bound to the operator's target repository and this redirect would be too
-	// late to matter.
+	// The redirect runs before the first statement in this function that CAN log, which is what
+	// actually matters: the durable sink is armed lazily on the first Info-or-above record, so once
+	// anything below has logged, the sink is already bound to the operator's target repository and
+	// this redirect is too late. It is not the first statement in the function and does not need to
+	// be — the three above it (the target resolve, Derive, and the nested-geometry refusal) are
+	// path arithmetic, filesystem reads and an error return, none of which logs, and the redirect
+	// cannot precede them anyway since it is Derive's own stateDir that tells it where to point.
+	// The obligation a later editor inherits is therefore not "keep this first" but "keep every
+	// statement above this one log-free, and add no logging statement below it that could be moved
+	// above".
 	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
 
 	geom := standalonegeom.WebsterGeometry(target, stateDir)

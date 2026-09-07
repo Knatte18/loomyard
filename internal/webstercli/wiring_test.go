@@ -473,11 +473,17 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 // testing.Testing() sink suppression in ensureDurableSink, so one logger.Info call after
 // wireStandalone returns arms the sink at whatever directory the override names, with no
 // LYX_TRACE redirect needed.
+// The sentinel half additionally pins the property wireStandalone's own placement comment now
+// claims: every statement ABOVE the redirect is log-free. A sentinel sink armed before the call must
+// still be empty when wire returns -- a statement above the redirect that logged would have armed
+// the sentinel there instead, and the redirect would have been too late to matter.
 func TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir(t *testing.T) {
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	sentinelDir := t.TempDir()
+	logger.SetDurableSinkDir(sentinelDir)
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 	stateDir := filepath.Join(stateHome, "lyx", hash8For(t, target))
 	seedStandalonePlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
@@ -485,6 +491,14 @@ func TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir(t *testing.T) {
 	c := &websterCLI{}
 	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	sentinelFiles, err := filepath.Glob(filepath.Join(sentinelDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", sentinelDir, err)
+	}
+	if len(sentinelFiles) != 0 {
+		t.Errorf("sentinel dir %s gained %v; want it empty -- some statement above the sink redirect logged, arming the sink before the redirect could bind it", sentinelDir, sentinelFiles)
 	}
 
 	logger.Info("wiring_test: arm the sink")
