@@ -53,6 +53,12 @@ three of the four things this round was told to go and break did not break.
 
 Severity counts: **2 BLOCKING, 11 MEDIUM, 15 LOW, 10 NIT — 38 total.**
 
+One of the 38 (R4-22) was **withdrawn during the fix phase** as not a real finding — implementing it
+broke a test that pins the behaviour deliberately, and `manifest/designs/shed.md` documents the
+decision with its reasoning. Its entry below records the withdrawal rather than being deleted.
+Net: **37 real findings, all fixed**, plus one (R4-38) recorded unreproduced and deliberately not
+fixed.
+
 ### BLOCKING
 
 #### R4-01 — a sanctioned plan rewrite in `RecordBatch` is never re-stamped when the same call blocks, wedging the run unrecoverably — CONFIRMED
@@ -354,14 +360,21 @@ Combined with `DetectDrift`'s gate two, which logs an unreferenced rename at `De
 operator-visible signal at all — even though a rename is exactly the "symbol touched outside the
 batch's own target glyphs" this guard exists to report.
 
-#### R4-22 — `validate()` rejects only a self-referencing `OnDone`, not a longer `OnDone` cycle — CONFIRMED (latent)
+#### R4-22 — `validate()` rejects only a self-referencing `OnDone`, not a longer `OnDone` cycle — **WITHDRAWN, not a real finding**
 
 `internal/shedengine/validate.go:73-86`.
-Its own rationale — "Done routing consumes no bounce budget, so a self-referencing `OnDone` is a
-statically certain infinite loop" — applies verbatim to `A.OnDone = B; B.OnDone = A`, which validate
-accepts. `Shed.Run` would spin forever, one history entry and one git commit per hop, with no budget
-to stop it.
-The shipped `loom-recipe.yaml` has no such cycle, so this is a validator gap rather than a live defect.
+I filed this because the rule's own rationale — "Done routing consumes no bounce budget, so a
+self-referencing `OnDone` is a statically certain infinite loop" — reads as applying verbatim to
+`A.OnDone = B; B.OnDone = A`.
+It does not, and I was wrong to file it.
+Implementing the wider check broke `TestRun_OnDoneRoutesBackward`, which pins that exact shape as
+supported, and `manifest/designs/shed.md:197` states the decision outright with its reason: a
+multi-producer `Done` cycle "is not statically infinite the way a self-referencing `OnDone` is — any
+member may still exit via its own `OnStuck` — so a rule rejecting it would reject legitimate backward
+jumps along with genuine mistakes", with the unbounded case accepted explicitly a few lines later.
+The general check does exist, at the right layer: `internal/shedcheck`'s `done-cycle` finding, which
+generalises the length-1 rule at authoring time without breaking backward routing at run time.
+Verified against `shed.md` and `internal/shedcheck` before withdrawing. No change made.
 
 #### R4-23 — `--plan-dir`/`--stencils-dir` are stored verbatim and may be relative — CONFIRMED
 
