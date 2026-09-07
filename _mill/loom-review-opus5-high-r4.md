@@ -5,11 +5,49 @@
 > Worktree: `/home/knatte/Code/loomyard/wts/crucible-loom-glyph-hardening`, branch
 > `crucible-loom-glyph-hardening`, HEAD at review start `8e8c61b01`.
 
-**STATUS: IN PROGRESS** — findings and test log appended incrementally (crash-resilience discipline).
+**STATUS: REVIEW COMPLETE.** Findings and test log were appended and committed incrementally
+(crash-resilience discipline); this file was frozen before any production or test file was touched.
 
 ## Executive summary
 
-_(written last)_
+### Convergence verdict: **NOT converged.** This safety pass found two BLOCKING defects.
+
+The campaign's own bar (crucible README) is a safety pass, this orchestrator's gates, and an
+operator-assisted check all agreeing. They do not agree: this pass found **2 BLOCKING** defects,
+both in the glyph surface's own plan-rewrite/fingerprint interaction, both unrecoverable-without-
+hand-editing-`state.json` when they fire, and neither reachable by any hermetic test that exists.
+Round 3's own residual list did not name them, and rounds 1–3's live scenarios did not exercise the
+combination that triggers them (a batch that both rewrites the plan and blocks in the same call).
+
+That said, the campaign is close, and the four high-yield-focus items all came back **positive**:
+the machinery they targeted works. The two BLOCKING findings are one root cause with two sites, and
+the fix is contained.
+
+### High-yield-focus items — what was attempted and how far each got
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Adversarial re-read of round 2's own territory (handle canonicalization end-to-end, `Plan-Review`'s rubric and judge behaviour, `Webster-Review`'s per-card checks) | **DONE.** Produced R4-01/R4-02 (the fingerprint/rewrite wedge, reachable straight through `Plan-Validate` → `Plan-Revalidate` → `Webster`), R4-05 (the Plan-Review rubric instructs the judge to hunt a state `Plan-Validate` already blocks), R4-06 (the Plan-Write stencil's worked skeleton is a card that fails `card-missing-field`), R4-07 (`lyx webster validate` advertises parity with a gate `run` does not run) and R4-14. Round 2's territory was **not** clean. |
+| 2 | `DetectDrift` exact-tier auto-repair, live, through a real Webster fork | **ACHIEVED** (Live-4). A real hub-mode `lyx webster run`, real Master, real fork; the fork renamed a symbol as an undeclared side effect of an `Edit` card; both gates behaved correctly; the plan was rewritten plan-wide and exactly one `exact`-tier amendment was appended; the run continued. First live proof in the campaign. |
+| 3 | A real hub-mode crash-kill mid-Webster-batch | **ACHIEVED** (Live-5), with one honest scope caveat: I killed `lyx webster run` (the process owning `run.lock` and the Master's lifetime), not the `lyx loom run` driver one frame above it. Genuine `kill -9`, Master orphaned and confirmed alive, `outcome.yaml` confirmed absent; resume reclaimed the orphan, spawned exactly one replacement Master, kept both completed batches, resumed the open bracket and drove the plan to `3:done`. No wedge. Produced R4-36 and R4-37. |
+| 4 | A crash during a review segment (Bouncer/Burler round) on a glyph-bearing plan | **ACHIEVED, both halves** (Live-1, Live-2). Genuine `kill -9` mid-`Plan-Bouncer` seed and mid-`Plan-Burler` round, terminal artifacts confirmed absent both times, live agents confirmed still alive; both resumes **attached** to the live agent and never respawned, with the log line to prove it. First time any round has driven item 4. |
+| 5 | General adversarial sweep | **DONE.** 38 findings total. |
+
+### What is solid
+
+Everything the four live scenarios exercised behaved as designed:
+a full hub-mode `lyx loom run` carried a `plan:`-handle-bearing plan from `Discussion-Write` to
+`Finalize → done` (Live-3) with canonicalization, plan-wide handle binding and per-batch fingerprint
+restamping all correct; the crash-recovery ladder held under three separate real `kill -9`s; and
+round 3's inherited-task-state guard fired correctly on a case it was never tested against (Live-0).
+
+### Merge readiness
+
+**Not ready as it stands.** R4-01 and R4-02 must land first — they are a real, reachable, and
+unrecoverable wedge in the very interaction (a sanctioned plan rewrite plus a blocking finding in
+one call) the glyph alphabet introduced. Everything else is MEDIUM or below.
+After those two land with tests, and the remaining findings are fixed, the surface is in good shape:
+three of the four things this round was told to go and break did not break.
 
 ## Findings
 
@@ -577,6 +615,23 @@ so this exercises the machinery item 3 names; the one thing it does not exercise
 `Webster`-row re-entry after such a crash.
 
 Two findings came directly out of Live-5's reclaim — R4-36 and R4-37 below.
+
+The `lyx webster run` resumed in Live-5 went on to finish the plan: `_lyx/webster/outcome.yaml`
+reads `outcome: done`, `batches_done: 3`, and `git log` carries all three per-card commits
+(`6f9024b 1: rename-default-helper`, `c893872 2: farewell-doc`, `ee5e13b 3: readme-note`).
+
+#### Teardown
+
+`lyx reed down` in both fixtures (`{"ok":true,"session":"r4-drift-hub"}`,
+`{"ok":true,"session":"r4-crash-hub"}`), after which
+`tmux -L lyx-lyx-test-HUB-d919e29a ls` reports `no server running` and
+`ps -eo pid,cmd | grep -E "lyx (webster|loom|reed)"` returns nothing.
+The only `claude` processes left on the box are three interactive sessions from Sep 3–6 that were
+already present in the `ps` I took before starting, none of them mine.
+The three leftover `tmux -L lyx-<hash>` servers from earlier untagged/integration test runs, noted
+at review start, are likewise not mine and were left alone.
+Two fixture worktrees remain by design for the fixer phase: `r4-crash-hub` and `r4-drift-hub`
+(plus their weft siblings) under `/home/knatte/Code/lyx-test-HUB`.
 
 Both halves of the `Bouncer`+`Burler` perch therefore honour `manifest/designs/loom.md`'s
 "attach if live, else respawn — never both" ladder under a real `kill -9`, on a glyph-bearing plan.
