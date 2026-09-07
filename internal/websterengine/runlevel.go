@@ -346,19 +346,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
-	findings, err := planglyph.Validate(plan, deps.Geom.WorktreeRoot)
-	if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
-		// Its own returned error, named for quarry rather than the plan, distinct from the findings
-		// refusal below -- a gate that could not read the code has not found a plan defect to refuse
-		// the run over, matching internal/loomshed/planvalidate.go's producer-side disposition.
-		return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w", deps.Geom.PlanDir, err)
-	}
-	if hasBlockingFinding(findings) {
-		msgs := make([]string, len(findings))
-		for i, f := range findings {
-			msgs[i] = f.Error()
-		}
-		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
+	// The approval gate fires here, at entry; the full validation gate runs further down, once the
+	// state phase has settled, because its resolve-backed half must be scoped by the completed
+	// cards only state.json knows about (see the ValidateDispatch call below).
+	if !plan.Approved {
+		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan", deps.Geom.PlanDir)
 	}
 
 	if deps.Batcher == nil {
@@ -460,6 +452,42 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
+	}
+
+	// Validation runs HERE — after the state phase settles — rather than at entry, because its
+	// resolve-backed half must be scoped to the cards whose work has NOT landed yet: re-validating
+	// the whole plan on a resume reported every completed Create/Delete/Rename card as a blocking
+	// defect (create-already-exists, glyph-not-found — the plan working exactly as designed) and
+	// permanently refused the very resume this verb's own help promises, wedging both the
+	// documented `lyx webster run` resume flow and loom's own Webster-row re-drive. The scoping is
+	// the same one begin-batch already uses; a fresh run has no completed cards and gets the
+	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
+	// set deliberately omits, already fired at entry above.
+	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, completedCards(batches, st, 0))
+	if err != nil {
+		if errors.Is(err, planglyph.ErrQuarryUnavailable) {
+			// Its own returned error, named for quarry rather than the plan — a gate that could not
+			// read the code has not found a plan defect to refuse the run over, matching
+			// internal/loomshed/planvalidate.go's producer-side disposition.
+			return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w", deps.Geom.PlanDir, err)
+		}
+		return RunResult{}, err
+	}
+	if hasBlockingFinding(findings) {
+		msgs := make([]string, len(findings))
+		for i, f := range findings {
+			msgs[i] = f.Error()
+		}
+		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
+	}
+	// The re-resolution above canonicalizes handles, which can rewrite the plan on disk. Re-baseline
+	// the recorded fingerprint and persist it, or the first begin-batch refuses this run's own
+	// sanctioned rewrite as a foreign edit.
+	if err := restampFingerprint(st, deps.Geom.PlanDir); err != nil {
+		return RunResult{}, err
+	}
+	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+		return RunResult{}, err
 	}
 
 	// Clear any leftover pause flag now that the run has passed every

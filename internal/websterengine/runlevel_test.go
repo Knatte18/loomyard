@@ -1378,3 +1378,67 @@ func TestRun_AcyclicPlanReportsNoCycles(t *testing.T) {
 		}
 	}
 }
+
+// TestRun_ResumeWithCompletedCreateCardIsNotRefused is F2's (round fable5-high-r3) regression
+// test: a resumed run whose state records batch 1 terminal, and whose batch-1 Create target
+// consequently exists on disk, must sail past the entry validation gate — against pre-fix source
+// the gate re-validated the WHOLE plan and refused the resume on create-already-exists, the plan
+// working exactly as designed, wedging the documented `lyx webster run` resume flow permanently
+// (--fresh only fires on a fingerprint mismatch, so there was no way out).
+func TestRun_ResumeWithCompletedCreateCardIsNotRefused(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	// Batch 1's own Create target landed — exactly what a completed Create card leaves behind.
+	commitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "resume-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	wantSessionID := "master-session-resume"
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-resume",
+		result: shuttleengine.Result{
+			Outcome:              shuttleengine.OutcomeAsking,
+			SessionID:            wantSessionID,
+			RunDir:               "/run/dir/resume",
+			LastAssistantMessage: "resumed and asking",
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-resume", wantSessionID)
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	var target *websterengine.MasterAskingError
+	if !errors.As(err, &target) {
+		t.Fatalf("Run() error = %v; want a *MasterAskingError — the resume must reach the Master spawn, never a create-already-exists refusal for its own completed card", err)
+	}
+	if fx.Starter.callCount() != 1 {
+		t.Errorf("Starter.callCount() = %d; want 1 — the resumed run must spawn Master", fx.Starter.callCount())
+	}
+}
+
+// TestRun_UnapprovedPlanRefused pins the approval gate the entry-time ValidateDispatch scoping
+// deliberately does not carry (ValidateDispatch runs the format-only check set): an unapproved
+// plan is refused before batching, state, or any spawn.
+func TestRun_UnapprovedPlanRefused(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	overview := filepath.Join(fx.PlanDir, "00-overview.md")
+	data, err := os.ReadFile(overview)
+	if err != nil {
+		t.Fatalf("read overview: %v", err)
+	}
+	if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "approved: true", "approved: false", 1)), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil || !strings.Contains(err.Error(), "not approved") {
+		t.Fatalf("Run() error = %v; want the not-approved refusal", err)
+	}
+	if fx.Starter.callCount() != 0 {
+		t.Errorf("Starter was reached (%d calls) for an unapproved plan; want zero", fx.Starter.callCount())
+	}
+}
