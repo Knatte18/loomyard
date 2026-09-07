@@ -30,4 +30,17 @@ No fix touched `NewRunner`'s containment assertion or any hub-mode spawn path se
 - Hermetic, after every fix and cold at the end (see below): `CGO_ENABLED=1 go build ./...`, `go vet` over the full expanded package set, `go test -count=5` over the same set + `cmd/lyx`, `go test -tags integration` over the seven-package set, whole-repo `go test ./...`.
 - Live, per finding: F1 (file-rename plan now validates clean via standalone `lyx webster validate`), F4 (backdated card mtimes survive a validate), F-A3 (refusal envelope observed with the exact recourse text), F-A1/F-A4 (real standalone `lyx webster run`: reed session boots on socket `lyx-b1c70921`, Master orients against the told plan dir and opens batch brackets — full E2E transcript in the review report's What-was-tested), F2 (re-run of the completed standalone run re-reports done — see below).
 
-(final gate outputs and the E2E terminal envelope appended below once the last live run lands)
+### Additional fixes landed after the draft above
+
+| Finding | Commit | Change | Tests |
+|---|---|---|---|
+| F-B7 (vocabulary) | `3b95e1e4c` | ownership guard's comments/error reworded off the bare fabric-side tokens (`TestEnforcement_FabricVocabulary` caught the first wording; green after) | enforcement gate |
+| F-B8 [B] | `7f16dde7e` | `checkHandleMalformed` refuses a file-unit handle (language-gated `.go`-suffix rule) naming the package-directory fix; spec row 15 + Plan-Write stencil `<unit>` guidance updated | `TestCheckHandleMalformed_FileUnitHandle` |
+
+### Final results
+
+- **Live E2E (Mission A, decisive):** `lyx webster run --fresh --target-dir /home/knatte/Code/lyx-r3-standalone` → `{"ok":true,"outcome":"done","batches_done":2}` — the first completed standalone webster run ever. Target commits `00489fe`/`cefc499`, `go test ./greeter/` green, `BindHandles` collapsed the handle to `greeter#Farewell` across both cards. Immediate re-run (F2's live check, two landed Create cards) re-reported `done`.
+- **Live hub run (Mission B):** full `lyx loom run` pipeline with two `Plan-Write`-authored Rename cards to `Finalize → done` (evidence in the review report).
+- **Final cold gates at HEAD:** `go build ./...`, `go vet` (expanded set), `go test -count=5` (expanded set + cmd/lyx), `go test -tags integration` (seven packages), whole-repo `go test ./...` — all green. `golangci-lint` over the changed packages: only three pre-existing findings (present at the round's base commit), untouched.
+- **Teardown:** standalone tmux server killed, hub reed session downed, sandbox repos committed-clean, zero substrate processes from this round remain.
+- **Not live-verified:** F-B7's mismatch refusal (unit-tested; the live worktree's state now legitimately matches its own slug), burlercli's standalone reed bring-up (same seam as webstercli's, wiring-pinned; no standalone burler profile scenario was in this round's scope).
