@@ -147,10 +147,32 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		// crash-safety property step 5 exists to provide.
 		//
 		// Appended to a copy of the history read at step 1, never mutating the read slice in
-		// place.
+		// place. An outcome the producer never reached is the one case that appends nothing at
+		// all -- see the skip below.
 		appendHistory := func() []HistoryEntry {
 			next := make([]HistoryEntry, len(st.History), len(st.History)+1)
 			copy(next, st.History)
+			if outcome == "" {
+				// A producer that returned an error and no outcome at all reached no verdict, so
+				// there is nothing to record -- the same reasoning the cancellation branch below
+				// already applies, and the reason this is a skip rather than a placeholder value:
+				// history[].outcome is a persisted enum whose whole vocabulary is done and stuck,
+				// and there is no third spelling for "the call did not get that far".
+				//
+				// Writing the empty string there was not free. It is out of vocabulary on disk, so
+				// internal/loomengine's own seed-coherence check rejects it -- an ordinary hard
+				// failure at either Preflight row left a status file that check refused on every
+				// later resume, turning one recoverable producer error into a permanently
+				// unresumable run. It also composed into activity.last as a dangling "Plan-Write →"
+				// with nothing after the arrow. Neither loses anything by being dropped: the
+				// failure's own text is written to error, and current_producer still names the
+				// producer that failed.
+				//
+				// A non-empty outcome outside the vocabulary is a different case and is still
+				// recorded verbatim, because there the value IS the diagnosis -- it is what the
+				// broken adapter actually returned.
+				return next
+			}
 			return append(next, HistoryEntry{
 				Producer: def.Name,
 				Outcome:  outcome,
