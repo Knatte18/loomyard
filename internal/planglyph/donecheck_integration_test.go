@@ -116,3 +116,77 @@ func TestDoneChecks_QuarryUnavailable(t *testing.T) {
 		t.Errorf("DoneChecks(...) error = %v; want errors.Is(err, ErrQuarryUnavailable)", err)
 	}
 }
+
+// TestDoneChecks_RenameLanded covers a Rename pair whose rename happened: the old side no longer
+// resolves, the new side does, no finding. The New side carries the canonical plan: handle
+// spelling a validated plan's symbol rename always has, proving resolveKeyFor strips it.
+func TestDoneChecks_RenameLanded(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Bar() {}\n"})
+	cards := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{
+			Type:  planparser.CardTypeRename,
+			Refs:  []string{"sub#Foo", "plan:sub#Bar"},
+			Pairs: []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}},
+		}},
+	}}
+
+	got, err := DoneChecks(&planparser.Plan{}, cards, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(...) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("DoneChecks(landed Rename) = %+v; want no findings", got)
+	}
+}
+
+// TestDoneChecks_RenameSkipped is F3's (round fable5-high-r3) regression test: a fork that never
+// performed its declared Rename leaves the old side still resolving and the new side still
+// unresolvable, and BOTH halves must report rename-not-done — against pre-fix source this card
+// recorded clean, since DoneChecks inspected only Create and Delete groups.
+func TestDoneChecks_RenameSkipped(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	cards := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{
+			Type:  planparser.CardTypeRename,
+			Refs:  []string{"sub#Foo", "plan:sub#Bar"},
+			Pairs: []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}},
+		}},
+	}}
+
+	got, err := DoneChecks(&planparser.Plan{}, cards, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(...) returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("DoneChecks(skipped Rename) = %+v; want two rename-not-done findings (old still resolves, new still missing)", got)
+	}
+	for _, f := range got {
+		if f.Check != "rename-not-done" || f.Card != "1-one" {
+			t.Errorf("finding %+v; want Check rename-not-done on card 1-one", f)
+		}
+	}
+}
+
+// TestDoneChecks_FileRenameLanded covers a file-rename pair (both sides self glyphs) whose git mv
+// happened: no finding.
+func TestDoneChecks_FileRenameLanded(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/b.go": "package sub\n\nfunc Foo() {}\n"})
+	cards := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{
+			Type:  planparser.CardTypeRename,
+			Refs:  []string{"sub/a.go#", "sub/b.go#"},
+			Pairs: []planparser.MovePair{{Old: "sub/a.go#", New: "sub/b.go#"}},
+		}},
+	}}
+
+	got, err := DoneChecks(&planparser.Plan{}, cards, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(...) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("DoneChecks(landed file rename) = %+v; want no findings", got)
+	}
+}

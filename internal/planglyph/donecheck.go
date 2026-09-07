@@ -1,6 +1,7 @@
 // donecheck.go implements DoneChecks, the mechanical verdict a card's completion has never had
-// before: a Create group's own target that still does not resolve, and a Delete group's own target
-// that still does resolve, both block.
+// before: a Create group's own target that still does not resolve, a Delete group's own target
+// that still does resolve, and a Rename pair whose old side still resolves or whose new side still
+// does not, all block.
 //
 // The Delete gate would ideally also want quarry's parked assert-no-callers check, which is not
 // available and is not in this task's scope, so a Delete whose target was in fact renamed rather
@@ -38,11 +39,12 @@ func resolveKeyFor(ref string) string {
 	return ref
 }
 
-// DoneChecks issues one batched resolve over cards' own Create and Delete group targets against
-// worktreeRoot's current tree, and applies two rules, both blocking because neither is a judgment
-// call: a Create target that still does not resolve found or multipart is check ID
-// create-not-done, and a Delete target that still resolves found or multipart is check ID
-// delete-not-done.
+// DoneChecks issues one batched resolve over cards' own Create, Delete, and Rename group targets
+// against worktreeRoot's current tree, and applies three rules, all blocking because none is a
+// judgment call: a Create target that still does not resolve found or multipart is check ID
+// create-not-done; a Delete target that still resolves found or multipart is check ID
+// delete-not-done; and a Rename pair whose old side still resolves, or whose new side still does
+// not, is check ID rename-not-done in either direction.
 //
 // An infrastructure error from the resolve blocks the done-checks rather than passing them: a
 // Create done-check that could not resolve is indistinguishable from a Create that never happened,
@@ -77,6 +79,23 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 					key := resolveKeyFor(ref)
 					entries = append(entries, doneCheckEntry{card: c, checkID: "delete-not-done", key: key, display: ref})
 					addTarget(key)
+				}
+			case planparser.CardTypeRename:
+				// A Rename's mechanical done verdict is the Create and Delete verdicts composed:
+				// the Old side must have stopped resolving (its Delete half) and the New side —
+				// resolveKeyFor strips a symbol rename's canonical plan: handle to its expected
+				// glyph, and passes a file rename's destination self glyph through — must resolve
+				// now (its Create half). Both report under one check ID, rename-not-done, with the
+				// detail naming which half failed. Without this a fork that skipped its Rename card
+				// entirely recorded clean: DoneChecks saw no Create/Delete group, BindHandles no
+				// declarations, and DetectDrift only inspects what the delta says DID change.
+				for _, p := range g.Pairs {
+					oldKey := resolveKeyFor(p.Old)
+					entries = append(entries, doneCheckEntry{card: c, checkID: "rename-not-done-old", key: oldKey, display: p.Old})
+					addTarget(oldKey)
+					newKey := resolveKeyFor(p.New)
+					entries = append(entries, doneCheckEntry{card: c, checkID: "rename-not-done-new", key: newKey, display: p.New})
+					addTarget(newKey)
 				}
 			}
 		}
@@ -121,6 +140,24 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 					Check:    "delete-not-done",
 					Card:     cardIDOf(e.card),
 					Detail:   fmt.Sprintf("Delete target %q still resolves %s", e.display, r.Status),
+					Severity: SeverityBlocking,
+				})
+			}
+		case "rename-not-done-old":
+			if resolved {
+				findings = append(findings, Finding{
+					Check:    "rename-not-done",
+					Card:     cardIDOf(e.card),
+					Detail:   fmt.Sprintf("Rename pair's old side %q still resolves %s — the rename did not happen", e.display, r.Status),
+					Severity: SeverityBlocking,
+				})
+			}
+		case "rename-not-done-new":
+			if !resolved {
+				findings = append(findings, Finding{
+					Check:    "rename-not-done",
+					Card:     cardIDOf(e.card),
+					Detail:   fmt.Sprintf("Rename pair's new side %q still does not resolve — the rename did not happen", e.display),
 					Severity: SeverityBlocking,
 				})
 			}

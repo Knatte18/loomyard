@@ -45,7 +45,8 @@
 //     (drift.go), the exact-tier and evidence-tier halves of drift detection.
 //   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
 //     delta touched outside its own cards' declared targets.
-//   - create-not-done, delete-not-done (both blocking) — DoneChecks (donecheck.go), a Create target
-//     that still does not resolve or a Delete target that still does, after the batch that was
-//     supposed to build or remove it.
+//   - create-not-done, delete-not-done, rename-not-done (all blocking) — DoneChecks (donecheck.go):
+//     a Create target that still does not resolve, a Delete target that still does, or a Rename
+//     pair whose old side still resolves or whose new side still does not, after the batch that was
+//     supposed to build, remove, or rename it.
 package planglyph
