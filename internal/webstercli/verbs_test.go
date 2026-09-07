@@ -698,7 +698,11 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	// report lands on disk, self-reporting the worktree's real HEAD (the
 	// recovery path cross-checks head_sha against the worktree exactly like
 	// record-batch does).
-	writeBatchReport(t, fx.CLI.geom.ReportsDir, strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD")))
+	// "Finishes" means its card's own Create target actually lands and is committed: the terminal
+	// recovery path now runs the same mechanical post-batch pass record-batch does, so a recovery
+	// reporting done over a card whose target never appeared is refused rather than marked terminal.
+	head := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
 
 	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
 	// -- recoverSpawn/archiveStaleReport never runs again, so the report

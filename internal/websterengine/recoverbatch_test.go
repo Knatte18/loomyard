@@ -15,6 +15,7 @@
 package websterengine_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -222,6 +223,11 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 			WebsterDir:   t.TempDir(),
 			ReportsDir:   reportsDir,
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
+			// A real (empty) plan directory: the terminal recovery path now runs the same
+			// post-batch mechanical pass record-batch does, which re-baselines the plan
+			// fingerprint over this directory. No card in this fixture declares a handle, so
+			// nothing is ever written into it.
+			PlanDir: t.TempDir(),
 		},
 	}
 
@@ -264,8 +270,10 @@ func driveRecoverBatch(deps websterengine.RecoverDeps, batchNumber int, wait tim
 		return nil, err
 	}
 	if result.Digest != nil {
-		if err := websterengine.PersistRecoveryTerminal(deps.State, batchNumber, result.Digest); err != nil {
-			return nil, err
+		postWarnings, perr := websterengine.PersistRecoveryTerminal(deps, deps.State, batchNumber, result.Digest)
+		result.Warnings = append(result.Warnings, postWarnings...)
+		if perr != nil {
+			return nil, perr
 		}
 	}
 	return &recoverDriveResult{
@@ -703,5 +711,82 @@ func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 				t.Errorf("Engine.prepareCalls = %d (spawned=%v); want spawned=%v", fx.Engine.prepareCallCount(), gotSpawn, tt.spawns)
 			}
 		})
+	}
+}
+
+// TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch is the regression test for the
+// round-4 review's R4-03. A recovery batch reaching status done used to be marked terminal on the
+// recovery strand's self-reported status plus the head-SHA cross-check alone — no done-checks, no
+// handle binding, no scope guard, no drift detection and no plan-staleness re-baseline. Master's own
+// failure ladder treats a terminal recovery digest as "move on to the next batch", so a card
+// recovered that way never bound its plan: handles and every later card kept referencing an unbound
+// handle for the rest of the plan's life.
+//
+// Here the recovery reports done over a Create card whose target never appeared in the tree. The
+// mechanical pass must refuse it and leave the batch non-terminal, exactly as record-batch does.
+func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	// The batch's card declares a Create target that the recovery never lands.
+	card := planparser.Card{
+		Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag",
+		Targets:      []string{"internal/never/there.go#"},
+		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"internal/never/there.go#"}}},
+	}
+	fx.Deps.Plan.Cards = []planparser.Card{card}
+	fx.Deps.Batches[0].Cards = []planparser.Card{card}
+
+	first, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() first call error = %v; want nil", err)
+	}
+	if !first.Spawned || !first.Running {
+		t.Fatalf("first call = %+v; want Spawned=true Running=true", first)
+	}
+
+	realHead, err := gitrepo.New(fx.Worktree).CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+realHead+"\n")
+
+	_, err = driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	if !errors.Is(err, websterengine.ErrCardNotDone) {
+		t.Fatalf("RecoverBatch() second call error = %v; want errors.Is(err, ErrCardNotDone) — a recovery reporting done over an unlanded Create target must be refused", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Error("BatchState.Terminal = true; want false — a refused mechanical pass must never persist a terminal recovery digest")
+	}
+}
+
+// TestRecoverSpawn_InheritsTheStuckForksStartSHA proves a recovery record carries the ORIGINAL
+// bracket's base commit rather than re-capturing the head at recovery-spawn time. The recovery's
+// terminal path computes its post-batch delta from this SHA, and a fork frequently commits part of
+// its work before getting stuck — a start SHA captured at recovery time excludes exactly that part,
+// so a symbol the stuck fork already created reads as never created and its card's handle reports
+// bind-count-mismatch against work that did land.
+func TestRecoverSpawn_InheritsTheStuckForksStartSHA(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	bracketStart, err := gitrepo.New(fx.Worktree).CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", StartSHA: bracketStart, Kind: "fork"}
+	// The stuck fork committed part of its work before reporting stuck.
+	commitFile(t, fx.Worktree, "internal/partial/impl.go", "package partial\n", "01.1: partial work")
+
+	if _, _, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk); err != nil {
+		t.Fatalf("RecoverSpawnOrAttach() error = %v; want nil", err)
+	}
+
+	got := fx.Deps.State.Batches[1]
+	if got.Kind != "recovery" {
+		t.Fatalf("BatchState.Kind = %q; want %q", got.Kind, "recovery")
+	}
+	if got.StartSHA != bracketStart {
+		t.Errorf("recovery BatchState.StartSHA = %q; want the stuck fork's own %q — the post-batch delta must span the whole bracket, not just the recovery's own share of it", got.StartSHA, bracketStart)
 	}
 }

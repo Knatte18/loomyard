@@ -197,10 +197,68 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("webster: batch report %s: head_sha %q does not match the worktree's actual HEAD %q", reportPath, report.HeadSHA, actualHead)
 	}
 
+	postWarnings, err := postBatchChecks(postBatchInputs{
+		Plan:      deps.Plan,
+		State:     deps.State,
+		Geom:      deps.Geom,
+		Cards:     batch.Cards,
+		Completed: completedCards(deps.Batches, deps.State, batchNumber),
+		StartSHA:  bs.StartSHA,
+		HeadSHA:   actualHead,
+		Label:     polledID,
+	})
+	warnings = append(warnings, postWarnings...)
+	if err != nil {
+		return nil, err
+	}
+
+	digest := distill(report)
+	digest.Batch = polledID
+
+	bs.Digest = &digest
+	bs.CardSHAs = []string{actualHead}
+	bs.Terminal = true
+	bs.Status = digest.Status
+	deps.State.CurrentBatch = 0
+
+	return &RecordResult{Digest: &digest, Warnings: warnings}, nil
+}
+
+// postBatchInputs carries everything the shared post-batch mechanical pass needs.
+// Cards are the completed batch's own cards; Completed names every card whose work landed BEFORE
+// this batch, so drift detection can scope itself to the plan's remaining work; StartSHA is the
+// bracket record's captured start SHA and HeadSHA the already-verified head; Label names the batch
+// in warnings.
+type postBatchInputs struct {
+	Plan      *planparser.Plan
+	State     *State
+	Geom      Geometry
+	Cards     []planparser.Card
+	Completed []planparser.Card
+	StartSHA  string
+	HeadSHA   string
+	Label     string
+}
+
+// postBatchChecks runs the mechanical pass every terminal batch owes, whichever verb takes it
+// terminal: the card done-checks, the single delta the rest of the pass shares, handle binding, the
+// informational glyph scope guard, and drift detection with its exact-tier auto-repair — plus the
+// plan-staleness re-baseline each of those rewrites requires.
+//
+// It is one function rather than two because a batch that reached done through recover-batch is
+// exactly as done as one that reached it through record-batch: its Create targets have to resolve,
+// its plan: handles have to bind, and the drift its work caused has to be repaired or reported.
+// recover-batch used to skip the whole pass, so a recovered card's handles were never bound and
+// every later card kept referencing an unbound plan: handle for the rest of the plan's life —
+// invisible to drift detection too, since its reference index keys on the ref as the card spells it.
+//
+// Blocking findings are returned as an ErrCardNotDone-wrapped error; informational ones ride out on
+// warnings, which are returned alongside any error so a caller never loses them.
+func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// A card's completion has a mechanical verdict: a Create target that still does not resolve,
 	// or a Delete target that still does, blocks — neither is a judgment call. This runs its own
-	// batched Resolve against the post-card tree, distinct from card 34's single delta call below.
-	doneFindings, err := planglyph.DoneChecks(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
+	// batched Resolve against the post-card tree, distinct from the single delta call below.
+	doneFindings, err := planglyph.DoneChecks(in.Plan, in.Cards, in.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -212,35 +270,31 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(doneChecks, "; "))
 	}
 
-	// The batch's single delta call: BindHandles here, ScopeGuard (card 35) and DetectDrift (card
-	// 36) all consume this one quarry.GitDeltaAnswer rather than each spawning their own. bs.StartSHA
-	// is the begin-batch record's captured start SHA, and actualHead is the fork's self-reported
-	// head already cross-checked above against the worktree's real HEAD — that cross-check is why
-	// the delta can be trusted here and nowhere earlier.
-	// A DeltaGit infrastructure error does not abort the call sequence: card 35 degrades its own
-	// scope guard to an informational notice on this same deltaErr, while card 33's done-checks
-	// above already ran on their own Resolve and are unaffected. delta itself is the zero value on
-	// error, so BindHandles correctly cannot confirm any handle bound and reports bind-count-mismatch
-	// for every card that declared one — an unconfirmed Create is exactly a not-done card.
-	delta, deltaErr := planglyph.Delta(deps.Geom.WorktreeRoot, bs.StartSHA, actualHead)
+	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one
+	// quarry.GitDeltaAnswer rather than each spawning their own. HeadSHA is already cross-checked
+	// against the worktree's real HEAD by the caller — that cross-check is why the delta can be
+	// trusted here and nowhere earlier.
+	// A DeltaGit infrastructure error does not abort the sequence: the scope guard degrades to an
+	// informational notice on this same deltaErr, while the done-checks above ran on their own
+	// Resolve and are unaffected. delta itself is the zero value on error, so BindHandles correctly
+	// cannot confirm any handle bound and reports bind-count-mismatch for every card that declared
+	// one — an unconfirmed Create is exactly a not-done card.
+	delta, deltaErr := planglyph.Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
 	if deltaErr != nil && !errors.Is(deltaErr, planglyph.ErrQuarryUnavailable) {
 		return nil, deltaErr
 	}
 
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
 	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
-	bindFindings, bindErr := planglyph.BindHandles(deps.Plan, deps.Geom.PlanDir, delta, batch.Cards)
+	bindFindings, bindErr := planglyph.BindHandles(in.Plan, in.Geom.PlanDir, delta, in.Cards)
 	// BindHandles' plan-wide RewriteRefs lands on disk BEFORE it reports either a finding or an
 	// error — the substitutions come from delta.Created while a bind-count-mismatch comes from a
 	// card whose handle matched nothing, so one call routinely does both — which is why the
-	// staleness re-baseline runs HERE rather than once past every refusal below. Restamping only on
-	// the clean path wedged the run permanently: the plan on disk carried webster's own sanctioned
-	// rewrite while state.json still recorded the pre-rewrite fingerprint, so every later
-	// begin-batch refused it as a foreign edit, and the advised `--fresh` recourse then refused the
-	// run outright over the cards that had already landed.
+	// staleness re-baseline runs HERE rather than once past every refusal below. See this package's
+	// doc.go for what restamping past the refusals cost.
 	// A restamp failure never masks bindErr: the caller is already returning for that reason.
-	if err := restampFingerprint(deps.State, deps.Geom.PlanDir); err != nil && bindErr == nil {
-		return nil, err
+	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir); rebaseErr != nil && bindErr == nil {
+		return nil, rebaseErr
 	}
 	if bindErr != nil {
 		return nil, bindErr
@@ -258,43 +312,42 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// would otherwise look like a real, empty one — an unavailable diff costs visibility, not
 	// correctness, and the done-checks above have already blocked on the same infrastructure error.
 	if deltaErr != nil {
-		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", polledID, deltaErr))
+		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", in.Label, deltaErr))
 	} else {
-		for _, f := range planglyph.ScopeGuard(batch.Cards, delta) {
+		for _, f := range planglyph.ScopeGuard(in.Cards, delta) {
 			warnings = append(warnings, f.Error())
 		}
 	}
 
 	// Drift detection runs after binding and before the digest is persisted, on the delta's own
-	// deleted-symbols-still-referenced signal. actualHead is the same verified head SHA already
-	// cross-checked above against the worktree's actual HEAD, threaded through as the triggering
-	// SHA every exact-tier repair's own amendment records.
+	// deleted-symbols-still-referenced signal. HeadSHA is threaded through as the triggering SHA
+	// every exact-tier repair's own amendment records.
 	// Drift runs against the REMAINING plan, which is DetectDrift's own stated signal: the delta's
 	// deleted symbols intersected with what the plan still has to do. Every already-built card is
 	// excluded, and so is THIS batch's own — its work is exactly what the delta reports, so without
 	// the exclusion a Delete card's own successful deletion came back as
 	// plan-references-deleted-symbol against the very card that asked for it, and no Delete card
 	// could ever be recorded.
-	// deps.Plan rides along as DetectDrift's fullPlan so gate one can recognize THIS batch's own
+	// in.Plan rides along as DetectDrift's fullPlan so gate one can recognize THIS batch's own
 	// declared Rename outcome — the pending view excludes exactly the cards whose renames the
 	// delta reports.
-	pending := planglyph.PendingPlan(deps.Plan, completedCards(deps.Batches, deps.State, batchNumber))
-	driftFindings, driftErr := planglyph.DetectDrift(deps.Plan, pending, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
+	pending := planglyph.PendingPlan(in.Plan, in.Completed)
+	driftFindings, driftErr := planglyph.DetectDrift(in.Plan, pending, in.Geom.PlanDir, in.Geom.WorktreeRoot, delta, in.HeadSHA, time.Now().UTC().Format(time.RFC3339))
 	// The exact-tier repair's own RewriteRefs lands on disk before this call reports anything, and
 	// its blocking plan-references-deleted-symbol finding is computed from a different part of the
 	// same delta, so re-baseline here for exactly the reason BindHandles does above.
-	if err := restampFingerprint(deps.State, deps.Geom.PlanDir); err != nil && driftErr == nil {
-		return nil, err
+	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir); rebaseErr != nil && driftErr == nil {
+		return warnings, rebaseErr
 	}
 	if driftErr != nil {
-		return nil, driftErr
+		return warnings, driftErr
 	}
 	// DetectDrift is the one planglyph call in this sequence that returns a MIXED severity set:
 	// plan-references-deleted-symbol is blocking, while the evidence tier's rename-candidate is
 	// informational by construction — drift.go's own contract is that the rename-versus-genuine-delete
 	// decision is the reviewer's, never the pipeline's. Failing the batch on it would destroy the very
 	// tier it belongs to, since a finding that kills the batch never reaches a reviewer at all.
-	// So the split here mirrors BeginBatch's own: blocking fails, informational rides out on Warnings
+	// So the split here mirrors BeginBatch's own: blocking fails, informational rides out on warnings
 	// exactly as ScopeGuard's findings already do.
 	var driftBlocking []string
 	for _, f := range driftFindings {
@@ -305,22 +358,12 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, f.Error())
 	}
 	if len(driftBlocking) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
+		return warnings, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
 	}
 
-	// No third restamp: the two above already cover every rewrite this call can perform, and each
+	// No third restamp: the two above already cover every rewrite this pass can perform, and each
 	// runs immediately after its own rewriting call rather than past the refusals between them.
 	// The amendment log the exact-tier repair also writes is deliberately excluded from the
 	// fingerprint (see fingerprint's own doc comment), so it needs no re-baseline of its own.
-
-	digest := distill(report)
-	digest.Batch = polledID
-
-	bs.Digest = &digest
-	bs.CardSHAs = []string{actualHead}
-	bs.Terminal = true
-	bs.Status = digest.Status
-	deps.State.CurrentBatch = 0
-
-	return &RecordResult{Digest: &digest, Warnings: warnings}, nil
+	return warnings, nil
 }

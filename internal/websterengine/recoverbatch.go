@@ -187,9 +187,21 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
+	// The recovery record inherits the ORIGINAL bracket's start SHA when there is one, rather than
+	// re-capturing the head at spawn time. A recovery exists because the batch's own fork got stuck,
+	// frequently after committing part of its work, so a start SHA captured here would exclude
+	// exactly that part — and the post-batch mechanical pass this record's own terminal path runs
+	// (see postBatchChecks) computes its single delta from it. A narrower delta reports a symbol the
+	// stuck fork already created as never created, which is a bind-count-mismatch against a card
+	// whose handle did land. The whole bracket is the honest base commit for this batch's work.
+	start := head
+	if prior != nil && prior.StartSHA != "" {
+		start = prior.StartSHA
+	}
+
 	return &BatchState{
 		Slug:          slug,
-		StartSHA:      head,
+		StartSHA:      start,
 		Kind:          "recovery",
 		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
 		StrandGUID:    run.StrandGUID(),
@@ -238,14 +250,64 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 	return awaitTerminal(deps, batch, bs, wait, clk)
 }
 
-// PersistRecoveryTerminal merges a terminal digest into st (loaded fresh under the lease after the
-// unleased wait).
-// Marks batch terminal and clears the in-flight cursor.
-func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
+// PersistRecoveryTerminal runs the shared post-batch mechanical pass and then merges a terminal
+// digest into st (loaded fresh under the lease after the unleased wait).
+// Marks batch terminal and clears the in-flight cursor, and returns the pass's informational
+// warnings alongside any error so a caller never loses them.
+//
+// The mechanical pass is not optional here. A batch that reaches done through recover-batch is
+// exactly as done as one that reaches it through record-batch, and Master's own failure ladder
+// treats a terminal recovery digest as "move on to the next batch" — but this path used to mark the
+// batch terminal on the recovery strand's self-reported status alone, running no done-checks, no
+// handle binding, no scope guard, no drift detection and no plan-staleness re-baseline. A card
+// recovered that way never bound its plan: handles, so every later card kept referencing an unbound
+// handle for the rest of the plan's life.
+//
+// A blocking finding leaves the batch NON-terminal and returns an ErrCardNotDone-wrapped error: the
+// recovery strand said done, but the tree says the card is not, and webster believes the tree.
+func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, digest *Digest) (warnings []string, err error) {
+	if st == nil {
+		return nil, fmt.Errorf("webster: recovery terminal persistence requires a loaded state; State is nil")
+	}
+	if deps.Plan == nil {
+		return nil, fmt.Errorf("webster: recovery terminal persistence requires a parsed plan; RecoverDeps.Plan is nil")
+	}
 	bs, ok := st.Batches[batchNumber]
 	if !ok || bs == nil {
-		return fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait", batchNumber)
+		return nil, fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait", batchNumber)
 	}
+
+	batch, err := findBatch(deps.Batches, batchNumber)
+	if err != nil {
+		return nil, err
+	}
+	number, slug := batchIdentity(batch)
+
+	// The recovery strand's own report carries the head it committed at, already parsed into the
+	// digest. It is the same value record-batch cross-checks against the worktree's real HEAD, so
+	// the pass below is fed the same pair of SHAs on either path.
+	head := digest.HeadSHA
+	if head == "" {
+		head, err = headSHA(deps.Geom.WorktreeRoot)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	warnings, err = postBatchChecks(postBatchInputs{
+		Plan:      deps.Plan,
+		State:     st,
+		Geom:      deps.Geom,
+		Cards:     batch.Cards,
+		Completed: completedCards(deps.Batches, st, batchNumber),
+		StartSHA:  bs.StartSHA,
+		HeadSHA:   head,
+		Label:     fmt.Sprintf("%02d-%s", number, slug),
+	})
+	if err != nil {
+		return warnings, err
+	}
+
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status
@@ -254,7 +316,7 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 		bs.CardSHAs = []string{digest.HeadSHA}
 	}
 	st.CurrentBatch = 0
-	return nil
+	return warnings, nil
 }
 
 // awaitTerminal drives one bounded long-poll wait for bs's recovery strand,

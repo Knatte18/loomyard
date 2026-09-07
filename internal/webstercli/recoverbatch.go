@@ -173,11 +173,23 @@ Example:
 				if err == nil && fresh == nil {
 					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s", batchName)
 				}
+				var fingerprintBefore string
+				var postWarnings []string
 				if err == nil {
-					err = websterengine.PersistRecoveryTerminal(fresh, batchNumber, result.Digest)
+					fingerprintBefore = fresh.PlanFingerprint
+					postWarnings, err = websterengine.PersistRecoveryTerminal(deps, fresh, batchNumber, result.Digest)
+					result.Warnings = append(result.Warnings, postWarnings...)
 				}
 				if err == nil {
 					err = websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, fresh)
+				} else if fresh != nil {
+					// The post-batch pass re-baselines the plan fingerprint the moment handle
+					// binding or the exact-tier drift repair rewrites the plan on disk, and it can
+					// then block on a finding computed from the same delta. Persist that
+					// re-baseline for the same reason both bracket verbs do.
+					if saveErr := persistPlanFingerprintRebaseline(c.geom, fresh, fingerprintBefore); saveErr != nil {
+						err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err, saveErr)
+					}
 				}
 				_ = terminalLock.Release()
 				if err != nil {

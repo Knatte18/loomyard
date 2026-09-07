@@ -77,6 +77,26 @@
 // from its cards' own gates, mirroring the plan-format card model
 // directly.
 //
+// # every terminal batch runs the same mechanical pass
+//
+// A batch reaches terminal down one of two paths — record-batch after an
+// ordinary in-session fork, or recover-batch after a cold recovery strand —
+// and both run the identical post-batch mechanical pass (postBatchChecks):
+// the card done-checks, one shared delta, handle binding, the informational
+// glyph scope guard, and drift detection with its exact-tier auto-repair,
+// plus the plan-staleness re-baseline each rewrite among them requires.
+// A batch that reached done through a recovery is exactly as done as one
+// that reached it through a fork, and Master's own failure ladder treats a
+// terminal recovery digest as "move on to the next batch" — so a recovery
+// path that skipped the pass left a recovered card's plan: handles unbound
+// for the rest of the plan's life, invisible to drift detection too, since
+// its reference index keys on the ref as the card spells it.
+//
+// This is also why a recovery BatchState inherits the stuck fork's own
+// StartSHA rather than re-capturing the head at recovery-spawn time: the
+// pass computes its delta from that SHA, and a fork frequently commits part
+// of its work before getting stuck.
+//
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
 // begin-batch compares the plan directory's fingerprint against the one
