@@ -134,3 +134,21 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		}
 	})
 }
+
+// TestDiscussionWrite_NilCommitSeamIsANamedError is planwrite_test.go's sibling for the
+// Discussion-Write row; see that test for the round-4 R4-32 rationale.
+func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
+	inner := &fakeInnerProducer{outcome: shedengine.Done}
+	p := NewDiscussionWrite("Discussion-Write", inner, nil)
+
+	outcome, pointer, err := p.Call(context.Background())
+	if err == nil {
+		t.Fatal("Call() error = nil; want a named error naming the missing commit seam")
+	}
+	if !strings.Contains(err.Error(), "no commit seam wired") {
+		t.Errorf("Call() error = %v; want it to name the missing commit seam", err)
+	}
+	if outcome != "" || pointer.Path != "" {
+		t.Errorf("Call() = (%q, %+v); want the empty outcome and pointer every error exit reports", outcome, pointer)
+	}
+}
