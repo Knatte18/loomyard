@@ -13,10 +13,13 @@ import (
 )
 
 func TestMasterPlanDirDisplay(t *testing.T) {
-	anchor := filepath.Join(string(filepath.Separator), "hub", "worktree")
+	// The base is always the PANE's cwd: hub geometry's pane runs at the anchor the plan junction
+	// hangs off, standalone geometry's pane runs at the target repo while the plan lives in the
+	// derived state directory — outside the pane cwd by construction.
+	paneCwd := filepath.Join(string(filepath.Separator), "hub", "worktree")
 
 	t.Run("HubGeometryRendersRelative", func(t *testing.T) {
-		got := masterPlanDirDisplay(anchor, filepath.Join(anchor, "_lyx", "plan"))
+		got := masterPlanDirDisplay(paneCwd, filepath.Join(paneCwd, "_lyx", "plan"))
 		if got != "_lyx/plan" {
 			t.Errorf("masterPlanDirDisplay(hub) = %q; want %q — the hub prompt's bytes must not change", got, "_lyx/plan")
 		}
@@ -24,7 +27,7 @@ func TestMasterPlanDirDisplay(t *testing.T) {
 
 	t.Run("StandaloneGeometryRendersAbsolute", func(t *testing.T) {
 		planDir := filepath.Join(string(filepath.Separator), "state", "lyx", "abcd1234", "_lyx", "plan")
-		got := masterPlanDirDisplay(anchor, planDir)
+		got := masterPlanDirDisplay(paneCwd, planDir)
 		if got != planDir {
 			t.Errorf("masterPlanDirDisplay(standalone) = %q; want the absolute plan dir %q — no relative spelling reaches it from the pane's cwd", got, planDir)
 		}

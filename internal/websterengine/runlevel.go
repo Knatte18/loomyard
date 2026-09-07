@@ -550,7 +550,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
 	if err != nil {
 		return RunResult{}, err
 	}
