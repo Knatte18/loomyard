@@ -252,6 +252,13 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			})
 			continue
 		}
+		// An already-canonical handle produces an identity pair here — every validation pass after
+		// the first, since canonicalization is idempotent. Substituting it anyway rewrote every
+		// declaring card file with identical bytes and reported rewrote=true, forcing resolvePass
+		// into a pointless full re-parse on every begin-batch for the plan's whole life.
+		if owners[0] == canonical {
+			continue
+		}
 		subs[owners[0]] = canonical
 	}
 

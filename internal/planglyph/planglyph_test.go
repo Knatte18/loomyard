@@ -154,6 +154,30 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 			t.Errorf("card 1 = %q; want the canonical handle plan:sub#Actual", got)
 		}
 	})
+
+	// F4's (round fable5-high-r3) regression subtest: canonicalization is idempotent, so a plan
+	// whose handles are already canonical must report rewrote=false and leave every card file's
+	// bytes untouched — against pre-fix source the identity substitution rewrote the files with
+	// identical bytes and reported rewrote=true, forcing a full plan re-parse on every validation
+	// pass for the plan's whole life.
+	t.Run("an already-canonical plan rewrites nothing", func(t *testing.T) {
+		dir, plan := writePlanFixture(t, map[int]string{
+			1: "**Create:**\n- `plan:sub#Actual` -> `func Actual() {}`\n\n**Intent:** one\n",
+			2: "**Uses:**\n- `plan:sub#Actual`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n\n**ImpactSummary:** none\n",
+		})
+		before := readCardFile(t, dir, 1, "card1")
+
+		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if rewrote {
+			t.Error("CanonicalizeHandles reported a rewrite for an already-canonical plan")
+		}
+		if got := readCardFile(t, dir, 1, "card1"); got != before {
+			t.Errorf("card 1 bytes changed across an identity canonicalization:\nbefore: %q\nafter:  %q", before, got)
+		}
+	})
 }
 
 // TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError asserts a plan directory that cannot

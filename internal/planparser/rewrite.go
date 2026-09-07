@@ -80,7 +80,10 @@ func rewriteCardFile(planDir string, plan *Plan, c Card, subs map[string]string)
 	lines := strings.Split(string(data), "\n")
 	changed := false
 	for i, line := range lines {
-		if newLine, ok := rewriteBulletLine(line, lexemeSubs); ok {
+		// The newLine != line guard is what makes the byte-identical promise above hold even for a
+		// substitution that maps a payload to itself: rewriteBulletLine reports ok for any matched
+		// payload, including one whose reconstruction is identical.
+		if newLine, ok := rewriteBulletLine(line, lexemeSubs); ok && newLine != line {
 			lines[i] = newLine
 			changed = true
 		}
