@@ -64,6 +64,21 @@ Status: JOB 1 IN PROGRESS — provisional findings recorded as spotted, per the 
 - Mission A: the fix is narrow and matches its CONSTRAINTS.md claim; nothing shipped beyond scope spotted in the diff (18 files, all accounted for: the two wirings, logger's atomic set-with-worktree-root, the detached constructor + its validator, LogsDir, tests, tier-purity allowlist entry, CONSTRAINTS line).
 - Mission B: design-intent vs shipped is aligned for the surfaces read (spec ↔ validate.go check set ↔ planglyph doc.go ID list ↔ recipe row wiring ↔ stencils), with the exceptions recorded as findings above.
 
+### F1b [Mission B] — duplicate finding attribution: a rename endpoint is double-counted (Targets projection + Pairs walk)
+
+- **Where:** `internal/planglyph/resolve.go` (`targetCards` adds a card once per Targets entry and again per Pairs endpoint; both endpoints of every pair are ALSO projected into Targets by the parser).
+- **Observed live:** the F1 repro reports the identical `glyph-not-found` finding twice for the same card+target (see What was tested).
+- **Severity:** LOW. **Confidence:** CONFIRMED (observed).
+- **Fix:** dedupe per (target, card) in `targetCards`.
+
 ## What was tested
 
-(appended incrementally below)
+All commands run from the worktree root with the deployed dev binary at HEAD; `CGO_ENABLED=1` throughout (default on this machine).
+
+- `go build ./...` — PASS (exit 0).
+- `go vet` over the full expanded package set (loom*, shed*, hubgeom, planparser, planglyph, shuttleengine, standalonegeom, webstercli, burlercli, logger) — PASS.
+- `go test -count=5` over the same set + `./cmd/lyx/...` — PASS (no failures; exit 0).
+- `go test -tags integration ./internal/planglyph/... ./internal/planparser/... ./internal/websterengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/webstercli/... ./internal/burlercli/...` — PASS.
+- `go test ./...` (whole repo) — PASS.
+- **Stale-binary check (round 2's hazard, re-observed):** the installed `/home/knatte/go/bin/lyx` predated `d7c52df6c` (built Sep 6 19:38; the merge landed 21:16). Redeployed via `CGO_ENABLED=1 go run ./tools/deploy` → `Deployed lyx @ 060629a75` before any live driving.
+- **F1 live repro (standalone `lyx webster validate`):** seeded a plain git repo `/home/knatte/Code/lyx-r3-standalone` (greeter module, committed) and a plan `/home/knatte/Code/lyx-r3-plan-filerename` whose single card carries the file-rename pair `` `//greeter/greeter.go` -> `//greeter/hello.go` `` (approved: true, Rename mechanic present). `lyx webster validate --target-dir ... --plan-dir ...` (cwd: the plain repo) → **refused with 2 blocking findings**: `glyph-not-found` / `target "greeter/hello.go#"'s unit does not exist`, reported twice for card `1-greeter-file-rename`. F1 CONFIRMED live; the duplication is F1b.
