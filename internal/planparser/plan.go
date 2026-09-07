@@ -11,7 +11,7 @@ package planparser
 // (`**Create:**`, `**Edit:**`, and so on) per manifest/designs/plan-card-format.md.
 type CardType string
 
-// The recognized format-4 card type labels.
+// The recognized format-5 card type labels.
 const (
 	// CardTypeUnknown is the zero value: no recognized type label was seen.
 	CardTypeUnknown CardType = ""
