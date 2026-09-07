@@ -17,7 +17,9 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// ErrQuarryUnavailable marks a non-nil error from quarry.Open or (*quarry.Repo).Resolve: a
+// ErrQuarryUnavailable marks quarry failing to answer at all — a non-nil error from quarry.Open or
+// (*quarry.Repo).Resolve, and a quarry.Name answer whose length does not match the declarations it
+// was given (handle.go), which is the same class of failure seen through a batched boundary: a
 // category distinct from any per-target verdict, so a caller distinguishes it with errors.Is
 // rather than by string matching. quarry's own contract draws exactly this line — the failure
 // envelope's own presence marks that quarry could not answer at all, never that the answer is

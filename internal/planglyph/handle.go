@@ -208,6 +208,15 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 		decls[i] = s.decl
 	}
 	nameResults := quarry.Name(decls)
+	// quarry.Name's contract is one positionally-matched result per declaration, and the per-result
+	// echo check below is what catches a MISALIGNED answer — but it can only run after sources[i]
+	// has already been indexed, so a longer answer panics before reaching it. A batched boundary
+	// this file cannot see inside is exactly where a length guard belongs, and reporting the
+	// mismatch as an infrastructure error keeps it out of the plan-finding vocabulary: nobody should
+	// read "quarry answered a different number of declarations" as a defect in the plan.
+	if len(nameResults) != len(sources) {
+		return findings, false, fmt.Errorf("%w: quarry.Name returned %d result(s) for %d declaration(s)", ErrQuarryUnavailable, len(nameResults), len(sources))
+	}
 
 	canonicalOwners := make(map[string][]string) // canonical form -> every draft handle claiming it
 	for i, res := range nameResults {
