@@ -187,7 +187,13 @@ approved: false
 - `path/to/file.go`
 
 **Intent:** <the change to make, concretely>
+
+**ImpactSummary:** <one line: the blast radius across this card's Edit/Delete targets>
 ```
+
+`**ImpactSummary:**` is in the skeleton because the skeleton's own label is `**Edit:**`, and
+`card-missing-field` blocks an `Edit` or `Delete` card that omits it.
+A card whose only labels are `Create`/`Rename`/`Move`/`Prosa`/`Custom` omits the field entirely.
 
 ## Step 4 — Write `{{.overview_path}}` LAST
 
