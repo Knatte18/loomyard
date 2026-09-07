@@ -229,7 +229,7 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 
 	if n > 0 {
-		if verdict, ok := b.judgedVerdict(n); ok && verdict == verdictApproved {
+		if verdict, ok := recordedVerdict(b.cfg.RunDir, n); ok && verdict == verdictApproved {
 			// The trigger is state this producer already wrote: an APPROVED verdict sitting on
 			// disk at Call entry is the durable record that some earlier Call settled this
 			// segment. Continuing instead of clearing would replay that stale verdict, which is
@@ -281,40 +281,11 @@ func (b *Bouncer) round1FocusSeeded() bool {
 	return err == nil
 }
 
-// judgedVerdict reads and parses round's verdict file, then reads and parses round's ledger file,
-// returning false on any read or parse failure. It deliberately excludes the focus file, because
-// that file is an input to the next round rather than evidence about this one, and is
-// synthesizable -- including it would let a missing focus file invalidate a judgment that provably
-// happened.
-//
-// The returned bouncerVerdict is the value judged has always thrown away: Call's clear trigger
-// needs the parsed verdict at entry, and judged's discarding of it is what forced settle to re-read
-// the file.
-func (b *Bouncer) judgedVerdict(round int) (bouncerVerdict, bool) {
-	verdictRaw, err := os.ReadFile(verdictPath(b.cfg.RunDir, round))
-	if err != nil {
-		return "", false
-	}
-	verdict, _, err := parseVerdict(verdictRaw)
-	if err != nil {
-		return "", false
-	}
-	ledgerRaw, err := os.ReadFile(ledgerPath(b.cfg.RunDir, round))
-	if err != nil {
-		return "", false
-	}
-	if _, err := parseLedger(ledgerRaw); err != nil {
-		return "", false
-	}
-	return verdict, true
-}
-
-// judged reports whether round's verdict and ledger files both exist and parse. It deliberately
-// excludes the focus file, because that file is an input to the next round rather than evidence
-// about this one, and is synthesizable -- including it would let a missing focus file invalidate
-// a judgment that provably happened.
+// judged reports whether round's verdict and ledger files both exist and parse under this
+// Bouncer's own run directory -- the bool half of recordedVerdict, for the callers that act on the
+// fact of a judgment rather than on which way it went.
 func (b *Bouncer) judged(round int) bool {
-	_, ok := b.judgedVerdict(round)
+	_, ok := recordedVerdict(b.cfg.RunDir, round)
 	return ok
 }
 

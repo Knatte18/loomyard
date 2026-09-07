@@ -94,7 +94,11 @@
 // A retry writes to the same two paths, because a retry is a second try at the one artifact the
 // round owes rather than a second artifact.
 // The presence of both files means, and only means, that round N completed and produced a usable
-// review, and the round producer uses exactly that pair predicate to decide whether to advance.
+// review -- never that anyone has judged it, which is why the round producer pairs that predicate
+// with a second one before advancing: round N's own bouncer verdict and ledger must both exist and
+// parse too. Completion alone would let a Bouncer's degraded Stuck -- a judge spawn that died, a
+// verdict that did not parse -- buy a whole extra fixer round over a review nobody judged, and leave
+// round N+1's judge with no round-N ledger to carry findings forward from.
 // The Bouncer's own round resolution is deliberately narrower and is stated here rather than
 // implied: ResolveRound stats the REVIEW file alone, so the two sides do not run the same test.
 // The asymmetry is safe only because of where an orphaned review can appear -- a process killed

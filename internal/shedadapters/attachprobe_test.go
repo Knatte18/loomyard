@@ -87,7 +87,7 @@ func TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts(t *testing.T) {
 	attach := &fakeShuttle{}
 	opts := burlerengine.RunOpts{Timeout: 90 * time.Minute}
 	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), opts, runner, attach, fixedClock(time.Now()))
-	writeRoundPair(t, runDir, 1)
+	writeJudgedRound(t, runDir, 1)
 
 	if _, _, err := p.Call(context.Background()); err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)

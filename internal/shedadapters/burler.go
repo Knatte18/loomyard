@@ -238,9 +238,16 @@ func hydrationPaths(runDir string, current int) (reviews []string, fixerReports 
 // Compile-time proof that *BurlerProducer satisfies shedengine.ShedProducer.
 var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
 
-// Call runs one BurlerProducer round: resolve the round to run from disk, build a fresh per-round
-// copy of the stored template profile, run at most two attempts (a second only on a died/timeout
-// first attempt), and map the outcome onto shedengine's contract.
+// Call runs one BurlerProducer round: resolve the round to run from disk, hand control back
+// unspent when the highest complete round has not been judged yet, build a fresh per-round copy of
+// the stored template profile, run at most two attempts (a second only on a died/timeout first
+// attempt), and map the outcome onto shedengine's contract.
+//
+// Advance rule: the round to run is the highest COMPLETE round's successor only when that round
+// also carries a parsing Bouncer verdict and ledger; otherwise this call returns Stuck without
+// spawning anything, so the segment's Bouncer judges the round that is still owed a verdict rather
+// than this row paying for a fresh review round over an unjudged one -- see the comment at the check
+// itself for why a degraded judge makes that case ordinary rather than exotic.
 //
 // Archive rule: every return in which the round did not produce a usable review archives both
 // round paths first, keyed on that fact rather than on whether the return is an error -- this
@@ -267,6 +274,32 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): resolve round: %w", p.name, burlerEngineLabel, err)
 	}
+
+	// Completing a round is not what earns the next one: being judged is. The segment's Bouncer
+	// routes to this row on EVERY Stuck it returns, and its degraded exits -- an unreadable rubric,
+	// a judge spawn that died, a verdict that did not parse -- are Stuck too, so a single transient
+	// judge fault arrives here indistinguishable from a BLOCKING verdict unless the verdict itself
+	// is consulted. Advancing on that would cost a whole extra fixer round (a real LLM session) for
+	// a review nobody has judged, and would break the ledger chain besides: round N+1's judge looks
+	// for round N's ledger, finds none, and silently falls back to "(none)", resetting the
+	// finding-identity carry-forward it uses to tell a recurring finding from a new one.
+	//
+	// So an unjudged highest round hands control straight back to the Bouncer instead, spawning
+	// nothing, archiving nothing, and pointing at the review still waiting for a verdict. That
+	// hand-back is the cheapest correct move rather than a re-run of round N, whose artifacts are
+	// exactly what the Bouncer must judge. It cannot ping-pong forever: the Bouncer's next call is a
+	// genuine judge retry, and each hand-back spends one unit of this row's own bounce budget, so a
+	// judge that never recovers halts the run for a human rather than looping.
+	if highest > 0 {
+		if _, judged := recordedVerdict(p.runDir, highest); !judged {
+			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
+			logger.Warn("shedadapters: burler round producer reached with the highest complete round unjudged; handing back for judgment instead of running a fresh round", "producer", p.name, "engine", burlerEngineLabel, "round", highest)
+			return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, highest)}, nil
+		}
+	}
+
 	round := highest + 1
 
 	reviewPath := roundReviewPath(p.runDir, round)
