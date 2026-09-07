@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -422,6 +423,108 @@ func TestValidateCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 	if !strings.Contains(out.String(), "quarry") {
 		t.Errorf("output does not name quarry; want it to name quarry rather than the plan; got %q", out.String())
 	}
+}
+
+// seedTwoCardGlyphPlanDir writes a two-card, language: go plan into planDir whose FIRST card
+// Creates a symbol that already exists on disk (worktreeRoot/sub/a.go's Foo) and whose SECOND card
+// Creates a brand-new unit. The first card is therefore a blocking create-already-exists finding
+// under the whole-plan check set and nothing at all once it counts as completed; the second card is
+// informational in both scopes. That asymmetry is what lets one plan tell validate's two scopes
+// apart.
+func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
+	t.Helper()
+
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — first — the card whose work has already landed\n" +
+		"2 — second — the card still pending\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	first := "# Card 1 — first\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** the card whose work has already landed.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "01-first.md"), []byte(first), 0o644); err != nil {
+		t.Fatalf("write first card file: %v", err)
+	}
+	second := "# Card 2 — second\n\n**Create:**\n- `newpkg#Bar`\n\n**Intent:** the card still pending.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "02-second.md"), []byte(second), 0o644); err != nil {
+		t.Fatalf("write second card file: %v", err)
+	}
+
+	subDir := filepath.Join(worktreeRoot, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "a.go"), []byte("package sub\n\nfunc Foo() {}\n"), 0o644); err != nil {
+		t.Fatalf("write sub/a.go: %v", err)
+	}
+}
+
+// TestValidateCmd_ScopeFollowsRunProgress is R4-07's direct regression test. The verb advertises
+// itself as the gate "lyx webster run" applies, and Run scopes that gate by the run's own completed
+// cards; validate ran the whole-plan check set unconditionally, so the instant one Create card
+// landed the verb exited 1 over a plan Run resumes without complaint.
+//
+// One plan drives both rows. With no run recorded, card 1's already-existing Create target is a
+// blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the
+// verb exists for. With state.json recording batch 1 terminal, that same finding is the plan working
+// as designed and must vanish, leaving only card 2's informational finding and exit 0.
+func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
+	identity, err := batcher.Select("identity")
+	if err != nil {
+		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
+	}
+
+	t.Run("NoRunRecordedGetsWholePlanAnswer", func(t *testing.T) {
+		c, _ := newTestCLI(t)
+		c.batcher = identity
+		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+		if exitCode != 1 {
+			t.Fatalf("validate with no run recorded = %d; want 1 (the whole-plan answer still refuses card 1), output: %s", exitCode, out.String())
+		}
+		got := out.String()
+		if !strings.Contains(got, `"scope":"whole-plan"`) {
+			t.Errorf("output missing scope:whole-plan; got %q", got)
+		}
+		if !strings.Contains(got, "create-already-exists") {
+			t.Errorf("output missing the blocking create-already-exists finding for card 1; got %q", got)
+		}
+	})
+
+	t.Run("TerminalBatchScopesToPendingCards", func(t *testing.T) {
+		c, _ := newTestCLI(t)
+		c.batcher = identity
+		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
+
+		state := &websterengine.State{
+			RunGUID: "run-guid",
+			Batches: map[int]*websterengine.BatchState{
+				1: {Terminal: true, Status: "done"},
+			},
+		}
+		if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
+			t.Fatalf("SaveState: %v", err)
+		}
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+		if exitCode != 0 {
+			t.Fatalf("validate with batch 1 terminal = %d; want 0 -- a completed Create card's target existing is the plan working as designed, output: %s", exitCode, out.String())
+		}
+		got := out.String()
+		if !strings.Contains(got, `"scope":"pending"`) {
+			t.Errorf("output missing scope:pending; got %q", got)
+		}
+		if strings.Contains(got, "create-already-exists") {
+			t.Errorf("output still carries card 1's create-already-exists finding after batch 1 went terminal; got %q", got)
+		}
+	})
 }
 
 func TestStatusCmd_NotInitialized(t *testing.T) {
