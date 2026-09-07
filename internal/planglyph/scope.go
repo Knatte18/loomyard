@@ -31,8 +31,8 @@ func targetGlyphUnion(cards []planparser.Card) map[string]bool {
 	return union
 }
 
-// ScopeGuard compares delta's Created, Deleted and Modified symbol IDs against the union of
-// cards' own target glyphs, emitting one informational finding per symbol touched outside that
+// ScopeGuard compares delta's Renamed, Created, Deleted and Modified symbol IDs against the union
+// of cards' own target glyphs, emitting one informational finding per symbol touched outside that
 // union, check ID scope-outside-plan, naming the symbol and the file it lives in.
 //
 // It stays informational, never blocking, for two reasons that must both survive: it preserves the
@@ -60,6 +60,20 @@ func ScopeGuard(cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding 
 		})
 	}
 
+	// Renamed pairs need their own loop rather than riding the two below: quarry removes an exact
+	// pair's constituents from Created and Deleted entirely (see drift.go's own note on why that
+	// keeps plan-references-deleted-symbol from colliding with the exact tier), so a renamed symbol
+	// reaches neither of them. Without this loop a fork that renamed a symbol outside its batch's
+	// declared targets was the one kind of touch this guard never reported — and DetectDrift's gate
+	// two logs an unreferenced rename at Debug only, so nothing operator-visible named it at all.
+	// A pair is in scope when EITHER endpoint is a declared target: the card that declared the old
+	// symbol is the card doing the renaming, and a card that declared the new one asked for it.
+	for _, rp := range delta.Renamed {
+		if union[rp.From.ID] || union[rp.To.ID] {
+			continue
+		}
+		report(rp.To.ID, rp.To.File)
+	}
 	for _, s := range delta.Created {
 		report(s.ID, s.File)
 	}
