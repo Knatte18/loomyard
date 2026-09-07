@@ -350,7 +350,9 @@ For the step it was on:
    A match: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate).
    **Every row that spawns an agent answers this question, and which rows do so is not left implicit here, because for a while it was and only one of them did.**
    `SingleLLMProducer` probes it for `Discussion-Write` and `Plan-Write`;
-   `shedadapters.Bouncer` probes it on both its seed and its judge pass, for all three segments' `*-Bouncer` rows;
+   `shedadapters.Bouncer` probes it three times over, for all three segments' `*-Bouncer` rows: on its seed pass, on its judge pass, and once more at `Call` entry before it acts on a verdict already on disk.
+   That third probe is not redundant, and the reason is the gap between what a judgment *records* and what its spawn *declares*: the record is a verdict plus a ledger, while the spawn declares those two plus the next round's focus file, so a crash in between leaves a live judge behind an apparently-final verdict — and the two branches that read such a verdict, the re-entry clear and the BLOCKING replay, spawn nothing themselves and would otherwise never ask.
+   Attaching there makes that call the judgment's harvest — it settles rather than clearing — while a not-found probe leaves both branches acting on exactly the state they always did.
    `shedadapters.BurlerProducer` probes it for all three `*-Burler` rows, matching on the round's own `round-<N>-review.md`/`round-<N>-fixer-report.md` pair, which is exactly the `OutputFiles` set `burlerengine` declares for that round's shuttle run.
    The `Webster` row reaches the same no-duplicate property by a different mechanism it owns itself: `websterengine`'s entry-time reclaim stops a leftover live Master before starting a new one, rather than attaching to it.
    Until the review-segment rows gained the probe, a driver crash inside any segment left that segment's agent alive and the next `lyx loom run` started a second one over it — two agents writing one review, and on the `Webster-Burler` row (`fix-scope: source`) two agents committing to one branch.

@@ -49,7 +49,9 @@
 //     (a verdict and ledger that both exist and parse) regardless of what the shuttle run itself
 //     reported. A parsed APPROVED verdict maps to Done only on the harvest that earns it, within the
 //     same Call that produced it; at Call entry, an already-APPROVED verdict maps to the clear
-//     instead. A parsed BLOCKING verdict maps to Stuck on harvest or on a BLOCKING replay, both
+//     instead -- unless the entry-time probe finds the judge that wrote it still alive, in which
+//     case waiting on that judge is itself the harvest that earns the Done (see "Every spawning
+//     adapter probes for a live agent first" below). A parsed BLOCKING verdict maps to Stuck on harvest or on a BLOCKING replay, both
 //     reporting the round's ledger path as the pointer; every other path -- the seed call, the
 //     re-bounce, the clear itself, every degraded path -- reports an empty pointer. The ledger is
 //     reported rather than withheld because the Bouncer's ledger is a real cross-round artifact a
@@ -150,15 +152,28 @@
 //
 // All four adapters answer the same question before they start anything: is an agent for this exact
 // step still alive? They answer it in two different ways, and the difference is the engine's, not a
-// policy choice here. SingleLLMProducer, Bouncer (on both its seed and its judge pass), and
-// BurlerProducer all call shuttleengine's Attach seam with the step's own OutputFiles and wait on a
-// match; WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover
-// Master rather than attaching to it.
+// policy choice here. SingleLLMProducer, Bouncer (on its seed pass, on its judge pass, and once more
+// at Call entry -- see below), and BurlerProducer all call shuttleengine's Attach seam with the
+// step's own OutputFiles and wait on a match; WebsterProducer inherits websterengine's own
+// entry-time reclaim, which stops a leftover Master rather than attaching to it.
 //
 // The probe always runs BEFORE the archive, in all three attaching adapters. Archiving renames the
 // very files a live agent is about to write, and shuttle's Wait polls for bare existence at those
 // paths, so archiving first would make an attached run unable to ever classify done -- in exactly
 // the case the probe exists to protect.
+//
+// The Bouncer's third probe covers the two modes that spawn nothing at all, and it exists because
+// its own judgment record is narrower than the judge spawn that produces it: a recorded judgment is
+// a verdict and a ledger, while the spawn declares those two plus the next round's focus file. A
+// driver crash between the ledger write and the focus write therefore leaves a live judge behind an
+// apparently-final verdict, landing the next Call in the clear branch or the replay branch -- one of
+// which archives the run directory out from under that judge, and the other of which writes a
+// synthetic focus file at a path it declared as an output. Both then hand back a Stuck whose next
+// respawn could not attach to the survivor either, since the seed spec and the round producer's spec
+// each name a different OutputFiles set than the judge's. So Call probes on the judge spec's own
+// three paths before either branch acts: attaching makes that call the judgment's harvest, settling
+// it rather than clearing it, and a not-found probe leaves both branches acting on exactly the state
+// they always did.
 //
 // The Bouncer and BurlerProducer rows once lacked this deliberately, recorded here as a scope call.
 // It was not survivable: a driver crash inside any review segment left the round's agent alive, and
