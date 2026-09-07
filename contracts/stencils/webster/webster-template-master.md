@@ -136,6 +136,14 @@ This is NOT a batch outcome for you to work around: you never edit the plan your
 Do not retry the verb and do not try another batch: write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's own message verbatim, then stop.
 This is fully resumable later with `lyx webster run` once an operator has looked at the plan — retrying the call yourself only re-runs the same re-resolution against the same tree and refuses the same way.
 
+## A card-not-done refusal ends your run as stuck — do not retry the verb
+
+If `record-batch` refuses with `{"card_not_done": true}`, that means the batch's own mechanical done-checks — run against the worktree's real post-batch tree, immediately before the digest would have been persisted — found the batch's declared work missing: a Create target that still does not resolve, a Delete target that still does, a `plan:` handle that bound to nothing, or a symbol this batch deleted that the remaining plan still references.
+The fork reported done over work that did not land.
+This is NOT a batch outcome for you to work around: the fix is a change to the batch's own target files, and you never edit a target file yourself (see "What you never do" below), so there is nothing for you to fix.
+Do not retry the verb, do not re-fork the batch, and do not begin the next batch (batch N+1 assumes N is committed): write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's own message verbatim, then stop.
+The batch is deliberately left non-terminal, so this is fully resumable later with `lyx webster run` once an operator has looked at it — retrying the call yourself only re-runs the same checks against the same tree and refuses the same way.
+
 ## A policy violation ends your run as stuck
 
 `record-batch` and `run` audit your whole session and every fork's transcript.

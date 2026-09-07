@@ -18,9 +18,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -573,6 +575,56 @@ func TestRecoverBatchCmd_BootsStandaloneReedSessionFirst(t *testing.T) {
 	}
 	if strings.Contains(got, "not found in the plan's execution batches") {
 		t.Errorf("output reports the batch-not-found refusal, so the bring-up ran too late to matter; got %q", got)
+	}
+}
+
+// singleFlagEnvelope matches the one-word machine-readable signal shape webster's verbs use to tell
+// Master WHY a call refused: a whole envelope whose only field is a boolean flag
+// (map[string]any{"plan_drifted": true}). Master keys a failure-ladder rung off each such flag, so
+// the flag is a contract term, not an implementation detail.
+var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true\}`)
+
+// TestMasterStencilCoversEverySingleFlagRefusal is R4-34's direct regression test. record-batch
+// emits {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure
+// ladder carried no rung for it, so Master fell through to generic error handling on a refusal with
+// a specific meaning and a specific disposition.
+//
+// The flag set is read out of this package's own source rather than pinned as a list, because a
+// hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this
+// gap arose. What the regexp deliberately does NOT cover is a flag riding along inside a
+// multi-field envelope (status's own "paused" report field, for instance): those are state a caller
+// reads, not refusals a ladder must answer.
+func TestMasterStencilCoversEverySingleFlagRefusal(t *testing.T) {
+	t.Parallel()
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read the webstercli package directory: %v", err)
+	}
+
+	found := map[string]string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		source, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		for _, match := range singleFlagEnvelope.FindAllStringSubmatch(string(source), -1) {
+			found[match[1]] = name
+		}
+	}
+
+	if len(found) == 0 {
+		t.Fatal("no single-flag refusal envelopes found in this package; the regexp has drifted from the code shape it is meant to track, so this test is asserting nothing")
+	}
+
+	for flag, file := range found {
+		if !strings.Contains(string(stencils.WebsterTemplateMaster), flag) {
+			t.Errorf("%s emits the single-flag envelope {%q: true}, but contracts/stencils/webster/webster-template-master.md's failure ladder never mentions %q -- Master would fall through to generic error handling on a refusal that has its own meaning and its own disposition", file, flag, flag)
+		}
 	}
 }
 
