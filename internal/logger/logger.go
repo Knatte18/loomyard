@@ -266,8 +266,11 @@ func (d dualHandler) WithGroup(name string) slog.Handler {
 // still flow through the sink's lazy-open and size-cap machinery.
 type durableWriter struct{}
 
-// Write opens the durable sink on first use (a no-op on every call after the first, via sinkOnce)
-// and writes p to it.
+// Write opens the durable sink on first use (a no-op on every call after the first, via sink.go's
+// sinkArmed flag) and writes p to it.
+// The two calls are strictly SEQUENTIAL, never nested: both take sinkMu, which is a plain
+// non-reentrant Mutex, so calling writeDurable from inside ensureDurableSink -- or either from a
+// caller already holding sinkMu -- would self-deadlock.
 // A closed/unarmed sink (sinkOK false) is not an error here -- per sink.go's lazy-sink-open rule, a
 // diagnostic sink that never opens must never surface as a write failure to the logging call site,
 // so Write reports success and discards p.

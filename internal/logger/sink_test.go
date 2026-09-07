@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -243,6 +244,48 @@ func TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile(
 	}
 	if _, err := os.Stat(armedPath); err != nil {
 		t.Errorf("os.Stat(armedPath=%q) = %v; want the already-opened file to remain untouched", armedPath, err)
+	}
+}
+
+// TestEnsureDurableSink_ConcurrentRedirectIsRaceFree is the regression guard for the R4 review's
+// R4-20: the lazy first-open read sinkDirOverride and wrote sinkPath, sinkOK, sinkBytesWritten and
+// header from inside a sync.Once with NO lock, while resetDurableSinkLocked wrote all of those AND
+// reassigned that very sync.Once under sinkMu. A SetDurableSinkDir* concurrent with an in-flight
+// first record was therefore a data race on the Once value itself, and the losing order left the
+// PRE-redirect sinkPath installed -- and that redirect is the mechanism keeping a standalone run's
+// trace files out of the operator's own repository.
+//
+// It must be run under `go test -race` to observe the race itself; the positional assertion below
+// holds either way, and is what catches a half-applied reset leaving a path composed from neither
+// generation.
+func TestEnsureDurableSink_ConcurrentRedirectIsRaceFree(t *testing.T) {
+	firstDir := t.TempDir()
+	secondDir := t.TempDir()
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	// Several rounds, because the interleaving that loses is order-dependent: one arm/redirect pair
+	// can easily complete in the safe order by luck.
+	for round := 0; round < 20; round++ {
+		SetDurableSinkDir(firstDir)
+
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() { defer wg.Done(); ensureDurableSink() }()
+		go func() { defer wg.Done(); Arm() }()
+		go func() {
+			defer wg.Done()
+			SetDurableSinkDirWithWorktreeRoot(secondDir, "some-worktree-root")
+		}()
+		wg.Wait()
+
+		// Whichever order won, re-arming must land the sink in the directory the surviving
+		// generation names -- never a stale composite of the two.
+		if !ensureDurableSink() {
+			t.Fatalf("round %d: ensureDurableSink() ok = false; want true", round)
+		}
+		if dir := filepath.Dir(sinkPath); dir != firstDir && dir != secondDir {
+			t.Fatalf("round %d: filepath.Dir(sinkPath=%q) = %q; want one of %q or %q", round, sinkPath, dir, firstDir, secondDir)
+		}
 	}
 }
 
