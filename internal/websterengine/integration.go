@@ -218,20 +218,38 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 // itself and naming one would put a card the evidence does not implicate into the PR text.
 // Caller persists via SaveState.
 func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
-	idx, err := bisect(repo, shas, verifyCmd, worktree)
+	offendingCard, offendingSHA, err := LocalizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree)
 	if err != nil {
 		return err
 	}
 
-	offendingSHA := "unknown"
-	offendingCard := "unknown"
+	RecordIntegrationFailure(st, offendingCard, offendingSHA)
+	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA)
+}
+
+// LocalizeIntegrationFailure is BisectAndEscalate's search half, split out because it touches no
+// state and must therefore run with NO state-mutation lease held: it runs the plan's whole
+// "## verify:" command once per bisect step, which is minutes to tens of minutes, and
+// AcquireStateMutation's own contract forbids holding the lease across a long block. Its acquire is
+// blocking with no timeout, so a concurrent bracket verb — a zombie Master, exactly what
+// ownerlessRunWarnings exists to flag — stalled behind the bisect indefinitely with no diagnostic.
+// recover-batch already splits its own three phases this way.
+//
+// It returns the localized card label and SHA, or "unknown" for both when the search localizes
+// nothing.
+func LocalizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string) (offendingCard, offendingSHA string, err error) {
+	idx, err := bisect(repo, shas, verifyCmd, worktree)
+	if err != nil {
+		return "", "", err
+	}
+
+	offendingSHA = "unknown"
+	offendingCard = "unknown"
 	if idx >= 0 {
 		offendingSHA = shas[idx]
 		if idx < len(labels) {
 			offendingCard = labels[idx]
 		}
 	}
-
-	RecordIntegrationFailure(st, offendingCard, offendingSHA)
-	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA)
+	return offendingCard, offendingSHA, nil
 }

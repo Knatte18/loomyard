@@ -652,6 +652,15 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// or stuck for this plan.
 		warnings, err := runIntegrationStage(deps, plan, batches, runResult.Outcome)
 		if err != nil {
+			// runIntegrationStage returns warnings ALONGSIDE its loud done-over-a-failed-suite
+			// error, and every error return here reports the zero RunResult, so those warnings
+			// reach no envelope. They are logged instead rather than dropped: the
+			// "could not be localized because this mode has no fabric repo" notice is the only
+			// explanation an operator gets for an escalation that named no card, and this loud
+			// return is precisely the path that produces one.
+			for _, w := range warnings {
+				logger.Warn("websterengine: integration stage warning", "warning", w)
+			}
 			return RunResult{}, err
 		}
 		runResult.Warnings = append(runResult.Warnings, warnings...)
@@ -898,15 +907,15 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil, nil
 	}
 
-	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = mutateLock.Release() }()
-
-	// Reload state fresh: begin-batch/record-batch mutated and persisted it
-	// repeatedly across Master's whole run, so the in-memory copy captured
-	// before Master ever spawned is stale by the time this stage runs.
+	// This stage runs in three phases, split exactly the way recover-batch splits its own, and for
+	// the same reason: the localization in the middle runs the plan's whole "## verify:" command
+	// once per bisect step — minutes to tens of minutes — and AcquireStateMutation's contract
+	// forbids holding the lease across a long block. Holding it there stalled every concurrent
+	// bracket verb behind an unbounded blocking acquire, with no timeout and no diagnostic.
+	//
+	// Phase 1, unleased: read the card SHAs the search runs over. LoadState is a plain read, and a
+	// fresh one is required — begin-batch/record-batch mutated and persisted state repeatedly across
+	// Master's whole run, so the copy captured before Master ever spawned is long stale.
 	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
 		return nil, err
@@ -915,15 +924,13 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil, fmt.Errorf("webster: integration stage: no state.json to escalate against")
 	}
 
+	// Phase 2, unleased: localize the offending card. "unknown" for both is the honest answer when
+	// there is no fabric repo to bisect against, and the bypass lives at this call site rather than
+	// inside LocalizeIntegrationFailure so a nil bisector is never handed to it — see
+	// RunDeps.OpenBisector's own doc comment.
 	var warnings []string
+	offendingCard, offendingSHA := "unknown", "unknown"
 	if deps.OpenBisector == nil {
-		// No fabric repo in this mode: bypass BisectAndEscalate/bisect
-		// entirely rather than feeding them a nil bisector — see the func
-		// doc comment for why the bypass must live at this call site.
-		RecordIntegrationFailure(st, "unknown", "unknown")
-		if err := AppendIntegrationFailure(deps.Geom.WebsterDir, "unknown", "unknown"); err != nil {
-			return nil, err
-		}
 		warnings = append(warnings, "the integration suite failed and the offending card could not be localized because this mode has no fabric repo to bisect against")
 	} else {
 		bisector, err := deps.OpenBisector()
@@ -931,13 +938,35 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 			return nil, err
 		}
 		shas, labels := accumulatedCardSHAs(batches, st)
-		if err := BisectAndEscalate(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot, deps.Geom.WebsterDir, st); err != nil {
-			return nil, err
+		offendingCard, offendingSHA, err = LocalizeIntegrationFailure(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot)
+		if err != nil {
+			return warnings, err
 		}
 	}
 
+	// Phase 3, leased: record the escalation against a state reloaded fresh under the lease, since
+	// the unleased search above gave every concurrent verb room to persist its own mutations.
+	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
+	if err != nil {
+		return warnings, err
+	}
+	defer func() { _ = mutateLock.Release() }()
+
+	st, err = LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
+	if err != nil {
+		return warnings, err
+	}
+	if st == nil {
+		return warnings, fmt.Errorf("webster: integration stage: no state.json to escalate against")
+	}
+
+	RecordIntegrationFailure(st, offendingCard, offendingSHA)
+	if err := AppendIntegrationFailure(deps.Geom.WebsterDir, offendingCard, offendingSHA); err != nil {
+		return warnings, err
+	}
+
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
-		return nil, err
+		return warnings, err
 	}
 
 	// A Master that claimed outcome: done while the plan-level integration
