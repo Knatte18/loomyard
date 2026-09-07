@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -110,6 +111,55 @@ func TestReedGeometry(t *testing.T) {
 	}
 	if got.HubPath != stateDir {
 		t.Errorf("ReedGeometry().HubPath = %q; want %q (stateDir)", got.HubPath, stateDir)
+	}
+}
+
+// TestReedGeometry_SessionNameSanitizesTheReadableHalf is the regression guard for the R4 review's
+// R4-10: SessionName was built from a RAW filepath.Base(target), and reedengine's
+// validateToldTmuxIdentity refuses a session name carrying '.', ':', '\', a control character, or an
+// invalid UTF-8 byte — so standalone mode, whose whole premise is "point it at any plain checkout
+// the operator already has", died on the routine repository name "my.repo" with advice to rename the
+// operator's own directory.
+// The hash8 suffix is asserted intact on every row, since sanitizing the readable half must never
+// touch the half that carries the identity.
+func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+	hash8 := "abcd1234"
+
+	cases := []struct {
+		name     string
+		basename string
+		want     string
+	}{
+		{"dotted repository name", "my.repo", "my_repo-" + hash8},
+		{"dotted extension-shaped name", "site.com", "site_com-" + hash8},
+		{"colon", "svc:v2", "svc_v2-" + hash8},
+		{"control character", "svc\tv3", "svc_v3-" + hash8},
+		{"plain name passes through unchanged", "distinctive-repo-name", "distinctive-repo-name-" + hash8},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			target := filepath.Join(string(filepath.Separator), "home", "operator", "src", c.basename)
+
+			got := ReedGeometry(target, stateDir, hash8)
+
+			if got.SessionName != c.want {
+				t.Errorf("ReedGeometry(%q).SessionName = %q; want %q", target, got.SessionName, c.want)
+			}
+			// The sanitizer is reedengine's own, never re-implemented here — the rule belongs to
+			// the package that also refuses violations of it.
+			if want := reedengine.SanitizeSessionName(c.basename) + "-" + hash8; got.SessionName != want {
+				t.Errorf("ReedGeometry(%q).SessionName = %q; want %q (reedengine.SanitizeSessionName + hash8)", target, got.SessionName, want)
+			}
+			// RepoName is the header pane's display token, not a tmux target, so it stays raw.
+			if got.RepoName != c.basename {
+				t.Errorf("ReedGeometry(%q).RepoName = %q; want %q (raw basename)", target, got.RepoName, c.basename)
+			}
+		})
 	}
 }
 
