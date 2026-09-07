@@ -508,8 +508,12 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	}
 }
 
-// TestResolveStandaloneTarget covers resolveStandaloneTarget's three rows: unset returns cwd,
+// TestResolveStandaloneTarget covers resolveStandaloneTarget's three flag rows: unset returns cwd,
 // absolute returns the cleaned path, relative returns the path joined onto cwd.
+// Every fixture path here is deliberately fictional, so both normalizations resolveStandaloneTarget
+// applies on top -- the symlink resolve and the repository-root lift -- are no-ops on this table by
+// construction, leaving the flag rows alone to be asserted.
+// TestResolveStandaloneTarget_LiftsToRepositoryRoot owns those two.
 func TestResolveStandaloneTarget(t *testing.T) {
 	t.Parallel()
 
@@ -536,6 +540,95 @@ func TestResolveStandaloneTarget(t *testing.T) {
 			}
 		})
 	}
+}
+
+// seedGitRepositoryRoot marks dir as a git repository root by creating the ".git" entry
+// repositoryRootOf looks for, and returns dir. It writes no git objects and spawns no git: the walk
+// this fixture feeds tests only the marker's presence, so a real repository would prove nothing extra
+// and would breach the Test Tier Purity Invariant to build.
+func seedGitRepositoryRoot(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir %s/.git: %v", dir, err)
+	}
+	return dir
+}
+
+// TestResolveStandaloneTarget_LiftsToRepositoryRoot is R4-26's direct regression test.
+// preflight.ResolveMode answers ModeStandalone for a plain repository's SUBDIRECTORY too, so the
+// target used to differ by where the operator happened to stand: repo/ and repo/src/ hashed to two
+// different hash8 values and so derived two state directories and two reed sessions for one
+// repository, while the profile's own relative target and fasit paths silently resolved against the
+// subdirectory rather than the repository.
+func TestResolveStandaloneTarget_LiftsToRepositoryRoot(t *testing.T) {
+	t.Run("CwdInsideRepositoryLiftsToRoot", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := seedGitRepositoryRoot(t, t.TempDir())
+		subDir := filepath.Join(repoRoot, "src", "inner")
+		if err := os.MkdirAll(subDir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", subDir, err)
+		}
+
+		got, err := resolveStandaloneTarget(subDir, "")
+		if err != nil {
+			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
+		}
+		if want := standalonestate.Normalize(repoRoot); got != want {
+			t.Errorf("resolveStandaloneTarget(%q, \"\") = %q; want the repository root %q", subDir, got, want)
+		}
+	})
+
+	t.Run("TargetDirInsideRepositoryLiftsToRoot", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := seedGitRepositoryRoot(t, t.TempDir())
+		if err := os.MkdirAll(filepath.Join(repoRoot, "src"), 0o755); err != nil {
+			t.Fatalf("mkdir src: %v", err)
+		}
+
+		got, err := resolveStandaloneTarget(repoRoot, "src")
+		if err != nil {
+			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
+		}
+		if want := standalonestate.Normalize(repoRoot); got != want {
+			t.Errorf("resolveStandaloneTarget(%q, \"src\") = %q; want the repository root %q", repoRoot, got, want)
+		}
+	})
+
+	t.Run("NonRepositoryDirectoryUnchanged", func(t *testing.T) {
+		t.Parallel()
+		// standalone mode legitimately covers a plain directory that is no git repository at all --
+		// preflight.ResolveMode folds that cause into the very same verdict -- so the lift must not
+		// invent a root by walking to the filesystem's own top.
+		plain := t.TempDir()
+
+		got, err := resolveStandaloneTarget(plain, "")
+		if err != nil {
+			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
+		}
+		if want := standalonestate.Normalize(plain); got != want {
+			t.Errorf("resolveStandaloneTarget(%q, \"\") = %q; want it unchanged at %q", plain, got, want)
+		}
+	})
+
+	t.Run("SubdirectoryWiresOntoTheRootsOwnStateDir", func(t *testing.T) {
+		repoRoot := seedGitRepositoryRoot(t, t.TempDir())
+		subDir := filepath.Join(repoRoot, "src")
+		if err := os.MkdirAll(subDir, 0o755); err != nil {
+			t.Fatalf("mkdir src: %v", err)
+		}
+		setStandaloneStateRoot(t)
+
+		normalizedRoot := standalonestate.Normalize(repoRoot)
+		rootStateDir, _ := hash8AndStateDir(t, normalizedRoot)
+
+		c := &burlerCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, subDir, "", ""); err != nil {
+			t.Fatalf("wire() from a repository subdirectory = %v; want nil", err)
+		}
+		if c.stateDir != rootStateDir {
+			t.Errorf("c.stateDir = %q; want the repository root's own state directory %q -- where the operator stands inside a repository must not change which repository burler reviews", c.stateDir, rootStateDir)
+		}
+	})
 }
 
 // TestWire_ReedUpSeamPerMode is F-A1's (round fable5-high-r3) wiring pin, mirroring

@@ -9,6 +9,7 @@ package burlercli
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -27,6 +28,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
+
+// gitDirName is the per-repository git administrative entry repositoryRootOf looks for, present as a
+// directory in an ordinary clone and as a file in a linked worktree.
+// It is a plain literal rather than an internal/lyxdirs constant: lyxdirs is the single declarer of
+// loomyard's own "_lyx" and ".lyx" directories and has never owned git's.
+const gitDirName = ".git"
 
 // wire computes hub-or-standalone mode from loc/mode -- the *lyxcwd.Location and preflight.Mode a
 // preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: the
@@ -120,8 +127,9 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	return nil
 }
 
-// wireStandalone builds the engine stack for standalone mode: the already-absolute --target-dir
-// (defaulted to cwd when unset), standalonestate.Derive over it -- the only place Derive is ever
+// wireStandalone builds the engine stack for standalone mode: the target resolveStandaloneTarget
+// settled on (--target-dir when given, cwd otherwise, symlink-normalized and lifted to its
+// repository root either way), standalonestate.Derive over it -- the only place Derive is ever
 // called in this package -- standalonegeom's geometry builders over the derived state directory,
 // every module config loaded over the same state directory, and the reed/claude engines wired into a
 // shuttleengine.Runner exactly as the hub branch does.
@@ -264,14 +272,60 @@ func resolveToldDir(cwd, flagValue string) string {
 	return filepath.Join(cwd, flagValue)
 }
 
-// resolveStandaloneTarget resolves standalone mode's --target-dir: cwd when targetDirFlag is empty,
-// or targetDirFlag made absolute against cwd otherwise.
+// resolveStandaloneTarget resolves standalone mode's --target-dir into the one spelling of the one
+// directory every downstream consumer must agree on: cwd when targetDirFlag is empty, or
+// targetDirFlag made absolute against cwd otherwise, then symlink-normalized, then lifted to the
+// root of the repository it sits in.
+//
 // The result is always absolute, which is standalonestate.Derive's own precondition, because Derive
 // normalises through EvalSymlinks+Clean and compares case-insensitively on Windows, so two spellings
 // of the same directory must not produce different <state> values.
+//
+// Both normalizations exist because the target is an IDENTITY here, not merely a path.
+// standalonestate.Derive hashes it into hash8, which names the state directory, the reed socket and
+// the tmux session, and standalonegeom builds the session name's readable half from it — so two
+// spellings of one repository produce two of everything. Normalize is Derive's own rule, exported by
+// the package that owns the identity precisely so the CLI boundary can apply it once here rather
+// than each site re-deriving it.
+//
+// The repository-root lift answers the other half. preflight.ResolveMode returns ModeStandalone for
+// a plain repository's SUBDIRECTORY too, so `lyx burler` run from repo/ and from repo/src/ derived
+// two different hash8 values, two state directories and two reed sessions for one repository, and
+// silently resolved the profile's own relative target/fasit paths against the subdirectory rather
+// than the repository. Where an operator stands inside a repository is not supposed to change which
+// repository they are reviewing, nor what a relative profile path means.
+//
+// A target with no repository above it is returned unchanged: standalone mode legitimately covers a
+// plain directory that is no git repository at all, which ResolveMode folds into the same verdict.
 func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
-	if targetDirFlag == "" {
-		return cwd, nil
+	told := cwd
+	if targetDirFlag != "" {
+		told = resolveToldDir(cwd, targetDirFlag)
 	}
-	return resolveToldDir(cwd, targetDirFlag), nil
+	return repositoryRootOf(standalonestate.Normalize(told)), nil
+}
+
+// repositoryRootOf returns the topmost-known repository root at or above dir -- the nearest ancestor
+// (dir itself included) carrying a ".git" entry -- or dir unchanged when no ancestor has one.
+//
+// It walks the filesystem rather than asking git, and that is deliberate on two counts. It keeps
+// wire free of process spawns, which is what lets this module's whole wiring truth table be driven
+// from untagged tests under the Test Tier Purity Invariant. And it is not a cwd query: dir arrives
+// already resolved and already absolute, so internal/lyxcwd remains the sole owner of turning a
+// working directory into a Location, per the Cwd Resolution Invariant — this only lifts an
+// already-resolved path to the root of the tree it lives in.
+//
+// os.Lstat rather than os.Stat, and no directory-vs-file test: a linked worktree records ".git" as a
+// FILE, and a repository reached through a symlink is still a repository.
+func repositoryRootOf(dir string) string {
+	for candidate := dir; ; {
+		if _, err := os.Lstat(filepath.Join(candidate, gitDirName)); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return dir
+		}
+		candidate = parent
+	}
 }

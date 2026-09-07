@@ -527,6 +527,108 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	}
 }
 
+// seedGitRepositoryRoot marks dir as a git repository root by creating the ".git" entry
+// repositoryRootOf looks for, and returns dir. It writes no git objects and spawns no git: the walk
+// this fixture feeds tests only the marker's presence, so a real repository would prove nothing extra
+// and would breach the Test Tier Purity Invariant to build.
+func seedGitRepositoryRoot(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir %s/.git: %v", dir, err)
+	}
+	return dir
+}
+
+// TestResolveStandaloneTarget_LiftsToRepositoryRoot is R4-26's direct regression test.
+// preflight.ResolveMode answers ModeStandalone for a plain repository's SUBDIRECTORY too, so the
+// target used to differ by where the operator happened to stand: repo/ and repo/src/ hashed to two
+// different hash8 values and so derived two state directories, two reed sessions and two plan
+// directories for one repository -- the second of which webster then refused outright with
+// "standalone plan directory ... does not exist".
+func TestResolveStandaloneTarget_LiftsToRepositoryRoot(t *testing.T) {
+	t.Run("CwdInsideRepositoryLiftsToRoot", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := seedGitRepositoryRoot(t, t.TempDir())
+		subDir := filepath.Join(repoRoot, "src", "inner")
+		if err := os.MkdirAll(subDir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", subDir, err)
+		}
+
+		got, err := resolveStandaloneTarget(subDir, "")
+		if err != nil {
+			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
+		}
+		if want := standalonestate.Normalize(repoRoot); got != want {
+			t.Errorf("resolveStandaloneTarget(%q, \"\") = %q; want the repository root %q", subDir, got, want)
+		}
+	})
+
+	t.Run("TargetDirInsideRepositoryLiftsToRoot", func(t *testing.T) {
+		t.Parallel()
+		repoRoot := seedGitRepositoryRoot(t, t.TempDir())
+		if err := os.MkdirAll(filepath.Join(repoRoot, "src"), 0o755); err != nil {
+			t.Fatalf("mkdir src: %v", err)
+		}
+
+		got, err := resolveStandaloneTarget(repoRoot, "src")
+		if err != nil {
+			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
+		}
+		if want := standalonestate.Normalize(repoRoot); got != want {
+			t.Errorf("resolveStandaloneTarget(%q, \"src\") = %q; want the repository root %q", repoRoot, got, want)
+		}
+	})
+
+	t.Run("NonRepositoryDirectoryUnchanged", func(t *testing.T) {
+		t.Parallel()
+		// standalone mode legitimately covers a plain directory that is no git repository at all --
+		// preflight.ResolveMode folds that cause into the very same verdict -- so the lift must not
+		// invent a root by walking to the filesystem's own top.
+		plain := t.TempDir()
+
+		got, err := resolveStandaloneTarget(plain, "")
+		if err != nil {
+			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
+		}
+		if want := standalonestate.Normalize(plain); got != want {
+			t.Errorf("resolveStandaloneTarget(%q, \"\") = %q; want it unchanged at %q", plain, got, want)
+		}
+	})
+}
+
+// TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot is R4-26's end-to-end half: wiring from
+// a repository subdirectory must land on the SAME derived state directory, and therefore the same
+// default plan directory, that wiring from the repository root lands on. Pre-fix this call failed
+// with webster's own "standalone plan directory ... does not exist" refusal, because the
+// subdirectory's own hash8 named a state directory nobody had ever seeded.
+func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
+	repoRoot := seedGitRepositoryRoot(t, t.TempDir())
+	subDir := filepath.Join(repoRoot, "src")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir src: %v", err)
+	}
+
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	normalizedRoot := standalonestate.Normalize(repoRoot)
+	rootStateDir := filepath.Join(stateHome, "lyx", hash8For(t, normalizedRoot))
+	seedStandalonePlanDir(t, filepath.Join(rootStateDir, "_lyx", "plan"))
+
+	c := &websterCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, subDir, "", "", ""); err != nil {
+		t.Fatalf("wire() from a repository subdirectory = %v; want nil -- where the operator stands inside a repository must not change which repository webster drives", err)
+	}
+	if c.geom.WorktreeRoot != normalizedRoot {
+		t.Errorf("geom.WorktreeRoot = %q; want the repository root %q", c.geom.WorktreeRoot, normalizedRoot)
+	}
+	if want := filepath.Join(rootStateDir, "_lyx", "plan"); c.geom.PlanDir != want {
+		t.Errorf("geom.PlanDir = %q; want the root's own default plan directory %q", c.geom.PlanDir, want)
+	}
+}
+
 // TestWireStandalone_RefusesStateDirNestedInTarget is R4-25's direct regression test. A standalone
 // target that CONTAINS its own derived state directory -- a dotfiles repository rooted at the home
 // directory, or an XDG_STATE_HOME pointed somewhere inside the checkout -- used to reach

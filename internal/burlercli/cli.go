@@ -112,7 +112,11 @@ Modes:
   read-only in BOTH modes (hub default: the hub's own stencils dir;
   standalone default: the derived state directory's own _lyx/stencils);
   --target-dir is standalone-only, defaults to the current directory, and is
-  refused in hub mode, where the anchor path is structurally the target.
+  refused in hub mode, where the anchor path is structurally the target. A
+  relative value for either is resolved against the current directory, and
+  the standalone target is lifted to the root of the git repository
+  containing it, so standing in a subdirectory reviews the same repository,
+  from the same state directory and reed session, as standing at its root.
 
 Example:
   lyx burler run --profile profile.yaml
@@ -129,7 +133,7 @@ Example (standalone, outside any lyx hub):
 	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
 		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
-		"standalone-only: the directory burler reviews against; defaults to the current directory; refused in hub mode, where the anchor path is already the target")
+		"standalone-only: the directory burler reviews against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the anchor path is already the target")
 
 	parent.AddCommand(c.runCmd())
 

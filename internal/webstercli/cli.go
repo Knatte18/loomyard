@@ -204,7 +204,11 @@ Modes:
   hub's own stencils/plan directories; standalone default: the derived
   state directory's own _lyx/stencils and _lyx/plan); --target-dir is
   standalone-only, defaults to the current directory, and is refused in
-  hub mode, where the worktree itself is structurally the target.
+  hub mode, where the worktree itself is structurally the target. A
+  relative value for any of the three is resolved against the current
+  directory, and the standalone target is lifted to the root of the git
+  repository containing it, so standing in a subdirectory drives the same
+  repository, state directory and reed session as standing at its root.
 
   In standalone mode, run boots its own private reed session (socket
   "lyx-<hash8>", state under the derived state directory) before spawning
@@ -224,7 +228,7 @@ Example (standalone, outside any lyx hub):
 	parent.PersistentFlags().StringVar(&c.planDirFlag, "plan-dir", "",
 		"override the plan directory parsed at call time (read-only in both modes; hub default: the anchor's _lyx/plan; standalone default: the derived state directory's _lyx/plan)")
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
-		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory; refused in hub mode, where the worktree is already the target")
+		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the worktree is already the target")
 
 	parent.AddCommand(c.validateCmd())
 	parent.AddCommand(c.runCmd())
