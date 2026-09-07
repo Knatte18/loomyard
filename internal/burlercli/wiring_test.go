@@ -457,3 +457,35 @@ func TestResolveStandaloneTarget(t *testing.T) {
 		})
 	}
 }
+
+// TestWire_ReedUpSeamPerMode is F-A1's (round fable5-high-r3) wiring pin, mirroring
+// internal/webstercli's test of the same name: wireStandalone must arm the in-process reed
+// bring-up seam the run verb fires before driving a round (standalone's derived geometry is
+// reachable by no CLI verb — `lyx reed up` is hub-only), and wireHub must leave it nil.
+func TestWire_ReedUpSeamPerMode(t *testing.T) {
+	t.Run("StandaloneArmsTheSeam", func(t *testing.T) {
+		target := t.TempDir()
+		setStandaloneStateRoot(t)
+
+		c := &burlerCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.reedUp == nil {
+			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
+		}
+	})
+
+	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+
+		c := &burlerCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.reedUp != nil {
+			t.Error("wireHub armed c.reedUp; want nil — hub mode's reed session is not run's to boot")
+		}
+	})
+}

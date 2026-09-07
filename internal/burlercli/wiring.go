@@ -168,6 +168,15 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirFlag, targetDirFlag string) e
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 
+	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
+	// `lyx reed up` is hub-only — so the run verb boots it in-process through this seam (see the
+	// field's own doc comment). Assigned here, executed only by run, so wiring itself never boots
+	// a tmux server.
+	c.reedUp = func() error {
+		_, err := reedEngine.Up()
+		return err
+	}
+
 	c.engine = burlerengine.New(runner, standalonegeom.BurlerGeometry(target, stateDir), burlerCfg, stencilsDir)
 	c.mode = "standalone"
 	c.stateDir = stateDir

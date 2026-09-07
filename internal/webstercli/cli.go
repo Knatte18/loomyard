@@ -52,6 +52,24 @@ type websterCLI struct {
 	engine shuttleengine.Engine
 	reed   shuttleengine.ReedOps
 
+	// reedUp brings the standalone reed session up, idempotently, and is set by wireStandalone
+	// alone — the run verb calls it immediately before spawning Master, because standalone mode has
+	// no other way to a live session: `lyx reed up` is hub-only (its pre-run requires
+	// lyxcwd.Resolve), so the session on standalone's own geometry (socket "lyx-<hash8>", state
+	// under the derived state directory) can only be booted in-process, mirroring what
+	// internal/loomcli's run/drive verbs already do for hub mode. It stays nil in hub mode, where
+	// bringing reed up remains the operator's (or loom's) own act — and it is called by run alone,
+	// never from wiring, so a read-only verb (status, validate) still boots no tmux server.
+	reedUp func() error
+
+	// standalonePlanDirOverridden reports whether --plan-dir moved the plan off standalone's
+	// default (<stateDir>/_lyx/plan). Set by wireStandalone, read by the run verb alone, which
+	// refuses to spawn Master over a moved plan: Master's in-pane verb invocations are flagless and
+	// resolve the default, so they could never see the override (see wireStandalone).
+	// standalonePlanDirDefault carries that default path for the refusal's own recourse text.
+	standalonePlanDirOverridden bool
+	standalonePlanDirDefault    string
+
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
 	roles      map[websterengine.Role]modelspec.Resolved
@@ -182,6 +200,10 @@ Modes:
   state directory's own _lyx/stencils and _lyx/plan); --target-dir is
   standalone-only, defaults to the current directory, and is refused in
   hub mode, where the worktree itself is structurally the target.
+
+  In standalone mode, run boots its own private reed session (socket
+  "lyx-<hash8>", state under the derived state directory) before spawning
+  Master -- "lyx reed up" is a hub verb and cannot reach that geometry.
 
 Example (standalone, outside any lyx hub):
   lyx webster run --target-dir /path/to/repo`,

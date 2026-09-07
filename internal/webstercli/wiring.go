@@ -174,6 +174,16 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 	}
 
 	if planDirFlag != "" {
+		// Record whether the flag actually moved the plan off the standalone default: the run verb
+		// refuses to spawn Master over a moved plan, because Master's own in-pane verb invocations
+		// (status, begin-batch, record-batch — typed from the stencil, flagless) resolve the
+		// DEFAULT plan directory and would wire-refuse against a plan they cannot see (found live
+		// in crucible round fable5-high-r3, F-A3). Every other verb keeps honoring the override —
+		// an operator driving bracket verbs by hand passes the flag on each call.
+		if filepath.Clean(planDirFlag) != filepath.Clean(geom.PlanDir) {
+			c.standalonePlanDirOverridden = true
+			c.standalonePlanDirDefault = geom.PlanDir
+		}
 		geom.PlanDir = planDirFlag
 	}
 	if !standalonePlanDirHasContent(geom.PlanDir) {
@@ -208,6 +218,15 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.New()
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
+
+	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
+	// `lyx reed up` is hub-only — so the run verb boots it in-process through this seam (see the
+	// field's own doc comment). Assigned here, executed only by run: wiring runs for every verb,
+	// and a read-only verb must not boot a tmux server.
+	c.reedUp = func() error {
+		_, err := reedEngine.Up()
+		return err
+	}
 
 	c.setRunner(runner, claudeEngine, reedEngine)
 	c.shuttleCfg = shuttleCfg

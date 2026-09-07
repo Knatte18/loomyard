@@ -467,3 +467,82 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 		t.Errorf("no trace-*.log file under sentinel dir %s; want wireHub to have left the sink override untouched", sentinelDir)
 	}
 }
+
+// TestWire_ReedUpSeamPerMode is F-A1's (round fable5-high-r3) wiring pin: wireStandalone must arm
+// the in-process reed bring-up seam the run verb fires before spawning Master (standalone's derived
+// geometry is reachable by no CLI verb — `lyx reed up` is hub-only), and wireHub must leave it nil,
+// keeping hub mode's session lifecycle the operator's (or loom's) own.
+func TestWire_ReedUpSeamPerMode(t *testing.T) {
+	t.Run("StandaloneArmsTheSeam", func(t *testing.T) {
+		target := t.TempDir()
+		stateHome := t.TempDir()
+		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+		seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
+
+		c := &websterCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.reedUp == nil {
+			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
+		}
+	})
+
+	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+
+		c := &websterCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.reedUp != nil {
+			t.Error("wireHub armed c.reedUp; want nil — hub mode's reed session is not run's to boot")
+		}
+	})
+}
+
+// TestWireStandalone_PlanDirOverrideMarksRunRefusal is F-A3's (round fable5-high-r3) wiring pin: a
+// --plan-dir that moves the plan off standalone's default marks the CLI so the run verb refuses to
+// spawn Master (whose flagless in-pane verbs resolve the default and could never see the moved
+// plan), while the default location leaves the mark clear.
+func TestWireStandalone_PlanDirOverrideMarksRunRefusal(t *testing.T) {
+	t.Run("OverrideMarks", func(t *testing.T) {
+		target := t.TempDir()
+		t.Setenv("XDG_STATE_HOME", t.TempDir())
+		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+		override := t.TempDir()
+		seedStandalonePlanDir(t, override)
+
+		c := &websterCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", override, ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if !c.standalonePlanDirOverridden {
+			t.Error("standalonePlanDirOverridden = false; want true for a moved plan directory")
+		}
+		if c.standalonePlanDirDefault == "" || c.standalonePlanDirDefault == override {
+			t.Errorf("standalonePlanDirDefault = %q; want the default location, distinct from the override", c.standalonePlanDirDefault)
+		}
+	})
+
+	t.Run("DefaultLeavesMarkClear", func(t *testing.T) {
+		target := t.TempDir()
+		stateHome := t.TempDir()
+		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+		seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
+
+		c := &websterCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.standalonePlanDirOverridden {
+			t.Error("standalonePlanDirOverridden = true; want false when the plan sits at the default")
+		}
+	})
+}

@@ -26,6 +26,14 @@ type burlerCLI struct {
 	// engine is the constructed burlerengine.Engine the run verb closes over.
 	engine *burlerengine.Engine
 
+	// reedUp brings the standalone reed session up, idempotently, and is set by wireStandalone
+	// alone — the run verb calls it immediately before driving a round, because standalone mode has
+	// no other way to a live session: `lyx reed up` is hub-only (its pre-run requires
+	// lyxcwd.Resolve), so the session on standalone's own geometry (socket "lyx-<hash8>", state
+	// under the derived state directory) can only be booted in-process. It stays nil in hub mode,
+	// where bringing reed up remains the operator's (or loom's) own act.
+	reedUp func() error
+
 	// stencilsDirFlag and targetDirFlag hold the raw, as-parsed values of the two standalone-entry
 	// persistent flags (--stencils-dir, --target-dir). An empty value means the flag was not passed;
 	// each mode's own default is computed by the wiring function (wiring.go) rather than a

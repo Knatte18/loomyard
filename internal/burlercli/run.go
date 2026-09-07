@@ -154,6 +154,17 @@ run-timeout; zero defers to the config default.`,
 				Round:   round,
 			}
 
+			// Standalone mode boots its own reed session here, idempotently, because nothing else
+			// can: `lyx reed up` is hub-only, and pre-fix the round's spawn died on "no reed
+			// session" with an impossible recourse (crucible round fable5-high-r3, F-A1). Nil in
+			// hub mode, where the session is the operator's or loom's own to manage.
+			if c.reedUp != nil {
+				if err := c.reedUp(); err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("burler: bring up the standalone reed session: %v", err)))
+					return nil
+				}
+			}
+
 			result, err := c.engine.Run(profile, opts)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
