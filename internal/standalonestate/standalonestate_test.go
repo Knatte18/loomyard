@@ -119,6 +119,127 @@ func TestDerive_RelativeTargetRejected(t *testing.T) {
 	}
 }
 
+// TestDerive_RelativeEnvironmentBase is the regression guard for the R4 review's R4-08: derive
+// validated target for absoluteness but never the environment-supplied base it joined onto, so a
+// relative XDG_STATE_HOME (or LOCALAPPDATA, or home) produced a RELATIVE stateDir -- which the
+// standalone CLIs then resolved against the process working directory, i.e. the operator's own
+// repository, writing lyx state and trace logs inside the very checkout standalonegeom.LogsDir
+// exists to keep them out of. Reproduced live as
+// `XDG_STATE_HOME=.relstate lyx burler run` creating <repo>/.relstate/lyx/<hash8>/.
+//
+// The three bases answer a relative value differently because their specifications do: a relative
+// XDG_STATE_HOME is ignored per the XDG Base Directory specification, while a relative LOCALAPPDATA
+// or home has no fallback left and is refused.
+//
+// Every row asserts the outcome is either an error or an ABSOLUTE stateDir, which is the property
+// that actually matters; wantStateDir pins where the surviving rows land.
+func TestDerive_RelativeEnvironmentBase(t *testing.T) {
+	cases := []struct {
+		name         string
+		goos         string
+		localAppData string
+		xdgStateHome string
+		home         string
+		wantErr      bool
+		wantStateDir func(hash8 string) string
+	}{
+		{
+			name:         "relative XDG_STATE_HOME ignored in favour of home",
+			goos:         "linux",
+			xdgStateHome: ".relstate",
+			home:         "/home/user",
+			wantStateDir: func(hash8 string) string {
+				return filepath.Join("/home/user", ".local", "state", "lyx", hash8)
+			},
+		},
+		{
+			name:         "dot-relative XDG_STATE_HOME ignored in favour of home",
+			goos:         "linux",
+			xdgStateHome: "./relstate/nested",
+			home:         "/home/user",
+			wantStateDir: func(hash8 string) string {
+				return filepath.Join("/home/user", ".local", "state", "lyx", hash8)
+			},
+		},
+		{
+			name:         "relative XDG_STATE_HOME with no home left to fall back on",
+			goos:         "linux",
+			xdgStateHome: ".relstate",
+			home:         "",
+			wantErr:      true,
+		},
+		{
+			name:         "relative home refused",
+			goos:         "linux",
+			xdgStateHome: "",
+			home:         "relative/home",
+			wantErr:      true,
+		},
+		{
+			name:         "relative LOCALAPPDATA refused",
+			goos:         "windows",
+			localAppData: "relative/appdata",
+			home:         "/home/user",
+			wantErr:      true,
+		},
+		{
+			name:         "absolute XDG_STATE_HOME still honoured",
+			goos:         "linux",
+			xdgStateHome: "/xdgstate",
+			home:         "/home/user",
+			wantStateDir: func(hash8 string) string {
+				return filepath.Join("/xdgstate", "lyx", hash8)
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			stateDir, hash8, err := derive(c.goos, c.localAppData, c.xdgStateHome, c.home, "/abs/target")
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("derive() error = nil, stateDir = %q; want non-nil error", stateDir)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("derive() error = %v; want nil", err)
+			}
+			if !filepath.IsAbs(stateDir) {
+				t.Fatalf("derive() stateDir = %q; want an absolute path", stateDir)
+			}
+			if want := c.wantStateDir(hash8); stateDir != want {
+				t.Errorf("derive() stateDir = %q; want %q", stateDir, want)
+			}
+		})
+	}
+}
+
+// TestDerive_RelativeEnvironmentBaseIsCwdIndependent pins the outcome of a relative environment base
+// as independent of the test process' working directory, the same way
+// TestDerive_RelativeTargetRejected does for a relative target: the whole point of R4-08's fix is
+// that no cwd anywhere can turn a relative base into a path lyx writes to.
+func TestDerive_RelativeEnvironmentBaseIsCwdIndependent(t *testing.T) {
+	before, _, err := derive("linux", "", ".relstate", "/home/user", "/abs/target")
+	if err != nil {
+		t.Fatalf("derive() error = %v; want nil", err)
+	}
+
+	originalWD, wdErr := os.Getwd()
+	if wdErr != nil {
+		t.Fatalf("os.Getwd() error = %v", wdErr)
+	}
+	t.Chdir(t.TempDir())
+	after, _, err := derive("linux", "", ".relstate", "/home/user", "/abs/target")
+	t.Chdir(originalWD)
+	if err != nil {
+		t.Fatalf("derive() after chdir error = %v; want nil", err)
+	}
+	if before != after {
+		t.Errorf("derive() stateDir changed with cwd: before=%q, after=%q", before, after)
+	}
+}
+
 // TestDerive_Hash8Shape pins that hash8 is exactly 8 characters, every one a lowercase hex digit.
 func TestDerive_Hash8Shape(t *testing.T) {
 	_, hash8, err := derive("linux", "", "", "/home/user", "/abs/target")

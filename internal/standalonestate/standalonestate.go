@@ -20,9 +20,29 @@ var errRelativeTarget = errors.New("standalonestate: target must be absolute")
 // errMissingLocalAppData is returned on the Windows branch when localAppData is empty.
 var errMissingLocalAppData = errors.New("standalonestate: LOCALAPPDATA is unset")
 
-// errMissingStateHome is returned on the non-Windows branch when both xdgStateHome and home are
-// empty.
-var errMissingStateHome = errors.New("standalonestate: XDG_STATE_HOME and HOME are both unset")
+// errRelativeLocalAppData is returned on the Windows branch when localAppData is set to a relative
+// path.
+// Unlike XDG_STATE_HOME, which has a specified fallback to degrade to, LOCALAPPDATA has none: there
+// is nowhere correct to go, so the only honest answer is a loud refusal.
+var errRelativeLocalAppData = errors.New("standalonestate: LOCALAPPDATA must be absolute")
+
+// errMissingStateHome is returned on the non-Windows branch when no usable state home remains after
+// a relative xdgStateHome has been discarded and home turns out to be empty.
+var errMissingStateHome = errors.New("standalonestate: no usable state home: XDG_STATE_HOME is unset or relative and HOME is unset")
+
+// errRelativeHome is returned on the non-Windows branch when the home directory is relative.
+// A relative home is not a spec-defined "ignore me" the way a relative XDG_STATE_HOME is -- it is a
+// broken environment with no remaining fallback, so it is a loud refusal.
+var errRelativeHome = errors.New("standalonestate: home directory must be absolute")
+
+// errRelativeStateDir is the final assertion's error, fired when the composed state directory came
+// out relative even though every input branch above claims to have ruled that out.
+// It exists because a relative stateDir is the one result this package must never hand back: every
+// consumer joins subdirectories onto it and passes those to os.MkdirAll, so a relative value
+// silently resolves against the process working directory -- which in standalone mode is the
+// operator's own repository, making lyx write its state tree and its trace logs inside the very
+// checkout standalonegeom.LogsDir exists to keep them out of.
+var errRelativeStateDir = errors.New("standalonestate: derived state directory is not absolute")
 
 // Derive computes the per-OS state directory and hash8 identifier for target, a directory a
 // standalone CLI session is anchored at.
@@ -49,6 +69,8 @@ func Derive(target string) (stateDir string, hash8 string, err error) {
 // An empty string at this boundary means "unset" -- derive cannot distinguish unset from
 // set-to-empty, which is correct because neither an empty LOCALAPPDATA nor an empty
 // XDG_STATE_HOME is a usable directory.
+// The returned stateDir is always absolute or the call fails: see stateDirFor for the per-base
+// rules and errRelativeStateDir for why a relative one would be the worst possible answer.
 func derive(goos, localAppData, xdgStateHome, home, target string) (stateDir string, hash8 string, err error) {
 	if !filepath.IsAbs(target) {
 		return "", "", fmt.Errorf("%w: %q", errRelativeTarget, target)
@@ -75,18 +97,53 @@ func derive(goos, localAppData, xdgStateHome, home, target string) (stateDir str
 	sum := sha256.Sum256([]byte(hashInput))
 	hash8 = hex.EncodeToString(sum[:])[:8]
 
-	if goos == "windows" {
-		if localAppData == "" {
-			return "", "", errMissingLocalAppData
-		}
-		return filepath.Join(localAppData, "lyx", hash8), hash8, nil
+	stateDir, err = stateDirFor(goos, localAppData, xdgStateHome, home, hash8)
+	if err != nil {
+		return "", "", err
 	}
 
-	if xdgStateHome != "" {
-		return filepath.Join(xdgStateHome, "lyx", hash8), hash8, nil
+	// The absoluteness of every input is already checked in stateDirFor, so this assertion can only
+	// fire on a future branch that forgets to -- which is exactly why it guards the single return
+	// rather than each branch. See errRelativeStateDir for what a relative value would cost.
+	if !filepath.IsAbs(stateDir) {
+		return "", "", fmt.Errorf("%w: %q", errRelativeStateDir, stateDir)
+	}
+	return stateDir, hash8, nil
+}
+
+// stateDirFor holds derive's per-platform choice of state-directory base, split out so derive keeps
+// one place to assert the composed result is absolute rather than one per branch.
+//
+// Every base here comes from the environment, and an environment-supplied base gets exactly the same
+// absoluteness scrutiny target already gets: a relative base composes into a relative stateDir, and
+// derive's consumers resolve that against the process working directory -- the operator's own
+// repository in standalone mode.
+// The three bases answer a relative value differently only because their specifications do.
+func stateDirFor(goos, localAppData, xdgStateHome, home, hash8 string) (string, error) {
+	if goos == "windows" {
+		if localAppData == "" {
+			return "", errMissingLocalAppData
+		}
+		if !filepath.IsAbs(localAppData) {
+			return "", fmt.Errorf("%w: %q", errRelativeLocalAppData, localAppData)
+		}
+		return filepath.Join(localAppData, "lyx", hash8), nil
+	}
+
+	// A relative XDG_STATE_HOME is IGNORED rather than refused, because the XDG Base Directory
+	// specification says exactly that: "If an implementation encounters a relative path in any of
+	// these variables it should consider the path invalid and ignore it." Ignoring it lands on the
+	// specified $HOME/.local/state fallback below, which is both what the spec asks for and the
+	// safer of the two answers -- the alternative, honoring it, is what wrote lyx state into the
+	// operator's repository.
+	if filepath.IsAbs(xdgStateHome) {
+		return filepath.Join(xdgStateHome, "lyx", hash8), nil
 	}
 	if home == "" {
-		return "", "", errMissingStateHome
+		return "", errMissingStateHome
 	}
-	return filepath.Join(home, ".local", "state", "lyx", hash8), hash8, nil
+	if !filepath.IsAbs(home) {
+		return "", fmt.Errorf("%w: %q", errRelativeHome, home)
+	}
+	return filepath.Join(home, ".local", "state", "lyx", hash8), nil
 }
