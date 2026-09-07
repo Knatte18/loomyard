@@ -263,8 +263,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// the exclusion a Delete card's own successful deletion came back as
 	// plan-references-deleted-symbol against the very card that asked for it, and no Delete card
 	// could ever be recorded.
+	// deps.Plan rides along as DetectDrift's fullPlan so gate one can recognize THIS batch's own
+	// declared Rename outcome — the pending view excludes exactly the cards whose renames the
+	// delta reports.
 	pending := planglyph.PendingPlan(deps.Plan, completedCards(deps.Batches, deps.State, batchNumber))
-	driftFindings, err := planglyph.DetectDrift(pending, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
+	driftFindings, err := planglyph.DetectDrift(deps.Plan, pending, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, delta, actualHead, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}

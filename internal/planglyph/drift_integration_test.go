@@ -28,7 +28,7 @@ func TestDetectDrift_ExactTierRenameAutoRepairsAndAmends(t *testing.T) {
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestDetectDrift_RenameMatchingCardPairProducesNoFindingNoAmendment(t *testi
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestDetectDrift_RenamedSymbolNothingReferencesLogsOnlyNoRewrite(t *testing.
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestDetectDrift_DeletedAndStillReferencedProducesBlockingFinding(t *testing
 		Deleted: []quarry.Symbol{{ID: "sub#Gone"}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestDetectDrift_EvidenceTierCandidatesInformationalWithSignals(t *testing.T
 		},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestDetectDrift_EvidenceTierCandidateSuppressesTheDeletedSymbolFinding(t *t
 		},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding(t *testi
 		},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}

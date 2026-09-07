@@ -17,8 +17,11 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// renameCardPairs indexes every declared Rename card's own Old->New pair, plan-wide, so
-// DetectDrift's gate one can recognize a rename that is a card's own expected outcome.
+// renameCardPairs indexes every declared Rename card's own Old->New pair, plan-wide over the FULL
+// plan — completed cards included — so DetectDrift's gate one can recognize a rename that is a
+// card's own expected outcome. The full plan matters: the card whose rename the delta reports is
+// exactly the one record-batch excludes from the pending view, so a pair index built over pending
+// alone could never match the recording batch's own outcome (round fable5-high-r3, F6).
 //
 // The New side is normalized through resolveKeyFor (donecheck.go), because the plan format REQUIRES
 // a symbol Rename pair's New side to be a plan: handle -- the rename-to-not-handle check enforces
@@ -78,9 +81,16 @@ type driftRepair struct {
 //
 // now and sha are taken as parameters rather than read from a clock or a repository inside this
 // function, so the whole detector is deterministic and testable without a fixture.
-func DetectDrift(plan *planparser.Plan, planDir, worktreeRoot string, delta quarry.GitDeltaAnswer, sha, now string) ([]Finding, error) {
-	renamePairs := renameCardPairs(plan)
-	refCards := targetCards(plan)
+//
+// fullPlan and pending split the detector's two questions across the two views a record-batch
+// boundary holds: gate one's "is this rename a declared card's own expected outcome?" reads
+// fullPlan, because the declaring card is typically the very batch being recorded and therefore
+// absent from pending; every reference question — refCards for the repair set and both sweeps —
+// reads pending, DetectDrift's own stated signal (the delta intersected with what the plan still
+// has to do). A caller with no completed cards passes the same *Plan for both.
+func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot string, delta quarry.GitDeltaAnswer, sha, now string) ([]Finding, error) {
+	renamePairs := renameCardPairs(fullPlan)
+	refCards := targetCards(pending)
 
 	var findings []Finding
 	subs := make(map[string]string)
