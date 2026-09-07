@@ -314,6 +314,41 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 	})
 }
 
+// TestWire_RelativeStencilsDirResolvesAgainstCwd is R4-23's direct regression test for this module.
+// --stencils-dir used to be stored verbatim, so a relative value reached the engine unresolved: the
+// CLI process would read it against ITS working directory while the pane burler spawns runs at the
+// target (standalone) or the anchor (hub), so one string named two different directories.
+func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
+	t.Run("HubMode", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+		cwd := t.TempDir()
+
+		c := &burlerCLI{}
+		if err := c.wire(loc, preflight.ModeHub, cwd, filepath.Join("custom", "stencils"), ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
+		}
+	})
+
+	t.Run("StandaloneMode", func(t *testing.T) {
+		target := t.TempDir()
+		setStandaloneStateRoot(t)
+		cwd := t.TempDir()
+
+		c := &burlerCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, cwd, filepath.Join("custom", "stencils"), target); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
+		}
+	})
+}
+
 // readDirNames returns the entry names inside dir, creating no directory of its own.
 func readDirNames(t *testing.T, dir string) ([]string, error) {
 	t.Helper()

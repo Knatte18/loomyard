@@ -268,6 +268,65 @@ func TestWire_PlanDirResolution(t *testing.T) {
 	})
 }
 
+// TestWire_RelativeFlagDirsResolveAgainstCwd is R4-23's direct regression test. --plan-dir and
+// --stencils-dir used to be stored verbatim, so a relative value reached the geometry unresolved: the
+// CLI process would read it against ITS working directory while the pane webster spawns runs at the
+// target (standalone) or the anchor (hub), and standalone's default-vs-override path equality could
+// never match a relative spelling of the default.
+//
+// The standalone row proves both halves at once: it passes the default plan directory spelled
+// RELATIVE to cwd, and asserts both that geom.PlanDir came out at the absolute default and that the
+// run-refusal marker stayed clear -- pre-fix that same call marked the plan as moved and `run`
+// refused to spawn Master over a plan sitting in the default location.
+func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
+	t.Run("HubMode", func(t *testing.T) {
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+		cwd := t.TempDir()
+
+		c := &websterCLI{}
+		if err := c.wire(loc, preflight.ModeHub, cwd, filepath.Join("custom", "stencils"), filepath.Join("custom", "plan"), ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if want := filepath.Join(cwd, "custom", "plan"); c.geom.PlanDir != want {
+			t.Errorf("geom.PlanDir = %q; want the relative --plan-dir resolved against cwd, %q", c.geom.PlanDir, want)
+		}
+		if want := filepath.Join(cwd, "custom", "stencils"); c.geom.StencilsDir != want {
+			t.Errorf("geom.StencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.geom.StencilsDir, want)
+		}
+	})
+
+	t.Run("StandaloneModeRelativeDefaultIsNotAnOverride", func(t *testing.T) {
+		target := t.TempDir()
+		stateHome := t.TempDir()
+		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+		hash8 := hash8For(t, target)
+		defaultPlanDir := filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan")
+		seedStandalonePlanDir(t, defaultPlanDir)
+
+		// cwd is the state home itself, so the default plan directory has a short relative spelling
+		// from it -- exactly the shape an operator types.
+		relativeDefault, err := filepath.Rel(stateHome, defaultPlanDir)
+		if err != nil {
+			t.Fatalf("filepath.Rel(%q, %q) = %v; want nil", stateHome, defaultPlanDir, err)
+		}
+
+		c := &websterCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, stateHome, "", relativeDefault, target); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.geom.PlanDir != defaultPlanDir {
+			t.Errorf("geom.PlanDir = %q; want the relative value resolved against cwd, %q", c.geom.PlanDir, defaultPlanDir)
+		}
+		if c.standalonePlanDirOverridden {
+			t.Error("standalonePlanDirOverridden = true; want false -- a relative spelling of the DEFAULT plan directory has not moved the plan, and run must not refuse to spawn Master over it")
+		}
+	})
+}
+
 // TestWire_TargetDirRefusedInHubMode proves --target-dir is refused in hub mode with an error
 // explaining why, and that the refusal happens before any config is loaded (an empty hub, no
 // module config on disk anywhere, still refuses on the flag alone).

@@ -43,9 +43,16 @@ import (
 // which is why mode carries only two reachable values here.
 //
 // cwd is the already-resolved cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- wire needs it
-// only as standalone's --target-dir default, never to resolve or re-resolve anything itself.
+// as standalone's --target-dir default and as the base every relative flag value is made absolute
+// against, never to resolve or re-resolve anything itself.
 // stencilsDirFlag and targetDirFlag are the two persistent flags' raw, as-parsed values (empty
 // string when the operator did not pass one).
+//
+// Both are made absolute HERE, at the one boundary that still knows which working directory the
+// operator typed them from. A relative value stored verbatim is not a smaller version of an absolute
+// one: this process resolves it against ITS cwd while the pane burler spawns runs at the target
+// (standalone) or the anchor (hub), so one string named two different directories. Every other told
+// path in this codebase is required absolute for exactly that reason.
 //
 // wireStandalone deliberately does not take loc: a standalone session must never read a fictional
 // Location.
@@ -54,16 +61,21 @@ import (
 // by the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) --
 // so a test can drive it directly and stay inside the Test Tier Purity Invariant.
 func (c *burlerCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, targetDirFlag string) error {
+	stencilsDir := resolveToldDir(cwd, stencilsDirFlag)
+
 	if mode == preflight.ModeHub {
-		return c.wireHub(loc, stencilsDirFlag, targetDirFlag)
+		return c.wireHub(loc, stencilsDir, targetDirFlag)
 	}
-	return c.wireStandalone(cwd, stencilsDirFlag, targetDirFlag)
+	return c.wireStandalone(cwd, stencilsDir, targetDirFlag)
 }
 
 // wireHub builds the engine stack for hub mode, reproducing today's PersistentPreRunE body
 // byte-for-byte in resolved values: every module config loaded over the anchor path, hubgeom's
 // geometry builders, and the reed/claude engines wired into a shuttleengine.Runner.
-func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, targetDirFlag string) error {
+//
+// stencilsDirOverride arrives already absolute (or empty), made so by wire -- this function never
+// sees a raw flag value and must never start honouring one.
+func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDirFlag string) error {
 	if targetDirFlag != "" {
 		return fmt.Errorf("burler: --target-dir is not honoured in hub mode: the anchor path is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec")
 	}
@@ -92,8 +104,8 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, targetDirFlag
 	}
 
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
-	if stencilsDirFlag != "" {
-		stencilsDir = stencilsDirFlag
+	if stencilsDirOverride != "" {
+		stencilsDir = stencilsDirOverride
 	}
 
 	reedGeom := hubgeom.ReedGeometry(loc)
@@ -129,7 +141,10 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, targetDirFlag
 // function can log. Its runner is also built via shuttleengine.NewDetachedRunner rather than
 // NewRunner, since standalone's anchor (the derived state directory) is deliberately outside its
 // worktree root (the target), which NewRunner's containment assertion would refuse.
-func (c *burlerCLI) wireStandalone(cwd, stencilsDirFlag, targetDirFlag string) error {
+//
+// stencilsDirOverride arrives already absolute (or empty), made so by wire -- this function never
+// sees a raw flag value and must never start honouring one.
+func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag string) error {
 	target, err := resolveStandaloneTarget(cwd, targetDirFlag)
 	if err != nil {
 		return err
@@ -142,8 +157,8 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirFlag, targetDirFlag string) e
 	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
 
 	var stencilsDir string
-	if stencilsDirFlag != "" {
-		stencilsDir = stencilsDirFlag
+	if stencilsDirOverride != "" {
+		stencilsDir = stencilsDirOverride
 	} else {
 		stencilsDir = standalonegeom.StencilsDir(stateDir)
 		if _, err := stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
@@ -184,8 +199,28 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirFlag, targetDirFlag string) e
 	return nil
 }
 
+// resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty
+// (the operator passed no flag, and each mode computes its own default), an absolute value is
+// cleaned, and a relative one is joined onto cwd.
+//
+// Every path this module hands downstream must be absolute. A relative flag value does not fail, it
+// silently means two different directories: the CLI process resolves it against ITS working
+// directory while the pane burler spawns runs at the standalone target or the hub anchor. Resolving
+// happens once, at the wiring boundary, because that is the last point that still knows which
+// working directory the operator typed the flag from — the same reason resolveStandaloneTarget has
+// always done it for --target-dir.
+func resolveToldDir(cwd, flagValue string) string {
+	if flagValue == "" {
+		return ""
+	}
+	if filepath.IsAbs(flagValue) {
+		return filepath.Clean(flagValue)
+	}
+	return filepath.Join(cwd, flagValue)
+}
+
 // resolveStandaloneTarget resolves standalone mode's --target-dir: cwd when targetDirFlag is empty,
-// or targetDirFlag resolved to an absolute path (relative to cwd) otherwise.
+// or targetDirFlag made absolute against cwd otherwise.
 // The result is always absolute, which is standalonestate.Derive's own precondition, because Derive
 // normalises through EvalSymlinks+Clean and compares case-insensitively on Windows, so two spellings
 // of the same directory must not produce different <state> values.
@@ -193,8 +228,5 @@ func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
 	if targetDirFlag == "" {
 		return cwd, nil
 	}
-	if filepath.IsAbs(targetDirFlag) {
-		return filepath.Clean(targetDirFlag), nil
-	}
-	return filepath.Join(cwd, targetDirFlag), nil
+	return resolveToldDir(cwd, targetDirFlag), nil
 }

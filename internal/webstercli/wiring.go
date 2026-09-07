@@ -56,24 +56,38 @@ import (
 // the honest question instead: does a hub-level directory exist for this write to target.
 //
 // cwd is the already-resolved cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- wire needs it
-// only as standalone's --target-dir default, never to resolve or re-resolve anything itself.
+// as standalone's --target-dir default and as the base every relative flag value is made absolute
+// against, never to resolve or re-resolve anything itself.
 // stencilsDirFlag, planDirFlag, and targetDirFlag are the three persistent flags' raw, as-parsed
 // values (empty string when the operator did not pass one).
+//
+// All three are made absolute HERE, at the one boundary that still knows which working directory the
+// operator typed them from. A relative value stored verbatim is not a smaller version of an absolute
+// one: this process resolves it against ITS cwd while the pane webster spawns runs at the target
+// (standalone) or the anchor (hub), so one string named two different directories, and the
+// standalone default-vs-override comparison below could never match a relative spelling of the
+// default. Every other told path in this codebase is required absolute for exactly that reason.
 //
 // wire performs no cwd resolution and spawns no process -- every path it touches is either supplied by
 // the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) -- so a
 // test can drive it directly and stay inside the Test Tier Purity Invariant.
 func (c *websterCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
+	stencilsDir := resolveToldDir(cwd, stencilsDirFlag)
+	planDir := resolveToldDir(cwd, planDirFlag)
+
 	if mode == preflight.ModeHub {
-		return c.wireHub(loc, stencilsDirFlag, planDirFlag, targetDirFlag)
+		return c.wireHub(loc, stencilsDir, planDir, targetDirFlag)
 	}
-	return c.wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDirFlag)
+	return c.wireStandalone(cwd, stencilsDir, planDir, targetDirFlag)
 }
 
 // wireHub builds the engine stack for hub mode: every module config and the model registry loaded
 // over the anchor path, hubgeom's geometry builders, a real fabricengine.RefScanner, and a lazy
 // fabricengine.Open closure.
-func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
+//
+// stencilsDir and planDir arrive already absolute (or empty), made so by wire -- this function never
+// sees a raw flag value and must never start honouring one.
+func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetDirFlag string) error {
 	if targetDirFlag != "" {
 		return fmt.Errorf("webster: --target-dir is not honoured in hub mode: the worktree is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec")
 	}
@@ -106,11 +120,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag,
 	}
 
 	geom := hubgeom.WebsterGeometry(loc)
-	if stencilsDirFlag != "" {
-		geom.StencilsDir = stencilsDirFlag
+	if stencilsDir != "" {
+		geom.StencilsDir = stencilsDir
 	}
-	if planDirFlag != "" {
-		geom.PlanDir = planDirFlag
+	if planDir != "" {
+		geom.PlanDir = planDir
 	}
 
 	reedGeom := hubgeom.ReedGeometry(loc)
@@ -143,7 +157,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag,
 // websterengine.NeverMatches RefMatcher, a shuttleengine.NewDetachedRunner-constructed runner --
 // standalone's anchor (the derived state directory) is deliberately outside its worktree root (the
 // target), which NewRunner's containment assertion would refuse -- and a nil fabric opener.
-func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
+//
+// stencilsDir and planDir arrive already absolute (or empty), made so by wire -- this function never
+// sees a raw flag value and must never start honouring one, since the default-vs-override comparison
+// below is a path equality and a relative spelling of the default could never satisfy it.
+func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag string) error {
 	target, err := resolveStandaloneTarget(cwd, targetDirFlag)
 	if err != nil {
 		return err
@@ -162,10 +180,10 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 	geom := standalonegeom.WebsterGeometry(target, stateDir)
 	reedGeom := standalonegeom.ReedGeometry(target, stateDir, hash8)
 
-	if stencilsDirFlag != "" {
+	if stencilsDir != "" {
 		// An operator who named a curated stencil set must not have it rewritten from under them --
 		// seed only the standalone DEFAULT, never an explicit override.
-		geom.StencilsDir = stencilsDirFlag
+		geom.StencilsDir = stencilsDir
 	} else if _, err := stencilstore.Reconcile(geom.StencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
 		// Unlike the root pre-run's best-effort, logged-only seed pass, nothing else will ever
 		// create this directory: a reconcile failure here is a hard error, since every prompt render
@@ -173,18 +191,22 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 		return fmt.Errorf("webster: seed the standalone stencils directory %s: %w", geom.StencilsDir, err)
 	}
 
-	if planDirFlag != "" {
+	if planDir != "" {
 		// Record whether the flag actually moved the plan off the standalone default: the run verb
 		// refuses to spawn Master over a moved plan, because Master's own in-pane verb invocations
 		// (status, begin-batch, record-batch — typed from the stencil, flagless) resolve the
 		// DEFAULT plan directory and would wire-refuse against a plan they cannot see (found live
 		// in crucible round fable5-high-r3, F-A3). Every other verb keeps honoring the override —
 		// an operator driving bracket verbs by hand passes the flag on each call.
-		if filepath.Clean(planDirFlag) != filepath.Clean(geom.PlanDir) {
+		//
+		// Both sides of the comparison are absolute and cleaned by construction — planDir by wire's
+		// own resolveToldDir, geom.PlanDir by standalonegeom — so a flag value that names the
+		// default location is recognised as such however the operator spelled it.
+		if planDir != filepath.Clean(geom.PlanDir) {
 			c.standalonePlanDirOverridden = true
 			c.standalonePlanDirDefault = geom.PlanDir
 		}
-		geom.PlanDir = planDirFlag
+		geom.PlanDir = planDir
 	}
 	if !standalonePlanDirHasContent(geom.PlanDir) {
 		return fmt.Errorf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback; pass --plan-dir to point at an authored plan", geom.PlanDir)
@@ -256,17 +278,35 @@ func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttl
 	c.reed = reedEngine
 }
 
+// resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty
+// (the operator passed no flag, and each mode computes its own default), an absolute value is
+// cleaned, and a relative one is joined onto cwd.
+//
+// Every path this module hands downstream must be absolute. A relative flag value does not fail, it
+// silently means two different directories: the CLI process resolves it against ITS working
+// directory while the pane webster spawns runs at the standalone target or the hub anchor, and the
+// standalone default-vs-override check is a path equality a relative spelling can never satisfy.
+// Resolving happens once, at the wiring boundary, because that is the last point that still knows
+// which working directory the operator typed the flag from — the same reason
+// resolveStandaloneTarget has always done it for --target-dir.
+func resolveToldDir(cwd, flagValue string) string {
+	if flagValue == "" {
+		return ""
+	}
+	if filepath.IsAbs(flagValue) {
+		return filepath.Clean(flagValue)
+	}
+	return filepath.Join(cwd, flagValue)
+}
+
 // resolveStandaloneTarget resolves standalone mode's --target-dir: cwd when targetDirFlag is empty,
-// or targetDirFlag resolved to an absolute path (relative to cwd) otherwise. The result is always
-// absolute, which is standalonestate.Derive's own precondition.
+// or targetDirFlag made absolute against cwd otherwise. The result is always absolute, which is
+// standalonestate.Derive's own precondition.
 func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
 	if targetDirFlag == "" {
 		return cwd, nil
 	}
-	if filepath.IsAbs(targetDirFlag) {
-		return filepath.Clean(targetDirFlag), nil
-	}
-	return filepath.Join(cwd, targetDirFlag), nil
+	return resolveToldDir(cwd, targetDirFlag), nil
 }
 
 // standalonePlanDirHasContent reports whether dir exists and contains at least one "*.md" file --
