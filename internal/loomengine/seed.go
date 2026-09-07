@@ -116,3 +116,35 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 	report.OK = len(report.Failures) == 0
 	return report, nil
 }
+
+// VerifySeedOwnership reports an error when the status file at statusPath records a different
+// task's slug than wantSlug — the state a worktree inherits when it is forked (via `lyx fabric
+// add`) from a task worktree whose weft still carries `_lyx/loom/status.json`. Without this guard
+// the driver silently resumed the INHERITED task's run — observed live as a new task failing at
+// the OLD task's Finalize, with the status envelope naming the old slug (crucible round
+// fable5-high-r3, F-B7).
+//
+// A missing file, an empty recorded slug, and a product that does not decode all pass: each is
+// some other check's business (the caller's own missing-file handling, and CheckSeed's coherence
+// rules) — this function answers ownership alone. A read or lock failure is returned as its own
+// error, never converted into a verdict.
+func VerifySeedOwnership(statusPath, statusLockPath, wantSlug string) error {
+	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+		return err
+	}
+	shed, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	if err != nil || !found {
+		return err
+	}
+
+	var product Status
+	if len(shed.Product) > 0 {
+		if uerr := json.Unmarshal(shed.Product, &product); uerr != nil {
+			return nil
+		}
+	}
+	if product.Slug == "" || product.Slug == wantSlug {
+		return nil
+	}
+	return fmt.Errorf("loomengine: status file %s records task %q, not this worktree's own %q — the task state was inherited (fabric add forks the weft, `_lyx` task state included) or copied; reset the inherited `_lyx` task state (loom, discussion, plan, webster) on the weft and re-run, or drive task %q from its own worktree", statusPath, product.Slug, wantSlug, product.Slug)
+}

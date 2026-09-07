@@ -102,6 +102,14 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
+			// An already-present status file must be THIS task's own: `lyx fabric add` run from a
+			// task worktree forks the weft, `_lyx` task state included, and the driver would
+			// otherwise silently resume the inherited task's run under the wrong slug (crucible
+			// round fable5-high-r3, F-B7).
+			if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug); err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
 
 			// Step 3: commit the seed and the provenance record into the fabric, unconditionally on
 			// every invocation -- not gated on this invocation's own writeOrigin. The origin
