@@ -911,11 +911,16 @@ func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 				} else if isPathRef(t) {
 					continue
 				}
+				// The detail names what the entry FAILED to be rather than asserting it is a
+				// symbol: under a glyph-enabled language the rejected shapes are a member glyph,
+				// a plain path, and anything that does not parse as a glyph at all, and calling a
+				// bare extensionless directory "the symbol" sent readers hunting for a symbol
+				// that was never there.
 				findings = append(findings, ValidationError{
 					Check: "prosa-symbol-target",
 					Card:  cardID(c),
 					Detail: fmt.Sprintf(
-						"card %d's Prosa group targets the symbol %q; a Prosa group may only target files or whole packages",
+						"card %d's Prosa group entry %q is not a file or whole-package self glyph; a Prosa group may only target files or whole packages",
 						c.Number, t,
 					),
 				})
