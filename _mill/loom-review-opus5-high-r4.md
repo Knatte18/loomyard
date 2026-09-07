@@ -426,4 +426,60 @@ before I started; recorded here and revisited at teardown.
 
 ### Live scenarios
 
-_(appended as run)_
+Fixture: hub `/home/knatte/Code/lyx-test-HUB`, fresh pair `r4-crash-hub` / `r4-crash-hub-weft`
+created with `lyx fabric add r4-crash-hub` from `glyph-rename-format`.
+Board task `r4-crash-hub` seeded via `lyx board upsert` (extract a `defaultName` helper, add
+`ComposeFarewell`, extend the table-driven test — a three-step task that yields a multi-card,
+glyph-bearing plan carrying a `plan:` handle).
+
+Live-session commands, reported as required:
+
+```
+cd /home/knatte/Code/lyx-test-HUB/r4-crash-hub
+lyx reed status            # socket lyx-lyx-test-HUB-d919e29a, session r4-crash-hub
+lyx reed attach            # (or: tmux -L lyx-lyx-test-HUB-d919e29a attach -t r4-crash-hub)
+lyx loom status
+```
+
+#### Live-0 — the round-3 inherited-task-state guard (`F-B7`) fires as designed — CONFIRMED
+
+The very first `lyx loom run` in the fresh pair refused:
+
+> `loomengine: status file …/_lyx/loom/status.json records task "glyph-rename-format", not this
+> worktree's own "r4-crash-hub" — the task state was inherited (fabric add forks the whole pair,
+> `_lyx` task state included) …`
+
+That is round 3's `F-B7` fix working live on a case it was not itself tested against
+(`fabric add` from a *completed* task worktree rather than a mid-flight one).
+Reset via `git rm -r` of the inherited `_lyx/{loom,discussion,plan,webster}` on the weft plus
+`lyx fabric commit`, after which `lyx loom run` bootstrapped normally.
+
+#### Live-1 (high-yield-focus item 4) — crash during a `Plan-Bouncer` round, on a glyph-bearing plan — **PASS**
+
+| | |
+|---|---|
+| Pre-kill | driver PID `3427135` (`lyx loom drive`) confirmed alive via `pgrep`; `lyx reed status` showed one live agent strand `bouncer-seed:1:8cf3140f` on pane `%8`, pane command `claude`, pane PID `3436369` |
+| Terminal artifact | `.lyx/loom/reviews/plan/` was **empty** — the seed's own output file `round-1-focus.md` did not exist, so the death was unclean, not a race with a finishing process |
+| Kill | `kill -9 3427135`; `pgrep -af "lyx loom drive"` returned nothing afterwards |
+| Agent survived the kill | `tmux … list-panes` still showed `%8 3436369 claude`, and `capture-pane` showed the seed agent mid-turn (`✽ Bunning… (1m 10s)`) |
+| Resume | `lyx loom run` → new driver PID `3437672` |
+| Verdict | **ATTACHED, never respawned.** New driver's trace log: `shuttle: run attached … strandGUID=8cf3140f3e789137b4c39f46a6381b94 sessionID=b6770f62-…`, then `shedadapters: attached to a live bouncer seed run instead of respawning  producer=Plan-Bouncer engine=bouncer round=1`. `lyx reed status` never showed a second bouncer strand. The run then advanced `Plan-Bouncer → stuck` → `Plan-Burler` normally. |
+
+#### Live-2 (high-yield-focus item 4, other half of the perch) — crash during a `Plan-Burler` round — **PASS**
+
+| | |
+|---|---|
+| Pre-kill | driver PID `3437672` alive; live agent strand `burler:1:3e415486` on pane `%9`, pane PID `3438092`, pane command `claude`; the round's persisted `run.json` recorded `outcome: running` with `outputFiles: [round-1-review.md, round-1-fixer-report.md]` |
+| Terminal artifacts | neither `round-1-review.md` nor `round-1-fixer-report.md` existed (`ls` showed only the pre-existing `round-1-focus.md`) — unclean death confirmed |
+| Kill | `kill -9 3437672`; `pgrep` confirmed dead |
+| Resume | `lyx loom run` → new driver PID `3439533` |
+| Verdict | **ATTACHED, never respawned.** `shuttle: run attached … strandGUID=3e415486577852ffc00f0a597e3db356 sessionID=0702f110-…`; `lyx reed status` still showed exactly one burler strand, same GUID, same pane `%9`, same claude PID `3438092`. |
+
+Both halves of the `Bouncer`+`Burler` perch therefore honour `manifest/designs/loom.md`'s
+"attach if live, else respawn — never both" ladder under a real `kill -9`, on a glyph-bearing plan.
+This is the first time item 4 has been driven by any round.
+Note the limit this does **not** cover, and which finding R4-04 records: both of these crashes landed
+in a *spawn-and-wait* window, which is exactly where the probe lives. R4-04's window — a crash
+between the judge's ledger write and its focus write, which routes into `Bouncer.Call`'s clear or
+replay branch instead of its judge branch — was not reachable by wall-clock timing from outside the
+process and remains a code-read finding rather than a live-reproduced one.
