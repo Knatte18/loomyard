@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -83,13 +84,28 @@ type OrchestratorStarter interface {
 }
 
 // removeStrandIfLive removes guid's reed strand when reed still reports it
-// live, otherwise a no-op. A StrandLive error is treated as not-live. A
-// failed removal of a genuinely live strand propagates to prevent double-drive.
+// live, otherwise a no-op, and logs the removal because it kills a real agent
+// process. A failed removal of a genuinely live strand propagates to prevent
+// double-drive, and so does a FAILED liveness probe: a probe that could not
+// answer has not established that the strand is dead, and the reclaim's whole
+// job is to make sure no leftover agent is running beside its replacement.
 func removeStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
 	live, err := StrandLive(reed, guid)
-	if err != nil || !live {
+	if err != nil {
+		// A liveness probe that FAILED is not evidence the strand is dead, and treating it as such
+		// left a leftover agent running while its replacement was spawned beside it — the exact
+		// double-agent this reclaim exists to prevent. reed's own answer is the only thing that can
+		// settle the question, so a probe failure fails the reclaim rather than guessing past it.
+		return fmt.Errorf("websterengine: probe strand %s before respawn: %w", guid, err)
+	}
+	if !live {
 		return nil
 	}
+	// Logged at Info because this teardown kills a real, live agent process — a lifecycle teardown
+	// per CONSTRAINTS.md's Live-Substrate Spawn Observability rule, and the single event an operator
+	// diagnosing a crashed run most needs to see, since without it a resumed run's log shows only
+	// the replacement being started and nothing about the one it stopped.
+	logger.Info("websterengine: stopping a leftover live strand before respawning it", "strandGUID", guid)
 	if _, err := reed.RemoveStrand(guid, false); err != nil {
 		return fmt.Errorf("websterengine: remove kept strand %s before respawn: %w", guid, err)
 	}

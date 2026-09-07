@@ -9,6 +9,7 @@ package websterengine
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -224,10 +225,20 @@ func TestRemoveStrandIfLive(t *testing.T) {
 		}
 	})
 
-	t.Run("a StrandLive error is treated as not-live", func(t *testing.T) {
+	// This case previously pinned the opposite behaviour — a failed probe swallowed as not-live.
+	// The round-4 review (R4-37) overturned it: a probe that could not answer has not established
+	// that the strand is dead, so swallowing it left a leftover agent running while its replacement
+	// was spawned beside it, which is the exact double-agent this reclaim exists to prevent. A run
+	// that refuses to start over an unanswerable reed probe is diagnosable; two Masters committing
+	// to one branch is not.
+	t.Run("a StrandLive error fails the reclaim rather than guessing the strand is dead", func(t *testing.T) {
 		reed := &fakeReed{statusErr: errors.New("reed unreachable")}
-		if err := removeStrandIfLive(reed, "target"); err != nil {
-			t.Fatalf("removeStrandIfLive() error = %v; want nil (a StrandLive error is swallowed as not-live)", err)
+		err := removeStrandIfLive(reed, "target")
+		if err == nil {
+			t.Fatal("removeStrandIfLive() error = nil; want the probe failure surfaced")
+		}
+		if !strings.Contains(err.Error(), "reed unreachable") {
+			t.Errorf("removeStrandIfLive() error = %v; want it to carry the underlying probe failure", err)
 		}
 		if reed.removeCalls != 0 {
 			t.Errorf("RemoveStrand called %d time(s); want 0 when StrandLive itself errored", reed.removeCalls)
