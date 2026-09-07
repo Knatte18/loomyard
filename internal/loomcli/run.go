@@ -103,7 +103,7 @@ Example:
 				return nil
 			}
 			// An already-present status file must be THIS task's own: `lyx fabric add` run from a
-			// task worktree forks the weft, `_lyx` task state included, and the driver would
+			// task worktree forks the whole pair, `_lyx` task state included, and the driver would
 			// otherwise silently resume the inherited task's run under the wrong slug (crucible
 			// round fable5-high-r3, F-B7).
 			if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug); err != nil {
