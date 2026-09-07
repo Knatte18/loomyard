@@ -1,16 +1,16 @@
-# `loom` — independent review + fix (prompt template) — ROUND 3 (glyph-hardening campaign) — TWO MISSIONS
+# `loom` — independent review + fix (prompt template) — ROUND 4 (glyph-hardening campaign) — FINAL SAFETY PASS
 
-> Filled instance of `crucible/review-prompt-template.md` for round 3 of the campaign scoped to the quarry-glyph-plan-alphabet surface (GitHub PR #230). See [../../crucible/README.md](../../crucible/README.md) for the loop, [../../_mill/loom-crucible-orchestrator-kickoff.md](loom-crucible-orchestrator-kickoff.md) for the campaign charter, and [loom-review-HANDOFF.md](loom-review-HANDOFF.md) for the campaign's running state (read the handoff only AFTER you have your own independent findings list — see "Clean-room review constraint" below).
+> Filled instance of `crucible/review-prompt-template.md` for round 4 — the LAST round in this campaign's pre-approved four-round budget — of the campaign scoped to the quarry-glyph-plan-alphabet surface (GitHub PR #230) plus the standalone-webster fix (`#004`) it spun off. See [../../crucible/README.md](../../crucible/README.md) for the loop, [../../_mill/loom-crucible-orchestrator-kickoff.md](loom-crucible-orchestrator-kickoff.md) for the campaign charter, and [loom-review-HANDOFF.md](loom-review-HANDOFF.md) for the campaign's full running state (read the handoff only AFTER you have your own independent findings list — see "Clean-room review constraint" below).
 >
-> **This round has TWO missions, both required, per the operator's explicit instruction — see "Mission" below.** Mission A is new: a `#004` mill task (`standalonegeom-webster-run-and-log-hygiene`), itself a product of this campaign's own round-1 findings (F16/F22), just squash-merged its fix INTO this branch (commit `d7c52df6c`) — and that fix has never been through a crucible round. Mission B continues loom's own glyph-surface hardening from round 2's residual.
+> **This round is explicitly NOT a formality.** Three prior rounds (Opus/high, Sonnet/xhigh, Fable/high) closed 41 findings and independently verified every fix — but round 2 (Sonnet) reported 0 BLOCKING, and Sonnet's own clean result is weaker evidence of convergence than the same result from a more capable model would be, which is exactly why crucible rotates models and puts the strongest one last. Round 3 already found 2 real BLOCKING defects in territory round 2 never drove — which doesn't prove round 2 missed anything WITHIN what it actually tested, but leaves that question genuinely open. **Your job is to find out, adversarially, not to confirm merge-readiness by default.**
 
-You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `loom` module AND the newly-merged webster-standalone-mode fix in the loomyard repo, followed by FIXING what you find.
+You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `loom` module (including the standalone-webster material `#004` merged into this same branch) in the loomyard repo, followed by FIXING what you find.
 Work in the worktree at `/home/knatte/Code/loomyard/wts/crucible-loom-glyph-hardening` (branch `crucible-loom-glyph-hardening`).
 Adjust that path/branch if the task lives elsewhere now.
 
 ## Your two jobs, in order
-1. REVIEW: form your own independent judgment of both missions' scope and correctness.
-   Hunt for bugs by reading the code AND by driving the real substrate (real tmux via `reed`, real interactive `claude` sessions via `shuttle`/`burler`/`webster` — Discussion-Write, Plan-Write, Webster's per-card agent(s), the three review segments' Bouncer-judge + Burler-round agents, AND (Mission A) a real standalone `lyx webster run`) — this is where the defects hide.
+1. REVIEW: form your own independent judgment of the whole surface's correctness — not just the residuals prior rounds named, but a genuine fresh pass over everything, including territory prior rounds already "closed."
+   Hunt for bugs by reading the code AND by driving the real substrate (real tmux via `reed`, real interactive `claude` sessions via `shuttle`/`burler`/`webster`).
 2. FIX: after you have a findings list, implement the fixes one at a time, verify each against the real substrate, keep the whole test suite green, and update the docs in the same change as the fix they document.
    COMMIT after each individual fix lands green (see "Commit per fix" below).
    Do NOT push unless the user explicitly tells you to.
@@ -18,161 +18,118 @@ Adjust that path/branch if the task lives elsewhere now.
 ## Commit per fix (BLOCKING — do not batch fixes into one uncommitted diff)
 As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the live smoke/suite check if the finding needed one),
 and its doc update (if any) is included, COMMIT it — on the current branch, no push — before starting the next finding.
-Commit message format: `loom: fix <finding-id> — <one-line what/why>` (use a `standalonegeom:`/`shuttleengine:` prefix instead of `loom:` for a Mission-A-only finding, so the commit log itself distinguishes the two missions).
-Also commit `_mill/loom-review-<yourtag>.md` and `_mill/loom-review-<yourtag>-fixer-report.md` as you write or update them — they are NOT gitignored scratch, they are the campaign's durable record.
+Commit message format: `loom: fix <finding-id> — <one-line what/why>`.
+Also commit `_mill/loom-review-<yourtag>.md` and `_mill/loom-review-<yourtag>-fixer-report.md` as you write or update them.
 
 ## Sequencing rule (BLOCKING — do not skip, do not interleave)
 Job 1 must be COMPLETE — and its full review report SAVED to `_mill/loom-review-<yourtag>.md` and committed — before you touch (edit, create, or delete) a single production or test file.
 Do not fix findings as you go, even ones that look small and obviously right.
-If you catch yourself wanting to patch something the moment you spot it: don't. Write it down as a finding, keep reading, finish the review, save the file, THEN start Job 2.
 
 ## Log as you go during Job 1 (BLOCKING — crash-resilience, do not batch it all to the end)
-As you work through "What to TEST" below — each hermetic command, each live-smoke run, each live-driving scenario — APPEND your observations to `_mill/loom-review-<yourtag>.md`'s "What was tested" section immediately after each command/scenario returns.
-Jot each finding into the file's findings section provisionally as you spot it.
-**COMMIT each append**, not just write it to disk — a small, frequent commit (`loom: review notes — <what you just appended>`) after each meaningful append.
-This round has TWO real-LLM live-driving activities (Mission A's standalone run, Mission B's hub-mode work if you attempt the Rename gap) — either can take tens of real minutes, so incremental commits matter as much as ever.
+As you work through "What to TEST" below, APPEND your observations to `_mill/loom-review-<yourtag>.md`'s "What was tested" section immediately after each command/scenario returns, and jot findings provisionally as you spot them.
+**COMMIT each append.** This round has SEVERAL real-LLM live-driving scenarios (see "High-yield focus" below) — incremental commits matter as much as ever.
 
 ## Clean-room review constraint (do this part unprimed)
 Form your OWN findings first.
-Do NOT read any prior review or review-dialogue files before you have your own list — specifically do not open anything under `_mill/` matching `loom-review-*` in THIS worktree, including rounds 1/2's own review/fixer reports AND this campaign's running `loom-review-HANDOFF.md`. This is a FILENAME PATTERN, not a content judgment — the handoff note is the orchestrator's own private state, not a review, but it matches the pattern and is exactly as off-limits until you have your own list.
-AFTER you have your own independent findings, you MAY (and should) consult rounds 1/2's material and the handoff — see "What to read" below — to (a) confirm rounds 1/2's 27 fixes have not regressed and (b) understand the `#004` mill task's own history (its own plan/discussion/review artifacts, recovered from git history — see below).
+Do NOT read any prior review or review-dialogue files before you have your own list — specifically do not open anything under `_mill/` matching `loom-review-*` in THIS worktree, including all three prior rounds' review/fixer reports AND this campaign's running `loom-review-HANDOFF.md`. This is a FILENAME PATTERN, not a content judgment.
+AFTER you have your own independent findings, you MAY (and should) consult the prior rounds' material and the handoff to (a) confirm the 41 prior fixes have not regressed and (b) understand this round's specific mission below.
 Reading the design SPEC and the module docs is expected and required (those are not reviews).
 
 ## What to read
-
-**Mission A — the newly-merged fix (`d7c52df6c`), never reviewed by crucible:**
-- The full diff: `git show d7c52df6c` (18 files, 879 insertions). Key files: `internal/shuttleengine/run.go` (new `NewDetachedRunner` — a runner whose anchor is deliberately outside its worktree root, constructed ONLY from standalone CLI wiring; `NewRunner`'s own containment assertion, which FOUR other callers — `burlercli`, `webstercli`, `shuttlecli`, `loomcli` — rely on for safety, is claimed unchanged), `internal/shuttleengine/wait.go`, `internal/standalonegeom/logsdir.go` (new — `LogsDir`, the sole declarer of standalone's trace-log directory, the F22 fix), `internal/standalonegeom/doc.go`, `internal/webstercli/wiring.go`, `internal/burlercli/wiring.go`, `internal/logger/sink.go`.
-- `CONSTRAINTS.md`'s new invariant line (under Hub Containment Invariant, roughly): "A `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`, only from a standalone CLI's own wiring, and `NewRunner`'s containment assertion is never relaxed to accommodate it." Verify this claim against the actual diff — is `NewRunner` truly untouched for the hub-mode path, or does the fix's plumbing introduce any shared code between the two constructors that could regress hub-mode safety?
-- The `#004` task's own history, recovered from git (this crucible branch's own log, since the task's worktree may be gone): `git log --oneline --all | grep -i standalonegeom` finds its plan/discussion/review-round commits (`mill-plan: planned for standalonegeom-webster-run-and-log-hygiene`, `mill-go: holistic approve standalonegeom-webster-run-and-log-hygiene`, etc.) — read a few for context on what the task's own plan/review process already checked, so you don't waste time re-deriving what it already covered, but still form your OWN adversarial judgment of the SHIPPED code — a mill task's own review is not a crucible round and doesn't carry the same bar.
-- Round 1's own investigation of F16/F22 (`_mill/loom-review-opus5-high-r1.md`, findings F16/F22) — this campaign's own orchestrator did real research into why F16 specifically crosses a module boundary (four `NewRunner` callers) before deciding it warranted its own task; read that reasoning so you understand what the fix needed to solve.
-
-**Mission B — loom's own glyph-surface hardening, continuing from round 2:**
 - Code — loom's own machinery: `internal/loomengine/**`, `internal/loomcli/**`, `internal/loomrecipe/**`, `internal/loomshed/**`, `internal/shedengine/**`, `internal/shedadapters/**`, `internal/shedrecipe/**`, `internal/shedbuild/**`, `internal/hubgeom/**`, `contracts/recipes/loom-recipe.yaml`, `cmd/lyx`'s loom integration.
-- The glyph surface: `internal/planparser/**`, `internal/planglyph/**` (rounds 1+2 changed `handle.go`, `drift.go`, `planglyph.go`, `create.go`, `containment.go`, `scope.go`, `doc.go`, `validate.go` — read CURRENT state), `internal/websterengine/beginbatch.go`/`recordbatch.go`/`fingerprint.go`.
-- Docs: `manifest/designs/quarry-glyph-plan-alphabet.md`, `manifest/designs/loom.md`, `contracts/specs/loom-plan-spec.md` (rounds 1+2 corrected multiple examples and added the same-plan-Rename constraint), `contracts/stencils/loom/loom-template-plan.md`, `contracts/stencils/loom/loom-rubric-plan-review.md` (round 2 corrected stale counts + terminology), `contracts/stencils/webster/webster-template-master.md` (round 2 added the plan-drift-refusal section), `manifest/designs/webster-parallel-execution.md`, `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
-- Round 1/2's own material (read AFTER your own findings list): `_mill/loom-review-opus5-high-r1.md`/`-fixer-report.md`, `_mill/loom-review-sonnet5-xhigh-r2.md`/`-fixer-report.md`, `_mill/loom-review-HANDOFF.md` (the orchestrator's independent-verification record for both rounds, plus the real-PR/real-hub verification for round 2 — read this to see exactly what a real hub-mode run already proved, and what remains open: a Rename card executing through a real Webster batch, `Finalize`, `DetectDrift`'s exact-tier auto-repair via a real fork).
+- The glyph surface: `internal/planparser/**`, `internal/planglyph/**` (three rounds of fixes now — read the CURRENT state, not any prior round's description of it), `internal/websterengine/**` (`beginbatch.go`, `recordbatch.go`, `fingerprint.go`, `render.go`, `runlevel.go` all changed across rounds).
+- The standalone-webster material (`#004`, hardened further by round 3): `internal/shuttleengine/run.go` (`NewRunner`/`NewDetachedRunner`), `internal/standalonegeom/**`, `internal/webstercli/**`, `internal/burlercli/**`, `internal/logger/sink.go`.
+- Docs: `manifest/designs/quarry-glyph-plan-alphabet.md`, `manifest/designs/loom.md`, `contracts/specs/loom-plan-spec.md`, `contracts/stencils/loom/**`, `contracts/stencils/webster/webster-template-master.md`, `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
+- All three prior rounds' material (read AFTER your own findings list): `_mill/loom-review-opus5-high-r1.md`/`-fixer-report.md`, `_mill/loom-review-sonnet5-xhigh-r2.md`/`-fixer-report.md`, `_mill/loom-review-fable5-high-r3.md`/`-fixer-report.md`, `_mill/loom-review-HANDOFF.md` (the full campaign record — read this closely, it names exactly what remains genuinely untested: `DetectDrift`'s exact-tier auto-repair live through a real fork, a real hub-mode crash-kill test, and round 2's own hub-mode territory never having had an adversarial second look).
+- Repo rules: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md` in full — by now you've touched most of the relevant invariants across three rounds' worth of fixes; read the whole file once fresh rather than assuming you remember which ones apply.
 
-- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md` — in particular Cwd Resolution, Told-Geometry, Hub Containment, Fabric Git, Review Round, Shed Recipe Registry, Lyxdirs Single-Declarer, Test Tier Purity, Config Strictness, Planparser Sole-Parser, Glyph Conversion Chokepoint, Quarry CGO Requirement, and Documentation Lifecycle invariants — plus the new invariant line `d7c52df6c` added.
-  **Quarry CGO Requirement Invariant**: every build/test/deploy command needs `CGO_ENABLED=1` and a C compiler on `PATH` — already the default on this dev machine.
+## Mission (be genuinely adversarial — this is the last round)
 
-## Mission (assess on two axes, be adversarial, for BOTH missions)
+Two axes, applied to the WHOLE surface, not just what's changed since round 3:
 
-**Mission A — the newly-merged standalone-mode fix.** Scope: does `NewDetachedRunner` actually solve F16 (standalone `lyx webster run` can start Master) and does `LogsDir` actually solve F22 (no untracked `.lyx/logs/` in the target repo) without weakening `NewRunner`'s shared containment safety for hub-mode callers? Correctness: this is UNREVIEWED code from a different task's own pipeline — read it as skeptically as you would a stranger's PR, not as "already checked, just confirm."
+1. **Scope/integration** — does everything actually work as designed, end to end, under conditions no prior round has tried?
+2. **Correctness** — bugs, races, error handling, edge cases — including in code three prior rounds already "fixed." A fix that passed sabotage-proofing is proven correct for the SPECIFIC scenario it was tested against; it is not proven correct in general. Read fixed code as skeptically as new code.
 
-**Mission B — loom's glyph integration.** Scope: rounds 1+2 closed 27 findings and proved a real hub-mode `lyx loom run` carries a glyph-bearing, `Plan-Write`-authored plan cleanly through `Webster-Review`. Correctness: this round is a genuine safety pass — find what two prior rounds, across two different models, both missed — PLUS an attempt to close the one interesting remaining live gap: a declared `Rename` card actually executing through a real Webster batch (never yet observed live; round 2's real planner avoided it because the specific task given couldn't be expressed that way).
+## High-yield focus — what genuinely remains untested after three rounds
 
-## High-yield focus
-
-### Mission A — drive the real standalone webster run
-
-- **Set up a plain git repo with real Go source** (not a fabric hub — that's the whole point of standalone mode) and run `lyx webster run --target-dir <repo> --plan-dir <plan>` for real. Confirm Master actually starts now (round 1 observed the pre-fix refusal: `"shuttle: NewRunner was told an anchor path ... outside its worktree root ..."`). This is a REAL LLM session — budget for it like any other (see cost declaration below).
-- Confirm F22's fix live: after a `begin-batch`/`record-batch` cycle in standalone mode, `git status` in the target repo should show `.lyx/logs/trace-*.log` as excluded (not untracked) — read `LogsDir`'s own mechanism (likely a `.git/info/exclude` seed, mirroring hub mode's `fabricengine` approach) and confirm it's actually invoked at the right point.
-- **Confirm hub mode is genuinely unaffected.** Round 1's own investigation found `NewRunner`'s containment check has FOUR callers; this fix's job was to leave that check untouched for all of them. Re-run loom's own hub-mode smoke tests (see "What to TEST") and, if time allows, a quick hub-mode `lyx loom run` sanity check (does not need to carry a glyph scenario — just confirm nothing about Master-spawning broke for the path loom itself uses).
-- Look for edge cases the mill task's own review might have missed: what happens if `--target-dir` IS a hub worktree (misuse, not the documented use case) — does `NewDetachedRunner` do something surprising, or does earlier validation correctly reject it? What if `LogsDir`'s exclude-seeding races with a concurrent standalone invocation on the same target repo?
-
-### Mission B — close what round 2 left open, then hunt for anything new
-
-- **A declared `Rename` card executing through a real Webster batch.** Seed a live task where the board/discussion task explicitly gives `Plan-Write` a symbol that ALREADY EXISTS to rename (branch the sandbox hub off a state where the symbol is already present, e.g. build on round 2's own `glyph-demo-greet` result if the sandbox hub still has it, or seed a fresh repo with the target symbol already committed) — round 2's own gap was specifically that its planner had nothing pre-existing to rename. Confirm live: the `Rename` card's `plan:` handle to-side canonicalizes and binds correctly (round 1 proved this in the standalone rig; this closes the real-orchestrator gap), gate one in `DetectDrift` correctly recognizes the card's own outcome as not-drift (F2's fix, live through a real Webster batch for the first time).
-- Independently re-verify rounds 1+2's fixes have not regressed under this round's own live driving (you don't need to re-prove each one from scratch — the handoff has the evidence — but flag immediately if your live driving happens to show one behaving wrong).
-- General adversarial sweep: anything in `manifest/designs/loom.md` or the stencils that still doesn't match what you observe; anything a THIRD independent model/pass might catch that two prior ones (Opus, Sonnet) didn't.
+- **1. A genuinely skeptical re-look at round 2's own territory.** Round 2 (Sonnet) drove a real hub-mode `lyx loom run` through Discussion-Write, Plan-Write, Plan-Review, Webster, Webster-Review with 0 BLOCKING findings. No round since has gone back and read THOSE code paths (handle canonicalization as `Plan-Write`/`Plan-Validate`/`Plan-Revalidate` actually exercise it end-to-end, `Plan-Review`'s rubric and judge behavior, `Webster-Review`'s own per-card mechanical checks) with fresh, adversarial eyes the way round 3 did for `#004`'s supposedly-already-reviewed fix. Do that here. Don't re-run round 2's exact scenario — read the code paths it exercised and hunt for what a less thorough pass might have missed.
+- **2. `DetectDrift`'s exact-tier auto-repair path, live, through a real Webster fork.** Proven only at round 1's standalone-rig level (a hand-simulated out-of-band rename). No round has yet driven a REAL Webster fork that performs a symbol rename mid-plan (not as its own card's declared outcome, but as an incidental/out-of-band change during its turn) and watched `DetectDrift` auto-repair the rest of the plan live, through the real orchestrator. Seed a real hub-mode task where one card's fork is naturally likely to touch a symbol another pending card references, and observe.
+- **3. A real hub-mode crash-kill test.** Round 3's crash-resilience proof (`kill -9` mid-batch, confirmed no wedge on resume) was standalone-mode only. Do the equivalent in HUB mode: a real `lyx loom run`, kill the driver process (and/or the tmux session hosting a live Master/fork) mid-Webster-batch on a glyph-bearing plan, confirm resume via `lyx loom run` continues cleanly rather than wedging. This directly extends the operator's own crash-resilience concern from round 3 into the mode loom itself actually uses.
+- **4. A crash during a review segment (Bouncer/Burler round) on a glyph-bearing plan.** Never tested by any round. Kill the driver while a `Plan-Bouncer`/`Plan-Burler` or `Webster-Bouncer`/`Webster-Burler` round is live, confirm resume re-attaches or correctly respawns per `loom.md`'s documented crash-recovery ladder ("attach if live, else respawn — never both").
+- **5. General adversarial sweep.** Anything a fourth pass across a third model and two effort tiers turns up that Opus(high)/Sonnet(xhigh)/Fable(high) didn't. Don't force new findings if there genuinely are none past the above — an honest "no new defects, ship it" is a valid and valuable outcome of a safety pass (see the campaign README's own guidance on this) — but earn that conclusion by actually trying the above, not by skipping to it.
 
 ## Explicitly OUT of scope for this round
-- **`internal/planglyph`'s and `internal/planparser`'s own internal correctness** beyond how loom's rows and Webster's begin-batch/record-batch use them (Mission B) — unchanged from prior rounds' framing.
-- **`internal/shuttleengine`'s pre-existing code beyond what `d7c52df6c` changed** (Mission A) — review the NEW fix adversarially, not a full re-audit of shuttleengine's entire pre-existing surface (that's a different campaign's job if ever warranted).
+- Windows path behavior — unreachable from this Linux host across all four rounds; do not reason about it as if driven.
 - `quarry`'s own resolve/delta engine correctness — treat its answers as ground truth.
-- Loom's general pipeline mechanics from the two PRE-glyph crucible campaigns (bootstrap, crash/resume, the review segments' generic round loop, Publish/Finalize) — don't re-verify from scratch.
-- `Plan-Sweep` — does not exist, not needed.
-- Windows path behavior — unreachable from this Linux host.
+- Loom's general pre-glyph pipeline mechanics from the two PRE-glyph crucible campaigns — don't re-verify from scratch; DO flag if your live driving happens to expose a regression.
+- Full `--plan-dir` override propagation into Master's in-pane verbs (standalone mode) and `lyx reed` standalone support — both explicitly deferred by round 3 as their own future module tasks, not this campaign's job to build. Flag only if genuinely broken beyond what's already recorded, don't attempt to build the deferred feature.
+- `burlercli`'s standalone reed bring-up — wired but not live-verified by round 3 (no standalone burler scenario was in its scope); fair game for this round if you want a fifth live scenario, but not required.
 - Any new feature or roadmap work.
-
-**Corrected from prior rounds' seeds: F16/F22 are NO LONGER "permanently out of loom's scope."** Rounds 1/2 said this because the fix hadn't landed yet and lived on a code path loom itself never takes. It has now landed in THIS branch (Mission A, above) — it is squarely in scope for this round, precisely because this branch is what merges to `main` next and everything in it needs this campaign's bar applied before that happens.
 
 ## Round context seeded from prior-round verification
 
-**Rounds 1 (opus-high-r1) and 2 (sonnet-xhigh-r2) are BOTH CLOSED-AND-VERIFIED** — independently confirmed by this orchestrator, not self-reported. Full detail and verification evidence: `_mill/loom-review-HANDOFF.md`.
+**Rounds 1 (opus-high-r1), 2 (sonnet-xhigh-r2), and 3 (fable-high-r3) are ALL CLOSED-AND-VERIFIED** — independently confirmed by this orchestrator, not self-reported. Full detail and verification evidence: `_mill/loom-review-HANDOFF.md`.
 
-**Round 1:** 22 findings (13 BLOCKING), 20 fixed. Root cause: no multi-batch plan with a `Create`/`Delete`/`Rename` card could complete through Webster (whole-plan re-resolution against the post-change tree). Fixed via a scoped dispatch-boundary change (`ValidateDispatch`/`PendingPlan`). 9/9 sabotage-proofs independently passed.
+- **Round 1:** 22 findings (13 BLOCKING), 20 fixed. Root cause: whole-plan re-resolution against the post-change tree wedged every multi-batch plan with a Create/Delete/Rename card. 9/9 sabotage-proofs passed.
+- **Round 2:** 7 findings (0 BLOCKING), all fixed. Proved a real hub-mode `lyx loom run` carries a glyph-bearing, `Plan-Write`-authored plan cleanly through `Webster-Review`. 2/2 sabotage-proofs passed. **This is the territory High-yield-focus item 1 above asks you to re-examine adversarially.**
+- **Round 3 (two missions):** 12 findings (5 BLOCKING), all fixed. Closed the Rename-through-Webster gap live to `Finalize → done`; found and fixed 3 more layers of the standalone-webster fix (`#004`) that its own separate mill-go review missed; proved genuine crash resilience via a real `kill -9` mid-standalone-batch. 10/10 sabotage-proofs passed, including an independently-constructed crash test stronger than the round's own proof.
 
-**Round 2:** 7 findings (0 BLOCKING), all fixed. Proved a real hub-mode `lyx loom run`, real LLM sessions, a `Plan-Write`-authored glyph-bearing plan, carries cleanly through `Webster-Review` — independently confirmed genuine via the actual GitHub PR and actual git commits in the sandbox hub, not just narrative. 2/2 sabotage-proofs passed.
+**RESIDUAL — this round's actual mission, see "High-yield focus" above:** items 1–4 are the specific untested territory; item 5 is the open-ended adversarial floor.
 
-**`#004` (a separate mill task, this campaign's own spinoff from F16/F22):** completed its own mill flow, squash-merged to THIS branch as `d7c52df6c` — see "Mission A" above. This is NEW, UNREVIEWED-BY-CRUCIBLE material this round must cover.
+State the **merge bar**: correctness in the NORMAL single-instance flow, across every scenario above, is the gate. Do not chase artificial concurrency stress.
 
-**RESIDUAL — this round's actual mission, both required:**
-1. Mission A: adversarial review + live verification of `d7c52df6c` (F16/F22's fix).
-2. Mission B: safety pass over loom's glyph surface + attempt to close the live Rename-through-Webster gap.
+## Live-substrate cost declaration (loom IS an LLM-driving module)
 
-State the **merge bar**: correctness in the NORMAL single-instance flow for BOTH missions — Mission A's fix genuinely working live without regressing hub-mode safety, Mission B's glyph surface holding under a third independent pass — is the gate. Do not chase artificial concurrency stress.
+**`LLM-DRIVING: yes.`** This round likely needs MULTIPLE real live-driving scenarios (items 1–4 above) — budget generously; this is the last round in the pre-approved rotation, so thoroughness here matters more than in any prior round.
 
-## Live-substrate cost declaration (loom IS an LLM-driving module; so is Mission A's standalone webster run)
-
-**`LLM-DRIVING: yes`, for BOTH missions.** Read this whole section before running anything.
-
-**Mission A's standalone run.** A real standalone `lyx webster run` spawns Master exactly like hub mode does — one real `claude` subprocess for Master, plus one per fork per batch, strictly sequential (same shipped defaults as hub mode — no cluster-fan). Budget similarly: real wall-clock minutes per session, 15-30 min for a small demo task through a couple of batches.
-
-**Mission B's hub-mode run (only if you attempt the Rename gap).** Same shape as round 2's: roughly one real session at a time, 4-8 sessions in series for a full pipeline pass, 20-45 min. If the sandbox hub from round 2 (`/home/knatte/Code/lyx-test-HUB`) still exists in a reusable state, building on it (rather than a fresh clone) may save setup time — check first.
-
-- **Run at most one full-pipeline attempt at a time, per mission**, foreground, waited on to completion. Never start two live runs concurrently, even across missions.
-- **Check your PATH's `lyx` before either mission's live driving** — round 2 found the installed binaries stale; confirm `which lyx`/`lyx --version` reflects current HEAD (`d7c52df6c`) before trusting any live result; re-deploy/reinstall if not.
+- Each real hub-mode or standalone `lyx loom run`/`lyx webster run` spawns roughly one real `claude` subprocess at a time, strictly sequential (no cluster-fan configured anywhere in this campaign's scope) — 4–8 real sessions in series per full pipeline pass, 20–45 real minutes.
+- **Check your PATH's `lyx` before ANY live driving** — prior rounds repeatedly found stale installed binaries; confirm `which lyx`/`lyx --version` reflects current HEAD, redeploy (`CGO_ENABLED=1 go run ./tools/deploy`) if not.
+- **Run at most one full-pipeline attempt at a time**, foreground, waited on to completion. Never start two live runs concurrently.
+- For the crash-kill scenarios (items 3–4): use a REAL `kill -9`, not a graceful stop, and confirm via `pgrep`/process inspection that the target was genuinely alive before the kill and genuinely dead after — a kill that races a process already finishing proves nothing. Confirm the absence of the run's own terminal artifact (e.g. `outcome.yaml`, a completion marker) as evidence the death was unclean, exactly as round 3's own verification did.
 - **Report the exact `lyx reed status`/`lyx reed attach` commands every time you start a live run.**
 
-**Named smoke tests.** All of these function names begin with the substring `Smoke` — a bare `-run Smoke` pattern matches every single one of them simultaneously and is BANNED, full stop. Always name the exact one test function you mean to run.
+**Named smoke tests.** Bare `-run Smoke` is BANNED. See prior rounds' seeds (recoverable from git history, e.g. `git show fa6f18167:_mill/loom-review-prompt.md`) for the full named-test list if you want to run any hermetic smoke tests; check each one's own subprocess cost before running regardless.
 
-`internal/loomcli/smoke_test.go` — 0 real subprocesses (providerless shuttle config):
-`TestSmokeBootstrap_BringsUpSessionStrandAndDriver`, `TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver`, `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed`, `TestSmokeDriveStandalone_RefusesOnNeverSeededPair`, `TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog`, `TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove`, `TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit`, `TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit`, `TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver`, `TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy`.
+**EXECUTION BAN**: `internal/burlerengine/smoke_cluster_test.go`'s cluster-fan tests — 2 real subprocesses each, no cluster-fan configured anywhere in this campaign's scope.
 
-`internal/loomcli/smoke_attachprobe_test.go`: `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning` — 0 real subprocesses.
-
-`internal/burlerengine/smoke_round_test.go`: `TestSmokeBurlerRoundToyFixture` — 1 real subprocess.
-
-Check `internal/webstercli/*smoke*.go` and `internal/shuttleengine/*smoke*.go`/`internal/burlercli/*smoke*.go` for any smoke test `d7c52df6c` may have added (it touched `webstercli`/`burlercli`/`shuttleengine`) — name each exactly, check its own subprocess cost before running, same discipline as above.
-
-**EXECUTION BAN**: `internal/burlerengine/smoke_cluster_test.go`'s `TestSmokeBurlerClusterCleanFan`/`TestSmokeBurlerClusterRogueFork` — 2 real subprocesses each, no cluster-fan configured anywhere in this campaign's scope. Reason: simultaneous real provider sessions exhaust the host's RAM.
-
-- Never run more than one live-substrate (`-tags smoke`) invocation at a time, in parallel, or backgrounded.
-- **The generic "N× CONCURRENT full smoke suites" gate does NOT apply to loom or to standalone webster, full stop.**
+- Never run more than one live-substrate invocation at a time, in parallel, or backgrounded.
+- **The generic "N× CONCURRENT full smoke suites" gate does NOT apply, full stop.**
 
 ## What to TEST — do not just read, EXERCISE it
 
-Hermetic (must stay green throughout) — NOTE the expanded package set for Mission A:
+Hermetic (must stay green throughout):
 - `CGO_ENABLED=1 go build ./...`
 - `CGO_ENABLED=1 go vet ./internal/loomengine/... ./internal/loomcli/... ./internal/loomrecipe/... ./internal/loomshed/... ./internal/shedengine/... ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/shedbuild/... ./internal/hubgeom/... ./internal/planparser/... ./internal/planglyph/... ./internal/shuttleengine/... ./internal/standalonegeom/... ./internal/webstercli/... ./internal/burlercli/... ./internal/logger/...`
-- `CGO_ENABLED=1 go test -count=5` over the same package sets + `./cmd/lyx/...`
+- `CGO_ENABLED=1 go test -count=5` over the same set + `./cmd/lyx/...`
 - `CGO_ENABLED=1 go test -tags integration ./internal/planglyph/... ./internal/planparser/... ./internal/websterengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/webstercli/... ./internal/burlercli/...`
 - `CGO_ENABLED=1 go test ./...` (whole repo)
 
-Live smoke — name the exact ONE test function each time (see cost declaration above for the full list).
+Live driving — YOU drive it directly, for every high-yield-focus scenario you attempt:
+- Deploy: `CGO_ENABLED=1 go run ./tools/deploy` before every source change you want live-reflected; confirm PATH agreement.
+- Set up whatever real hub/standalone fixtures each scenario needs (the sandbox hub from rounds 2/3, `/home/knatte/Code/lyx-test-HUB`, may still exist in a reusable state — check first, but a fresh fixture is also fine).
+- **Report exact `lyx reed status`/`lyx reed attach` commands every time you start a session.**
+- "Headless" means "no human required" — NOT "no time/token cost to you." Forbidden reasons to skip a scenario: "operator-assisted", "cost-bearing", "long-running", "impractical".
 
-Live driving — YOU drive it directly, for BOTH missions:
-- Deploy the current source: `CGO_ENABLED=1 go run ./tools/deploy` (installs to `go env GOBIN`) before EVERY source change you want reflected in a live run, and confirm both PATH-resolvable `lyx` locations agree (round 2's own fix for the stale-binary hazard).
-- Mission A: a plain git repo with real Go source, `lyx webster run --target-dir <repo> --plan-dir <plan>` directly (no hub, no fabric — that's the point).
-- Mission B (if attempting the Rename gap): a real fabric hub with a pre-existing symbol to rename.
-- **Report the exact `lyx reed status`/`lyx reed attach` commands to connect to whatever session you start, every time you start one.**
-- "Headless" means "no human required" — NOT "no time/token cost to you." Forbidden reasons to skip: "operator-assisted", "cost-bearing", "long-running", "impractical".
-
-TEARDOWN DISCIPLINE (critical): if you start any substrate server/session, tear it down. At the end, confirm ZERO stray substrate processes (`ps aux | grep -iE 'tmux|lyx|claude'`, scoped to what YOU started, for BOTH missions' substrate). Leave no stray state. Be honest about what you could NOT verify and why.
+TEARDOWN DISCIPLINE (critical): confirm ZERO stray substrate processes at the end of every scenario and again at the very end (`ps aux | grep -iE 'tmux|lyx|claude'`, scoped to what YOU started). Be honest about what you could NOT verify and why.
 
 ## How to judge each finding
-For each code finding give: `file:line`, a concrete failure scenario (inputs/state → wrong behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED (reproduced/traced) vs PLAUSIBLE (looks wrong, unverified). Tag each finding with its mission (A or B) in its heading. For scope: design-intent vs shipped; flag deferred-that-should-be-fixed and shipped-beyond-scope.
-
-**Severity affects how you REPORT a finding, not whether you fix it.** ALL findings get fixed in Job 2, including every NIT. The only legitimate reason to leave a finding unfixed is that fixing it genuinely requires something you cannot do alone this round (an operator decision, a second real TTY) — say so explicitly in the fixer report's deferred section. A finding whose fix is genuinely LARGE (a subsystem addition, a cross-cutting refactor) gets marked NOT-FIXED-THIS-ROUND instead — record it fully, the orchestrator spins it into its own mill-wiki task afterward, exactly as happened for F16/F22 themselves.
+`file:line`, concrete failure scenario, severity (BLOCKING/MEDIUM/LOW/NIT), suggested fix, CONFIRMED vs PLAUSIBLE. Severity affects reporting, not whether you fix it — fix everything, all severities, including NIT. A genuinely LARGE fix gets marked NOT-FIXED-THIS-ROUND with full reasoning; the orchestrator spins it into its own mill-wiki task.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None open. F16/F22 are resolved by `d7c52df6c` (Mission A verifies this, doesn't re-litigate whether they should be fixed). Round 2's "Rename through a real Webster batch" gap is Mission B's own residual, not a deferred item to merely re-evaluate — actively attempt to close it.
+None requiring re-evaluation as "still open questions" — everything round 3 deferred is a deliberate, recorded future-task deferral (see "Explicitly OUT of scope" above), not an unresolved item this round needs to revisit.
 
 ## Fixing — after the review
-- Fix EVERY finding from your review, all severities including NIT, for BOTH missions.
-- Load the code-quality guidance (`/code-quality` skill) AND `mill:golang-build`/`mill:golang-testing`/`mill:golang-comments` before editing.
-- Prefer surgical edits; match existing style and the file-level doc-comment convention (note: Mission A's files belong to a different task's own style history — match THEIR conventions, not loom's, when editing `shuttleengine`/`standalonegeom`/`webstercli`/`burlercli`/`logger`).
-- For every bug you fix, add or extend a test that would have caught it. For a live-only defect, add a `//go:build smoke` test.
+- Fix EVERY finding, all severities including NIT.
+- Load `/code-quality` and `mill:golang-build`/`mill:golang-testing`/`mill:golang-comments` before editing.
+- For every bug you fix, add or extend a test that would have caught it; for a live-only defect, a `//go:build smoke` test walking the real scenario.
 - MAKE SMOKE TESTS DETERMINISTIC — poll with a deadline, never sleep a fixed amount.
-- Update the relevant docs in the SAME change as the fix: `manifest/designs/loom.md`/`docs/overview.md`/`CONSTRAINTS.md` for Mission B; whatever doc governs Mission A's packages (check for a `standalonegeom`/`shuttleengine` design doc, or note in the fixer report if none exists and none is warranted for a narrow fix). Do NOT add bugfix/hardening notes to `manifest/roadmap.md`.
-- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY and re-run every live scenario yourself, directly.
-- Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it — do NOT push unless the user explicitly asks.
-- Report the changed files and how you verified each fix.
+- Update the relevant docs in the SAME change as the fix. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`.
+- Keep gates green after every change; redeploy and re-verify live scenarios.
+- Tear down all substrate state; confirm zero stray processes. Commit each fix — do NOT push.
 
 ## Deliverables
-1. A structured review report — Executive summary with top risks + merge-readiness opinion for BOTH missions separately AND combined; explicit statements of (a) whether Mission A's fix is confirmed working live and hub-mode-safe, and (b) how far Mission B's live attempts got, including the Rename-through-Webster gap specifically; Scope assessment; Code findings severity-ranked and mission-tagged with file:line + scenario + fix + CONFIRMED/PLAUSIBLE; Docs & operability findings; What-was-tested with exact commands + observed results. Write it to `_mill/loom-review-<yourtag>.md` and commit it incrementally.
-2. A fixer report: what you implemented (mission-tagged), what you deliberately deferred, exact test commands + results, changed files. Write it to `_mill/loom-review-<yourtag>-fixer-report.md` and commit it.
-3. In your final chat message: a concise summary (executive summary + counts by severity + the two report paths + an explicit merge-readiness verdict for both missions + an explicit yes/no on the Rename-through-Webster gap closing). Do not paste the whole reports.
+1. A structured review report: executive summary with an EXPLICIT convergence verdict (not just merge-readiness — does the campaign as a whole appear converged, per the README's own bar: a safety pass + this orchestrator's gates + an operator-assisted check all agreeing); which of the 5 high-yield-focus items were attempted and how far each got; findings severity-ranked with file:line/scenario/fix/CONFIRMED-PLAUSIBLE; what-was-tested with exact commands. Write to `_mill/loom-review-<yourtag>.md`, commit incrementally.
+2. A fixer report: implemented/deferred/tests/changed-files. Write to `_mill/loom-review-<yourtag>-fixer-report.md`.
+3. Final chat message: concise summary + severity counts + report paths + explicit merge-readiness AND convergence verdict + per-high-yield-focus-item yes/no on what was achieved. Also state, explicitly, this campaign's own honest limits (per the README's "state the limits" guidance) — e.g. Windows never reachable, anything the 5 focus items still didn't manage to drive even this round.
 
-Begin with the clean-room review (read the SPEC + code + docs for BOTH missions, then drive the real substrate), produce your independent findings, then implement and verify the fixes.
+Begin with the clean-room review, produce your independent findings, then implement and verify the fixes.
