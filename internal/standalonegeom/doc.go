@@ -10,6 +10,15 @@
 // parameters are what keep this package hermetic by construction, rather than by each test
 // remembering to redirect XDG_STATE_HOME.
 //
+// The one standalonestate call this package does make is standalonestate.Normalize, from
+// ReedGeometry, and it is a different kind of call: it reads no environment variable and resolves no
+// working directory, only the symlinks along a told absolute path, so a builder stays a pure function
+// of its told arguments plus the filesystem's own shape. It exists because the tmux session name's
+// readable half and the socket key's hash must agree about which directory they name, and only
+// Derive's normalization rule can make them agree (R4 review finding R4-24). A told path that does
+// not exist on disk normalizes to itself, so a test driving these builders with fictional absolute
+// paths stays deterministic and needs no fixture.
+//
 // This package is deliberately not a leaf: it imports reedengine, websterengine and burlerengine,
 // so it must not be added to internal/buildinfo's or internal/standalonestate's
 // leaf-enforcement allowlists.

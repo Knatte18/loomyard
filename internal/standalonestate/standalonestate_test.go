@@ -240,6 +240,64 @@ func TestDerive_RelativeEnvironmentBaseIsCwdIndependent(t *testing.T) {
 	}
 }
 
+// TestNormalize_LeavesARelativeTargetUnresolved pins the one branch of Normalize that exists purely
+// to protect the Standalonestate Leaf Invariant: filepath.EvalSymlinks resolves a relative path
+// against the process working directory, and this package never consults one, so a relative target
+// is cleaned and handed back rather than resolved.
+// The outcome is asserted from two different working directories, exactly as
+// TestDerive_RelativeTargetRejected does, because "never consults the cwd" is only demonstrated by
+// the answer not moving when the cwd does.
+func TestNormalize_LeavesARelativeTargetUnresolved(t *testing.T) {
+	const relative = "relative/./target"
+
+	before := Normalize(relative)
+	if want := filepath.Clean(relative); before != want {
+		t.Errorf("Normalize(%q) = %q; want %q (cleaned, not resolved)", relative, before, want)
+	}
+
+	originalWD, wdErr := os.Getwd()
+	if wdErr != nil {
+		t.Fatalf("os.Getwd() error = %v", wdErr)
+	}
+	t.Chdir(t.TempDir())
+	after := Normalize(relative)
+	t.Chdir(originalWD)
+	if before != after {
+		t.Errorf("Normalize(%q) changed with cwd: before=%q, after=%q", relative, before, after)
+	}
+}
+
+// TestNormalize_AbsentTargetFallsBackToClean pins that a target that does not exist on disk yet
+// normalizes to its cleaned self rather than failing: an unborn directory still needs a stable
+// identity, and this is the branch every hermetic test of the geometry builders relies on.
+func TestNormalize_AbsentTargetFallsBackToClean(t *testing.T) {
+	absent := filepath.Join(t.TempDir(), "never", "..", "never", "created")
+
+	if got, want := Normalize(absent), filepath.Clean(absent); got != want {
+		t.Errorf("Normalize(%q) = %q; want %q", absent, got, want)
+	}
+}
+
+// TestDerive_UsesNormalizeForItsHashInput pins that Derive's hash is taken over exactly what
+// Normalize returns, which is the property R4-24's fix rests on: a caller that spells the target
+// through Normalize to build a session name is spelling it the way Derive spelled it for the socket
+// key and state directory, so the two halves of a standalone identity can never disagree.
+func TestDerive_UsesNormalizeForItsHashInput(t *testing.T) {
+	target := filepath.Join(string(filepath.Separator), "abs", "..", "abs", "target")
+
+	_, rawHash8, err := derive("linux", "", "", "/home/user", target)
+	if err != nil {
+		t.Fatalf("derive(%q) error = %v; want nil", target, err)
+	}
+	_, normalizedHash8, err := derive("linux", "", "", "/home/user", Normalize(target))
+	if err != nil {
+		t.Fatalf("derive(Normalize(%q)) error = %v; want nil", target, err)
+	}
+	if rawHash8 != normalizedHash8 {
+		t.Errorf("derive() hash8 raw = %q, pre-normalized = %q; want equal", rawHash8, normalizedHash8)
+	}
+}
+
 // TestDerive_Hash8Shape pins that hash8 is exactly 8 characters, every one a lowercase hex digit.
 func TestDerive_Hash8Shape(t *testing.T) {
 	_, hash8, err := derive("linux", "", "", "/home/user", "/abs/target")

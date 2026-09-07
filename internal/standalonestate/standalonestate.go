@@ -63,6 +63,37 @@ func Derive(target string) (stateDir string, hash8 string, err error) {
 	return derive(goos, localAppData, xdgStateHome, home, target)
 }
 
+// Normalize returns the spelling of target that Derive hashes: symlinks resolved and the result
+// cleaned, the same way internal/lyxcwd/anchor.go's normalizePath does -- reimplemented rather than
+// imported because this package must stay stdlib-only.
+//
+// It is exported because every value that has to AGREE with Derive's identity must be spelled the
+// way Derive spelled it, and re-implementing the rule at each such site is exactly how the two drift
+// apart: standalonegeom.ReedGeometry builds the readable half of its tmux session name from the
+// target's basename while the socket key and state directory both come from Derive's hash, so a
+// symlinked and a real spelling of one repository produced two DIFFERENT session names on one shared
+// socket, sharing one reed.json (R4 review finding R4-24). Exposing the rule here keeps it declared
+// once, in the package that owns the identity.
+//
+// A relative target is cleaned but deliberately NOT resolved: filepath.EvalSymlinks would resolve it
+// against the process working directory, and this package never consults one (see the package doc
+// and CONSTRAINTS.md's Standalonestate Leaf Invariant). Derive rejects a relative target outright, so
+// that branch only ever serves a caller normalizing before it has validated.
+//
+// Normalize READS the filesystem -- resolving a symlink is nothing else -- but creates nothing on it,
+// and a target that does not exist on disk yet falls back to Clean alone rather than failing, since
+// an unborn directory still needs a stable identity.
+func Normalize(target string) string {
+	if !filepath.IsAbs(target) {
+		return filepath.Clean(target)
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return filepath.Clean(target)
+	}
+	return filepath.Clean(resolved)
+}
+
 // derive is the injectable seam behind Derive: every environment-shaped input is a plain
 // parameter, so both platform rows can be driven from a test without runtime.GOOS being a
 // compile-time constant getting in the way.
@@ -76,15 +107,7 @@ func derive(goos, localAppData, xdgStateHome, home, target string) (stateDir str
 		return "", "", fmt.Errorf("%w: %q", errRelativeTarget, target)
 	}
 
-	// Normalize the same way internal/lyxcwd/anchor.go's normalizePath does, reimplemented
-	// rather than imported because this package must stay stdlib-only: resolve symlinks,
-	// falling back to Clean alone when the target does not exist on disk yet.
-	resolved, evalErr := filepath.EvalSymlinks(target)
-	if evalErr != nil {
-		resolved = filepath.Clean(target)
-	} else {
-		resolved = filepath.Clean(resolved)
-	}
+	resolved := Normalize(target)
 
 	// Fold case on Windows only, matching lyxcwd's samePath rule exactly. samePath folds case
 	// at comparison time; hashing has no comparison step, so the fold must happen to the string

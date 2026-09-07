@@ -1,7 +1,11 @@
 // standalonegeom_test.go pins every field of both told-mode geometry builders against a fixed
 // target directory and told literal stateDir/hash8 values. Nothing here calls
-// standalonestate.Derive, reads an environment variable, or touches disk — the whole point of the
-// builders' told parameters is that these tests need no t.Setenv and can run t.Parallel().
+// standalonestate.Derive or reads an environment variable — the whole point of the builders' told
+// parameters is that these tests need no t.Setenv and can run t.Parallel().
+// Every target below is a fictional absolute path that does not exist, so ReedGeometry's one
+// filesystem read (standalonestate.Normalize, see doc.go) resolves each of them to itself and these
+// cases stay deterministic with no fixture; the symlink behaviour that read exists for is pinned
+// separately in reedgeom_symlink_integration_test.go, which needs a real filesystem.
 
 package standalonegeom
 
