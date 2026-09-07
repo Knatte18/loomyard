@@ -13,7 +13,7 @@ _(written last)_
 
 ## Findings
 
-Severity counts: **2 BLOCKING, 11 MEDIUM, 13 LOW, 9 NIT — 35 total.**
+Severity counts: **2 BLOCKING, 11 MEDIUM, 15 LOW, 10 NIT — 38 total.**
 
 ### BLOCKING
 
@@ -389,6 +389,30 @@ Webster fails loudly; burler silently reviews profile paths rooted at the subdir
 - **R4-34** — `internal/webstercli/recordbatch.go:120-123` emits `{"card_not_done": true}`, but
   `webster-template-master.md`'s failure ladder has no branch for it, so Master falls through to
   generic error handling for a refusal with a specific meaning. CONFIRMED.
+- **R4-36** — `internal/websterengine/strand.go:88-97` — `removeStrandIfLive` kills a live agent
+  process (a real `claude` session, via `reed.RemoveStrand`) and logs **nothing**, against
+  `CONSTRAINTS.md`'s Live-Substrate Spawn Observability rule that a lifecycle teardown is logged
+  wherever it is waited on. Observed live in Live-5: the resume reclaimed the orphaned Master on
+  pane `%17` and the resume driver's whole trace log carries a single `shuttle: run started` line
+  for the *replacement* Master and no record of the one it killed. CONFIRMED. (Severity LOW rather
+  than NIT: this is the one teardown an operator debugging a crashed run most needs to see.)
+- **R4-37** — `internal/websterengine/strand.go:89-92` — the same function swallows `StrandLive`'s
+  error (`if err != nil || !live { return nil }`), so a failed liveness probe is indistinguishable
+  from "not live": the leftover Master is left running and a second one is spawned beside it, which
+  is the exact double-Master the entry-time reclaim exists to prevent. LOW, CONFIRMED by reading;
+  not reproduced live (reed answered every probe cleanly in Live-5).
+- **R4-38** — observed live, **UNREPRODUCED**: the first `lyx` invocation inside the freshly created
+  `r4-drift-hub` worktree emitted
+  `WARN stencilseed: commit seeded stencils failed error="fabricengine: commit seeded stencils:
+  gitrepo: git add: git add -- _lyx/stencils/loom/loom-template-plan.md
+  _lyx/stencils/webster/webster-template-master.md: exit 128: fatal: not a git repository"` —
+  naming exactly the two stencils this campaign changed. `<hub>/_board` is a valid git repo and
+  `BoardDir(hub)` (`internal/fabricengine/junctionnames.go:113`) composes correctly, so the cwd git
+  actually ran in was not the board; I could not reproduce it on any later invocation and am
+  recording it rather than attributing it. It degrades to a WARN and the seeded files were already
+  committed, so nothing was lost. PLAUSIBLE, cause unknown, outside the loom/glyph scope
+  (`cmd/lyx/stencilseed.go` + `internal/fabricengine`) — flagged for a separate look, NOT fixed
+  this round.
 - **R4-35** — `internal/websterengine/runlevel.go:652-655,954-956` — on the `outcomeDone` loud
   return, `runIntegrationStage`'s warnings are returned alongside an error and discarded by the
   caller, including the "could not be localized because this mode has no fabric repo" notice that is
@@ -474,6 +498,85 @@ Reset via `git rm -r` of the inherited `_lyx/{loom,discussion,plan,webster}` on 
 | Kill | `kill -9 3437672`; `pgrep` confirmed dead |
 | Resume | `lyx loom run` → new driver PID `3439533` |
 | Verdict | **ATTACHED, never respawned.** `shuttle: run attached … strandGUID=3e415486577852ffc00f0a597e3db356 sessionID=0702f110-…`; `lyx reed status` still showed exactly one burler strand, same GUID, same pane `%9`, same claude PID `3438092`. |
+
+#### Live-3 — the whole hub-mode pipeline, end to end, on a handle-bearing plan — **PASS**
+
+After Live-2 the run continued unattended through `Plan-Bouncer` (approved, round 1),
+`Plan-Revalidate`, `Batchifier`, `Webster` (three fork batches), `Webster-Bouncer`, `Publish` and
+`Finalize → done` — `lyx loom status` reported `state: done`, `history_length: 20`.
+
+The plan `Plan-Write` produced carried a real `plan:` handle with a declaration head:
+
+```markdown
+**Create:**
+- `plan:services/api#defaultName` -> `func defaultName(name string) string`
+```
+
+and card 2 referenced it in `**Uses:**`.
+After the run, both card files read the bare glyph `services/api#defaultName` — so
+`CanonicalizeHandles` (begin-batch) and `BindHandles`' plan-wide `RewriteRefs` (record-batch) both
+fired live, the binding reached the *referencing* card and not only the declaring one, and the
+fingerprint restamp held across all three batches with no `ErrFingerprintMismatch`.
+`git log` shows the three per-card commits (`1: default-name-helper`, `2: compose-farewell`,
+`3: farewell-test-and-main-wiring`) and `services/api/main.go` carries the finished code.
+No `amendments.md` was created — correctly, since this plan produced no drift.
+
+#### Live-4 (high-yield-focus item 2) — `DetectDrift`'s exact-tier auto-repair, live, through a real Webster fork — **ACHIEVED**
+
+Second fixture: `lyx fabric add r4-drift-hub` (inherited `_lyx` task state reset the same way),
+then a **hand-authored, approved three-card plan** written directly into `_lyx/plan/` and committed
+with `lyx fabric commit`. `lyx webster validate` reported `{"cards":3,"valid":true}`.
+The plan was shaped to make an out-of-band rename likely without ever *declaring* one:
+card 1 is an `**Edit:**` card on `services/api#defaultName` whose `Intent` asks the fork to retarget
+that unexported identifier to `orDefault`, and card 2 (still pending when card 1 records) names the
+**old** glyph in its `**Uses:**`.
+There is no `**Rename:**` group anywhere in the plan, so `DetectDrift`'s gate one cannot match it as
+a card's declared outcome — exactly the incidental/out-of-band shape item 2 asks for.
+
+Driven with a real `lyx webster run` in HUB mode (real Master session, real in-session fork).
+Live commands: `lyx reed up`, `lyx reed status` (socket `lyx-lyx-test-HUB-d919e29a`, session
+`r4-drift-hub`), `lyx webster status`.
+
+Result, after batch 1's `record-batch`:
+
+```
+_lyx/plan/amendments.md
+# Amendments
+- Timestamp: 2026-09-07T18:53:40Z, Card: 2-farewell-doc,
+  OldGlyph: services/api#defaultName, NewGlyph: services/api#orDefault,
+  Tier: exact, SHA: 6f9024b781c858e0cc5e824abb6a051807aee455
+```
+
+and card 2's `**Uses:**` on disk had been rewritten from `services/api#defaultName` to
+`services/api#orDefault` (card 1's own `**Edit:**` target too, since `RewriteRefs` is plan-wide).
+Every gate behaved as designed: gate one did not fire (no declared pair), gate two did (card 2, a
+pending card, referenced the old glyph), the repair ran one `RewriteRefs` and appended **exactly
+one** amendment naming the first referencing card, the post-repair batched revalidation passed, and
+the run advanced to batch 2 rather than wedging.
+This is the first live exercise of the exact-tier auto-repair through a real fork; round 1 had only
+reached it at the standalone-rig level with a hand-simulated rename.
+
+#### Live-5 (high-yield-focus item 3) — `kill -9` mid-Webster-batch, resume — **PASS**
+
+Same `r4-drift-hub` run, immediately after Live-4.
+
+| | |
+|---|---|
+| Pre-kill | driver `lyx webster run` PID `3455795` alive; Master pane `%17` PID `3455812` running `claude`; `lyx webster status` showed batch 3 (`readme-note`) non-terminal with `current_batch: 3` |
+| Terminal artifact | `_lyx/webster/outcome.yaml` **absent** (Master's own last-action file) and `_lyx/webster/reports/03-readme-note.yaml` absent — unclean death, not a race with a finishing run |
+| Kill | `kill -9 3455795`; `ps -p 3455795` confirmed gone |
+| Orphan | the Master pane `%17` **survived the driver's death** — a genuinely orphaned live agent, which is the interesting half of the scenario |
+| Resume | `lyx webster run` |
+| Verdict | **RECLAIMED, then respawned — never both.** Pane `%17` and strand `33778b04…` were gone; `lyx reed status` showed exactly one Master strand, the fresh `master::5f47fc33` on pane `%18`. Batches 1 and 2 stayed `done`/`terminal`, batch 3's open bracket resumed, and the run drove batch 3 to `done` — `1:done;2:done;3:done`, `current_batch: 0`. `plan_fingerprint` was unchanged across the crash (`62293b9f…`), i.e. batch 1's drift-repair restamp had been correctly persisted and no `ErrFingerprintMismatch` occurred. |
+
+Honest scope note: item 3 asked for a `lyx loom run` driver kill mid-Webster-batch.
+What I killed is `lyx webster run` — the same `websterengine.Run` the loom `Webster` row drives, and
+the process that owns `run.lock` and the Master's lifetime — rather than the loom driver one frame
+above it. The reclaim ladder, the bracket, the fingerprint and the batch state all live in webster,
+so this exercises the machinery item 3 names; the one thing it does not exercise is loom's own
+`Webster`-row re-entry after such a crash.
+
+Two findings came directly out of Live-5's reclaim — R4-36 and R4-37 below.
 
 Both halves of the `Bouncer`+`Burler` perch therefore honour `manifest/designs/loom.md`'s
 "attach if live, else respawn — never both" ladder under a real `kill -9`, on a glyph-bearing plan.
