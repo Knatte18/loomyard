@@ -20,12 +20,12 @@ Status: JOB 1 COMPLETE — findings final; Job 2 (fixes) follows in `_mill/loom-
 
 | Severity | Count | IDs |
 |---|---|---|
-| BLOCKING | 3 | F1, F2, F-A1 |
-| MEDIUM | 2 | F3, F-B7 |
+| BLOCKING | 5 | F1, F2, F-A1, F-A4, F-B8 |
+| MEDIUM | 3 | F3, F-A3, F-B7 |
 | LOW | 3 | F1b, F4, F6 |
 | NIT | 1 | F5 |
 
-(F-A2 is a verification observation, not a defect.)
+(F-A2 is a verification observation, not a defect. F-A3, F-A4, and F-B8 were discovered during Job 2's post-fix live driving — each one the next layer of the same standalone/glyph onion — and are recorded below with the same rigor as the Job-1 set; all fixed this round.)
 
 ## Findings (provisional until Job 1 closes)
 
@@ -91,6 +91,24 @@ The failed run attempts each wrote their `trace-*.log` under `/home/knatte/.loca
 - **Scenario beyond this rig:** any operator continuing work by forking a task worktree (the exact "exact continuation" feature `fabric add`'s own help advertises) gets a new task whose loom run silently belongs to the old slug — with an inherited `state: running` this could re-drive the OLD task's producers against the NEW task's board entry.
 - **Severity:** MEDIUM. **Confidence:** CONFIRMED LIVE.
 - **Fix:** at loom's seed/resume boundary, refuse loudly when the existing status file's `slug` differs from the current worktree's slug, naming both and the recorded state, with the recourse spelled out (reset the inherited `_lyx` task state, or run from the original worktree). (Recovered here by an operator weft commit removing the inherited state; the fresh run then seeded correctly.)
+
+### F-A3 [Mission A, found during fix verification] — a standalone run over a `--plan-dir` override spawns a Master that can never see the plan
+
+- **Where:** `internal/webstercli` (`run` accepted the override; Master's in-pane verbs — `status`, `begin-batch`, `record-batch`, typed flagless from the stencil — resolve the standalone DEFAULT plan directory).
+- **Observed live:** the first post-F-A1 run (plan at a `--plan-dir` location) booted a real Master whose own `lyx webster status` wire-refused ("standalone plan directory … does not exist … pass --plan-dir") and correctly stopped — a burned session per attempt, forever.
+- **Severity:** MEDIUM. **Confidence:** CONFIRMED LIVE. **Fix:** `run` refuses a moved plan up front, naming the default location as the recourse; every other verb keeps honoring the override (an operator driving bracket verbs by hand passes the flag per call). Full override propagation (pane environment) recorded as deferred follow-up.
+
+### F-A4 [Mission A, found during fix verification] — every rendered prompt hardcodes hub-relative `_lyx/plan`/`_lyx/webster/reports` paths a standalone pane cannot reach
+
+- **Where:** `contracts/stencils/webster/webster-template-master.md` (bearings `ls _lyx/plan/`, orientation `read _lyx/plan/00-overview.md`, integration-report polling `test -f _lyx/webster/reports/integration.yaml`), `internal/websterengine/render.go` (`renderCardPointers` rendered `Card.SourcePath` verbatim — the same hub-relative token — into every fork and recovery prompt).
+- **Observed live:** with the plan at the standalone DEFAULT location, Master still stopped at bearings — the pane's cwd is the target repo, where no `_lyx/plan` exists; the compound bearing command's exit-2 (`ls`) read as "both checks empty". A first fix keyed the relative/absolute split on `AnchorRoot` and re-rendered the unreachable relative spelling, because standalone's anchor IS the state directory holding the plan — caught by the next live attempt; the correct base is the PANE's cwd (`Geometry.WorktreeRoot`).
+- **Severity:** BLOCKING (standalone Master structurally could not orient — the second half of F16's "Master actually starts" observable). **Confidence:** CONFIRMED LIVE, twice. **Fix:** new `plan_dir`/`integration_report_path` stencil markers rendered from the told Geometry, card pointers re-rooted, relative base = pane cwd; hub prompts pinned byte-identical by tests.
+
+### F-B8 [Mission B, found during fix verification] — a file-unit draft handle canonicalizes to a spelling quarry can never resolve; the plan validates clean and wedges at the creating card's own record-batch
+
+- **Where:** `internal/planparser/validate.go` (`checkHandleMalformed` accepted `plan:pkg/file.go#Sym`), quarry-side asymmetry (its `Name` accepts a file unit and echoes `pkg/file.go#Sym` as the canonical ID; its `Resolve` answers members under their PACKAGE unit only — quarry internals out of this round's scope, but the two answers contradict and loomyard's pure layer can refuse the spelling up front).
+- **Observed live:** the third standalone E2E ran the WHOLE loop — Master oriented, forked batch 1, the fork implemented and committed `greeter/farewell.go` correctly — and `record-batch` blocked on `create-not-done` for `plan:greeter/farewell.go#Farewell` while `lyx quarry resolve 'greeter#Farewell'` answered `found`; Master's own summary diagnosed it precisely as a plan-authoring defect it was not permitted to fix. (This also proved `create-not-done` and the whole standalone bracket sequence live, fork audit included.)
+- **Severity:** BLOCKING (any Plan-Write or human following a file-unit reading of the handle grammar wedges at first record-batch with no earlier diagnostic). **Confidence:** CONFIRMED LIVE. **Fix:** `handle-malformed` gains the language-gated file-unit rule naming the package-directory fix; spec row 15 and the Plan-Write stencil's `<unit>` guidance updated.
 
 ### Mission A — statically clean so far
 
