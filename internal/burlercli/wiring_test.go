@@ -510,14 +510,22 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 
 // TestResolveStandaloneTarget covers resolveStandaloneTarget's three flag rows: unset returns cwd,
 // absolute returns the cleaned path, relative returns the path joined onto cwd.
-// Every fixture path here is deliberately fictional, so both normalizations resolveStandaloneTarget
-// applies on top -- the symlink resolve and the repository-root lift -- are no-ops on this table by
+// Every told directory here is real but empty, so both normalizations resolveStandaloneTarget applies
+// on top -- the symlink resolve and the repository-root lift -- are no-ops on this table by
 // construction, leaving the flag rows alone to be asserted.
 // TestResolveStandaloneTarget_LiftsToRepositoryRoot owns those two.
 func TestResolveStandaloneTarget(t *testing.T) {
 	t.Parallel()
 
-	cwd := filepath.Join(string(filepath.Separator), "home", "operator", "repo")
+	base := t.TempDir()
+	cwd := filepath.Join(base, "home", "operator", "repo")
+	absolute := filepath.Join(base, "elsewhere", "target")
+	sibling := filepath.Join(base, "home", "operator", "sibling")
+	for _, dir := range []string{cwd, absolute, sibling} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", dir, err)
+		}
+	}
 
 	tests := []struct {
 		name          string
@@ -525,8 +533,8 @@ func TestResolveStandaloneTarget(t *testing.T) {
 		want          string
 	}{
 		{"Unset", "", cwd},
-		{"Absolute", filepath.Join(string(filepath.Separator), "elsewhere", "target"), filepath.Join(string(filepath.Separator), "elsewhere", "target")},
-		{"Relative", filepath.Join("..", "sibling"), filepath.Join(cwd, "..", "sibling")},
+		{"Absolute", absolute, absolute},
+		{"Relative", filepath.Join("..", "sibling"), sibling},
 	}
 
 	for _, tt := range tests {
@@ -537,6 +545,40 @@ func TestResolveStandaloneTarget(t *testing.T) {
 			}
 			if got != filepath.Clean(tt.want) {
 				t.Errorf("resolveStandaloneTarget(%q, %q) = %q; want %q", cwd, tt.targetDirFlag, got, filepath.Clean(tt.want))
+			}
+		})
+	}
+}
+
+// TestResolveStandaloneTarget_RefusesATargetThatIsNotAReadableDirectory pins R6-7: a --target-dir
+// that does not exist, or that names a file, must be REFUSED rather than resolved. Without the
+// check, standalonestate.Normalize fell back to Clean and repositoryRootOf then climbed to the
+// enclosing repository, so a mistyped flag silently drove -- and, on burler's fix phase, WROTE INTO
+// -- the repository the operator was standing in, indistinguishably from the no-flag invocation.
+func TestResolveStandaloneTarget_RefusesATargetThatIsNotAReadableDirectory(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	seedGitRepositoryRoot(t, repo)
+	file := filepath.Join(repo, "notadir.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	for _, tt := range []struct {
+		name          string
+		targetDirFlag string
+	}{
+		{"absent directory", "reposs"},
+		{"a file, not a directory", "notadir.txt"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveStandaloneTarget(repo, tt.targetDirFlag)
+			if err == nil {
+				t.Fatalf("resolveStandaloneTarget(%q, %q) = %q, nil; want a refusal -- this silently resolves to the enclosing repository", repo, tt.targetDirFlag, got)
+			}
+			if got != "" {
+				t.Errorf("resolveStandaloneTarget(...) target = %q; want empty alongside the refusal", got)
 			}
 		})
 	}

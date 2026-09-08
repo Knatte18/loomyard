@@ -301,16 +301,28 @@ func resolveToldDir(cwd, flagValue string) string {
 // A target with no repository above it is returned unchanged: standalone mode legitimately covers a
 // plain directory that is no git repository at all, which ResolveMode folds into the same verdict.
 //
-// The error return is always nil today, and that is deliberate rather than unreached error
-// handling: resolveToldDir, standalonestate.Normalize and repositoryRootOf are all total. The
-// signature keeps the second return because this is the boundary where a fallible resolution would
-// have to live if one is ever added -- a --target-dir that must exist, or a repository probe that
-// asks git rather than the filesystem -- and every call site already threads the failure through.
-// A caller reading `if err != nil` here is reading a reserved seam, not a live branch.
+// A told --target-dir must EXIST and be a directory, and that check is the reason this function is
+// fallible. Without it the resolution silently succeeded against the wrong repository:
+// standalonestate.Normalize falls back to Clean for a path that does not exist, and repositoryRootOf
+// then climbs until it finds a ".git" — so from inside /repo, a mistyped `--target-dir ./reposs`
+// resolved to /repo/reposs, found no repository there, climbed, and returned /repo. burler then
+// reviewed, and its fix phase WROTE INTO, the repository the operator was standing in rather than the
+// one they named, with the same hash8, state directory and reed session as the no-flag invocation, so
+// nothing in the output told the two apart (crucible round opus-medium-r6, R6-7). A --target-dir
+// naming a FILE resolved the same way.
+//
+// cwd itself is never stat'd: it is where the process already is.
 func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
 	told := cwd
 	if targetDirFlag != "" {
 		told = resolveToldDir(cwd, targetDirFlag)
+		info, err := os.Stat(told)
+		if err != nil {
+			return "", fmt.Errorf("burler: --target-dir %s (resolved to %s) cannot be read: %w -- a target that is not there is not an empty target, it silently resolves to whichever repository encloses it", targetDirFlag, told, err)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("burler: --target-dir %s (resolved to %s) is not a directory -- the standalone target is a repository to drive, and a file resolves to whichever repository encloses it", targetDirFlag, told)
+		}
 	}
 	return repositoryRootOf(standalonestate.Normalize(told)), nil
 }

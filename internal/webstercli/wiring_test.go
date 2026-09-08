@@ -553,6 +553,38 @@ func seedGitRepositoryRoot(t *testing.T, dir string) string {
 	return dir
 }
 
+// TestResolveStandaloneTarget_RefusesATargetThatIsNotAReadableDirectory pins R6-7: a --target-dir
+// that does not exist, or that names a file, must be REFUSED rather than resolved. Without the
+// check, standalonestate.Normalize fell back to Clean and repositoryRootOf then climbed to the
+// enclosing repository, so a mistyped flag silently drove the repository the operator was standing
+// in, indistinguishably from the no-flag invocation.
+func TestResolveStandaloneTarget_RefusesATargetThatIsNotAReadableDirectory(t *testing.T) {
+	t.Parallel()
+
+	repo := seedGitRepositoryRoot(t, t.TempDir())
+	if err := os.WriteFile(filepath.Join(repo, "notadir.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	for _, tt := range []struct {
+		name          string
+		targetDirFlag string
+	}{
+		{"absent directory", "reposs"},
+		{"a file, not a directory", "notadir.txt"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveStandaloneTarget(repo, tt.targetDirFlag)
+			if err == nil {
+				t.Fatalf("resolveStandaloneTarget(%q, %q) = %q, nil; want a refusal -- this silently resolves to the enclosing repository", repo, tt.targetDirFlag, got)
+			}
+			if got != "" {
+				t.Errorf("resolveStandaloneTarget(...) target = %q; want empty alongside the refusal", got)
+			}
+		})
+	}
+}
+
 // TestResolveStandaloneTarget_LiftsToRepositoryRoot is R4-26's direct regression test.
 // preflight.ResolveMode answers ModeStandalone for a plain repository's SUBDIRECTORY too, so the
 // target used to differ by where the operator happened to stand: repo/ and repo/src/ hashed to two
