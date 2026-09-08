@@ -134,6 +134,15 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
+	// Mark cwd as a worktree lyx owns (presence of the durable _lyx tree) so the
+	// durable sink's cwd-anchored fallback is allowed to arm per isLyxWorktree
+	// (internal/logger/sink.go) -- a plain git checkout without _lyx is exactly
+	// the case R6-6 made that fallback refuse, on purpose.
+	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+
 	cmd := exec.Command(lyxExe, "bogus-subcommand")
 	cmd.Dir = cwd
 	out, runErr := cmd.CombinedOutput()
