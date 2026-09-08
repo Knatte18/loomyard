@@ -46,7 +46,7 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
 - **Moves:** none
 - **Requirements:** Rewrite `internal/webstercli/wiring.go` so it holds only `wire`, `wireHub`, `wireStandalone`, `setRunner`, and one new package-level descriptor value.
 
-  Declare `var wireModule = cliwire.Module{...}` with `Name: "webster"`, `StateArtifacts: "state, locks, rendered prompts and trace logs"`, `TargetRole: "the repository it drives"`, `TargetRecourse: "Drive a target outside the state home"`, `HubTargetSubject: "the worktree is already the target"`, and a non-nil `Plan` whose `DefaultPlanDir` is `planparser.PlanDir` and whose `MissingPlanRefusal` returns today's message verbatim.
+  Declare `var wireModule = cliwire.Module{...}` with `Name: "webster"`, `StateArtifacts: "state, locks, rendered prompts and trace logs"`, `TargetRole: "the repository it drives"`, `TargetRecourse: "Drive a target"`, `HubTargetSubject: "the worktree is already the target"`, and a non-nil `Plan` whose `DefaultPlanDir` is `planparser.PlanDir` and whose `MissingPlanRefusal` returns today's message verbatim.
   Give the var a doc comment stating that webster owns its own descriptor because `cliwire` carries the shared implementation while the varying data lives with the caller, mirroring how `internal/shedrecipe`'s constructors live in that package while the rows that vary live outside it.
 
   Delete these declarations from the file, in favour of the `internal/cliwire` equivalents: `gitDirName`, `refuseNestedStandaloneGeometry`, `pathContains`, `normalizeForContainment`, `standaloneDefaultPlanDir`, `samePlanDir`, `resolveToldDir`, `resolveStandaloneTarget`, `repositoryRootOf`, `standalonePlanDirHasContent`.
@@ -126,7 +126,7 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
 - **Moves:** none
 - **Requirements:** Rewrite `internal/burlercli/wiring.go` so it holds only `wire`, `wireHub`, `wireStandalone`, and one new package-level descriptor value.
 
-  Declare `var wireModule = cliwire.Module{...}` with `Name: "burler"`, `StateArtifacts: "instruction files, shuttle run directories and trace logs"`, `TargetRole: "the repository it reviews"`, `TargetRecourse: "Review a target outside the state home"`, `HubTargetSubject: "the anchor path is already the target"`, and `Plan` left nil.
+  Declare `var wireModule = cliwire.Module{...}` with `Name: "burler"`, `StateArtifacts: "instruction files, shuttle run directories and trace logs"`, `TargetRole: "the repository it reviews"`, `TargetRecourse: "Review a target"`, `HubTargetSubject: "the anchor path is already the target"`, and `Plan` left nil.
   Give the var a doc comment stating that `Plan` is nil because burler parses no plan, and that a nil `Plan` is what makes `ResolveStandalone` skip plan-dir resolution entirely rather than each caller writing its own branch.
   Match the descriptor-ownership rationale already written on webster's equivalent var in `internal/webstercli/wiring.go`.
 
