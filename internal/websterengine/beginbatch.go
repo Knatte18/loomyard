@@ -199,6 +199,12 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if deps.Plan == nil {
 		return nil, fmt.Errorf("webster: begin-batch requires a parsed plan; BeginDeps.Plan is nil")
 	}
+	// State is the same kind of hard precondition, and was the half-applied one: it is dereferenced a
+	// few lines below for PlanFingerprint, so the discipline the Plan check states was only actually
+	// enforced for one of the two fields (crucible round opus-medium-r6, R6-21).
+	if deps.State == nil {
+		return nil, fmt.Errorf("webster: begin-batch requires loaded run state; BeginDeps.State is nil")
+	}
 
 	if PauseRequested(deps.Geom.ScratchDir) {
 		return nil, ErrPaused

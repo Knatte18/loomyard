@@ -874,3 +874,14 @@ func TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks(t *testing.T) {
 		t.Error("State.PlanFingerprint was cleared rather than re-baselined")
 	}
 }
+
+// TestRecordBatch_NilStateIsRefusedNotPanicked is R6-21's regression test for the record-batch half.
+func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
+	_, err := websterengine.RecordBatch(websterengine.RecordDeps{Plan: &planparser.Plan{}}, 1)
+	if err == nil {
+		t.Fatal("websterengine.RecordBatch(nil State) error = nil; want a refusal naming the missing field")
+	}
+	if !strings.Contains(err.Error(), "State is nil") {
+		t.Errorf("websterengine.RecordBatch(nil State) error = %v; want it to name RecordDeps.State", err)
+	}
+}

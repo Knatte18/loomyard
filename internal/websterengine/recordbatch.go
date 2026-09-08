@@ -95,6 +95,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	if deps.Plan == nil {
 		return nil, fmt.Errorf("webster: record-batch requires a parsed plan; RecordDeps.Plan is nil")
 	}
+	// State is the same kind of hard precondition, and was the half-applied one: it is dereferenced
+	// on the very next line (crucible round opus-medium-r6, R6-21).
+	if deps.State == nil {
+		return nil, fmt.Errorf("webster: record-batch requires loaded run state; RecordDeps.State is nil")
+	}
 
 	bs, ok := deps.State.Batches[batchNumber]
 	if !ok || bs == nil || bs.Terminal {

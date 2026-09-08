@@ -838,3 +838,16 @@ func TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts(t *testing.T) {
 		t.Error("State.PlanFingerprint still carries its pre-call value after a call that canonicalized handles on disk; every later begin-batch would refuse webster's own sanctioned rewrite as a foreign edit")
 	}
 }
+
+// TestBeginBatch_NilStateIsRefusedNotPanicked is R6-21's regression test: BeginDeps.Plan was refused
+// loudly while BeginDeps.State was dereferenced unguarded a few lines below, so the stated
+// precondition discipline was enforced for only one of the two fields.
+func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
+	_, err := websterengine.BeginBatch(websterengine.BeginDeps{Plan: &planparser.Plan{}}, 1)
+	if err == nil {
+		t.Fatal("websterengine.BeginBatch(nil State) error = nil; want a refusal naming the missing field")
+	}
+	if !strings.Contains(err.Error(), "State is nil") {
+		t.Errorf("websterengine.BeginBatch(nil State) error = %v; want it to name BeginDeps.State", err)
+	}
+}
