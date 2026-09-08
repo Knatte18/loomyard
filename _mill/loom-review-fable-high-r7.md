@@ -3,7 +3,7 @@
 Reviewer-fixer: Fable 5, high effort. Clean-room pass per `_mill/loom-review-prompt.md` (round 7).
 Scope: whole loom/glyph surface + `#004` standalone-webster material + FIRST review of the `unify-webster-burler-wiring` merge (`7e54cc280`, `internal/cliwire`).
 
-Status: JOB 1 COMPLETE — independent findings final below; prior-round material consulted only AFTER the list was closed.
+Status: ROUND COMPLETE — Job 1 findings final below (formed clean-room; prior-round material consulted only after the list was closed and committed at `d4dcedbc1`); Job 2 fixed all 6 findings, one commit each (`963ba557c`, `9e20c46f3`, `a9c706a93`, `b9c77ef27`, `64b7b452d`, `6c218891a`). Fixer report: `_mill/loom-review-fable-high-r7-fixer-report.md`.
 
 ## Executive summary
 
@@ -13,7 +13,7 @@ Seventh round, second Fable deployment. The independent pass found **1 BLOCKING,
 - The provider-startup seam (fourth consecutive round producing a finding here): round 6's "positive evidence" rule has its own general-case blind spot (F1) — the evidence lines are never required to sit anywhere near each other, so one line of ordinary agent prose can still classify a healthy pane as a gate and get keys pressed into it. Same defect class as R6-1, surviving through a narrower window.
 - Everything else read (runlevel, bracket verbs, fingerprint, drift, containment, plan/discussion validators, logger sink) held up; no R6-28-shaped `bufio.Scanner` sibling exists anywhere in production.
 
-**Merge-readiness / convergence verdict: see end of report** (written after fixes).
+**Merge-readiness / convergence verdict: see "Verdicts" at the end of this report** (written after fixes).
 
 ## What was tested
 
@@ -32,6 +32,20 @@ Seventh round, second Fable deployment. The independent pass found **1 BLOCKING,
   - S7: `webster status --stencils-dir <nonexistent>` → **accepted silently** (F2 confirmation). ✗→F2
   - S8/S9: missing-plan refusal flagless and with an override → verb-aware recourse text, override case names the DEFAULT as `run`'s recourse (R6-9). ✓
 - Hub-mode halves of R6-7 (`RefuseTargetDirInHubMode`) and R6-8 (override recorded off `geom.PlanDir`, `run` refusal is mode-agnostic) verified by code reading + the packages' own hermetic tests (`TestWire_TargetDirRefusedInHubMode`, `TestWire_PlanDirResolution` in both CLI packages); not driven live — no sandbox hub was built this round (see limits).
+
+### Post-fix gates (Job 2, all green)
+
+- `CGO_ENABLED=1 go build ./...` → 0.
+- `CGO_ENABLED=1 go vet` over the full review-prompt package set → 0.
+- `CGO_ENABLED=1 go test -count=5` over the full set + `./cmd/lyx/...` → 0, 20 package sets ok, zero flakes (`scratchpad/gotest-count5.log`).
+- `CGO_ENABLED=1 go test -tags integration` over the prompt's set + `internal/logger` → 0.
+- `CGO_ENABLED=1 go test ./...` (whole repo) → 0, 82 packages ok.
+- `goimports -l` over all 14 changed .go files → clean.
+- F2 live re-verified with a rebuilt HEAD binary: the S7 scenario now refuses with the new message; a valid `--stencils-dir` override still works.
+
+### Observation OBS-1 — 18 leaked tmux servers on this host, NOT from this round's code (recorded for the orchestrator, cleaned up)
+
+The end-of-round teardown sweep found 18 live `tmux -L lyx-<hash8>` servers, every one created Sep 7 19:18–21:57 (before this round began) with pane cwds under deleted `/tmp/TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate*/001` TempDirs — the `unify-webster-burler-wiring` task's own development-window test runs (interrupted suites or mid-development states; `t.Cleanup` never runs on a killed test binary). Current HEAD verified NOT leaking: an isolated `-count=1` run of that exact test at HEAD tore its server down (only a dead socket file remains — `/tmp/tmux-1000` also holds hundreds of stale socket FILES from past runs, which are inert). All 18 servers killed after confirming each one's cwd no longer exists; zero live `lyx-*` tmux servers remain. Not a finding against this branch's code (R5-1's `tearDownStandaloneReed` works at HEAD); recorded because the campaign's teardown discipline exists exactly to catch this class, and the residue predated this round.
 
 ## Findings (final, severity-ranked)
 
@@ -86,3 +100,26 @@ Only `internal/loomshed/planvalidate_test.go` pins the fail-closed rule; `intern
 - `restampFingerprint` call sites (begin-batch, record-batch ×2, run-level) each sit immediately after their rewriting call, ahead of every refusal; no masking of the primary error.
 - `sweepOrphansOpportunistic` absent/unreadable reed-state skip, `errStrandNotTracked`/`errStrandPaneBindingCleared` mechanism-failure split, attached-run startup-probe skip — all re-read, no gaps found.
 - `DetectDrift`'s two gates, evidence-tier exclusion from the deleted sweep, and post-repair scoped revalidation (R6-11) — re-read, no gaps found.
+
+## High-yield focus items — what was attempted, how far each got
+
+1. **First-ever adversarial review of the cliwire merge — DONE, in depth.** All seven files read adversarially, all six R6 guarantees verified preserved for BOTH callers (code + hermetic + live S1–S9 through a fresh HEAD binary). Yield: F2 (real behavioral gap, fixed), F3/F4 (enforcement-test blind spots, fixed). The consolidation itself is sound; the descriptor split, the single ordered prologue, and the sink-redirect ordering all hold and are pinned by tests.
+2. **General adversarial sweep — DONE.** runlevel/bracket verbs/fingerprint/drift/containment/validators/sink re-read fresh; R6-28-sibling hunt (unchecked `bufio.Scanner`) ran repo-wide and came back empty; the "found sound" list in this report is the record. Yield beyond items 1/4: nothing new — earned, not skipped.
+3. **Close the two round-6 coverage gaps — DONE.** D1 (sink fallback call-site integration test, new file) and D2 (loomcli fail-closed severity test) both landed.
+4. **Provider-startup seam re-examination — DONE, and it yielded this round's BLOCKING finding.** F1: round 6's positive-evidence rule lacked any adjacency requirement between its evidence lines, so one prose list item beginning with an accept phrase (or a "press Enter to confirm" mention) still classified a healthy pane as a gate — same consequence class as R6-1 through a narrower window. Fixed with a shared adjacency rule calibrated against the live-transcribed gate fixtures; not driven live (the defect and fix are fully constructible from captures, and the fix's calibration data IS the live-transcribed fixtures; a fresh-fixture live run was not needed to prove either direction).
+5. **What a second Fable deployment turned up that six passes didn't — F1.** The recurring campaign shape ("a rule correct for the case it was written against, wrong in general") appeared again, in the round-6 fix itself — the fourth consecutive round to find real material in this one seam.
+
+## Verdicts
+
+**Merge-readiness: QUALIFIED YES.** Every finding of this round is fixed, committed, and green across all gates; the cliwire merge — this round's primary never-reviewed material — is verified sound and its six inherited guarantees are proven preserved for both callers, live where cheap and hermetically everywhere. Nothing known-broken remains on the branch. The qualification is the convergence verdict below plus the stated limits.
+
+**Convergence: NOT MET — but the trajectory has changed shape.** The campaign's own bar is a safety pass finding nothing severe; this round found 1 BLOCKING (F1), making rounds 4-5-6-7 an unbroken four-round run of BLOCKING material, all four in or around the provider-startup seam's evolving fix lineage (R4 fingerprint wedges aside). What is different: (a) this round's BLOCKING is a strict narrowing — R6-1's whole-capture matching → R7-F1's missing adjacency — each iteration closing most of the prior hole, and the residual now stated in the code is one rendering-quirk wide, not one prose line wide; (b) everything OUTSIDE that seam and the brand-new cliwire material came back clean under a genuinely adversarial second-Fable pass. My read, for the operator: the startup-gate seam specifically has not yet earned "converged" — one more clean adversarial look at `startup.go` (cheap, one file) is defensible before declaring it done; the rest of the glyph/cliwire surface looks converged by this round's evidence. Whether that costs a full round 8 or a targeted seam-only check is the operator's call, per campaign discipline.
+
+## Honest limits (per the README's "state the limits" guidance)
+
+- **Windows path behavior** — unreachable from this Linux host, all seven rounds; `pathContains`'s case-fold half and `NormalizeForContainment` on Windows remain mechanical mirrors, never driven.
+- **No live Master/fork startup scenario was driven this round.** F1's fix is calibrated against round 5/6's live-transcribed gate captures and proven hermetically; a real fresh-fixture startup run (which would require a never-claude-seen path per the round-5 lesson) was judged unnecessary for this fix's shape but remains the strongest possible confirmation an operator-assisted check could add.
+- **No sandbox hub was built** — the hub-mode halves of R6-7/8 and of F2 are verified by code + hermetic tests only; the standalone halves were driven live.
+- **`burlercli` standalone reed bring-up** — still never live-verified by any round (unchanged).
+- **`DetectDrift` exact-tier auto-repair through a real Webster fork** — still never triggered live by any round (unchanged, open since round 3).
+- The ~45-item pre-glyph residue from round 6 remains out of scope per the seed.
