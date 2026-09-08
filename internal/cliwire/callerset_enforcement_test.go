@@ -35,10 +35,15 @@ const allowedDeriveCallerDir = "internal/cliwire"
 // internal/standalonestate's Derive.
 // It spawns no process, so it carries no build tag.
 // It resolves the repository root from runtime.Caller(0) by walking up from this file's directory,
-// then parses every non-_test.go .go file under internal/ and cmd/ (excluding internal/standalonestate
-// itself, whose own definition and doc comments name Derive, and excluding allowedDeriveCallerDir)
-// looking for a selector call expression whose receiver identifier is this file's standalonestate
-// import and whose selected name is Derive.
+// then parses every non-_test.go .go file under the WHOLE repository — not just internal/ and cmd/,
+// since a caller under tools/ or a future top-level directory is exactly as much a production caller
+// (crucible round fable-high-r7, F3) — skipping .git and testdata directories, excluding
+// internal/standalonestate itself (whose own definition and doc comments name Derive) and excluding
+// allowedDeriveCallerDir, looking for a selector call expression whose receiver identifier is this
+// file's standalonestate import and whose selected name is Derive.
+// A DOT-import of standalonestate is refused outright: it makes every Derive call a bare identifier
+// the selector match cannot see, and no production file has a legitimate reason to dot-import a
+// state-derivation package (same round, same finding).
 // The match is on the AST, never on raw text, so a doc comment naming the qualified call cannot trip
 // it.
 func TestDeriveCallerSet_CliwireOnly(t *testing.T) {
@@ -51,51 +56,58 @@ func TestDeriveCallerSet_CliwireOnly(t *testing.T) {
 
 	var failures []string
 
-	for _, sub := range []string{"internal", "cmd"} {
-		root := filepath.Join(repoRoot, sub)
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if path != root {
-					relDir, relErr := filepath.Rel(repoRoot, path)
-					if relErr != nil {
-						return relErr
-					}
-					relDir = filepath.ToSlash(relDir)
-					if relDir == "internal/standalonestate" || relDir == allowedDeriveCallerDir {
-						return filepath.SkipDir
-					}
-				}
-				return nil
-			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
-			}
-
-			fset := token.NewFileSet()
-			astFile, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-			if err != nil {
-				t.Logf("warning: failed to parse %s: %v", path, err)
-				return nil
-			}
-
-			standalonestateAlias, imported := standalonestateImportAlias(astFile)
-			if !imported {
-				return nil
-			}
-
-			if callsDerive(astFile, standalonestateAlias) {
-				relPath, _ := filepath.Rel(repoRoot, path)
-				failures = append(failures, filepath.ToSlash(relPath))
-			}
-
-			return nil
-		})
+	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			t.Fatalf("failed to walk %s: %v", root, err)
+			return err
 		}
+		if d.IsDir() {
+			if path == repoRoot {
+				return nil
+			}
+			if d.Name() == ".git" || d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			relDir, relErr := filepath.Rel(repoRoot, path)
+			if relErr != nil {
+				return relErr
+			}
+			relDir = filepath.ToSlash(relDir)
+			if relDir == "internal/standalonestate" || relDir == allowedDeriveCallerDir {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
+
+		fset := token.NewFileSet()
+		astFile, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		if err != nil {
+			t.Logf("warning: failed to parse %s: %v", path, err)
+			return nil
+		}
+
+		standalonestateAlias, imported := standalonestateImportAlias(astFile)
+		if !imported {
+			return nil
+		}
+
+		if standalonestateAlias == "." {
+			relPath, _ := filepath.Rel(repoRoot, path)
+			failures = append(failures, filepath.ToSlash(relPath)+" (dot-imports standalonestate, hiding every Derive call from this pin)")
+			return nil
+		}
+
+		if callsDerive(astFile, standalonestateAlias) {
+			relPath, _ := filepath.Rel(repoRoot, path)
+			failures = append(failures, filepath.ToSlash(relPath))
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to walk %s: %v", repoRoot, err)
 	}
 
 	if len(failures) > 0 {
