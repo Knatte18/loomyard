@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-cliwire-package
 slug: unify-webster-burler-wiring
 branch: unify-webster-burler-wiring
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-review-r5  '2026-09-08T15:09:17Z'
 plan-fix-r5  '2026-09-08T15:11:29Z'
 planned  '2026-09-08T15:11:38Z'
 implementing  '2026-09-08T15:13:45Z'
+approved-cliwire-package  '2026-09-08T15:23:17Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-09-08T15:13:45Z'
 ```yaml
 batches:
   - name: cliwire-package
-    state: running
+    state: approved
     implementer_session: 579c8889-4612-4a1e-b567-c25da4d77765
     start_sha: 583a0b43ae1cd8e9b22c7f73f2b1f2575e794729
+    commit_sha: 3473b47cb014b74165a8c72cc56d65c0e4e91690
     verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
   - name: rewire-clis
     state: pending
