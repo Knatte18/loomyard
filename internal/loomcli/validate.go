@@ -70,12 +70,16 @@ Example:
 	}
 }
 
-// planFindingsHaveBlocking reports whether findings carries at least one planglyph.SeverityBlocking
-// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding: severity, not finding
-// count, decides the verdict on both sides of this parity pair.
+// planFindingsHaveBlocking reports whether findings carries at least one entry that is not
+// explicitly informational, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding:
+// severity, not finding count, decides the verdict on both sides of this parity pair.
+// It tests NOT-informational rather than equals-blocking for the reason that function's own doc
+// gives -- planglyph.Severity is an open string type, and an unrecognized or zero value must not
+// silently pass a gate (crucible round opus-medium-r6, R6-27). The two halves of the pair must keep
+// agreeing about that, so neither is "the equals-blocking one".
 func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 	for _, f := range findings {
-		if f.Severity == planglyph.SeverityBlocking {
+		if f.Severity != planglyph.SeverityInformational {
 			return true
 		}
 	}

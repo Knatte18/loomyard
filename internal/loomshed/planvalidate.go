@@ -33,10 +33,21 @@ func formatPlanFindings(findings []planglyph.Finding) string {
 	return strings.Join(parts, "; ")
 }
 
-// hasBlockingFinding reports whether findings carries at least one SeverityBlocking entry.
+// hasBlockingFinding reports whether findings carries at least one entry that is not explicitly
+// informational.
+//
+// It tests NOT-informational rather than equals-blocking, and that asymmetry is the point.
+// planglyph.Severity is an open string type, so an unrecognized value — or the zero value, which a
+// hand-built Finding or a future producer that forgets to stamp one carries — took the informational
+// branch, logged a Warn, and returned Done with the plan directory as its pointer: the run advanced
+// past a finding that was meant to block it. That is the same "a validator's complaint reported as a
+// clean plan" failure this file's own error-path comment records as deliberately rejected, still
+// present on the severity path (crucible round opus-medium-r6, R6-27).
+// Failing closed costs at most a spurious bounce on a severity nobody has defined yet; failing open
+// costs a dispatched batch over a defect the gate saw.
 func hasBlockingFinding(findings []planglyph.Finding) bool {
 	for _, f := range findings {
-		if f.Severity == planglyph.SeverityBlocking {
+		if f.Severity != planglyph.SeverityInformational {
 			return true
 		}
 	}
