@@ -3,9 +3,41 @@
 > Clean-room round 6 of the quarry-glyph-plan-alphabet crucible campaign.
 > Worktree: `/home/hanf/Code/loomyard/wts/crucible-loom-glyph-hardening`, branch `crucible-loom-glyph-hardening`, HEAD at round start `12f865288`.
 
-## Status
+## Executive summary
 
-IN PROGRESS — Job 1 (clean-room review) under way. This section is replaced by the executive summary when the findings list is complete.
+Round 6 was asked to try, genuinely, to find nothing — and to earn that. It did not find nothing.
+
+**28 findings: 2 BLOCKING, 9 MEDIUM, 10 LOW, 7 NIT.** All 28 fixed this round.
+
+Both BLOCKING findings are in code five prior rounds passed over, and both are the same shape the campaign keeps
+producing: a rule that is correct for the case it was written against and wrong for the general case.
+
+- **R6-1** is round 5's own fix read from the other side. R5 closed "a gate that carries the ready caret is
+  misread as READY". The needle set it hardened is matched against the WHOLE pane capture with no requirement
+  that a gate actually be rendered, so a healthy, ready pane whose agent transcript reads
+  `the files in this folder` or `trust this folder` is now misread as a GATE. A hermetic probe (table below)
+  shows lyx returning `Up, Up, Enter` for a live working pane — arrow keys and a submit typed into an agent
+  mid-turn — and, in the other branch, a healthy run classified `OutcomeDied` at the startup deadline while its
+  agent is alive and working. `Send`/`Interrupt` are refused for as long as the phrase is on screen.
+- **R6-3** is on the glyph surface proper: `containment-file-overlap` builds both sides of its overlap test from
+  an index that includes read-only `Uses:` refs, so two cards that merely READ overlapping things emit a
+  `SeverityBlocking` finding — refusing `lyx webster run` outright and every dispatch after it. Its sibling
+  syntactic tier and the design doc both specify a targets-only rule.
+
+**Convergence verdict: NOT CONVERGED.** Three rounds in a row (r4, r5, r6) have now found BLOCKING material, and
+r6 found it in the code r5 shipped. The campaign README's bar — a safety pass agreeing with the orchestrator's
+gates and an operator-assisted check — is not met, because this round is not a safety pass: it is a third
+consecutive round with blocking findings.
+
+**Merge-readiness: NOT READY as of round 6's start; READY-pending-verification as of its end**, with one large
+caveat: this round could not drive live substrate at all (tmux, `lyx reed up` and `tools/deploy` are all refused
+by this session's permission classifier — see below). Every fix is proven hermetically and by reading; none is
+proven against a real claude pane. R6-1 and R6-2 in particular are provider-UI-facing and deserve one live
+confirmation on a fixture claude has never seen before the campaign closes.
+
+**High-yield-focus items:** (1) general adversarial sweep — done, and it found the two BLOCKING items; (2)
+adversarial re-examination of the provider-startup seam — done by reading plus a hermetic probe, NOT live; (3)
+what a sixth pass turns up that five did not — 28 findings, two of them BLOCKING.
 
 ## What was tested
 
