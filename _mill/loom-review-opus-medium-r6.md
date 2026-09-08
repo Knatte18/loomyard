@@ -37,3 +37,17 @@ The PATH binary (`/home/hanf/go/bin/lyx`, built 12:14) predates HEAD by two comm
 14 lines across `internal/{burler,webster}cli/wiring.go`); it DOES contain both round-5 startup fixes
 (`1640a59bb`, 12:13:52). It could not be refreshed because deploy is blocked. No live conclusion is drawn from it.
 
+
+### Provider-startup seam — driven by reading + a hermetic probe (item 2)
+
+Ran a throwaway probe test over `claudeengine.Startup` / `TrustDismissSequence` with realistic
+working-pane captures (test file deleted again afterwards; the permanent regression tests land with the fix):
+
+| capture | `Startup` | `TrustDismissSequence` |
+|---|---|---|
+| `● I'll start by reading the files in this folder.` + `❯` + bypass footer | `StartupTrustPrompt` | `[]` (nothing pressed) |
+| `● You asked whether to trust this folder; I'd say yes.` + `❯` + `? for shortcuts` | `StartupTrustPrompt` | `Up, Up, Enter` — **keys played into a live agent's pane** |
+| `● Reply with "Yes, I accept" to continue.` + `❯` + `? for shortcuts` | `StartupTrustPrompt` | `Up, Up, Enter` — **keys played into a live agent's pane** |
+| `● Reading loom.md` + `❯` + bypass footer | `StartupReady` | `[]` |
+| `Do you trust the files in this folder?` / `❯ 1. Yes, proceed` / `2. No, exit` | `StartupTrustPrompt` | `[]` (**a gate the code recognizes but can never dismiss**) |
+
