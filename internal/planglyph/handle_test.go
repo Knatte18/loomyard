@@ -111,6 +111,48 @@ func TestCanonicalizeHandles_BatchedCallCoversBothSources(t *testing.T) {
 	}
 }
 
+// TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing pins F6 (crucible round
+// fable-high-r10): the same draft handle claimed by a Create declaration (unit from the handle
+// itself) and a Rename to-side (unit from the resolved old side) canonicalizes to TWO different
+// glyphs. Such a plan is already refused by the blocking pure handle-collision finding, so the
+// resolve layer must not pick one canonical by map-iteration accident and rewrite the plan on disk
+// with it before that refusal is ever rendered.
+func TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Old() {}\n"})
+	repo, err := openRepo(root)
+	if err != nil {
+		t.Fatalf("openRepo(%q) returned error: %v", root, err)
+	}
+	results, err := resolveTargets(repo, []string{"sub#Old"})
+	if err != nil {
+		t.Fatalf("resolveTargets(...) returned error: %v", err)
+	}
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Create:**\n- `plan:other#New` -> `func New() {}`\n\n**Intent:** one\n",
+		2: "**Rename:**\n- `sub#Old` -> `plan:other#New`\n\n**Intent:** two\n\n## Rename mechanic\n",
+	})
+	before1 := readCardFile(t, dir, 1, "card1")
+	before2 := readCardFile(t, dir, 2, "card2")
+
+	findings, rewrote, err := CanonicalizeHandles(plan, dir, results)
+	if err != nil {
+		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+	}
+	for _, f := range findings {
+		t.Errorf("unexpected finding: %+v — the refusal is the pure handle-collision finding's, not this layer's", f)
+	}
+	if rewrote {
+		t.Errorf("CanonicalizeHandles(...) rewrote = true; want false — an arbitrarily picked canonical must never land on disk")
+	}
+	if got := readCardFile(t, dir, 1, "card1"); got != before1 {
+		t.Errorf("card 1 was rewritten:\nbefore: %s\nafter: %s", before1, got)
+	}
+	if got := readCardFile(t, dir, 2, "card2"); got != before2 {
+		t.Errorf("card 2 was rewritten:\nbefore: %s\nafter: %s", before2, got)
+	}
+}
+
 func TestCanonicalizeHandles_PositionalMatchingOutOfOrder(t *testing.T) {
 	// Card 1's handle sorts after card 2's ("Z" > "A"), and each declared identifier deliberately
 	// differs from its own handle's member name: a positional mismatch in matching Name's results

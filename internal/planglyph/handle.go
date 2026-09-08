@@ -263,6 +263,22 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	}
 	sort.Strings(canonicals)
 
+	// The inverse of handle-canonical-collision below: ONE draft handle owning MORE than one
+	// canonical, which arises when the same handle spelling is claimed by two declaring sources
+	// deriving different declarations (a Create declaration and a Rename to-side, or two Rename
+	// to-sides). Every such plan already carries the blocking pure handle-collision finding
+	// (handleClaims counts both sources since crucible round opus-high-r9, R9-3), so the refusal is
+	// owned there — but without this guard the subs loop below assigned subs[draft] once per
+	// canonical, last-wins over sort order, and RewriteRefs then mutated the plan ON DISK with an
+	// arbitrarily chosen canonical before that finding was ever rendered (crucible round
+	// fable-high-r10, F6). A draft in this set contributes no substitution at all.
+	canonicalCountOfDraft := make(map[string]int)
+	for _, owners := range canonicalOwners {
+		for _, o := range owners {
+			canonicalCountOfDraft[o]++
+		}
+	}
+
 	subs := make(map[string]string, len(canonicalOwners))
 	for _, canonical := range canonicals {
 		owners := canonicalOwners[canonical]
@@ -273,6 +289,9 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 				Detail:   fmt.Sprintf("handles %s all canonicalize to %q", strings.Join(owners, ", "), canonical),
 				Severity: SeverityBlocking,
 			})
+			continue
+		}
+		if canonicalCountOfDraft[owners[0]] > 1 {
 			continue
 		}
 		// An already-canonical handle produces an identity pair here — every validation pass after
