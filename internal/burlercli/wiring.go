@@ -300,6 +300,13 @@ func resolveToldDir(cwd, flagValue string) string {
 //
 // A target with no repository above it is returned unchanged: standalone mode legitimately covers a
 // plain directory that is no git repository at all, which ResolveMode folds into the same verdict.
+//
+// The error return is always nil today, and that is deliberate rather than unreached error
+// handling: resolveToldDir, standalonestate.Normalize and repositoryRootOf are all total. The
+// signature keeps the second return because this is the boundary where a fallible resolution would
+// have to live if one is ever added -- a --target-dir that must exist, or a repository probe that
+// asks git rather than the filesystem -- and every call site already threads the failure through.
+// A caller reading `if err != nil` here is reading a reserved seam, not a live branch.
 func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
 	told := cwd
 	if targetDirFlag != "" {
