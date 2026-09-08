@@ -37,9 +37,14 @@ implementing  '2026-09-08T15:13:45Z'
 ```yaml
 batches:
   - name: cliwire-package
-    state: pending
+    state: running
+    implementer_session: 579c8889-4612-4a1e-b567-c25da4d77765
+    start_sha: 583a0b43ae1cd8e9b22c7f73f2b1f2575e794729
+    verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
   - name: rewire-clis
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
   - name: enforcement-and-docs
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
 ```
