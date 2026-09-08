@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: unify-webster-burler-wiring
 branch: unify-webster-burler-wiring
-plan: null
+plan: _mill/plan
 parent: crucible-loom-glyph-hardening
 task: Unify webster/burler CLI wiring into a shared module
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-09-08T12:26:39Z'
 discussion-fix-r2  '2026-09-08T13:08:57Z'
 discussed  '2026-09-08T13:08:57Z'
+planning  '2026-09-08T13:25:05Z'
 ```
