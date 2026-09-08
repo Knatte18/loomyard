@@ -57,6 +57,9 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
 
   `wireHub` keeps its signature and every config load, geometry build, engine construction and field assignment it performs today.
   Two edits only: replace the inline `--target-dir` refusal with `if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil { return err }` as the function's first statement, and replace the inline plan-dir block with a `cliwire.ResolvePlanDir(planDir, geom.PlanDir)` call whose results drive `geom.PlanDir` and the two override fields.
+  The second argument is `geom.PlanDir` — the value `hubgeom.WebsterGeometry` actually built — and deliberately not `wireModule.Plan.DefaultPlanDir(anchorPath)`, even though the two are the same string today;
+  comparing against the geometry's own field is what keeps the override check correct if `internal/hubgeom` ever changes how it computes `PlanDir`.
+  Card 3 records the same reasoning on the field's own doc comment.
   Preserve today's exact field state: assign `c.planDirOverridden` and `c.planDirDefault` only when the resolver reports an override, and assign `geom.PlanDir` from the resolved value only when `planDir` was non-empty, so a flagless hub invocation leaves `geom.PlanDir` exactly as `hubgeom.WebsterGeometry` built it.
   Keep the existing comment explaining why hub mode records a moved plan directory at all.
 
@@ -119,6 +122,8 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   Replace its prologue — the target resolve, `standalonestate.Derive`, the nested-geometry refusal, the sink redirect, and the stencils resolve-and-seed — with one call:
   `res, err := wireModule.ResolveStandalone(cliwire.StandaloneRequest{Cwd: cwd, StencilsDirFlag: stencilsDirOverride, TargetDirFlag: targetDirFlag})`, leaving `PlanDirFlag` unset.
   Then read the result: `reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)`, the three config loads over `res.StateDir`, `burlerengine.New(runner, standalonegeom.BurlerGeometry(res.Target, res.StateDir), burlerCfg, res.StencilsDir)`, and the field assignments `c.mode = "standalone"`, `c.stateDir = res.StateDir`, `c.stencilsDir = res.StencilsDir`.
+  The two lines that build `runner` — `reedEngine := reedengine.New(reedCfg, reedGeom)` and the `shuttleengine.NewDetachedRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)` call — survive unchanged, reading the same `reedGeom` this card rebuilds from the result.
+  `NewDetachedRunner` in particular stays: standalone's anchor is deliberately outside its worktree root, which `NewRunner`'s containment assertion would refuse.
   The `c.reedUp` seam assignment stays exactly as it is.
   Move the two-asymmetry paragraph and the sink-ordering paragraph off this function's doc comment — both now live on `ResolveStandalone` — and leave a one-line pointer in their place.
 

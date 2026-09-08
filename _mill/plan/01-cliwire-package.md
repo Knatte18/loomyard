@@ -82,6 +82,8 @@ Every doc comment on a moved function moves with it, edited only where it names 
   - `internal/burlercli/wiring.go`
   - `internal/shedrecipe/registry.go`
   - `internal/cliwire/paths.go`
+  - `_mill/discussion.md`
+  - `internal/hubgeom/webstergeom.go`
 - **Edits:** none
 - **Creates:**
   - `internal/cliwire/module.go`
@@ -107,9 +109,12 @@ Every doc comment on a moved function moves with it, edited only where it names 
 
   `type PlanRules struct` with exactly two fields:
   - `DefaultPlanDir func(base string) string` — returns the default plan directory for a told base path.
-    Webster fills it with `planparser.PlanDir`;
-    the prologue calls it with the derived `stateDir`, and `wireHub` calls the same field with the hub anchor path.
-    Document that this is a function field rather than a finished string because standalone's default depends on the `stateDir` the prologue itself derives, and rather than an import of `internal/planparser` because that would put webster's plan layout inside a module burler shares.
+    Webster fills it with `planparser.PlanDir`, and `ResolveStandalone` is its only caller, invoking it with the `stateDir` the prologue itself derived.
+    Document that this is a function field rather than a finished string because standalone's default depends on that derived `stateDir`, so the caller cannot hand over a finished string, and rather than an import of `internal/planparser` because that would put webster's plan layout inside a module burler shares.
+    Do not document it as also being called from `wireHub`.
+    `_mill/discussion.md`'s exported-surface decision anticipated a hub call site, but card 6 resolves hub mode's override against `geom.PlanDir` — the value `hubgeom.WebsterGeometry` actually built — rather than re-deriving the same path through this field.
+    The two are the same string today (`hubgeom.WebsterGeometry(loc).PlanDir` is `planparser.PlanDir(loc.AnchorPath())`), and comparing against the geometry's own field is what keeps the override check correct if `internal/hubgeom` ever changes how it computes `PlanDir`.
+    Record that reasoning in the field's doc comment so a later reader does not "restore" the hub call.
   - `MissingPlanRefusal func(planDir, recourse string) string` — produces the whole refusal text for a plan directory that does not exist or holds no plan files.
     Document that it is a function rather than a bare string or a format string because webster's live message interpolates two distinct paths in a fixed order, and a function makes that argument order a compile-time fact rather than a comment.
     The second parameter is named `recourse`, not `defaultPlanDir`, deliberately: it is the location the refusal tells the operator to place the plan at, which is the mode's own default only when `--plan-dir` actually moved the plan off it and is the resolved plan directory itself otherwise.
@@ -161,8 +166,9 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
 
   `func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error)` performing exactly this sequence, in this order:
   1. `target, err := m.resolveStandaloneTarget(req.Cwd, req.TargetDirFlag)` — return the zero `Standalone` and the error on failure.
-  2. `stateDir, hash8, err := standalonestate.Derive(target)`.
-  3. `m.refuseNestedStandaloneGeometry(target, stateDir)`.
+  2. `stateDir, hash8, err := standalonestate.Derive(target)` — return the zero `Standalone` and the error on failure, aborting the prologue.
+  3. `m.refuseNestedStandaloneGeometry(target, stateDir)` — return the zero `Standalone` and the error on failure, aborting the prologue.
+     Every fallible step below does the same: any error returns the zero `Standalone` alongside it, and no step is best-effort.
   4. `logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)`.
   5. Stencils: `stencilsDir := ResolveToldDir(req.Cwd, req.StencilsDirFlag)`;
      when it is empty, set it to `standalonegeom.StencilsDir(stateDir)` and call `stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), "")`, returning `fmt.Errorf("%s: seed the standalone stencils directory %s: %w", m.Name, stencilsDir, err)` on failure.
@@ -191,11 +197,14 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
 ### Card 5: cliwire's own tier-1 tests
 
 - **Context:**
+  - `internal/webstercli/wiring.go`
+  - `internal/burlercli/wiring.go`
   - `internal/webstercli/wiring_test.go`
   - `internal/burlercli/wiring_test.go`
   - `internal/cliwire/paths.go`
   - `internal/cliwire/module.go`
   - `internal/cliwire/standalone.go`
+  - `internal/logger/sink.go`
   - `internal/standalonegeom/logsdir.go`
   - `internal/standalonegeom/stencilsdir.go`
   - `internal/planparser/parse.go`
@@ -208,6 +217,7 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
   It carries no build tag.
 
   Declare two package-level test fixtures standing in for the two real descriptors, named `websterFixture` and `burlerFixture`, each a `Module` value carrying that CLI's exact field values as listed in card 3 — `websterFixture` additionally carrying a `Plan` whose `DefaultPlanDir` is `func(base string) string { return filepath.Join(base, "_lyx", "plan") }` and whose `MissingPlanRefusal` reproduces webster's live message.
+  Source that message from the `standalone plan directory ... does not exist or contains no plan files` refusal in `internal/webstercli/wiring.go`'s `wireStandalone`, copying it verbatim including its two interpolated paths in their existing order — the resolved plan directory first, the recourse location second.
   Add a comment stating that these are test fixtures mirroring the real descriptors declared in `webstercli` and `burlercli`, that they exist so this package's tests never import either caller, and that a divergence between a fixture and its real descriptor is caught by each CLI package's own composition tests plus the two integration files.
 
   Declare the test helpers, each with the doc comment its predecessor in `internal/webstercli/wiring_test.go` carries:
@@ -245,7 +255,11 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
     Restore the sink with `t.Cleanup(func() { logger.SetDurableSinkDir("") })` in every case that touches it.
   - Stencils: the derived default is seeded on disk;
     an explicitly-told stencils directory is returned as given and gains no entries;
-    the returned `StencilsDir` is `standalonegeom.StencilsDir(stateDir)` for the default case.
+    the returned `StencilsDir` is `standalonegeom.StencilsDir(stateDir)` for the default case;
+    and a seed failure on the derived default is a hard error naming both `m.Name` and the directory.
+    Drive that last case by making the derived stencils path uncreatable before the call — write a regular file where `standalonegeom.StencilsDir(stateDir)` needs a directory, or at an ancestor of it under `stateDir` — so `stencilstore.Reconcile` fails, then assert the returned error's text.
+    This is `ResolveStandalone` step 5's only error return, and this package is now its sole owner;
+    leaving it unexercised would put the one hard-error asymmetry the prologue documents outside its own coverage.
   Every case that reaches `standalonestate.Derive` must call `setStandaloneStateRoot` first and must not be `t.Parallel()`.
 - **Commit:** `test(cliwire): tier-1 coverage for the shared wiring prologue`
 
