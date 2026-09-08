@@ -26,9 +26,23 @@ import (
 )
 
 // normalizeCardPath resolves one card file-op path per the plan-format three-case rule: "//" paths are always worktree-root-relative; otherwise join with root unless root is "."; malformed paths (absolute, ".." escapes) are left in place for Validate's card-path-malformed check.
+//
+// The empty and single-"/"-prefixed cases are returned UNTOUCHED rather than joined onto root,
+// because joining destroys the very marker card-path-malformed keys on. With root: internal/boardcli,
+// path.Clean("internal/boardcli" + "/" + "/etc/passwd") collapsed the doubled separator into
+// internal/boardcli/etc/passwd — a clean relative path the validator then had nothing to say about —
+// and an empty entry became path.Clean("internal/boardcli/") == internal/boardcli, silently naming
+// the root directory and making the validator's own "empty entry" branch unreachable whenever a root
+// was set. Both are flagged correctly when root is absent or ".", so the guarantee this function's
+// own doc states was silently root-dependent (crucible round opus-medium-r6, R6-5).
+// A ".." escape needs no such carve-out: path.Clean preserves a leading "..", so it survives the join
+// on its own.
 func normalizeCardPath(root, raw string) string {
 	if hasWorktreeRootEscape(raw) {
 		return cleanPosixPath(raw[2:])
+	}
+	if raw == "" || strings.HasPrefix(raw, "/") {
+		return cleanPosixPath(raw)
 	}
 	if root != "" && root != "." {
 		return cleanPosixPath(root + "/" + raw)

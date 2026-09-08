@@ -69,6 +69,32 @@ func TestNormalizeCardPath(t *testing.T) {
 			want: "../secret.go",
 		},
 		{
+			// R6-5: joining onto root collapsed the doubled separator and erased the leading-"/"
+			// marker card-path-malformed keys on, so the malformed check was silently disabled for
+			// every plan that set a root.
+			name: "malformed single-/ prefix survives a set root, not absorbed into it",
+			root: "internal/boardcli",
+			raw:  "/etc/passwd",
+			want: "/etc/passwd",
+		},
+		{
+			// R6-5: an empty entry became path.Clean("internal/boardcli/") == the root directory,
+			// making the validator's own "empty entry" branch unreachable under a set root.
+			name: "empty entry survives a set root, not resolved to the root directory",
+			root: "internal/boardcli",
+			raw:  "",
+			want: "",
+		},
+		{
+			// A ".." needs no carve-out of its own: it is resolved against root, and only one that
+			// climbs PAST the worktree root survives as a leading "..", which is exactly what
+			// card-path-malformed keys on.
+			name: "a .. that climbs past the worktree root survives a set root as an escape",
+			root: "internal/boardcli",
+			raw:  "../../../secret.go",
+			want: "../secret.go",
+		},
+		{
 			name: "harmless internal .. collapses away, not an escape",
 			root: "internal",
 			raw:  "boardcli/../boardengine/rows.go",
