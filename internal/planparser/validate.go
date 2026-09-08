@@ -757,6 +757,10 @@ func isFileRenamePair(lang glyph.Language, p MovePair) bool {
 // New side by design, so the pair was entirely unvalidated and surfaced only as a rename-not-done
 // at the record-batch boundary (crucible round opus-high-r9, R9-2). Fail closed: anything that is
 // not the admitted shape is the finding, and refKindName names what it actually was.
+// One shape slips both negations — a SELF glyph old side paired with a handle new side, which is a
+// glyph on the left and a handle on the right yet names a file/unit where a symbol rename must
+// name a symbol — so a third arm flags exactly that pair under rename-from-not-glyph (crucible
+// round fable-high-r10, F5).
 func checkRenamePairShape(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -789,6 +793,25 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 						c.Number, p.Old, p.New, refKindName(k),
 					),
 				})
+			} else if classifyRef(p.New) == refKindHandle {
+				// A symbol rename's old side must name a SYMBOL — a member glyph — because the
+				// to-side declaration is derived from the resolved old symbol. A SELF glyph old side
+				// paired with a handle new side is neither admitted shape (not a symbol rename, not
+				// a file-rename pair), yet passed both negation checks above: the old side IS a
+				// glyph and the new side IS a handle. It surfaced only inside the resolve pass,
+				// where a found self glyph carries a Listing and no Symbols, so renameDeclSource
+				// refused it with a detail claiming the old side "did not resolve found" — a
+				// resolution story for what is a shape mistake (crucible round fable-high-r10, F5).
+				if g, err := parseGlyph(lang, p.Old); err == nil && g.IsSelf() {
+					findings = append(findings, ValidationError{
+						Check: "rename-from-not-glyph",
+						Card:  cardID(c),
+						Detail: fmt.Sprintf(
+							"card %d Rename pair %q -> %q has an old side that is a file or unit self glyph, not a member glyph naming a symbol; a symbol rename's old side must name the symbol being renamed",
+							c.Number, p.Old, p.New,
+						),
+					})
+				}
 			}
 		}
 	}

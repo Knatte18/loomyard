@@ -111,15 +111,29 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // draft that misspells the unit is corrected by canonicalization rather than propagated. Only the
 // identifier is taken from the draft handle, never its glyph spelling — the spelling is what
 // quarry.Name computes. It reports ok false, with a rename-old-unresolved Finding, when Old did not
-// resolve found, when the new-side handle carries no member name, or when Old's own signature
-// carries no occurrence of the identifier it is supposed to declare.
+// resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer —
+// a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own
+// signature carries no occurrence of the identifier it is supposed to declare.
 func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
 	r, resolved := results[oldRef]
-	if !resolved || r.Status != quarry.StatusFound || len(r.Symbols) == 0 {
+	if !resolved || r.Status != quarry.StatusFound {
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",
 			Card:     card,
 			Detail:   fmt.Sprintf("Rename pair's old side %q did not resolve found; nothing to derive the new declaration from", oldRef),
+			Severity: SeverityBlocking,
+		}, false
+	}
+	if len(r.Symbols) == 0 {
+		// A found answer with no Symbols is a SELF glyph's answer (a found self glyph carries a
+		// Listing instead) — a shape mistake, not a resolution failure, and the old detail's "did
+		// not resolve found" sent the operator at a resolution problem for what was a wrong-shaped
+		// pair. checkRenamePairShape now refuses this pair up front; this arm stays as the resolve
+		// pass's own accurate fail-closed answer (crucible round fable-high-r10, F5).
+		return declSource{}, Finding{
+			Check:    "rename-old-unresolved",
+			Card:     card,
+			Detail:   fmt.Sprintf("Rename pair's old side %q resolved found but names a file or unit, not a symbol; a symbol rename's old side must be a member glyph", oldRef),
 			Severity: SeverityBlocking,
 		}, false
 	}

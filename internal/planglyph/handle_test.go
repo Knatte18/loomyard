@@ -335,6 +335,33 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 	}
 }
 
+// TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake pins F5's detail split (crucible
+// round fable-high-r10): a found answer with no Symbols is a SELF glyph's answer — a file or unit,
+// not a symbol — and the finding must say so instead of claiming the old side "did not resolve
+// found", which is false for it and sends the operator at a resolution problem.
+func TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub/a.go#` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
+	})
+
+	// A found self glyph's answer carries a Listing and no Symbols; only the Symbols absence
+	// matters to renameDeclSource.
+	results := []quarry.ResolveResult{{Target: "sub/a.go#", Status: quarry.StatusFound}}
+	findings, _, err := CanonicalizeHandles(plan, dir, results)
+	if err != nil {
+		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 1 || findings[0].Check != "rename-old-unresolved" {
+		t.Fatalf("findings = %+v; want exactly one rename-old-unresolved finding", findings)
+	}
+	if !strings.Contains(findings[0].Detail, "names a file or unit, not a symbol") {
+		t.Errorf("finding detail = %q; want it to name the shape mistake, not a resolution failure", findings[0].Detail)
+	}
+	if strings.Contains(findings[0].Detail, "did not resolve found") {
+		t.Errorf("finding detail = %q; must not claim the old side did not resolve found — it did", findings[0].Detail)
+	}
+}
+
 func TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten(t *testing.T) {
 	// Card 1's draft handle deliberately misspells the declared identifier ("Good" versus the
 	// declaration head's own "ActualGood") so its successful rewrite is verifiable against a
