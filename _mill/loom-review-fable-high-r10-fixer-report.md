@@ -9,7 +9,7 @@ Companion to `_mill/loom-review-fable-high-r10.md`. One row per finding, filled 
 | F1 | MEDIUM | fixed | `f849ab6d2` | `TestDoneCheckVerdicts_UnreadableStatusFailsClosed` (new), `TestDoneCheckVerdicts_Rules` (+4 ambiguous rows) | `internal/planglyph/donecheck.go`, `internal/planglyph/doc.go`, `internal/planglyph/resolve.go`, `internal/planglyph/donecheck_test.go` |
 | F2 | MEDIUM | fixed | `5589a619c` | `TestEnsureResolveCoverage` (new) | `internal/planglyph/repo.go`, `internal/planglyph/repo_test.go` |
 | F3 | MEDIUM | fixed | `d2cc7df2b` | `TestMatchHandleResults` (new) | `internal/planglyph/create.go`, `internal/planglyph/create_test.go` |
-| F4 | MEDIUM | fixed | `pending-sha` | `TestSyntacticContainment` (+4 self-vs-self subtests) | `internal/planparser/containment.go`, `internal/planparser/containment_test.go`, `contracts/specs/loom-plan-spec.md` (row 23), `manifest/designs/quarry-glyph-plan-alphabet.md` |
+| F4 | MEDIUM | fixed | `e6e1d26bb` | `TestSyntacticContainment` (+4 self-vs-self subtests) | `internal/planparser/containment.go`, `internal/planparser/containment_test.go`, `contracts/specs/loom-plan-spec.md` (row 23), `manifest/designs/quarry-glyph-plan-alphabet.md` |
 | F5 | LOW | pending | — | — | — |
 | F6 | LOW | pending | — | — | — |
 | F7 | LOW | pending | — | — | — |
