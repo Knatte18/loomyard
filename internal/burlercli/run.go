@@ -118,24 +118,29 @@ run-timeout; zero defers to the config default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
-			// Validate flag shape before ever touching c.engine (still
-			// unpopulated when config resolution aborted), so a missing
-			// --profile is reported as its own flag error rather than being
-			// swallowed by the PersistentPreRunE abort's already-recorded
-			// exit code.
+			// ShouldAbort first, as CONSTRAINTS.md's CLI/Cobra Invariant requires of every RunE and
+			// as every sibling verb already does. A failing PersistentPreRunE has already written its
+			// error envelope and recorded the exit code, so the flag check that used to run ahead of
+			// this emitted a SECOND envelope — and the second one ("--profile is required") was the
+			// misleading one, naming a flag while the real failure was the wiring refusal above it
+			// (crucible round opus-medium-r6, R6-16). A missing --profile on an aborted pre-run is
+			// not information the operator needs; the refusal is.
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			// Validate flag shape before ever touching c.engine.
 			if profilePath == "" {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "burler: --profile is required"))
 				return nil
 			}
 
-			// A failing PersistentPreRunE has already written an error
-			// response and recorded the exit code; short-circuit rather
-			// than touch c.engine, which is unpopulated on that path.
-			if clihelp.ShouldAbort(cmd.Context()) {
-				return nil
-			}
-
-			data, err := os.ReadFile(profilePath)
+			// Resolved against the SEAM cwd, the same base every other relative flag in this
+			// invocation uses (wire resolves --target-dir and --stencils-dir through it). A bare
+			// os.ReadFile resolved against the PROCESS cwd instead, so under an in-process driver one
+			// relative flag named a different directory than the rest (crucible round opus-medium-r6,
+			// R6-17).
+			data, err := os.ReadFile(resolveToldDir(c.cwd, profilePath))
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("burler: read --profile: %v", err)))
 				return nil

@@ -9,6 +9,7 @@ package burlercli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -348,4 +349,24 @@ func equalStrings(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+// TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo is R6-16's regression test. The RunE checked
+// --profile before clihelp.ShouldAbort, against CONSTRAINTS.md's CLI/Cobra Invariant, so a wiring
+// refusal plus a missing --profile emitted two error envelopes — and the second one named a flag
+// while the real failure was the refusal above it.
+func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {
+	var out bytes.Buffer
+	// --target-dir naming a path that does not exist makes wireStandalone refuse in the pre-run;
+	// --profile is deliberately omitted so the flag check would fire too if it ran.
+	code := RunCLIIn(t.TempDir(), &out, []string{"run", "--target-dir", filepath.Join(t.TempDir(), "absent")})
+	if code == 0 {
+		t.Fatalf("RunCLIIn() = 0; want a non-zero exit for a refused pre-run. output: %s", out.String())
+	}
+	if got := strings.Count(out.String(), `"ok":false`); got != 1 {
+		t.Errorf("RunCLIIn() emitted %d error envelopes; want exactly 1. output: %s", got, out.String())
+	}
+	if strings.Contains(out.String(), "--profile is required") {
+		t.Errorf("RunCLIIn() reported the missing --profile over the pre-run refusal; the refusal is what the operator needs. output: %s", out.String())
+	}
 }

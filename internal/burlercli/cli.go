@@ -26,6 +26,12 @@ type burlerCLI struct {
 	// engine is the constructed burlerengine.Engine the run verb closes over.
 	engine *burlerengine.Engine
 
+	// cwd is the seam cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- the SAME base wire
+	// resolves --target-dir and --stencils-dir against. It is stored so the run verb resolves
+	// --profile against it too, rather than against the process cwd, which under an in-process
+	// driver is a different directory (crucible round opus-medium-r6, R6-17).
+	cwd string
+
 	// reedUp brings the standalone reed session up, idempotently, and is set by wireStandalone
 	// alone — the run verb calls it immediately before driving a round, because standalone mode has
 	// no other way to a live session: `lyx reed up` is hub-only (its pre-run requires
@@ -75,6 +81,8 @@ func (c *burlerCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
+
+	c.cwd = cwd
 
 	loc, mode, err := preflight.ResolveMode(cwd)
 	if err != nil {
