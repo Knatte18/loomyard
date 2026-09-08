@@ -4,9 +4,9 @@
 
 ## Campaign identity
 
-- Worktree: `/home/knatte/Code/loomyard/wts/crucible-loom-glyph-hardening`, branch `crucible-loom-glyph-hardening`, parent `main`.
+- Worktree: branch `crucible-loom-glyph-hardening`, parent `main`. **Do not hardcode a specific host path here** — this campaign has already run from at least two different host/user environments (`/home/knatte/...` for rounds 1–4, `/home/hanf/...` for this orchestrator session); a fresh session should resolve its own worktree path (`git rev-parse --show-toplevel`) rather than trust any path string in this file or in a prior round's own report.
 - Mission: harden `loom` against the newly-landed quarry-glyph-plan-alphabet surface (PR #230) — never before exercised through loom's real phase machine, only through the landing task's own unit/integration suite.
-- Model/effort rotation, pre-approved by the operator for up to four rounds unless it converges sooner: **Opus/high (r1) → Sonnet/xhigh (r2) → Fable/high (r3) → Opus/high (r4, final safety pass)**.
+- Model/effort rotation, pre-approved by the operator for up to four rounds unless it converges sooner: **Opus/high (r1) → Sonnet/xhigh (r2) → Fable/high (r3) → Opus/high (r4)**. Round 4 was NOT a clean pass (found+fixed 2 more BLOCKING bugs), so the operator authorized **round 5 (Opus/medium)** beyond the original budget — see "Convergence status" below.
 
 ## Current state
 
@@ -33,7 +33,9 @@ Round 4 was the last round in the pre-approved four-round budget. It was NOT a c
 
 This orchestrator's verification found the fixes themselves genuinely solid (9/9 sabotage-proofs, all gates green, live claims independently confirmed via real artifacts) — but that verifies round 4's OWN work, not that nothing remains. Given the pattern (every round so far found real material, including the "final" one), the honest read is: this campaign has NOT yet produced a clean safety pass the way the reed and fabric campaigns did before merging.
 
-**Decision for the operator:** merge now on the strength of round 4's fixes + this orchestrator's independent verification (accepting that no round has yet come back clean), or commission a round 5 pure safety pass (fresh model/effort, no residual seeded, explicitly told to try to find nothing) before merging, given the budget was pre-approved for four rounds and a fifth needs fresh sign-off. Either way, state the campaign's honest limits: Windows path behavior never reachable from this Linux host; `DetectDrift`'s exact-tier auto-repair now live-proven (round 4 achieved what rounds 1–3 could not); Live-1/Live-2/Live-5's process-level mechanics accepted on round 4's own (methodologically rigorous, but self-reported) account, not independently re-driven, due to the host gap.
+**Decision made by the operator: commission round 5.** Model Opus, effort **medium** (lower than round 4's `high` — the operator's explicit, deliberate choice; not this orchestrator's call to second-guess). Seed written and committed (`1d487352f`, `_mill/loom-review-prompt.md`). Round 5's high-yield focus: (1) a genuine adversarial sweep trying to find nothing, (2) an independent SECOND hub-mode `kill -9` crash reproduction on a FRESH fixture (not reusing `r4-crash-hub`/`r4-drift-hub`) — closing the one gap this orchestrator's own round-4 verification could not reach (process-level crash mechanics, unreachable from this session's host; the commit-level artifacts were independently confirmed genuine via GitHub, but PIDs/tmux-pane state are inherently ephemeral and were only ever inspectable on the host round 4 ran on).
+
+**Next action once round 5 reports back:** independently verify exactly as rounds 1–4 were verified (sabotage-proofs, cold gate re-runs, real-artifact checks for any new live claims — this time reachable firsthand on THIS host, unlike round 4's). If round 5 comes back clean (genuinely nothing, or only minor residue) and this orchestrator's own verification agrees, that is the first clean safety pass this campaign has produced — surface merge-readiness to the operator per the README's convergence bar, stating the campaign's honest limits (Windows never reachable from any host used so far).
 
 ## `#004` mill-task gate — CLEARED (corrected understanding)
 
