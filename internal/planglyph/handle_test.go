@@ -567,6 +567,103 @@ func TestBindHandles_SubstitutionReachesCardOutsideTheCompletedBatch(t *testing.
 	}
 }
 
+// TestBindHandles_RenameNewSideHandleBinds is PG-2's own regression test (crucible round
+// sonnet-xhigh-r8): a Rename-only card -- carrying no Create group, so its own Declarations is
+// empty -- must still have its New-side handle bound once the rename lands, exactly as a Create
+// declaration would be. Before this fix, BindHandles skipped any card with zero Declarations, so
+// this card's own "plan:sub#New" handle never lost its prefix, permanently invisible to
+// collectGlyphTargets and both containment tiers.
+func TestBindHandles_RenameNewSideHandleBinds(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** rename\n",
+		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
+	})
+	// The delta names the rename via Renamed, never Created — a rename is not a create, and a
+	// BindHandles keyed only on delta.Created (as it was pre-fix) would never match this at all.
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
+	}}
+
+	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v; want none", findings)
+	}
+
+	got1 := readCardFile(t, dir, 1, "card1")
+	got2 := readCardFile(t, dir, 2, "card2")
+	if strings.Contains(got1, "plan:sub#New") || !strings.Contains(got1, "sub#New") {
+		t.Errorf("card 1's own Rename pair's New side was not bound to the plain glyph: %s", got1)
+	}
+	if strings.Contains(got2, "plan:sub#New") || !strings.Contains(got2, "sub#New") {
+		t.Errorf("card 2 (referencing the Rename's New side) was not rewritten to the plain glyph: %s", got2)
+	}
+
+	// The bound plan still parses, and the reference is now a genuine glyph -- reachable by
+	// collectGlyphTargets and both containment tiers, which exclude anything plan:-prefixed by
+	// construction.
+	reparsed, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan after binding returned error: %v", err)
+	}
+	for _, e := range planparser.ValidateFormat(reparsed, dir) {
+		switch e.Check {
+		case "handle-malformed", "handle-unreferenced", "handle-dangling":
+			t.Errorf("bound plan reports %s: %s", e.Check, e.Detail)
+		}
+	}
+}
+
+// TestBindHandles_RenameFileSidePairIsNotAHandle covers a file-rename pair (both sides self glyphs,
+// per spec's own exemption) producing no finding and no write: neither side is handle-shaped, so
+// cardOwnHandles reports nothing to bind and the card is skipped exactly like a zero-handle card.
+func TestBindHandles_RenameFileSidePairIsNotAHandle(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub/old.go` -> `sub/new.go`\n\n**Intent:** rename a file\n",
+	})
+	before := readCardFile(t, dir, 1, "card1")
+
+	findings, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, plan.Cards)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v; want none", findings)
+	}
+	after := readCardFile(t, dir, 1, "card1")
+	if before != after {
+		t.Errorf("file-rename card was rewritten despite carrying no handle:\nbefore: %s\nafter: %s", before, after)
+	}
+}
+
+// TestBindHandles_RenameNewSideUnmatchedMismatches covers a Rename's own New-side handle whose
+// expected glyph the delta's Renamed set does not carry: bind-count-mismatch, rewriting neither
+// side, exactly as an unmatched Create declaration does.
+func TestBindHandles_RenameNewSideUnmatchedMismatches(t *testing.T) {
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** rename\n",
+	})
+	// An unrelated rename in the delta — its own To.ID does not match this card's expected glyph.
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "other#A"}, To: quarry.Symbol{ID: "other#B"}}},
+	}}
+
+	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	if err != nil {
+		t.Fatalf("BindHandles(...) returned error: %v", err)
+	}
+	if len(findings) != 1 || findings[0].Check != "bind-count-mismatch" {
+		t.Fatalf("findings = %+v; want exactly one bind-count-mismatch", findings)
+	}
+
+	got := readCardFile(t, dir, 1, "card1")
+	if !strings.Contains(got, "plan:sub#New") {
+		t.Errorf("card was rewritten despite the mismatch: %s", got)
+	}
+}
+
 // TestBindHandles_LanguageNoneNoOp mirrors CanonicalizeHandles' own no-op under language: none.
 func TestBindHandles_LanguageNoneNoOp(t *testing.T) {
 	dir := t.TempDir()

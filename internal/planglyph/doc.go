@@ -39,8 +39,9 @@
 //     same glyph.
 //   - rename-old-unresolved (blocking) — renameDeclSource (handle.go), a Rename pair's Old side
 //     that does not resolve found, so no declaration can be derived for its handle-shaped New side.
-//   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose declared handles the
-//     record-batch delta matched fewer of than it declared.
+//   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
+//     Create declarations AND any Rename pair's still-handle-shaped New side, per cardOwnHandles)
+//     the record-batch delta matched fewer of than it owns.
 //   - plan-references-deleted-symbol (blocking), rename-candidate (informational) — DetectDrift
 //     (drift.go), the exact-tier and evidence-tier halves of drift detection.
 //   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
