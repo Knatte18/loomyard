@@ -14,8 +14,13 @@
 // See CONSTRAINTS.md's Told-Geometry Invariant.
 //
 // The target is normalized -- symlinks resolved, the result cleaned, and lower-cased on Windows --
-// before hashing, so two spellings of the same directory (a symlink and its target, or two
-// differently-cased paths on a case-insensitive filesystem) hash identically.
+// before hashing, so two spellings of the same directory (a symlink and its target, or, ON WINDOWS,
+// two differently-cased paths) hash identically.
+// The case fold is Windows-only on purpose: it mirrors internal/lyxcwd's samePath rule exactly, and
+// that rule is what every other path comparison in lyx already uses, so folding on more platforms
+// here would make Derive's identity disagree with lyxcwd's. The accepted consequence, stated rather
+// than implied: on another case-insensitive filesystem (macOS's default APFS), two differently-cased
+// spellings of one repository hash to two state directories, two sockets and two tmux sessions.
 // Without that, two standalone runs against the same target would land on different sockets,
 // sessions, and state directories.
 //
