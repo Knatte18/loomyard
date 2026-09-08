@@ -44,7 +44,9 @@ batches:
     commit_sha: 3473b47cb014b74165a8c72cc56d65c0e4e91690
     verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
   - name: rewire-clis
-    state: pending
+    state: running
+    implementer_session: 040e54d8-bc41-41aa-85ec-b1e5d86f3044
+    start_sha: eeabc7435a93fb3f303a2e10e7d440615eb882ff
     verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
   - name: enforcement-and-docs
     state: pending
