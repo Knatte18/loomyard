@@ -27,8 +27,8 @@ This task removes the duplication and adds the mechanical check that keeps a thi
 - The hub-side pieces that are genuinely shared: the `--target-dir`-in-hub-mode refusal and the plan-dir override detection.
 - Rewriting both `wiring.go` bodies to call into `cliwire`, keeping each `wire` method's existing signature.
 - Moving the shared-behaviour tests into `internal/cliwire`'s own test file, leaving per-CLI composition tests behind.
-- Two enforcement tests in `internal/cliwire`: a `standalonestate.Derive` caller-set pin, and a banned-declaration check over `webstercli`/`burlercli`.
-- A new CONSTRAINTS.md invariant, a `manifest/designs/cli-wiring.md` module doc, and a `docs/overview.md` module-table row — same commit.
+- Two enforcement tests in `internal/cliwire`: a production-only `standalonestate.Derive` caller-set pin, and a banned-declaration check over `webstercli`/`burlercli`.
+- A new CONSTRAINTS.md invariant, a `internal/cliwire/doc.go` package header carrying the design rationale, and a `docs/overview.md` module-tree entry — same commit.
 
 **Out:**
 
@@ -104,6 +104,19 @@ This task removes the duplication and adds the mechanical check that keeps a thi
 - Rejected: two entry points `ResolveStandalone` / `ResolveStandaloneWithPlan` (re-splits the prologue that was just unified);
   a `Plan bool` with the refusal text hardcoded in `cliwire` (bakes webster-specific text into shared code).
 
+### The default plan directory arrives as a function on `PlanRules`
+
+- Decision: `PlanRules` carries `DefaultPlanDir func(base string) string`.
+  Webster passes `planparser.PlanDir`.
+  The prologue calls it with `stateDir` to obtain standalone's default;
+  `wireHub` calls the same field with the hub anchor path for the hub-mode override check.
+  `internal/cliwire` therefore does **not** import `internal/planparser`.
+- Rationale: `cliwire` needs the default for `SamePlanDir` and for the missing-plan refusal's recourse text, but it constructs no `Geometry`, and standalone's default depends on the `stateDir` the prologue itself derives — so the caller cannot hand over a finished string.
+  A function field keeps `cliwire` agnostic to webster's plan format and matches the already-decided split where varying data lives with the caller.
+  Today's two sources reduce to the same call: standalone's `standalonegeom.WebsterGeometry(target, stateDir).PlanDir` is `planparser.PlanDir(stateDir)`, and hub's `hubgeom.WebsterGeometry(loc).PlanDir` is `planparser.PlanDir(anchorPath)` — one function, two bases.
+- Rejected: `cliwire` importing `internal/planparser` and computing `planparser.PlanDir(base)` itself (fewer moving parts, and `standalonegeom` already imports `planparser` anyway, but it puts webster's plan layout inside a module burler shares, breaking the descriptor-carries-varying-data rule);
+  splitting the prologue so the caller builds geometry between two calls (re-splits the single entry point that was deliberately unified).
+
 ### Stencils resolve-and-seed moves in, returned as a plain string
 
 - Decision: the prologue resolves and seeds the standalone stencils directory and returns it as a plain string in the result;
@@ -134,7 +147,9 @@ This task removes the duplication and adds the mechanical check that keeps a thi
 ### Descriptor values are declared by their owners, not by `cliwire`
 
 - Decision: each CLI declares its own descriptor in its own package — `var wireModule = cliwire.Module{Name: "webster", ...}` in `webstercli`, likewise in `burlercli`.
-  `cliwire` names neither caller.
+  No **production** file in `cliwire` names either caller.
+  Its enforcement test necessarily does, since an enforcement test's whole job is to name the packages it polices;
+  that is the same arrangement `internal/gitkit/callerset_enforcement_test.go` already has, where production `gitkit` never names `lyxcwd` and the test names it in a const.
 - Rationale: this is the actual `shedrecipe` analogy.
   The shared `Constructor` functions live in `shedrecipe`;
   the varying data lives outside it, in `contracts/recipes/loom-recipe.yaml`'s rows.
@@ -144,8 +159,8 @@ This task removes the duplication and adds the mechanical check that keeps a thi
 ### Mechanical enforcement — two complementary checks
 
 - Decision: two enforcement tests in `internal/cliwire`.
-  A **caller-set pin** asserting that `internal/cliwire` is the only production caller of `standalonestate.Derive`, modelled on `internal/gitkit/callerset_enforcement_test.go`.
-  A **banned-declaration check** failing if `internal/webstercli` or `internal/burlercli` declares a function named `resolveStandaloneTarget`, `repositoryRootOf`, `refuseNestedStandaloneGeometry`, `normalizeForContainment`, `pathContains`, or `resolveToldDir`.
+  A **caller-set pin** asserting that `internal/cliwire` is the only production caller of `standalonestate.Derive`, modelled on `internal/gitkit/callerset_enforcement_test.go` but **skipping `_test.go` files**, the way `internal/treadleengine/seam_enforcement_test.go:52` already does.
+  A **banned-declaration check** failing if `internal/webstercli` or `internal/burlercli` declares a function named `resolveStandaloneTarget`, `repositoryRootOf`, `refuseNestedStandaloneGeometry`, `normalizeForContainment`, `pathContains`, `resolveToldDir`, `samePlanDir`, `standalonePlanDirHasContent`, or `standaloneDefaultPlanDir`.
 - Rationale: the two cover each other's blind spots.
   The `Derive` pin catches a whole third copy built from the bottom up;
   the name check catches a partial re-implementation that still calls into `cliwire` for the rest.
@@ -154,10 +169,25 @@ This task removes the duplication and adds the mechanical check that keeps a thi
   the name check alone (misses a new CLI deriving its own state dir from scratch);
   an import allowlist barring `webstercli`/`burlercli` from importing `standalonestate`/`standalonegeom` (too blunt — `standalonegeom`'s geometry builders are legitimately needed after the prologue returns).
 
+The pin is production-only because the invariant is about production wiring.
+Six test call sites exist today and stay where they are: `internal/burlercli/wiring_test.go:68,143,211` (whose helpers move to `cliwire` anyway under the test decision), `internal/webstercli/cli_integration_test.go:46,99`, and `internal/standalonegeom/reedgeom_symlink_integration_test.go`.
+Those tests call `Derive` to build a fixture and to assert the real derivation end-to-end — they are not a second copy of the wiring, and forcing them through `cliwire` would make packages that have no reason to depend on it do so.
+An explicit test-file allowlist was rejected as maintenance on something a code review would see anyway;
+production drift is what slips in silently.
+
 ### Exported surface
 
-- Decision: `cliwire.Module` (the descriptor), `cliwire.PlanRules`, `cliwire.StandaloneRequest`, `cliwire.Standalone` (the result), with methods `(Module).ResolveStandalone(StandaloneRequest) (Standalone, error)`, `(Module).RefuseTargetDirInHubMode(flag string) error` and a plan-dir override resolver;
-  plus package-level `ResolveToldDir`, `NormalizeForContainment`, `SamePlanDir`, `RepositoryRootOf`.
+- Decision: the exported surface is
+
+  - `cliwire.Module` — the descriptor: `Name string`, the nested-geometry refusal's two noun phrases, the hub `--target-dir` refusal's subject phrase, and `Plan *PlanRules`.
+  - `cliwire.PlanRules` — `DefaultPlanDir func(base string) string` plus the missing-plan refusal's text.
+    Nil on `Module` means the CLI parses no plan.
+  - `cliwire.StandaloneRequest` — `Cwd`, `StencilsDirFlag`, `PlanDirFlag`, `TargetDirFlag`.
+  - `cliwire.Standalone` — the result: `Target`, `StateDir`, `Hash8`, `StencilsDir`, `PlanDir`, `PlanDirOverridden`, `DefaultPlanDir`.
+  - `(Module).ResolveStandalone(StandaloneRequest) (Standalone, error)`.
+  - `(Module).RefuseTargetDirInHubMode(flag string) error`.
+  - `(Module).ResolvePlanDir(toldPlanDir, defaultPlanDir string) (planDir string, overridden bool)` — the plan-dir override resolver, shared by `wireHub` and the standalone prologue.
+  - Package-level pure functions `ResolveToldDir`, `NormalizeForContainment`, `SamePlanDir`, `RepositoryRootOf`.
 - Rationale: reads cleanly at the call site (`wireModule.ResolveStandalone(...)`), and the pure helpers stay callable without a descriptor since none of them produces a message.
 - Rejected: a minimal surface keeping the pure helpers unexported (viable, since the shared tests live inside the package anyway, but `ResolveToldDir` has a live cross-file caller — burler's `run.go` resolves `--profile` through it — so it must be exported regardless).
 
@@ -173,11 +203,19 @@ This task removes the duplication and adds the mechanical check that keeps a thi
 
 - Decision: the moved tests are the proof.
   Every existing assertion — including the exact refusal-message strings — moves into `cliwire`'s test file unchanged in substance, so a reworded message fails the suite.
-  `go test ./...` is the verify command.
+  The verify command is the two-command pair in the Testing section below, not `go test ./...` alone.
 - Rejected: additional golden-file tests pinning each refusal message verbatim per module (real value, but a new artifact to maintain for text the moved tests already assert);
-  relying on `go test ./...` without insisting the message assertions survive the move (that is exactly how the wording quietly drifts again).
+  relying on an untagged run alone without insisting the message assertions survive the move (that is exactly how the wording quietly drifts again).
 
-## Technical context
+### Where the design rationale lives
+
+- Decision: no `manifest/designs/` file.
+  The rationale goes in `internal/cliwire/doc.go`'s package header, `docs/overview.md` gains a tree entry for `internal/cliwire` beside `hubgeom`/`standalonegeom`/`preflight`, and `CONSTRAINTS.md` gains the new invariant — all in the landing commit.
+- Rationale: `docs/overview.md:91`'s Documentation lifecycle — the authority `CONSTRAINTS.md` points at — says `manifest/designs/<module>.md` are drafts for planned, not-yet-built modules, **deleted when their module lands**, with the purpose and design rationale then living in the Go package header.
+  Writing one in the same commit that lands the module would create a doc that is immediately deletable.
+  `docs/overview.md` also lists these packages in a tree rather than a table, so "module-table row" was the wrong shape;
+  a `docs/shared-libs/` entry is likewise wrong, since `hubgeom`, `standalonegeom` and `preflight` — this module's nearest neighbours — have tree entries and no shared-lib doc.
+- Rejected: a `manifest/designs/cli-wiring.md` (contradicts the lifecycle the same commit is supposed to honour).
 
 ### The two current copies
 
@@ -205,11 +243,17 @@ This task removes the duplication and adds the mechanical check that keeps a thi
 ### Dependencies the new package will take
 
 `internal/standalonestate` (`Derive`, `Normalize`), `internal/standalonegeom` (`StencilsDir`, `LogsDir`), `internal/logger`, `internal/stencilstore`, `internal/buildinfo`, `contracts/stencils`, plus stdlib.
-It must **not** import `internal/lyxcwd` (Told-Geometry Invariant) — it never needs to, since `cwd` and `loc` arrive from the caller.
+
+Two exclusions are deliberate:
+
+- **`internal/lyxcwd`** — barred by the Told-Geometry Invariant, and never needed: `cwd` and `loc` arrive from the caller.
+- **`internal/planparser`** — the plan-directory default arrives as `PlanRules.DefaultPlanDir func(base string) string`, which webster fills with `planparser.PlanDir`.
+  `cliwire` never parses a plan;
+  `standalonePlanDirHasContent`'s check is a `ReadDir` for a `*.md` entry, which is not plan parsing and does not touch the Planparser Sole-Parser Invariant.
 
 ### Values the result struct must carry
 
-`target`, `stateDir`, `hash8` (webster and burler both need it for `standalonegeom.ReedGeometry`), `stencilsDir`, `planDir`, and whether the plan dir was overridden off its default (plus the default's own path, for the refusal's recourse text).
+`target`, `stateDir`, `hash8` (webster and burler both need it for `standalonegeom.ReedGeometry`), `stencilsDir`, `planDir`, whether the plan dir was overridden off its default, and the default's own path (for the missing-plan refusal's recourse text, which must always name the location `run` requires rather than the override the operator just supplied).
 
 ### Precedent to read before designing
 
@@ -249,14 +293,19 @@ From `CONSTRAINTS.md`:
   Unchanged, and untouched: no command, flag or `RunE` is added or reordered.
 - **Test Tier Purity Invariant** — the moved tests must stay tier 1 (untagged, no process spawn, no cwd resolution).
   The whole prologue is filesystem reads and path arithmetic, so this holds.
-- **Documentation Lifecycle** — see the docs decision below.
+- **Documentation Lifecycle** — `docs/overview.md#documentation-lifecycle` is the authority CONSTRAINTS.md points at, and it says `manifest/designs/<module>.md` are drafts for **planned, not-yet-built** modules, deleted when the module lands, with the purpose and design rationale then living in the module's Go package header.
+  A landing commit therefore writes no `manifest/designs/` file — see the docs decision below.
+- **Planparser Sole-Parser Invariant** — `internal/planparser` is the sole parser and writer of the on-disk plan format.
+  `cliwire` does not import it (see the plan-dir default decision);
+  it never parses a plan, only checks whether a directory holds `*.md` files.
 
 New invariant to record in `CONSTRAINTS.md`, same commit:
 
 **Cliwire Sole-Wiring Invariant.** `internal/cliwire` is the sole owner of standalone/hub CLI wiring resolution for standalone-capable CLIs.
 A `<module>cli` never re-implements `--target-dir` resolution, repository-root lift, mode-derived state/plan/stencils resolution, the nested-geometry guard, or the durable-sink redirect;
 it declares its own `cliwire.Module` descriptor and calls in.
-`internal/cliwire` is the only production caller of `standalonestate.Derive`.
+`internal/cliwire` is the only **production** caller of `standalonestate.Derive`;
+test files may call it to build fixtures and to assert the real derivation.
 Enforced by the two tests in `internal/cliwire`.
 
 From CLAUDE.md:
@@ -268,7 +317,17 @@ From CLAUDE.md:
 
 ## Testing
 
-Verify command for every batch and for the done gate: `go test ./...`.
+Verify command for every batch and for the done gate, both commands:
+
+```
+go test ./...
+go test -tags integration ./internal/cliwire/... ./internal/webstercli/... ./internal/burlercli/... ./internal/standalonegeom/...
+```
+
+The tagged second command is not optional here.
+`internal/webstercli/verbs_test.go` and both `cli_integration_test.go` files carry `//go:build integration`, so an untagged run executes none of them — and `webstercli/cli_integration_test.go` exists precisely to exercise the real `standalonestate.Derive` and the real standalone stencil seed end-to-end, which is the code this task moves.
+An untagged-only gate would have left the moved prologue's only end-to-end coverage unrun.
+`smoke_test.go` (`//go:build smoke`) stays out: it drives live agent substrate and covers nothing this change touches.
 
 ### `internal/cliwire` — the new package's own tests
 
@@ -302,8 +361,8 @@ TDD candidates, all tier 1 and untagged:
 
 ### Enforcement tests in `internal/cliwire`
 
-- `standalonestate.Derive` caller-set pin — AST-based, walking `internal/` and `cmd/`, skipping `standalonestate` itself, matching a selector call whose receiver is the file's `standalonestate` import.
-  Model: `internal/gitkit/callerset_enforcement_test.go`.
+- `standalonestate.Derive` caller-set pin — AST-based, walking `internal/` and `cmd/`, skipping `standalonestate` itself **and every `_test.go` file**, matching a selector call whose receiver is the file's `standalonestate` import.
+  Model: `internal/gitkit/callerset_enforcement_test.go` for the AST match, `internal/treadleengine/seam_enforcement_test.go:52` for the `_test.go` skip.
 - Banned-declaration check over `internal/webstercli` and `internal/burlercli`, on declared function names, AST-based so a doc comment naming the function cannot trip it.
 
 ### `internal/webstercli` and `internal/burlercli` — composition tests that stay
@@ -323,7 +382,8 @@ The duplicated helpers `hash8For` and `seedGitRepositoryRoot` move to `cliwire`;
 
 `internal/burlercli/run.go` calls `resolveToldDir` for `--profile` (R6-17's fix).
 That call site must switch to `cliwire.ResolveToldDir` and keep behaving identically against the seam cwd `c.cwd`, not the process cwd.
-`internal/burlercli/cli_test.go` and `internal/webstercli/verbs_test.go` / `smoke_test.go` exercise the CLIs end-to-end and should pass untouched — if either needs editing, that is a behaviour change and a signal to stop.
+`internal/burlercli/cli_test.go` (untagged) and `internal/webstercli/verbs_test.go` plus both `cli_integration_test.go` files (all `//go:build integration`) exercise the CLIs end-to-end and should pass untouched — if any of them needs editing, that is a behaviour change and a signal to stop.
+This is why the verify pair above includes the tagged run: the integration files are the only end-to-end coverage of the moved prologue, and an untagged-only gate would never execute them.
 
 ## Q&A log
 
@@ -344,10 +404,18 @@ That call site must switch to `cliwire.ResolveToldDir` and keep behaving identic
 - **Q:** What does the mechanical check assert? **A:** Both a `Derive` caller-set pin and a banned-declaration check — the pin catches a third copy built from scratch, the name check catches a partial re-implementation that still calls into `cliwire` for the rest;
   each alone covers only half.
 - **Q:** Does `cliwire` perform the sink redirect itself? **A:** Yes — that *is* the ordering obligation the single entry point was chosen to lock into the type.
-- **Q:** Documentation? **A:** Design doc, overview row and the invariant, same commit — CLAUDE.md requires it for a new module, not negotiable.
+- **Q:** Documentation? **A:** Package doc, overview tree entry and the invariant, same commit.
+  (Originally answered "design doc"; corrected in review round 1 — `docs/overview.md:91`'s lifecycle deletes `manifest/designs/` files when their module lands, so writing one in the landing commit contradicts the rule the commit is honouring.)
 - **Q:** Exported surface naming? **A:** The full named surface — descriptor methods for the message-producing steps, package functions for the pure helpers, which need no descriptor since they produce no messages.
 - **Q:** How is "no behaviour change" proven? **A:** Moved tests with unchanged message strings plus `go test ./...` — proves it without a new artifact to maintain.
 - **Q:** Where do the two descriptor values live? **A:** Each CLI owns its own descriptor var — the real `shedrecipe` analogy: shared logic in the module, varying data with the callers, just as the `Constructor` functions live in `shedrecipe` while the data lives in the YAML rows outside it.
-- **Q:** Verify command? **A:** `go test ./...` — no Makefile in the repo, cgo covered natively;
-  adding `-tags integration` costs runtime without new coverage of the moved code.
+- **Q:** Verify command? **A:** `go test ./...` **plus** a scoped `-tags integration` run over `cliwire`, `webstercli`, `burlercli` and `standalonegeom`.
+  (Originally answered "`go test ./...` alone, since `-tags integration` adds runtime without new coverage"; corrected in review round 1 — `webstercli/cli_integration_test.go` is tagged `integration` and exists specifically to exercise the real `Derive` and the real stencil seed, so an untagged-only gate never runs the moved prologue's end-to-end coverage.)
+- **Q:** Does the `Derive` caller-set pin cover test files? **A:** Production files only, skipping `_test.go` the way `treadleengine/seam_enforcement_test.go` does.
+  The invariant is about production wiring;
+  `cli_integration_test.go` and `standalonegeom`'s symlink test call `Derive` to build fixtures and verify the real derivation, not as a second wiring copy.
+  A test-file allowlist was rejected — it is maintenance on something a code review would catch anyway, whereas production drift is what slips in silently.
+- **Q:** Where does `cliwire` get the default plan directory, given it builds no `Geometry` and standalone's default depends on the `stateDir` the prologue itself derives? **A:** `PlanRules.DefaultPlanDir func(base string) string`, with webster supplying `planparser.PlanDir`.
+  Keeps `cliwire` agnostic to webster's plan format, consistent with the already-chosen "varying data lives with the caller" split;
+  importing `planparser` into `cliwire` would break exactly that principle, and splitting the prologue in two would undo the single entry point.
 - **Q:** Do the `wire` signatures change? **A:** No, only the bodies — keeps `cli.go` and the existing composition tests compiling unchanged, confining the diff to `wiring.go` plus the new package.
