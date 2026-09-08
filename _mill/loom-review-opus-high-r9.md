@@ -258,4 +258,29 @@ No tmux session, no `lyx` daemon, no `claude` subprocess and no fixture hub was 
 
 ## Fix log
 
-Filled in during Job 2. See `_mill/loom-review-opus-high-r9-fixer-report.md` for the full per-finding table.
+All 8 findings fixed, one commit each, on branch `crucible-loom-glyph-hardening`. Not pushed.
+Full per-finding detail, tests, docs and gate evidence: `_mill/loom-review-opus-high-r9-fixer-report.md`.
+
+| Finding | Severity | Commit |
+|---|---|---|
+| R9-1 | BLOCKING | `e455e817d` |
+| R9-2 | MEDIUM | `71beac1de` |
+| R9-3 | MEDIUM | `ec49d92dd` |
+| R9-4 | LOW | `a7cf0d40d` |
+| R9-5 | LOW | `0303cc731` |
+| R9-6 | LOW | `8588d52a9` |
+| R9-7 | NIT | `8af4a81a7` |
+| R9-8 | NIT | `7a93f4eb8` |
+
+R9-4 was additionally **mutation-checked**: with only `internal/planglyph/drift.go` reverted, its new test fails exactly as the finding describes — the referencing card's ref rewritten, an `amendments.md` appended, and three spurious blocking `glyph-not-found` findings.
+R9-1's `integration` test pins both halves in one run, so the bare-token failure it prevents stays visible rather than being deleted along with the bug.
+
+### Gates after the last fix
+
+`CGO_ENABLED=1 go build ./...`, `go vet` over the five packages, `go test -count=5` over the five packages, `go test -tags integration` over the five packages, and `go test ./...` across the whole repo: all clean.
+Each was also run to green after every individual fix before that fix was committed.
+
+### Substrate
+
+Nothing to tear down: no tmux session, no `lyx` daemon, no `claude` subprocess and no fixture hub was started at any point.
+`ps aux | grep -iE 'tmux|lyx|claude'` at the end of the round lists only processes predating it.
