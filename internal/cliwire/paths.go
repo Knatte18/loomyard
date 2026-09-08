@@ -29,6 +29,15 @@ const gitDirName = ".git"
 // satisfy. Resolving happens once, at the wiring boundary, because that is the last point that still
 // knows which working directory the operator typed the flag from — the same reason
 // resolveStandaloneTarget has always done it for --target-dir.
+//
+// PRECONDITION, enforced only by convention rather than asserted here (crucible round
+// sonnet-xhigh-r8, CW-4): cwd must be non-empty and absolute whenever flagValue is a non-empty
+// relative value. filepath.Join silently drops an empty path element rather than failing, so an
+// empty cwd would return flagValue unresolved (still relative), silently violating this function's
+// own documented "every path this module hands downstream must be absolute" postcondition. Every
+// production call site supplies cwd from an already-resolved lyxcwd.CwdFrom(ctx) or the standalone
+// prologue's own told cwd, neither of which is ever empty, so this precondition is not
+// live-exploitable today.
 func ResolveToldDir(cwd, flagValue string) string {
 	if flagValue == "" {
 		return ""
@@ -105,6 +114,14 @@ func NormalizeForContainment(path string) string {
 //
 // os.Lstat rather than os.Stat, and no directory-vs-file test: a linked worktree records ".git" as a
 // FILE, and a repository reached through a symlink is still a repository.
+//
+// PRECONDITION, enforced only by convention rather than asserted here (crucible round
+// sonnet-xhigh-r8, CW-4): dir must be non-empty and absolute. filepath.Join silently drops an empty
+// path element rather than failing, so an empty dir would search from this PROCESS's own cwd rather
+// than from any path the caller actually meant — a landmine rather than a clean failure. The sole
+// production call site (resolveStandaloneTarget) can never pass one: its own dir is always derived
+// from cwd, which is refused upstream by lyxcwd.CwdFrom before wire is ever reached, so this
+// precondition is not live-exploitable today.
 func RepositoryRootOf(dir string) string {
 	for candidate := dir; ; {
 		if _, err := os.Lstat(filepath.Join(candidate, gitDirName)); err == nil {
