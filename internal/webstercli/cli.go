@@ -24,6 +24,7 @@
 package webstercli
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -258,11 +259,32 @@ Example (standalone, outside any lyx hub):
 // fingerprint means no rewrite happened, so nothing is written at all — which is what keeps a
 // genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
 // Callers invoke this while still holding the state-mutation lease.
+//
+// It persists the fingerprint and NOTHING ELSE: the state it writes is re-loaded from disk here and
+// carries only the new fingerprint, rather than being the caller's whole in-memory *State.
+// The caller's copy is not a fingerprint-only delta. RecordBatch appends to State.SeenForkTranscripts
+// the moment it attributes a fork's transcripts, well BEFORE the step that can fail, so saving the
+// whole struct persisted the transcript as CONSUMED on a call that then failed ErrCardNotDone. The
+// resumed record-batch then found zero new transcripts (ErrNoForkTranscripts) and the batch was stuck
+// in a three-verb refusal circle whose only exit is an operator moving the report file by hand — and
+// the identical failure with an unchanged fingerprint resumed cleanly, so the outcome turned on
+// whether a rewrite happened to land (crucible round opus-medium-r6, R6-4).
+// Re-loading under the still-held lease is safe by construction: nothing else may mutate state while
+// the lease is held, so the reload differs from the caller's copy only by the mutations this function
+// exists to drop.
 func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websterengine.State, fingerprintBefore string) error {
 	if st == nil || st.PlanFingerprint == fingerprintBefore {
 		return nil
 	}
-	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st)
+	fresh, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("webster: reload state to re-baseline the plan fingerprint: %w", err)
+	}
+	if fresh == nil {
+		return fmt.Errorf("webster: state.json disappeared before the plan-fingerprint re-baseline could be persisted; the plan on disk now carries webster's own rewrite with no state to record it")
+	}
+	fresh.PlanFingerprint = st.PlanFingerprint
+	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, fresh)
 }
 
 // RunCLI is the public seam for the webster module CLI.

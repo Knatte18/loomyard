@@ -911,6 +911,9 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 
 	t.Run("changed fingerprint is persisted", func(t *testing.T) {
 		geom := newGeom(t)
+		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, &websterengine.State{RunGUID: "g2", PlanFingerprint: "before the rewrite"}); err != nil {
+			t.Fatalf("seed SaveState() error = %v", err)
+		}
 		st := &websterengine.State{RunGUID: "g2", PlanFingerprint: "after the rewrite"}
 
 		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
@@ -925,6 +928,40 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 		}
 		if loaded.PlanFingerprint != "after the rewrite" {
 			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
+		}
+	})
+
+	// R6-4: the re-baseline persists the FINGERPRINT and nothing else. RecordBatch advances
+	// State.SeenForkTranscripts before the step that can fail, so saving the caller's whole in-memory
+	// State persisted the fork's transcript as consumed on a failed call — and the resumed
+	// record-batch then found no new transcripts and wedged.
+	t.Run("only the fingerprint is persisted, never the caller's other mutations", func(t *testing.T) {
+		geom := newGeom(t)
+		onDisk := &websterengine.State{RunGUID: "g3", PlanFingerprint: "before the rewrite"}
+		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, onDisk); err != nil {
+			t.Fatalf("seed SaveState() error = %v", err)
+		}
+		st := &websterengine.State{
+			RunGUID:             "g3",
+			PlanFingerprint:     "after the rewrite",
+			SeenForkTranscripts: []string{"/transcripts/fork-a.jsonl"},
+		}
+
+		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
+		}
+		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+		if err != nil {
+			t.Fatalf("LoadState() error = %v", err)
+		}
+		if loaded == nil {
+			t.Fatal("LoadState() = nil; want the re-baselined state persisted")
+		}
+		if loaded.PlanFingerprint != "after the rewrite" {
+			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
+		}
+		if len(loaded.SeenForkTranscripts) != 0 {
+			t.Errorf("LoadState().SeenForkTranscripts = %v; want empty — persisting it marks the fork's transcript consumed on a call that FAILED, and the resumed record-batch then finds nothing to attribute", loaded.SeenForkTranscripts)
 		}
 	})
 
