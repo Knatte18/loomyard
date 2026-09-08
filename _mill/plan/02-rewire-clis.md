@@ -85,6 +85,12 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   `seedStandalonePlanDir`'s doc, which names `standalonePlanDirHasContent`, now `internal/cliwire`'s own `planDirHasContent`;
   and `seedGitRepositoryRoot`'s doc, which names `repositoryRootOf`, now `cliwire.RepositoryRootOf` — each only if the helper survives the deletion pass above.
 
+  Retarget `wireStandalone`'s own doc comment in `internal/webstercli/wiring.go` too — this is production prose that neither enforcement test in batch 3 can catch, since both match on the AST.
+  Three of its claims are false after this card: it opens by naming `resolveStandaloneTarget` as what settled the target, which this card deletes;
+  it calls this the "only place `standalonestate.Derive` is ever called", which is now `internal/cliwire`;
+  and it closes by justifying the already-absolute `stencilsDir`/`planDir` parameters "since the default-vs-override comparison below is a path equality", a comparison this card moves out of the function.
+  Rewrite the comment so it describes what the function now does — call `wireModule.ResolveStandalone` and compose webster's own engines onto the result — and point at `cliwire.ResolveStandalone` for the prologue's ordering and asymmetry rules rather than restating them.
+
   Add one new test, `TestWireModule_DescriptorIsVerbatim`, which is what makes this task's "a reworded message fails the suite" claim true of the six descriptor fields that this task converts from inline production strings into free-floating data.
   Without it nothing anywhere asserts webster's own descriptor text: `internal/cliwire`'s tests assert their own fixtures, not this package's `wireModule`, and every test that used to touch the nested-geometry and target-resolution messages is deleted above.
   It must:
@@ -104,7 +110,6 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   - `internal/cliwire/standalone.go`
   - `internal/cliwire/cliwire_test.go`
   - `internal/burlercli/cli.go`
-  - `internal/burlercli/cli_test.go`
   - `internal/burlercli/cli_integration_test.go`
   - `internal/hubgeom/hubgeom.go`
   - `internal/standalonegeom/burlergeom.go`
@@ -114,6 +119,7 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   - `internal/burlercli/wiring.go`
   - `internal/burlercli/wiring_test.go`
   - `internal/burlercli/run.go`
+  - `internal/burlercli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -143,6 +149,13 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   In `internal/burlercli/run.go`, change the `--profile` read at the `os.ReadFile` call from `resolveToldDir(c.cwd, profilePath)` to `cliwire.ResolveToldDir(c.cwd, profilePath)`, and add the `internal/cliwire` import.
   The behaviour must stay identical: it resolves against the seam cwd `c.cwd`, never the process working directory — this is R6-17's fix and must not regress.
 
+  Pin that with one new tier-1 case appended to `internal/burlercli/cli_test.go`, named `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd`.
+  Nothing pins it today — `cli_test.go` covers only the missing-`--profile` refusal and `decodeProfile` — and neither batch-3 check would catch a swapped or dropped first argument, so a silent regression to the process working directory is reachable.
+  Drive the `run` verb the way `TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo` already does, with `c.cwd` pointed at a `t.TempDir()` holding a profile file, passing that file's name as a **relative** `--profile` value.
+  Assert the emitted error does not contain `read --profile` — the read having succeeded is the whole claim;
+  the invocation is expected to fail later, at wiring or engine construction, and that later failure is not what this case asserts.
+  Do not `os.Chdir` and do not depend on the process working directory in any way.
+
   Fix `internal/burlercli/wiring.go`'s import block: add `github.com/Knatte18/loomyard/internal/cliwire`, then drop every import the rewrite orphans.
   Determine that set by walking the whole post-rewrite import block and grepping the file for each package's own identifier — an unused import is a hard compile error, so the block must be verified entry by entry rather than trusted.
   The following are named only as a non-exhaustive starting point and the list must not be treated as complete: `os`, `runtime`, `strings`, `path/filepath`, `fmt`, `github.com/Knatte18/loomyard/internal/standalonestate`, `github.com/Knatte18/loomyard/internal/stencilstore`, `github.com/Knatte18/loomyard/internal/buildinfo`, `github.com/Knatte18/loomyard/contracts/stencils`, and `github.com/Knatte18/loomyard/internal/logger`.
@@ -163,6 +176,10 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   the file-header comment's claim about being "the one call site of `standalonestate.Derive`";
   and `seedGitRepositoryRoot`'s doc, which names `repositoryRootOf`, now `cliwire.RepositoryRootOf` — only if the helper survives the deletion pass above.
 
+  Retarget `wireStandalone`'s own doc comment in `internal/burlercli/wiring.go` too, for the same reason card 6 gives: it is production prose no AST-matching enforcement test can catch.
+  It opens by naming `resolveStandaloneTarget` as what settled the target and calls this "the only place `standalonestate.Derive` is ever called in this package", and both claims are false after this card.
+  Rewrite it to describe what the function now does — call `wireModule.ResolveStandalone` and compose burler's own engine onto the result — and point at `cliwire.ResolveStandalone` for the prologue's ordering and two-asymmetry rules, which the same card already moves onto that function.
+
   Add one new test, `TestWireModule_DescriptorIsVerbatim`, mirroring card 6's test of the same name and existing for the same reason — nothing else asserts burler's own descriptor text once the message-bearing tests above are deleted.
   It must:
   - assert each of `wireModule`'s five string fields (`Name`, `StateArtifacts`, `TargetRole`, `TargetRecourse`, `HubTargetSubject`) against its expected literal, and assert `wireModule.Plan` is nil — the nil is a load-bearing fact, since it is what makes `ResolveStandalone` skip plan resolution for burler;
@@ -170,8 +187,8 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   - drive `wireModule.ResolveStandalone` once with `XDG_STATE_HOME` and `LOCALAPPDATA` pointed inside a `t.TempDir()` target so the state directory nests under it, and assert the resulting refusal verbatim.
   Keep it tier 1 under the same rules card 6's version follows.
 
-  Do not edit `internal/burlercli/cli_test.go` and do not edit `internal/burlercli/cli_integration_test.go`.
-  If either turns out to need a change, that is a behaviour change and a signal to stop and report rather than to edit.
+  Do not change any existing case in `internal/burlercli/cli_test.go` — the only edit this card makes to that file is appending `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd`, and any existing case there needing a change is a behaviour change and a signal to stop and report rather than to edit.
+  Do not edit `internal/burlercli/cli_integration_test.go` at all, under the same rule.
 - **Commit:** `refactor(burlercli): wire standalone and hub resolution through cliwire`
 
 ## Batch Tests

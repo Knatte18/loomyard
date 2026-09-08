@@ -112,6 +112,7 @@ batches:
 
 - `CONSTRAINTS.md`
 - `docs/overview.md`
+- `internal/burlercli/cli_test.go`
 - `internal/burlercli/run.go`
 - `internal/burlercli/wiring.go`
 - `internal/burlercli/wiring_test.go`

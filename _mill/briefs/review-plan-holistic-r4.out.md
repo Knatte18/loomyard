@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: Unify webster/burler CLI wiring into a shared module — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Opus 5 (claude-opus-5)
+reviewed_file: plan/
+date: 2026-09-08
+```
+
+## Findings
+
+### [BLOCKING:scope] wireStandalone doc comments left stale by the rewrite
+**Location:** batch 2, cards 6 and 7 ("Retarget the doc comments this card's own deletions invalidate")
+**Issue:** Both cards enumerate exactly three retarget targets (test-file header, `seedStandalonePlanDir`, `seedGitRepositoryRoot`) and omit `wireStandalone`'s own doc comment, which in both packages opens with "the target **resolveStandaloneTarget** settled on … **standalonestate.Derive** over it -- the only place Derive is ever called" (`webstercli/wiring.go:167-176`, `burlercli/wiring.go:131-136`); webster's also ends with "since the default-vs-override comparison **below** is a path equality" (`wiring.go:178-180`). After the cards' own deletions all three claims are false, and both enforcement tests in batch 3 match on the AST, so the stale prose survives silently — the exact drift this task exists to end.
+**Fix:** Extend both cards' retarget lists to name `wireStandalone`'s doc comment: drop the deleted-helper name, drop the "only place Derive is called" claim, and drop/redirect the default-vs-override sentence.
+
+### [NIT:scope] R6-17's --profile call site is rewired with no assertion
+**Location:** batch 2, card 7 (`internal/burlercli/run.go`)
+**Issue:** The card moves `resolveToldDir(c.cwd, profilePath)` to `cliwire.ResolveToldDir(c.cwd, profilePath)` and states it "must not regress", but no test in `internal/burlercli` pins that `--profile` resolves against `c.cwd` rather than the process cwd (`cli_test.go` covers only `--profile is required` and `decodeProfile`), and neither batch-3 check would catch a swapped or dropped first argument.
+**Fix:** Either add a one-case tier-1 assertion for a relative `--profile` resolving against the seam cwd, or state explicitly that this call site is review-verified only.
+
+### [NIT:scope] Card 3 names planparser.PlanDir without it in Context
+**Location:** batch 1, card 3 (`PlanRules.DefaultPlanDir` field doc)
+**Issue:** `Requirements:` names `planparser.PlanDir` and `hubgeom.WebsterGeometry(loc).PlanDir` equality, but `internal/planparser/parse.go` is in neither `Context:` nor `Edits:` (cards 5 and 6 do list it).
+**Fix:** Add `internal/planparser/parse.go` to card 3's `Context:`, or note that the identifier appears only in prose since `module.go` imports `fmt` alone.
+
+## Verdict
+
+REQUEST_CHANGES
+One incomplete doc-retarget enumeration in batch 2; everything else verified sound.
+MILL_REVIEW_END
