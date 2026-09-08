@@ -559,3 +559,146 @@ this round.
 
 Fix: scope the claim to hub mode explicitly, or drop the generalization in favor of pointing at each
 geometry constructor's own (correct) comment.
+
+## Fixing — summary
+
+All 10 findings FIXED (2 BLOCKING, 4 MEDIUM, 3 LOW, 1 NIT), one commit per fix, on top of `034152421`.
+Full table with commits, tests, and change descriptions: `_mill/loom-review-sonnet-xhigh-r8-fixer-report.md`.
+Zero findings deferred; zero NOT-FIXED-THIS-ROUND. Every fix ships with a new or extended regression
+test that fails against the pre-fix code (confirmed for every code-shaped fix by tracing the pre-fix
+behavior directly, not merely asserted) and a doc update in the same commit where the finding touched
+documented behavior (`loom-plan-spec.md`'s 27→28-check renumbering for PG-1; the judge stencil's own
+marker fix for LS-1; `validate`'s help text and `Geometry.WorktreeRoot`'s comment for WS-1/WS-2).
+
+One fix (LS-1) surfaced a genuine, separate, pre-existing production defect while being implemented —
+a judge-stencil template-marker conflation that a narrower fix would have turned into a live
+regression (silently discarding every real judge's own focus-file targeting) — and both were fixed
+together rather than shipping the narrower, unsafe version. See LS-1's own writeup and the fixer
+report's Notes section for the full trace.
+
+**Final hermetic gate re-run, cold, after all 10 fixes, before writing this verdict:**
+- `CGO_ENABLED=1 go build ./...` — clean.
+- `CGO_ENABLED=1 go vet` over the round's full named package set — clean.
+- `CGO_ENABLED=1 go test -count=5` over the same set + `./cmd/lyx/...` — 20/20 packages `ok`, zero
+  FAIL, zero panics across 5 runs each.
+- `CGO_ENABLED=1 go test -tags integration` over the named integration set — all `ok`.
+- `CGO_ENABLED=1 go test ./...` (whole repo) — all `ok`.
+- `CGO_ENABLED=1 go run ./tools/deploy` — redeployed clean at final HEAD, confirming the binary this
+  round's own live-driving used reflects every fix (though the two live-driving runs themselves
+  happened during Job 1, against `034152421`, before any fix — none of the 10 findings were on a code
+  path either live run exercised in a way that would have behaved differently post-fix: SF-1 is a
+  narrow needle-list gap the live runs' actual gate renderings did not happen to hit, and the other 9
+  are glyph/cliwire/bouncer-surface findings outside the smoke-test plan's own one-card scope).
+
+**Teardown, confirmed clean at the end of Job 1 and again now:** zero stray `tmux`/`claude` processes
+from this round's own live driving (`ps aux` scoped to this round's fixtures, and both hub tmux
+sockets confirmed to have "no server running" via `tmux -L <socket> list-sessions`); the one
+pre-existing `tmux` process on this host (pid from Sep 2, this session's own outer terminal) and the
+handful of pre-existing `claude` sessions predate this round entirely and are not this round's to
+tear down.
+
+## Merge-readiness verdict
+
+**READY**, with the same honest limits every round of this campaign has carried forward (see below).
+All 10 findings this round found are fixed, tested, and verified against cold hermetic gates. The
+provider-startup seam — this round's top priority, and the site of BLOCKING material in 3 of the
+previous 4 rounds — was both live-driven successfully (twice, independently, end to end) AND given a
+genuine adversarial reading that found and closed one more real gap (SF-1), the fourth consecutive
+round to do so, but this time closed with a STRUCTURAL fix (deriving the outer needle list from the
+inner one) rather than another point patch, specifically to break the "narrower recurrence" pattern
+the prior three rounds each represented.
+
+## Convergence verdict
+
+**NOT MET**, continuing the campaign's own honest count: this is the FIFTH consecutive round (5, 6,
+7, 8, and this one makes it not just "in a row" but "every round since the seam opened") to find and
+fix genuine, non-trivial material — including a fourth straight round finding real material in the
+provider-startup seam specifically (following R5-2/R5-7, R6-1, F1, now SF-1). Per the campaign's own
+bar (a safety pass finding nothing severe, not a safety pass finding-and-fixing severe things however
+well verified afterward), this round does not close the campaign on its own.
+
+That said, three things distinguish this round from a simple continuation of the pattern, worth
+weighing rather than glossing over:
+
+1. **The provider-startup seam's own defect shape has now visibly narrowed AND changed kind across
+   rounds 5→6→7→8**: R5-2/R5-7 were "the mechanism doesn't exist at all" (no gate recognized, or a
+   recognized gate confirmed the wrong option); R6-1 was "the mechanism exists but has no positive-
+   evidence requirement"; F1 was "positive evidence exists but has no adjacency requirement"; SF-1 is
+   "adjacency exists and is correct, but ONE OF TWO SEPARATELY-MAINTAINED NEEDLE LISTS drifted from
+   the other" — a narrower, more mechanical class of gap than any of its three predecessors, and one
+   this round's own fix eliminates STRUCTURALLY (the two lists can no longer diverge, by construction)
+   rather than by patching the one instance found. Round 7's own read — "each iteration is a strict
+   narrowing" — continues to hold, now across four iterations instead of three.
+2. **Live confirmation of the seam, which round 7's own verification explicitly named as "the single
+   most valuable thing a live-capable session could still add," was obtained this round** — twice,
+   independently, end to end, on brand-new fixtures. This closes a real, previously-open gap in the
+   campaign's own evidence base: F1's fix (and, transitively, the whole R5→R6→R7 lineage it rests on)
+   has now been proven not just by sabotage-proof (a strong but indirect method) but by a genuine live
+   claude pane clearing both gates and doing real agentic work.
+3. **Everything OUTSIDE the provider-startup seam did NOT come back clean this round** — unlike round
+   7's own general sweep, which found the rest of the surface sound. This round's PG-1/PG-2 (the glyph
+   surface, seven prior rounds deep) and CW-1/CW-2 (cliwire's own enforcement tests, second review) are
+   all genuine, non-trivial, previously-unfound gaps outside the startup seam. This is the more
+   sobering half of this round's own evidence: the "everything else has converged" read that rounds 6
+   and 7 both offered was itself not fully accurate — a general adversarial sweep by a sufficiently
+   different combination of eyes (a genuinely fresh model, PLUS parallel dedicated sub-agent passes
+   with independent verification, a method this campaign has not used in this combination before) still
+   finds real material outside the seam too. Whether that reflects this round's own method being more
+   thorough than rounds 6/7's, or genuine remaining surface area, is a fair question for the operator
+   to weigh — this report does not resolve it either way.
+
+## High-yield-focus items — what was achieved
+
+1. **Live-driving the provider-startup seam on a fresh fixture (TOP PRIORITY): ACHIEVED**, twice,
+   independently, end to end. See "TOP PRIORITY" above for the full transcript. Could not additionally
+   catch the raw gate-render frames via tight polling (stated tooling-latency limit) and did not
+   naturally trigger the specific F1 prose-collision shape; the round's own stated fallback ("at
+   minimum confirm both gates dismiss end to end") is met, convincingly, twice.
+2. **Adversarial re-examination of the provider-startup seam by reading: ACHIEVED**, finding and fixing
+   SF-1 (BLOCKING). Attempted but could not further narrow the "one rendering quirk wide" residual
+   (the no-blank-line-before-the-input-box scenario) named by round 7 — neither confirmed nor
+   disproven live this round; still an open, explicitly-stated residual, not newly closed.
+3. **Second-model adversarial review of cliwire: ACHIEVED**, and did not come back clean — 2 MEDIUM
+   (CW-1, CW-2), 1 LOW (CW-3), 1 NIT (CW-4), all fixed. Convergence-across-models evidence for cliwire
+   itself is now genuinely mixed: round 7 found the core resolution logic sound (still true — nothing
+   this round found was in module.go/paths.go/standalone.go's core logic), but found real gaps in
+   BOTH of cliwire's own enforcement tests, the exact mechanism round 7 itself hardened once already.
+4. **General adversarial sweep over everything else: ACHIEVED**, via a combination of direct reading
+   and four independently-verified parallel sub-agent passes. Found real, previously-unfound material
+   (PG-1 BLOCKING, PG-2 MEDIUM) on the glyph surface specifically — NOT a clean pass, unlike rounds 6
+   and 7's own general sweeps.
+5. **Whatever this round's own combination (Sonnet/xhigh, first deployment on this seam; four parallel
+   independently-verified sub-agent passes, a method not used in this combination before) turns up
+   that seven prior passes didn't: ACHIEVED** — SF-1, PG-1, PG-2, CW-1, CW-2, LS-1 (6 of the 10
+   findings) are all genuinely new material no prior round recorded, confirmed by this round's own
+   independent verification of every sub-agent claim before adopting it, not taken on faith.
+
+## Honest limits (this campaign's own, carried forward, plus this round's own)
+
+- **Windows path behavior**: never reachable from this Linux host across all eight rounds; not
+  reasoned about as if driven, per this round's own explicit out-of-scope instruction.
+- **`burlercli`'s standalone reed bring-up**: remains live-unverified, as in every prior round. Fair
+  game for a future round, not required.
+- **`DetectDrift`'s exact-tier auto-repair path live through a real Webster fork**: still never
+  triggered by any round's live driving (open since round 3).
+- **The "one rendering quirk wide" residual** round 7 named (no blank line between the transcript and
+  the input box, in some future rendering) is neither confirmed nor disproven this round — still an
+  open, stated residual, not a new finding and not newly closed.
+- **The raw gate-render frames were not captured live this round** — a stated tooling-latency limit
+  (the gap between separate tool-call round-trips in this harness is coarser than the seam's own
+  gate-render-to-dismiss window), not a skipped scenario; the END-TO-END functional outcome (both
+  gates dismissed, real agentic work followed) is the evidence obtained instead, and is judged
+  sufficient by this report for the "confirm live" mandate, but a future round with tighter live-loop
+  control could still add the visual confirmation this round could not.
+- **The ~45-item residue from round 6's sweep over loom's pre-glyph pipeline machinery**: remains
+  recorded but deliberately out of this campaign's declared scope, per this round's own seed — a
+  separate mill-wiki task, not folded in here. This round's own general sweep over that SAME surface
+  (loomengine/loomcli/loomrecipe/loomshed/shedengine/shedadapters/shedrecipe/shedbuild/hubgeom) found
+  it essentially clean beyond LS-1 — corroborating, not contradicting, that the pre-glyph pipeline
+  machinery is in good shape independent of the ~45-item residue's own disposition.
+- **The `~/.claude.json` trust-registration curiosity** noted during live-driving (both hub sessions'
+  trust acceptance registered against the WARP-PRIME path, never the actual task-worktree path where
+  Master's pane genuinely ran) was not chased to a root cause — plausibly an artifact of this
+  reviewing session's own directory-visit bookkeeping, not evidence of anything shuttleengine itself
+  does wrong (which reads pane CAPTURES, never `~/.claude.json`), but stated rather than silently
+  dropped.
