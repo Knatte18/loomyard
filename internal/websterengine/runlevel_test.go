@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -99,7 +100,7 @@ func (e *runFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) 
 func (e *runFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
-func (e *runFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
+func (e *runFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
 func (e *runFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *runFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
@@ -1440,5 +1441,42 @@ func TestRun_UnapprovedPlanRefused(t *testing.T) {
 	}
 	if fx.Starter.callCount() != 0 {
 		t.Errorf("Starter was reached (%d calls) for an unapproved plan; want zero", fx.Starter.callCount())
+	}
+}
+
+// TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth pins R5-3: when ValidateDispatch
+// returns an error AND persisting the plan-fingerprint re-baseline also fails, Run must report
+// both rather than dropping the second.
+//
+// It matters because the resolve pass has by then already rewritten the plan on disk, so a
+// state.json still holding the pre-rewrite fingerprint makes the NEXT run refuse this run's own
+// edit as a foreign one with ErrFingerprintMismatch — whose advised recourse (--fresh) restarts
+// into the same wall. Pre-fix the operator got no hint at all that this had happened.
+//
+// The validation error is forced by pointing WorktreeRoot at a path with no repository, so
+// planglyph's own openRepo fails; the save failure is forced by making the webster dir read-only
+// after the matching state has been seeded, which is the one directory SaveState writes into.
+func TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{})
+
+	fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "no-such-tree")
+
+	websterDir := fx.Deps.Geom.WebsterDir
+	if err := os.Chmod(websterDir, 0o555); err != nil {
+		t.Fatalf("chmod webster dir read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(websterDir, 0o755) })
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() error = nil; want both the validation failure and the re-baseline persist failure reported")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "re-baseline") {
+		t.Errorf("Run() error = %q; want it to also name the dropped plan-fingerprint re-baseline persist failure", got)
+	}
+	if !errors.Is(err, planglyph.ErrQuarryUnavailable) {
+		t.Errorf("Run() error = %v; want the primary validation failure still classifiable via errors.Is(err, planglyph.ErrQuarryUnavailable) — the re-baseline report must not mask it", err)
 	}
 }

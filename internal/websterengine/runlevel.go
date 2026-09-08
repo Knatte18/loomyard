@@ -469,8 +469,18 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// and is persisted immediately. Restamping only past the refusals left state.json describing the
 	// pre-rewrite bytes, and the first begin-batch then refused this run's own edit as a foreign one.
 	// See this package's doc.go. A restamp or save failure never masks err.
-	if rebaseErr := restampAndSaveFingerprint(deps.Geom, st); rebaseErr != nil && err == nil {
-		return RunResult{}, rebaseErr
+	if rebaseErr := restampAndSaveFingerprint(deps.Geom, st); rebaseErr != nil {
+		if err == nil {
+			return RunResult{}, rebaseErr
+		}
+		// Both failed. The re-baseline failure is never allowed to MASK err — the validation
+		// verdict is what the operator asked for — but it must not be dropped either: the resolve
+		// pass has already rewritten the plan on disk, so a state.json still holding the
+		// pre-rewrite fingerprint makes the NEXT run refuse this run's own edit as a foreign one,
+		// with ErrFingerprintMismatch, whose advised recourse (--fresh) restarts into the same
+		// wall. Both are reported, in the same shape webstercli's begin-batch and record-batch
+		// already use for this exact coincidence (crucible round opus-medium-r5, R5-3).
+		err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this run had already earned failed: %v", err, rebaseErr)
 	}
 	if err != nil {
 		if errors.Is(err, planglyph.ErrQuarryUnavailable) {
