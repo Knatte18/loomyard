@@ -337,3 +337,74 @@ but every sibling lease in the package uses the `defer` + `held` pattern, and a 
 `internal/shuttleengine/run.go:368`. The `Runner.clock` seam exists so age-based decisions are testable; this is
 the one that bypasses it.
 
+
+### R6-25 — LOW — CONFIRMED — `CONSTRAINTS.md`'s Config Strictness membership list is stale
+
+`CONSTRAINTS.md:264` gives `Strict: {fabricengine, boardengine, loomengine}` but omits `landingshed`, which calls
+`configengine.Load` (`internal/landingshed/config.go:39`) and is in the enforcing test's own pinned set
+(`cmd/lyx/configstrictness_test.go`). The authoritative invariant doc under-reports the set it governs.
+
+### R6-26 — MEDIUM — CONFIRMED — `shedbuild` silently ignores every YAML document after the first
+
+`internal/shedbuild/parse.go:33-50`. `Decode` is called once, so a stray `---` mid-`loom-recipe.yaml` (a
+merge-conflict resolution, a pasted replacement graph) silently truncates the producer graph. If the surviving
+prefix is self-consistent, `shedengine.validate` sees no dangling target and the run proceeds on a truncated
+pipeline. `yaml.KnownFields(true)` gives no protection past document 1. Contradicts both this function's godoc and
+`manifest/designs/shed-recipe.md`.
+
+**Fix:** attempt a second `Decode` and error unless it returns `io.EOF`.
+
+### R6-27 — MEDIUM — CONFIRMED — `hasBlockingFinding` fails OPEN on an unrecognized `planglyph.Severity`
+
+`internal/loomshed/planvalidate.go:37-44` and its parity twin `internal/loomcli/validate.go:76-83`.
+`planglyph.Severity` is an open string type; anything that is not exactly `SeverityBlocking` — an unrecognized
+value, or the zero value — takes the informational branch, logs a Warn, and returns `Done`, so the run advances
+past a finding meant to block it. The same file's own comment records that "a validator's complaint reported as a
+clean plan" was deliberately rejected for the ERROR path; the SEVERITY path still has it.
+
+**Fix:** invert the test to `!= SeverityInformational` in both halves of the parity pair, so an unrecognized
+severity blocks.
+
+### R6-28 — MEDIUM — CONFIRMED — `discussionparser`'s section scan ignores `scanner.Err()`, reporting a valid document as missing every heading
+
+`internal/discussionparser/validate.go`, `missingSections`. One line over `bufio.MaxScanTokenSize` (64 KB —
+reachable the moment an agent pastes a base64 blob or a minified snippet) stops `Scan()` early with no error
+check, so every heading after that line is reported missing. `loomshed`'s Discussion-Validate row maps those
+findings to `Stuck`, bounces to Discussion-Write, respawns, and repeats on the same document until the bounce
+budget escalates to a human — over a document that was valid all along.
+
+**Fix:** check `scanner.Err()` and return it as an infrastructure error rather than as findings.
+
+---
+
+## Recorded but NOT fixed this round — out of this round's declared scope
+
+Three delegated adversarial sweeps ran under my direction over separate areas of the surface (all clean-room: none
+of them opened, listed or grepped any `_mill/loom-review-*` file). The sweep over loom's own pre-glyph pipeline
+machinery (`loomengine`, `loomcli`, `loomshed`, `shedengine`, `shedadapters`, `shedrecipe`, `shedbuild`,
+`hubgeom`, and `manifest/designs/loom.md`/`shed.md`) returned a further ~45 items, none BLOCKING. Four of them are
+adopted above (R6-25..R6-28) because they are cheap, cross-cutting, or land on the glyph surface. The remainder is
+deliberately NOT fixed this round, with reasoning:
+
+- **This round's prompt declares them out of scope** — "Loom's general pre-glyph pipeline mechanics from the two
+  PRE-glyph crucible campaigns — don't re-verify from scratch; DO flag if your live driving happens to expose a
+  regression." No live driving was possible this round (see the block above), so nothing here was exposed by
+  driving; it was exposed by a fresh read of territory two earlier campaigns already closed.
+- **The bulk of it is one coherent documentation task**, not a correctness task: ~20 doc-vs-code drift items in
+  `manifest/designs/loom.md`, `manifest/designs/shed.md`, `manifest/designs/shed-recipe.md`, `docs/overview.md`
+  and several package godocs (stale line counts, stale row numbers, a `lyx run --auto` flag that does not exist,
+  an inverted `discussion_interactive` default, an attach claim `shed.md` itself contradicts two pages earlier, a
+  `fix-scope` paragraph that reads as a security boundary when `FixScope` is a prompt-composition switch). Landing
+  that as a batch of unrelated commits inside a correctness round would bury this round's real material.
+- **The correctness residue is real but bounded and non-BLOCKING**: an unbounded `OnDone` cycle that `validate`
+  does not reject while it does reject a self-`OnDone`; `CheckSeed` reporting an `EACCES` as a determined failed
+  check; `NewSingleLLMProducer` validating no seam while its sibling constructor does; a `--interval 0` hot loop
+  on the status lock; an unbounded blocking bootstrap-lock acquire; a handshake-refuse path that abandons a wedged
+  child without naming its pid; `round-%d-review.md` declared twice across a package boundary; negative
+  `timeout_s` accepted at recipe-construction time; four seam-enforcement tests that `t.Logf`-and-skip an
+  unparseable file instead of failing.
+
+Recommendation to the orchestrator: spin this into its own mill-wiki task ("loom pre-glyph machinery — doc drift
+and non-blocking correctness residue"), one commit per theme, rather than folding it into a glyph-campaign safety
+pass. The full item list is in this round's conversation record and is reproduced by re-running the same sweep.
+
