@@ -51,6 +51,8 @@ batches:
     commit_sha: 47e0f1a9ff6288b39460dc56b8079345acedfa1d
     verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
   - name: enforcement-and-docs
-    state: pending
+    state: running
+    implementer_session: 5e64eb22-9d7a-4e4f-81f0-17d2649de026
+    start_sha: d1114d4c4a7180d7f6636b3b49c0bf31c7ed0291
     verify_baseline_failures: ["FAIL\t./internal/cliwire/... [setup failed]"]
 ```
