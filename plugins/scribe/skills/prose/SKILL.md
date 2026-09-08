@@ -14,7 +14,7 @@ it owns comment-specific content on top.
 ## Get to the point
 
 State the point first.
-No throat-clearing, no "let me explain," no restating what's about to be said before saying it.
+No throat-clearing, no restating what's about to be said before saying it.
 
 ## Eliminate empty intensifiers
 
