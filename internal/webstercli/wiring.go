@@ -9,34 +9,41 @@ package webstercli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/buildinfo"
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
-	"github.com/Knatte18/loomyard/internal/standalonestate"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// gitDirName is the per-repository git administrative entry repositoryRootOf looks for, present as a
-// directory in an ordinary clone and as a file in a linked worktree.
-// It is a plain literal rather than an internal/lyxdirs constant: lyxdirs is the single declarer of
-// loomyard's own "_lyx" and ".lyx" directories and has never owned git's.
-const gitDirName = ".git"
+// wireModule carries webster's own per-CLI variance for internal/cliwire's shared wiring
+// prologue -- the message-bearing data cliwire needs but does not itself declare, since no
+// production file in that package may name webster or burler. cliwire carries the shared
+// implementation; the data that varies by caller lives here, with the caller, exactly the way
+// internal/shedrecipe's constructors live in that package while the rows that vary live outside
+// it.
+var wireModule = cliwire.Module{
+	Name:             "webster",
+	StateArtifacts:   "state, locks, rendered prompts and trace logs",
+	TargetRole:       "the repository it drives",
+	TargetRecourse:   "Drive a target",
+	HubTargetSubject: "the worktree is already the target",
+	Plan: &cliwire.PlanRules{
+		DefaultPlanDir: planparser.PlanDir,
+		MissingPlanRefusal: func(planDir, recourse string) string {
+			return fmt.Sprintf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback. Place an authored plan at %s, which is what `run` requires (Master's own in-pane verbs are flagless and resolve that default); --plan-dir points the bracket and read-only verbs at a plan elsewhere, but `run` refuses it", planDir, recourse)
+		},
+	},
+}
 
 // wire computes hub-or-standalone mode from loc/mode -- the *lyxcwd.Location and preflight.Mode a
 // preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: module
@@ -69,18 +76,19 @@ const gitDirName = ".git"
 // values (empty string when the operator did not pass one).
 //
 // All three are made absolute HERE, at the one boundary that still knows which working directory the
-// operator typed them from. A relative value stored verbatim is not a smaller version of an absolute
-// one: this process resolves it against ITS cwd while the pane webster spawns runs at the target
-// (standalone) or the anchor (hub), so one string named two different directories, and the
-// standalone default-vs-override comparison below could never match a relative spelling of the
-// default. Every other told path in this codebase is required absolute for exactly that reason.
+// operator typed them from, via cliwire.ResolveToldDir. A relative value stored verbatim is not a
+// smaller version of an absolute one: this process resolves it against ITS cwd while the pane webster
+// spawns runs at the target (standalone) or the anchor (hub), so one string named two different
+// directories, and the standalone default-vs-override comparison below could never match a relative
+// spelling of the default. Every other told path in this codebase is required absolute for exactly
+// that reason.
 //
 // wire performs no cwd resolution and spawns no process -- every path it touches is either supplied by
 // the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) -- so a
 // test can drive it directly and stay inside the Test Tier Purity Invariant.
 func (c *websterCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
-	stencilsDir := resolveToldDir(cwd, stencilsDirFlag)
-	planDir := resolveToldDir(cwd, planDirFlag)
+	stencilsDir := cliwire.ResolveToldDir(cwd, stencilsDirFlag)
+	planDir := cliwire.ResolveToldDir(cwd, planDirFlag)
 
 	if mode == preflight.ModeHub {
 		return c.wireHub(loc, stencilsDir, planDir, targetDirFlag)
@@ -95,8 +103,8 @@ func (c *websterCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stenci
 // stencilsDir and planDir arrive already absolute (or empty), made so by wire -- this function never
 // sees a raw flag value and must never start honouring one.
 func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetDirFlag string) error {
-	if targetDirFlag != "" {
-		return fmt.Errorf("webster: --target-dir is not honoured in hub mode: the worktree is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec")
+	if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil {
+		return err
 	}
 
 	anchorPath := loc.AnchorPath()
@@ -136,11 +144,17 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		// the hub default and would refuse against a plan they cannot see. Every other verb keeps
 		// honoring the override -- see the planDirOverridden field's own doc for the failure this
 		// closes on the hub path.
-		if !samePlanDir(planDir, geom.PlanDir) {
+		//
+		// The comparison is against geom.PlanDir -- the value hubgeom.WebsterGeometry actually built --
+		// and deliberately not wireModule.Plan.DefaultPlanDir(anchorPath), even though the two are the
+		// same string today; comparing against the geometry's own field is what keeps the override
+		// check correct if internal/hubgeom ever changes how it computes PlanDir.
+		resolvedPlanDir, overridden := cliwire.ResolvePlanDir(planDir, geom.PlanDir)
+		if overridden {
 			c.planDirOverridden = true
 			c.planDirDefault = geom.PlanDir
 		}
-		geom.PlanDir = planDir
+		geom.PlanDir = resolvedPlanDir
 	}
 
 	reedGeom := hubgeom.ReedGeometry(loc)
@@ -164,102 +178,55 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	return nil
 }
 
-// wireStandalone builds the engine stack for standalone mode: the target resolveStandaloneTarget
-// settled on (--target-dir when given, cwd otherwise, symlink-normalized and lifted to its
-// repository root either way), standalonestate.Derive over it -- the only place Derive is ever
-// called -- an immediate redirect of the durable trace sink to standalonegeom.LogsDir(stateDir),
-// which is what keeps a standalone invocation from writing trace files into the operator's
-// repository, standalonegeom's geometry builders over the derived state directory, every module
-// config and the model registry loaded over the same state directory, a pinned
-// websterengine.NeverMatches RefMatcher, a shuttleengine.NewDetachedRunner-constructed runner --
-// standalone's anchor (the derived state directory) is deliberately outside its worktree root (the
-// target), which NewRunner's containment assertion would refuse -- and a nil fabric opener.
+// wireStandalone builds the engine stack for standalone mode by calling wireModule.ResolveStandalone
+// -- internal/cliwire's single ordered standalone prologue -- and composing webster's own engines onto
+// the result: a pinned websterengine.NeverMatches RefMatcher, a shuttleengine.NewDetachedRunner-
+// constructed runner -- standalone's anchor (the derived state directory) is deliberately outside its
+// worktree root (the target), which NewRunner's containment assertion would refuse -- and a nil fabric
+// opener.
 //
-// stencilsDir and planDir arrive already absolute (or empty), made so by wire -- this function never
-// sees a raw flag value and must never start honouring one, since the default-vs-override comparison
-// below is a path equality and a relative spelling of the default could never satisfy it.
+// stencilsDir and planDir arrive already absolute (or empty), made so by wire via
+// cliwire.ResolveToldDir. Re-resolving them again inside ResolveStandalone is idempotent on an
+// already-absolute value, and is deliberate rather than an oversight to hoist out: see
+// cliwire.ResolveStandalone's own doc comment for the prologue's ordering obligation, which this
+// function's body no longer needs to restate.
 func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag string) error {
-	target, err := resolveStandaloneTarget(cwd, targetDirFlag)
+	res, err := wireModule.ResolveStandalone(cliwire.StandaloneRequest{
+		Cwd:             cwd,
+		StencilsDirFlag: stencilsDir,
+		PlanDirFlag:     planDir,
+		TargetDirFlag:   targetDirFlag,
+	})
 	if err != nil {
 		return err
 	}
 
-	stateDir, hash8, err := standalonestate.Derive(target)
-	if err != nil {
-		return err
-	}
-	if err := refuseNestedStandaloneGeometry("webster", target, stateDir); err != nil {
-		return err
-	}
-	// The redirect runs before the first statement in this function that CAN log, which is what
-	// actually matters: the durable sink is armed lazily on the first Info-or-above record, so once
-	// anything below has logged, the sink is already bound to the operator's target repository and
-	// this redirect is too late. It is not the first statement in the function and does not need to
-	// be — the three above it (the target resolve, Derive, and the nested-geometry refusal) are
-	// path arithmetic, filesystem reads and an error return, none of which logs, and the redirect
-	// cannot precede them anyway since it is Derive's own stateDir that tells it where to point.
-	// The obligation a later editor inherits is therefore not "keep this first" but "keep every
-	// statement above this one log-free, and add no logging statement below it that could be moved
-	// above".
-	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
-
-	geom := standalonegeom.WebsterGeometry(target, stateDir)
-	reedGeom := standalonegeom.ReedGeometry(target, stateDir, hash8)
-
-	if stencilsDir != "" {
-		// An operator who named a curated stencil set must not have it rewritten from under them --
-		// seed only the standalone DEFAULT, never an explicit override.
-		geom.StencilsDir = stencilsDir
-	} else if _, err := stencilstore.Reconcile(geom.StencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
-		// Unlike the root pre-run's best-effort, logged-only seed pass, nothing else will ever
-		// create this directory: a reconcile failure here is a hard error, since every prompt render
-		// would otherwise fail later with a far less informative message.
-		return fmt.Errorf("webster: seed the standalone stencils directory %s: %w", geom.StencilsDir, err)
+	geom := standalonegeom.WebsterGeometry(res.Target, res.StateDir)
+	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
+	geom.StencilsDir = res.StencilsDir
+	geom.PlanDir = res.PlanDir
+	if res.PlanDirOverridden {
+		c.planDirOverridden = true
+		c.planDirDefault = res.DefaultPlanDir
 	}
 
-	if planDir != "" {
-		// Record whether the flag actually moved the plan off the standalone default: the run verb
-		// refuses to spawn Master over a moved plan, because Master's own in-pane verb invocations
-		// (status, begin-batch, record-batch — typed from the stencil, flagless) resolve the
-		// DEFAULT plan directory and would wire-refuse against a plan they cannot see (found live
-		// in crucible round fable5-high-r3, F-A3). Every other verb keeps honoring the override —
-		// an operator driving bracket verbs by hand passes the flag on each call.
-		//
-		// Both sides of the comparison are absolute and cleaned by construction — planDir by wire's
-		// own resolveToldDir, geom.PlanDir by standalonegeom — so a flag value that names the
-		// default location is recognised as such however the operator spelled it.
-		if !samePlanDir(planDir, geom.PlanDir) {
-			c.planDirOverridden = true
-			c.planDirDefault = geom.PlanDir
-		}
-		geom.PlanDir = planDir
-	}
-	if !standalonePlanDirHasContent(geom.PlanDir) {
-		// The recourse names the DEFAULT location first, deliberately. Saying only "pass --plan-dir"
-		// was a dead end for the one operator who always hits this refusal — the first-time standalone
-		// one, whose plan is not staged yet: following it passed wiring and was then refused by `run`
-		// itself, which cannot spawn Master over a moved plan (Master's in-pane verbs are flagless).
-		// The two messages gave mutually exclusive instructions (crucible round opus-medium-r6, R6-9).
-		return fmt.Errorf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback. Place an authored plan at %s, which is what `run` requires (Master's own in-pane verbs are flagless and resolve that default); --plan-dir points the bracket and read-only verbs at a plan elsewhere, but `run` refuses it", geom.PlanDir, c.standaloneDefaultPlanDir(geom.PlanDir))
-	}
-
-	shuttleCfg, err := shuttleengine.LoadConfig(stateDir, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(res.StateDir, "shuttle")
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(stateDir, "reed")
+	reedCfg, err := reedengine.LoadConfig(res.StateDir, "reed")
 	if err != nil {
 		return err
 	}
-	websterCfg, err := websterengine.LoadConfig(stateDir, "webster")
+	websterCfg, err := websterengine.LoadConfig(res.StateDir, "webster")
 	if err != nil {
 		return err
 	}
-	activeBatcher, err := batcher.Active(stateDir)
+	activeBatcher, err := batcher.Active(res.StateDir)
 	if err != nil {
 		return err
 	}
-	registry, err := modelspec.LoadRegistry(stateDir)
+	registry, err := modelspec.LoadRegistry(res.StateDir)
 	if err != nil {
 		return err
 	}
@@ -307,226 +274,4 @@ func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttl
 	c.masterStarter = runnerMasterStarter{runner: runner}
 	c.engine = claudeEngine
 	c.reed = reedEngine
-}
-
-// refuseNestedStandaloneGeometry refuses a standalone target and derived state directory that are
-// not disjoint, naming module in every message so an operator reading a live error knows which CLI
-// refused.
-//
-// Standalone geometry's whole premise is a state directory OUTSIDE the repository being driven:
-// state.json, run locks, rendered prompts, shuttle run directories and trace logs all land under it,
-// and none of them may appear inside the operator's own checkout.
-// shuttleengine.NewDetachedRunner asserts the same disjointness -- but it asserts it LATE, on a
-// Runner already constructed after this CLI has booted a tmux server and taken the run lock, and its
-// message blames "a subpath-anchored hub geometry handed to the wrong constructor", which is not
-// what happened here and offers the operator no lever at all.
-//
-// What actually happened is a state home nested under the target: a dotfiles repository rooted at
-// the home directory, or an XDG_STATE_HOME deliberately pointed somewhere inside the checkout. That
-// is an environment fact, it is fixable, and the fix is named here -- before any substrate is
-// booted, which is the only point at which a refusal costs nothing to recover from.
-//
-// The reverse nesting (a target inside the state directory) is refused by the same guard for the
-// same reason, with its own message: the lever there is the target, not the state home.
-func refuseNestedStandaloneGeometry(module, target, stateDir string) error {
-	target, stateDir = normalizeForContainment(target), normalizeForContainment(stateDir)
-	if pathContains(target, stateDir) {
-		return fmt.Errorf("%s: the derived state directory %s lies inside the standalone target %s: standalone mode keeps its state, locks, rendered prompts and trace logs strictly outside the repository it drives, so the two must be disjoint. The state home is nested under the target -- a repository rooted at your home directory is the usual cause. Point XDG_STATE_HOME (LOCALAPPDATA on Windows) at a directory outside %s and re-run", module, stateDir, target, target)
-	}
-	if pathContains(stateDir, target) {
-		return fmt.Errorf("%s: the standalone target %s lies inside the derived state directory %s: standalone mode keeps its state, locks, rendered prompts and trace logs strictly outside the repository it drives, so the two must be disjoint. Drive a target outside the state home, or point XDG_STATE_HOME (LOCALAPPDATA on Windows) elsewhere, and re-run", module, target, stateDir)
-	}
-	return nil
-}
-
-// pathContains reports whether inner is outer itself or a descendant of it, computed the way
-// shuttleengine's own told-path assertions compute it -- filepath.Rel plus a ".." prefix test -- so
-// the CLI-boundary refusal and the constructor assertion it front-runs agree about what "nested"
-// means. Both paths are already absolute and cleaned by their producers.
-func pathContains(outer, inner string) bool {
-	// filepath.Rel is case-SENSITIVE, while Windows paths are not, so LOCALAPPDATA and a target that
-	// differ only in case (C:\\Users\\X vs c:\\users\\x — one directory) read as disjoint. Folded here
-	// on Windows alone, matching lyxcwd.samePath's rule exactly. Not reachable from this project's
-	// Linux hosts and therefore never driven live; it is a mechanical mirror of an already-stated
-	// rule, not a verified behaviour.
-	if runtime.GOOS == "windows" {
-		outer, inner = strings.ToLower(outer), strings.ToLower(inner)
-	}
-	rel, err := filepath.Rel(outer, inner)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// normalizeForContainment returns the spelling of path that a containment or equality test must use:
-// standalonestate.Normalize applied to the deepest ANCESTOR of path that exists on disk, with the
-// not-yet-created remainder rejoined.
-//
-// Plain Normalize is not enough here. It falls back to Clean whenever filepath.EvalSymlinks fails,
-// and EvalSymlinks fails when ANY component is missing — which the derived state directory's own
-// leaf (<stateHome>/lyx/<hash8>) routinely is on a first run. The target, meanwhile, has already been
-// through Normalize with every symlink resolved. Comparing a resolved string against an unresolved
-// one made refuseNestedStandaloneGeometry — and shuttleengine's own validateDetachedToldPaths, which
-// compares the same two strings — both answer "disjoint" for a state home that reaches inside the
-// target through a symlink, and lyx then wrote its state tree, run locks and trace logs into the
-// operator's checkout: exactly the outcome the guard exists to prevent (crucible round
-// opus-medium-r6, R6-15).
-func normalizeForContainment(path string) string {
-	existing := filepath.Clean(path)
-	var missing []string
-	for {
-		if _, err := os.Lstat(existing); err == nil {
-			break
-		}
-		parent := filepath.Dir(existing)
-		if parent == existing {
-			return filepath.Clean(path)
-		}
-		missing = append([]string{filepath.Base(existing)}, missing...)
-		existing = parent
-	}
-	return filepath.Join(append([]string{standalonestate.Normalize(existing)}, missing...)...)
-}
-
-// standaloneDefaultPlanDir returns the standalone default plan directory for a refusal's recourse
-// text: planDirDefault when --plan-dir already moved the plan off it, and current otherwise (in which
-// case current IS the default).
-// It exists so the missing-plan refusal always names the location `run` requires, never the override
-// the operator just supplied.
-func (c *websterCLI) standaloneDefaultPlanDir(current string) string {
-	if c.planDirOverridden {
-		return c.planDirDefault
-	}
-	return current
-}
-
-// samePlanDir reports whether a told --plan-dir names the same directory as the mode's own default.
-// Both arguments are absolute by construction -- the flag value through wire's resolveToldDir, the
-// default through hubgeom/standalonegeom -- so this is a path equality, which is what makes a "." or
-// trailing-separator spelling of the default recognized as the default rather than as an override.
-//
-// It compares through normalizeForContainment rather than filepath.Clean alone: a plain Clean
-// equality reported an OVERRIDE for a --plan-dir naming the very same directory through a symlinked
-// state home or HOME, and `run` then refused a plan that was in fact at the default location
-// (crucible round opus-medium-r6, R6-15).
-func samePlanDir(planDir, defaultPlanDir string) bool {
-	return normalizeForContainment(planDir) == normalizeForContainment(defaultPlanDir)
-}
-
-// resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty
-// (the operator passed no flag, and each mode computes its own default), an absolute value is
-// cleaned, and a relative one is joined onto cwd.
-//
-// Every path this module hands downstream must be absolute. A relative flag value does not fail, it
-// silently means two different directories: the CLI process resolves it against ITS working
-// directory while the pane webster spawns runs at the standalone target or the hub anchor, and the
-// standalone default-vs-override check is a path equality a relative spelling can never satisfy.
-// Resolving happens once, at the wiring boundary, because that is the last point that still knows
-// which working directory the operator typed the flag from — the same reason
-// resolveStandaloneTarget has always done it for --target-dir.
-func resolveToldDir(cwd, flagValue string) string {
-	if flagValue == "" {
-		return ""
-	}
-	if filepath.IsAbs(flagValue) {
-		return filepath.Clean(flagValue)
-	}
-	return filepath.Join(cwd, flagValue)
-}
-
-// resolveStandaloneTarget resolves standalone mode's --target-dir into the one spelling of the one
-// directory every downstream consumer must agree on: cwd when targetDirFlag is empty, or
-// targetDirFlag made absolute against cwd otherwise, then symlink-normalized, then lifted to the
-// root of the repository it sits in.
-//
-// The result is always absolute, which is standalonestate.Derive's own precondition.
-//
-// Both normalizations exist because the target is an IDENTITY here, not merely a path.
-// standalonestate.Derive hashes it into hash8, which names the state directory, the reed socket and
-// the tmux session, and standalonegeom builds the session name's readable half from it — so two
-// spellings of one repository produce two of everything. Normalize is Derive's own rule, exported by
-// the package that owns the identity precisely so the CLI boundary can apply it once here rather
-// than each site re-deriving it.
-//
-// The repository-root lift answers the other half. preflight.ResolveMode returns ModeStandalone for
-// a plain repository's SUBDIRECTORY too, so `lyx webster` run from repo/ and from repo/src/ derived
-// two different hash8 values, two state directories, two reed sessions and two plan directories for
-// one repository — the second of which webster then refused outright with "standalone plan directory
-// ... does not exist". Where an operator stands inside a repository is not supposed to change which
-// repository they are driving.
-//
-// A target with no repository above it is returned unchanged: standalone mode legitimately covers a
-// plain directory that is no git repository at all, which ResolveMode folds into the same verdict.
-//
-// A told --target-dir must EXIST and be a directory, and that check is the reason this function is
-// fallible. Without it the resolution silently succeeded against the wrong repository:
-// standalonestate.Normalize falls back to Clean for a path that does not exist, and repositoryRootOf
-// then climbs until it finds a ".git" — so from inside /repo, a mistyped `--target-dir ./reposs`
-// resolved to /repo/reposs, found no repository there, climbed, and returned /repo. The run then
-// drove the repository the operator was standing in rather than the one they named, with the same
-// hash8, state directory and reed session as the no-flag invocation, so nothing in the output told
-// the two apart — and for burler, whose fix phase writes, that is an edit to the wrong tree
-// (crucible round opus-medium-r6, R6-7). A --target-dir naming a FILE resolved the same way.
-//
-// cwd itself is never stat'd: it is where the process already is.
-func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
-	told := cwd
-	if targetDirFlag != "" {
-		told = resolveToldDir(cwd, targetDirFlag)
-		info, err := os.Stat(told)
-		if err != nil {
-			return "", fmt.Errorf("webster: --target-dir %s (resolved to %s) cannot be read: %w -- a target that is not there is not an empty target, it silently resolves to whichever repository encloses it", targetDirFlag, told, err)
-		}
-		if !info.IsDir() {
-			return "", fmt.Errorf("webster: --target-dir %s (resolved to %s) is not a directory -- the standalone target is a repository to drive, and a file resolves to whichever repository encloses it", targetDirFlag, told)
-		}
-	}
-	return repositoryRootOf(standalonestate.Normalize(told)), nil
-}
-
-// repositoryRootOf returns the NEAREST repository root at or above dir -- the closest ancestor (dir
-// itself included) carrying a ".git" entry -- or dir unchanged when no ancestor has one.
-//
-// Nearest, never topmost: a submodule and a nested repository are each their own repository, and a
-// walk that kept climbing past the first ".git" would silently re-target a standalone run at the
-// superproject that contains it.
-//
-// It walks the filesystem rather than asking git, and that is deliberate on two counts. It keeps
-// wire free of process spawns, which is what lets this module's whole wiring truth table be driven
-// from untagged tests under the Test Tier Purity Invariant. And it is not a cwd query: dir arrives
-// already resolved and already absolute, so internal/lyxcwd remains the sole owner of turning a
-// working directory into a Location, per the Cwd Resolution Invariant — this only lifts an
-// already-resolved path to the root of the tree it lives in.
-//
-// os.Lstat rather than os.Stat, and no directory-vs-file test: a linked worktree records ".git" as a
-// FILE, and a repository reached through a symlink is still a repository.
-func repositoryRootOf(dir string) string {
-	for candidate := dir; ; {
-		if _, err := os.Lstat(filepath.Join(candidate, gitDirName)); err == nil {
-			return candidate
-		}
-		parent := filepath.Dir(candidate)
-		if parent == candidate {
-			return dir
-		}
-		candidate = parent
-	}
-}
-
-// standalonePlanDirHasContent reports whether dir exists and contains at least one "*.md" file --
-// the minimal on-disk shape an authored plan directory carries. It never distinguishes "missing
-// directory" from "empty directory" from "directory with no .md files": all three are the same usage
-// error to a standalone operator, which has no bootstrap and no empty-plan fallback to fall back to.
-func standalonePlanDirHasContent(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
-			return true
-		}
-	}
-	return false
 }

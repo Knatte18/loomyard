@@ -8,11 +8,12 @@
 // batcher.Active, modelspec.LoadRegistry) degrades to its embedded template on a proven-absent _lyx/
 // directory, so a fictional anchor path drives the whole hub branch without touching disk.
 //
-// The standalone-mode cases reach the one call site of standalonestate.Derive that exists anywhere in
-// this codebase: each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a t.TempDir() BEFORE
-// calling wire, so both of Derive's per-OS branches land inside the test's own temp tree on every
-// platform, and none of those cases is marked t.Parallel(), since t.Setenv panics under a parallel
-// test.
+// The standalone-mode cases reach standalonestate.Derive through internal/cliwire's own
+// ResolveStandalone, which owns the one production call site of Derive that exists anywhere in this
+// codebase since batch 2: each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a
+// t.TempDir() BEFORE calling wire, so both of Derive's per-OS branches land inside the test's own temp
+// tree on every platform, and none of those cases is marked t.Parallel(), since t.Setenv panics under
+// a parallel test.
 //
 // Two structural facts a later reader might otherwise try to "fix": first, no (loc non-nil,
 // ModeStandalone) row exists in this file because no caller can produce one -- preflight.ResolveMode
@@ -26,15 +27,16 @@
 package webstercli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
-	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -46,7 +48,7 @@ func hubLocation(hub, worktreeName, anchorRel string) *lyxcwd.Location {
 }
 
 // seedStandalonePlanDir writes one minimal, non-empty ".md" file into dir, satisfying
-// standalonePlanDirHasContent so a standalone wire() call reaches its own success path.
+// internal/cliwire's own planDirHasContent so a standalone wire() call reaches its own success path.
 func seedStandalonePlanDir(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -518,53 +520,6 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 	}
 }
 
-// TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir is F22's direct regression test. It
-// observes the sink directory the only way this package can: by forcing a write and checking the
-// filesystem, never by reading internal/logger's own state (sinkDirOverride is unexported and
-// internal/logger exposes no accessor). The mechanism is that a non-empty override bypasses the
-// testing.Testing() sink suppression in ensureDurableSink, so one logger.Info call after
-// wireStandalone returns arms the sink at whatever directory the override names, with no
-// LYX_TRACE redirect needed.
-// The sentinel half additionally pins the property wireStandalone's own placement comment now
-// claims: every statement ABOVE the redirect is log-free. A sentinel sink armed before the call must
-// still be empty when wire returns -- a statement above the redirect that logged would have armed
-// the sentinel there instead, and the redirect would have been too late to matter.
-func TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir(t *testing.T) {
-	target := t.TempDir()
-	stateHome := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateHome)
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-	sentinelDir := t.TempDir()
-	logger.SetDurableSinkDir(sentinelDir)
-	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-	stateDir := filepath.Join(stateHome, "lyx", hash8For(t, target))
-	seedStandalonePlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
-
-	c := &websterCLI{}
-	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	sentinelFiles, err := filepath.Glob(filepath.Join(sentinelDir, "trace-*.log"))
-	if err != nil {
-		t.Fatalf("glob %s: %v", sentinelDir, err)
-	}
-	if len(sentinelFiles) != 0 {
-		t.Errorf("sentinel dir %s gained %v; want it empty -- some statement above the sink redirect logged, arming the sink before the redirect could bind it", sentinelDir, sentinelFiles)
-	}
-
-	logger.Info("wiring_test: arm the sink")
-
-	wantDir := standalonegeom.LogsDir(stateDir)
-	matches, err := filepath.Glob(filepath.Join(wantDir, "trace-*.log"))
-	if err != nil {
-		t.Fatalf("glob %s: %v", wantDir, err)
-	}
-	if len(matches) == 0 {
-		t.Errorf("no trace-*.log file under %s; want wireStandalone to have redirected the durable sink there", wantDir)
-	}
-}
-
 // TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
 // mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
 // then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
@@ -594,104 +549,15 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 }
 
 // seedGitRepositoryRoot marks dir as a git repository root by creating the ".git" entry
-// repositoryRootOf looks for, and returns dir. It writes no git objects and spawns no git: the walk
-// this fixture feeds tests only the marker's presence, so a real repository would prove nothing extra
-// and would breach the Test Tier Purity Invariant to build.
+// cliwire.RepositoryRootOf looks for, and returns dir. It writes no git objects and spawns no git: the
+// walk this fixture feeds tests only the marker's presence, so a real repository would prove nothing
+// extra and would breach the Test Tier Purity Invariant to build.
 func seedGitRepositoryRoot(t *testing.T, dir string) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir %s/.git: %v", dir, err)
 	}
 	return dir
-}
-
-// TestResolveStandaloneTarget_RefusesATargetThatIsNotAReadableDirectory pins R6-7: a --target-dir
-// that does not exist, or that names a file, must be REFUSED rather than resolved. Without the
-// check, standalonestate.Normalize fell back to Clean and repositoryRootOf then climbed to the
-// enclosing repository, so a mistyped flag silently drove the repository the operator was standing
-// in, indistinguishably from the no-flag invocation.
-func TestResolveStandaloneTarget_RefusesATargetThatIsNotAReadableDirectory(t *testing.T) {
-	t.Parallel()
-
-	repo := seedGitRepositoryRoot(t, t.TempDir())
-	if err := os.WriteFile(filepath.Join(repo, "notadir.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	for _, tt := range []struct {
-		name          string
-		targetDirFlag string
-	}{
-		{"absent directory", "reposs"},
-		{"a file, not a directory", "notadir.txt"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveStandaloneTarget(repo, tt.targetDirFlag)
-			if err == nil {
-				t.Fatalf("resolveStandaloneTarget(%q, %q) = %q, nil; want a refusal -- this silently resolves to the enclosing repository", repo, tt.targetDirFlag, got)
-			}
-			if got != "" {
-				t.Errorf("resolveStandaloneTarget(...) target = %q; want empty alongside the refusal", got)
-			}
-		})
-	}
-}
-
-// TestResolveStandaloneTarget_LiftsToRepositoryRoot is R4-26's direct regression test.
-// preflight.ResolveMode answers ModeStandalone for a plain repository's SUBDIRECTORY too, so the
-// target used to differ by where the operator happened to stand: repo/ and repo/src/ hashed to two
-// different hash8 values and so derived two state directories, two reed sessions and two plan
-// directories for one repository -- the second of which webster then refused outright with
-// "standalone plan directory ... does not exist".
-func TestResolveStandaloneTarget_LiftsToRepositoryRoot(t *testing.T) {
-	t.Run("CwdInsideRepositoryLiftsToRoot", func(t *testing.T) {
-		t.Parallel()
-		repoRoot := seedGitRepositoryRoot(t, t.TempDir())
-		subDir := filepath.Join(repoRoot, "src", "inner")
-		if err := os.MkdirAll(subDir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", subDir, err)
-		}
-
-		got, err := resolveStandaloneTarget(subDir, "")
-		if err != nil {
-			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
-		}
-		if want := standalonestate.Normalize(repoRoot); got != want {
-			t.Errorf("resolveStandaloneTarget(%q, \"\") = %q; want the repository root %q", subDir, got, want)
-		}
-	})
-
-	t.Run("TargetDirInsideRepositoryLiftsToRoot", func(t *testing.T) {
-		t.Parallel()
-		repoRoot := seedGitRepositoryRoot(t, t.TempDir())
-		if err := os.MkdirAll(filepath.Join(repoRoot, "src"), 0o755); err != nil {
-			t.Fatalf("mkdir src: %v", err)
-		}
-
-		got, err := resolveStandaloneTarget(repoRoot, "src")
-		if err != nil {
-			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
-		}
-		if want := standalonestate.Normalize(repoRoot); got != want {
-			t.Errorf("resolveStandaloneTarget(%q, \"src\") = %q; want the repository root %q", repoRoot, got, want)
-		}
-	})
-
-	t.Run("NonRepositoryDirectoryUnchanged", func(t *testing.T) {
-		t.Parallel()
-		// standalone mode legitimately covers a plain directory that is no git repository at all --
-		// preflight.ResolveMode folds that cause into the very same verdict -- so the lift must not
-		// invent a root by walking to the filesystem's own top.
-		plain := t.TempDir()
-
-		got, err := resolveStandaloneTarget(plain, "")
-		if err != nil {
-			t.Fatalf("resolveStandaloneTarget() = %v; want nil error", err)
-		}
-		if want := standalonestate.Normalize(plain); got != want {
-			t.Errorf("resolveStandaloneTarget(%q, \"\") = %q; want it unchanged at %q", plain, got, want)
-		}
-	})
 }
 
 // TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot is R4-26's end-to-end half: wiring from
@@ -724,54 +590,6 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	}
 	if want := filepath.Join(rootStateDir, "_lyx", "plan"); c.geom.PlanDir != want {
 		t.Errorf("geom.PlanDir = %q; want the root's own default plan directory %q", c.geom.PlanDir, want)
-	}
-}
-
-// TestWireStandalone_RefusesStateDirNestedInTarget is R4-25's direct regression test. A standalone
-// target that CONTAINS its own derived state directory -- a dotfiles repository rooted at the home
-// directory, or an XDG_STATE_HOME pointed somewhere inside the checkout -- used to reach
-// shuttleengine.NewDetachedRunner's containment assertion, which fires only once a tmux server has
-// been booted and the run lock taken, blames a hub geometry that was never involved, and names no
-// lever the operator can pull.
-//
-// The sentinel-sink assertion is what proves the refusal lands EARLY: wireStandalone redirects the
-// durable trace sink to a directory under stateDir, which in this geometry sits inside the
-// operator's own repository, so a trace file appearing anywhere but the sentinel would mean the
-// guard ran after that redirect.
-func TestWireStandalone_RefusesStateDirNestedInTarget(t *testing.T) {
-	target := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", filepath.Join(target, ".local", "state"))
-	t.Setenv("LOCALAPPDATA", filepath.Join(target, "AppData", "Local"))
-
-	sentinelDir := t.TempDir()
-	logger.SetDurableSinkDir(sentinelDir)
-	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-
-	c := &websterCLI{}
-	err := c.wire(nil, preflight.ModeStandalone, target, "", "", "")
-	if err == nil {
-		t.Fatal("wire() error = nil; want a refusal naming the nested state directory")
-	}
-	if !strings.Contains(err.Error(), "XDG_STATE_HOME") {
-		t.Errorf("wire() error = %v; want it to name XDG_STATE_HOME, the only lever an operator has here", err)
-	}
-	if !strings.Contains(err.Error(), target) {
-		t.Errorf("wire() error = %v; want it to name the target %q", err, target)
-	}
-	if strings.Contains(err.Error(), "hub geometry") {
-		t.Errorf("wire() error = %v; want the real cause, not NewDetachedRunner's hub-geometry guess", err)
-	}
-	if strings.Contains(err.Error(), "--plan-dir") {
-		t.Errorf("wire() error = %v; want the nesting refusal to win over the later plan-dir gate", err)
-	}
-
-	logger.Info("wiring_test: arm the sink")
-	matches, err := filepath.Glob(filepath.Join(sentinelDir, "trace-*.log"))
-	if err != nil {
-		t.Fatalf("glob %s: %v", sentinelDir, err)
-	}
-	if len(matches) == 0 {
-		t.Error("no trace-*.log file under the sentinel dir; want the nesting refusal to fire before wireStandalone redirects the durable sink into the operator's own repository")
 	}
 }
 
@@ -854,28 +672,87 @@ func TestWireStandalone_PlanDirOverrideMarksRunRefusal(t *testing.T) {
 	})
 }
 
-// TestRefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome is R6-15's regression test. The
-// target has already been through standalonestate.Normalize with every symlink resolved, while the
-// derived state directory had not, so a state home that reaches INSIDE the target only through a
-// symlink read as disjoint — and lyx then wrote its state tree, run locks and trace logs into the
-// operator's own checkout, which is precisely what this guard exists to prevent.
-func TestRefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome(t *testing.T) {
-	t.Parallel()
+// TestWireModule_DescriptorIsVerbatim pins webster's own wireModule descriptor, which converts from
+// batch 1's inline production strings into free-floating data on this var. Nothing else in this
+// package or in internal/cliwire asserts webster's own descriptor text after this batch:
+// internal/cliwire's own tests assert only their local fixtures, and every wiring_test.go case that
+// used to touch the nested-geometry and target-resolution messages is deleted above. Without this
+// test a reworded field would fail no test anywhere.
+func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
+	if wireModule.Name != "webster" {
+		t.Errorf("wireModule.Name = %q; want %q", wireModule.Name, "webster")
+	}
+	if want := "state, locks, rendered prompts and trace logs"; wireModule.StateArtifacts != want {
+		t.Errorf("wireModule.StateArtifacts = %q; want %q", wireModule.StateArtifacts, want)
+	}
+	if want := "the repository it drives"; wireModule.TargetRole != want {
+		t.Errorf("wireModule.TargetRole = %q; want %q", wireModule.TargetRole, want)
+	}
+	if want := "Drive a target"; wireModule.TargetRecourse != want {
+		t.Errorf("wireModule.TargetRecourse = %q; want %q", wireModule.TargetRecourse, want)
+	}
+	if want := "the worktree is already the target"; wireModule.HubTargetSubject != want {
+		t.Errorf("wireModule.HubTargetSubject = %q; want %q", wireModule.HubTargetSubject, want)
+	}
+	if wireModule.Plan == nil {
+		t.Fatal("wireModule.Plan = nil; want a non-nil PlanRules -- webster parses a plan")
+	}
+	base := filepath.Join(t.TempDir(), "anchor")
+	wantPlanDefault := filepath.Join(base, "_lyx", "plan")
+	if got := wireModule.Plan.DefaultPlanDir(base); got != wantPlanDefault {
+		t.Errorf("wireModule.Plan.DefaultPlanDir(%q) = %q; want %q", base, got, wantPlanDefault)
+	}
 
-	target := standalonestate.Normalize(t.TempDir())
-	inside := filepath.Join(target, "state-home")
-	if err := os.MkdirAll(inside, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) error = %v", inside, err)
-	}
-	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(inside, link); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-	// The leaf is deliberately not created: a first run's <stateHome>/lyx/<hash8> does not exist yet,
-	// which is exactly when plain EvalSymlinks gives up and falls back to Clean.
-	stateDir := filepath.Join(link, "lyx", "abcd1234")
+	t.Run("RefuseTargetDirInHubMode", func(t *testing.T) {
+		flag := filepath.Join(t.TempDir(), "elsewhere")
+		err := wireModule.RefuseTargetDirInHubMode(flag)
+		if err == nil {
+			t.Fatal("RefuseTargetDirInHubMode() = nil; want a refusal for a non-empty flag")
+		}
+		want := "webster: --target-dir is not honoured in hub mode: the worktree is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec"
+		if err.Error() != want {
+			t.Errorf("RefuseTargetDirInHubMode() error = %q; want %q", err.Error(), want)
+		}
+		if err := wireModule.RefuseTargetDirInHubMode(""); err != nil {
+			t.Errorf("RefuseTargetDirInHubMode(\"\") = %v; want nil", err)
+		}
+	})
 
-	if err := refuseNestedStandaloneGeometry("webster", target, stateDir); err == nil {
-		t.Errorf("refuseNestedStandaloneGeometry(%q, %q) = nil; want a refusal — the state home is nested under the target through a symlink", target, stateDir)
-	}
+	t.Run("MissingPlanRefusal", func(t *testing.T) {
+		planDir := filepath.Join(t.TempDir(), "plan")
+		recourse := filepath.Join(t.TempDir(), "default-plan")
+		got := wireModule.Plan.MissingPlanRefusal(planDir, recourse)
+		want := fmt.Sprintf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback. Place an authored plan at %s, which is what `run` requires (Master's own in-pane verbs are flagless and resolve that default); --plan-dir points the bracket and read-only verbs at a plan elsewhere, but `run` refuses it", planDir, recourse)
+		if got != want {
+			t.Errorf("MissingPlanRefusal() = %q; want %q", got, want)
+		}
+	})
+
+	// The one path that exercises Name, StateArtifacts and TargetRole composed into a real message
+	// rather than read as bare fields: a state directory derived to nest INSIDE the target.
+	t.Run("ResolveStandalone_NestedStateDirRefusalNamesTheDescriptorFields", func(t *testing.T) {
+		target := t.TempDir()
+		t.Setenv("XDG_STATE_HOME", filepath.Join(target, ".local", "state"))
+		t.Setenv("LOCALAPPDATA", filepath.Join(target, "AppData", "Local"))
+
+		stateDir, _, err := standalonestate.Derive(target)
+		if err != nil {
+			t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
+		}
+		normalizedTarget := cliwire.NormalizeForContainment(target)
+		normalizedStateDir := cliwire.NormalizeForContainment(stateDir)
+
+		sentinelDir := t.TempDir()
+		logger.SetDurableSinkDir(sentinelDir)
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+		_, err = wireModule.ResolveStandalone(cliwire.StandaloneRequest{Cwd: target})
+		if err == nil {
+			t.Fatal("ResolveStandalone() error = nil; want a refusal -- the state directory nests under the target")
+		}
+		want := fmt.Sprintf("webster: the derived state directory %s lies inside the standalone target %s: standalone mode keeps its %s strictly outside %s, so the two must be disjoint. The state home is nested under the target -- a repository rooted at your home directory is the usual cause. Point XDG_STATE_HOME (LOCALAPPDATA on Windows) at a directory outside %s and re-run", normalizedStateDir, normalizedTarget, wireModule.StateArtifacts, wireModule.TargetRole, normalizedTarget)
+		if err.Error() != want {
+			t.Errorf("ResolveStandalone() error = %q; want %q", err.Error(), want)
+		}
+	})
 }

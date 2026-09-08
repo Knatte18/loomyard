@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -140,7 +141,7 @@ run-timeout; zero defers to the config default.`,
 			// os.ReadFile resolved against the PROCESS cwd instead, so under an in-process driver one
 			// relative flag named a different directory than the rest (crucible round opus-medium-r6,
 			// R6-17).
-			data, err := os.ReadFile(resolveToldDir(c.cwd, profilePath))
+			data, err := os.ReadFile(cliwire.ResolveToldDir(c.cwd, profilePath))
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("burler: read --profile: %v", err)))
 				return nil

@@ -21,8 +21,17 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 - Three tiers: `lyxcwd.Resolve` → `preflight.Check` (fabric wired/synced/clean) → `loomengine.CheckSeed`.
 - A producer needs none of the tiers; an orchestrator needs tier 3; a standalone CLI probes tier 1 via `preflight.ResolveMode` only.
 - `internal/hubgeom`/`internal/standalonegeom` are the only `Geometry`-struct constructors.
-- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`.
+- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`.
 - A `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`, only from a standalone CLI's own wiring, and `NewRunner`'s containment assertion is never relaxed to accommodate it.
+
+## Cliwire Sole-Wiring Invariant
+
+`internal/cliwire` is the sole owner of standalone/hub CLI wiring resolution for the standalone-capable CLIs.
+
+- A `<module>cli` never re-implements `--target-dir` resolution, the repository-root lift, mode-derived state/plan/stencils resolution, the nested-geometry guard, or the durable-sink redirect;
+  it declares its own `cliwire.Module` descriptor and calls in.
+- `internal/cliwire` is the only **production** caller of `standalonestate.Derive`, while test files may call it to build fixtures and to assert the real derivation.
+- Both halves are enforced by tests in `internal/cliwire`.
 
 ## Lyxdirs Single-Declarer Invariant
 

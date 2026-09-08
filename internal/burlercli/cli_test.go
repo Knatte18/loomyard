@@ -9,11 +9,13 @@ package burlercli
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
@@ -368,5 +370,63 @@ func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "--profile is required") {
 		t.Errorf("RunCLIIn() reported the missing --profile over the pre-run refusal; the refusal is what the operator needs. output: %s", out.String())
+	}
+}
+
+// TestRunVerb_RelativeProfileResolvesAgainstSeamCwd is R6-17's direct regression test. Nothing else
+// in this file pins it: cli_test.go otherwise covers only the missing-`--profile` refusal and
+// decodeProfile, and neither internal/cliwire's own tests nor either batch-3 enforcement test can
+// catch a swapped or dropped first argument to os.ReadFile, so a silent regression to the process
+// working directory is reachable.
+//
+// It drives the `run` verb the way TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo already does, with
+// c.cwd pointed at a t.TempDir() holding a profile file, passing that file's own name as a RELATIVE
+// --profile value.
+//
+// The fixture deliberately fails decodeProfile's strict decode -- this is the case's central
+// constraint, not an incidental detail. `run`'s RunE must never reach c.reedUp on this fixture: doing
+// so would call reedEngine.Up() and boot a live tmux/reed session from an untagged tier-1 test, which
+// the Test Tier Purity Invariant forbids. Do not "fix" this fixture by making the profile valid --
+// that would let the flow reach c.reedUp and breach the invariant this test's own tier depends on.
+//
+// The assertion is POSITIVE, not merely "does not contain": reaching decodeProfile's own "profile
+// YAML" error prefix proves os.ReadFile succeeded, which proves the relative --profile resolved
+// against c.cwd. A "does not contain" assertion alone would pass vacuously if the invocation ended
+// earlier -- and it can: RunE checks clihelp.ShouldAbort before ever reaching the read, and an
+// aborted pre-run returns nil there, satisfying a purely negative assertion without exercising the
+// resolution this case exists to pin. wiring runs in PersistentPreRunE, ahead of RunE, so the pre-run
+// must genuinely succeed for this case to mean anything.
+//
+// Both XDG_STATE_HOME and LOCALAPPDATA are redirected to fresh t.TempDir() values before the call,
+// and this case is not t.Parallel(): a successful pre-run reaches the real standalonestate.Derive and
+// the real stencilstore.Reconcile, so without both redirects this untagged case would seed a stencils
+// tree and a trace sink into the developer's own state home -- exactly why
+// internal/burlercli/cli_integration_test.go sets both and carries //go:build integration.
+func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	cwd := t.TempDir()
+	// A plain repository root is not required for standalone mode to wire successfully -- a genuine
+	// non-repository directory folds into the same ModeStandalone verdict -- so no ".git" marker is
+	// seeded here.
+	const profileName = "profile.yaml"
+	if err := os.WriteFile(filepath.Join(cwd, profileName), []byte("not: valid: yaml: at: all"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	var out bytes.Buffer
+	code := RunCLIIn(cwd, &out, []string{"run", "--profile", profileName})
+
+	if code == 0 {
+		t.Fatalf("RunCLIIn() = 0; want a non-zero exit for a profile that fails decodeProfile. output: %s", out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "profile YAML") {
+		t.Errorf("RunCLIIn() output missing decodeProfile's own \"profile YAML\" error prefix -- want proof that os.ReadFile succeeded against the relative --profile resolved through c.cwd. output: %q", got)
+	}
+	if strings.Contains(got, "read --profile") {
+		t.Errorf("RunCLIIn() output contains \"read --profile\"; want decodeProfile's own error, not an os.ReadFile failure -- the relative --profile must have resolved successfully. output: %q", got)
 	}
 }
