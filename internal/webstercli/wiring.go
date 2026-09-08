@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
@@ -328,6 +329,7 @@ func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttl
 // The reverse nesting (a target inside the state directory) is refused by the same guard for the
 // same reason, with its own message: the lever there is the target, not the state home.
 func refuseNestedStandaloneGeometry(module, target, stateDir string) error {
+	target, stateDir = normalizeForContainment(target), normalizeForContainment(stateDir)
 	if pathContains(target, stateDir) {
 		return fmt.Errorf("%s: the derived state directory %s lies inside the standalone target %s: standalone mode keeps its state, locks, rendered prompts and trace logs strictly outside the repository it drives, so the two must be disjoint. The state home is nested under the target -- a repository rooted at your home directory is the usual cause. Point XDG_STATE_HOME (LOCALAPPDATA on Windows) at a directory outside %s and re-run", module, stateDir, target, target)
 	}
@@ -342,11 +344,49 @@ func refuseNestedStandaloneGeometry(module, target, stateDir string) error {
 // the CLI-boundary refusal and the constructor assertion it front-runs agree about what "nested"
 // means. Both paths are already absolute and cleaned by their producers.
 func pathContains(outer, inner string) bool {
+	// filepath.Rel is case-SENSITIVE, while Windows paths are not, so LOCALAPPDATA and a target that
+	// differ only in case (C:\\Users\\X vs c:\\users\\x — one directory) read as disjoint. Folded here
+	// on Windows alone, matching lyxcwd.samePath's rule exactly. Not reachable from this project's
+	// Linux hosts and therefore never driven live; it is a mechanical mirror of an already-stated
+	// rule, not a verified behaviour.
+	if runtime.GOOS == "windows" {
+		outer, inner = strings.ToLower(outer), strings.ToLower(inner)
+	}
 	rel, err := filepath.Rel(outer, inner)
 	if err != nil {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// normalizeForContainment returns the spelling of path that a containment or equality test must use:
+// standalonestate.Normalize applied to the deepest ANCESTOR of path that exists on disk, with the
+// not-yet-created remainder rejoined.
+//
+// Plain Normalize is not enough here. It falls back to Clean whenever filepath.EvalSymlinks fails,
+// and EvalSymlinks fails when ANY component is missing — which the derived state directory's own
+// leaf (<stateHome>/lyx/<hash8>) routinely is on a first run. The target, meanwhile, has already been
+// through Normalize with every symlink resolved. Comparing a resolved string against an unresolved
+// one made refuseNestedStandaloneGeometry — and shuttleengine's own validateDetachedToldPaths, which
+// compares the same two strings — both answer "disjoint" for a state home that reaches inside the
+// target through a symlink, and lyx then wrote its state tree, run locks and trace logs into the
+// operator's checkout: exactly the outcome the guard exists to prevent (crucible round
+// opus-medium-r6, R6-15).
+func normalizeForContainment(path string) string {
+	existing := filepath.Clean(path)
+	var missing []string
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return filepath.Clean(path)
+		}
+		missing = append([]string{filepath.Base(existing)}, missing...)
+		existing = parent
+	}
+	return filepath.Join(append([]string{standalonestate.Normalize(existing)}, missing...)...)
 }
 
 // standaloneDefaultPlanDir returns the standalone default plan directory for a refusal's recourse
@@ -363,11 +403,15 @@ func (c *websterCLI) standaloneDefaultPlanDir(current string) string {
 
 // samePlanDir reports whether a told --plan-dir names the same directory as the mode's own default.
 // Both arguments are absolute by construction -- the flag value through wire's resolveToldDir, the
-// default through hubgeom/standalonegeom -- so this is a path equality over cleaned spellings, which
-// is what makes a "." or trailing-separator spelling of the default recognized as the default rather
-// than as an override.
+// default through hubgeom/standalonegeom -- so this is a path equality, which is what makes a "." or
+// trailing-separator spelling of the default recognized as the default rather than as an override.
+//
+// It compares through normalizeForContainment rather than filepath.Clean alone: a plain Clean
+// equality reported an OVERRIDE for a --plan-dir naming the very same directory through a symlinked
+// state home or HOME, and `run` then refused a plan that was in fact at the default location
+// (crucible round opus-medium-r6, R6-15).
 func samePlanDir(planDir, defaultPlanDir string) bool {
-	return filepath.Clean(planDir) == filepath.Clean(defaultPlanDir)
+	return normalizeForContainment(planDir) == normalizeForContainment(defaultPlanDir)
 }
 
 // resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty

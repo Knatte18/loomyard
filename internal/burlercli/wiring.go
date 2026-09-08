@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
@@ -234,6 +235,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 // The reverse nesting (a target inside the state directory) is refused by the same guard for the
 // same reason, with its own message: the lever there is the target, not the state home.
 func refuseNestedStandaloneGeometry(module, target, stateDir string) error {
+	target, stateDir = normalizeForContainment(target), normalizeForContainment(stateDir)
 	if pathContains(target, stateDir) {
 		return fmt.Errorf("%s: the derived state directory %s lies inside the standalone target %s: standalone mode keeps its instruction files, shuttle run directories and trace logs strictly outside the repository it reviews, so the two must be disjoint. The state home is nested under the target -- a repository rooted at your home directory is the usual cause. Point XDG_STATE_HOME (LOCALAPPDATA on Windows) at a directory outside %s and re-run", module, stateDir, target, target)
 	}
@@ -248,11 +250,49 @@ func refuseNestedStandaloneGeometry(module, target, stateDir string) error {
 // the CLI-boundary refusal and the constructor assertion it front-runs agree about what "nested"
 // means. Both paths are already absolute and cleaned by their producers.
 func pathContains(outer, inner string) bool {
+	// filepath.Rel is case-SENSITIVE, while Windows paths are not, so LOCALAPPDATA and a target that
+	// differ only in case (C:\\Users\\X vs c:\\users\\x — one directory) read as disjoint. Folded here
+	// on Windows alone, matching lyxcwd.samePath's rule exactly. Not reachable from this project's
+	// Linux hosts and therefore never driven live; it is a mechanical mirror of an already-stated
+	// rule, not a verified behaviour.
+	if runtime.GOOS == "windows" {
+		outer, inner = strings.ToLower(outer), strings.ToLower(inner)
+	}
 	rel, err := filepath.Rel(outer, inner)
 	if err != nil {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// normalizeForContainment returns the spelling of path that a containment or equality test must use:
+// standalonestate.Normalize applied to the deepest ANCESTOR of path that exists on disk, with the
+// not-yet-created remainder rejoined.
+//
+// Plain Normalize is not enough here. It falls back to Clean whenever filepath.EvalSymlinks fails,
+// and EvalSymlinks fails when ANY component is missing — which the derived state directory's own
+// leaf (<stateHome>/lyx/<hash8>) routinely is on a first run. The target, meanwhile, has already been
+// through Normalize with every symlink resolved. Comparing a resolved string against an unresolved
+// one made refuseNestedStandaloneGeometry — and shuttleengine's own validateDetachedToldPaths, which
+// compares the same two strings — both answer "disjoint" for a state home that reaches inside the
+// target through a symlink, and lyx then wrote its state tree, run locks and trace logs into the
+// operator's checkout: exactly the outcome the guard exists to prevent (crucible round
+// opus-medium-r6, R6-15).
+func normalizeForContainment(path string) string {
+	existing := filepath.Clean(path)
+	var missing []string
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return filepath.Clean(path)
+		}
+		missing = append([]string{filepath.Base(existing)}, missing...)
+		existing = parent
+	}
+	return filepath.Join(append([]string{standalonestate.Normalize(existing)}, missing...)...)
 }
 
 // resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty

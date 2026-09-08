@@ -704,3 +704,29 @@ func TestWire_ReedUpSeamPerMode(t *testing.T) {
 		}
 	})
 }
+
+// TestRefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome is R6-15's regression test. The
+// target has already been through standalonestate.Normalize with every symlink resolved, while the
+// derived state directory had not, so a state home that reaches INSIDE the target only through a
+// symlink read as disjoint — and lyx then wrote its state tree, run locks and trace logs into the
+// operator's own checkout, which is precisely what this guard exists to prevent.
+func TestRefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome(t *testing.T) {
+	t.Parallel()
+
+	target := standalonestate.Normalize(t.TempDir())
+	inside := filepath.Join(target, "state-home")
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", inside, err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(inside, link); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+	// The leaf is deliberately not created: a first run's <stateHome>/lyx/<hash8> does not exist yet,
+	// which is exactly when plain EvalSymlinks gives up and falls back to Clean.
+	stateDir := filepath.Join(link, "lyx", "abcd1234")
+
+	if err := refuseNestedStandaloneGeometry("burler", target, stateDir); err == nil {
+		t.Errorf("refuseNestedStandaloneGeometry(%q, %q) = nil; want a refusal — the state home is nested under the target through a symlink", target, stateDir)
+	}
+}
