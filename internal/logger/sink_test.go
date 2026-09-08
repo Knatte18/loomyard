@@ -15,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 var sinkTestFilePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-(\d+)\.log$`)
@@ -442,4 +445,41 @@ func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
 	if !strings.Contains(string(data), "second record") {
 		t.Errorf("sink file contents = %q; want the second record present under the recreated original directory", string(data))
 	}
+}
+
+// TestIsLyxWorktree_GatesTheCwdAnchoredFallback pins R6-6's decision: the durable sink's
+// cwd-anchored fallback may arm only inside a worktree lyx actually owns. lyxcwd.Resolve succeeds
+// for any plain git repository standing at its root, and cmd/lyx force-arms the sink on every
+// non-zero exit, so without this gate every refusal — a standalone webster/burler invocation refused
+// before its own sink redirect, or an unknown subcommand that never reached wiring — created
+// <repo>/.lyx/logs inside a checkout lyx does not own.
+func TestIsLyxWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a plain checkout is not a lyx worktree", func(t *testing.T) {
+		t.Parallel()
+
+		hub := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(hub, "plain"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		layout := &lyxcwd.Location{RepoName: "plain", HubPath: hub, WorktreeName: "plain", AnchorRel: "."}
+		if isLyxWorktree(layout) {
+			t.Errorf("isLyxWorktree(%q) = true; want false — arming here writes .lyx into a repository lyx does not own", layout.AnchorPath())
+		}
+	})
+
+	t.Run("an anchored worktree carrying _lyx is a lyx worktree", func(t *testing.T) {
+		t.Parallel()
+
+		hub := t.TempDir()
+		anchor := filepath.Join(hub, "wired", "backend")
+		if err := os.MkdirAll(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		layout := &lyxcwd.Location{RepoName: "wired", HubPath: hub, WorktreeName: "wired", AnchorRel: "backend"}
+		if !isLyxWorktree(layout) {
+			t.Errorf("isLyxWorktree(%q) = false; want true — this is exactly the worktree the fallback exists for", layout.AnchorPath())
+		}
+	})
 }

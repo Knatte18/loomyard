@@ -38,6 +38,7 @@ Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_ly
 - No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
 - Structural (`fabricengine.structuralCommittedDirs`/`structuralNeverCommittedDirs`), never from `fabric.yaml`'s `pathspec`.
 - Weft content is per-branch and is never a merge participant in either direction.
+- `internal/logger`'s durable trace sink arms its cwd-anchored fallback only inside a worktree lyx owns (`_lyx` present at the anchor); a plain checkout gets no sink rather than a `.lyx` lyx does not own.
 
 ## Hub Containment Invariant
 

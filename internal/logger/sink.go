@@ -131,6 +131,9 @@ func armDurableSinkLocked() bool {
 		if err != nil {
 			return false
 		}
+		if !isLyxWorktree(layout) {
+			return false
+		}
 		dir = LogsDir(layout)
 		// header.WorktreeRoot records the worktree root as trace metadata, a
 		// separate concern from where the trace file itself lands (LogsDir is
@@ -166,6 +169,28 @@ func armDurableSinkLocked() bool {
 	sinkPath = path
 	sinkBytesWritten = int64(len(line))
 	return true
+}
+
+// isLyxWorktree reports whether layout names a worktree lyx actually owns, by the presence of the
+// durable _lyx tree at its anchor.
+//
+// It gates the cwd-anchored fallback above because lyxcwd.Resolve succeeds for ANY plain git
+// repository standing at its root — resolveCore defaults AnchorRel to "." when no hub records one, so
+// no hub is required — and the fallback then creates <repo>/.lyx/logs/trace-*.log inside a checkout
+// lyx does not own. cmd/lyx's logger.NotifyExit(code) force-arms the sink on EVERY non-zero exit, so
+// every refusal reached that fallback: a standalone webster or burler invocation refused before
+// wireStandalone's own redirect could point the sink at the derived state directory, and an unknown
+// subcommand that never reached wiring at all. Standalone mode's whole premise is that nothing lyx
+// writes lands in the repository it drives, and this was the one path that did (crucible round
+// opus-medium-r6, R6-6).
+//
+// The residual, stated rather than papered over: a command run inside a git worktree that is not yet
+// lyx-wired now writes no trace file at all. That is the intended trade — it is precisely the case
+// where writing one would be the defect — and it does not reach fabric's own bring-up verbs, which
+// run from the hub, where lyxcwd.Resolve already fails and the fallback was never armed.
+func isLyxWorktree(layout *lyxcwd.Location) bool {
+	_, err := os.Stat(filepath.Join(layout.AnchorPath(), lyxdirs.LyxDirName))
+	return err == nil
 }
 
 // headerLine renders the durable sink's first-line header record as a
