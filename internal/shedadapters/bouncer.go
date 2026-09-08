@@ -579,6 +579,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		"rubric":          rubric,
 		"artifacts":       strings.Join(b.cfg.ArtifactPaths, "\n"),
 		"round":           strconv.Itoa(n),
+		"next_round":      strconv.Itoa(n + 1),
 		"report_path":     reportPath,
 		"previous_ledger": previousLedger,
 		"verdict_path":    outputs[0],

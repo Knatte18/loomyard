@@ -91,7 +91,18 @@ func recordedVerdict(runDir string, round int) (bouncerVerdict, bool) {
 	if err != nil {
 		return "", false
 	}
-	if _, err := parseLedger(ledgerRaw); err != nil {
+	ledger, err := parseLedger(ledgerRaw)
+	if err != nil {
+		return "", false
+	}
+	// The ledger file's own round: frontmatter field must agree with the round number ITS OWN
+	// FILENAME already encodes (ledgerPath(runDir, round)): a mismatch here means the judge wrote
+	// the wrong round's own claim into a file that landed at the right path anyway, which is
+	// exactly the shape a malformed-ledger read is meant to fail closed on -- reporting false
+	// (this round has NOT been judged, per this function's own doc comment) so the Bouncer
+	// re-judges it, rather than trusting a ledger that disagrees with itself about which round it
+	// belongs to (crucible round sonnet-xhigh-r8, LS-1).
+	if ledger.Round != round {
 		return "", false
 	}
 	return verdict, true
