@@ -2,17 +2,17 @@
 
 ```yaml
 phase: discussing
-slug: crucible-loom-glyph-hardening
-branch: crucible-loom-glyph-hardening
+slug: unify-webster-burler-wiring
+branch: unify-webster-burler-wiring
 plan: null
-parent: main
-task: 'Crucible hardening: loom against the new glyph plan-format'
+parent: crucible-loom-glyph-hardening
+task: Unify webster/burler CLI wiring into a shared module
 task_description: |
-  Crucible hardening: loom against the new glyph plan-format
+  Unify webster/burler CLI wiring into a shared module
 ```
 
 ## Timeline
 
 ```text
-discussing  '2026-09-06T15:51:08Z'
+discussing  '2026-09-08T12:26:39Z'
 ```
