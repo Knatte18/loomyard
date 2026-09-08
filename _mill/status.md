@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: crucible-loom-glyph-hardening
 branch: crucible-loom-glyph-hardening
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-06T15:51:08Z'
+done  '2026-09-08T19:08:29Z'
 ```
