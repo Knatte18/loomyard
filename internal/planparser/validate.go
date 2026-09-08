@@ -546,32 +546,23 @@ func checkRenameFormat(plan *Plan) []ValidationError {
 	return findings
 }
 
-// renameToHandles returns the set of every handle-shaped Pairs.New entry across plan, i.e. every
-// handle a Rename group's to-side names. checkHandleConsistency treats such a handle as if a
-// Create declaration existed for it, per the Batch-local decision that a Rename card's to-side
-// handle derives its declaration from the resolved old side rather than carrying one of its own.
-func renameToHandles(plan *Plan) map[string]bool {
-	toHandles := make(map[string]bool)
-	for _, c := range plan.Cards {
-		for _, p := range c.Pairs {
-			if classifyRef(p.New) == refKindHandle {
-				toHandles[p.New] = true
-			}
-		}
-	}
-	return toHandles
-}
-
 // checkHandleConsistency implements handle-dangling, handle-collision, and handle-unreferenced,
-// all pure string work over the parsed model via declaredHandles/referencedHandles (handle.go).
+// all pure string work over the parsed model via handleClaims/declaredHandles/referencedHandles
+// (handle.go).
 // These checks run under every plan.Language, including "none": a handle is loomyard grammar, not
 // glyph grammar, and its consistency is checkable without any alphabet.
+//
+// handle-dangling and handle-collision both key on handleClaims, the union of the format's two
+// handle-declaring sources; handle-unreferenced keys on declaredHandles alone, and deliberately so
+// — a Rename card's destination that no OTHER card references is the ordinary case, not a defect,
+// so folding Rename to-sides into that half would fire a false finding on essentially every Rename
+// card in every plan.
 func checkHandleConsistency(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
+	claims := handleClaims(plan)
 	declared := declaredHandles(plan)
 	referenced := referencedHandles(plan)
-	renameTo := renameToHandles(plan)
 
 	// handle-dangling: a referenced handle with no matching Create declaration and no matching
 	// Rename to-side.
@@ -581,7 +572,7 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 	}
 	sort.Strings(handles)
 	for _, handle := range handles {
-		if len(declared[handle]) > 0 || renameTo[handle] {
+		if len(claims[handle]) > 0 {
 			continue
 		}
 		for _, cid := range referenced[handle] {
@@ -596,22 +587,27 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 		}
 	}
 
-	// handle-collision: the same handle declared by more than one Create sub-bullet across the
-	// plan, one finding per colliding handle rather than one per declaring card.
-	declaredHandleNames := make([]string, 0, len(declared))
-	for h := range declared {
-		declaredHandleNames = append(declaredHandleNames, h)
+	// handle-collision: the same handle claimed more than once across the plan — by two Create
+	// sub-bullets, by two Rename to-sides, or by one of each — one finding per colliding handle
+	// rather than one per claiming card.
+	claimedHandleNames := make([]string, 0, len(claims))
+	for h := range claims {
+		claimedHandleNames = append(claimedHandleNames, h)
 	}
-	sort.Strings(declaredHandleNames)
-	for _, handle := range declaredHandleNames {
-		cards := declared[handle]
-		if len(cards) <= 1 {
+	sort.Strings(claimedHandleNames)
+	for _, handle := range claimedHandleNames {
+		handleCards := claims[handle]
+		if len(handleCards) <= 1 {
 			continue
+		}
+		cards := make([]string, 0, len(handleCards))
+		for _, cl := range handleCards {
+			cards = append(cards, cl.card)
 		}
 		findings = append(findings, ValidationError{
 			Check: "handle-collision",
 			Detail: fmt.Sprintf(
-				"handle %q is declared by more than one Create sub-bullet, on cards %s",
+				"handle %q is claimed by more than one Create sub-bullet or Rename to-side, on cards %s",
 				handle, strings.Join(cards, ", "),
 			),
 		})
@@ -620,6 +616,11 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 	// handle-unreferenced: a declared handle no card other than its own declaring card(s)
 	// references. A declaring card's own Create bullet contributes the handle to its own Targets
 	// too, so that self-reference must not count.
+	declaredHandleNames := make([]string, 0, len(declared))
+	for h := range declared {
+		declaredHandleNames = append(declaredHandleNames, h)
+	}
+	sort.Strings(declaredHandleNames)
 	for _, handle := range declaredHandleNames {
 		decCards := declared[handle]
 		externallyReferenced := false

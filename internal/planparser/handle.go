@@ -54,8 +54,9 @@ func HandleUnit(handle string) (string, bool) {
 
 // declaredHandles maps every handle declared by some card's own Create group (via
 // CardDeclaration) to every card ID that declares it, in card order. A handle declared twice by
-// the same card appears once per declaration, matching handle-collision's own per-declaration
-// counting.
+// the same card appears once per declaration.
+// It is the Create-declaration half of handleClaims, kept separate because handle-unreferenced and
+// checkHandleMalformed's file-unit rule bind to that half alone (validate.go).
 func declaredHandles(plan *Plan) map[string][]string {
 	declared := make(map[string][]string)
 	for _, c := range plan.Cards {
@@ -64,6 +65,69 @@ func declaredHandles(plan *Plan) map[string][]string {
 		}
 	}
 	return declared
+}
+
+// handleClaim is one card's claim on one handle: which card makes it, and which of the plan
+// format's two handle-declaring sources it came from.
+type handleClaim struct {
+	// card is the "N-<slug>" identity of the claiming card.
+	card string
+	// fromRename reports whether the claim is a Rename pair's own handle-shaped New side rather
+	// than a Create sub-bullet's declaration.
+	fromRename bool
+}
+
+// handleClaims maps every handle some card claims to every claim on it, in card order,
+// declarations before Rename pairs within one card, one entry per claim rather than per card.
+//
+// The plan format has TWO sources that bring a handle into existence — a Create sub-bullet's
+// declaration and a Rename pair's own to-side — and both are equally a claim on that handle's
+// spelling. Keeping them in one index with the source recorded is what lets handle-dangling accept
+// either, handle-collision count both, and checkHandleMalformed's file-unit rule apply to only the
+// one whose unit half is actually read (validate.go).
+//
+// Counting only Create declarations, as handle-collision did before, let a handle claimed by both
+// sources — or by two Rename to-sides — pass validation clean and then be resolved by silent map
+// overwrite inside internal/planglyph's CanonicalizeHandles, which derives a Create declaration's
+// unit from the handle itself but a Rename to-side's unit from the RESOLVED old side: two
+// different canonical forms, one substitution key, the later one winning and rewriting the Create
+// card's own declaration bullet to point at the rename's destination (crucible round opus-high-r9,
+// R9-3).
+func handleClaims(plan *Plan) map[string][]handleClaim {
+	claims := make(map[string][]handleClaim)
+	for _, c := range plan.Cards {
+		id := cardID(c)
+		for _, d := range c.Declarations {
+			claims[d.Handle] = append(claims[d.Handle], handleClaim{card: id})
+		}
+		for _, p := range c.Pairs {
+			if classifyRef(p.New) != refKindHandle {
+				continue
+			}
+			claims[p.New] = append(claims[p.New], handleClaim{card: id, fromRename: true})
+		}
+	}
+	return claims
+}
+
+// claimedFromRename reports whether any of claims is a Rename pair's own to-side.
+func claimedFromRename(claims []handleClaim) bool {
+	for _, cl := range claims {
+		if cl.fromRename {
+			return true
+		}
+	}
+	return false
+}
+
+// claimedFromDeclaration reports whether any of claims is a Create sub-bullet's own declaration.
+func claimedFromDeclaration(claims []handleClaim) bool {
+	for _, cl := range claims {
+		if !cl.fromRename {
+			return true
+		}
+	}
+	return false
 }
 
 // referencedHandles maps every handle appearing in some card's Targets or Uses to every card ID

@@ -345,9 +345,11 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 	// A handle matches if EITHER delta source produced its expected glyph: a Create declaration's
 	// own expected ID is checked against created, a Rename pair's own expected ID against
 	// renamedTo, but a handle read from cardOwnHandles carries no tag saying which source declared
-	// it, so either match is accepted here rather than routed by source — the same handle spelling
-	// could not legitimately appear in both a Declarations entry and a Rename pair on one card, so
-	// this never masks a real mismatch.
+	// it, so either match is accepted here rather than routed by source. The same handle spelling
+	// appearing in both a Declarations entry and a Rename pair is the blocking pure finding
+	// handle-collision (planparser's checkHandleConsistency, which counts BOTH declaring sources
+	// since crucible round opus-high-r9's R9-3), so such a plan never reaches this function and the
+	// two-source acceptance here can never mask a real mismatch.
 	bound := func(expected string) bool {
 		return created[expected] || renamedTo[expected]
 	}
