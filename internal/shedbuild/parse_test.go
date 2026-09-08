@@ -499,3 +499,33 @@ zzz_unknown_key: nope
 		t.Errorf("Parse(unknown key input) reported different errors across two calls: %q vs %q", err1.Error(), err2.Error())
 	}
 }
+
+// TestParse_SecondYAMLDocumentIsRefusedNotDropped is R6-26's regression test: Parse decoded once and
+// stopped, so a stray "---" mid-recipe silently truncated the producer graph. If the surviving prefix
+// was self-consistent, shedengine.validate saw no dangling target and the run proceeded on a
+// truncated pipeline with no signal anywhere.
+func TestParse_SecondYAMLDocumentIsRefusedNotDropped(t *testing.T) {
+	t.Parallel()
+
+	const twoDocuments = `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+---
+version: 1
+entry: the-replacement-graph
+terminals: [the-replacement-graph]
+producers:
+  - name: the-replacement-graph
+    engine: bouncer
+`
+	got, err := Parse([]byte(twoDocuments))
+	if err == nil {
+		t.Fatalf("Parse(two documents) = %+v, nil; want a refusal — the second document was being dropped silently", got)
+	}
+	if !strings.Contains(err.Error(), "more than one YAML document") {
+		t.Errorf("Parse(two documents) error = %v; want it to name the stray document", err)
+	}
+}
