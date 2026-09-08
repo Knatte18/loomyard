@@ -153,3 +153,39 @@ func TestCreateFindings_HandleTargetIsInverted(t *testing.T) {
 		}
 	})
 }
+
+// TestCreateFindings_UnreadableStatusFailsClosed is R9-6's regression: the Create inversion must
+// fail CLOSED on an answer it cannot read.
+//
+// A Create target is excluded from statusFindings by resolvePass, and statusFindings owns the only
+// other reader of a result carrying no Status — quarry's pre-resolution rejection of the target
+// string itself, which crucible round opus-high-r9 confirmed live is reachable for a path-shaped
+// ref — so without a default arm here such a result had no reader at all and passed the inversion
+// silently, which under the inversion reads as "the target does not exist yet, carry on".
+func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
+	t.Run("pre-resolution rejection is blocking glyph-rejected", func(t *testing.T) {
+		index := map[string]quarry.ResolveResult{
+			"plan:sub#Bar": {Target: "sub#Bar", Error: "a glyph needs a \"#\"", Reason: "no_separator"},
+		}
+		got := createFindings(createPlan("plan:sub#Bar"), index)
+		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
+			t.Fatalf("createFindings(pre-resolution rejection) = %+v; want one blocking glyph-rejected finding", got)
+		}
+		if !strings.Contains(got[0].Detail, "no_separator") {
+			t.Errorf("finding detail = %q; want it to carry quarry's own reason", got[0].Detail)
+		}
+	})
+
+	t.Run("a status outside quarry's vocabulary is blocking glyph-rejected", func(t *testing.T) {
+		index := map[string]quarry.ResolveResult{
+			"plan:sub#Bar": {Target: "sub#Bar", Status: "partially_found"},
+		}
+		got := createFindings(createPlan("plan:sub#Bar"), index)
+		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
+			t.Fatalf("createFindings(unrecognized status) = %+v; want one blocking glyph-rejected finding", got)
+		}
+		if !strings.Contains(got[0].Detail, "partially_found") {
+			t.Errorf("finding detail = %q; want it to name the unrecognized status", got[0].Detail)
+		}
+	})
+}

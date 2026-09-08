@@ -29,7 +29,10 @@
 //   - glyph-not-found, glyph-ambiguous, glyph-rejected — the resolve status policy (resolve.go),
 //     blocking, over every glyph target that neither a Create group owns nor a Rename pair names as
 //     its New side (a rename destination only exists after the card runs, mirroring planparser's
-//     own path-missing rule that never checks Pairs.New).
+//     own path-missing rule that never checks Pairs.New). glyph-rejected is additionally the
+//     Create inversion's own fail-closed arm (create.go), since a Create target is excluded from
+//     the status policy above and would otherwise have no reader at all for an answer neither
+//     policy understands.
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
 //     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
 //   - containment-file-overlap (blocking) — the resolve-backed containment tier (containment.go),

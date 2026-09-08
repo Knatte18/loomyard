@@ -109,6 +109,15 @@ func createHandleResults(repo *quarry.Repo, plan *planparser.Plan) (map[string]q
 // — the package does not exist apart from its files. A not_found result with unit: not_found
 // produces the informational finding create-new-unit, naming the new unit explicitly, so a
 // misspelled unit cannot silently create a package nobody intended.
+//
+// Every other answer fails CLOSED, as the blocking finding glyph-rejected. A Create target is
+// excluded from statusFindings by resolvePass, and statusFindings owns the only other reader of a
+// result carrying NO Status — quarry's pre-resolution rejection of the target string itself — so
+// without this arm such a result had no reader at all on either side of that split and passed the
+// Create inversion in silence, which under this inversion means "the target does not exist yet,
+// carry on" (crucible round opus-high-r9, R9-6). The same arm covers a status outside quarry's
+// four-value vocabulary, so that vocabulary can only ever widen deliberately — the disposition
+// crucible round opus-medium-r6's R6-27 already settled for an unrecognized plan-finding severity.
 func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult) []Finding {
 	var findings []Finding
 
@@ -141,6 +150,13 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 						})
 					}
 					// unit: found passes with no finding.
+				default:
+					findings = append(findings, Finding{
+						Check:    "glyph-rejected",
+						Card:     cardIDOf(c),
+						Detail:   unreadableStatusDetail("Create target", t, r),
+						Severity: SeverityBlocking,
+					})
 				}
 			}
 		}

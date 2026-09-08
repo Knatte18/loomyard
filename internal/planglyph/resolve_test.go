@@ -163,3 +163,22 @@ func TestTargetCards_IndexesACardOncePerTarget(t *testing.T) {
 		}
 	}
 }
+
+// TestStatusFindings_UnrecognizedStatusFailsClosed is R9-6's sibling regression on the status
+// policy: quarry's four-value Status vocabulary is closed today, and a value outside it must fail
+// closed rather than fall out of the switch with no finding, so widening that vocabulary can only
+// ever be a deliberate change here.
+func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
+	plan := &planparser.Plan{Cards: []planparser.Card{{
+		Number: 1, Slug: "one",
+		Targets: []string{"sub#Bar"},
+	}}}
+
+	got := statusFindings(plan, []quarry.ResolveResult{{Target: "sub#Bar", Status: "partially_found"}})
+	if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
+		t.Fatalf("statusFindings(unrecognized status) = %+v; want one blocking glyph-rejected finding", got)
+	}
+	if !strings.Contains(got[0].Detail, "partially_found") {
+		t.Errorf("finding detail = %q; want it to name the unrecognized status", got[0].Detail)
+	}
+}
