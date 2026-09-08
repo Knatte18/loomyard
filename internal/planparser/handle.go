@@ -110,18 +110,23 @@ func handleClaims(plan *Plan) map[string][]handleClaim {
 	return claims
 }
 
-// claimedFromRename reports whether any of claims is a Rename pair's own to-side.
-func claimedFromRename(claims []handleClaim) bool {
-	for _, cl := range claims {
-		if cl.fromRename {
-			return true
-		}
+// fileUnitRuleApplies reports whether checkHandleMalformed's file-unit rule (validate.go) binds a
+// handle carrying claims.
+//
+// It does not bind a handle claimed ONLY as a Rename pair's to-side, because such a handle's unit
+// half is never read: internal/planglyph's renameDeclSource takes the derived declaration's Unit
+// from the RESOLVED old side, deliberately, so that a draft misspelling the unit is corrected by
+// canonicalization rather than propagated. The rule's whole stated consequence — quarry's Name
+// echoes a file-unit member ID its own Resolve will never answer — cannot arise for that handle,
+// so firing on it refused a plan that would have canonicalized correctly, with a detail asserting
+// something untrue of it (crucible round opus-high-r9, R9-5).
+//
+// A handle with NO claim at all keeps the rule: handle-dangling is already reporting it, nothing
+// says which source was intended, and the extra diagnostic can only help.
+func fileUnitRuleApplies(claims []handleClaim) bool {
+	if len(claims) == 0 {
+		return true
 	}
-	return false
-}
-
-// claimedFromDeclaration reports whether any of claims is a Create sub-bullet's own declaration.
-func claimedFromDeclaration(claims []handleClaim) bool {
 	for _, cl := range claims {
 		if !cl.fromRename {
 			return true

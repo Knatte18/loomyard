@@ -184,3 +184,52 @@ func TestCheckHandleMalformed_FileUnitHandle(t *testing.T) {
 		t.Errorf("checkHandleMalformed(package-unit handle) = %+v; want no findings", got)
 	}
 }
+
+// TestCheckHandleMalformed_FileUnitRuleScopedToDeclarations is R9-5's regression: the file-unit
+// rule binds a handle whose unit half is actually READ, which is a Create declaration's, and must
+// not bind one claimed ONLY as a Rename pair's to-side.
+//
+// internal/planglyph's renameDeclSource takes the derived declaration's Unit from the RESOLVED old
+// side, deliberately, so a Rename to-side draft that misspells the unit is corrected by
+// canonicalization rather than propagated — the rule's own stated consequence cannot arise for it,
+// and firing anyway refused a plan that would have canonicalized correctly.
+func TestCheckHandleMalformed_FileUnitRuleScopedToDeclarations(t *testing.T) {
+	renameOnly := &Plan{
+		Language: "go",
+		Cards: []Card{{
+			Number: 1, Slug: "one",
+			Targets: []string{"greeter#Hello", "plan:greeter/farewell.go#Farewell"},
+			Pairs:   []MovePair{{Old: "greeter#Hello", New: "plan:greeter/farewell.go#Farewell"}},
+		}},
+	}
+	if got := checkHandleMalformed(renameOnly); len(got) != 0 {
+		t.Errorf("checkHandleMalformed(rename-to-side-only file-unit handle) = %+v; want no findings", got)
+	}
+
+	alsoDeclared := &Plan{
+		Language: "go",
+		Cards: []Card{{
+			Number: 1, Slug: "one",
+			Targets: []string{"greeter#Hello", "plan:greeter/farewell.go#Farewell"},
+			Pairs:   []MovePair{{Old: "greeter#Hello", New: "plan:greeter/farewell.go#Farewell"}},
+		}, {
+			Number: 2, Slug: "two",
+			Targets:      []string{"plan:greeter/farewell.go#Farewell"},
+			Declarations: []CardDeclaration{{Handle: "plan:greeter/farewell.go#Farewell", Decl: "func Farewell(name string) string"}},
+		}},
+	}
+	if got := checkHandleMalformed(alsoDeclared); len(got) != 2 {
+		t.Errorf("checkHandleMalformed(handle claimed by both sources) = %+v; want one finding per referencing card", got)
+	}
+
+	dangling := &Plan{
+		Language: "go",
+		Cards: []Card{{
+			Number: 1, Slug: "one",
+			Targets: []string{"plan:greeter/farewell.go#Farewell"},
+		}},
+	}
+	if got := checkHandleMalformed(dangling); len(got) != 1 {
+		t.Errorf("checkHandleMalformed(unclaimed file-unit handle) = %+v; want the rule to still bind", got)
+	}
+}

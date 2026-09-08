@@ -660,9 +660,12 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 // the run then wedges at the creating card's own record-batch done-check, with no earlier
 // diagnostic naming the actual mistake. Proven live in crucible round fable5-high-r3's standalone
 // E2E (F-B8).
+// That rationale binds a handle whose unit half is actually READ — a Create declaration's — and
+// only that one, so the rule is additionally gated on fileUnitRuleApplies (handle.go).
 func checkHandleMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
+	claims := handleClaims(plan)
 	_, langOK := planLanguage(plan)
 
 	for _, c := range plan.Cards {
@@ -694,7 +697,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 					})
 					continue
 				}
-				if langOK && strings.HasSuffix(unit, ".go") {
+				if langOK && strings.HasSuffix(unit, ".go") && fileUnitRuleApplies(claims[r]) {
 					findings = append(findings, ValidationError{
 						Check: "handle-malformed",
 						Card:  cardID(c),
