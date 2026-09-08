@@ -110,8 +110,10 @@ Every doc comment on a moved function moves with it, edited only where it names 
     Webster fills it with `planparser.PlanDir`;
     the prologue calls it with the derived `stateDir`, and `wireHub` calls the same field with the hub anchor path.
     Document that this is a function field rather than a finished string because standalone's default depends on the `stateDir` the prologue itself derives, and rather than an import of `internal/planparser` because that would put webster's plan layout inside a module burler shares.
-  - `MissingPlanRefusal func(planDir, defaultPlanDir string) string` — produces the whole refusal text for a plan directory that does not exist or holds no plan files.
+  - `MissingPlanRefusal func(planDir, recourse string) string` — produces the whole refusal text for a plan directory that does not exist or holds no plan files.
     Document that it is a function rather than a bare string or a format string because webster's live message interpolates two distinct paths in a fixed order, and a function makes that argument order a compile-time fact rather than a comment.
+    The second parameter is named `recourse`, not `defaultPlanDir`, deliberately: it is the location the refusal tells the operator to place the plan at, which is the mode's own default only when `--plan-dir` actually moved the plan off it and is the resolved plan directory itself otherwise.
+    See card 4's step 6 for the rule that computes it.
 
   `func (m Module) RefuseTargetDirInHubMode(flag string) error` — returns `nil` when `flag` is empty, and otherwise the hub refusal built from `m.Name` and `m.HubTargetSubject`.
   The produced string must be byte-identical to today's, which for webster reads:
@@ -167,6 +169,7 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
      When it is non-empty, the told directory is read and never written — no `Reconcile` call at all.
   6. Plan: when `m.Plan` is nil, skip this step entirely and leave `PlanDir`, `DefaultPlanDir` and `PlanDirOverridden` at their zero values.
      Otherwise compute `defaultPlanDir := m.Plan.DefaultPlanDir(stateDir)`, then `planDir, overridden := ResolvePlanDir(ResolveToldDir(req.Cwd, req.PlanDirFlag), defaultPlanDir)`, then check content: if `planDirHasContent(planDir)` is false, return `errors.New(m.Plan.MissingPlanRefusal(planDir, recourse))` where `recourse` is `defaultPlanDir` when `overridden` is true and `planDir` otherwise — reproducing today's `standaloneDefaultPlanDir` rule exactly, so the refusal always names the location `run` requires rather than the override the operator just supplied.
+     This branch is why `MissingPlanRefusal`'s second parameter is named `recourse` rather than `defaultPlanDir`: in the not-overridden case the argument is `planDir` itself, so a `defaultPlanDir` name would misdescribe it.
 
   Carry across, onto `ResolveStandalone` itself, the long ordering comment both `wireStandalone` bodies carry today: the durable sink is armed lazily on the first Info-or-above record, so the redirect binds only if it runs before anything in the sequence can log;
   it cannot be first, because it is `Derive`'s own `stateDir` that tells it where to point;
