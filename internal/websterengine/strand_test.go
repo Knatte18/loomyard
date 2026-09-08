@@ -120,7 +120,7 @@ func (e *fakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupPending
 }
 func (e *fakeEngine) InterruptSequence() []shuttleengine.PaneInput      { return nil }
-func (e *fakeEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
+func (e *fakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput   { return nil }
 func (e *fakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
 func (e *fakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	return shuttleengine.ForkAudit{}, nil

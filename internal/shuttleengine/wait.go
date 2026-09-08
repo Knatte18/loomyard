@@ -358,7 +358,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		*started = true
 		return "", nil
 	case StartupTrustPrompt:
-		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
+		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence(capture)); err != nil {
 			logger.Warn("shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		}
 	}

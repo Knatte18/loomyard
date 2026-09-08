@@ -106,12 +106,107 @@ func TestInterruptSequence(t *testing.T) {
 	}
 }
 
+// realTrustGateCapture is the trust gate exactly as claude 2.1.263 renders it, transcribed from a
+// live pane during crucible round opus-medium-r5: the caret sits on the REFUSING option, which is
+// what made the previous fixed single-Enter dismissal quit claude instead of trusting the folder.
+const realTrustGateCapture = ` Accessing workspace:
+ /home/hanf/Code/r5sandbox/lyx-test-HUB/r5-crash
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own code, a
+ well-known open source project, or work from your team). If not, take a moment to review what's
+ in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ Security guide
+
+ ❯ No, exit
+   Yes, I trust this folder
+
+ Enter to confirm · Esc to cancel`
+
 func TestTrustDismissSequence(t *testing.T) {
-	c := New()
-	got := c.TrustDismissSequence()
-	want := []shuttleengine.PaneInput{{Key: "Enter"}}
-	if len(got) != len(want) || got[0] != want[0] {
-		t.Errorf("TrustDismissSequence() = %+v; want %+v", got, want)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		capture string
+		want    []shuttleengine.PaneInput
+	}{
+		{
+			// The regression case: a bare Enter here confirms "No, exit" and claude quits, which
+			// is how every agent spawned in a not-yet-trusted directory died at startup.
+			name:    "real gate with the caret on the refusing option moves down first",
+			capture: realTrustGateCapture,
+			want: []shuttleengine.PaneInput{
+				{Key: "Down", SettleMS: trustSelectSettleMS},
+				{Key: "Enter"},
+			},
+		},
+		{
+			name:    "caret already on the accepting option confirms without moving",
+			capture: "   No, exit\n ❯ Yes, I trust this folder\n Enter to confirm",
+			want:    []shuttleengine.PaneInput{{Key: "Enter"}},
+		},
+		{
+			name:    "accepting option above the caret moves up",
+			capture: "   Yes, I trust this folder\n ❯ No, exit",
+			want: []shuttleengine.PaneInput{
+				{Key: "Up", SettleMS: trustSelectSettleMS},
+				{Key: "Enter"},
+			},
+		},
+		{
+			// Scrollback carrying an older gate must not decide the answer: only the gate drawn at
+			// the bottom of the pane is the one on screen.
+			name:    "only the last caret and last accepting option count",
+			capture: "   Yes, I trust this folder\n ❯ No, exit\n" + realTrustGateCapture,
+			want: []shuttleengine.PaneInput{
+				{Key: "Down", SettleMS: trustSelectSettleMS},
+				{Key: "Enter"},
+			},
+		},
+		{
+			name:    "no accepting option in the capture presses nothing at all",
+			capture: " ❯ Some unrecognized option\n   Another one",
+			want:    nil,
+		},
+		{
+			name:    "no caret in the capture presses nothing at all",
+			capture: "   Yes, I trust this folder",
+			want:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := New().TrustDismissSequence(tt.capture)
+			if len(got) != len(tt.want) {
+				t.Fatalf("TrustDismissSequence() = %+v; want %+v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("TrustDismissSequence()[%d] = %+v; want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestTrustDismissSequence_NeverConfirmsWithoutSelectingAccept is the sabotage-proof for the
+// defect's actual shape: whatever the sequence is, an Enter must never be reachable while the caret
+// is still on an option the accepting-option needles do not match.
+func TestTrustDismissSequence_NeverConfirmsWithoutSelectingAccept(t *testing.T) {
+	t.Parallel()
+
+	got := New().TrustDismissSequence(realTrustGateCapture)
+	if len(got) == 0 {
+		t.Fatal("TrustDismissSequence() returned nothing for the real, recognized gate; want a caret move plus Enter")
+	}
+	if got[0].Key == "Enter" {
+		t.Fatalf("TrustDismissSequence() confirms as its FIRST step (%+v) while the caret is on %q; that confirms the refusing option and quits claude", got[0], "No, exit")
 	}
 }
 

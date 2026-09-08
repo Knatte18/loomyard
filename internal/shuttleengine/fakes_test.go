@@ -172,6 +172,10 @@ type fakeEngine struct {
 	ParseEventsFailCount int
 	parseEventsCallsSeen int
 
+	// trustDismissCaptures records every capture TrustDismissSequence was handed, in call order,
+	// guarded by mu because the wait loop calls it from its own goroutine.
+	trustDismissCaptures []string
+
 	StartupScript []StartupState
 	StartupCalls  []string
 
@@ -257,10 +261,23 @@ func (e *fakeEngine) InterruptSequence() []PaneInput {
 	return []PaneInput{{Key: "Escape"}}
 }
 
-// TrustDismissSequence returns the canonical single-Enter trust dismissal — fixed, not scripted, so
-// tests assert against it directly.
-func (e *fakeEngine) TrustDismissSequence() []PaneInput {
+// TrustDismissSequence records the capture it was handed and returns the canonical single-Enter
+// trust dismissal — fixed, not scripted, so tests assert against it directly.
+// The recording is what lets a wait-loop test prove the caller passes the SAME capture Startup
+// classified, rather than a stale or empty one, which is the whole point of the parameter.
+func (e *fakeEngine) TrustDismissSequence(capture string) []PaneInput {
+	e.mu.Lock()
+	e.trustDismissCaptures = append(e.trustDismissCaptures, capture)
+	e.mu.Unlock()
 	return []PaneInput{{Key: "Enter"}}
+}
+
+// TrustDismissCaptures returns a copy of every capture TrustDismissSequence was handed, in call
+// order.
+func (e *fakeEngine) TrustDismissCaptures() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.trustDismissCaptures...)
 }
 
 // ComposeSend returns the canonical Escape-then-submit-text choreography — fixed, not scripted, so

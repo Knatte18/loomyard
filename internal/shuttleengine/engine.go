@@ -112,9 +112,18 @@ type Engine interface {
 	Startup(capture string) StartupState
 	// InterruptSequence returns the key choreography that interrupts an in-progress turn (e.g. Escape).
 	InterruptSequence() []PaneInput
-	// TrustDismissSequence returns the key choreography that dismisses the trust gate (e.g. Enter).
-	// It lives on the seam because which keys dismiss a provider's gate is pane key choreography.
-	TrustDismissSequence() []PaneInput
+	// TrustDismissSequence returns the key choreography that ACCEPTS the trust gate rendered in
+	// capture — the same capture Startup classified StartupTrustPrompt from.
+	// It takes the capture rather than returning a fixed sequence because a provider's gate is a
+	// selection list whose caret does not necessarily start on the accepting option: confirming
+	// whatever happens to be selected is how a "dismissal" turns into a refusal that quits the
+	// provider outright.
+	// An implementation that cannot locate the accepting option in capture returns no inputs at
+	// all, never a blind confirmation — the startup window then expires into OutcomeDied, which is
+	// the same end state a wrong keypress reaches, without lyx itself having pressed the button.
+	// It lives on the seam because which keys move and confirm a provider's gate is pane key
+	// choreography.
+	TrustDismissSequence(capture string) []PaneInput
 	// ComposeSend returns the key choreography that submits text as a new turn (e.g. clearing auto-suggest before typing).
 	ComposeSend(text string) []PaneInput
 	// ModelSwitchSequence returns the key choreography that switches a live session's model (e.g. `/model <name>` typed and submitted).

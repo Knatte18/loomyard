@@ -100,7 +100,7 @@ func (e *runFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
 func (e *runFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e *runFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e *runFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *runFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }

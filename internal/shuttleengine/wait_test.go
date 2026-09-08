@@ -948,7 +948,12 @@ func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
 	outputFile := filepath.Join(runDir, "out.md")       // never created
 
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
+
+	reed := &fakeReed{
+		StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+		CaptureQueue: []string{gateCapture},
+	}
 	// First probe sees the trust prompt (dismissed with Enter); every probe
 	// after that sees a still-booting pane, so the run never becomes ready
 	// and eventually fast-fails once the startup deadline passes.
@@ -980,6 +985,17 @@ func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	}
 	if !foundEnter {
 		t.Errorf("SendKey(strand-1, Enter) not recorded (trust dismiss), calls = %+v", reed.SendKeyCalls)
+	}
+
+	// The engine must be handed the SAME capture Startup classified, not an empty or stale one:
+	// a provider whose gate is a selection list can only tell which key confirms the ACCEPTING
+	// option by reading the caret out of that capture (crucible round opus-medium-r5, R5-2).
+	captures := engine.TrustDismissCaptures()
+	if len(captures) == 0 {
+		t.Fatalf("TrustDismissSequence was never called; SendKey calls = %+v", reed.SendKeyCalls)
+	}
+	if captures[0] != gateCapture {
+		t.Errorf("TrustDismissSequence got capture %q; want the capture Startup classified, %q", captures[0], gateCapture)
 	}
 }
 

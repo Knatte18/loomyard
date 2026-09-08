@@ -204,7 +204,7 @@ func (e *beginFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
 func (e *beginFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e *beginFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e *beginFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *beginFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }

@@ -190,7 +190,7 @@ func (e *verbsFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
 func (e *verbsFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e *verbsFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e *verbsFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *verbsFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
