@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
@@ -42,11 +43,12 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 
-	stateDir, _, err := standalonestate.Derive(target)
+	stateDir, hash8, err := standalonestate.Derive(target)
 	if err != nil {
 		t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
 	}
 	seedMissingIntentPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+	tearDownStandaloneReed(t, target, stateDir, hash8)
 
 	var out strings.Builder
 	exitCode := RunCLIIn(target, &out, []string{"run"})
@@ -211,4 +213,37 @@ func assertEmptyDir(t *testing.T, dir string) {
 		}
 		t.Errorf("%q gained entries: %v; want it to stay empty -- wireStandalone must never be reached on a refusal", dir, names)
 	}
+}
+
+// tearDownStandaloneReed registers a t.Cleanup that brings down the standalone reed session this
+// test's own invocation boots, addressed through the same standalonegeom.ReedGeometry the CLI's
+// wiring derives.
+//
+// It exists because the `run` verb boots that session (wiring.go's reedUp seam) BEFORE
+// websterengine.Run reaches the plan-validation gate this test asserts on, so the assertion cannot
+// be made without a real tmux server coming up. Nothing else ever takes it down: the target it was
+// derived from is a t.TempDir() that is deleted out from under it, and each execution derives a
+// fresh hash8, so the leak does not even coalesce — it was one orphaned `tmux -L lyx-<hash8>`
+// server per run of this suite, on every machine that ran it, forever (crucible round
+// opus-medium-r5, R5-1).
+//
+// Registered BEFORE the invocation rather than after it, so a t.Fatal inside the assertions still
+// tears the server down.
+// Down's own error is reported rather than ignored: a cleanup that silently fails is how this leak
+// would come back.
+func tearDownStandaloneReed(t *testing.T, target, stateDir, hash8 string) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		// The config is whatever wiring seeded under the state dir; a load failure means wiring
+		// never got that far, and the zero Config still addresses the right socket and session,
+		// which is all Down needs.
+		cfg, err := reedengine.LoadConfig(stateDir, "reed")
+		if err != nil {
+			cfg = reedengine.Config{}
+		}
+		if _, err := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8)).Down(); err != nil {
+			t.Errorf("tearing down the standalone reed session for %q: %v; a leaked tmux server survives this test", target, err)
+		}
+	})
 }
