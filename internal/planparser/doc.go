@@ -95,11 +95,11 @@
 // pass instead of stopping at the first one. ParsePlan fails loud only on
 // document-structure errors — a missing or undecodable overview file, an unparseable
 // Card Index line, a missing card file, an unparseable card heading, or an inline
-// value where a field admits only a bullet list. The plan format's 27 validation
+// value where a field admits only a bullet list. The plan format's 28 validation
 // checks (card type presence, card-custom-not-alone, path malformation, the bare
-// package-qualified symbol and directory-target hard rules, the Rename pair
-// grammar, the plan: handle consistency checks, on-disk existence, and so on)
-// are implemented by Validate in validate.go, not by ParsePlan itself.
+// package-qualified symbol, directory-target and glyph-malformed hard rules, the
+// Rename pair grammar, the plan: handle consistency checks, on-disk existence,
+// and so on) are implemented by Validate in validate.go, not by ParsePlan itself.
 //
 // # The language: key and the glyph alphabet
 //

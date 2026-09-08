@@ -1546,6 +1546,81 @@ func TestValidate_DirectoryTarget(t *testing.T) {
 	})
 }
 
+// TestValidate_GlyphMalformed covers glyph-malformed (crucible round sonnet-xhigh-r8, PG-1): a
+// "#"-containing entry that fails glyph.Parse is a hard finding, card-generic over Targets/Uses,
+// and skipped entirely under "none" -- the exact shape bare-symbol-target and directory-target
+// already follow. Before this check existed, every one of the malformed cases below validated
+// completely clean.
+func TestValidate_GlyphMalformed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("clean (well-formed glyph target)", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo#Bar"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 0 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 0", got)
+		}
+	})
+
+	t.Run("doubled hash is malformed", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo#Bar#extra"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
+		}
+		// None of the checks a malformed-but-"#"-shaped entry used to sail past silently through
+		// fire either -- this is PG-1's whole point: before this check existed nothing flagged it.
+		for _, check := range []string{"bare-symbol-target", "directory-target", "card-path-malformed", "path-missing"} {
+			if got := countFor(findings, check); got != 0 {
+				t.Errorf("countFor(findings, %s) = %d; want 0 (wrong shape for this check, not evidence the entry is fine)", check, got)
+			}
+		}
+	})
+
+	t.Run("malformed glyph in Uses", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.HasUses = true
+		card.Uses = []string{"internal/foo#Bar#extra"}
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
+		}
+	})
+
+	t.Run("malformed glyph in a Prosa group is card-generic, not group-scoped", func(t *testing.T) {
+		t.Parallel()
+		// This deliberately does NOT exempt Prosa: bare-symbol-target/directory-target don't either,
+		// and prosa-symbol-target already separately flags the same entry as "not a self glyph" --
+		// two checks naming the same defect from two angles, exactly as they already do for a
+		// Prosa group's bare-symbol target.
+		card := cardOfType(1, "a", planparser.CardTypeProsa, []string{"internal/foo#Bar#extra"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
+		}
+		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
+			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1", got)
+		}
+	})
+
+	t.Run("language none skips the check entirely", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo#Bar#extra"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "none", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 0 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 0", got)
+		}
+	})
+}
+
 // TestValidate_PathMissing_Glyphs covers checkPathMissing's card-6 rework over glyphs: a file self
 // glyph whose file exists passes, one whose file does not exist and is not a Create target fails,
 // a member glyph resolving to its unit's directory is skipped rather than reported, a unit self

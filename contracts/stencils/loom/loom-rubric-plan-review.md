@@ -14,10 +14,10 @@ they are out of scope, and a finding raised against one is never legitimate.
 
 The format contract is `contracts/specs/loom-plan-spec.md`, and the Card model it implements is described in `manifest/designs/plan-card-format.md`.
 This rubric points at both and restates neither.
-The mechanical checks over that contract are already enforced — twenty-six of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+The mechanical checks over that contract are already enforced — twenty-seven of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
-Sitting directly downstream of a twenty-seven-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
+Sitting directly downstream of a twenty-eight-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
 
 **`support-log.md` is outside this review entirely.**
 It appears in neither the artifact list nor the answer key, and it must not be read or reasoned from.
@@ -28,7 +28,7 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 Do not flag any of the following as a finding:
 
 - **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The twenty-seven check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-six of the twenty-seven upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+  The twenty-eight check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-seven of the twenty-eight upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.

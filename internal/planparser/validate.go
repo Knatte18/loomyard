@@ -1,12 +1,13 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (manifest/designs/plan-card-format.md), run in this fixed order.
-// ValidateFormat emits twenty-six of the following distinct ValidationError.Check IDs, everything
-// but plan-unapproved; Validate emits all twenty-seven: format-unrecognized (checkFormatRecognized),
+// ValidateFormat emits twenty-seven of the following distinct ValidationError.Check IDs, everything
+// but plan-unapproved; Validate emits all twenty-eight: format-unrecognized (checkFormatRecognized),
 // plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved),
 // index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing),
 // card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel),
 // card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget),
-// directory-target (checkDirectoryTarget), rename-format (checkRenameFormat), handle-dangling,
+// directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed),
+// rename-format (checkRenameFormat), handle-dangling,
 // handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed
 // (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both
 // checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing),
@@ -62,14 +63,14 @@ func cardID(c Card) string {
 }
 
 // Validate runs every plan-format machine check against plan, including the plan-unapproved
-// approval gate, and returns every finding in fixed order: all twenty-seven check IDs documented
+// approval gate, and returns every finding in fixed order: all twenty-eight check IDs documented
 // in this file's package comment, with plan-unapproved at position three.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return validate(plan, worktreeRoot, true)
 }
 
 // ValidateFormat runs every plan-format machine check against plan except the plan-unapproved
-// approval gate, and returns every finding in fixed order: twenty-six of the twenty-seven check
+// approval gate, and returns every finding in fixed order: twenty-seven of the twenty-eight check
 // IDs documented in this file's package comment, everything but plan-unapproved.
 // Approval is deliberately not ValidateFormat's business: the approved: flag is written after the
 // review segment settles, so a pre-review caller must not be told the plan is unapproved.
@@ -95,6 +96,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkCardPathMalformed(plan)...)
 	findings = append(findings, checkBareSymbolTarget(plan)...)
 	findings = append(findings, checkDirectoryTarget(plan)...)
+	findings = append(findings, checkGlyphMalformed(plan)...)
 	findings = append(findings, checkRenameFormat(plan)...)
 	findings = append(findings, checkHandleConsistency(plan)...)
 	findings = append(findings, checkHandleMalformed(plan)...)
@@ -465,6 +467,58 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 						c.Number, t, t+"#",
 					),
 				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkGlyphMalformed implements glyph-malformed: a refKindGlyph entry (classified on shape alone,
+// by classifyRef rule 2 -- any "#"-containing entry, regardless of whether it actually parses) that
+// fails glyph.Parse is a hard finding. Card-generic over Targets and Uses, exactly like
+// checkBareSymbolTarget and checkDirectoryTarget -- including a Prosa group's own targets, which
+// prosa-symbol-target ALSO separately flags as "not a self glyph" for the same malformed entry; the
+// two checks answering the same defect from two angles (shape-invalid vs not-a-self-glyph) mirrors
+// how bare-symbol-target and prosa-symbol-target already both fire on a Prosa group's bare-symbol
+// target today. Skipped entirely when plan.Language does not enable the glyph alphabet, for the same
+// reason checkBareSymbolTarget is.
+//
+// Without this check a malformed-but-"#"-shaped entry (a doubled "#", an empty unit, a member
+// carrying a paren or a keyword) is invisible end to end outside a Prosa group: classifyRef sends it
+// to refKindGlyph on shape alone and never calls glyph.Parse itself (by design -- see classify.go's
+// own doc comment), bare-symbol-target/directory-target skip it (wrong shape),
+// card-path-malformed/path-missing skip it (diskPathForRef returns not-ok on a parse error),
+// containment-unit-overlap skips it the same way, and internal/planglyph's collectGlyphTargets
+// silently drops it before it ever enters the batched Resolve call -- so it never even reaches a
+// glyph-not-found/glyph-ambiguous/glyph-rejected verdict either. The plan would validate 100% clean
+// while carrying a target no execution engine can ever act on, discovered only deep into a batch's
+// own done-check, not at Plan-Validate up front where every other malformed-entry class is caught
+// (crucible round sonnet-xhigh-r8, PG-1).
+func checkGlyphMalformed(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	lang, ok := planLanguage(plan)
+	if !ok {
+		return findings
+	}
+
+	for _, c := range plan.Cards {
+		for _, fields := range [][]string{c.Targets, c.Uses} {
+			for _, t := range fields {
+				if classifyRef(t) != refKindGlyph {
+					continue
+				}
+				if _, err := parseGlyph(lang, t); err != nil {
+					findings = append(findings, ValidationError{
+						Check: "glyph-malformed",
+						Card:  cardID(c),
+						Detail: fmt.Sprintf(
+							"card %d entry %q looks like a glyph (contains \"#\") but fails to parse: %v",
+							c.Number, t, err,
+						),
+					})
+				}
 			}
 		}
 	}
