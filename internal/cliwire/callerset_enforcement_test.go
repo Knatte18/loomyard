@@ -137,17 +137,22 @@ func standalonestateImportAlias(astFile *ast.File) (alias string, imported bool)
 	return "", false
 }
 
-// callsDerive reports whether astFile contains a call expression whose receiver is
-// standalonestateAlias and whose selected method name is Derive, matched on the AST selector
+// callsDerive reports whether astFile NAMES standalonestate's Derive -- either by calling it
+// directly (standalonestate.Derive(...)) or by capturing it as a function value (var deriveFn =
+// standalonestate.Derive, later invoked as deriveFn(...)) -- matched on the AST selector
 // expression rather than on raw text.
+//
+// It walks every *ast.SelectorExpr in the file, not only ones sitting in a CallExpr.Fun position
+// (crucible round sonnet-xhigh-r8, CW-1): the pre-fix walk matched only the direct-call shape, so a
+// production file that captured Derive as a value first and called the captured identifier later
+// reached Derive exactly as much as a direct call does, but the assignment's own selector
+// expression -- standalonestate.Derive on the right-hand side of a var/const spec, unconnected to
+// any CallExpr -- was invisible to it. A selector naming Derive is exactly as much "this file
+// names the symbol" whether or not it happens to sit inside a call.
 func callsDerive(astFile *ast.File, standalonestateAlias string) bool {
 	found := false
 	ast.Inspect(astFile, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
+		sel, ok := n.(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
@@ -162,4 +167,83 @@ func callsDerive(astFile *ast.File, standalonestateAlias string) bool {
 		return false
 	})
 	return found
+}
+
+// TestCallsDerive_CatchesFunctionValueIndirection is CW-1's own regression test (crucible round
+// sonnet-xhigh-r8): a package that captures standalonestate.Derive as a function value first,
+// rather than calling it directly, is exactly as much a second production caller as a direct-call
+// package is, and must be caught the same way. Direct unit test over callsDerive rather than a
+// planted whole-repo fixture, so the regression lives beside the function it protects.
+func TestCallsDerive_CatchesFunctionValueIndirection(t *testing.T) {
+	const src = `package fakecli
+
+import "github.com/Knatte18/loomyard/internal/standalonestate"
+
+var deriveFn = standalonestate.Derive
+
+func resolve(target string) (string, string, error) {
+	return deriveFn(target)
+}
+`
+	fset := token.NewFileSet()
+	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture source: %v", err)
+	}
+
+	if !callsDerive(astFile, "standalonestate") {
+		t.Error("callsDerive() = false; want true -- a var capturing standalonestate.Derive as a function value names Derive exactly as much as a direct call does")
+	}
+}
+
+// TestCallsDerive_DirectCallStillCaught is a plain-shape sanity check alongside the indirection
+// regression above: the ordinary direct-call form the pre-fix walk already caught must still be
+// caught after widening the match to bare selector expressions.
+func TestCallsDerive_DirectCallStillCaught(t *testing.T) {
+	const src = `package fakecli
+
+import "github.com/Knatte18/loomyard/internal/standalonestate"
+
+func resolve(target string) (string, string, error) {
+	return standalonestate.Derive(target)
+}
+`
+	fset := token.NewFileSet()
+	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture source: %v", err)
+	}
+
+	if !callsDerive(astFile, "standalonestate") {
+		t.Error("callsDerive() = false; want true -- a direct standalonestate.Derive(...) call must still be caught")
+	}
+}
+
+// TestCallsDerive_UnrelatedSelectorNotCaught confirms the widened match still discriminates on
+// both the selected name and the receiver alias -- an unrelated method named Derive, or a Derive
+// selector off some other package, must not false-positive.
+func TestCallsDerive_UnrelatedSelectorNotCaught(t *testing.T) {
+	const src = `package fakecli
+
+import "fmt"
+
+type thing struct{}
+
+func (thing) Derive() string { return "" }
+
+func resolve() string {
+	t := thing{}
+	fmt.Sprintln(t.Derive())
+	return ""
+}
+`
+	fset := token.NewFileSet()
+	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture source: %v", err)
+	}
+
+	if callsDerive(astFile, "standalonestate") {
+		t.Error("callsDerive() = true; want false -- an unrelated type's own Derive method is not standalonestate.Derive")
+	}
 }
