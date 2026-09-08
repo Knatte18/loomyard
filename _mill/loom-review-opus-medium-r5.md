@@ -12,19 +12,26 @@ after the findings list below was complete and committed.
 
 ## Executive summary
 
-**This round is NOT a clean safety pass.** Round 5 found one BLOCKING defect that all four prior
-rounds missed, and it was missed for a structural reason: it is invisible on any fixture the
+**This round is NOT a clean safety pass.** Round 5 found TWO BLOCKING defects that all four prior
+rounds missed — the second reachable only after the first was fixed — and both were missed for the
+same structural reason: it is invisible on any fixture the
 `claude` CLI has already been accepted in, and every prior round reused or inherited such a
 fixture. This round's own item 2 — "a FRESH fixture, not `r4-crash-hub`/`r4-drift-hub`" — is
 exactly what exposed it, on the very first `lyx webster run` against a hub cloned minutes earlier.
 
-Counts: **6 findings — 1 BLOCKING, 1 MEDIUM, 2 LOW, 2 NIT.** All CONFIRMED; none PLAUSIBLE-only.
+Counts: **7 findings — 2 BLOCKING, 1 MEDIUM, 2 LOW, 2 NIT.** All CONFIRMED; none PLAUSIBLE-only.
 
 - **R5-2 (BLOCKING)** — `claudeengine.TrustDismissSequence` sends a bare `Enter` at claude's
   trust-this-folder gate. On the shipped claude (2.1.263) that gate's caret **defaults to
   `No, exit`**, so lyx's own "dismissal" confirms the refusal and claude quits. Every agent lyx
   spawns in a directory claude has not previously been accepted in dies at startup, reported only
   as an opaque `master pane died`. Every freshly-created fabric worktree pair is such a directory.
+- **R5-7 (BLOCKING)** — claude's Bypass-Permissions acceptance modal, raised on every
+  `--dangerously-skip-permissions` spawn in a fresh environment, is not a gate `Startup` knows; its
+  own selection caret is the `❯` ready marker, so the pane is classified READY and the startup
+  deadline stops applying. The run then burns the whole `master_timeout_min` (480 minutes as
+  configured) parked on a dialog and reports a timeout rather than a fast death. Found only by
+  driving PAST R5-2 on a second fresh hub.
 - **R5-1 (MEDIUM)** — `webstercli`'s standalone integration test boots a real tmux server through
   the `reedUp` seam and never tears it down: one orphan server per suite run, forever.
 - **R5-6 (LOW)** — `planglyph.DoneChecks` silently PASSES a blocking done-check whose target the
@@ -216,6 +223,60 @@ NOTHING rather than a bare `Enter`: doing nothing lets the startup window expire
 `died` classification, whereas a blind `Enter` actively presses whatever the provider happens to
 have selected — which is how this bug produced a self-inflicted exit. Provider specifics stay
 inside `claudeengine`, per the Shuttle Provider-Seam Invariant.
+
+### R5-7 — BLOCKING — CONFIRMED — claude's Bypass-Permissions acceptance gate is not a recognized startup gate, and its own caret glyph makes `Startup` report the pane READY
+
+`internal/shuttleengine/claudeengine/startup.go:18-35` (`trustDialogNeedles` / `Startup`),
+consumed by `internal/shuttleengine/wait.go:355-366`.
+
+Found by driving past R5-2 on a second fresh hub. With the folder-trust gate accepted, claude
+2.1.263 immediately raises a SECOND one-time modal, because every lyx spawn launches with
+`--dangerously-skip-permissions`:
+
+```
+  WARNING: Claude Code running in Bypass Permissions mode
+  ...
+  By proceeding, you accept all responsibility for actions taken while running in Bypass
+  Permissions mode.
+  https://code.claude.com/docs/en/security
+
+  ❯ No, exit
+    Yes, I accept
+
+  Enter to confirm · Esc to cancel
+```
+
+`Startup` does not know this gate: neither `trustthisfolder` nor `filesinthisfolder` matches. It
+falls through to the ready check — and the modal's own selection caret IS the `❯` ready marker
+`Startup` looks for. So the gate is classified **`StartupReady`**, `*started` is set to true, and
+the startup deadline stops applying.
+
+Live evidence, hub `/home/hanf/Code/r5sandbox2/lyx-test-HUB/r5-kill`, socket
+`lyx-lyx-test-HUB-b432e999`:
+
+```
+lyx reed up            # {"ok":true,"session":"r5-kill","socket":"lyx-lyx-test-HUB-b432e999",...}
+lyx reed status
+lyx webster run        # backgrounded, watched via
+                       # tmux -L lyx-lyx-test-HUB-b432e999 capture-pane -p -t %2
+```
+
+The pane sat on that modal, byte-identical, for 165 s of continuous polling — well past
+`startup_timeout_s: 90` — and `run.json` still read `"outcome": "running"` throughout. That is
+the proof of misclassification: had `Startup` reported anything other than `StartupReady`,
+`classifyStartupWindow` would have returned `OutcomeDied` at 90 s.
+
+Consequence: the run does not fail fast. It burns `master_timeout_min` — 480 minutes in the
+shipped fixture config — parked on a dialog, and then reports `master run timed out`, i.e. "the
+agent was working", which is the exact misdiagnosis `classifyStartupWindow`'s own doc comment says
+the startup window exists to prevent. In hub mode that is eight hours of a wedged loom `Webster`
+row per fresh machine or fresh checkout.
+
+Suggested fix: give the gate its own needle so `Startup` classifies it before the ready check —
+`yes,iaccept`, the accepting option's own label, which is precise to this modal and never appears
+in a running claude TUI (whose bypass footer reads "bypass permissions on") — and add the same
+string to `TrustDismissSequence`'s accepting-option needles, so the caret walk R5-2 introduced
+carries this gate too with no second mechanism.
 
 ### R5-1 — MEDIUM — CONFIRMED — `webstercli`'s standalone integration test leaks one live tmux server per run, forever
 
