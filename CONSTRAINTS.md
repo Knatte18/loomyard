@@ -262,7 +262,7 @@ An instruction file never duplicates or paraphrases another producer's format-co
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to embedded template) — a caller adopts exactly one.
 
-- Degrading: `{shuttleengine, reedengine, websterengine, batcher}`. Strict: `{fabricengine, boardengine, loomengine}`.
+- Degrading: `{shuttleengine, reedengine, websterengine, batcher}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
 - A template list is a default, not a minimum length.
 
 ## GitHub Auth Invariant
