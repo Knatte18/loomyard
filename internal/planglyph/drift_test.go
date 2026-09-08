@@ -47,3 +47,42 @@ func TestDetectDrift_GateOneSeesTheRecordingBatchOwnPair(t *testing.T) {
 		t.Errorf("amendments file exists after a declared rename; want none — gate one repairs nothing")
 	}
 }
+
+// TestDetectDrift_GateOneSeesEveryDeclaredDestinationForOneOldSide is R9-4's regression: two cards
+// declaring a rename of the SAME old symbol are legal under every plan-format check, and gate one
+// must recognize either card's own declared destination.
+//
+// Against pre-fix source, renameCardPairs was a map[old]new that kept only the LAST pair it walked,
+// so the delta reporting the first card's rename fell through gate one, was treated as drift, and
+// auto-repaired: a plan-wide RewriteRefs plus an amendment recording a "repair" of the very rename
+// the plan had declared.
+func TestDetectDrift_GateOneSeesEveryDeclaredDestinationForOneOldSide(t *testing.T) {
+	dir, fullPlan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub#Foo` -> `plan:sub#Bar`\n\n**Intent:** rename Foo to Bar\n",
+		2: "**Rename:**\n- `sub#Foo` -> `plan:sub#Baz`\n\n**Intent:** rename Foo to Baz\n",
+		3: "**Edit:**\n- `sub#Foo`\n\n**Intent:** three\n\n**ImpactSummary:** none\n",
+	})
+	pending := PendingPlan(fullPlan, []planparser.Card{fullPlan.Cards[0]})
+
+	delta := quarry.GitDeltaAnswer{}
+	delta.Renamed = []quarry.RenamedPair{{
+		From: quarry.Symbol{ID: "sub#Foo"},
+		To:   quarry.Symbol{ID: "sub#Bar"},
+	}}
+
+	before := readCardFile(t, dir, 3, "card3")
+	findings, err := DetectDrift(fullPlan, pending, dir, t.TempDir(), delta, "deadbeef", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	}
+
+	if len(findings) != 0 {
+		t.Errorf("DetectDrift(first card's declared rename) = %+v; want no findings", findings)
+	}
+	if got := readCardFile(t, dir, 3, "card3"); got != before {
+		t.Errorf("card 3 was rewritten for a declared rename:\nbefore: %q\nafter:  %q", before, got)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, planparser.AmendmentsFileName)); !os.IsNotExist(statErr) {
+		t.Errorf("amendments file exists after a declared rename; want none — gate one repairs nothing")
+	}
+}

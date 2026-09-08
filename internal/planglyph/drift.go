@@ -10,6 +10,7 @@ package planglyph
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -28,15 +29,23 @@ import (
 // exactly that -- while quarry's delta reports the new symbol under its bare glyph. Comparing the
 // two verbatim can therefore never match for any plan that passes its own validator, which silently
 // turned every declared rename into detected drift.
-func renameCardPairs(plan *planparser.Plan) map[string]string {
-	pairs := make(map[string]string)
+//
+// EVERY declared destination is kept per Old side, not just the last one seen. A map[string]string
+// silently dropped all but the final pair whenever two cards declared a rename of the same symbol
+// — nothing in the plan format forbids that, and no check reports it — so gate one stopped
+// recognizing the other card's own expected outcome, and the exact tier auto-repaired a declared
+// rename as drift: a plan-wide RewriteRefs plus an amendment recording a "repair" the plan had
+// asked for (crucible round opus-high-r9, R9-4). Gate one's question is "is this rename SOME
+// declared card's own expected outcome?", so any declared destination matching is a pass.
+func renameCardPairs(plan *planparser.Plan) map[string][]string {
+	pairs := make(map[string][]string)
 	for _, c := range plan.Cards {
 		for _, g := range c.TargetGroups {
 			if g.Type != planparser.CardTypeRename {
 				continue
 			}
 			for _, p := range g.Pairs {
-				pairs[p.Old] = resolveKeyFor(p.New)
+				pairs[p.Old] = append(pairs[p.Old], resolveKeyFor(p.New))
 			}
 		}
 	}
@@ -101,7 +110,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 	for _, rp := range delta.Renamed {
 		oldID, newID := rp.From.ID, rp.To.ID
 
-		if want, ok := renamePairs[oldID]; ok && want == newID {
+		if slices.Contains(renamePairs[oldID], newID) {
 			continue // Gate one: the declared Rename card's own expected outcome.
 		}
 
