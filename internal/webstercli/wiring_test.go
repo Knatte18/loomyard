@@ -217,6 +217,33 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		if c.geom.PlanDir != override {
 			t.Errorf("geom.PlanDir = %q; want the override %q", c.geom.PlanDir, override)
 		}
+		// R6-8: Master's in-pane verbs are flagless in hub mode too, so a moved plan directory must
+		// be recorded here exactly as it is in standalone -- otherwise `lyx webster run --plan-dir`
+		// spawns a Master told to read one directory whose own begin-batch re-wires against another.
+		if !c.planDirOverridden {
+			t.Error("planDirOverridden = false; want true -- hub mode's Master types its verbs flagless too, so run must refuse a moved plan")
+		}
+		if c.planDirDefault == "" || c.planDirDefault == override {
+			t.Errorf("planDirDefault = %q; want the hub default location, distinct from the override", c.planDirDefault)
+		}
+	})
+
+	t.Run("DefaultSpellingIsNotAnOverride_HubMode", func(t *testing.T) {
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+		c := &websterCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		defaultPlanDir := c.geom.PlanDir
+
+		spelled := &websterCLI{}
+		if err := spelled.wire(loc, preflight.ModeHub, "", "", filepath.Join(defaultPlanDir, "."), ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if spelled.planDirOverridden {
+			t.Error("planDirOverridden = true; want false -- a --plan-dir naming the default location has moved nothing")
+		}
 	})
 
 	t.Run("ExplicitOverride_StandaloneMode", func(t *testing.T) {
@@ -321,8 +348,8 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 		if c.geom.PlanDir != defaultPlanDir {
 			t.Errorf("geom.PlanDir = %q; want the relative value resolved against cwd, %q", c.geom.PlanDir, defaultPlanDir)
 		}
-		if c.standalonePlanDirOverridden {
-			t.Error("standalonePlanDirOverridden = true; want false -- a relative spelling of the DEFAULT plan directory has not moved the plan, and run must not refuse to spawn Master over it")
+		if c.planDirOverridden {
+			t.Error("planDirOverridden = true; want false -- a relative spelling of the DEFAULT plan directory has not moved the plan, and run must not refuse to spawn Master over it")
 		}
 	})
 }
@@ -776,11 +803,11 @@ func TestWireStandalone_PlanDirOverrideMarksRunRefusal(t *testing.T) {
 		if err := c.wire(nil, preflight.ModeStandalone, target, "", override, ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if !c.standalonePlanDirOverridden {
-			t.Error("standalonePlanDirOverridden = false; want true for a moved plan directory")
+		if !c.planDirOverridden {
+			t.Error("planDirOverridden = false; want true for a moved plan directory")
 		}
-		if c.standalonePlanDirDefault == "" || c.standalonePlanDirDefault == override {
-			t.Errorf("standalonePlanDirDefault = %q; want the default location, distinct from the override", c.standalonePlanDirDefault)
+		if c.planDirDefault == "" || c.planDirDefault == override {
+			t.Errorf("planDirDefault = %q; want the default location, distinct from the override", c.planDirDefault)
 		}
 	})
 
@@ -796,8 +823,8 @@ func TestWireStandalone_PlanDirOverrideMarksRunRefusal(t *testing.T) {
 		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if c.standalonePlanDirOverridden {
-			t.Error("standalonePlanDirOverridden = true; want false when the plan sits at the default")
+		if c.planDirOverridden {
+			t.Error("planDirOverridden = true; want false when the plan sits at the default")
 		}
 	})
 }

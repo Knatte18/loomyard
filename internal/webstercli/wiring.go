@@ -130,6 +130,15 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		geom.StencilsDir = stencilsDir
 	}
 	if planDir != "" {
+		// Hub mode records a moved plan directory for exactly the reason standalone does: Master's own
+		// in-pane verb invocations are typed flagless from the stencil in BOTH modes, so they resolve
+		// the hub default and would refuse against a plan they cannot see. Every other verb keeps
+		// honoring the override -- see the planDirOverridden field's own doc for the failure this
+		// closes on the hub path.
+		if !samePlanDir(planDir, geom.PlanDir) {
+			c.planDirOverridden = true
+			c.planDirDefault = geom.PlanDir
+		}
 		geom.PlanDir = planDir
 	}
 
@@ -218,9 +227,9 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		// Both sides of the comparison are absolute and cleaned by construction — planDir by wire's
 		// own resolveToldDir, geom.PlanDir by standalonegeom — so a flag value that names the
 		// default location is recognised as such however the operator spelled it.
-		if planDir != filepath.Clean(geom.PlanDir) {
-			c.standalonePlanDirOverridden = true
-			c.standalonePlanDirDefault = geom.PlanDir
+		if !samePlanDir(planDir, geom.PlanDir) {
+			c.planDirOverridden = true
+			c.planDirDefault = geom.PlanDir
 		}
 		geom.PlanDir = planDir
 	}
@@ -333,6 +342,15 @@ func pathContains(outer, inner string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// samePlanDir reports whether a told --plan-dir names the same directory as the mode's own default.
+// Both arguments are absolute by construction -- the flag value through wire's resolveToldDir, the
+// default through hubgeom/standalonegeom -- so this is a path equality over cleaned spellings, which
+// is what makes a "." or trailing-separator spelling of the default recognized as the default rather
+// than as an override.
+func samePlanDir(planDir, defaultPlanDir string) bool {
+	return filepath.Clean(planDir) == filepath.Clean(defaultPlanDir)
 }
 
 // resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty

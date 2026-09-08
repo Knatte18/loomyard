@@ -84,13 +84,15 @@ Example:
 				return nil
 			}
 
-			// A standalone Master types its verbs flagless from the stencil, so it resolves the
+			// Master types its verbs flagless from the stencil in BOTH modes, so it resolves the
 			// DEFAULT plan directory — a run over a --plan-dir override would boot a real session
 			// whose every in-pane verb then wire-refuses against a plan it cannot see (found live
-			// in crucible round fable5-high-r3, F-A3). Refused here, before any substrate boots;
-			// the recourse is the default location. Every other verb keeps honoring the override.
-			if c.standalonePlanDirOverridden {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: run cannot spawn Master over a --plan-dir override: Master's own in-pane verbs are flagless and resolve the standalone default plan directory; place the plan at %s and re-run without --plan-dir", c.standalonePlanDirDefault)))
+			// in crucible round fable5-high-r3, F-A3; the hub half of the same failure went
+			// unrefused until crucible round opus-medium-r6, R6-8). Refused here, before any
+			// substrate boots; the recourse is the default location. Every other verb keeps
+			// honoring the override.
+			if c.planDirOverridden {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: run cannot spawn Master over a --plan-dir override: Master's own in-pane verbs are flagless and resolve the default plan directory; place the plan at %s and re-run without --plan-dir", c.planDirDefault)))
 				return nil
 			}
 

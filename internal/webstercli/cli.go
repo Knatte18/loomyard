@@ -68,13 +68,21 @@ type websterCLI struct {
 	// construction whenever they are legitimately called.
 	reedUp func() error
 
-	// standalonePlanDirOverridden reports whether --plan-dir moved the plan off standalone's
-	// default (<stateDir>/_lyx/plan). Set by wireStandalone, read by the run verb alone, which
-	// refuses to spawn Master over a moved plan: Master's in-pane verb invocations are flagless and
-	// resolve the default, so they could never see the override (see wireStandalone).
-	// standalonePlanDirDefault carries that default path for the refusal's own recourse text.
-	standalonePlanDirOverridden bool
-	standalonePlanDirDefault    string
+	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default
+	// (<stateDir>/_lyx/plan in standalone, the hub anchor's _lyx/plan in hub mode). Set by BOTH
+	// wiring paths, read by the run verb alone, which refuses to spawn Master over a moved plan:
+	// Master's in-pane verb invocations are flagless and resolve the default, so they could never see
+	// the override.
+	// It is set in hub mode too, and that is not symmetry for its own sake. contracts/stencils/webster
+	// /webster-template-master.md drives `lyx webster begin-batch <NN>` flagless in BOTH modes -- only
+	// {{.plan_dir}} is templated -- so a hub `lyx webster run --plan-dir /elsewhere` spawned a Master
+	// told to read /elsewhere while its own in-pane begin-batch re-wired against the hub default and
+	// refused against a plan it could not see. That is the same F-A3 failure the standalone branch was
+	// hardened against in crucible round fable5-high-r3, left live on the hub path until round
+	// opus-medium-r6 (R6-8).
+	// planDirDefault carries that default path for the refusal's own recourse text.
+	planDirOverridden bool
+	planDirDefault    string
 
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
