@@ -59,8 +59,10 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupTrustPrompt,
 		},
 		{
+			// A gate phrase with a gate's accepting option present but no caret and no ready marker
+			// is still a gate: the option line alone is the positive evidence Startup requires.
 			name:    "trust_prompt_case_insensitive",
-			capture: "DO YOU TRUST THIS FOLDER?",
+			capture: "DO YOU TRUST THIS FOLDER?\n  YES, I TRUST THIS FOLDER\n  NO, EXIT",
 			want:    shuttleengine.StartupTrustPrompt,
 		},
 		{
@@ -116,6 +118,34 @@ func TestStartup_Classification(t *testing.T) {
 			// timeout (crucible round opus-medium-r5, R5-7).
 			name:    "bypass_permissions_gate_is_a_gate_not_ready",
 			capture: realBypassGateCapture,
+			want:    shuttleengine.StartupTrustPrompt,
+		},
+		{
+			// A gate phrase inside the agent's OWN transcript is not a gate. Before this,
+			// classifying it one played TrustDismissSequence's keys into a live agent's pane and
+			// then killed the run at the startup deadline (crucible round opus-medium-r6, R6-1).
+			name:    "ready_agent_prose_naming_the_files_in_this_folder",
+			capture: "● I'll start by reading the files in this folder.\n\n❯\n⏵⏵ bypass permissions on (shift+tab to cycle)",
+			want:    shuttleengine.StartupReady,
+		},
+		{
+			name:    "ready_agent_prose_naming_trust_this_folder",
+			capture: "● You asked whether to trust this folder; I'd say yes.\n\n❯\n? for shortcuts",
+			want:    shuttleengine.StartupReady,
+		},
+		{
+			// The bypass gate's own accepting label is the needle R5-7 keyed on, so an agent
+			// quoting it is the sharpest case: the phrase IS a gate option elsewhere.
+			name:    "ready_agent_prose_quoting_the_bypass_accept_label",
+			capture: "● The modal's accepting option reads yes, i accept — noted.\n\n❯\n? for shortcuts",
+			want:    shuttleengine.StartupReady,
+		},
+		{
+			// The footer is the second piece of positive evidence: a gate whose accepting option
+			// has been reworded out of gateAcceptNeedles must still fail FAST at the startup
+			// deadline rather than parking until the run timeout.
+			name:    "unrecognized_gate_wording_with_the_gate_footer_is_still_a_gate",
+			capture: "Do you trust the files in this folder?\n\n ❯ Decline\n   Affirm\n\n Enter to confirm · Esc to cancel",
 			want:    shuttleengine.StartupTrustPrompt,
 		},
 	}
@@ -261,6 +291,29 @@ func TestTrustDismissSequence_NeverConfirmsWithoutSelectingAccept(t *testing.T) 
 	}
 	if got[0].Key == "Enter" {
 		t.Fatalf("TrustDismissSequence() confirms as its FIRST step (%+v) while the caret is on %q; that confirms the refusing option and quits claude", got[0], "No, exit")
+	}
+}
+
+// TestTrustDismissSequence_PressesNothingIntoALiveAgentsPane is the sabotage-proof for R6-1's actual
+// shape: a healthy, ready pane whose agent transcript happens to render a gate phrase must produce NO
+// pane input at all. The defect was not that the wrong key was chosen — it was that any key was sent.
+func TestTrustDismissSequence_PressesNothingIntoALiveAgentsPane(t *testing.T) {
+	t.Parallel()
+
+	livePaneCaptures := []string{
+		"● I'll start by reading the files in this folder.\n\n❯\n⏵⏵ bypass permissions on (shift+tab to cycle)",
+		"● You asked whether to trust this folder; I'd say yes.\n\n❯\n? for shortcuts",
+		"● The modal's accepting option reads yes, i accept — noted.\n\n❯\n? for shortcuts",
+		"● Do you trust the files in this folder? I do.\n\n❯\n? for shortcuts",
+	}
+	for _, capture := range livePaneCaptures {
+		c := New()
+		if got := c.Startup(capture); got != shuttleengine.StartupReady {
+			t.Errorf("Startup(%q) = %v; want StartupReady — a live agent's own transcript is not a gate", capture, got)
+		}
+		if got := c.TrustDismissSequence(capture); len(got) != 0 {
+			t.Errorf("TrustDismissSequence(%q) = %+v; want no inputs — those keys land in a working agent's pane", capture, got)
+		}
 	}
 }
 

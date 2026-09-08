@@ -9,6 +9,7 @@ Branch `crucible-loom-glyph-hardening`, no pushes. One commit per finding, messa
 
 | ID | Severity | What changed | Test that would have caught it | Commit |
 |---|---|---|---|---|
+| R6-1 | BLOCKING | `Startup` no longer calls a gate on a phrase alone: it requires positive evidence a dialog is rendered — an accepting-option LINE (matched by what the line BEGINS with once caret/numbering are stripped) or claude's `Enter to confirm` gate footer — and locates that line with `locateGateLines`, now shared with `TrustDismissSequence` so classifier and dismissal can never disagree. | `TestTrustDismissSequence_PressesNothingIntoALiveAgentsPane` plus four `TestStartup_Classification` prose/footer cases (`internal/shuttleengine/claudeengine/startup_test.go`) | see git log |
 | R6-2 | MEDIUM | `gateAcceptNeedles` gains `yes,proceed`, the older trust-gate wording `Startup`'s own fixture set already treated as a recognized gate but `TrustDismissSequence` could never act on. | `TestTrustDismissSequence/older_Yes,_proceed_trust-gate_wording_is_dismissable` (`internal/shuttleengine/claudeengine/startup_test.go`) | see git log |
 
 ## Deferred / not fixed this round

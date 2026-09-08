@@ -39,17 +39,86 @@ var startupGateNeedles = []string{"trustthisfolder", "filesinthisfolder", "yes,i
 // booted TUI).
 // Then ready markers (the input marker "❯" or the footer hint "shortcuts") are checked; anything
 // else is still booting.
+//
+// A gate needle ALONE is not a gate, and treating it as one was a live-path defect. The needles are
+// ordinary English — "the files in this folder", "trust this folder", "Yes, I accept" — and they are
+// matched against the whole capture, which on a running pane is the agent's own transcript. A
+// healthy, ready pane whose agent had written any of those phrases was therefore classified
+// StartupTrustPrompt, with three consequences: Wait played TrustDismissSequence's arrow keys and
+// Enter INTO the live agent's pane; *started was never set, so the run was classified OutcomeDied at
+// the startup deadline while its agent was working; and requireReadyAgentPane refused every Send and
+// Interrupt for as long as the phrase stayed on screen (crucible round opus-medium-r6, R6-1).
+//
+// So a gate is classified only on POSITIVE evidence that one is rendered: a needle PLUS either an
+// accepting-option line — the same line TrustDismissSequence must find to act, located by the same
+// helper so the two can never disagree about what an accepting option is — or claude's own gate
+// footer. Prose carries neither.
+//
+// The residual, stated rather than papered over: a future gate whose accepting option matches none of
+// gateAcceptNeedles AND which also drops the footer would fall through to the ready check. That gate
+// is already undismissable today (TrustDismissSequence returns nothing for it), so what changes is
+// only how it fails — parking until the run timeout instead of dying at the startup deadline. That is
+// the deliberate trade for no longer killing healthy runs over ordinary agent prose.
 func (c *Claude) Startup(capture string) shuttleengine.StartupState {
 	normalized := normalizeCapture(capture)
-	for _, needle := range startupGateNeedles {
-		if strings.Contains(normalized, needle) {
-			return shuttleengine.StartupTrustPrompt
-		}
+	if containsAnyNeedle(normalized, startupGateNeedles) && gateIsRendered(capture, normalized) {
+		return shuttleengine.StartupTrustPrompt
 	}
-	if strings.Contains(capture, "❯") || strings.Contains(normalized, "shortcuts") {
+	if strings.Contains(capture, gateCaretMarker) || strings.Contains(normalized, "shortcuts") {
 		return shuttleengine.StartupReady
 	}
 	return shuttleengine.StartupPending
+}
+
+// gateIsRendered reports whether capture carries positive evidence of a one-time gate DIALOG, as
+// opposed to a mere mention of one of the phrases startupGateNeedles matches.
+// normalized is capture's whitespace-stripped, lowercased form, passed in rather than recomputed
+// because the caller already has it.
+func gateIsRendered(capture, normalized string) bool {
+	if _, acceptLine := locateGateLines(capture); acceptLine != -1 {
+		return true
+	}
+	return strings.Contains(normalized, gateFooterNeedle)
+}
+
+// gateOptionDecoration is the set of runes claude may draw BEFORE an option's own label on a select
+// list line: the selection caret, list numbering and its punctuation, and the whitespace between them.
+// Stripping them is what lets an option line be recognized by what it BEGINS with.
+const gateOptionDecoration = " \t❯>-*.)([]0123456789"
+
+// isGateAcceptOptionLine reports whether line is a gate's ACCEPTING OPTION line, as opposed to prose
+// that merely contains the same words.
+//
+// The distinction is the whole point. A gate needle is ordinary English, and an agent's own
+// transcript is what the capture holds once a run is under way — "You asked whether to trust this
+// folder", "the accepting option reads yes, i accept". Matching those as accepting options let
+// Startup call a healthy pane a gate and let TrustDismissSequence walk the caret onto a line of the
+// agent's own output and press Enter (crucible round opus-medium-r6, R6-1).
+//
+// An option line BEGINS with its label once the caret and any list numbering are stripped, and prose
+// does not, so the needle must be a PREFIX of the stripped, normalized line rather than merely
+// present in it. The residual is prose that opens with an option label verbatim ("Yes, I accept, but
+// first…"); it needs a gate needle elsewhere in the same capture to matter at all, and it is far
+// narrower than matching anywhere on any line.
+func isGateAcceptOptionLine(line string) bool {
+	label := normalizeCapture(strings.TrimLeft(line, gateOptionDecoration))
+	for _, needle := range gateAcceptNeedles {
+		if strings.HasPrefix(label, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsAnyNeedle reports whether normalized contains any of needles.
+// normalized must already be in normalizeCapture's form, which is the form every needle is written in.
+func containsAnyNeedle(normalized string, needles []string) bool {
+	for _, needle := range needles {
+		if strings.Contains(normalized, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // normalizeCapture lowercases and strips whitespace from capture, the canonical form for matching phrase needles.
@@ -86,6 +155,40 @@ var gateAcceptNeedles = []string{"trustthisfolder", "yes,itrust", "yes,iaccept",
 // list, the same marker Startup already reads as its ready marker.
 const gateCaretMarker = "❯"
 
+// gateFooterNeedle is the whitespace-stripped, lowercased prefix of the footer claude draws under
+// every one-time gate ("Enter to confirm · Esc to cancel"), and the second of the two pieces of
+// positive evidence Startup accepts that a gate is actually on screen.
+// It is deliberately a SECOND signal rather than the only one: it keeps a gate whose accepting option
+// has been reworded out of gateAcceptNeedles failing FAST, at the startup deadline, instead of
+// parking until the run timeout — while the accepting-option line keeps a gate that drops the footer
+// recognized. A running claude session with --dangerously-skip-permissions raises no confirmation
+// prompts of its own, so this phrase does not appear on a healthy pane.
+const gateFooterNeedle = "entertoconfirm"
+
+// locateGateLines returns the indices, within capture's own lines, of the LAST line carrying the
+// selection caret and the LAST line naming a gate's accepting option, each -1 when absent.
+//
+// Last occurrence, not first: the gate is drawn at the BOTTOM of the pane, and everything above it is
+// scrollback that may carry both a stale caret and stale option text.
+//
+// It is shared by Startup and TrustDismissSequence deliberately. Before this, Startup matched gate
+// phrases across the WHOLE whitespace-stripped capture while TrustDismissSequence matched accepting
+// options PER LINE, so the two could disagree — a capture Startup called a gate and the dismissal
+// could not act on pressed nothing and burned the startup window. One locator means the classifier
+// never names a gate the dismissal cannot walk (crucible round opus-medium-r6, R6-1).
+func locateGateLines(capture string) (caretLine, acceptLine int) {
+	caretLine, acceptLine = -1, -1
+	for i, line := range strings.Split(capture, "\n") {
+		if strings.Contains(line, gateCaretMarker) {
+			caretLine = i
+		}
+		if isGateAcceptOptionLine(line) {
+			acceptLine = i
+		}
+	}
+	return caretLine, acceptLine
+}
+
 // gateSelectSettleMS is the pause after each caret-moving key press, so a burst of arrow keys is
 // not coalesced into a single escape-sequence read and silently dropped — the same hazard
 // ComposeSend's own leading pause exists for.
@@ -114,23 +217,7 @@ const gateSelectSettleMS = 150
 // refused on lyx's behalf. The caller re-probes on its next liveness tick and the startup window
 // bounds the retries, so returning nothing costs a bounded wait and never a wrong keypress.
 func (c *Claude) TrustDismissSequence(capture string) []shuttleengine.PaneInput {
-	lines := strings.Split(capture, "\n")
-
-	// Last occurrence, not first: the gate is drawn at the BOTTOM of the pane, and everything
-	// above it is scrollback that may carry both a stale caret and stale option text.
-	caretLine, acceptLine := -1, -1
-	for i, line := range lines {
-		if strings.Contains(line, gateCaretMarker) {
-			caretLine = i
-		}
-		normalized := normalizeCapture(line)
-		for _, needle := range gateAcceptNeedles {
-			if strings.Contains(normalized, needle) {
-				acceptLine = i
-				break
-			}
-		}
-	}
+	caretLine, acceptLine := locateGateLines(capture)
 	if caretLine == -1 || acceptLine == -1 {
 		return nil
 	}

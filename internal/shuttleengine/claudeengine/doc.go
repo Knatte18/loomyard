@@ -12,4 +12,14 @@
 // which is every freshly-created fabric worktree pair.
 // TrustDismissSequence therefore reads the caret out of the capture it is given rather than
 // assuming a position, and presses nothing at all when it cannot find the accepting option.
+//
+// The mirror of that knowledge is worth stating too, because getting it wrong is equally silent and
+// equally total: a capture is the AGENT'S OWN TRANSCRIPT once a run is under way, and every phrase
+// that identifies a gate is ordinary English an agent writes ("the files in this folder", "trust this
+// folder", "yes, I accept").
+// So a gate is never classified from a phrase alone. Startup requires positive evidence that a
+// dialog is rendered — an accepting-option LINE, recognized by what it begins with once the caret and
+// list numbering are stripped, or claude's own "Enter to confirm" gate footer — and it locates that
+// option line with the same helper TrustDismissSequence uses, so the classifier can never name a gate
+// the dismissal would then have to walk blind.
 package claudeengine
