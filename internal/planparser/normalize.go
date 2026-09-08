@@ -20,6 +20,7 @@ package planparser
 import (
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/quarry/glyph"
@@ -142,7 +143,7 @@ func hasFileExtension(raw string) bool {
 // documented on hasFileExtension. A glyph.Self error on an eligible path-shaped ref leaves the ref
 // untouched and is not a parse failure: the classification checks from classify.go already report a
 // malformed entry, and planparser is deliberately lenient at card level.
-func canonicalizeCard(card *Card, cardKey string, lang glyph.Language, surface map[string]map[string]string) {
+func canonicalizeCard(card *Card, cardKey string, lang glyph.Language, surface map[string]map[string][]string) {
 	canon := func(raw string) string {
 		if !isPathRef(raw) || !hasFileExtension(raw) {
 			return raw
@@ -153,9 +154,15 @@ func canonicalizeCard(card *Card, cardKey string, lang glyph.Language, surface m
 		}
 		canonical := g.String()
 		if surface[cardKey] == nil {
-			surface[cardKey] = make(map[string]string)
+			surface[cardKey] = make(map[string][]string)
 		}
-		surface[cardKey][canonical] = raw
+		// Appended, never overwritten, and deduplicated: one card may spell one canonical ref two
+		// ways across two of its own fields, and keeping only the last left the other bullet
+		// un-rewritten (R6-13). The same lexeme repeated on the same card yields one entry, so
+		// RewriteRefs never builds a duplicate substitution.
+		if !slices.Contains(surface[cardKey][canonical], raw) {
+			surface[cardKey][canonical] = append(surface[cardKey][canonical], raw)
+		}
 		return canonical
 	}
 

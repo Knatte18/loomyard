@@ -279,9 +279,9 @@ func TestNormalizeCard_PairsAndTargetsAgree(t *testing.T) {
 
 // pipeline runs normalizeCard then canonicalizeCard on card, in the exact order ParsePlan runs
 // them, and returns the surface map canonicalizeCard populated.
-func pipeline(card *Card, root, cardKey string) map[string]map[string]string {
+func pipeline(card *Card, root, cardKey string) map[string]map[string][]string {
 	normalizeCard(card, root)
-	surface := make(map[string]map[string]string)
+	surface := make(map[string]map[string][]string)
 	canonicalizeCard(card, cardKey, glyph.Go, surface)
 	return surface
 }
@@ -383,7 +383,7 @@ func TestCanonicalizeCard_SurfaceRefs(t *testing.T) {
 	t.Parallel()
 
 	cardA := Card{Targets: []string{"list.go"}}
-	surface := make(map[string]map[string]string)
+	surface := make(map[string]map[string][]string)
 	normalizeCard(&cardA, "internal/boardcli")
 	canonicalizeCard(&cardA, "1-a", glyph.Go, surface)
 
@@ -392,10 +392,31 @@ func TestCanonicalizeCard_SurfaceRefs(t *testing.T) {
 	canonicalizeCard(&cardB, "2-b", glyph.Go, surface)
 
 	const canonical = "internal/boardcli/list.go#"
-	if surface["1-a"][canonical] != "internal/boardcli/list.go" {
-		t.Errorf(`surface["1-a"][%q] = %q; want %q`, canonical, surface["1-a"][canonical], "internal/boardcli/list.go")
+	for _, cardKey := range []string{"1-a", "2-b"} {
+		got := surface[cardKey][canonical]
+		if len(got) != 1 || got[0] != "internal/boardcli/list.go" {
+			t.Errorf(`surface[%q][%q] = %v; want exactly ["internal/boardcli/list.go"]`, cardKey, canonical, got)
+		}
 	}
-	if surface["2-b"][canonical] != "internal/boardcli/list.go" {
-		t.Errorf(`surface["2-b"][%q] = %q; want %q`, canonical, surface["2-b"][canonical], "internal/boardcli/list.go")
+}
+
+// TestCanonicalizeCard_SurfaceRefsKeepsEveryLexemeOnOneCard is R6-13's regression test: one card
+// may spell one canonical ref two ways across two of its own fields, and recording only the last
+// left RewriteRefs rewriting one bullet and leaving the other stale — a half-rewritten card.
+func TestCanonicalizeCard_SurfaceRefsKeepsEveryLexemeOnOneCard(t *testing.T) {
+	t.Parallel()
+
+	card := Card{
+		Targets: []string{"list.go"},
+		Uses:    []string{"//internal/boardcli/list.go"},
+	}
+	surface := make(map[string]map[string][]string)
+	normalizeCard(&card, "internal/boardcli")
+	canonicalizeCard(&card, "1-a", glyph.Go, surface)
+
+	const canonical = "internal/boardcli/list.go#"
+	got := surface["1-a"][canonical]
+	if len(got) != 1 {
+		t.Fatalf(`surface["1-a"][%q] = %v; want one deduplicated lexeme (both spellings normalize to the same path)`, canonical, got)
 	}
 }

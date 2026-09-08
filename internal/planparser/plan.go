@@ -57,18 +57,22 @@ type Plan struct {
 	// Cards is every card the Card Index lists, in index order.
 	Cards []Card
 
-	// SurfaceRefs records, for a canonicalized path-shaped ref, the pre-canonicalization surface
-	// lexeme that ref's own card actually carried on disk. It is keyed card identity first
-	// (the same "N-<slug>" string cardID builds), canonical model string second — the two-level
-	// shape matters: two cards may legitimately spell one canonical string differently (a plain
-	// path on one card, its file self glyph on another), and a flat one-level map would silently
-	// lose one of them.
+	// SurfaceRefs records, for a canonicalized path-shaped ref, EVERY pre-canonicalization surface
+	// lexeme that ref's own card actually carried on disk, in first-seen order. It is keyed card
+	// identity first (the same "N-<slug>" string cardID builds), canonical model string second — the
+	// two-level shape matters: two cards may legitimately spell one canonical string differently (a
+	// plain path on one card, its file self glyph on another), and a flat one-level map would
+	// silently lose one of them.
+	// The value is a SLICE for the same reason the map has two levels: ONE card may also spell one
+	// canonical ref two ways across two of its own fields, and a single-lexeme value kept only the
+	// last one — so RewriteRefs rewrote that bullet and left the other spelling stale, producing a
+	// half-rewritten card (crucible round opus-medium-r6, R6-13).
 	// Card.Targets/Uses/Pairs stay []string/[]MovePair and unchanged in type, holding the
 	// canonicalized glyph strings, so websterengine.deriveEdges and refsIntersect never see the
 	// difference; a later batch's RewriteRefs is SurfaceRefs' only consumer.
 	// A glyph-shaped ref copied verbatim from a quarry answer, or any ref under Language "none",
 	// never appears here at all.
-	SurfaceRefs map[string]map[string]string
+	SurfaceRefs map[string]map[string][]string
 
 	// SharedDecisions is the raw body text of the overview's optional "## Shared Decisions" section.
 	SharedDecisions string

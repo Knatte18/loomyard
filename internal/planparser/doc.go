@@ -109,7 +109,7 @@
 // opts a plan out of it entirely, keeping every pre-glyph symbol-shaped
 // behavior unchanged. Under "go", ParsePlan canonicalizes every
 // extension-carrying path-shaped entry into its glyph string immediately
-// after root:/// resolution, and Plan.SurfaceRefs records each canonicalized
-// entry's pre-canonicalization surface lexeme, keyed by the owning card's
-// identity and the resulting canonical string.
+// after root:/// resolution, and Plan.SurfaceRefs records EVERY one of a
+// canonicalized entry's pre-canonicalization surface lexemes, keyed by the
+// owning card's identity and the resulting canonical string.
 package planparser

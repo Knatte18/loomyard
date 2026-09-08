@@ -29,7 +29,8 @@ var singleRefLineRe = regexp.MustCompile("^`([^`]+)`$")
 // subs is keyed on canonical model strings -- matching what every one of RewriteRefs' three
 // callers natively produces -- rather than on-disk lexemes: RewriteRefs bridges the surface<->model
 // gap itself, by parsing planDir with ParsePlan to obtain Plan.SurfaceRefs and looking each key up
-// in the card being rewritten's own inner map. A key with no entry in that card's own SurfaceRefs
+// in the card being rewritten's own inner map, which holds every lexeme that card spelled the
+// canonical ref with, so a card carrying two spellings of one ref has both rewritten. A key with no entry in that card's own SurfaceRefs
 // map substitutes itself, which is correct for a ref that was already canonical on disk -- so a
 // canonical string two cards spell differently on disk resolves to each card's own lexeme, never to
 // whichever card ParsePlan happened to visit last.
@@ -100,14 +101,22 @@ func rewriteCardFile(planDir string, plan *Plan, c Card, subs map[string]string)
 
 // cardLexemeSubs resolves subs' canonical keys into cardKey's own on-disk lexemes, via
 // plan.SurfaceRefs[cardKey]. A canonical key absent from that inner map resolves to itself.
+//
+// It emits one substitution per RECORDED LEXEME, not one per canonical key: a card that spells one
+// canonical ref two ways across two of its own fields carries two lexemes, and emitting only one
+// rewrote one bullet and left the other stale — a half-rewritten card (crucible round
+// opus-medium-r6, R6-13).
 func cardLexemeSubs(plan *Plan, cardKey string, subs map[string]string) map[string]string {
 	lexemeSubs := make(map[string]string, len(subs))
 	for canonical, replacement := range subs {
-		lexeme := canonical
-		if surface := plan.SurfaceRefs[cardKey][canonical]; surface != "" {
-			lexeme = surface
+		lexemes := plan.SurfaceRefs[cardKey][canonical]
+		if len(lexemes) == 0 {
+			lexemeSubs[canonical] = replacement
+			continue
 		}
-		lexemeSubs[lexeme] = replacement
+		for _, lexeme := range lexemes {
+			lexemeSubs[lexeme] = replacement
+		}
 	}
 	return lexemeSubs
 }

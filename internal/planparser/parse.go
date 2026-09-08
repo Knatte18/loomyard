@@ -145,7 +145,7 @@ func ParsePlan(planDir string) (*Plan, error) {
 	// until after this loop finishes.
 	lang, langOK := glyph.Go, language == "go"
 
-	surfaceRefs := make(map[string]map[string]string)
+	surfaceRefs := make(map[string]map[string][]string)
 
 	cards := make([]Card, 0, len(entries))
 	for _, entry := range entries {
