@@ -188,6 +188,18 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
+				// Guarded by defer, the same shape every other lease in this package uses
+				// (beginbatch.go, recordbatch.go, and this verb's own first lease). Nothing between
+				// here and the explicit release below returns today, so this leaks nothing now — but
+				// a future `return nil` added inside this block, which is the shape used everywhere
+				// else in these RunEs, would hold mutate.lock for the process lifetime and block
+				// every subsequent bracket verb (crucible round opus-medium-r6, R6-23).
+				terminalHeld := true
+				defer func() {
+					if terminalHeld {
+						_ = terminalLock.Release()
+					}
+				}()
 				fresh, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 				if err == nil && fresh == nil {
 					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s", batchName)
@@ -211,6 +223,7 @@ Example:
 					}
 				}
 				_ = terminalLock.Release()
+				terminalHeld = false
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil

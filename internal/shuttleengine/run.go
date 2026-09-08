@@ -365,7 +365,10 @@ func (r *Runner) sweepOrphansOpportunistic() {
 	startupTimeout := time.Duration(r.cfg.StartupTimeoutS) * time.Second
 	minAge := 2 * startupTimeout
 	root := runDirRoot(r.cfg, r.anchorPath)
-	if _, err := sweepOrphans(root, guids, minAge, time.Now()); err != nil {
+	// r.clock, not time.Now: the clock seam exists so every age-based decision is drivable from a
+	// test, and this sweep's minAge comparison was the one that bypassed it (crucible round
+	// opus-medium-r6, R6-24).
+	if _, err := sweepOrphans(root, guids, minAge, r.clock.Now()); err != nil {
 		logger.Warn("shuttle: orphan sweep failed (non-fatal, new run proceeds)", "runDirRoot", root, "error", err)
 	}
 }
