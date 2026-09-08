@@ -22,6 +22,13 @@ Where the two copies differ only in a message fragment, that fragment becomes a 
 where they differ in nothing, webster's body is the one that moves.
 Every doc comment on a moved function moves with it, edited only where it names a package-private caller that no longer exists.
 
+Where the two copies' doc comments differ materially, this is which one survives.
+For `pathContains`, `NormalizeForContainment`, `RepositoryRootOf` and `SamePlanDir` the two are byte-identical or webster-only, so webster's moves unchanged.
+For `ResolveToldDir`, webster's is the fuller one — it alone explains the standalone default-vs-override path equality — so webster's moves and burler's is dropped.
+For `resolveStandaloneTarget` the two carry genuinely different consequences and the surviving comment is a **merge**: webster's body plus burler's Windows note on why the result must be absolute (`Derive` normalises through `EvalSymlinks`+`Clean` and compares case-insensitively there), burler's half of the R4-26 paragraph (a subdirectory run also resolved the profile's own relative target and fasit paths against the subdirectory rather than the repository), and burler's half of the R6-7 paragraph (its fix phase *writes*, so a mistyped `--target-dir` edited the wrong tree).
+Now that one function serves both CLIs, dropping either consequence would leave the shared code documenting only half of what it protects.
+For `ResolveStandalone`'s own comment, the ordering paragraph is webster's and burler's merged, and burler's two-asymmetry paragraph moves across in full — including its note that the empty fourth `stencilstore.Reconcile` argument is the "no source tree here" value that keeps the port-back drift warning silent, since standalone genuinely has no `contracts/stencils` source tree beside it.
+
 ## Cards
 
 ### Card 1: package doc for internal/cliwire
@@ -94,17 +101,13 @@ Every doc comment on a moved function moves with it, edited only where it names 
   `type Module struct` with exactly these fields, each carrying its own doc comment naming what it varies:
   - `Name string` — the CLI's own name, used as the `"<name>: "` prefix on every error this package returns (`"webster"`, `"burler"`).
   - `StateArtifacts string` — the nested-geometry refusal's noun phrase for what standalone keeps outside the target.
-    Webster's value is `state, locks, rendered prompts and trace logs`;
-    burler's is `instruction files, shuttle run directories and trace logs`.
   - `TargetRole string` — the nested-geometry refusal's noun phrase for the target.
-    Webster's value is `the repository it drives`;
-    burler's is `the repository it reviews`.
   - `TargetRecourse string` — the reverse-nesting refusal's recourse clause opener.
-    Webster's value is `Drive a target outside the state home`;
-    burler's is `Review a target outside the state home`.
   - `HubTargetSubject string` — the hub `--target-dir` refusal's subject clause.
-    Webster's value is `the worktree is already the target`;
-    burler's is `the anchor path is already the target`.
+
+  Each of those four field doc comments states only the role the field plays in the message it feeds, and the sentence position it occupies.
+  None of them may quote webster's or burler's concrete value, name either CLI, or contrast the two — that would put both callers' exact noun phrases back inside the shared module, against this batch's rule that no production file here names either caller.
+  The concrete values live only in each caller's own `wireModule` declaration, which batch 2 cards 6 and 7 spell out.
   - `Plan *PlanRules` — nil when the CLI parses no plan (burler's case), which is what makes `ResolveStandalone` skip plan-dir resolution entirely.
 
   `type PlanRules struct` with exactly two fields:
@@ -128,6 +131,8 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
 ```
 
   and for burler differs only in the `burler:` prefix and the `the anchor path is already the target` clause.
+  That fenced block is a plan-side illustration of the string the method produces at runtime, shown so the format string can be reconstructed exactly;
+  it is not text to embed in a doc comment, and the method's own doc comment must not quote it or name either CLI.
   Carry across a doc comment recording that the refusal fires on the flag alone, before any config is loaded.
 
   `func (m Module) refuseNestedStandaloneGeometry(target, stateDir string) error` — unexported method, body identical to today's `refuseNestedStandaloneGeometry` except that `module` becomes `m.Name` and the two varying noun phrases become `m.StateArtifacts` and `m.TargetRole`, with `m.TargetRecourse` opening the reverse-nesting message's recourse clause.
@@ -218,10 +223,15 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
 
   Declare two package-level test fixtures standing in for the two real descriptors, named `websterFixture` and `burlerFixture`, each a `Module` value carrying that CLI's exact field values as listed in card 3 — `websterFixture` additionally carrying a `Plan` whose `DefaultPlanDir` is `func(base string) string { return filepath.Join(base, "_lyx", "plan") }` and whose `MissingPlanRefusal` reproduces webster's live message.
   Source that message from the `standalone plan directory ... does not exist or contains no plan files` refusal in `internal/webstercli/wiring.go`'s `wireStandalone`, copying it verbatim including its two interpolated paths in their existing order — the resolved plan directory first, the recourse location second.
-  Add a comment stating that these are test fixtures mirroring the real descriptors declared in `webstercli` and `burlercli`, that they exist so this package's tests never import either caller, and that a divergence between a fixture and its real descriptor is caught by each CLI package's own composition tests plus the two integration files.
+  Add a comment stating that these are test fixtures mirroring the real descriptors declared in `webstercli` and `burlercli`, and that they exist so this package's tests never import either caller.
+  The comment must also name what actually catches a divergence between a fixture and its real descriptor: the per-package `TestWireModule_DescriptorIsVerbatim` test that batch 2 cards 6 and 7 add, which pins each real `wireModule`'s own field values and produced refusals.
+  Do not claim the existing composition tests or the two `cli_integration_test.go` files catch it — they do not;
+  after batch 2 no surviving test in either CLI package asserts any descriptor field's text, and the retained `TestWire_TargetDirRefusedInHubMode` only checks that the error mentions `--target-dir`.
 
   Declare the test helpers, each with the doc comment its predecessor in `internal/webstercli/wiring_test.go` carries:
   - `hash8For(t *testing.T, target string) string` — returns `standalonestate.Derive`'s `hash8` under the environment `t.Setenv` has already installed.
+  - `hash8AndStateDir(t *testing.T, target string) (stateDir, hash8 string)` — returns both of `standalonestate.Derive`'s values under that same already-installed environment, the predecessor of burler's helper of the same name.
+    Every case that drives `ResolveStandalone` needs `stateDir` — to seed the default plan directory, to assert against `standalonegeom.LogsDir(stateDir)` and `standalonegeom.StencilsDir(stateDir)`, and to make the derived stencils path uncreatable — so this is the helper those cases call, not `hash8For`.
   - `seedGitRepositoryRoot(t *testing.T, dir string) string` — creates `dir/.git` as a directory and returns `dir`, spawning no git.
   - `seedPlanDir(t *testing.T, dir string)` — `MkdirAll` plus one minimal `00-overview.md`, the predecessor of webster's `seedStandalonePlanDir`.
   - `setStandaloneStateRoot(t *testing.T)` — redirects both `XDG_STATE_HOME` and `LOCALAPPDATA` to fresh `t.TempDir()` values, the predecessor of burler's helper of the same name.

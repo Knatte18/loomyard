@@ -79,7 +79,20 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   In `internal/webstercli/wiring_test.go`, delete the test functions whose assertions batch 1 moved into `internal/cliwire/cliwire_test.go`: `TestResolveStandaloneTarget_RefusesATargetThatIsNotAReadableDirectory`, `TestResolveStandaloneTarget_LiftsToRepositoryRoot`, `TestRefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome`, `TestWireStandalone_RefusesStateDirNestedInTarget`, and `TestWireStandalone_RedirectsDurableSinkToStandaloneLogsDir`.
   Keep every other test in the file exactly as it is, including `TestWire_ModeHubSelectsHubMode`, `TestWire_ModeStandaloneSelectsStandaloneMode`, `TestWire_PlanDirResolution`, `TestWire_RelativeFlagDirsResolveAgainstCwd`, `TestWire_TargetDirRefusedInHubMode`, `TestWire_StandaloneRootsResolveToTarget`, `TestWire_MatcherNeverNilOpenerNilOnlyInStandalone`, `TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError`, `TestWireHub_LeavesDurableSinkDirUntouched`, `TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot`, `TestWire_ReedUpSeamPerMode`, and `TestWireStandalone_PlanDirOverrideMarksRunRefusal`.
   Then delete any helper (`hubLocation`, `seedStandalonePlanDir`, `hash8For`, `seedGitRepositoryRoot`) and any import that no remaining test in the package references — determine this by grepping the package for each name, since Go does not report an unused function.
-  Update the file-header comment's claim that this file reaches "the one call site of `standalonestate.Derive` that exists anywhere in this codebase": after this card the production call site lives in `internal/cliwire`, and this file's own remaining `Derive` calls are fixture helpers.
+
+  Retarget the doc comments this card's own deletions invalidate:
+  the file-header comment's claim that this file reaches "the one call site of `standalonestate.Derive` that exists anywhere in this codebase" (after this card the production call site lives in `internal/cliwire`, and this file's own remaining `Derive` calls are fixture helpers);
+  `seedStandalonePlanDir`'s doc, which names `standalonePlanDirHasContent`, now `internal/cliwire`'s own `planDirHasContent`;
+  and `seedGitRepositoryRoot`'s doc, which names `repositoryRootOf`, now `cliwire.RepositoryRootOf` — each only if the helper survives the deletion pass above.
+
+  Add one new test, `TestWireModule_DescriptorIsVerbatim`, which is what makes this task's "a reworded message fails the suite" claim true of the six descriptor fields that this task converts from inline production strings into free-floating data.
+  Without it nothing anywhere asserts webster's own descriptor text: `internal/cliwire`'s tests assert their own fixtures, not this package's `wireModule`, and every test that used to touch the nested-geometry and target-resolution messages is deleted above.
+  It must:
+  - assert each of `wireModule`'s six string fields (`Name`, `StateArtifacts`, `TargetRole`, `TargetRecourse`, `HubTargetSubject`, and the plan default produced by `wireModule.Plan.DefaultPlanDir` for a told base) against its expected literal, so a reword of any single field fails here even for a field no reachable message exercises;
+  - assert `wireModule.RefuseTargetDirInHubMode` returns the hub refusal verbatim for a non-empty flag, and `nil` for an empty one;
+  - assert `wireModule.Plan.MissingPlanRefusal` returns webster's refusal verbatim for a told plan directory and recourse pair;
+  - drive `wireModule.ResolveStandalone` once with `XDG_STATE_HOME` and `LOCALAPPDATA` pointed inside a `t.TempDir()` target so the state directory nests under it, and assert the resulting refusal verbatim — this is the one path that exercises `Name`, `StateArtifacts` and `TargetRole` composed into a real message rather than read as fields.
+  Keep it tier 1: no `t.Parallel()` on the `t.Setenv` case, and restore the sink with `t.Cleanup` if the case reaches the redirect.
 - **Commit:** `refactor(webstercli): wire standalone and hub resolution through cliwire`
 
 ### Card 7: burlercli calls into cliwire
@@ -145,7 +158,17 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   From `TestWire_StencilsDirFlag`, delete only the `ExplicitOverride_NeverWrittenTo` and `StandaloneDefaultSeededOnDisk` sub-tests — those two assert prologue behaviour that now lives in `internal/cliwire/cliwire_test.go` — and keep `HonouredInHubMode` and `HonouredInStandaloneMode`, which are composition checks on `c.stencilsDir`.
   Keep every other test in the file exactly as it is, including `TestWire_ModeHubSelectsHubMode`, `TestWire_ModeStandaloneSelectsStandaloneMode`, `TestWireStandalone_NeverReadsLoc`, `TestWire_StandalonePinnedValues`, `TestWire_TargetDirRefusedInHubMode`, `TestWire_RelativeStencilsDirResolvesAgainstCwd`, `TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError`, `TestWireHub_LeavesDurableSinkDirUntouched`, and `TestWire_ReedUpSeamPerMode`.
   Then delete any helper (`hubLocation`, `hash8For`, `setStandaloneStateRoot`, `hash8AndStateDir`, `readDirNames`, `seedGitRepositoryRoot`) and any import that no remaining test in the package references, determining this by grepping the package for each name.
-  Update the file-header comment's claim about being "the one call site of `standalonestate.Derive`", the same way card 6 updates webster's.
+
+  Retarget the doc comments this card's own deletions invalidate, the same way card 6 does for webster:
+  the file-header comment's claim about being "the one call site of `standalonestate.Derive`";
+  and `seedGitRepositoryRoot`'s doc, which names `repositoryRootOf`, now `cliwire.RepositoryRootOf` — only if the helper survives the deletion pass above.
+
+  Add one new test, `TestWireModule_DescriptorIsVerbatim`, mirroring card 6's test of the same name and existing for the same reason — nothing else asserts burler's own descriptor text once the message-bearing tests above are deleted.
+  It must:
+  - assert each of `wireModule`'s five string fields (`Name`, `StateArtifacts`, `TargetRole`, `TargetRecourse`, `HubTargetSubject`) against its expected literal, and assert `wireModule.Plan` is nil — the nil is a load-bearing fact, since it is what makes `ResolveStandalone` skip plan resolution for burler;
+  - assert `wireModule.RefuseTargetDirInHubMode` returns burler's hub refusal verbatim for a non-empty flag, and `nil` for an empty one;
+  - drive `wireModule.ResolveStandalone` once with `XDG_STATE_HOME` and `LOCALAPPDATA` pointed inside a `t.TempDir()` target so the state directory nests under it, and assert the resulting refusal verbatim.
+  Keep it tier 1 under the same rules card 6's version follows.
 
   Do not edit `internal/burlercli/cli_test.go` and do not edit `internal/burlercli/cli_integration_test.go`.
   If either turns out to need a change, that is a behaviour change and a signal to stop and report rather than to edit.

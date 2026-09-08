@@ -18,6 +18,10 @@ The two checks are complementary and neither is sufficient alone.
 The `Derive` pin catches a whole third copy built from the bottom up but misses a CLI that re-hand-rolls target resolution while still calling `ResolveStandalone` for the rest;
 the banned-declaration check catches exactly that partial re-implementation but misses a new CLI deriving its own state directory from scratch.
 
+Batch-local decision beyond `## Shared Decisions`: cards 8 and 9 both name the Cliwire Sole-Wiring Invariant in their failure messages, and card 10 is what records that invariant in `CONSTRAINTS.md`, so for two commits the tests cite a rule the repository does not yet state.
+That forward reference is deliberate and the card order is not swapped to remove it: card 10 documents what the two enforcement tests actually assert and lists both files in its `Context:`, so writing the docs first would have the docs card describing files that do not exist yet.
+The whole task squash-merges onto its parent as one commit, so the intermediate ordering is never a state anyone reads — see the overview's "docs land in the task's landing commit" decision.
+
 Batch-local decision beyond `## Shared Decisions`: both checks are **production-only**, skipping every `_test.go` file, following `internal/treadleengine/seam_enforcement_test.go`'s skip rather than `internal/gitkit/callerset_enforcement_test.go`'s package-directory-only exclusion.
 The invariant is about production wiring.
 Eight `Derive` test call sites exist today and stay where they are — they build fixtures and assert the real derivation end-to-end, they are not a second copy of the wiring, and forcing them through `cliwire` would make packages with no reason to depend on it do so.
