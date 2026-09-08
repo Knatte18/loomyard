@@ -7,7 +7,7 @@ Companion to `_mill/loom-review-fable-high-r10.md`. One row per finding, filled 
 | Finding | Severity | Status | Commit | Tests added/extended | Files changed |
 |---|---|---|---|---|---|
 | F1 | MEDIUM | fixed | `f849ab6d2` | `TestDoneCheckVerdicts_UnreadableStatusFailsClosed` (new), `TestDoneCheckVerdicts_Rules` (+4 ambiguous rows) | `internal/planglyph/donecheck.go`, `internal/planglyph/doc.go`, `internal/planglyph/resolve.go`, `internal/planglyph/donecheck_test.go` |
-| F2 | MEDIUM | fixed | `pending-sha` | `TestEnsureResolveCoverage` (new) | `internal/planglyph/repo.go`, `internal/planglyph/repo_test.go` |
+| F2 | MEDIUM | fixed | `5589a619c` | `TestEnsureResolveCoverage` (new) | `internal/planglyph/repo.go`, `internal/planglyph/repo_test.go` |
 | F3 | MEDIUM | pending | — | — | — |
 | F4 | MEDIUM | pending | — | — | — |
 | F5 | LOW | pending | — | — | — |
