@@ -28,7 +28,7 @@ func TestDetectDrift_ExactTierRenameAutoRepairsAndAmends(t *testing.T) {
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -61,11 +61,15 @@ func TestDetectDrift_ExactTierRenameAutoRepairsAndAmends(t *testing.T) {
 
 // TestDetectDrift_RenameMatchingCardPairProducesNoFindingNoAmendment covers a rename matching a
 // declared Rename card producing no drift finding and no amendment.
+//
+// The pair's New side is a plan: handle, not a bare glyph: the plan format REQUIRES that of a
+// symbol Rename pair (rename-to-not-handle), so a bare-glyph fixture here would test a shape no
+// real plan can carry -- which is exactly how gate one shipped unable to match anything.
 func TestDetectDrift_RenameMatchingCardPairProducesNoFindingNoAmendment(t *testing.T) {
 	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc New() {}\n"})
 
 	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Rename:**\n- `sub#Old` -> `sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
+		1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
 	})
 	before := readCardFile(t, dir, 1, "card1")
 
@@ -73,7 +77,7 @@ func TestDetectDrift_RenameMatchingCardPairProducesNoFindingNoAmendment(t *testi
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -104,7 +108,7 @@ func TestDetectDrift_RenamedSymbolNothingReferencesLogsOnlyNoRewrite(t *testing.
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -130,7 +134,7 @@ func TestDetectDrift_DeletedAndStillReferencedProducesBlockingFinding(t *testing
 		Deleted: []quarry.Symbol{{ID: "sub#Gone"}},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -171,7 +175,7 @@ func TestDetectDrift_EvidenceTierCandidatesInformationalWithSignals(t *testing.T
 		},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
@@ -193,6 +197,38 @@ func TestDetectDrift_EvidenceTierCandidatesInformationalWithSignals(t *testing.T
 	}
 }
 
+// TestDetectDrift_EvidenceTierCandidateSuppressesTheDeletedSymbolFinding covers the collision the
+// evidence tier has with the deleted-symbol sweep: quarry leaves an evidence-tier candidate's
+// endpoints in Deleted, so the same symbol would otherwise report a blocking
+// plan-references-deleted-symbol beside the informational candidate that contradicts it — and the
+// blocking half would kill the batch before any reviewer saw the evidence.
+func TestDetectDrift_EvidenceTierCandidateSuppressesTheDeletedSymbolFinding(t *testing.T) {
+	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Uses:**\n- `sub#Gone`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n",
+	})
+
+	// The same ID in both arrays, exactly as quarry emits it for an unresolved candidate.
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		Deleted: []quarry.Symbol{{ID: "sub#Gone"}},
+		RenameCandidates: []quarry.RenameCandidateEntry{
+			{ID: "sub#Gone", Candidates: []quarry.RenameCandidate{{ID: "sub#Renamed", File: "sub/b.go"}}},
+		},
+	}}
+
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("findings = %+v; want exactly one — the informational candidate alone", findings)
+	}
+	if findings[0].Check != "rename-candidate" || findings[0].Severity != SeverityInformational {
+		t.Fatalf("findings[0] = %+v; want the informational rename-candidate, never a blocking deleted-symbol finding beside it", findings[0])
+	}
+}
+
 // TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding covers a candidate for a
 // symbol nothing in the remaining plan references producing no finding at all — gate two applies
 // to this tier too.
@@ -209,11 +245,45 @@ func TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding(t *testi
 		},
 	}}
 
-	findings, err := DetectDrift(plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("DetectDrift(...) returned error: %v", err)
 	}
 	if len(findings) != 0 {
 		t.Fatalf("findings = %+v; want none — nothing references the deleted symbol", findings)
+	}
+}
+
+// TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported pins R6-11: the post-repair resolve's
+// ANSWERS are read, not just its transport error. Before this, a repair that rewrote a ref into a
+// glyph quarry answers not_found for passed the step described as "revalidated" in silence, and the
+// amendment was appended as if the repair had worked — so the plan carried webster's own edit to a
+// symbol that is not there, with nothing reported.
+func TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported(t *testing.T) {
+	// The fixture repo carries neither sub#Old nor sub#Gone: the rename quarry reports as exact names
+	// a destination that does not exist in the tree the repair is validated against.
+	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Kept() {}\n"})
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Uses:**\n- `sub#Old`\n\n**Edit:**\n- `sub#Kept`\n\n**Intent:** one\n",
+	})
+
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#Gone"}}},
+	}}
+
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	}
+
+	var reported bool
+	for _, f := range findings {
+		if f.Check == "glyph-not-found" && strings.Contains(f.Detail, "sub#Gone") {
+			reported = true
+		}
+	}
+	if !reported {
+		t.Errorf("findings = %+v; want a glyph-not-found naming sub#Gone — the repair rewrote the plan to a symbol that is not in the tree", findings)
 	}
 }

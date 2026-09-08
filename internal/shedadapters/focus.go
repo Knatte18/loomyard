@@ -71,6 +71,14 @@ func readRoundFocus(name, runDir string, round int) RoundFocus {
 		logger.Warn("shedadapters: focus file malformed", "producer", name, "engine", burlerEngineLabel, "path", path, "reason", err.Error())
 		return RoundFocus{}
 	}
+	// The focus file's own round: frontmatter field must agree with the round number ITS OWN
+	// FILENAME already encodes (focusPath(runDir, round)): treated the same as any other malformed
+	// input this reader already fails safe on, rather than trusting a directive that disagrees with
+	// itself about which round it targets (crucible round sonnet-xhigh-r8, LS-1).
+	if parsed.Round != round {
+		logger.Warn("shedadapters: focus file's own round does not match its filename", "producer", name, "engine", burlerEngineLabel, "path", path, "fileRound", round, "frontmatterRound", parsed.Round)
+		return RoundFocus{}
+	}
 
 	focus := RoundFocus{ExcludeLenses: parsed.ExcludeLenses}
 	if len(parsed.Focus) > 0 || parsed.Prose != "" {

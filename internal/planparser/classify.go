@@ -39,17 +39,23 @@ const (
 //     repository-root filename such as "Makefile", "LICENSE" or "Dockerfile". This rule is required
 //     rather than tidy — without it, such a filename would fall to rule 5's refKindSymbol with no
 //     legal spelling left, since the "//" worktree-root escape does not rescue it (normalizeCardPath
-//     strips the prefix and hands back the identical bare token).
+//     strips the prefix and hands back the identical bare token). canonicalizablePath (normalize.go)
+//     then carries the rule the rest of the way: a slash-free ref is canonicalized to its self glyph
+//     even without an extension, so the spelling this rule admits is one every glyph-backed layer
+//     downstream can actually act on.
 //  5. otherwise -> refKindSymbol. This is the explicit default for an entry whose final dot-segment
 //     is not all-lowercase-alphanumeric (e.g. "shedrecipe.Lookup"). "shedrecipe.lookup" is a
 //     documented misclassification: it reaches refKindPath at rule 3 because its final segment
 //     happens to be all-lowercase, exactly as that rule requires.
 //
-// Rule 4's consequence is worth stating plainly rather than leaving it to be discovered: a
-// refKindPath entry goes through normalizeRefIfPath, so under a non-"." root: a bare "Makefile" now
-// resolves to "<root>/Makefile" where a pre-glyph plan passed it through verbatim. That is the
-// intended behaviour — a bare filename under a declared root: means the file in that root, exactly
-// as every other relative path in the plan does.
+// Rule 4's consequence is worth stating plainly rather than leaving it to be discovered: a bare
+// extensionless filename is a REPOSITORY-ROOT spelling only. Under a non-"." root:, a bare
+// "Makefile" goes through normalizeRefIfPath to "<root>/Makefile" — a slashed extensionless path,
+// which canonicalizablePath (normalize.go) declines and checkDirectoryTarget (validate.go) then
+// refuses as a blocking finding, because a lexical classifier cannot tell that spelling from a
+// directory. The legal spelling for a root:-scoped extensionless file is its repository-root-
+// relative file self glyph ("<root>/Makefile#"), which quarry resolves found; the directory-target
+// finding's own detail names that remedy (crucible round fable-high-r10, F7).
 func classifyRef(raw string) refKind {
 	if strings.HasPrefix(raw, "plan:") {
 		return refKindHandle

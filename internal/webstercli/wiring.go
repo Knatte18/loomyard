@@ -9,26 +9,41 @@ package webstercli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/buildinfo"
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
-	"github.com/Knatte18/loomyard/internal/standalonestate"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// wireModule carries webster's own per-CLI variance for internal/cliwire's shared wiring
+// prologue -- the message-bearing data cliwire needs but does not itself declare, since no
+// production file in that package may name webster or burler. cliwire carries the shared
+// implementation; the data that varies by caller lives here, with the caller, exactly the way
+// internal/shedrecipe's constructors live in that package while the rows that vary live outside
+// it.
+var wireModule = cliwire.Module{
+	Name:             "webster",
+	StateArtifacts:   "state, locks, rendered prompts and trace logs",
+	TargetRole:       "the repository it drives",
+	TargetRecourse:   "Drive a target",
+	HubTargetSubject: "the worktree is already the target",
+	Plan: &cliwire.PlanRules{
+		DefaultPlanDir: planparser.PlanDir,
+		MissingPlanRefusal: func(planDir, recourse string) string {
+			return fmt.Sprintf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback. Place an authored plan at %s, which is what `run` requires (Master's own in-pane verbs are flagless and resolve that default); --plan-dir points the bracket and read-only verbs at a plan elsewhere, but `run` refuses it", planDir, recourse)
+		},
+	},
+}
 
 // wire computes hub-or-standalone mode from loc/mode -- the *lyxcwd.Location and preflight.Mode a
 // preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: module
@@ -55,26 +70,41 @@ import (
 // the honest question instead: does a hub-level directory exist for this write to target.
 //
 // cwd is the already-resolved cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- wire needs it
-// only as standalone's --target-dir default, never to resolve or re-resolve anything itself.
+// as standalone's --target-dir default and as the base every relative flag value is made absolute
+// against, never to resolve or re-resolve anything itself.
 // stencilsDirFlag, planDirFlag, and targetDirFlag are the three persistent flags' raw, as-parsed
 // values (empty string when the operator did not pass one).
+//
+// All three are made absolute HERE, at the one boundary that still knows which working directory the
+// operator typed them from, via cliwire.ResolveToldDir. A relative value stored verbatim is not a
+// smaller version of an absolute one: this process resolves it against ITS cwd while the pane webster
+// spawns runs at the target (standalone) or the anchor (hub), so one string named two different
+// directories, and the standalone default-vs-override comparison below could never match a relative
+// spelling of the default. Every other told path in this codebase is required absolute for exactly
+// that reason.
 //
 // wire performs no cwd resolution and spawns no process -- every path it touches is either supplied by
 // the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) -- so a
 // test can drive it directly and stay inside the Test Tier Purity Invariant.
 func (c *websterCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
+	stencilsDir := cliwire.ResolveToldDir(cwd, stencilsDirFlag)
+	planDir := cliwire.ResolveToldDir(cwd, planDirFlag)
+
 	if mode == preflight.ModeHub {
-		return c.wireHub(loc, stencilsDirFlag, planDirFlag, targetDirFlag)
+		return c.wireHub(loc, stencilsDir, planDir, targetDirFlag)
 	}
-	return c.wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDirFlag)
+	return c.wireStandalone(cwd, stencilsDir, planDir, targetDirFlag)
 }
 
 // wireHub builds the engine stack for hub mode: every module config and the model registry loaded
 // over the anchor path, hubgeom's geometry builders, a real fabricengine.RefScanner, and a lazy
 // fabricengine.Open closure.
-func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
-	if targetDirFlag != "" {
-		return fmt.Errorf("webster: --target-dir is not honoured in hub mode: the worktree is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec")
+//
+// stencilsDir and planDir arrive already absolute (or empty), made so by wire -- this function never
+// sees a raw flag value and must never start honouring one.
+func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetDirFlag string) error {
+	if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil {
+		return err
 	}
 
 	anchorPath := loc.AnchorPath()
@@ -105,11 +135,33 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag,
 	}
 
 	geom := hubgeom.WebsterGeometry(loc)
-	if stencilsDirFlag != "" {
-		geom.StencilsDir = stencilsDirFlag
+	if stencilsDir != "" {
+		// The same boundary stat standalone's prologue applies, through the same descriptor method,
+		// so the two modes can never drift on what a told stencils directory must be: a typo'd
+		// --stencils-dir refused here costs nothing, while unchecked it failed only at the first
+		// prompt render, after the run lock and substrate boot (crucible round fable-high-r7, F2).
+		if err := wireModule.RefuseUnreadableStencilsDir(stencilsDir); err != nil {
+			return err
+		}
+		geom.StencilsDir = stencilsDir
 	}
-	if planDirFlag != "" {
-		geom.PlanDir = planDirFlag
+	if planDir != "" {
+		// Hub mode records a moved plan directory for exactly the reason standalone does: Master's own
+		// in-pane verb invocations are typed flagless from the stencil in BOTH modes, so they resolve
+		// the hub default and would refuse against a plan they cannot see. Every other verb keeps
+		// honoring the override -- see the planDirOverridden field's own doc for the failure this
+		// closes on the hub path.
+		//
+		// The comparison is against geom.PlanDir -- the value hubgeom.WebsterGeometry actually built --
+		// and deliberately not wireModule.Plan.DefaultPlanDir(anchorPath), even though the two are the
+		// same string today; comparing against the geometry's own field is what keeps the override
+		// check correct if internal/hubgeom ever changes how it computes PlanDir.
+		resolvedPlanDir, overridden := cliwire.ResolvePlanDir(planDir, geom.PlanDir)
+		if overridden {
+			c.planDirOverridden = true
+			c.planDirDefault = geom.PlanDir
+		}
+		geom.PlanDir = resolvedPlanDir
 	}
 
 	reedGeom := hubgeom.ReedGeometry(loc)
@@ -133,60 +185,55 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag,
 	return nil
 }
 
-// wireStandalone builds the engine stack for standalone mode: the already-absolute --target-dir
-// (defaulted to cwd when unset), standalonestate.Derive over it -- the only place Derive is ever
-// called -- standalonegeom's geometry builders over the derived state directory, every module config
-// and the model registry loaded over the same state directory, a pinned websterengine.NeverMatches
-// RefMatcher, and a nil fabric opener.
-func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
-	target, err := resolveStandaloneTarget(cwd, targetDirFlag)
+// wireStandalone builds the engine stack for standalone mode by calling wireModule.ResolveStandalone
+// -- internal/cliwire's single ordered standalone prologue -- and composing webster's own engines onto
+// the result: a pinned websterengine.NeverMatches RefMatcher, a shuttleengine.NewDetachedRunner-
+// constructed runner -- standalone's anchor (the derived state directory) is deliberately outside its
+// worktree root (the target), which NewRunner's containment assertion would refuse -- and a nil fabric
+// opener.
+//
+// stencilsDir and planDir arrive already absolute (or empty), made so by wire via
+// cliwire.ResolveToldDir. Re-resolving them again inside ResolveStandalone is idempotent on an
+// already-absolute value, and is deliberate rather than an oversight to hoist out: see
+// cliwire.ResolveStandalone's own doc comment for the prologue's ordering obligation, which this
+// function's body no longer needs to restate.
+func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag string) error {
+	res, err := wireModule.ResolveStandalone(cliwire.StandaloneRequest{
+		Cwd:             cwd,
+		StencilsDirFlag: stencilsDir,
+		PlanDirFlag:     planDir,
+		TargetDirFlag:   targetDirFlag,
+	})
 	if err != nil {
 		return err
 	}
 
-	stateDir, hash8, err := standalonestate.Derive(target)
-	if err != nil {
-		return err
+	geom := standalonegeom.WebsterGeometry(res.Target, res.StateDir)
+	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
+	geom.StencilsDir = res.StencilsDir
+	geom.PlanDir = res.PlanDir
+	if res.PlanDirOverridden {
+		c.planDirOverridden = true
+		c.planDirDefault = res.DefaultPlanDir
 	}
 
-	geom := standalonegeom.WebsterGeometry(target, stateDir)
-	reedGeom := standalonegeom.ReedGeometry(target, stateDir, hash8)
-
-	if stencilsDirFlag != "" {
-		// An operator who named a curated stencil set must not have it rewritten from under them --
-		// seed only the standalone DEFAULT, never an explicit override.
-		geom.StencilsDir = stencilsDirFlag
-	} else if _, err := stencilstore.Reconcile(geom.StencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
-		// Unlike the root pre-run's best-effort, logged-only seed pass, nothing else will ever
-		// create this directory: a reconcile failure here is a hard error, since every prompt render
-		// would otherwise fail later with a far less informative message.
-		return fmt.Errorf("webster: seed the standalone stencils directory %s: %w", geom.StencilsDir, err)
-	}
-
-	if planDirFlag != "" {
-		geom.PlanDir = planDirFlag
-	}
-	if !standalonePlanDirHasContent(geom.PlanDir) {
-		return fmt.Errorf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback; pass --plan-dir to point at an authored plan", geom.PlanDir)
-	}
-
-	shuttleCfg, err := shuttleengine.LoadConfig(stateDir, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(res.StateDir, "shuttle")
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(stateDir, "reed")
+	reedCfg, err := reedengine.LoadConfig(res.StateDir, "reed")
 	if err != nil {
 		return err
 	}
-	websterCfg, err := websterengine.LoadConfig(stateDir, "webster")
+	websterCfg, err := websterengine.LoadConfig(res.StateDir, "webster")
 	if err != nil {
 		return err
 	}
-	activeBatcher, err := batcher.Active(stateDir)
+	activeBatcher, err := batcher.Active(res.StateDir)
 	if err != nil {
 		return err
 	}
-	registry, err := modelspec.LoadRegistry(stateDir)
+	registry, err := modelspec.LoadRegistry(res.StateDir)
 	if err != nil {
 		return err
 	}
@@ -197,7 +244,17 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.New()
-	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
+
+	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
+	// `lyx reed up` is hub-only — so the verbs that need one boot it in-process through this seam
+	// (see the field's own doc comment). Assigned here, executed by the two verbs that spawn an
+	// agent themselves, run and recover-batch: wiring runs for EVERY verb, and validate, status,
+	// pause and await-batch must boot no tmux server at all.
+	c.reedUp = func() error {
+		_, err := reedEngine.Up()
+		return err
+	}
 
 	c.setRunner(runner, claudeEngine, reedEngine)
 	c.shuttleCfg = shuttleCfg
@@ -224,34 +281,4 @@ func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttl
 	c.masterStarter = runnerMasterStarter{runner: runner}
 	c.engine = claudeEngine
 	c.reed = reedEngine
-}
-
-// resolveStandaloneTarget resolves standalone mode's --target-dir: cwd when targetDirFlag is empty,
-// or targetDirFlag resolved to an absolute path (relative to cwd) otherwise. The result is always
-// absolute, which is standalonestate.Derive's own precondition.
-func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
-	if targetDirFlag == "" {
-		return cwd, nil
-	}
-	if filepath.IsAbs(targetDirFlag) {
-		return filepath.Clean(targetDirFlag), nil
-	}
-	return filepath.Join(cwd, targetDirFlag), nil
-}
-
-// standalonePlanDirHasContent reports whether dir exists and contains at least one "*.md" file --
-// the minimal on-disk shape an authored plan directory carries. It never distinguishes "missing
-// directory" from "empty directory" from "directory with no .md files": all three are the same usage
-// error to a standalone operator, which has no bootstrap and no empty-plan fallback to fall back to.
-func standalonePlanDirHasContent(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
-			return true
-		}
-	}
-	return false
 }

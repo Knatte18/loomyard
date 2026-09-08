@@ -26,6 +26,20 @@ type burlerCLI struct {
 	// engine is the constructed burlerengine.Engine the run verb closes over.
 	engine *burlerengine.Engine
 
+	// cwd is the seam cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- the SAME base wire
+	// resolves --target-dir and --stencils-dir against. It is stored so the run verb resolves
+	// --profile against it too, rather than against the process cwd, which under an in-process
+	// driver is a different directory (crucible round opus-medium-r6, R6-17).
+	cwd string
+
+	// reedUp brings the standalone reed session up, idempotently, and is set by wireStandalone
+	// alone — the run verb calls it immediately before driving a round, because standalone mode has
+	// no other way to a live session: `lyx reed up` is hub-only (its pre-run requires
+	// lyxcwd.Resolve), so the session on standalone's own geometry (socket "lyx-<hash8>", state
+	// under the derived state directory) can only be booted in-process. It stays nil in hub mode,
+	// where bringing reed up remains the operator's (or loom's) own act.
+	reedUp func() error
+
 	// stencilsDirFlag and targetDirFlag hold the raw, as-parsed values of the two standalone-entry
 	// persistent flags (--stencils-dir, --target-dir). An empty value means the flag was not passed;
 	// each mode's own default is computed by the wiring function (wiring.go) rather than a
@@ -68,6 +82,8 @@ func (c *burlerCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 		return nil
 	}
 
+	c.cwd = cwd
+
 	loc, mode, err := preflight.ResolveMode(cwd)
 	if err != nil {
 		output.Err(out, err.Error())
@@ -104,7 +120,11 @@ Modes:
   read-only in BOTH modes (hub default: the hub's own stencils dir;
   standalone default: the derived state directory's own _lyx/stencils);
   --target-dir is standalone-only, defaults to the current directory, and is
-  refused in hub mode, where the anchor path is structurally the target.
+  refused in hub mode, where the anchor path is structurally the target. A
+  relative value for either is resolved against the current directory, and
+  the standalone target is lifted to the root of the git repository
+  containing it, so standing in a subdirectory reviews the same repository,
+  from the same state directory and reed session, as standing at its root.
 
 Example:
   lyx burler run --profile profile.yaml
@@ -121,7 +141,7 @@ Example (standalone, outside any lyx hub):
 	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
 		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
-		"standalone-only: the directory burler reviews against; defaults to the current directory; refused in hub mode, where the anchor path is already the target")
+		"standalone-only: the directory burler reviews against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the anchor path is already the target")
 
 	parent.AddCommand(c.runCmd())
 

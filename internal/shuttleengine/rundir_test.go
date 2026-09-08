@@ -248,3 +248,39 @@ func TestSweepOrphans_MissingRunJSONRemovedOnlyWhenOld(t *testing.T) {
 		t.Errorf("young no-state dir was removed, want kept: %v", err)
 	}
 }
+
+// TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest is R6-14's regression test: returning on
+// the first os.RemoveAll failure abandoned every later entry, so a single directory that cannot be
+// removed made every subsequent Start sweep nothing and orphan run dirs accumulated without bound.
+func TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: a read-only parent directory does not stop RemoveAll")
+	}
+
+	root := t.TempDir()
+	// "a-stuck" sorts before "b-sweepable", so os.ReadDir hands the undeletable one back first.
+	stuck := filepath.Join(root, "a-stuck")
+	sweepable := filepath.Join(root, "b-sweepable")
+	for _, dir := range []string{stuck, sweepable} {
+		if err := os.MkdirAll(filepath.Join(dir, "child"), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", dir, err)
+		}
+	}
+	// A directory whose own write bit is cleared cannot have its child unlinked, so RemoveAll fails.
+	if err := os.Chmod(stuck, 0o500); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", stuck, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(stuck, 0o755) })
+
+	// Neither dir carries a run.json, so both are orphans; both are old enough for the age guard.
+	removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour))
+	if err == nil {
+		t.Error("sweepOrphans() error = nil; want the undeletable directory reported")
+	}
+	if len(removed) != 1 || removed[0] != sweepable {
+		t.Errorf("sweepOrphans() removed = %v; want [%q] — one stuck directory must not abandon the rest of the sweep", removed, sweepable)
+	}
+	if _, statErr := os.Stat(sweepable); !os.IsNotExist(statErr) {
+		t.Errorf("os.Stat(%q) = %v; want the sweepable orphan gone", sweepable, statErr)
+	}
+}

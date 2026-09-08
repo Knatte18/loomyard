@@ -40,9 +40,9 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 5 | `Discussion-Review` (`Discussion-Bouncer` + `Discussion-Burler`) | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
 | 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory, once `Plan-Sweep` is built for real — its absence today is the normal degraded state the stencil now names outright, not an error | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
-| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`), in the format-only mode that runs before review and so does not demand the approval flag | pass/fail, also callable standalone as `lyx loom validate-plan` |
+| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `bare-symbol-target`), in the format-only mode that runs before review and so does not demand the approval flag | pass/fail, also callable standalone as `lyx loom validate-plan`; **additionally rewrites `_lyx/plan/` in place**, canonicalizing every `plan:` handle — see [Plan-Validate detail](#plan-validate-detail) |
 | 9 | `Plan-Review` (`Plan-Bouncer` + `Plan-Burler`) | bespoke | LLM/review segment | `_lyx/plan/` (current plan directory) → `_lyx/discussion/decision-record.md` (answer key) | verdict (APPROVED/stuck) + review file |
-| 10 | `Plan-Revalidate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks, re-run because the segment's fixer rounds rewrite the plan after `Plan-Validate` already ran and no row between the segment and `Webster` parses the plan otherwise, in the approval-enforcing mode that confirms the flag `Plan-Bouncer`'s approved settle wrote | pass/fail — no artifact, a gate signal only; catches a fixer-introduced format regression first and the approval flag's presence second |
+| 10 | `Plan-Revalidate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks, re-run because the segment's fixer rounds rewrite the plan after `Plan-Validate` already ran and no row between the segment and `Webster` parses the plan otherwise, in the approval-enforcing mode that confirms the flag `Plan-Bouncer`'s approved settle wrote | pass/fail as a gate signal, plus the same in-place handle canonicalization row 8 performs; catches a fixer-introduced format regression first and the approval flag's presence second |
 | 11 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
 | 12 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like a review segment" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) |
 | 13 | `Webster-Review` (`Webster-Bouncer` + `Webster-Burler`) | bespoke | LLM/review segment | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
@@ -147,6 +147,19 @@ this subsection remains the durable copy.
 The verb and the row call the identical `planglyph` functions in each mode, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
 The parity claim is now that the verb reaches every mode the row set uses: `Plan-Validate`'s format-only mode and `Plan-Revalidate`'s approval-enforcing mode both have a matching verb invocation.
 
+**Both rows write, and the table above says so because it is easy to miss.**
+`planglyph.ValidateFormat`/`Validate` canonicalize every `plan:` handle the plan declares — one batched `quarry.Name` call turning each draft spelling into its computed `plan:<expected-glyph>` form — and rewrite every occurrence across the plan's card files in place, via `planparser.RewriteRefs`.
+So a row whose Output column reads "pass/fail" nonetheless leaves `_lyx/plan/` changed, and so do the standalone verbs `lyx loom validate-plan` and `lyx webster validate` despite describing themselves as lints.
+The rewrite is deliberate and belongs here rather than in a producer of its own: canonicalization needs the same batched resolve the validation pass already performs, and the alphabet's own rule is that a handle's real spelling is *computed*, never trusted from the planner's draft.
+Row 8's rewrite is captured by the `Plan-Review` segment's own `commit_seam`, which commits the plan directory after it settles;
+row 10's runs after that commit, and is picked up by `Webster`'s first fabric sync, which commits the whole `_lyx` tree.
+
+**Mid-execution the same check set is scoped, and that is `Webster`'s business rather than these rows'.**
+Once `Webster` starts, every `begin-batch` re-resolves the plan against the current tree before it builds a pack — but through `planglyph.ValidateDispatch`, which restricts the resolve-backed half to cards whose work has not landed yet.
+A plan describes intended change, so a card already built contradicts the tree by design: its `Create` target now exists, its `Delete` target is gone, its `Rename`'s old side no longer resolves.
+Reporting any of those as a plan defect wedges the run, which is exactly what it did until this was scoped.
+Rows 8 and 10 run before any card has been built, so they keep the unscoped whole-plan form.
+
 ### Plan-Review rubric
 
 The shipped stencil `contracts/stencils/loom/loom-rubric-plan-review.md` is `Plan-Review`'s own rubric — read by both `Plan-Bouncer` and `Plan-Burler`, the row's two-producer perch.
@@ -180,7 +193,7 @@ Also flag:
   A one-line blast-radius conclusion, never a restatement of `Intent`.
 - **`Custom` is a last resort.**
   Used only where none of `Create`, `Edit`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
-  A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target`, so a mistyped one silently escapes two checks the rest of the plan is held to.
+  A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target`, so a mistyped one silently escapes two checks the rest of the plan is held to — and only those two: `bare-symbol-target` and `directory-target` bind a card's flat `Targets`/`Uses` with no group scoping, so `Plan-Validate` blocks them on a `Custom` card like any other.
   A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
 - **Fidelity to the decision record.**
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.
@@ -337,7 +350,9 @@ For the step it was on:
    A match: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate).
    **Every row that spawns an agent answers this question, and which rows do so is not left implicit here, because for a while it was and only one of them did.**
    `SingleLLMProducer` probes it for `Discussion-Write` and `Plan-Write`;
-   `shedadapters.Bouncer` probes it on both its seed and its judge pass, for all three segments' `*-Bouncer` rows;
+   `shedadapters.Bouncer` probes it three times over, for all three segments' `*-Bouncer` rows: on its seed pass, on its judge pass, and once more at `Call` entry before it acts on a verdict already on disk.
+   That third probe is not redundant, and the reason is the gap between what a judgment *records* and what its spawn *declares*: the record is a verdict plus a ledger, while the spawn declares those two plus the next round's focus file, so a crash in between leaves a live judge behind an apparently-final verdict — and the two branches that read such a verdict, the re-entry clear and the BLOCKING replay, spawn nothing themselves and would otherwise never ask.
+   Attaching there makes that call the judgment's harvest — it settles rather than clearing — while a not-found probe leaves both branches acting on exactly the state they always did.
    `shedadapters.BurlerProducer` probes it for all three `*-Burler` rows, matching on the round's own `round-<N>-review.md`/`round-<N>-fixer-report.md` pair, which is exactly the `OutputFiles` set `burlerengine` declares for that round's shuttle run.
    The `Webster` row reaches the same no-duplicate property by a different mechanism it owns itself: `websterengine`'s entry-time reclaim stops a leftover live Master before starting a new one, rather than attaching to it.
    Until the review-segment rows gained the probe, a driver crash inside any segment left that segment's agent alive and the next `lyx loom run` started a second one over it — two agents writing one review, and on the `Webster-Burler` row (`fix-scope: source`) two agents committing to one branch.

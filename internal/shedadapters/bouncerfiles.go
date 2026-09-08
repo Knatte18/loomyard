@@ -62,6 +62,52 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	return bouncerVerdict(parsed.Verdict), parsed.Rationale, nil
 }
 
+// recordedVerdict reads and parses round's verdict file inside runDir, then reads and parses that
+// round's ledger file, returning the parsed verdict and false on any read or parse failure of
+// either. It is the "this round has been judged" predicate, and the parsed verdict rides along
+// because the one caller that needs it would otherwise have to re-read the same file.
+//
+// It is a free function over a told run directory rather than a Bouncer method because the question
+// is two-sided, and both sides must answer it identically: the Bouncer asks whether it still owes
+// round N a judgment, and the round producer sharing that directory asks whether it may advance past
+// N -- and a round the Bouncer is about to re-judge is exactly a round the round producer must not
+// have already written over. Requiring the ledger as well as the verdict is what keeps the two
+// answers the same, since a verdict whose ledger is missing or malformed sends the Bouncer back for
+// a fresh judgment just as an absent verdict does.
+//
+// The focus file is deliberately excluded, because it is an input to the next round rather than
+// evidence about this one, and is synthesizable -- including it would let a missing focus file
+// invalidate a judgment that provably happened.
+func recordedVerdict(runDir string, round int) (bouncerVerdict, bool) {
+	verdictRaw, err := os.ReadFile(verdictPath(runDir, round))
+	if err != nil {
+		return "", false
+	}
+	verdict, _, err := parseVerdict(verdictRaw)
+	if err != nil {
+		return "", false
+	}
+	ledgerRaw, err := os.ReadFile(ledgerPath(runDir, round))
+	if err != nil {
+		return "", false
+	}
+	ledger, err := parseLedger(ledgerRaw)
+	if err != nil {
+		return "", false
+	}
+	// The ledger file's own round: frontmatter field must agree with the round number ITS OWN
+	// FILENAME already encodes (ledgerPath(runDir, round)): a mismatch here means the judge wrote
+	// the wrong round's own claim into a file that landed at the right path anyway, which is
+	// exactly the shape a malformed-ledger read is meant to fail closed on -- reporting false
+	// (this round has NOT been judged, per this function's own doc comment) so the Bouncer
+	// re-judges it, rather than trusting a ledger that disagrees with itself about which round it
+	// belongs to (crucible round sonnet-xhigh-r8, LS-1).
+	if ledger.Round != round {
+		return "", false
+	}
+	return verdict, true
+}
+
 // ledgerEntry is one finding-identity record in a ledger file: a Key the judge uses to recognize
 // recurring findings, the Rounds it was seen in, and its Status.
 type ledgerEntry struct {

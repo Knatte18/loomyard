@@ -18,9 +18,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -421,6 +424,269 @@ func TestValidateCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "quarry") {
 		t.Errorf("output does not name quarry; want it to name quarry rather than the plan; got %q", out.String())
+	}
+}
+
+// seedTwoCardGlyphPlanDir writes a two-card, language: go plan into planDir whose FIRST card
+// Creates a symbol that already exists on disk (worktreeRoot/sub/a.go's Foo) and whose SECOND card
+// Creates a brand-new unit. The first card is therefore a blocking create-already-exists finding
+// under the whole-plan check set and nothing at all once it counts as completed; the second card is
+// informational in both scopes. That asymmetry is what lets one plan tell validate's two scopes
+// apart.
+func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
+	t.Helper()
+
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — first — the card whose work has already landed\n" +
+		"2 — second — the card still pending\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	first := "# Card 1 — first\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** the card whose work has already landed.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "01-first.md"), []byte(first), 0o644); err != nil {
+		t.Fatalf("write first card file: %v", err)
+	}
+	second := "# Card 2 — second\n\n**Create:**\n- `newpkg#Bar`\n\n**Intent:** the card still pending.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "02-second.md"), []byte(second), 0o644); err != nil {
+		t.Fatalf("write second card file: %v", err)
+	}
+
+	subDir := filepath.Join(worktreeRoot, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "a.go"), []byte("package sub\n\nfunc Foo() {}\n"), 0o644); err != nil {
+		t.Fatalf("write sub/a.go: %v", err)
+	}
+}
+
+// TestValidateCmd_ScopeFollowsRunProgress is R4-07's direct regression test. The verb advertises
+// itself as the gate "lyx webster run" applies, and Run scopes that gate by the run's own completed
+// cards; validate ran the whole-plan check set unconditionally, so the instant one Create card
+// landed the verb exited 1 over a plan Run resumes without complaint.
+//
+// One plan drives both rows. With no run recorded, card 1's already-existing Create target is a
+// blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the
+// verb exists for. With state.json recording batch 1 terminal, that same finding is the plan working
+// as designed and must vanish, leaving only card 2's informational finding and exit 0.
+func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
+	identity, err := batcher.Select("identity")
+	if err != nil {
+		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
+	}
+
+	t.Run("NoRunRecordedGetsWholePlanAnswer", func(t *testing.T) {
+		c, _ := newTestCLI(t)
+		c.batcher = identity
+		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+		if exitCode != 1 {
+			t.Fatalf("validate with no run recorded = %d; want 1 (the whole-plan answer still refuses card 1), output: %s", exitCode, out.String())
+		}
+		got := out.String()
+		if !strings.Contains(got, `"scope":"whole-plan"`) {
+			t.Errorf("output missing scope:whole-plan; got %q", got)
+		}
+		if !strings.Contains(got, "create-already-exists") {
+			t.Errorf("output missing the blocking create-already-exists finding for card 1; got %q", got)
+		}
+	})
+
+	t.Run("TerminalBatchScopesToPendingCards", func(t *testing.T) {
+		c, _ := newTestCLI(t)
+		c.batcher = identity
+		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
+
+		state := &websterengine.State{
+			RunGUID: "run-guid",
+			Batches: map[int]*websterengine.BatchState{
+				1: {Terminal: true, Status: "done"},
+			},
+		}
+		if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
+			t.Fatalf("SaveState: %v", err)
+		}
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+		if exitCode != 0 {
+			t.Fatalf("validate with batch 1 terminal = %d; want 0 -- a completed Create card's target existing is the plan working as designed, output: %s", exitCode, out.String())
+		}
+		got := out.String()
+		if !strings.Contains(got, `"scope":"pending"`) {
+			t.Errorf("output missing scope:pending; got %q", got)
+		}
+		if strings.Contains(got, "create-already-exists") {
+			t.Errorf("output still carries card 1's create-already-exists finding after batch 1 went terminal; got %q", got)
+		}
+	})
+}
+
+// TestValidateCmd_RebaselinesStalePlanFingerprint is WS-1's own regression test (crucible round
+// sonnet-xhigh-r8): validate's own resolve pass can rewrite the plan on disk (handle
+// canonicalization) exactly as begin-batch's own ValidateDispatch call can, but before this fix it
+// never restamped state.json's PlanFingerprint afterward the way every bracket verb already does —
+// so a run's crash/resume guard silently desynced from a plan validate itself had just rewritten,
+// and the next begin-batch/record-batch/run refused the (validate's own sanctioned) edit as a
+// foreign one, forcing --fresh and discarding the run's progress.
+//
+// This drives the observable end state directly rather than depending on quarry's own handle
+// grammar to construct a genuine mid-call rewrite: state.json is seeded with a fingerprint that
+// does NOT match the real on-disk plan (standing in for "the plan changed since state.json was last
+// written, by validate's own rewrite or otherwise"), and the assertion is that validate corrects it
+// to the plan's actual current fingerprint — the same unconditional re-baseline begin-batch performs
+// after every ValidateDispatch call, regardless of whether that specific call happened to rewrite
+// anything.
+func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
+	identity, err := batcher.Select("identity")
+	if err != nil {
+		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
+	}
+
+	c, _ := newTestCLI(t)
+	c.batcher = identity
+	seedValidPlanDir(t, c.geom.PlanDir)
+
+	realFingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
+	if err != nil {
+		t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
+	}
+
+	state := &websterengine.State{
+		RunGUID:         "run-guid",
+		PlanFingerprint: "stale-fingerprint-from-before-the-plan-changed",
+	}
+	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+	if exitCode != 0 {
+		t.Fatalf("validate on a clean plan = %d; want 0, output: %s", exitCode, out.String())
+	}
+
+	reloaded, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState after validate: %v", err)
+	}
+	if reloaded == nil {
+		t.Fatalf("LoadState after validate returned nil; want the seeded state still present")
+	}
+	if reloaded.PlanFingerprint != realFingerprint {
+		t.Errorf("state.json's PlanFingerprint after validate = %q; want %q (the plan's real current fingerprint) — a stale fingerprint left in place is exactly the desync that forces every later begin-batch/record-batch/run to refuse a genuinely current plan as foreign", reloaded.PlanFingerprint, realFingerprint)
+	}
+	// The run's other fields survive the re-baseline untouched — persistPlanFingerprintRebaseline
+	// reloads state fresh and writes only the fingerprint field, never the caller's whole in-memory
+	// copy, for exactly the reason its own doc comment states (R6-4).
+	if reloaded.RunGUID != "run-guid" {
+		t.Errorf("state.json's RunGUID after validate = %q; want %q (the fingerprint restamp must not clobber other fields)", reloaded.RunGUID, "run-guid")
+	}
+}
+
+// TestRecoverBatchCmd_BootsStandaloneReedSessionFirst is R4-11's direct regression test.
+// recover-batch spawns a COLD recovery strand through reed.AddStrand, which needs a live reed
+// session, but it never called the in-process bring-up seam wireStandalone arms. In standalone mode
+// the session is gone once a run ends, so the verb failed inside AddStrand advising `lyx reed up` —
+// a hub-only verb that cannot reach standalone geometry at all.
+//
+// Batch 99 exists in no plan, so RecoverSpawnOrAttach's own findBatch refuses it immediately. That
+// is what makes this test an ordering proof rather than a mere presence one: the bring-up message
+// can only win over the batch-not-found message if the guard runs before the spawn machinery.
+func TestRecoverBatchCmd_BootsStandaloneReedSessionFirst(t *testing.T) {
+	identity, err := batcher.Select("identity")
+	if err != nil {
+		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
+	}
+
+	c, _ := newTestCLI(t)
+	c.batcher = identity
+	seedValidPlanDir(t, c.geom.PlanDir)
+	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, &websterengine.State{
+		RunGUID: "run-guid",
+		Batches: map[int]*websterengine.BatchState{},
+	}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	bringUps := 0
+	c.reedUp = func() error {
+		bringUps++
+		return errors.New("no tmux server available in this test")
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.recoverBatchCmd(), &out, []string{"99", "--wait", "1ns"})
+
+	if bringUps != 1 {
+		t.Fatalf("c.reedUp calls = %d; want exactly 1 -- recover-batch spawns an agent and must boot standalone's own reed session first", bringUps)
+	}
+	if exitCode != 1 {
+		t.Fatalf("recover-batch with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "bring up the standalone reed session") {
+		t.Errorf("output does not name the reed bring-up failure; got %q", got)
+	}
+	if strings.Contains(got, "not found in the plan's execution batches") {
+		t.Errorf("output reports the batch-not-found refusal, so the bring-up ran too late to matter; got %q", got)
+	}
+}
+
+// singleFlagEnvelope matches the one-word machine-readable signal shape webster's verbs use to tell
+// Master WHY a call refused: a whole envelope whose only field is a boolean flag
+// (map[string]any{"plan_drifted": true}). Master keys a failure-ladder rung off each such flag, so
+// the flag is a contract term, not an implementation detail.
+var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true\}`)
+
+// TestMasterStencilCoversEverySingleFlagRefusal is R4-34's direct regression test. record-batch
+// emits {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure
+// ladder carried no rung for it, so Master fell through to generic error handling on a refusal with
+// a specific meaning and a specific disposition.
+//
+// The flag set is read out of this package's own source rather than pinned as a list, because a
+// hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this
+// gap arose. What the regexp deliberately does NOT cover is a flag riding along inside a
+// multi-field envelope (status's own "paused" report field, for instance): those are state a caller
+// reads, not refusals a ladder must answer.
+func TestMasterStencilCoversEverySingleFlagRefusal(t *testing.T) {
+	t.Parallel()
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read the webstercli package directory: %v", err)
+	}
+
+	found := map[string]string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		source, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		for _, match := range singleFlagEnvelope.FindAllStringSubmatch(string(source), -1) {
+			found[match[1]] = name
+		}
+	}
+
+	if len(found) == 0 {
+		t.Fatal("no single-flag refusal envelopes found in this package; the regexp has drifted from the code shape it is meant to track, so this test is asserting nothing")
+	}
+
+	for flag, file := range found {
+		if !strings.Contains(string(stencils.WebsterTemplateMaster), flag) {
+			t.Errorf("%s emits the single-flag envelope {%q: true}, but contracts/stencils/webster/webster-template-master.md's failure ladder never mentions %q -- Master would fall through to generic error handling on a refusal that has its own meaning and its own disposition", file, flag, flag)
+		}
 	}
 }
 

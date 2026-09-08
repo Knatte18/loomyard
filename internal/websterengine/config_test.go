@@ -168,3 +168,46 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 		t.Errorf("MasterTimeoutMin = %d, want %d", cfg.MasterTimeoutMin, 480)
 	}
 }
+
+// TestLoadConfig_MissingNumericKnobNamesTheKey covers the round-4 review's R4-16. LoadOrTemplate
+// degrades to the embedded template only on PROVEN ABSENCE of the file, so a hand-written
+// webster.yaml carrying only the two role keys left every numeric knob at Go's zero value — and
+// those zero values are not conservative, they break the run silently: RecoveryTimeoutMin at 0 makes
+// classify's elapsed-versus-timeout comparison true on the first poll, so every recovery batch
+// classifies dead/timeout immediately with nothing reporting why.
+func TestLoadConfig_MissingNumericKnobNamesTheKey(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		wantKey string
+	}{
+		{
+			name:    "every numeric knob absent",
+			body:    "master: sonnet\nrecovery: opus\n",
+			wantKey: "self_fix_cap",
+		},
+		{
+			name:    "recovery_timeout_min absent",
+			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\npoll_wait_s: 480\n",
+			wantKey: "recovery_timeout_min",
+		},
+		{
+			name:    "poll_wait_s explicitly zero",
+			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\npoll_wait_s: 0\n",
+			wantKey: "poll_wait_s",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			seedConfig(t, baseDir, "webster", tc.body)
+
+			_, err := websterengine.LoadConfig(baseDir, "webster")
+			if err == nil {
+				t.Fatal("LoadConfig() = nil error; want an error naming the offending key")
+			}
+			if !strings.Contains(err.Error(), tc.wantKey) {
+				t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), tc.wantKey)
+			}
+		})
+	}
+}

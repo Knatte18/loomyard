@@ -10,6 +10,7 @@ package shuttleengine
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -211,7 +212,9 @@ func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 // unreadable is treated the same as an orphan (no strand can be confirmed
 // live for it) but is still subject to the same age guard. now is the
 // caller-supplied clock so tests can control aging deterministically.
-// Returns the list of removed directory paths.
+// Returns the list of removed directory paths, and a joined error naming every directory that could
+// not be removed -- the sweep always visits EVERY entry, so one undeletable directory costs that one
+// directory and never the rest of the sweep.
 func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration, now time.Time) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -222,6 +225,7 @@ func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration
 	}
 
 	var removed []string
+	var removeErrs []error
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -243,11 +247,18 @@ func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration
 		rs, found, err := loadRunState(runDir)
 		if err != nil || !found || !strandGUIDs[rs.StrandGUID] {
 			if rerr := os.RemoveAll(runDir); rerr != nil {
-				return removed, fmt.Errorf("remove orphan run dir %s: %w", runDir, rerr)
+				// Accumulated, never returned early. Returning on the first failure abandoned every
+				// LATER entry, so one directory that cannot be removed — a file held open on
+				// Windows, a permission-denied subtree, an NFS .nfs* stub — made every subsequent
+				// Start sweep nothing at all and orphan run dirs accumulated without bound, against
+				// this function's own "every run directory" contract (crucible round opus-medium-r6,
+				// R6-14).
+				removeErrs = append(removeErrs, fmt.Errorf("remove orphan run dir %s: %w", runDir, rerr))
+				continue
 			}
 			removed = append(removed, runDir)
 		}
 	}
 
-	return removed, nil
+	return removed, errors.Join(removeErrs...)
 }

@@ -209,3 +209,39 @@ func TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind(t *testing.T) {
 		t.Fatalf("ensureFocus(1) left no file at %s: %v", focusPath(dir, 1), err)
 	}
 }
+
+// TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename is LS-1's own regression test
+// (crucible round sonnet-xhigh-r8): a focus file whose own round: frontmatter field disagrees with
+// the round number its own filename already encodes must be treated as malformed, exactly like
+// every other shape this fail-safe reader already degrades to the zero directive over -- never
+// trusted as if it agreed with the round it was read for.
+func TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename(t *testing.T) {
+	dir := t.TempDir()
+	// Lands at round-3-focus.md (per focusPath(dir, 3)) but its own frontmatter claims round: 1 --
+	// the exact shape a judge writing {{.round}} where the stencil should have said {{.next_round}}
+	// produced before that stencil bug was fixed alongside this check.
+	path := writeFocusFile(t, dir, 3, focusFile{Round: 1, ExcludeLenses: []string{"lensA"}, Focus: []string{"a directive"}})
+
+	got := readRoundFocus("bouncer", dir, 3)
+	assertFocus(t, got, []string{}, []string{})
+
+	// Sanity: the file genuinely exists and genuinely parses on its own -- the empty result above is
+	// the round-mismatch check firing, not some other failure swallowing it silently.
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("fixture file missing: %v", err)
+	}
+	if parsed, err := parseFocus(mustReadFile(t, path)); err != nil || parsed.Round != 1 {
+		t.Fatalf("fixture file does not carry the mismatch it is meant to: parseFocus = (%+v, %v)", parsed, err)
+	}
+}
+
+// mustReadFile reads path or fails the test, for a fixture-sanity assertion that has no reason to
+// tolerate an I/O error of its own.
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", path, err)
+	}
+	return content
+}

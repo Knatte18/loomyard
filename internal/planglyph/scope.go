@@ -15,18 +15,24 @@ import (
 
 // targetGlyphUnion returns the union of cards' own flat Targets, the comparison set ScopeGuard
 // checks every touched symbol against.
+//
+// Each target is normalized through resolveKeyFor (donecheck.go), so a plan: handle contributes the
+// expected glyph it stands for rather than its literal handle text. Without that, a Create card's
+// handle-shaped target never matched the bare glyph quarry's delta reports for the symbol that card
+// just created, and ScopeGuard flagged every handle-created symbol as touched outside the plan --
+// the exact opposite of what the check is for.
 func targetGlyphUnion(cards []planparser.Card) map[string]bool {
 	union := make(map[string]bool)
 	for _, c := range cards {
 		for _, t := range c.Targets {
-			union[t] = true
+			union[resolveKeyFor(t)] = true
 		}
 	}
 	return union
 }
 
-// ScopeGuard compares delta's Created, Deleted and Modified symbol IDs against the union of
-// cards' own target glyphs, emitting one informational finding per symbol touched outside that
+// ScopeGuard compares delta's Renamed, Created, Deleted and Modified symbol IDs against the union
+// of cards' own target glyphs, emitting one informational finding per symbol touched outside that
 // union, check ID scope-outside-plan, naming the symbol and the file it lives in.
 //
 // It stays informational, never blocking, for two reasons that must both survive: it preserves the
@@ -54,6 +60,20 @@ func ScopeGuard(cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding 
 		})
 	}
 
+	// Renamed pairs need their own loop rather than riding the two below: quarry removes an exact
+	// pair's constituents from Created and Deleted entirely (see drift.go's own note on why that
+	// keeps plan-references-deleted-symbol from colliding with the exact tier), so a renamed symbol
+	// reaches neither of them. Without this loop a fork that renamed a symbol outside its batch's
+	// declared targets was the one kind of touch this guard never reported — and DetectDrift's gate
+	// two logs an unreferenced rename at Debug only, so nothing operator-visible named it at all.
+	// A pair is in scope when EITHER endpoint is a declared target: the card that declared the old
+	// symbol is the card doing the renaming, and a card that declared the new one asked for it.
+	for _, rp := range delta.Renamed {
+		if union[rp.From.ID] || union[rp.To.ID] {
+			continue
+		}
+		report(rp.To.ID, rp.To.File)
+	}
 	for _, s := range delta.Created {
 		report(s.ID, s.File)
 	}

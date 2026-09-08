@@ -8,7 +8,6 @@
 package discussionparser
 
 import (
-	"bufio"
 	"errors"
 	"os"
 	"strings"
@@ -96,13 +95,21 @@ func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 // missingSections returns every heading in required that does not appear as its own line in
 // content, after right-trimming " \t\r" -- so a heading nested inside a fenced block or appearing
 // mid-sentence never counts. The result preserves required's own order.
+//
+// It splits the string it was already handed rather than running a bufio.Scanner over it, and that
+// is a correctness choice, not a style one. Scanner stops at the first line longer than
+// bufio.MaxScanTokenSize (64 KB) and reports that only through scanner.Err(), which this function
+// never checked -- so one pasted base64 blob or minified snippet, entirely ordinary in a discussion
+// document an agent wrote, made every heading BELOW it report missing. loomshed's
+// Discussion-Validate row maps those findings to Stuck, bounces to Discussion-Write, respawns, and
+// repeats on the same document until the bounce budget escalates to a human, over a document that
+// was valid all along (crucible round opus-medium-r6, R6-28). content is already fully in memory,
+// so there is no line length to cap and no error left to drop.
 func missingSections(content string, required []string) []string {
 	found := make(map[string]bool, len(required))
 
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimRight(scanner.Text(), " \t\r")
-		found[line] = true
+	for _, raw := range strings.Split(content, "\n") {
+		found[strings.TrimRight(raw, " \t\r")] = true
 	}
 
 	var missing []string

@@ -73,5 +73,28 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		}
 	}
 
+	// The numeric knobs are validated for the same reason the role specs are: LoadOrTemplate
+	// degrades to the embedded template only on PROVEN ABSENCE of the file, so a hand-written
+	// webster.yaml carrying only the two role keys leaves every one of these at Go's zero value —
+	// and the zero values are not merely conservative, they break the run silently.
+	// RecoveryTimeoutMin at 0 makes classify's `Elapsed > BatchTimeout` true on the very first poll,
+	// so EVERY recovery batch classifies dead/timeout immediately; PollWaitS at 0 gives recover-batch
+	// no wait budget at all; MasterTimeoutMin at 0 does the same to the Master spawn. Nothing
+	// anywhere reported why. Failing at load names the key instead.
+	knobs := []struct {
+		key   string
+		value int
+	}{
+		{"self_fix_cap", cfg.SelfFixCap},
+		{"master_timeout_min", cfg.MasterTimeoutMin},
+		{"recovery_timeout_min", cfg.RecoveryTimeoutMin},
+		{"poll_wait_s", cfg.PollWaitS},
+	}
+	for _, knob := range knobs {
+		if knob.value <= 0 {
+			return Config{}, fmt.Errorf("webster config key %q: must be a positive integer, got %d — a missing or zero value silently classifies every recovery batch dead on its first poll rather than degrading", knob.key, knob.value)
+		}
+	}
+
 	return cfg, nil
 }

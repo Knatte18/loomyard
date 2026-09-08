@@ -17,7 +17,9 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// ErrQuarryUnavailable marks a non-nil error from quarry.Open or (*quarry.Repo).Resolve: a
+// ErrQuarryUnavailable marks quarry failing to answer at all — a non-nil error from quarry.Open or
+// (*quarry.Repo).Resolve, and a quarry.Name answer whose length does not match the declarations it
+// was given (handle.go), which is the same class of failure seen through a batched boundary: a
 // category distinct from any per-target verdict, so a caller distinguishes it with errors.Is
 // rather than by string matching. quarry's own contract draws exactly this line — the failure
 // envelope's own presence marks that quarry could not answer at all, never that the answer is
@@ -82,13 +84,36 @@ func openRepo(worktreeRoot string) (*quarry.Repo, error) {
 
 // resolveTargets resolves every entry of targets against repo, positionally, wrapping any error
 // with ErrQuarryUnavailable for the same reason openRepo does. It is this package's one call to
-// (*quarry.Repo).Resolve.
+// (*quarry.Repo).Resolve, which is exactly why the coverage guard lives here and nowhere else:
+// every consumer of a batched Resolve answer — statusFindings, createFindings, resolveContainment,
+// DetectDrift's post-repair revalidation, DoneChecks — either iterates the RESULTS slice or looks
+// results up by key with a silent skip on a miss, so an answer covering fewer targets than asked
+// would silently exempt the uncovered targets from the whole resolve-backed pass and the plan
+// would read cleaner than it is. The package already guards its two other batched quarry
+// boundaries against the same positional-contract breach (quarry.Name's length guard in
+// CanonicalizeHandles, the per-key guard in doneCheckVerdicts, R5-6); this closes the last one
+// (crucible round fable-high-r10, F2).
 func resolveTargets(repo *quarry.Repo, targets []string) ([]quarry.ResolveResult, error) {
 	results, err := repo.Resolve(targets)
 	if err != nil {
 		return nil, fmt.Errorf("%w: resolve: %v", ErrQuarryUnavailable, err)
 	}
+	if err := ensureResolveCoverage(targets, results); err != nil {
+		return nil, err
+	}
 	return results, nil
+}
+
+// ensureResolveCoverage reports the ErrQuarryUnavailable-wrapped infrastructure error resolveTargets
+// returns when a batched Resolve answer does not carry exactly one result per target — quarry's own
+// positional contract not holding at a boundary this package cannot see inside. It is split out of
+// resolveTargets so the guard is reachable from a unit test: a real quarry.Repo always satisfies
+// the contract, so no test through one can produce the breach.
+func ensureResolveCoverage(targets []string, results []quarry.ResolveResult) error {
+	if len(results) != len(targets) {
+		return fmt.Errorf("%w: resolve returned %d result(s) for %d target(s)", ErrQuarryUnavailable, len(results), len(targets))
+	}
+	return nil
 }
 
 // TOC opens a quarry.Repo rooted at worktreeRoot and answers a table-of-contents query for target

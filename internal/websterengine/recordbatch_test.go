@@ -81,7 +81,7 @@ func (e *recordFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
 func (e *recordFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e *recordFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e *recordFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *recordFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
@@ -129,6 +129,10 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 
 	reportsDir := t.TempDir()
 	contractDir := t.TempDir()
+	// A real (empty) plan directory: RecordBatch re-baselines the plan fingerprint over it after its
+	// own BindHandles and DetectDrift rewrites, so this is a genuine read rather than an invented
+	// path. No card here declares a handle, so nothing is ever written into it.
+	planDir := t.TempDir()
 
 	engine := &recordFakeEngine{scripted: scripted}
 	sleeper := &recordFakeSleeper{}
@@ -150,6 +154,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
 			ReportsDir:   reportsDir,
+			PlanDir:      planDir,
 		},
 		RefMatcher:  websterengine.NeverMatches{},
 		OutcomePath: filepath.Join(contractDir, "outcome.yaml"),
@@ -159,6 +164,19 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	}
 
 	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
+}
+
+// addPendingCard appends a second card to fx's plan, in its own second batch that has no BatchState
+// and is therefore not terminal, referencing uses.
+//
+// Drift is defined against the REMAINING plan, and the batch being recorded is not remaining — its
+// work is exactly what the delta reports. A drift fixture therefore needs a genuinely pending card
+// to hold the reference; putting it on batch 1's own card tests a card drifting against itself,
+// which is never drift.
+func addPendingCard(fx *recordFixture, uses []string) {
+	pending := planparser.Card{Number: 2, Slug: "pending", Title: "pending", Intent: "the not-yet-built card", Uses: uses}
+	fx.Deps.Plan.Cards = append(fx.Deps.Plan.Cards, pending)
+	fx.Deps.Batches = append(fx.Deps.Batches, batcher.Batch{Cards: []planparser.Card{pending}})
 }
 
 // writeReport seeds fx's reportsDir with a batch-report YAML file for batch
@@ -665,7 +683,7 @@ func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
 	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
 	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
-	fx.Deps.Plan.Cards[0].Uses = []string{"internal/foo#WillGoAway"}
+	addPendingCard(fx, []string{"internal/foo#WillGoAway"})
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrCardNotDone) {
@@ -673,6 +691,77 @@ func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
 	}
 	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
 		t.Error("BatchState.Terminal = true; want false — a plan-references-deleted-symbol finding must not persist a terminal digest")
+	}
+}
+
+// TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock proves DetectDrift's mixed severity set is
+// split rather than blanket-blocked: an inexact rename quarry classifies as an evidence-tier
+// candidate rather than an exact pair produces an informational rename-candidate finding, which
+// must ride out on Warnings and let the batch terminate — a finding that kills the batch never
+// reaches the reviewer whose decision the tier exists to inform.
+func TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	// The symbol must exist at the delta's start side to be reported deleted, so the batch's own
+	// start boundary moves to a commit that already carries it.
+	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillMove() int { return 1 }\n", "01.2: add WillMove")
+	fx.Deps.State.Batches[1].StartSHA = withSymbol
+	// Renamed AND rewritten: the token streams differ in length, so quarry's exact tier declines it
+	// and offers it as a candidate instead.
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int {\n\ttotal := 1\n\ttotal += 0\n\treturn total\n}\n", "01.3: rename and rewrite")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	addPendingCard(fx, []string{"internal/foo#WillMove"})
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil — an informational rename-candidate must never fail the batch", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	var surfaced bool
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "rename-candidate") {
+			surfaced = true
+		}
+	}
+	if !surfaced {
+		t.Errorf("RecordResult.Warnings = %v; want the informational rename-candidate finding surfaced there", result.Warnings)
+	}
+}
+
+// TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift proves the batch being recorded is
+// excluded from drift detection. Its work is exactly what the delta reports, so a Delete card
+// referencing the symbol it just deleted was reporting its own success as
+// plan-references-deleted-symbol — and no Delete card could ever be recorded at all.
+func TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
+	fx.Deps.State.Batches[1].StartSHA = withSymbol
+	if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
+		t.Fatalf("remove impl.go: %v", err)
+	}
+	mustGit(t, fx.Worktree, "add", "-A")
+	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
+	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+
+	// The card being recorded IS the Delete card, and it names the symbol its own batch removed.
+	fx.Deps.Plan.Cards[0].Targets = []string{"internal/foo#WillGoAway"}
+	fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+		{Type: planparser.CardTypeDelete, Refs: []string{"internal/foo#WillGoAway"}},
+	}
+	fx.Deps.Batches[0].Cards = fx.Deps.Plan.Cards[:1]
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil — a Delete card's own deletion is its success, never drift", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
 }
 
@@ -699,5 +788,100 @@ func TestRecordBatch_DoneChecksPassOnLandedCreate(t *testing.T) {
 	}
 	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+}
+
+// seedDriftPlanDir writes a real, parseable two-card plan directory whose second card's Uses field
+// names every ref in uses. RecordBatch's own drift repair calls planparser.RewriteRefs against this
+// directory, which re-parses it from disk rather than reading RecordDeps.Plan, so a repair scenario
+// needs genuine card files here and not only the in-memory plan newRecordFixture builds.
+func seedDriftPlanDir(t *testing.T, uses []string) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n" +
+		"# Plan: drift fixture\n\nA two-card fixture whose second card is still pending.\n\n" +
+		"## Card Index\n\n1 — json-flag — the recorded batch's own card\n2 — pending — the not-yet-built card\n"
+	card1 := "# Card 1 — json-flag\n\n**Prosa:**\n- `//base.txt`\n\n**Intent:** The recorded batch's own card.\n"
+
+	var usesBullets string
+	for _, u := range uses {
+		usesBullets += "- `" + u + "`\n"
+	}
+	card2 := "# Card 2 — pending\n\n**Prosa:**\n- `//base.txt`\n\n**Uses:**\n" + usesBullets +
+		"\n**Intent:** The not-yet-built card that still references what batch 1 moved out from under it.\n"
+
+	for name, content := range map[string]string{
+		"00-overview.md":  overview,
+		"01-json-flag.md": card1,
+		"02-pending.md":   card2,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("seed drift plan dir %s: %v", name, err)
+		}
+	}
+	return dir
+}
+
+// TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks is the regression test for the round-4
+// review's R4-01. BindHandles and DetectDrift both rewrite the plan on disk BEFORE they report a
+// finding, and a single call routinely does both: here the delta carries an exact-tier rename the
+// pending card references (repaired, so planparser.RewriteRefs rewrites 02-pending.md) alongside a
+// deletion the same card references (blocking, so RecordBatch returns ErrCardNotDone).
+//
+// With the re-baseline positioned after the refusal, state.json kept the pre-rewrite fingerprint
+// while the plan on disk carried webster's own sanctioned edit, so every later begin-batch refused
+// it as a foreign edit — and `--fresh`, the advised recourse, then refused the run outright over the
+// cards that had already landed. The run was unrecoverable without hand-editing state.json.
+func TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+
+	planDir := seedDriftPlanDir(t, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
+	fx.Deps.Geom.PlanDir = planDir
+	seeded := mustFingerprint(t, planDir)
+	fx.Deps.State.PlanFingerprint = seeded
+
+	// Both symbols must exist at the delta's start side, so the batch's own start boundary moves to
+	// a commit that already carries them.
+	withSymbols := commitFile(t, fx.Worktree, "internal/foo/impl.go",
+		"package foo\n\nfunc WillMove() int { return 1 }\n\nfunc WillGoAway() {}\n", "01.2: add both symbols")
+	fx.Deps.State.Batches[1].StartSHA = withSymbols
+	// One exact-tier rename (identical body, so quarry asserts the pair) plus one genuine deletion.
+	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go",
+		"package foo\n\nfunc Moved() int { return 1 }\n", "01.3: rename one, delete the other")
+	writeReport(t, fx.ReportsDir, validReport(headSHA))
+	addPendingCard(fx, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrCardNotDone) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone) — the deleted-and-still-referenced symbol must block", err)
+	}
+
+	repaired, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+	if readErr != nil {
+		t.Fatalf("read 02-pending.md: %v", readErr)
+	}
+	if !strings.Contains(string(repaired), "internal/foo#Moved") {
+		t.Fatalf("02-pending.md = %q; want the exact-tier repair to have rewritten the renamed glyph — the fixture is not exercising a rewrite at all", repaired)
+	}
+
+	if fx.Deps.State.PlanFingerprint == seeded {
+		t.Error("State.PlanFingerprint still carries its pre-call value after a call that rewrote the plan on disk; every later begin-batch would refuse webster's own sanctioned rewrite as a foreign edit")
+	}
+	if fx.Deps.State.PlanFingerprint == "" {
+		t.Error("State.PlanFingerprint was cleared rather than re-baselined")
+	}
+}
+
+// TestRecordBatch_NilStateIsRefusedNotPanicked is R6-21's regression test for the record-batch half.
+func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
+	_, err := websterengine.RecordBatch(websterengine.RecordDeps{Plan: &planparser.Plan{}}, 1)
+	if err == nil {
+		t.Fatal("websterengine.RecordBatch(nil State) error = nil; want a refusal naming the missing field")
+	}
+	if !strings.Contains(err.Error(), "State is nil") {
+		t.Errorf("websterengine.RecordBatch(nil State) error = %v; want it to name RecordDeps.State", err)
 	}
 }

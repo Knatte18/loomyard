@@ -22,9 +22,13 @@
 // shuttle is told its anchor path and worktree root as plain strings, at Runner construction, and
 // derives neither — internal/lyxcwd is consequently absent from the package's production imports.
 // Told, however, does not mean unchecked: because the two are adjacent parameters of one type whose
-// consumers are semantically distinct, NewRunner validates the pair (absolute, non-empty, anchor
-// inside-or-equal worktree root) and every public method refuses on an unusable one, so a swapped
-// or relative pair fails loudly instead of succeeding against the wrong tree.
+// consumers are semantically distinct, construction validates the pair and every public method
+// refuses on an unusable one, so a swapped or relative pair fails loudly instead of succeeding
+// against the wrong tree. There are two constructors, one rule each: NewRunner validates its pair
+// (absolute, non-empty, anchor inside-or-equal worktree root) for hub geometry, where the anchor is
+// always the worktree root or a subdirectory of it; NewDetachedRunner validates its own triple
+// (absolute, non-empty, anchor and worktree root strictly disjoint) for standalone geometry, where
+// the anchor is deliberately outside the worktree root it names.
 //
 // The only channel in and out of a shuttle run is files: the prompt is handed to the provider as
 // the launch argument (never typed into a live pane),

@@ -9,8 +9,6 @@ package loomshed
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -24,22 +22,32 @@ import (
 // validate-plan"'s envelope describe a violation identically and an informational
 // create-new-unit is distinguishable from a blocking glyph-not-found in the one place this record
 // exists.
+// It calls each Finding's own Error() rather than re-deriving its layout, which is what makes the
+// "describe a violation identically" promise above hold by construction rather than by two copies of
+// one format string agreeing today; formatDiscussionFindings in discussionvalidate.go does the same.
 func formatPlanFindings(findings []planglyph.Finding) string {
 	parts := make([]string, len(findings))
 	for i, f := range findings {
-		if f.Card == "" {
-			parts[i] = fmt.Sprintf("%s[%s]: %s", f.Check, f.Severity, f.Detail)
-		} else {
-			parts[i] = fmt.Sprintf("%s/%s[%s]: %s", f.Check, f.Card, f.Severity, f.Detail)
-		}
+		parts[i] = f.Error()
 	}
 	return strings.Join(parts, "; ")
 }
 
-// hasBlockingFinding reports whether findings carries at least one SeverityBlocking entry.
+// hasBlockingFinding reports whether findings carries at least one entry that is not explicitly
+// informational.
+//
+// It tests NOT-informational rather than equals-blocking, and that asymmetry is the point.
+// planglyph.Severity is an open string type, so an unrecognized value — or the zero value, which a
+// hand-built Finding or a future producer that forgets to stamp one carries — took the informational
+// branch, logged a Warn, and returned Done with the plan directory as its pointer: the run advanced
+// past a finding that was meant to block it. That is the same "a validator's complaint reported as a
+// clean plan" failure this file's own error-path comment records as deliberately rejected, still
+// present on the severity path (crucible round opus-medium-r6, R6-27).
+// Failing closed costs at most a spurious bounce on a severity nobody has defined yet; failing open
+// costs a dispatched batch over a defect the gate saw.
 func hasBlockingFinding(findings []planglyph.Finding) bool {
 	for _, f := range findings {
-		if f.Severity == planglyph.SeverityBlocking {
+		if f.Severity != planglyph.SeverityInformational {
 			return true
 		}
 	}
@@ -82,10 +90,11 @@ func NewPlanValidate(name, anchorPath, worktreeRoot string, requireApproved bool
 //
 // A ParsePlan error maps to a returned error, never to Stuck: a plan that will not parse is not a
 // plan the Plan-Write bounce target can be asked to improve, and the two dispositions differ
-// materially -- Stuck persists blocked, a returned error persists failed and aborts the run. A
-// quarry-unavailable error from planglyph -- errors.Is(err, planglyph.ErrQuarryUnavailable) -- maps
-// to the same returned-error disposition and for the same reason: a gate that could not read the
-// code has not found a plan defect to bounce.
+// materially -- Stuck persists blocked, a returned error persists failed and aborts the run. EVERY
+// error from planglyph maps to the same returned-error disposition, for the same reason: a gate that
+// could not read the code has not found a plan defect to bounce. That includes the quarry-unavailable
+// one this gate used to single out -- singling it out dropped every other error on the floor and
+// reported the plan clean over a validation that never finished.
 func (p *planValidate) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -106,7 +115,12 @@ func (p *planValidate) Call(ctx context.Context) (shedengine.Outcome, shedengine
 	} else {
 		findings, err = planglyph.ValidateFormat(plan, p.worktreeRoot)
 	}
-	if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
+	// Any validator error fails the gate, not only the quarry-named one. Conjoining errors.Is here
+	// dropped every other error on the floor, and an unrecognized error with an empty findings set
+	// then returned Done with the plan directory as its pointer — "the plan is clean" reported for a
+	// validator that never finished, which is exactly the failure mode internal/planglyph/repo.go's
+	// own rationale names as deliberately rejected.
+	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}

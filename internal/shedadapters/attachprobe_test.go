@@ -87,7 +87,7 @@ func TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts(t *testing.T) {
 	attach := &fakeShuttle{}
 	opts := burlerengine.RunOpts{Timeout: 90 * time.Minute}
 	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), opts, runner, attach, fixedClock(time.Now()))
-	writeRoundPair(t, runDir, 1)
+	writeJudgedRound(t, runDir, 1)
 
 	if _, _, err := p.Call(context.Background()); err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -233,6 +233,167 @@ func TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning(t *testing.T) {
 	}
 	if attach.called {
 		t.Error("Run was called after a failed probe; want no spawn when liveness could not be determined")
+	}
+}
+
+// --- Bouncer, entry-time pass over a verdict already on disk ---
+//
+// These four cases cover the window the judge spec's own shape opens: a recorded verdict needs the
+// verdict and ledger files, while the judge spawn declares those two plus the next round's focus
+// file. A crash in between leaves a live judge behind an apparently-final verdict, and Call's clear
+// and replay branches both act on that verdict without spawning anything -- so without a probe of
+// their own, one archives the run directory out from under the live judge and the other writes a
+// synthetic file at a path it declared as an output.
+
+func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearing(t *testing.T) {
+	attach := &fakeShuttle{
+		attachFound:  true,
+		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
+	}
+	b, cfg := newClearTestBouncer(t, attach)
+	layoutApprovedGeneration(t, cfg, 1)
+	// What the live judge still had left to write when the driver died: its third declared output.
+	attach.duringAttach = func() {
+		_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644)
+	}
+
+	outcome, ptr, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q -- the judgment landed inside this call, so this call harvests it", outcome, shedengine.Done)
+	}
+	if want := ledgerPath(cfg.RunDir, 1); ptr.Path != want {
+		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+	}
+	if !attach.attachCalled {
+		t.Error("Attach was not called; want the probe to run before the clear branch acts")
+	}
+	if attach.called {
+		t.Error("Run was called; want a live judge attached to, never respawned over")
+	}
+	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
+		t.Errorf("round 1's verdict file was moved (stat = %v); want it untouched -- the clear would archive it out from under the live judge", err)
+	}
+	assertNoArchivedRunDirSibling(t, cfg.RunDir)
+}
+
+func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying(t *testing.T) {
+	attach := &fakeShuttle{
+		attachFound:  true,
+		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
+	}
+	b, cfg := newTestBouncer(t, attach)
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
+		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
+	}})
+	// The live judge's real targeting for round 2, written while Call waits on it. The replay branch
+	// would have synthesized two empty lists over this path before it ever landed.
+	realFocus := "---\nround: 2\nexclude_lenses: []\nfocus: [\"the finding the judge actually targeted\"]\n---\n"
+	attach.duringAttach = func() {
+		_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte(realFocus), 0o644)
+	}
+
+	outcome, ptr, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if want := ledgerPath(cfg.RunDir, 1); ptr.Path != want {
+		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+	}
+	if attach.called {
+		t.Error("Run was called; want a live judge attached to, never respawned over")
+	}
+	got, err := os.ReadFile(focusPath(cfg.RunDir, 2))
+	if err != nil {
+		t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
+	}
+	if string(got) != realFocus {
+		t.Errorf("round-2-focus.md = %q; want the live judge's own targeting %q -- a synthetic file written over it drops the judge's targeting for the next round", got, realFocus)
+	}
+	if n := stampedSiblingCount(t, cfg.RunDir, filepath.Base(focusPath(cfg.RunDir, 2))); n != 0 {
+		t.Errorf("stamped archive siblings = %d; want 0 -- the attached branch must not archive the live judge's own output", n)
+	}
+}
+
+func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
+	logBuf := captureBouncerWarnings(t)
+	attach := &fakeShuttle{attachErr: errors.New("reed state unreadable")}
+	b, cfg := newClearTestBouncer(t, attach)
+	layoutApprovedGeneration(t, cfg, 1)
+
+	outcome, ptr, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil (an infrastructure fault degrades, it does not abort the run)", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	}
+	if attach.called {
+		t.Error("Run was called after a failed probe; want no spawn when liveness could not be determined")
+	}
+	if logBuf.Len() == 0 {
+		t.Error("Call() did not log a warning on the failed probe")
+	}
+	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
+		t.Errorf("round 1's verdict file was moved (stat = %v); want it untouched", err)
+	}
+	assertNoArchivedRunDirSibling(t, cfg.RunDir)
+}
+
+// TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore is the not-found half of the pair: the
+// probe must change nothing for the ordinary case, where the judge that wrote the verdict is long
+// gone and re-entry genuinely means a settled generation is being re-judged.
+func TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore(t *testing.T) {
+	attach := &fakeShuttle{attachFound: false, result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, cfg := newClearTestBouncer(t, attach)
+	layoutApprovedGeneration(t, cfg, 1)
+
+	outcome, ptr, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q (the clear falls through to the seed path)", outcome, shedengine.Stuck)
+	}
+	if ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	}
+	if !attach.attachCalled {
+		t.Error("Attach was not called; want the probe to run even when nothing is live")
+	}
+	archived := archivedRunDirPath(cfg.RunDir, bouncerJudgeTestClock, "")
+	if _, err := os.Stat(archived); err != nil {
+		t.Errorf("expected the archived generation %s to exist: %v", archived, err)
+	}
+}
+
+// TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles pins what the probe matches on.
+// shuttleengine.Attach set-matches a persisted run.json's OutputFiles and nothing else, so a probe
+// naming any other set -- the seed pass's single focus file, or the Burler row's review/fixer-report
+// pair -- silently matches nothing and is indistinguishable from no agent being alive at all.
+func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
+	attach := &fakeShuttle{attachFound: false, result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, cfg := newTestBouncer(t, attach)
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
+		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
+	}})
+
+	if _, _, err := b.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+
+	want := []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)}
+	got := attach.gotAttachSpec.OutputFiles
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Errorf("attach spec OutputFiles = %v; want %v", got, want)
 	}
 }
 

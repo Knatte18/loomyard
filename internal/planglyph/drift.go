@@ -10,6 +10,7 @@ package planglyph
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -17,17 +18,34 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// renameCardPairs indexes every declared Rename card's own Old->New pair, plan-wide, so
-// DetectDrift's gate one can recognize a rename that is a card's own expected outcome.
-func renameCardPairs(plan *planparser.Plan) map[string]string {
-	pairs := make(map[string]string)
+// renameCardPairs indexes every declared Rename card's own Old->New pair, plan-wide over the FULL
+// plan — completed cards included — so DetectDrift's gate one can recognize a rename that is a
+// card's own expected outcome. The full plan matters: the card whose rename the delta reports is
+// exactly the one record-batch excludes from the pending view, so a pair index built over pending
+// alone could never match the recording batch's own outcome (round fable5-high-r3, F6).
+//
+// The New side is normalized through resolveKeyFor (donecheck.go), because the plan format REQUIRES
+// a symbol Rename pair's New side to be a plan: handle -- the rename-to-not-handle check enforces
+// exactly that -- while quarry's delta reports the new symbol under its bare glyph. Comparing the
+// two verbatim can therefore never match for any plan that passes its own validator, which silently
+// turned every declared rename into detected drift.
+//
+// EVERY declared destination is kept per Old side, not just the last one seen. A map[string]string
+// silently dropped all but the final pair whenever two cards declared a rename of the same symbol
+// — nothing in the plan format forbids that, and no check reports it — so gate one stopped
+// recognizing the other card's own expected outcome, and the exact tier auto-repaired a declared
+// rename as drift: a plan-wide RewriteRefs plus an amendment recording a "repair" the plan had
+// asked for (crucible round opus-high-r9, R9-4). Gate one's question is "is this rename SOME
+// declared card's own expected outcome?", so any declared destination matching is a pass.
+func renameCardPairs(plan *planparser.Plan) map[string][]string {
+	pairs := make(map[string][]string)
 	for _, c := range plan.Cards {
 		for _, g := range c.TargetGroups {
 			if g.Type != planparser.CardTypeRename {
 				continue
 			}
 			for _, p := range g.Pairs {
-				pairs[p.Old] = p.New
+				pairs[p.Old] = append(pairs[p.Old], resolveKeyFor(p.New))
 			}
 		}
 	}
@@ -51,7 +69,9 @@ type driftRepair struct {
 // Past the gates, an exact-tier detection — an entry of delta.Renamed, which quarry populates only
 // under its own AST-exact conditions with no threshold — auto-repairs: the old->new substitution is
 // applied plan-wide through one planparser.RewriteRefs call, the reloaded plan is revalidated with
-// one batched resolve against worktreeRoot, and exactly one planparser.Amendment is appended per
+// one batched resolve against worktreeRoot — whose ANSWERS are read, so a repair that rewrote a ref
+// into a glyph quarry cannot resolve is reported as a blocking finding rather than passing silently,
+// scoped to the glyphs this repair introduced and no others — and exactly one planparser.Amendment is appended per
 // repair, carrying now, the (first, sorted) referencing card, the old and new glyph, the tier word
 // "exact", and sha. Auto-repairing only the tier quarry itself asserts is what keeps loomyard from
 // deciding what quarry deliberately returns as undecided.
@@ -66,13 +86,22 @@ type driftRepair struct {
 // finding, check ID plan-references-deleted-symbol. This never collides with the exact-tier
 // handling above: quarry's own delta engine removes an exact pair's constituents from Deleted
 // entirely, so a symbol reaching this check was never renamed under quarry's own AST-exact
-// conditions.
+// conditions. It does NOT get that exclusion for free at the evidence tier, where quarry
+// deliberately leaves both endpoints in place, so this function excludes every RenameCandidates
+// entry from the sweep itself.
 //
 // now and sha are taken as parameters rather than read from a clock or a repository inside this
 // function, so the whole detector is deterministic and testable without a fixture.
-func DetectDrift(plan *planparser.Plan, planDir, worktreeRoot string, delta quarry.GitDeltaAnswer, sha, now string) ([]Finding, error) {
-	renamePairs := renameCardPairs(plan)
-	refCards := targetCards(plan)
+//
+// fullPlan and pending split the detector's two questions across the two views a record-batch
+// boundary holds: gate one's "is this rename a declared card's own expected outcome?" reads
+// fullPlan, because the declaring card is typically the very batch being recorded and therefore
+// absent from pending; every reference question — refCards for the repair set and both sweeps —
+// reads pending, DetectDrift's own stated signal (the delta intersected with what the plan still
+// has to do). A caller with no completed cards passes the same *Plan for both.
+func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot string, delta quarry.GitDeltaAnswer, sha, now string) ([]Finding, error) {
+	renamePairs := renameCardPairs(fullPlan)
+	refCards := targetCards(pending)
 
 	var findings []Finding
 	subs := make(map[string]string)
@@ -81,7 +110,7 @@ func DetectDrift(plan *planparser.Plan, planDir, worktreeRoot string, delta quar
 	for _, rp := range delta.Renamed {
 		oldID, newID := rp.From.ID, rp.To.ID
 
-		if want, ok := renamePairs[oldID]; ok && want == newID {
+		if slices.Contains(renamePairs[oldID], newID) {
 			continue // Gate one: the declared Rename card's own expected outcome.
 		}
 
@@ -95,7 +124,22 @@ func DetectDrift(plan *planparser.Plan, planDir, worktreeRoot string, delta quar
 		repairs = append(repairs, driftRepair{oldID: oldID, newID: newID, cards: cards})
 	}
 
+	// Every symbol quarry offered evidence-tier rename candidates for is excluded from the
+	// deleted-symbol sweep below. Quarry deliberately leaves an evidence-tier candidate's endpoints
+	// in Created and Deleted — suppressing either for a pair it has not resolved would be a silent
+	// pick in disguise — so without this exclusion the same symbol reports both a blocking
+	// "deleted with no corresponding rename" and the informational candidate block that directly
+	// contradicts it, and the blocking half kills the batch before any reviewer sees the evidence.
+	// Its disposition belongs to the candidate finding alone.
+	hasCandidates := make(map[string]bool, len(delta.RenameCandidates))
+	for _, entry := range delta.RenameCandidates {
+		hasCandidates[entry.ID] = true
+	}
+
 	for _, s := range delta.Deleted {
+		if hasCandidates[s.ID] {
+			continue
+		}
 		cards := refCards[s.ID]
 		if len(cards) == 0 {
 			continue
@@ -161,9 +205,34 @@ func DetectDrift(plan *planparser.Plan, planDir, worktreeRoot string, delta quar
 		if err != nil {
 			return findings, err
 		}
-		if _, err := resolveTargets(repo, collectGlyphTargets(reloaded, lang)); err != nil {
+		results, err := resolveTargets(repo, collectGlyphTargets(reloaded, lang))
+		if err != nil {
 			return findings, err
 		}
+		// The resolve ANSWERS are read, not just its transport error. Discarding them made
+		// "revalidated" mean only "quarry was reachable": a repair that rewrote a ref into a glyph
+		// answering not_found, ambiguous, or a pre-resolution rejection passed this step silently and
+		// the amendment was appended as if the repair had worked (crucible round opus-medium-r6,
+		// R6-11).
+		// Only the glyphs THIS repair introduced are judged. The question here is "did the
+		// substitution produce something quarry can resolve", not "is the whole plan clean" — the
+		// plan's own status policy is resolvePass's job, runs with the Create and file-rename
+		// exclusions that make it correct, and surfacing it from a drift repair would report
+		// unrelated pre-existing plan state as a consequence of the rename.
+		introduced := make(map[string]bool, len(subs))
+		for _, newID := range subs {
+			introduced[newID] = true
+		}
+		var postRepairResults []quarry.ResolveResult
+		for _, r := range results {
+			if introduced[r.Target] {
+				postRepairResults = append(postRepairResults, r)
+			}
+		}
+		// The findings are surfaced, and the amendments below are still appended: the rewrite DID
+		// land on disk, so its audit record is a fact regardless, and the caller blocks on the
+		// finding rather than on a missing amendment.
+		findings = append(findings, statusFindings(reloaded, postRepairResults)...)
 	}
 
 	for _, r := range repairs {

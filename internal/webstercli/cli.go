@@ -24,6 +24,7 @@
 package webstercli
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -51,6 +52,37 @@ type websterCLI struct {
 	// engine and reed are the constructed claude and reed engines record-batch and recover-batch need directly.
 	engine shuttleengine.Engine
 	reed   shuttleengine.ReedOps
+
+	// reedUp brings the standalone reed session up, idempotently, and is set by wireStandalone
+	// alone — run calls it immediately before spawning Master and recover-batch immediately before
+	// spawning its cold recovery strand, because standalone mode has no other way to a live session:
+	// `lyx reed up` is hub-only (its pre-run requires lyxcwd.Resolve), so the session on standalone's
+	// own geometry (socket "lyx-<hash8>", state under the derived state directory) can only be booted
+	// in-process, mirroring what internal/loomcli's run/drive verbs already do for hub mode. It stays
+	// nil in hub mode, where bringing reed up remains the operator's (or loom's) own act.
+	//
+	// It is called by those two spawning verbs alone, never from wiring, so validate, status, pause
+	// and await-batch still boot no tmux server. The membership rule is "does this verb start an OS
+	// process of its own", not "does it write": begin-batch and record-batch mutate state but only
+	// inject into or read around a pane Master already owns, so a session they could reach exists by
+	// construction whenever they are legitimately called.
+	reedUp func() error
+
+	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default
+	// (<stateDir>/_lyx/plan in standalone, the hub anchor's _lyx/plan in hub mode). Set by BOTH
+	// wiring paths, read by the run verb alone, which refuses to spawn Master over a moved plan:
+	// Master's in-pane verb invocations are flagless and resolve the default, so they could never see
+	// the override.
+	// It is set in hub mode too, and that is not symmetry for its own sake. contracts/stencils/webster
+	// /webster-template-master.md drives `lyx webster begin-batch <NN>` flagless in BOTH modes -- only
+	// {{.plan_dir}} is templated -- so a hub `lyx webster run --plan-dir /elsewhere` spawned a Master
+	// told to read /elsewhere while its own in-pane begin-batch re-wired against the hub default and
+	// refused against a plan it could not see. That is the same F-A3 failure the standalone branch was
+	// hardened against in crucible round fable5-high-r3, left live on the hub path until round
+	// opus-medium-r6 (R6-8).
+	// planDirDefault carries that default path for the refusal's own recourse text.
+	planDirOverridden bool
+	planDirDefault    string
 
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
@@ -181,7 +213,15 @@ Modes:
   hub's own stencils/plan directories; standalone default: the derived
   state directory's own _lyx/stencils and _lyx/plan); --target-dir is
   standalone-only, defaults to the current directory, and is refused in
-  hub mode, where the worktree itself is structurally the target.
+  hub mode, where the worktree itself is structurally the target. A
+  relative value for any of the three is resolved against the current
+  directory, and the standalone target is lifted to the root of the git
+  repository containing it, so standing in a subdirectory drives the same
+  repository, state directory and reed session as standing at its root.
+
+  In standalone mode, run boots its own private reed session (socket
+  "lyx-<hash8>", state under the derived state directory) before spawning
+  Master -- "lyx reed up" is a hub verb and cannot reach that geometry.
 
 Example (standalone, outside any lyx hub):
   lyx webster run --target-dir /path/to/repo`,
@@ -197,7 +237,7 @@ Example (standalone, outside any lyx hub):
 	parent.PersistentFlags().StringVar(&c.planDirFlag, "plan-dir", "",
 		"override the plan directory parsed at call time (read-only in both modes; hub default: the anchor's _lyx/plan; standalone default: the derived state directory's _lyx/plan)")
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
-		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory; refused in hub mode, where the worktree is already the target")
+		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the worktree is already the target")
 
 	parent.AddCommand(c.validateCmd())
 	parent.AddCommand(c.runCmd())
@@ -209,6 +249,50 @@ Example (standalone, outside any lyx hub):
 	parent.AddCommand(c.recoverBatchCmd())
 
 	return parent
+}
+
+// persistPlanFingerprintRebaseline saves st when the bracket verb that just failed had already
+// re-baselined the plan-staleness fingerprint, and returns the save's own error.
+//
+// Both bracket verbs re-baseline State.PlanFingerprint the instant a sanctioned plan rewrite lands
+// on disk — handle canonicalization inside begin-batch's ValidateDispatch, handle binding and
+// exact-tier drift repair inside record-batch — and either verb can then fail on a later step of
+// the same call. The rewrite is a durable fact about the run, so discarding the re-baseline along
+// with the failed call left the plan on disk carrying webster's own edit while state.json still
+// recorded the pre-rewrite fingerprint: every later bracket verb then refused that edit as a
+// foreign one, and the advised `--fresh` recourse refused the run outright over the cards that had
+// already landed.
+//
+// fingerprintBefore is the value read out of st immediately before the verb ran. An unchanged
+// fingerprint means no rewrite happened, so nothing is written at all — which is what keeps a
+// genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
+// Callers invoke this while still holding the state-mutation lease.
+//
+// It persists the fingerprint and NOTHING ELSE: the state it writes is re-loaded from disk here and
+// carries only the new fingerprint, rather than being the caller's whole in-memory *State.
+// The caller's copy is not a fingerprint-only delta. RecordBatch appends to State.SeenForkTranscripts
+// the moment it attributes a fork's transcripts, well BEFORE the step that can fail, so saving the
+// whole struct persisted the transcript as CONSUMED on a call that then failed ErrCardNotDone. The
+// resumed record-batch then found zero new transcripts (ErrNoForkTranscripts) and the batch was stuck
+// in a three-verb refusal circle whose only exit is an operator moving the report file by hand — and
+// the identical failure with an unchanged fingerprint resumed cleanly, so the outcome turned on
+// whether a rewrite happened to land (crucible round opus-medium-r6, R6-4).
+// Re-loading under the still-held lease is safe by construction: nothing else may mutate state while
+// the lease is held, so the reload differs from the caller's copy only by the mutations this function
+// exists to drop.
+func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websterengine.State, fingerprintBefore string) error {
+	if st == nil || st.PlanFingerprint == fingerprintBefore {
+		return nil
+	}
+	fresh, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+	if err != nil {
+		return fmt.Errorf("webster: reload state to re-baseline the plan fingerprint: %w", err)
+	}
+	if fresh == nil {
+		return fmt.Errorf("webster: state.json disappeared before the plan-fingerprint re-baseline could be persisted; the plan on disk now carries webster's own rewrite with no state to record it")
+	}
+	fresh.PlanFingerprint = st.PlanFingerprint
+	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, fresh)
 }
 
 // RunCLI is the public seam for the webster module CLI.

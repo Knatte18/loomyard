@@ -102,14 +102,24 @@ Example:
 				Geom:     c.geom,
 			}
 
+			fingerprintBefore := st.PlanFingerprint
+
 			result, err := websterengine.BeginBatch(deps, batchNumber)
 			if err != nil {
-				// Nothing to persist: BeginBatch mutates deps.State only on
-				// its success path, so the lease is released with no
-				// SaveState and no fabric commit on every error branch below.
+				// BeginBatch re-baselines st's plan fingerprint the moment its own
+				// ValidateDispatch canonicalizes handles and rewrites the plan on disk, which
+				// happens BEFORE that call reports a blocking finding and before the eight
+				// further fallible steps that follow it. Persist that re-baseline before
+				// releasing the lease; every other mutation on this path is still deliberately
+				// dropped, and an unchanged fingerprint writes nothing at all.
+				saveErr := persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
 				_ = mutateLock.Release()
 				mutateHeld = false
 
+				if saveErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err.Error(), saveErr)))
+					return nil
+				}
 				if errors.Is(err, websterengine.ErrPaused) {
 					clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"paused": true}))
 					return nil

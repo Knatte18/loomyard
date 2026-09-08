@@ -55,6 +55,21 @@ func ledgerPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-bouncer-ledger.md", round))
 }
 
+// judgeOutputs returns the three files one judge pass for round declares as its shuttle run's
+// OutputFiles, in the fixed order the judge prompt's own markers are filled from: the verdict, the
+// ledger, and the NEXT round's focus file.
+// It is a named set rather than three ad hoc joins at each call site because that exact set is what
+// shuttleengine.Attach set-matches a persisted run.json against, so the judge spawn and every probe
+// for a live judge must name byte-identical paths or the probe silently matches nothing -- which is
+// indistinguishable, at the call site, from there being no live agent at all.
+func judgeOutputs(runDir string, round int) []string {
+	return []string{
+		verdictPath(runDir, round),
+		ledgerPath(runDir, round),
+		focusPath(runDir, round+1),
+	}
+}
+
 // focusPath returns the path of the focus file for round inside runDir.
 // round is the round the file targets, not the round that wrote it — a judge call for round N
 // writes round-<N+1>-focus.md, so the round producer reads its own round's focus file with no

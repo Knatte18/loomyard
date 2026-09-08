@@ -93,24 +93,53 @@ func AwaitIntegration(reportsDir string, wait time.Duration, clk Clock) (*Integr
 const integrationBatchKey = -1
 
 // bisect performs an in-process binary search over shas to localize the
-// first SHA at which verifyCmd fails. It restores HEAD to its original branch
-// even on error (via defer). Edge cases: empty shas returns -1 (no search);
-// single-element shas returns 0 (sole candidate).
+// first SHA at which verifyCmd fails, and restores HEAD to its original branch
+// even on error (via defer).
+// It returns -1 for an empty shas (no search), and -1 again whenever the LAST
+// sha still passes — the failure is then not attributable to any recorded card
+// SHA, which BisectAndEscalate records as the "unknown" offender rather than
+// naming a card the evidence does not implicate.
+// A single-element shas is not special-cased: it is verified like any other
+// last sha, and only blamed when it actually fails.
 func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
 	if len(shas) == 0 {
 		return -1, nil
-	}
-	if len(shas) == 1 {
-		return 0, nil
 	}
 
 	branch, err := repo.CurrentBranch()
 	if err != nil {
 		return 0, fmt.Errorf("webster: bisect: capture current branch: %w", err)
 	}
+	// A failed restore is surfaced, never dropped. bisect checks out card SHAs DETACHED in the live
+	// worktree, so a restore that fails — a dirty tree the verify command left behind, a lock, a ref
+	// problem — leaves the operator's worktree sitting at a mid-plan commit with HEAD detached.
+	// Swallowing it reported the run a success over exactly that state, and nothing on the next
+	// `lyx webster run` entry checks for or repairs a detached HEAD.
 	defer func() {
-		_ = repo.RestoreBranch(branch)
+		if restoreErr := repo.RestoreBranch(branch); restoreErr != nil {
+			restoreErr = fmt.Errorf("webster: bisect: restore branch %s (the worktree is left on a detached HEAD): %w", branch, restoreErr)
+			if err == nil {
+				err = restoreErr
+				return
+			}
+			err = errors.Join(err, restoreErr)
+		}
 	}()
+
+	// The last SHA is verified FIRST, outside the search. The binary search below converges on
+	// lo == hi == len(shas)-1 whenever every SHA it actually tested passed, so without this check it
+	// blamed the last card by arithmetic rather than by evidence — and AppendIntegrationFailure then
+	// wrote "SHA-bisect localized the failure to card X" into summary.md, which is the PR text.
+	// An integration failure is frequently not attributable to any recorded card SHA at all: it can
+	// come from the tree state after the last card, from an environment change, or from the verify
+	// command itself. Reporting no offending index is the honest answer there.
+	lastPassed, verErr := checkoutAndVerify(repo, shas[len(shas)-1], verifyCmd, worktree)
+	if verErr != nil {
+		return 0, verErr
+	}
+	if lastPassed {
+		return -1, nil
+	}
 
 	// Binary search for the first failing index.
 	lo, hi := 0, len(shas)-1
@@ -184,23 +213,43 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 
 // BisectAndEscalate runs bisect over shas, records the terminal escalation into st, and extends
 // summary.md naming the localized card.
-// When shas is empty, falls back to "unknown" for both SHA and card.
+// It falls back to "unknown" for both SHA and card whenever bisect localizes nothing — an empty
+// shas, or a run whose last recorded SHA still passes, meaning no recorded card SHA implicates
+// itself and naming one would put a card the evidence does not implicate into the PR text.
 // Caller persists via SaveState.
 func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
-	idx, err := bisect(repo, shas, verifyCmd, worktree)
+	offendingCard, offendingSHA, err := LocalizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree)
 	if err != nil {
 		return err
 	}
 
-	offendingSHA := "unknown"
-	offendingCard := "unknown"
+	RecordIntegrationFailure(st, offendingCard, offendingSHA)
+	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA)
+}
+
+// LocalizeIntegrationFailure is BisectAndEscalate's search half, split out because it touches no
+// state and must therefore run with NO state-mutation lease held: it runs the plan's whole
+// "## verify:" command once per bisect step, which is minutes to tens of minutes, and
+// AcquireStateMutation's own contract forbids holding the lease across a long block. Its acquire is
+// blocking with no timeout, so a concurrent bracket verb — a zombie Master, exactly what
+// ownerlessRunWarnings exists to flag — stalled behind the bisect indefinitely with no diagnostic.
+// recover-batch already splits its own three phases this way.
+//
+// It returns the localized card label and SHA, or "unknown" for both when the search localizes
+// nothing.
+func LocalizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string) (offendingCard, offendingSHA string, err error) {
+	idx, err := bisect(repo, shas, verifyCmd, worktree)
+	if err != nil {
+		return "", "", err
+	}
+
+	offendingSHA = "unknown"
+	offendingCard = "unknown"
 	if idx >= 0 {
 		offendingSHA = shas[idx]
 		if idx < len(labels) {
 			offendingCard = labels[idx]
 		}
 	}
-
-	RecordIntegrationFailure(st, offendingCard, offendingSHA)
-	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA)
+	return offendingCard, offendingSHA, nil
 }
