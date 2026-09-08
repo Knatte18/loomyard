@@ -8,33 +8,33 @@
 package burlercli
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
-
-	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/buildinfo"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
-	"github.com/Knatte18/loomyard/internal/standalonestate"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// gitDirName is the per-repository git administrative entry repositoryRootOf looks for, present as a
-// directory in an ordinary clone and as a file in a linked worktree.
-// It is a plain literal rather than an internal/lyxdirs constant: lyxdirs is the single declarer of
-// loomyard's own "_lyx" and ".lyx" directories and has never owned git's.
-const gitDirName = ".git"
+// wireModule carries burler's own per-CLI variance for internal/cliwire's shared wiring prologue --
+// the message-bearing data cliwire needs but does not itself declare, since no production file in
+// that package may name webster or burler. cliwire carries the shared implementation; the data that
+// varies by caller lives here, with the caller, exactly the way internal/shedrecipe's constructors
+// live in that package while the rows that vary live outside it.
+//
+// Plan is nil because burler parses no plan -- a nil Plan is what makes ResolveStandalone skip
+// plan-dir resolution entirely rather than each caller writing its own branch.
+var wireModule = cliwire.Module{
+	Name:             "burler",
+	StateArtifacts:   "instruction files, shuttle run directories and trace logs",
+	TargetRole:       "the repository it reviews",
+	TargetRecourse:   "Review a target",
+	HubTargetSubject: "the anchor path is already the target",
+}
 
 // wire computes hub-or-standalone mode from loc/mode -- the *lyxcwd.Location and preflight.Mode a
 // preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: the
@@ -58,10 +58,10 @@ const gitDirName = ".git"
 // string when the operator did not pass one).
 //
 // Both are made absolute HERE, at the one boundary that still knows which working directory the
-// operator typed them from. A relative value stored verbatim is not a smaller version of an absolute
-// one: this process resolves it against ITS cwd while the pane burler spawns runs at the target
-// (standalone) or the anchor (hub), so one string named two different directories. Every other told
-// path in this codebase is required absolute for exactly that reason.
+// operator typed them from, via cliwire.ResolveToldDir. A relative value stored verbatim is not a
+// smaller version of an absolute one: this process resolves it against ITS cwd while the pane burler
+// spawns runs at the target (standalone) or the anchor (hub), so one string named two different
+// directories. Every other told path in this codebase is required absolute for exactly that reason.
 //
 // wireStandalone deliberately does not take loc: a standalone session must never read a fictional
 // Location.
@@ -70,7 +70,7 @@ const gitDirName = ".git"
 // by the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) --
 // so a test can drive it directly and stay inside the Test Tier Purity Invariant.
 func (c *burlerCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, targetDirFlag string) error {
-	stencilsDir := resolveToldDir(cwd, stencilsDirFlag)
+	stencilsDir := cliwire.ResolveToldDir(cwd, stencilsDirFlag)
 
 	if mode == preflight.ModeHub {
 		return c.wireHub(loc, stencilsDir, targetDirFlag)
@@ -85,8 +85,8 @@ func (c *burlerCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencil
 // stencilsDirOverride arrives already absolute (or empty), made so by wire -- this function never
 // sees a raw flag value and must never start honouring one.
 func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDirFlag string) error {
-	if targetDirFlag != "" {
-		return fmt.Errorf("burler: --target-dir is not honoured in hub mode: the anchor path is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec")
+	if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil {
+		return err
 	}
 
 	// Both configs anchor at loc.AnchorPath() -- the worktree the operator is actually standing in,
@@ -128,75 +128,46 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	return nil
 }
 
-// wireStandalone builds the engine stack for standalone mode: the target resolveStandaloneTarget
-// settled on (--target-dir when given, cwd otherwise, symlink-normalized and lifted to its
-// repository root either way), standalonestate.Derive over it -- the only place Derive is ever
-// called in this package -- standalonegeom's geometry builders over the derived state directory,
-// every module config loaded over the same state directory, and the reed/claude engines wired into a
-// shuttleengine.Runner exactly as the hub branch does.
-//
-// Two asymmetries are worth calling out, since a reader will otherwise try to "simplify" them away.
-// First, an explicitly-told stencilsDirFlag is read and never written in either mode -- that is what
-// makes the read-only characterisation literally true and protects a curated stencil set. Second, the
-// derived default's Reconcile failure is a hard pre-run error rather than the root pre-run's
-// best-effort logged seed, because nothing else will ever create this directory and a silent failure
-// would otherwise resurface much later as an opaque prompt-render error. The empty fourth Reconcile
-// argument is the "no source tree here" value that keeps the port-back drift warning silent --
-// standalone genuinely has no contracts/stencils source tree beside it.
-//
-// Once standalonestate.Derive has succeeded and the nested-geometry refusal has passed,
-// wireStandalone redirects the durable trace sink to standalonegeom.LogsDir(stateDir), which is what
-// keeps a standalone invocation from writing trace files into the operator's repository -- placement
-// matters because the sink is armed lazily on the first Info-or-above record, so the redirect only
-// binds if it runs before anything else in this function can log. It is deliberately not the FIRST
-// statement: it cannot be, since it is Derive's own stateDir that tells it where to point, and every
-// statement above it is path arithmetic, a filesystem read, or an error return, none of which logs.
-// Its runner is also built via shuttleengine.NewDetachedRunner rather than
-// NewRunner, since standalone's anchor (the derived state directory) is deliberately outside its
+// wireStandalone builds the engine stack for standalone mode by calling wireModule.ResolveStandalone
+// -- internal/cliwire's single ordered standalone prologue -- and composing burler's own engine onto
+// the result: the reed/claude engines wired into a shuttleengine.NewDetachedRunner-constructed
+// runner, since standalone's anchor (the derived state directory) is deliberately outside its
 // worktree root (the target), which NewRunner's containment assertion would refuse.
+//
+// See cliwire.ResolveStandalone's own doc comment for the prologue's ordering obligation and its two
+// asymmetries (an explicitly-told stencilsDirFlag is read and never written in either mode; the
+// derived default's Reconcile failure is a hard pre-run error), which this function's body no longer
+// needs to restate.
 //
 // stencilsDirOverride arrives already absolute (or empty), made so by wire -- this function never
 // sees a raw flag value and must never start honouring one.
 func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag string) error {
-	target, err := resolveStandaloneTarget(cwd, targetDirFlag)
+	res, err := wireModule.ResolveStandalone(cliwire.StandaloneRequest{
+		Cwd:             cwd,
+		StencilsDirFlag: stencilsDirOverride,
+		TargetDirFlag:   targetDirFlag,
+	})
 	if err != nil {
 		return err
 	}
 
-	stateDir, hash8, err := standalonestate.Derive(target)
+	shuttleCfg, err := shuttleengine.LoadConfig(res.StateDir, "shuttle")
 	if err != nil {
 		return err
 	}
-	if err := refuseNestedStandaloneGeometry("burler", target, stateDir); err != nil {
-		return err
-	}
-	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
-
-	var stencilsDir string
-	if stencilsDirOverride != "" {
-		stencilsDir = stencilsDirOverride
-	} else {
-		stencilsDir = standalonegeom.StencilsDir(stateDir)
-		if _, err := stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
-			return fmt.Errorf("burler: seed the standalone stencils directory %s: %w", stencilsDir, err)
-		}
-	}
-
-	shuttleCfg, err := shuttleengine.LoadConfig(stateDir, "shuttle")
+	burlerCfg, err := burlerengine.LoadConfig(res.StateDir)
 	if err != nil {
 		return err
 	}
-	burlerCfg, err := burlerengine.LoadConfig(stateDir)
-	if err != nil {
-		return err
-	}
-	reedCfg, err := reedengine.LoadConfig(stateDir, "reed")
+	reedCfg, err := reedengine.LoadConfig(res.StateDir, "reed")
 	if err != nil {
 		return err
 	}
 
-	reedGeom := standalonegeom.ReedGeometry(target, stateDir, hash8)
+	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
 	reedEngine := reedengine.New(reedCfg, reedGeom)
+	// Standalone's anchor (the derived state directory) is deliberately outside its worktree root
+	// (the target), which NewRunner's containment assertion would refuse -- NewDetachedRunner stays.
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
@@ -208,190 +179,9 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 		return err
 	}
 
-	c.engine = burlerengine.New(runner, standalonegeom.BurlerGeometry(target, stateDir), burlerCfg, stencilsDir)
+	c.engine = burlerengine.New(runner, standalonegeom.BurlerGeometry(res.Target, res.StateDir), burlerCfg, res.StencilsDir)
 	c.mode = "standalone"
-	c.stateDir = stateDir
-	c.stencilsDir = stencilsDir
+	c.stateDir = res.StateDir
+	c.stencilsDir = res.StencilsDir
 	return nil
-}
-
-// refuseNestedStandaloneGeometry refuses a standalone target and derived state directory that are
-// not disjoint, naming module in every message so an operator reading a live error knows which CLI
-// refused.
-//
-// Standalone geometry's whole premise is a state directory OUTSIDE the repository being reviewed:
-// burler's instruction directory, shuttle run directories and trace logs all land under it, and none
-// of them may appear inside the operator's own checkout.
-// shuttleengine.NewDetachedRunner asserts the same disjointness -- but it asserts it LATE, on a
-// Runner already constructed after this CLI has booted a tmux server, and its message blames "a
-// subpath-anchored hub geometry handed to the wrong constructor", which is not what happened here
-// and offers the operator no lever at all.
-//
-// What actually happened is a state home nested under the target: a dotfiles repository rooted at
-// the home directory, or an XDG_STATE_HOME deliberately pointed somewhere inside the checkout. That
-// is an environment fact, it is fixable, and the fix is named here -- before any substrate is
-// booted, which is the only point at which a refusal costs nothing to recover from.
-//
-// The reverse nesting (a target inside the state directory) is refused by the same guard for the
-// same reason, with its own message: the lever there is the target, not the state home.
-func refuseNestedStandaloneGeometry(module, target, stateDir string) error {
-	target, stateDir = normalizeForContainment(target), normalizeForContainment(stateDir)
-	if pathContains(target, stateDir) {
-		return fmt.Errorf("%s: the derived state directory %s lies inside the standalone target %s: standalone mode keeps its instruction files, shuttle run directories and trace logs strictly outside the repository it reviews, so the two must be disjoint. The state home is nested under the target -- a repository rooted at your home directory is the usual cause. Point XDG_STATE_HOME (LOCALAPPDATA on Windows) at a directory outside %s and re-run", module, stateDir, target, target)
-	}
-	if pathContains(stateDir, target) {
-		return fmt.Errorf("%s: the standalone target %s lies inside the derived state directory %s: standalone mode keeps its instruction files, shuttle run directories and trace logs strictly outside the repository it reviews, so the two must be disjoint. Review a target outside the state home, or point XDG_STATE_HOME (LOCALAPPDATA on Windows) elsewhere, and re-run", module, target, stateDir)
-	}
-	return nil
-}
-
-// pathContains reports whether inner is outer itself or a descendant of it, computed the way
-// shuttleengine's own told-path assertions compute it -- filepath.Rel plus a ".." prefix test -- so
-// the CLI-boundary refusal and the constructor assertion it front-runs agree about what "nested"
-// means. Both paths are already absolute and cleaned by their producers.
-func pathContains(outer, inner string) bool {
-	// filepath.Rel is case-SENSITIVE, while Windows paths are not, so LOCALAPPDATA and a target that
-	// differ only in case (C:\\Users\\X vs c:\\users\\x — one directory) read as disjoint. Folded here
-	// on Windows alone, matching lyxcwd.samePath's rule exactly. Not reachable from this project's
-	// Linux hosts and therefore never driven live; it is a mechanical mirror of an already-stated
-	// rule, not a verified behaviour.
-	if runtime.GOOS == "windows" {
-		outer, inner = strings.ToLower(outer), strings.ToLower(inner)
-	}
-	rel, err := filepath.Rel(outer, inner)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// normalizeForContainment returns the spelling of path that a containment or equality test must use:
-// standalonestate.Normalize applied to the deepest ANCESTOR of path that exists on disk, with the
-// not-yet-created remainder rejoined.
-//
-// Plain Normalize is not enough here. It falls back to Clean whenever filepath.EvalSymlinks fails,
-// and EvalSymlinks fails when ANY component is missing — which the derived state directory's own
-// leaf (<stateHome>/lyx/<hash8>) routinely is on a first run. The target, meanwhile, has already been
-// through Normalize with every symlink resolved. Comparing a resolved string against an unresolved
-// one made refuseNestedStandaloneGeometry — and shuttleengine's own validateDetachedToldPaths, which
-// compares the same two strings — both answer "disjoint" for a state home that reaches inside the
-// target through a symlink, and lyx then wrote its state tree, run locks and trace logs into the
-// operator's checkout: exactly the outcome the guard exists to prevent (crucible round
-// opus-medium-r6, R6-15).
-func normalizeForContainment(path string) string {
-	existing := filepath.Clean(path)
-	var missing []string
-	for {
-		if _, err := os.Lstat(existing); err == nil {
-			break
-		}
-		parent := filepath.Dir(existing)
-		if parent == existing {
-			return filepath.Clean(path)
-		}
-		missing = append([]string{filepath.Base(existing)}, missing...)
-		existing = parent
-	}
-	return filepath.Join(append([]string{standalonestate.Normalize(existing)}, missing...)...)
-}
-
-// resolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty
-// (the operator passed no flag, and each mode computes its own default), an absolute value is
-// cleaned, and a relative one is joined onto cwd.
-//
-// Every path this module hands downstream must be absolute. A relative flag value does not fail, it
-// silently means two different directories: the CLI process resolves it against ITS working
-// directory while the pane burler spawns runs at the standalone target or the hub anchor. Resolving
-// happens once, at the wiring boundary, because that is the last point that still knows which
-// working directory the operator typed the flag from — the same reason resolveStandaloneTarget has
-// always done it for --target-dir.
-func resolveToldDir(cwd, flagValue string) string {
-	if flagValue == "" {
-		return ""
-	}
-	if filepath.IsAbs(flagValue) {
-		return filepath.Clean(flagValue)
-	}
-	return filepath.Join(cwd, flagValue)
-}
-
-// resolveStandaloneTarget resolves standalone mode's --target-dir into the one spelling of the one
-// directory every downstream consumer must agree on: cwd when targetDirFlag is empty, or
-// targetDirFlag made absolute against cwd otherwise, then symlink-normalized, then lifted to the
-// root of the repository it sits in.
-//
-// The result is always absolute, which is standalonestate.Derive's own precondition, because Derive
-// normalises through EvalSymlinks+Clean and compares case-insensitively on Windows, so two spellings
-// of the same directory must not produce different <state> values.
-//
-// Both normalizations exist because the target is an IDENTITY here, not merely a path.
-// standalonestate.Derive hashes it into hash8, which names the state directory, the reed socket and
-// the tmux session, and standalonegeom builds the session name's readable half from it — so two
-// spellings of one repository produce two of everything. Normalize is Derive's own rule, exported by
-// the package that owns the identity precisely so the CLI boundary can apply it once here rather
-// than each site re-deriving it.
-//
-// The repository-root lift answers the other half. preflight.ResolveMode returns ModeStandalone for
-// a plain repository's SUBDIRECTORY too, so `lyx burler` run from repo/ and from repo/src/ derived
-// two different hash8 values, two state directories and two reed sessions for one repository, and
-// silently resolved the profile's own relative target/fasit paths against the subdirectory rather
-// than the repository. Where an operator stands inside a repository is not supposed to change which
-// repository they are reviewing, nor what a relative profile path means.
-//
-// A target with no repository above it is returned unchanged: standalone mode legitimately covers a
-// plain directory that is no git repository at all, which ResolveMode folds into the same verdict.
-//
-// A told --target-dir must EXIST and be a directory, and that check is the reason this function is
-// fallible. Without it the resolution silently succeeded against the wrong repository:
-// standalonestate.Normalize falls back to Clean for a path that does not exist, and repositoryRootOf
-// then climbs until it finds a ".git" — so from inside /repo, a mistyped `--target-dir ./reposs`
-// resolved to /repo/reposs, found no repository there, climbed, and returned /repo. burler then
-// reviewed, and its fix phase WROTE INTO, the repository the operator was standing in rather than the
-// one they named, with the same hash8, state directory and reed session as the no-flag invocation, so
-// nothing in the output told the two apart (crucible round opus-medium-r6, R6-7). A --target-dir
-// naming a FILE resolved the same way.
-//
-// cwd itself is never stat'd: it is where the process already is.
-func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
-	told := cwd
-	if targetDirFlag != "" {
-		told = resolveToldDir(cwd, targetDirFlag)
-		info, err := os.Stat(told)
-		if err != nil {
-			return "", fmt.Errorf("burler: --target-dir %s (resolved to %s) cannot be read: %w -- a target that is not there is not an empty target, it silently resolves to whichever repository encloses it", targetDirFlag, told, err)
-		}
-		if !info.IsDir() {
-			return "", fmt.Errorf("burler: --target-dir %s (resolved to %s) is not a directory -- the standalone target is a repository to drive, and a file resolves to whichever repository encloses it", targetDirFlag, told)
-		}
-	}
-	return repositoryRootOf(standalonestate.Normalize(told)), nil
-}
-
-// repositoryRootOf returns the NEAREST repository root at or above dir -- the closest ancestor (dir
-// itself included) carrying a ".git" entry -- or dir unchanged when no ancestor has one.
-//
-// Nearest, never topmost: a submodule and a nested repository are each their own repository, and a
-// walk that kept climbing past the first ".git" would silently re-target a standalone run at the
-// superproject that contains it.
-//
-// It walks the filesystem rather than asking git, and that is deliberate on two counts. It keeps
-// wire free of process spawns, which is what lets this module's whole wiring truth table be driven
-// from untagged tests under the Test Tier Purity Invariant. And it is not a cwd query: dir arrives
-// already resolved and already absolute, so internal/lyxcwd remains the sole owner of turning a
-// working directory into a Location, per the Cwd Resolution Invariant — this only lifts an
-// already-resolved path to the root of the tree it lives in.
-//
-// os.Lstat rather than os.Stat, and no directory-vs-file test: a linked worktree records ".git" as a
-// FILE, and a repository reached through a symlink is still a repository.
-func repositoryRootOf(dir string) string {
-	for candidate := dir; ; {
-		if _, err := os.Lstat(filepath.Join(candidate, gitDirName)); err == nil {
-			return candidate
-		}
-		parent := filepath.Dir(candidate)
-		if parent == candidate {
-			return dir
-		}
-		candidate = parent
-	}
 }

@@ -1,8 +1,10 @@
 // prerunlogging_test.go guards a dependency the standalone-mode fix relies on but cannot pin
 // behaviourally: root's PersistentPreRunE (newRoot, main.go) must not log at Info or above before its
 // seedStencils(cmd) call. cobra.EnableTraverseRunHooks runs every module's own PersistentPreRunE
-// (including webstercli's and burlercli's wireStandalone, which now redirect the durable trace sink
-// to standalonegeom.LogsDir(stateDir) the moment standalonestate.Derive returns) AFTER root's own
+// (including webstercli's and burlercli's wireStandalone, which each call
+// internal/cliwire.ResolveStandalone, and it is that shared prologue -- not either CLI's own
+// wireStandalone body -- which now redirects the durable trace sink to
+// standalonegeom.LogsDir(stateDir) the moment standalonestate.Derive returns) AFTER root's own
 // pre-run, so that redirect only binds if nothing in root's pre-run has already armed the sink by
 // emitting an Info-or-above record — the sink is armed lazily on the first such record anywhere in
 // the process.
@@ -77,7 +79,8 @@ func TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils(t *testing.T) 
 		if name, ok := stmtCallsLoggerInfoOrWarn(stmt); ok {
 			t.Fatalf("root's PersistentPreRunE calls logger.%s before seedStencils(cmd): "+
 				"cobra.EnableTraverseRunHooks runs every module's own PersistentPreRunE (including "+
-				"webstercli's and burlercli's standalone sink redirect) AFTER root's, so any Info-or-above "+
+				"webstercli's and burlercli's standalone sink redirect, owned by "+
+				"internal/cliwire.ResolveStandalone) AFTER root's, so any Info-or-above "+
 				"record logged here arms the durable sink at the wrong (non-standalone) directory before "+
 				"the redirect ever runs", name)
 		}
