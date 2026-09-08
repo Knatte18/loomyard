@@ -737,13 +737,15 @@ func isFileRenamePair(lang glyph.Language, p MovePair) bool {
 // derived from the resolved old side. isFileRenamePair exempts a file-rename pair from both checks.
 // Neither check runs when planLanguage reports not-ok (e.g. plan.Language "none").
 //
-// rename-from-not-glyph fires on both wrong shapes a symbol Rename's old side can take: a bare
-// symbol (refKindSymbol) and a plan: handle (refKindHandle) — the latter is the mirror image of the
-// new-side mistake rename-to-not-handle catches, confusing which side of the pair takes a handle.
-// Catching it here, at this free pre-resolve layer, gives a precise diagnosis; left uncaught, a
-// handle-shaped old side still fails downstream in planglyph's resolve-backed pass (rename-old-unresolved,
-// since a handle is excluded from resolution and so never resolves found) but with a less specific
-// message that names the symptom rather than the shape mistake that caused it.
+// Both checks are written as the NEGATION of the one shape the format admits, never as an
+// enumeration of the shapes it forbids. classifyRef returns four kinds, and the enumerated form —
+// "new side is a glyph or a bare symbol", "old side is a bare symbol or a plan: handle" — silently
+// let the fourth kind, refKindPath, through BOTH halves: a pair such as
+// `internal/a#Old` -> `LICENSE` drew no finding from either check, none from directory-target (no
+// "/"), none from bare-symbol-target (wrong shape), and path-missing never checks a Rename pair's
+// New side by design, so the pair was entirely unvalidated and surfaced only as a rename-not-done
+// at the record-batch boundary (crucible round opus-high-r9, R9-2). Fail closed: anything that is
+// not the admitted shape is the finding, and refKindName names what it actually was.
 func checkRenamePairShape(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -757,27 +759,23 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 			if isFileRenamePair(lang, p) {
 				continue
 			}
-			if k := classifyRef(p.New); k == refKindGlyph || k == refKindSymbol {
+			if k := classifyRef(p.New); k != refKindHandle {
 				findings = append(findings, ValidationError{
 					Check: "rename-to-not-handle",
 					Card:  cardID(c),
 					Detail: fmt.Sprintf(
-						"card %d Rename pair %q -> %q has a new side that is not a plan: handle",
-						c.Number, p.Old, p.New,
+						"card %d Rename pair %q -> %q has a new side that is %s, not a plan: handle",
+						c.Number, p.Old, p.New, refKindName(k),
 					),
 				})
 			}
-			if k := classifyRef(p.Old); k == refKindSymbol || k == refKindHandle {
-				shape := "a bare symbol"
-				if k == refKindHandle {
-					shape = "a plan: handle"
-				}
+			if k := classifyRef(p.Old); k != refKindGlyph {
 				findings = append(findings, ValidationError{
 					Check: "rename-from-not-glyph",
 					Card:  cardID(c),
 					Detail: fmt.Sprintf(
 						"card %d Rename pair %q -> %q has an old side that is %s, not a glyph",
-						c.Number, p.Old, p.New, shape,
+						c.Number, p.Old, p.New, refKindName(k),
 					),
 				})
 			}
@@ -785,6 +783,25 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 	}
 
 	return findings
+}
+
+// refKindName names a refKind in the prose form checkRenamePairShape's own findings use, so a
+// finding says what the offending side actually is rather than only what it failed to be.
+func refKindName(k refKind) string {
+	switch k {
+	case refKindPath:
+		return "a file path"
+	case refKindSymbol:
+		return "a bare symbol"
+	case refKindGlyph:
+		return "a glyph"
+	case refKindHandle:
+		return "a plan: handle"
+	}
+	// Unreachable while classifyRef returns only the four kinds above, and deliberately not a
+	// panic: this package is lenient at card level, and a shape it cannot name is still a shape it
+	// must report rather than crash the whole validation pass over.
+	return "an unrecognized shape"
 }
 
 // checkRenameMechanicMissing implements rename-mechanic-missing: a plan with at least one Rename

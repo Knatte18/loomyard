@@ -691,8 +691,32 @@ func renameCard(number int, slug, oldSide, newSide string) planparser.Card {
 // rename's old side must classify as a glyph and its new side must classify as a plan: handle,
 // with a file-rename pair (both endpoints self glyphs) exempt from both, and neither check running
 // under plan.Language "none".
+//
+// Both checks are the negation of the one admitted shape, never an enumeration of the forbidden
+// ones — the sub-tests naming a path-shaped side are R9-2's regression, since the enumerated form
+// let refKindPath through both halves.
 func TestValidate_RenamePairShape(t *testing.T) {
 	t.Parallel()
+
+	t.Run("path-shaped new side is rename-to-not-handle", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "internal/foo#OldThing", "internal/nested/dir")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-to-not-handle"); got != 1 {
+			t.Errorf("countFor(findings, rename-to-not-handle) = %d; want 1", got)
+		}
+	})
+
+	t.Run("path-shaped old side is rename-from-not-glyph", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "internal/nested/dir", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-from-not-glyph"); got != 1 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 1", got)
+		}
+	})
 
 	t.Run("symbol rename with a glyph old side and a handle new side passes", func(t *testing.T) {
 		t.Parallel()
