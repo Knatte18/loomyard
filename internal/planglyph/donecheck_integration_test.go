@@ -197,11 +197,12 @@ func TestDoneChecks_FileRenameLanded(t *testing.T) {
 //
 // Spelled as the bare token "LICENSE" — which is what the parser produced before R9-1's fix, and
 // which classifyRef rule 4 explicitly admits as a legal card ref — quarry rejects the target
-// BEFORE resolution ("a glyph needs a \"#\""), doneCheckVerdicts reads that rejection as "did not
-// resolve", and the card is blocked by create-not-done forever, on every retry, even though it
-// created exactly what it said it would. This test pins both halves: the glyph spelling passes,
-// and the bare token is still the false failure it always was, so the parser-side canonicalization
-// is the thing keeping this correct.
+// BEFORE resolution ("a glyph needs a \"#\""), and the card is blocked forever, on every retry,
+// even though it created exactly what it said it would. This test pins both halves: the glyph
+// spelling passes, and the bare token is still the blocking refusal it always was, so the
+// parser-side canonicalization is the thing keeping this correct. Since crucible round
+// fable-high-r10's F1, the refusal is glyph-rejected — the fail-closed arm naming the rejection
+// itself — rather than create-not-done misreading the rejection as "did not resolve".
 func TestDoneChecks_RootFilenameCreateLanded(t *testing.T) {
 	root := writeFixtureRepo(t, map[string]string{
 		"sub/a.go": "package sub\n",
@@ -228,7 +229,7 @@ func TestDoneChecks_RootFilenameCreateLanded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoneChecks(bare root filename) returned error: %v", err)
 	}
-	if len(stale) != 1 || stale[0].Check != "create-not-done" {
-		t.Fatalf("DoneChecks(bare root filename) = %+v; want exactly one create-not-done — this is the failure canonicalization now prevents", stale)
+	if len(stale) != 1 || stale[0].Check != "glyph-rejected" {
+		t.Fatalf("DoneChecks(bare root filename) = %+v; want exactly one glyph-rejected — this is the failure canonicalization now prevents, named as the rejection it is", stale)
 	}
 }
