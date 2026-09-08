@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: unify-webster-burler-wiring
 branch: unify-webster-burler-wiring
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-cliwire-package  '2026-09-08T15:23:17Z'
 approved-rewire-clis  '2026-09-08T15:33:20Z'
 approved-enforcement-and-docs  '2026-09-08T15:37:22Z'
 holistic-reviewing  '2026-09-08T15:37:46Z'
+holistic-fixing  '2026-09-08T15:41:04Z'
 ```
 
 ## Batches
