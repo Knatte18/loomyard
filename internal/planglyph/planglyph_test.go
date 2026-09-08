@@ -183,6 +183,11 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 // TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError asserts a plan directory that cannot
 // be read reports as a gate/infrastructure failure, never as a plan finding — the gate could not
 // read the artifact, it did not find a defect in it.
+//
+// R6-12: it must ALSO not be reported as a quarry outage. The failure comes from parsing and writing
+// the plan, so wrapping it in ErrQuarryUnavailable made every caller print "quarry could not answer"
+// for a read-only _lyx/plan and sent the operator at the wrong subsystem. Both callers' non-quarry
+// branch already fails the gate with an accurate, plan-named message.
 func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) {
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	planDir := filepath.Join(t.TempDir(), "never-created")
@@ -200,8 +205,14 @@ func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) 
 	}
 
 	got, err := ValidateFormat(plan, root)
-	if !errors.Is(err, ErrQuarryUnavailable) {
-		t.Fatalf("ValidateFormat(...) error = %v; want errors.Is(err, ErrQuarryUnavailable) for an unreadable plan directory", err)
+	if err == nil {
+		t.Fatal("ValidateFormat(...) error = nil; want an infrastructure failure for an unreadable plan directory")
+	}
+	if errors.Is(err, ErrQuarryUnavailable) {
+		t.Errorf("ValidateFormat(...) error = %v; want it NOT wrapped in ErrQuarryUnavailable — the PLAN could not be read, quarry answered fine", err)
+	}
+	if !strings.Contains(err.Error(), planDir) {
+		t.Errorf("ValidateFormat(...) error = %v; want it to name the plan directory %q an operator can act on", err, planDir)
 	}
 	// The pure findings already collected are still returned alongside the error, per this package's
 	// documented contract; what must NOT appear is any resolve-backed finding, since those passes

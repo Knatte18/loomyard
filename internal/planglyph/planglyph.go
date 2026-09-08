@@ -140,10 +140,12 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // see the canonical spellings rather than the draft ones, over the single batched Resolve call
 // every one of those passes shares.
 //
-// Its second return is a non-nil, ErrQuarryUnavailable-wrapped error whenever openRepo,
-// resolveTargets, or CanonicalizeHandles' own use of RewriteRefs fails — a category distinct from
-// every per-target verdict those passes report, so a quarry outage or a disk failure is never
-// mistaken for a clean answer.
+// Its second return is a non-nil error whenever the pass could not reach a verdict at all — a
+// category distinct from every per-target verdict those passes report, so an outage is never
+// mistaken for a clean answer. It is ErrQuarryUnavailable-wrapped when QUARRY is what could not
+// answer (openRepo, resolveTargets); a failure to rewrite or re-read the PLAN on disk is returned
+// unwrapped, naming the plan directory, because calling that a quarry outage sends an operator at
+// the wrong subsystem.
 //
 // done is the set of already-built card IDs ValidateDispatch supplies, empty for the whole-plan
 // entry points. Every pass below sees only the pending cards, so a card whose work already landed is
@@ -172,7 +174,14 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 
 	handleFindings, rewrote, err := CanonicalizeHandles(pending, planDir, results)
 	if err != nil {
-		return handleFindings, fmt.Errorf("%w: canonicalize handles: %v", ErrQuarryUnavailable, err)
+		// NOT wrapped in ErrQuarryUnavailable: CanonicalizeHandles' error comes from
+		// planparser.RewriteRefs, which parses the plan and writes card files, so a read-only
+		// _lyx/plan or a card file deleted mid-run was reported to the operator as "quarry could not
+		// answer" and sent them at the wrong subsystem entirely (crucible round opus-medium-r6,
+		// R6-12). Both callers' non-quarry branch already fails the gate with an accurate,
+		// plan-named message, which is the right disposition for a plan artifact lyx could not
+		// rewrite.
+		return handleFindings, fmt.Errorf("canonicalize handles in plan %s: %w", planDir, err)
 	}
 
 	// The reload happens only when canonicalization actually rewrote the plan on disk -- otherwise
@@ -188,7 +197,9 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 	if rewrote {
 		reloaded, rerr := planparser.ParsePlan(planDir)
 		if rerr != nil {
-			return handleFindings, fmt.Errorf("%w: re-parse plan after handle canonicalization: %v", ErrQuarryUnavailable, rerr)
+			// Same reasoning as the RewriteRefs failure above: this is the PLAN that could not be
+			// read back, not quarry that could not answer.
+			return handleFindings, fmt.Errorf("re-parse plan %s after handle canonicalization: %w", planDir, rerr)
 		}
 		current = pendingCardsByID(reloaded, done)
 	}
