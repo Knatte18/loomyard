@@ -53,9 +53,11 @@ Counts: **7 findings — 2 BLOCKING, 1 MEDIUM, 2 LOW, 2 NIT.** All CONFIRMED; no
    correct on their own terms, and the only thing found in them is R5-3's error-reporting asymmetry.
 2. **Independent second hub-mode crash-kill reproduction on a FRESH fixture.** Fixture built fresh
    and confirmed real (clone + pair + Go module + glyph/handle-bearing two-card plan + `reed up`).
-   **The crash-kill itself was blocked by R5-2** — the run could never reach a batch to kill,
-   because Master's own pane died at the trust gate. See "Live crash-kill scenario" below for the
-   post-fix outcome.
+   The crash-kill itself was initially blocked by R5-2 and then by R5-7 — the run could never reach
+   a batch to kill. With both fixed it was DELIVERED in full: begun-batch confirmed from
+   state.json, both target processes confirmed alive by `ps`, a real `kill -9`, both confirmed
+   dead, `outcome.yaml` confirmed absent, the orphan strand confirmed still live, and a clean
+   `lyx webster run` resume to `outcome: done`. See "Live crash-kill scenario" below.
 3. **What a fifth pass at a lighter tier turns up.** R5-2 — a defect on the single hottest live path
    in the module, sitting one layer below everything four prior rounds drove.
 
@@ -401,7 +403,92 @@ than looking like unreached error handling.
 
 ## Live crash-kill scenario (item 2) — outcome
 
-_(recorded after R5-2's fix landed and `lyx` was redeployed — see below)_
+**Delivered, after both BLOCKING fixes landed and `lyx` was redeployed** (`Deployed lyx @ 1640a59bb`).
+Two live hub-mode runs on genuinely fresh fixtures, then the crash-kill itself.
+
+### Run A — a clean end-to-end hub-mode run on a fresh, previously-untrusted hub
+
+Fixture `/home/hanf/Code/r5sandbox2/lyx-test-HUB/r5-kill`, socket `lyx-lyx-test-HUB-b432e999`:
+
+```
+cd /home/hanf/Code/r5sandbox2/lyx-test-HUB/r5-kill
+lyx reed status     # {"ok":true,"session":"r5-kill","socket":"lyx-lyx-test-HUB-b432e999",...}
+lyx reed attach     # (attach form)
+lyx webster run
+# {"batches_done":2,"cycles":[],"fabricCommitted":true,"ok":true,"outcome":"done",
+#  "stuck_reason":"","summary_title":"Farewell greeting helper added alongside Hello","warnings":null}
+```
+
+Both gates were passed by lyx itself with no human at the keyboard — the pane went from the
+Bypass-Permissions modal to a working TUI, forked `01-add-farewell`, then `02-hello-mentions-farewell`,
+and exited. Warp history afterwards: `f3233bb 1: add-farewell`, `c6bc402 2: hello-mentions-farewell`.
+
+Independent proof R5-2's fix is what did it: `~/.claude.json` gained
+`"/home/hanf/Code/r5sandbox2/lyx-test-HUB/lyx-test": hasTrustDialogAccepted: true`, written by
+lyx's own spawn on a hub that did not exist before the fix — the exact step that killed the
+pre-fix run.
+
+This also exercised the whole glyph/handle surface end to end. Card 1 declared
+`` `plan:internal/greet#Farewell` -> `func Farewell() string` ``; after the run its card file
+reads a plain `` `internal/greet#Farewell` `` ref — i.e. canonicalization computed the glyph,
+`BindHandles` bound it from the record-batch delta, and `rewriteBulletLine`'s Create-declaration
+collapse rule fired exactly as documented. `DoneChecks` passed both cards.
+
+### Run B — the kill -9, mid-Webster-batch, in hub mode
+
+Fixture `/home/hanf/Code/r5sandbox2/lyx-test-HUB/r5-kill2` (its own fresh pair), driven by one
+single-invocation script so every PID killed was one the script itself had started. No fixed
+sleeps: the script polls `state.json` against a 240 s deadline.
+
+```
+lyx reed up      # {"ok":true,"session":"r5-kill2","socket":"lyx-lyx-test-HUB-b432e999","strands":0}
+lyx reed status
+lyx webster run  # detached, then polled
+```
+
+1. **Mid-batch confirmed, not guessed.** After 15 s `state.json` carried
+   `"currentBatch": 1` and `batches["1"] = {slug: add-farewell, startSha: 714fdb28…,
+   kind: fork, spawnedAt: 2026-09-08T10:17:35Z, terminal: false, status: ""}` — begun, not
+   terminal.
+2. **ALIVE before the kill.** `ps -o pid=,stat=,etime=,comm=`:
+   `72549 Sl+ 00:15 claude` (Master's agent) and `72509 Sl 00:15 lyx` (the run process).
+   `tmux -L lyx-lyx-test-HUB-b432e999 list-panes -a` showed `%6 72526 claude`.
+3. **Real `kill -9`**, run process first, then Master's agent — never a graceful stop, never
+   `lyx webster pause`.
+4. **DEAD after the kill.** Both `ps` lookups returned nothing ("run pid gone", "master pid
+   gone"), and a `/proc/<pid>/cmdline` sweep for any surviving `claude` scoped to `r5-kill2`
+   printed no `STILL ALIVE` line.
+5. **The death was unclean, proven by the terminal artifact's absence.**
+   `ls _lyx/webster/outcome.yaml` → `No such file or directory`; the directory held only
+   `reports/` and `state.json`. No `summary.md` either.
+6. **The orphan survived, exactly as the design says it must.** `tmux list-panes` still showed
+   pane `%6`, now fallen back to `bash`, and `lyx reed status` still reported
+   `{"guid":"25aa084d044dbccb444094471fa3373e","live":true,"name":"master::25aa084d","paneId":"%6"}`
+   — the live strand a dead run process leaves behind, which `reclaimEntryTimeStrands` exists to
+   stop.
+
+### Run C — the resume
+
+```
+cd /home/hanf/Code/r5sandbox2/lyx-test-HUB/r5-kill2
+lyx reed status   # strand 25aa084d… still live (the orphan)
+lyx webster run
+# {"batches_done":2,"cycles":[],"fabricCommitted":true,"ok":true,"outcome":"done",
+#  "stuck_reason":"",
+#  "summary_title":"Add Farewell greeting helper and cross-reference it from Hello","warnings":null}
+lyx reed status   # {"ok":true,"session":"r5-kill2","socket":"...","strands":[]}
+```
+
+The resume reclaimed the orphaned Master strand, re-drove the begun-but-unreported batch 1,
+completed batch 2, and finished `done`. Warp history: `ecd3b2d 1: add-farewell`,
+`b8e0a46 2: hello-mentions-farewell`. `_lyx/webster/` afterwards holds `outcome.yaml`,
+`summary.md`, `reports/`, `state.json`. Reed reports **zero** strands — the reclaim tore the
+orphan down rather than leaving a second one beside a fresh Master.
+
+**Verdict on item 2: crash resilience in hub mode is independently reproduced and holds.** The
+process-level mechanics round 4 could only report — alive-before, dead-after, absent terminal
+artifact, orphan pane survival, clean resume — are now re-observed on a second, independent,
+fresh fixture, on a different host.
 
 ## Verdict
 
