@@ -48,11 +48,14 @@ const (
 //     documented misclassification: it reaches refKindPath at rule 3 because its final segment
 //     happens to be all-lowercase, exactly as that rule requires.
 //
-// Rule 4's consequence is worth stating plainly rather than leaving it to be discovered: a
-// refKindPath entry goes through normalizeRefIfPath, so under a non-"." root: a bare "Makefile" now
-// resolves to "<root>/Makefile" where a pre-glyph plan passed it through verbatim. That is the
-// intended behaviour — a bare filename under a declared root: means the file in that root, exactly
-// as every other relative path in the plan does.
+// Rule 4's consequence is worth stating plainly rather than leaving it to be discovered: a bare
+// extensionless filename is a REPOSITORY-ROOT spelling only. Under a non-"." root:, a bare
+// "Makefile" goes through normalizeRefIfPath to "<root>/Makefile" — a slashed extensionless path,
+// which canonicalizablePath (normalize.go) declines and checkDirectoryTarget (validate.go) then
+// refuses as a blocking finding, because a lexical classifier cannot tell that spelling from a
+// directory. The legal spelling for a root:-scoped extensionless file is its repository-root-
+// relative file self glyph ("<root>/Makefile#"), which quarry resolves found; the directory-target
+// finding's own detail names that remedy (crucible round fable-high-r10, F7).
 func classifyRef(raw string) refKind {
 	if strings.HasPrefix(raw, "plan:") {
 		return refKindHandle

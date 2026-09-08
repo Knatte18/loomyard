@@ -1611,6 +1611,29 @@ func TestValidate_DirectoryTarget(t *testing.T) {
 		}
 	})
 
+	t.Run("detail names the file self glyph remedy for the root:-scoped extensionless-file case", func(t *testing.T) {
+		// A bare extensionless filename under a non-"." root: joins to a slashed extensionless path
+		// no lexical rule can tell from a directory, so it lands here — the detail must offer the
+		// file-self-glyph spelling too, not only the package remedy (crucible round fable-high-r10,
+		// F7).
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo/Makefile"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		var detail string
+		for _, f := range findings {
+			if f.Check == "directory-target" {
+				detail = f.Detail
+			}
+		}
+		if detail == "" {
+			t.Fatalf("Validate() produced no directory-target finding for %q", "internal/foo/Makefile")
+		}
+		if !strings.Contains(detail, `"internal/foo/Makefile#"`) || !strings.Contains(detail, "file self glyph") {
+			t.Errorf("directory-target detail = %q; want it to name the file self glyph remedy %q", detail, "internal/foo/Makefile#")
+		}
+	})
+
 	t.Run("language none skips the check entirely", func(t *testing.T) {
 		t.Parallel()
 		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo"})

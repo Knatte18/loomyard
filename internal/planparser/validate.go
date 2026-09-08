@@ -448,8 +448,12 @@ func checkBareSymbolTarget(plan *Plan) []ValidationError {
 // "Makefile") out of this finding; a slash-free extensionless directory at the repository root is
 // therefore not caught here -- it falls to path-missing and, on a Prosa group, to
 // prosa-symbol-target, narrower coverage than the slashed case and accepted rather than papered
-// over. Skipped entirely when plan.Language does not enable the glyph alphabet -- gated on
-// planLanguage rather than the literal "none", for the reason checkBareSymbolTarget states.
+// over. An extensionless FILE under a non-"." root: does land here (root:-joining makes it slashed,
+// and no lexical rule can tell it from a directory), so the finding's detail also names the file
+// self glyph as the remedy for that case -- appending "#" is the legal spelling either way
+// (crucible round fable-high-r10, F7). Skipped entirely when plan.Language does not enable the
+// glyph alphabet -- gated on planLanguage rather than the literal "none", for the reason
+// checkBareSymbolTarget states.
 func checkDirectoryTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -470,7 +474,7 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 					Check: "directory-target",
 					Card:  cardID(c),
 					Detail: fmt.Sprintf(
-						"card %d entry %q names a directory with no file extension; spell it as a unit glyph such as %q if it is a package, or list the files instead if it is not code",
+						"card %d entry %q names a directory with no file extension; spell it as its self glyph %q — the unit glyph if it is a package, the file self glyph if it is an extensionless file — or list the files instead if it is not code",
 						c.Number, t, t+"#",
 					),
 				})
