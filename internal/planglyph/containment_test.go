@@ -145,3 +145,37 @@ func TestResolveContainment_MultipartSecondPartOverlaps(t *testing.T) {
 		t.Fatalf("resolveContainment(multipart) = %+v; want exactly one containment-file-overlap finding", got)
 	}
 }
+
+// TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard is the regression test for R6-3:
+// containment is a WRITE hazard, so a card that only READS a file and a card that only READS a symbol
+// living in it must produce no finding. Building the overlap index from Targets+Uses made every such
+// pair a SeverityBlocking finding, which refuses `lyx webster run` outright and every dispatch after
+// it — on a plan carrying nothing but ordinary read-only references.
+func TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	repo, err := openRepo(root)
+	if err != nil {
+		t.Fatalf("openRepo(%q) returned error: %v", root, err)
+	}
+	results, err := resolveTargets(repo, []string{"sub#Foo", "sub/a.go#"})
+	if err != nil {
+		t.Fatalf("resolveTargets(...) returned error: %v", err)
+	}
+
+	readsOnly := &planparser.Plan{Cards: []planparser.Card{
+		{Number: 1, Slug: "one", Uses: []string{"sub#Foo"}},
+		{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
+	}}
+	if got := resolveContainment(readsOnly, results); len(got) != 0 {
+		t.Errorf("resolveContainment(reads only) = %+v; want no findings — reading overlapping things conflicts with nothing", got)
+	}
+
+	// One writer and one reader is equally safe: nothing serializes on a read.
+	writeThenRead := &planparser.Plan{Cards: []planparser.Card{
+		{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+		{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
+	}}
+	if got := resolveContainment(writeThenRead, results); len(got) != 0 {
+		t.Errorf("resolveContainment(one writer, one reader) = %+v; want no findings", got)
+	}
+}

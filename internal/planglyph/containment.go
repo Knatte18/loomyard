@@ -16,6 +16,42 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
+// writingTargetCards indexes plan's cards by the glyph targets they WRITE — c.Targets alone, which
+// already carries both endpoints of every Pairs entry (normalizeCard projects them there) — and never
+// by the refs they merely read.
+//
+// It exists because containment is a WRITE hazard: two cards editing overlapping granularity in
+// parallel produce a merge conflict, and two cards reading the same file produce nothing.
+// websterengine.deriveEdges encodes exactly that asymmetry, the sibling syntactic tier
+// (planparser.syntacticContainment) walks c.Targets alone for the same reason, and both this file's
+// own godoc and manifest/designs/quarry-glyph-plan-alphabet.md specify the rule in terms of what a
+// card TARGETS.
+//
+// resolveContainment used targetCards instead, which also indexes Uses and both Pairs endpoints, so a
+// card that merely READ a file contributed a self entry and a card that merely READ a symbol
+// contributed a member entry: two read-only cards emitted a SeverityBlocking finding, refusing
+// `lyx webster run` outright and every dispatch after it, on a plan that was correct (crucible round
+// opus-medium-r6, R6-3). targetCards stays as it is for statusFindings and DetectDrift, where
+// attributing a resolve answer to every referencing card is the right rule.
+func writingTargetCards(plan *planparser.Plan) map[string][]planparser.Card {
+	index := make(map[string][]planparser.Card)
+	seen := make(map[string]map[string]bool)
+	for _, c := range plan.Cards {
+		for _, t := range c.Targets {
+			id := cardIDOf(c)
+			if seen[t][id] {
+				continue
+			}
+			if seen[t] == nil {
+				seen[t] = make(map[string]bool)
+			}
+			seen[t][id] = true
+			index[t] = append(index[t], c)
+		}
+	}
+	return index
+}
+
 // resolveContainment emits check ID containment-file-overlap: for each member glyph's own
 // resolved files — read from ResolveResult.Symbols' own File field, never derived, since a
 // member's own file need not equal its unit's directory path — it matches against every OTHER
@@ -31,7 +67,7 @@ func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) [
 	}
 
 	index := resultByTarget(results)
-	byTarget := targetCards(plan)
+	byTarget := writingTargetCards(plan)
 
 	type memberEntry struct {
 		card  planparser.Card
