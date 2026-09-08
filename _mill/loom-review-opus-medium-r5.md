@@ -490,6 +490,76 @@ process-level mechanics round 4 could only report — alive-before, dead-after, 
 artifact, orphan pane survival, clean resume — are now re-observed on a second, independent,
 fresh fixture, on a different host.
 
+## Substrate teardown
+
+Fixture reed sessions, all three brought down explicitly:
+
+```
+cd /home/hanf/Code/r5sandbox/lyx-test-HUB/r5-crash  && lyx reed down  # {"ok":true,"session":"r5-crash"}
+cd /home/hanf/Code/r5sandbox2/lyx-test-HUB/r5-kill  && lyx reed down  # {"ok":true,"session":"r5-kill"}
+cd /home/hanf/Code/r5sandbox2/lyx-test-HUB/r5-kill2 && lyx reed down  # {"ok":true,"session":"r5-kill2"}
+```
+
+Final sweep, scoped to what this round started:
+
+```
+pgrep -af "^tmux"    # NONE
+pgrep -af "^lyx"     # NONE
+pgrep -af "^claude"  # 2 processes, both the operator's own pre-existing interactive sessions
+                     # (started 11:03 and 11:09, before this round began); none of this round's
+```
+
+The three orphaned `tmux -L lyx-<hash8>` servers R5-1 describes — leaked by the hermetic
+integration suite BEFORE R5-1's fix landed, including by this round's own mandated gate runs —
+were also killed, so the host is left with zero lyx substrate.
+
+**What is deliberately left behind, and why:**
+
+- Two fixture hubs on disk: `/home/hanf/Code/r5sandbox/lyx-test-HUB` and
+  `/home/hanf/Code/r5sandbox2/lyx-test-HUB`. They are the artifacts backing every live claim above
+  (state.json, `_lyx/webster/` outcomes, warp commit history), and this campaign's own verification
+  practice is for the orchestrator to re-inspect a round's live evidence rather than trust its
+  narrative. Delete them once round 5 is verified.
+- Three branches pushed to `github.com/Knatte18/lyx-test` by `lyx fabric add`: `r5-crash`,
+  `r5-kill`, `r5-kill2` (plus their `-weft` siblings on `lyx-test-weft`). Same reason, and the same
+  disposition rounds 2–4 left `glyph-demo-greet`/`r4-crash-hub`/`r4-drift-hub` in.
+
+**Honestly not verified:**
+
+- **Windows.** Unreachable from this Linux host, as in all four prior rounds. Every Windows-shaped
+  path claim in the code this round touched (`LOCALAPPDATA`, junction-vs-symlink behaviour) is read,
+  never driven.
+- **The bypass gate's own long-term stability.** R5-7's needle is keyed on a string claude 2.1.263
+  renders today. That is a provider-owned label, and R5-2 exists precisely because a provider-owned
+  detail changed under lyx once already. The fix fails SAFE when it changes again (a gate goes
+  unrecognized, the run dies fast rather than pressing the wrong button), but "fails safe" is not
+  "keeps working" — this seam is a standing watch item, not a solved problem.
+- **`burlercli`'s standalone reed bring-up.** Still not live-driven, by this round or any prior one.
+  It was explicitly optional in this round's brief and the budget went to items 1 and 2 instead.
+- **Whether anything remains.** Two rounds in a row have now found BLOCKING material, and R5-7 was
+  reachable only after R5-2 was fixed. That specific pattern — a defect hidden behind another
+  defect on the same path — is not evidence that the path is now clear.
+
 ## Verdict
 
-_(recorded at the end of Job 2)_
+**Merge-readiness: NOT READY as a "clean pass", but the branch itself is in better shape than at
+any prior point.** Every gate is green, all 7 findings are fixed and committed, and the module now
+has something no prior round produced: a complete, independently reproduced hub-mode run — plan
+authored, both gates cleared autonomously, two batches forked and recorded, a real `kill -9`
+mid-batch, and a clean resume to `outcome: done` — on a fixture built from nothing minutes earlier.
+
+**Convergence: NOT CONVERGED. Round 5 does not qualify as the campaign's safety pass.**
+The README's bar is a round that finds nothing severe. This round found two BLOCKING defects on
+the module's hottest live path, and the second was invisible until the first was fixed. That is
+the opposite of the convergence signal, and it is the fifth consecutive round to find real
+material.
+
+There is also a specific reason to distrust "it works now" here: R5-2 and R5-7 were both invisible
+to four prior rounds not because those rounds were careless, but because a fixture that has once
+been driven by hand is permanently immunized against them. Any future round that reuses
+`r5sandbox`/`r5sandbox2` — or any hub whose repo path has ever hosted an interactive claude — will
+be blind to this whole class again. **A round that wants to test live bring-up must build its
+fixture from a repository path claude has never seen.** That is a durable lesson about this
+campaign's own method, not a fact about these two bugs.
+
+Recommendation: one more round, on a genuinely fresh fixture, before declaring convergence.
