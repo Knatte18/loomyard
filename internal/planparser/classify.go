@@ -39,7 +39,10 @@ const (
 //     repository-root filename such as "Makefile", "LICENSE" or "Dockerfile". This rule is required
 //     rather than tidy — without it, such a filename would fall to rule 5's refKindSymbol with no
 //     legal spelling left, since the "//" worktree-root escape does not rescue it (normalizeCardPath
-//     strips the prefix and hands back the identical bare token).
+//     strips the prefix and hands back the identical bare token). canonicalizablePath (normalize.go)
+//     then carries the rule the rest of the way: a slash-free ref is canonicalized to its self glyph
+//     even without an extension, so the spelling this rule admits is one every glyph-backed layer
+//     downstream can actually act on.
 //  5. otherwise -> refKindSymbol. This is the explicit default for an entry whose final dot-segment
 //     is not all-lowercase-alphanumeric (e.g. "shedrecipe.Lookup"). "shedrecipe.lookup" is a
 //     documented misclassification: it reaches refKindPath at rule 3 because its final segment

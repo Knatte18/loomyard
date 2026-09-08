@@ -1723,3 +1723,66 @@ func TestValidate_CardPathMalformed_Glyphs(t *testing.T) {
 		}
 	})
 }
+
+// TestValidate_RootFilenameCanonicalizesEndToEnd is R9-1's regression: a plan spelling a
+// repository-root extensionless filename — classifyRef rule 4's own case, the rule that exists
+// precisely so such a filename HAS a legal spelling — must reach the validator (and, past it,
+// every glyph-backed layer in internal/planglyph) as a self glyph, not as a bare token quarry
+// rejects before resolution.
+//
+// Left uncanonicalized, "LICENSE" validated 100% clean here while producing a false
+// prosa-symbol-target on a Prosa group, and then made the batch that created it permanently
+// unrecordable: DoneChecks handed quarry the bare token, quarry answered a pre-resolution
+// rejection, and doneCheckVerdicts read the rejection as "did not resolve" — a blocking
+// create-not-done against a card that had done its job.
+func TestValidate_RootFilenameCanonicalizesEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	dir := writePlanFiles(t, map[string]string{
+		"00-overview.md": `---
+format: 5
+approved: true
+---
+
+# Plan: root filenames
+
+Framing paragraph.
+
+## Card Index
+
+1 — prose — document the licence
+2 — build — add a makefile
+`,
+		"01-prose.md": "# Card 1 — prose\n\n" +
+			"**Prosa:**\n- `LICENSE`\n" +
+			"**Intent:** rewrite the licence header.\n",
+		"02-build.md": "# Card 2 — build\n\n" +
+			"**Create:**\n- `Makefile`\n" +
+			"**Intent:** add a makefile.\n",
+	})
+
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+	}
+
+	if got, want := plan.Cards[0].Targets[0], "LICENSE#"; got != want {
+		t.Errorf("Prosa target = %q; want %q", got, want)
+	}
+	if got, want := plan.Cards[1].Targets[0], "Makefile#"; got != want {
+		t.Errorf("Create target = %q; want %q", got, want)
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "LICENSE"), []byte("licence text\n"), 0o644); err != nil {
+		t.Fatalf("write LICENSE fixture: %v", err)
+	}
+
+	findings := planparser.Validate(plan, root)
+	if got := countFor(findings, "prosa-symbol-target"); got != 0 {
+		t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 0 (LICENSE is a file self glyph)", got)
+	}
+	if len(findings) != 0 {
+		t.Errorf("findings = %v; want none", findings)
+	}
+}
