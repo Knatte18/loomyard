@@ -41,7 +41,8 @@ var ErrPaused = errors.New("webster: paused")
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
 // ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
-// (planglyph.ValidateFormat, called against deps.Geom.WorktreeRoot) reports a non-empty blocking
+// (planglyph.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards
+// excluded) reports a non-empty blocking
 // findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a
 // caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
 // Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
@@ -93,7 +94,7 @@ type BeginResult struct {
 	// AssertedModel is the model BeginBatch asserted Master's pane onto for this batch.
 	AssertedModel string
 	// Advisories is every informational finding the dispatch-boundary re-resolution
-	// (planglyph.ValidateFormat) reported, rendered via Finding.Error, so an operator sees them
+	// (planglyph.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them
 	// without the run stopping — a non-empty blocking findings set never reaches this far, since it
 	// returns ErrPlanDrifted instead.
 	Advisories []string
