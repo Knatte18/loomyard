@@ -387,8 +387,12 @@ func resolveStandaloneTarget(cwd, targetDirFlag string) (string, error) {
 	return repositoryRootOf(standalonestate.Normalize(told)), nil
 }
 
-// repositoryRootOf returns the topmost-known repository root at or above dir -- the nearest ancestor
-// (dir itself included) carrying a ".git" entry -- or dir unchanged when no ancestor has one.
+// repositoryRootOf returns the NEAREST repository root at or above dir -- the closest ancestor (dir
+// itself included) carrying a ".git" entry -- or dir unchanged when no ancestor has one.
+//
+// Nearest, never topmost: a submodule and a nested repository are each their own repository, and a
+// walk that kept climbing past the first ".git" would silently re-target a standalone run at the
+// superproject that contains it.
 //
 // It walks the filesystem rather than asking git, and that is deliberate on two counts. It keeps
 // wire free of process spawns, which is what lets this module's whole wiring truth table be driven
