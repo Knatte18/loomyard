@@ -50,6 +50,12 @@ func resolveKeyFor(ref string) string {
 // Create done-check that could not resolve is indistinguishable from a Create that never happened,
 // and passing it would be a false success. The wrapped ErrQuarryUnavailable error is returned so
 // the caller can tell the two apart.
+//
+// That rule binds a resolve that ANSWERED INCOMPLETELY exactly as it binds one that failed
+// outright. Every key looked up below was put into the target list by this function itself, so a
+// missing answer is quarry's positional contract not holding rather than a target this function
+// never asked about — and it too returns a wrapped ErrQuarryUnavailable rather than skipping the
+// entry, which would silently pass whichever blocking check that target carried.
 func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {
 	if _, ok := resolveLanguage(plan); !ok {
 		return nil, nil
@@ -116,11 +122,29 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 	}
 	index := resultByTarget(results)
 
+	return doneCheckVerdicts(entries, index)
+}
+
+// doneCheckVerdicts applies the three done rules to entries against index, the batched resolve's
+// answers keyed by target.
+//
+// It is split out from DoneChecks so the coverage guard below is reachable from a unit test: every
+// other path into it runs a real quarry.Repo, and the one condition worth pinning -- an answer set
+// that does not cover a target the caller asked about -- cannot be produced through one.
+func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.ResolveResult) ([]Finding, error) {
 	var findings []Finding
 	for _, e := range entries {
 		r, ok := index[e.key]
 		if !ok {
-			continue
+			// Every key here was put into targets by this function itself and handed to
+			// resolveTargets, so an absent answer means the batched resolve did not cover a target
+			// it was asked about. Skipping the entry would let a blocking done-check PASS, which is
+			// the exact disposition this function's own contract rejects: a done-check that could
+			// not resolve is indistinguishable from work that never happened. Report it as
+			// infrastructure, the way CanonicalizeHandles guards quarry.Name's positional contract
+			// (handle.go), so nobody reads "quarry did not answer for this target" as a verdict on
+			// the plan (crucible round opus-medium-r5, R5-6).
+			return findings, fmt.Errorf("%w: resolve returned no answer for done-check target %q (card %s)", ErrQuarryUnavailable, e.key, cardIDOf(e.card))
 		}
 		resolved := r.Status == quarry.StatusFound || r.Status == quarry.StatusMultipart
 
