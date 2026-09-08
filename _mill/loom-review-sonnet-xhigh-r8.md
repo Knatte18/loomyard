@@ -108,6 +108,44 @@ so it's in scope pre-clean-room).
 
 Found and CONFIRMED (via a throwaway unit test, since removed) a real gap — see Finding SF-1 below.
 
+Also read `startup_test.go` and `wait_test.go`'s fixture coverage in full to confirm SF-1 is
+genuinely uncovered: the existing `"trust_prompt_older_wording"` fixture
+(`Do you trust the files in this folder?\n> 1. Yes, proceed\n  2. No, exit`) always keeps the
+prose co-resident with the option line, so no existing test exercises an option-list-plus-footer-only
+capture. Confirmed reed's actual pane geometry is wide (`220x50`, observed live via
+`tmux list-panes`), which somewhat mitigates (but does not eliminate — height-driven cropping is
+still possible, e.g. a long scrollback pushing the dialog's own leading paragraph above the
+captured viewport) the "narrow-terminal wrap" angle named in the round's own prompt.
+
+### Hermetic gates — clean baseline BEFORE any fix
+
+- `CGO_ENABLED=1 go build ./...` — clean.
+- `CGO_ENABLED=1 go vet` over the full named package set from the round prompt — clean.
+- `CGO_ENABLED=1 go test -count=5` over the same set + `./cmd/lyx/...` — 20/20 packages `ok`, no
+  FAIL/panic.
+- `CGO_ENABLED=1 go test -tags integration` over the named integration set — all `ok`.
+- `CGO_ENABLED=1 go test ./...` (whole repo) — all `ok`.
+
+### Delegated parallel review (fresh, non-forked sub-agents, same clean-room constraint)
+
+To cover the full breadth of "What to read" within this round's budget, four fresh sub-agents were
+dispatched in parallel, each briefed on the clean-room constraint (no `_mill/loom-review-*` files)
+and instructed to report concrete, adversarial, file:line-cited findings back in text (no report
+files of their own):
+
+1. Second-model review of `internal/cliwire` (+ `webstercli`/`burlercli` wiring).
+2. `internal/loomengine`/`loomcli`/`loomrecipe`/`loomshed`/`shedengine`/`shedadapters`/
+   `shedrecipe`/`shedbuild`/`hubgeom` + the loom recipe + `cmd/lyx`'s loom integration.
+3. `internal/planparser`/`internal/planglyph` (the glyph surface) against
+   `contracts/specs/loom-plan-spec.md`.
+4. `internal/websterengine` (beginbatch/recordbatch/fingerprint/render/runlevel) +
+   `shuttleengine/run.go`'s `NewRunner`/`NewDetachedRunner` + `standalonegeom`/`standalonestate`/
+   `logger/sink.go`.
+
+Their findings, once returned, were independently verified (not taken on faith) before being
+folded into this report's findings list below — see each finding's own CONFIRMED/PLAUSIBLE marker
+and verification note.
+
 ## Findings
 
 Severity-ranked. CONFIRMED = traced/reproduced exactly. PLAUSIBLE = strong suspicion, not fully
