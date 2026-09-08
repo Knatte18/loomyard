@@ -22,11 +22,19 @@ import (
 // helper.
 var policedCliDirs = []string{"internal/webstercli", "internal/burlercli"}
 
-// bannedWiringDeclarations are the nine helper names internal/webstercli and internal/burlercli used
-// to declare for themselves before the wiring prologue moved into internal/cliwire. A package under
-// policedCliDirs re-declaring any of them -- as a top-level function or as a method, since a method is
-// exactly what caught a re-declared standaloneDefaultPlanDir -- is re-implementing part of the
-// prologue rather than calling into it.
+// bannedWiringDeclarations are the helper names a policed CLI package must never declare for
+// itself: the nine names internal/webstercli and internal/burlercli used before the wiring
+// prologue moved into internal/cliwire, PLUS cliwire's own current helper spellings — re-declaring
+// a helper under the very name cliwire gives it is the most natural way to copy one back out, and
+// the original list only banned the OLD spellings (crucible round fable-high-r7, F4). A package
+// under policedCliDirs re-declaring any of them -- as a top-level function or as a method, since a
+// method is exactly what caught a re-declared standaloneDefaultPlanDir -- is re-implementing part
+// of the prologue rather than calling into it.
+//
+// The stated residual: a re-implementation under a genuinely FRESH name passes this check by
+// construction — a name list cannot ban names it does not know. The Derive caller-set pin
+// (callerset_enforcement_test.go) is what catches a full bottom-up copy regardless of naming; this
+// check exists for the partial copy that still calls into cliwire for the rest.
 var bannedWiringDeclarations = map[string]bool{
 	"resolveStandaloneTarget":        true,
 	"repositoryRootOf":               true,
@@ -37,6 +45,19 @@ var bannedWiringDeclarations = map[string]bool{
 	"samePlanDir":                    true,
 	"standalonePlanDirHasContent":    true,
 	"standaloneDefaultPlanDir":       true,
+	// cliwire's own current spellings, banned alongside the historical ones above.
+	"RepositoryRootOf":            true,
+	"NormalizeForContainment":     true,
+	"ResolveToldDir":              true,
+	"SamePlanDir":                 true,
+	"ResolvePlanDir":              true,
+	"ResolveStandalone":           true,
+	"RefuseTargetDirInHubMode":    true,
+	"RefuseUnreadableStencilsDir": true,
+	"planDirHasContent":           true,
+	"resolvePlanDir":              true,
+	"refuseTargetDirInHubMode":    true,
+	"refuseUnreadableStencilsDir": true,
 }
 
 // TestBannedDeclarations_CliPackagesCallIntoCliwire verifies that neither internal/webstercli nor
