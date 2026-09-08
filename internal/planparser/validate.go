@@ -398,11 +398,16 @@ func checkCardPathMalformed(plan *Plan) []ValidationError {
 // checkBareSymbolTarget implements bare-symbol-target: any Targets/Uses entry classifying as
 // refKindSymbol is a hard finding, because a bare package-qualified symbol is the one spelling that
 // cannot have come verbatim from a quarry answer -- not because the form is uglier. Skipped
-// entirely when plan.Language is "none", where a symbol-shaped ref keeps its pre-glyph behavior.
+// entirely when plan.Language does not enable the glyph alphabet, where a symbol-shaped ref keeps its
+// pre-glyph behavior. Gated on planLanguage, not on the literal "none", so an UNRECOGNIZED language
+// silences this check too: ParsePlan performed no canonicalization for such a plan, so the refs this
+// check classifies are raw paths rather than the canonical forms it assumes, and every other
+// alphabet-gated check already goes quiet there (crucible round opus-medium-r6, R6-22).
+// plan-language-unrecognized already blocks such a plan, so nothing is lost by staying silent.
 func checkBareSymbolTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	if plan.Language == "none" {
+	if _, ok := planLanguage(plan); !ok {
 		return findings
 	}
 
@@ -434,11 +439,12 @@ func checkBareSymbolTarget(plan *Plan) []ValidationError {
 // "Makefile") out of this finding; a slash-free extensionless directory at the repository root is
 // therefore not caught here -- it falls to path-missing and, on a Prosa group, to
 // prosa-symbol-target, narrower coverage than the slashed case and accepted rather than papered
-// over. Skipped entirely when plan.Language is "none".
+// over. Skipped entirely when plan.Language does not enable the glyph alphabet -- gated on
+// planLanguage rather than the literal "none", for the reason checkBareSymbolTarget states.
 func checkDirectoryTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	if plan.Language == "none" {
+	if _, ok := planLanguage(plan); !ok {
 		return findings
 	}
 

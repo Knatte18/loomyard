@@ -240,6 +240,34 @@ func TestValidate_FormatAndApprovalOrder(t *testing.T) {
 	}
 }
 
+// TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck is R6-22's regression test:
+// bare-symbol-target and directory-target gated on the literal "none" while every sibling
+// alphabet-gated check gated on planLanguage, so under an unrecognized language: those two kept
+// classifying refs ParsePlan never canonicalized. plan-language-unrecognized already blocks such a
+// plan, so the extra findings were noise.
+func TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck(t *testing.T) {
+	t.Parallel()
+
+	plan := &planparser.Plan{
+		Format: 5, Approved: true, Language: "python",
+		Cards: []planparser.Card{{
+			Number: 1, Slug: "a",
+			Targets:      []string{"boardcli.RowJSON", "internal/boardcli"},
+			TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"boardcli.RowJSON", "internal/boardcli"}}},
+			Intent:       "one",
+		}},
+	}
+	findings := planparser.Validate(plan, t.TempDir())
+	for _, check := range []string{"bare-symbol-target", "directory-target"} {
+		if got := countFor(findings, check); got != 0 {
+			t.Errorf("countFor(findings, %s) = %d; want 0 under an unrecognized language:", check, got)
+		}
+	}
+	if got := countFor(findings, "plan-language-unrecognized"); got != 1 {
+		t.Errorf("countFor(findings, plan-language-unrecognized) = %d; want 1 — that is the finding an unrecognized language earns", got)
+	}
+}
+
 // TestValidate_IndexFileMismatch covers the Card Index numbering-sequence half of
 // index-file-mismatch. An empty plan.Dir -- the in-memory plan shape most cases here build -- means
 // "no plan directory was told" and scans nothing; a Dir that IS told but cannot be listed is its own
