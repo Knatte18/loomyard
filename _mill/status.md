@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: unify-webster-burler-wiring
 branch: unify-webster-burler-wiring
 plan: _mill/plan
@@ -38,6 +38,7 @@ holistic-fixing  '2026-09-08T15:41:04Z'
 nits-fixed-holistic  '2026-09-08T15:42:42Z'
 holistic-approved  '2026-09-08T15:42:49Z'
 done  '2026-09-08T15:50:12Z'
+pr-pending  '2026-09-08T15:52:04Z'
 ```
 
 ## Batches
