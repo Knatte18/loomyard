@@ -19,11 +19,15 @@ type Geometry struct {
 	// It is also the fork-audit workdir, which must equal the pane's actual cwd
 	// (reedengine.Geometry.PaneCwd), because the audit resolves transcript-relative write paths
 	// against it.
-	// It is NOT the same notion as reedengine.Geometry.WorktreeRoot: webster's is the
-	// anchor-anchored value every one of its CLI call sites passes today, while reed's is the
-	// worktree path, and the two coincide only at an unanchored anchor.
-	// This collision is deliberate continuity and must not be "fixed" by converging either field on
-	// the other.
+	// It is NOT the same notion as reedengine.Geometry.WorktreeRoot in HUB mode specifically:
+	// hubgeom.WebsterGeometry sets this to the anchor-anchored value (l.AnchorPath(), never
+	// l.WorktreePath()), while reed's is the worktree path, so the two coincide only at an
+	// unanchored anchor there. Standalone mode does NOT share that collision:
+	// standalonegeom.WebsterGeometry sets this to the standalone TARGET, deliberately disjoint
+	// from AnchorRoot (the derived state directory) — see that constructor's own doc comment. A
+	// caller must not assume WorktreeRoot == AnchorRoot holds across both modes; only hub mode's
+	// own construction makes it so today, and that collision is deliberate continuity, not to be
+	// "fixed" by converging either field on the other.
 	WorktreeRoot string
 	// WebsterDir is the told path to webster's durable run state directory (state.json,
 	// outcome.yaml).

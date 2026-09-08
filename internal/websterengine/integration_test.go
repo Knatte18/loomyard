@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -490,5 +491,47 @@ func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
 	}
 	if !strings.Contains(string(summaryData), "03-batch3") {
 		t.Errorf("summary.md does not name the localized offending card after the loud return; got:\n%s", summaryData)
+	}
+}
+
+// TestBisectAndEscalate_UnattributableFailureBlamesNoCard covers the round-4 review's R4-17. The
+// binary search converges on the LAST index whenever every SHA it actually tested passed, so it used
+// to blame the last card by arithmetic rather than by evidence — and AppendIntegrationFailure then
+// wrote "SHA-bisect localized the failure to card X" into summary.md, which is the PR text.
+//
+// Here the verify command passes at every recorded SHA (the integration failure came from somewhere
+// the card SHAs do not capture: the tree state after the last card, the environment, or the verify
+// command itself). The honest answer is the "unknown" offender the empty-shas path already reports.
+func TestBisectAndEscalate_UnattributableFailureBlamesNoCard(t *testing.T) {
+	worktree := newScratchRepo(t)
+	sha1 := commitFile(t, worktree, "card1.txt", "one", "card1")
+	sha2 := commitFile(t, worktree, "card2.txt", "two", "card2")
+	sha3 := commitFile(t, worktree, "card3.txt", "three", "card3")
+	originalBranch := strings.TrimSpace(mustGit(t, worktree, "symbolic-ref", "--short", "HEAD"))
+
+	websterDir := t.TempDir()
+	if err := os.WriteFile(summaryparser.Path(websterDir), []byte("# Batches shipped\n"), 0o644); err != nil {
+		t.Fatalf("seed summary.md: %v", err)
+	}
+
+	st := &websterengine.State{}
+	shas := []string{sha1, sha2, sha3}
+	labels := []string{"01-batch1", "02-batch2", "03-batch3"}
+	// "true" passes at every SHA, so no recorded card SHA implicates itself.
+	if err := websterengine.BisectAndEscalate(gitrepo.New(worktree), shas, labels, "true", worktree, websterDir, st); err != nil {
+		t.Fatalf("BisectAndEscalate() error = %v; want nil", err)
+	}
+
+	escalated, ok := st.Batches[-1]
+	if !ok || escalated == nil {
+		t.Fatalf("state carries no integration escalation record; want one at the reserved key")
+	}
+	if escalated.Slug != "unknown" {
+		t.Errorf("escalated record Slug = %q; want %q — no recorded card SHA failed, so none may be named", escalated.Slug, "unknown")
+	}
+
+	branch := strings.TrimSpace(mustGit(t, worktree, "symbolic-ref", "--short", "HEAD"))
+	if branch != originalBranch {
+		t.Errorf("HEAD branch after bisect = %q; want restored to %q", branch, originalBranch)
 	}
 }

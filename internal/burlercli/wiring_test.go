@@ -8,11 +8,12 @@
 // a proven-absent _lyx/ directory, so a fictional anchor path drives the whole hub branch without
 // touching disk.
 //
-// The standalone-mode cases reach the one call site of standalonestate.Derive that exists anywhere
-// in this package: each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a t.TempDir()
-// BEFORE calling wire, so both of Derive's per-OS branches land inside the test's own temp tree on
-// every platform, and none of those cases is marked t.Parallel(), since t.Setenv panics under a
-// parallel test.
+// The standalone-mode cases reach standalonestate.Derive through internal/cliwire's own
+// ResolveStandalone, which owns the one production call site of Derive that exists anywhere in this
+// codebase since batch 2: each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a
+// t.TempDir() BEFORE calling wire, so both of Derive's per-OS branches land inside the test's own
+// temp tree on every platform, and none of those cases is marked t.Parallel(), since t.Setenv panics
+// under a parallel test.
 //
 // Two structural facts a later reader might otherwise try to "fix": first, no (loc non-nil,
 // ModeStandalone) row exists in this file because no caller can produce one -- preflight.ResolveMode
@@ -40,12 +41,16 @@
 package burlercli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
@@ -73,10 +78,15 @@ func hash8For(t *testing.T, target string) string {
 // setStandaloneStateRoot redirects both env vars standalonestate.Derive reads to fresh t.TempDir()
 // values, so a case that reaches wireStandalone stays hermetic. Not t.Parallel() -- t.Setenv panics
 // under a parallel test.
+// It also registers the sink-override cleanup every caller here needs, per the overview's
+// sink-override-is-process-global decision: every case that calls this helper reaches wireStandalone,
+// which now sets the process-global durable sink override, and a leaked override would defeat the
+// testing.Testing() sink suppression for every later test in this binary.
 func setStandaloneStateRoot(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 }
 
 // TestWire_ModeHubSelectsHubMode covers the (loc non-nil, ModeHub) row: wire must select hub mode and
@@ -235,6 +245,11 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(hub, "warp", ".")
 		override := filepath.Join(t.TempDir(), "custom-stencils")
+		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
+		// honoured-override behavior under test here is unchanged.
+		if err := os.MkdirAll(override, 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
 
 		c := &burlerCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", override, ""); err != nil {
@@ -259,94 +274,280 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 		}
 	})
 
-	t.Run("ExplicitOverride_NeverWrittenTo", func(t *testing.T) {
-		target := t.TempDir()
-		setStandaloneStateRoot(t)
-		override := t.TempDir()
+}
 
-		before, err := readDirNames(t, override)
-		if err != nil {
-			t.Fatalf("readDirNames(%q) = %v", override, err)
-		}
-		if len(before) != 0 {
-			t.Fatalf("fixture %q is not empty before wire(): %v", override, before)
+// TestWireHub_AbsentStencilsDirIsRefused is R7-F2's hub-side regression test for this module: a
+// typo'd --stencils-dir used to be honoured silently in hub mode and failed only at the first
+// instruction render, after the run lock and substrate boot. The boundary stat goes through the
+// same cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
+func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
+	t.Parallel()
+	hub := t.TempDir()
+	loc := hubLocation(hub, "warp", ".")
+	told := filepath.Join(t.TempDir(), "no-such-stencils")
+
+	c := &burlerCLI{}
+	err := c.wire(loc, preflight.ModeHub, "", told, "")
+	if err == nil {
+		t.Fatal("wire() = nil; want the unreadable --stencils-dir refusal")
+	}
+	if !strings.Contains(err.Error(), "--stencils-dir") || !strings.Contains(err.Error(), told) {
+		t.Errorf("wire() error = %q; want it to name --stencils-dir and the told directory %q", err.Error(), told)
+	}
+}
+
+// TestWire_RelativeStencilsDirResolvesAgainstCwd is R4-23's direct regression test for this module.
+// --stencils-dir used to be stored verbatim, so a relative value reached the engine unresolved: the
+// CLI process would read it against ITS working directory while the pane burler spawns runs at the
+// target (standalone) or the anchor (hub), so one string named two different directories.
+func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
+	t.Run("HubMode", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+		cwd := t.TempDir()
+
+		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
+		// unchanged.
+		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
 		}
 
 		c := &burlerCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, target, override, ""); err != nil {
+		if err := c.wire(loc, preflight.ModeHub, cwd, filepath.Join("custom", "stencils"), ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-
-		after, err := readDirNames(t, override)
-		if err != nil {
-			t.Fatalf("readDirNames(%q) = %v", override, err)
-		}
-		if len(after) != 0 {
-			t.Errorf("explicit --stencils-dir %q gained entries: %v; want it untouched -- an explicit override is read-only, never seeded", override, after)
+		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
 		}
 	})
 
-	t.Run("StandaloneDefaultSeededOnDisk", func(t *testing.T) {
+	t.Run("StandaloneMode", func(t *testing.T) {
 		target := t.TempDir()
 		setStandaloneStateRoot(t)
-		stateDir, _ := hash8AndStateDir(t, target)
+		cwd := t.TempDir()
+		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
+		// unchanged.
+		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+
+		c := &burlerCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, cwd, filepath.Join("custom", "stencils"), target); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
+		}
+	})
+}
+
+// TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError is F16's direct regression
+// test. It fails against pre-fix source, where wireStandalone constructed its runner via
+// shuttleengine.NewRunner: NewRunner's containment assertion refuses standalone's deliberately
+// detached anchor/worktree-root pair (the derived state directory sits outside the target
+// repository), setting the runner's held toldErr, which every public entry point returns
+// immediately without ever reaching reed. A runner that is merely non-nil proves nothing here, so
+// this test drives the one public entry point reachable from this package -- c.engine.Run, with a
+// minimal but validate()-passing Profile -- and asserts the returned error is an ordinary reed
+// "no session" verdict rather than a told-path refusal. It reaches no live reed session (none was
+// ever started, so requireSessionLocked fails fast) and spawns no process: claudeengine.Prepare only
+// writes prompt/settings files before AddStrand's pre-flight rejects the call.
+func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *testing.T) {
+	target := t.TempDir()
+	setStandaloneStateRoot(t)
+
+	fixture := filepath.Join(target, "fixture.md")
+	if err := os.WriteFile(fixture, []byte("placeholder"), 0o644); err != nil {
+		t.Fatalf("write fixture file: %v", err)
+	}
+
+	c := &burlerCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	profile := burlerengine.Profile{
+		Target:          burlerengine.FileSet{Paths: []string{fixture}},
+		Fasit:           burlerengine.FileSet{Paths: []string{fixture}},
+		Rubric:          "placeholder rubric",
+		FixScope:        burlerengine.FixScopeOverlay,
+		ReviewPath:      "review.md",
+		FixerReportPath: "fixer.md",
+	}
+
+	_, err := c.engine.Run(profile, burlerengine.RunOpts{})
+	if err == nil {
+		t.Fatal("engine.Run() error = nil; want a reed \"no session\" error, since no reed session was ever started")
+	}
+	if strings.Contains(err.Error(), "NewRunner") || strings.Contains(err.Error(), "NewDetachedRunner") {
+		t.Fatalf("engine.Run() error = %v; want the ordinary reed \"no session\" verdict, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
+	}
+}
+
+// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
+// mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
+// then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
+// the override would have put the trace file somewhere else.
+func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
+	sentinelDir := t.TempDir()
+	logger.SetDurableSinkDir(sentinelDir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	hub := t.TempDir()
+	loc := hubLocation(hub, "warp", ".")
+
+	c := &burlerCLI{}
+	if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	logger.Info("wiring_test: arm the sink")
+
+	matches, err := filepath.Glob(filepath.Join(sentinelDir, "trace-*.log"))
+	if err != nil {
+		t.Fatalf("glob %s: %v", sentinelDir, err)
+	}
+	if len(matches) == 0 {
+		t.Errorf("no trace-*.log file under sentinel dir %s; want wireHub to have left the sink override untouched", sentinelDir)
+	}
+}
+
+// seedGitRepositoryRoot marks dir as a git repository root by creating the ".git" entry
+// cliwire.RepositoryRootOf looks for, and returns dir. It writes no git objects and spawns no git:
+// the walk this fixture feeds tests only the marker's presence, so a real repository would prove
+// nothing extra and would breach the Test Tier Purity Invariant to build.
+func seedGitRepositoryRoot(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir %s/.git: %v", dir, err)
+	}
+	return dir
+}
+
+// TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot is R4-26's end-to-end half: wiring
+// from a repository subdirectory must land on the SAME derived state directory that wiring from the
+// repository root lands on. It mirrors internal/webstercli's test of the same name -- the pure-function
+// resolution-lift assertions this test used to accompany moved into
+// internal/cliwire/cliwire_test.go's TestRepositoryRootOf and TestModule_ResolveStandaloneTarget in
+// batch 1; this is burler's own end-to-end composition regression left behind.
+func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
+	repoRoot := seedGitRepositoryRoot(t, t.TempDir())
+	subDir := filepath.Join(repoRoot, "src")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir src: %v", err)
+	}
+	setStandaloneStateRoot(t)
+
+	normalizedRoot := standalonestate.Normalize(repoRoot)
+	rootStateDir, _ := hash8AndStateDir(t, normalizedRoot)
+
+	c := &burlerCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, subDir, "", ""); err != nil {
+		t.Fatalf("wire() from a repository subdirectory = %v; want nil", err)
+	}
+	if c.stateDir != rootStateDir {
+		t.Errorf("c.stateDir = %q; want the repository root's own state directory %q -- where the operator stands inside a repository must not change which repository burler reviews", c.stateDir, rootStateDir)
+	}
+}
+
+// TestWire_ReedUpSeamPerMode is F-A1's (round fable5-high-r3) wiring pin, mirroring
+// internal/webstercli's test of the same name: wireStandalone must arm the in-process reed
+// bring-up seam the run verb fires before driving a round (standalone's derived geometry is
+// reachable by no CLI verb — `lyx reed up` is hub-only), and wireHub must leave it nil.
+func TestWire_ReedUpSeamPerMode(t *testing.T) {
+	t.Run("StandaloneArmsTheSeam", func(t *testing.T) {
+		target := t.TempDir()
+		setStandaloneStateRoot(t)
 
 		c := &burlerCLI{}
 		if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-
-		want := standalonegeom.StencilsDir(stateDir)
-		entries, err := readDirNames(t, want)
-		if err != nil {
-			t.Fatalf("readDirNames(%q) = %v; want the standalone default to be seeded on disk", want, err)
+		if c.reedUp == nil {
+			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
 		}
-		if len(entries) == 0 {
-			t.Errorf("standalone default stencils dir %q is empty; want it seeded", want)
+	})
+
+	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+
+		c := &burlerCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.reedUp != nil {
+			t.Error("wireHub armed c.reedUp; want nil — hub mode's reed session is not run's to boot")
 		}
 	})
 }
 
-// readDirNames returns the entry names inside dir, creating no directory of its own.
-func readDirNames(t *testing.T, dir string) ([]string, error) {
-	t.Helper()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
+// TestWireModule_DescriptorIsVerbatim pins burler's own wireModule descriptor, mirroring
+// internal/webstercli's test of the same name and existing for the same reason: nothing else in this
+// package or in internal/cliwire asserts burler's own descriptor text after this batch, since
+// internal/cliwire's own tests assert only their local fixtures, and every wiring_test.go case that
+// used to touch the nested-geometry and target-resolution messages is deleted above.
+func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
+	if wireModule.Name != "burler" {
+		t.Errorf("wireModule.Name = %q; want %q", wireModule.Name, "burler")
 	}
-	names := make([]string, len(entries))
-	for i, e := range entries {
-		names[i] = e.Name()
+	if want := "instruction files, shuttle run directories and trace logs"; wireModule.StateArtifacts != want {
+		t.Errorf("wireModule.StateArtifacts = %q; want %q", wireModule.StateArtifacts, want)
 	}
-	return names, nil
-}
-
-// TestResolveStandaloneTarget covers resolveStandaloneTarget's three rows: unset returns cwd,
-// absolute returns the cleaned path, relative returns the path joined onto cwd.
-func TestResolveStandaloneTarget(t *testing.T) {
-	t.Parallel()
-
-	cwd := filepath.Join(string(filepath.Separator), "home", "operator", "repo")
-
-	tests := []struct {
-		name          string
-		targetDirFlag string
-		want          string
-	}{
-		{"Unset", "", cwd},
-		{"Absolute", filepath.Join(string(filepath.Separator), "elsewhere", "target"), filepath.Join(string(filepath.Separator), "elsewhere", "target")},
-		{"Relative", filepath.Join("..", "sibling"), filepath.Join(cwd, "..", "sibling")},
+	if want := "the repository it reviews"; wireModule.TargetRole != want {
+		t.Errorf("wireModule.TargetRole = %q; want %q", wireModule.TargetRole, want)
+	}
+	if want := "Review a target"; wireModule.TargetRecourse != want {
+		t.Errorf("wireModule.TargetRecourse = %q; want %q", wireModule.TargetRecourse, want)
+	}
+	if want := "the anchor path is already the target"; wireModule.HubTargetSubject != want {
+		t.Errorf("wireModule.HubTargetSubject = %q; want %q", wireModule.HubTargetSubject, want)
+	}
+	if wireModule.Plan != nil {
+		t.Error("wireModule.Plan != nil; want nil -- burler parses no plan, and the nil is what makes ResolveStandalone skip plan resolution for it")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveStandaloneTarget(cwd, tt.targetDirFlag)
-			if err != nil {
-				t.Fatalf("resolveStandaloneTarget(%q, %q) = %v; want nil error", cwd, tt.targetDirFlag, err)
-			}
-			if got != filepath.Clean(tt.want) {
-				t.Errorf("resolveStandaloneTarget(%q, %q) = %q; want %q", cwd, tt.targetDirFlag, got, filepath.Clean(tt.want))
-			}
-		})
-	}
+	t.Run("RefuseTargetDirInHubMode", func(t *testing.T) {
+		flag := filepath.Join(t.TempDir(), "elsewhere")
+		err := wireModule.RefuseTargetDirInHubMode(flag)
+		if err == nil {
+			t.Fatal("RefuseTargetDirInHubMode() = nil; want a refusal for a non-empty flag")
+		}
+		want := "burler: --target-dir is not honoured in hub mode: the anchor path is already the target, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec"
+		if err.Error() != want {
+			t.Errorf("RefuseTargetDirInHubMode() error = %q; want %q", err.Error(), want)
+		}
+		if err := wireModule.RefuseTargetDirInHubMode(""); err != nil {
+			t.Errorf("RefuseTargetDirInHubMode(\"\") = %v; want nil", err)
+		}
+	})
+
+	// The one path that exercises Name, StateArtifacts and TargetRole composed into a real message
+	// rather than read as bare fields: a state directory derived to nest INSIDE the target.
+	t.Run("ResolveStandalone_NestedStateDirRefusalNamesTheDescriptorFields", func(t *testing.T) {
+		target := t.TempDir()
+		t.Setenv("XDG_STATE_HOME", filepath.Join(target, ".local", "state"))
+		t.Setenv("LOCALAPPDATA", filepath.Join(target, "AppData", "Local"))
+
+		stateDir, _, err := standalonestate.Derive(target)
+		if err != nil {
+			t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
+		}
+		normalizedTarget := cliwire.NormalizeForContainment(target)
+		normalizedStateDir := cliwire.NormalizeForContainment(stateDir)
+
+		sentinelDir := t.TempDir()
+		logger.SetDurableSinkDir(sentinelDir)
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+		_, err = wireModule.ResolveStandalone(cliwire.StandaloneRequest{Cwd: target})
+		if err == nil {
+			t.Fatal("ResolveStandalone() error = nil; want a refusal -- the state directory nests under the target")
+		}
+		want := fmt.Sprintf("burler: the derived state directory %s lies inside the standalone target %s: standalone mode keeps its %s strictly outside %s, so the two must be disjoint. The state home is nested under the target -- a repository rooted at your home directory is the usual cause. Point XDG_STATE_HOME (LOCALAPPDATA on Windows) at a directory outside %s and re-run", normalizedStateDir, normalizedTarget, wireModule.StateArtifacts, wireModule.TargetRole, normalizedTarget)
+		if err.Error() != want {
+			t.Errorf("ResolveStandalone() error = %q; want %q", err.Error(), want)
+		}
+	})
 }

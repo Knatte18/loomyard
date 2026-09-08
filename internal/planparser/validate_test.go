@@ -240,9 +240,38 @@ func TestValidate_FormatAndApprovalOrder(t *testing.T) {
 	}
 }
 
+// TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck is R6-22's regression test:
+// bare-symbol-target and directory-target gated on the literal "none" while every sibling
+// alphabet-gated check gated on planLanguage, so under an unrecognized language: those two kept
+// classifying refs ParsePlan never canonicalized. plan-language-unrecognized already blocks such a
+// plan, so the extra findings were noise.
+func TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck(t *testing.T) {
+	t.Parallel()
+
+	plan := &planparser.Plan{
+		Format: 5, Approved: true, Language: "python",
+		Cards: []planparser.Card{{
+			Number: 1, Slug: "a",
+			Targets:      []string{"boardcli.RowJSON", "internal/boardcli"},
+			TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"boardcli.RowJSON", "internal/boardcli"}}},
+			Intent:       "one",
+		}},
+	}
+	findings := planparser.Validate(plan, t.TempDir())
+	for _, check := range []string{"bare-symbol-target", "directory-target"} {
+		if got := countFor(findings, check); got != 0 {
+			t.Errorf("countFor(findings, %s) = %d; want 0 under an unrecognized language:", check, got)
+		}
+	}
+	if got := countFor(findings, "plan-language-unrecognized"); got != 1 {
+		t.Errorf("countFor(findings, plan-language-unrecognized) = %d; want 1 — that is the finding an unrecognized language earns", got)
+	}
+}
+
 // TestValidate_IndexFileMismatch covers the Card Index numbering-sequence half of
-// index-file-mismatch (the orphaned-on-disk-file half is exercised implicitly by every other
-// test's clean plan.Dir == "" case, where os.ReadDir fails and that half is silently skipped).
+// index-file-mismatch. An empty plan.Dir -- the in-memory plan shape most cases here build -- means
+// "no plan directory was told" and scans nothing; a Dir that IS told but cannot be listed is its own
+// finding (see TestValidate_IndexFileMismatch_UnlistablePlanDirIsAFinding).
 func TestValidate_IndexFileMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -268,6 +297,22 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "index-file-mismatch"); got != 1 {
 			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 1", got)
+		}
+	})
+
+	// R6-10: a told plan directory that cannot be listed silently disabled the whole
+	// orphaned-card-file half of this check, with no finding and no error, so the check reported
+	// CLEAN against its own unconditional guarantee.
+	t.Run("an unlistable plan directory is a finding, not silence", func(t *testing.T) {
+		t.Parallel()
+		plan := &planparser.Plan{
+			Format: 5, Approved: true,
+			Dir:   filepath.Join(t.TempDir(), "gone"),
+			Cards: []planparser.Card{validCard(1, "a")},
+		}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "index-file-mismatch"); got != 1 {
+			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 1 — a plan directory that cannot be listed is a defect at this gate", got)
 		}
 	})
 
@@ -567,6 +612,42 @@ func TestValidate_HandleConsistency(t *testing.T) {
 		}
 	})
 
+	t.Run("handle-collision: one Create declaration and one Rename to-side claiming the same handle", func(t *testing.T) {
+		t.Parallel()
+		one := cardOfType(1, "one", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
+		one.Declarations = []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+		one.TargetGroups[0].Declarations = one.Declarations
+		two := renameCard(2, "two", "internal/bar#OldThing", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{one, two}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-collision"); got != 1 {
+			t.Errorf("countFor(findings, handle-collision) = %d; want 1 — two sources claiming one handle canonicalize to two different glyphs and one silently wins (R9-3)", got)
+		}
+	})
+
+	t.Run("handle-collision: two Rename to-sides claiming the same handle", func(t *testing.T) {
+		t.Parallel()
+		one := renameCard(1, "one", "internal/bar#OldOne", "plan:internal/foo#NewThing")
+		two := renameCard(2, "two", "internal/baz#OldTwo", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{one, two}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "handle-collision"); got != 1 {
+			t.Errorf("countFor(findings, handle-collision) = %d; want 1", got)
+		}
+	})
+
+	t.Run("a lone Rename to-side handle is neither a collision nor unreferenced", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "one", "internal/bar#OldThing", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		for _, check := range []string{"handle-dangling", "handle-collision", "handle-unreferenced"} {
+			if got := countFor(findings, check); got != 0 {
+				t.Errorf("countFor(findings, %q) = %d; want 0 — a rename destination nothing else references is the ordinary case", check, got)
+			}
+		}
+	})
+
 	t.Run("handle-unreferenced: a declared handle no other card references", func(t *testing.T) {
 		t.Parallel()
 		card := cardOfType(1, "a", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
@@ -646,8 +727,32 @@ func renameCard(number int, slug, oldSide, newSide string) planparser.Card {
 // rename's old side must classify as a glyph and its new side must classify as a plan: handle,
 // with a file-rename pair (both endpoints self glyphs) exempt from both, and neither check running
 // under plan.Language "none".
+//
+// Both checks are the negation of the one admitted shape, never an enumeration of the forbidden
+// ones — the sub-tests naming a path-shaped side are R9-2's regression, since the enumerated form
+// let refKindPath through both halves.
 func TestValidate_RenamePairShape(t *testing.T) {
 	t.Parallel()
+
+	t.Run("path-shaped new side is rename-to-not-handle", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "internal/foo#OldThing", "internal/nested/dir")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-to-not-handle"); got != 1 {
+			t.Errorf("countFor(findings, rename-to-not-handle) = %d; want 1", got)
+		}
+	})
+
+	t.Run("path-shaped old side is rename-from-not-glyph", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "internal/nested/dir", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-from-not-glyph"); got != 1 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 1", got)
+		}
+	})
 
 	t.Run("symbol rename with a glyph old side and a handle new side passes", func(t *testing.T) {
 		t.Parallel()
@@ -679,6 +784,32 @@ func TestValidate_RenamePairShape(t *testing.T) {
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "rename-from-not-glyph"); got != 1 {
 			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 1", got)
+		}
+	})
+
+	t.Run("symbol rename whose old side is a plan: handle produces rename-from-not-glyph", func(t *testing.T) {
+		t.Parallel()
+		card := renameCard(1, "a", "plan:internal/foo#OldThing", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-from-not-glyph"); got != 1 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 1", got)
+		}
+	})
+
+	t.Run("self-glyph old side paired with a handle new side produces rename-from-not-glyph", func(t *testing.T) {
+		// The one shape the two negation checks both let through (crucible round fable-high-r10,
+		// F5): the old side IS a glyph and the new side IS a handle, but the old side names a
+		// file/unit where a symbol rename must name the symbol being renamed.
+		t.Parallel()
+		card := renameCard(1, "a", "internal/foo/old.go#", "plan:internal/foo#NewThing")
+		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "rename-from-not-glyph"); got != 1 {
+			t.Errorf("countFor(findings, rename-from-not-glyph) = %d; want 1", got)
+		}
+		if got := countFor(findings, "rename-to-not-handle"); got != 0 {
+			t.Errorf("countFor(findings, rename-to-not-handle) = %d; want 0", got)
 		}
 	})
 
@@ -1480,6 +1611,29 @@ func TestValidate_DirectoryTarget(t *testing.T) {
 		}
 	})
 
+	t.Run("detail names the file self glyph remedy for the root:-scoped extensionless-file case", func(t *testing.T) {
+		// A bare extensionless filename under a non-"." root: joins to a slashed extensionless path
+		// no lexical rule can tell from a directory, so it lands here — the detail must offer the
+		// file-self-glyph spelling too, not only the package remedy (crucible round fable-high-r10,
+		// F7).
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo/Makefile"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		var detail string
+		for _, f := range findings {
+			if f.Check == "directory-target" {
+				detail = f.Detail
+			}
+		}
+		if detail == "" {
+			t.Fatalf("Validate() produced no directory-target finding for %q", "internal/foo/Makefile")
+		}
+		if !strings.Contains(detail, `"internal/foo/Makefile#"`) || !strings.Contains(detail, "file self glyph") {
+			t.Errorf("directory-target detail = %q; want it to name the file self glyph remedy %q", detail, "internal/foo/Makefile#")
+		}
+	})
+
 	t.Run("language none skips the check entirely", func(t *testing.T) {
 		t.Parallel()
 		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo"})
@@ -1487,6 +1641,81 @@ func TestValidate_DirectoryTarget(t *testing.T) {
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "directory-target"); got != 0 {
 			t.Errorf("countFor(findings, directory-target) = %d; want 0", got)
+		}
+	})
+}
+
+// TestValidate_GlyphMalformed covers glyph-malformed (crucible round sonnet-xhigh-r8, PG-1): a
+// "#"-containing entry that fails glyph.Parse is a hard finding, card-generic over Targets/Uses,
+// and skipped entirely under "none" -- the exact shape bare-symbol-target and directory-target
+// already follow. Before this check existed, every one of the malformed cases below validated
+// completely clean.
+func TestValidate_GlyphMalformed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("clean (well-formed glyph target)", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo#Bar"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 0 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 0", got)
+		}
+	})
+
+	t.Run("doubled hash is malformed", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo#Bar#extra"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
+		}
+		// None of the checks a malformed-but-"#"-shaped entry used to sail past silently through
+		// fire either -- this is PG-1's whole point: before this check existed nothing flagged it.
+		for _, check := range []string{"bare-symbol-target", "directory-target", "card-path-malformed", "path-missing"} {
+			if got := countFor(findings, check); got != 0 {
+				t.Errorf("countFor(findings, %s) = %d; want 0 (wrong shape for this check, not evidence the entry is fine)", check, got)
+			}
+		}
+	})
+
+	t.Run("malformed glyph in Uses", func(t *testing.T) {
+		t.Parallel()
+		card := validCard(1, "a")
+		card.HasUses = true
+		card.Uses = []string{"internal/foo#Bar#extra"}
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
+		}
+	})
+
+	t.Run("malformed glyph in a Prosa group is card-generic, not group-scoped", func(t *testing.T) {
+		t.Parallel()
+		// This deliberately does NOT exempt Prosa: bare-symbol-target/directory-target don't either,
+		// and prosa-symbol-target already separately flags the same entry as "not a self glyph" --
+		// two checks naming the same defect from two angles, exactly as they already do for a
+		// Prosa group's bare-symbol target.
+		card := cardOfType(1, "a", planparser.CardTypeProsa, []string{"internal/foo#Bar#extra"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
+		}
+		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
+			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1", got)
+		}
+	})
+
+	t.Run("language none skips the check entirely", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo#Bar#extra"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "none", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 0 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 0", got)
 		}
 	})
 }
@@ -1592,4 +1821,67 @@ func TestValidate_CardPathMalformed_Glyphs(t *testing.T) {
 			t.Errorf("countFor(findings, card-path-malformed) = %d; want 0", got)
 		}
 	})
+}
+
+// TestValidate_RootFilenameCanonicalizesEndToEnd is R9-1's regression: a plan spelling a
+// repository-root extensionless filename — classifyRef rule 4's own case, the rule that exists
+// precisely so such a filename HAS a legal spelling — must reach the validator (and, past it,
+// every glyph-backed layer in internal/planglyph) as a self glyph, not as a bare token quarry
+// rejects before resolution.
+//
+// Left uncanonicalized, "LICENSE" validated 100% clean here while producing a false
+// prosa-symbol-target on a Prosa group, and then made the batch that created it permanently
+// unrecordable: DoneChecks handed quarry the bare token, quarry answered a pre-resolution
+// rejection, and doneCheckVerdicts read the rejection as "did not resolve" — a blocking
+// create-not-done against a card that had done its job.
+func TestValidate_RootFilenameCanonicalizesEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	dir := writePlanFiles(t, map[string]string{
+		"00-overview.md": `---
+format: 5
+approved: true
+---
+
+# Plan: root filenames
+
+Framing paragraph.
+
+## Card Index
+
+1 — prose — document the licence
+2 — build — add a makefile
+`,
+		"01-prose.md": "# Card 1 — prose\n\n" +
+			"**Prosa:**\n- `LICENSE`\n" +
+			"**Intent:** rewrite the licence header.\n",
+		"02-build.md": "# Card 2 — build\n\n" +
+			"**Create:**\n- `Makefile`\n" +
+			"**Intent:** add a makefile.\n",
+	})
+
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+	}
+
+	if got, want := plan.Cards[0].Targets[0], "LICENSE#"; got != want {
+		t.Errorf("Prosa target = %q; want %q", got, want)
+	}
+	if got, want := plan.Cards[1].Targets[0], "Makefile#"; got != want {
+		t.Errorf("Create target = %q; want %q", got, want)
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "LICENSE"), []byte("licence text\n"), 0o644); err != nil {
+		t.Fatalf("write LICENSE fixture: %v", err)
+	}
+
+	findings := planparser.Validate(plan, root)
+	if got := countFor(findings, "prosa-symbol-target"); got != 0 {
+		t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 0 (LICENSE is a file self glyph)", got)
+	}
+	if len(findings) != 0 {
+		t.Errorf("findings = %v; want none", findings)
+	}
 }

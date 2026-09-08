@@ -106,6 +106,57 @@ func SessionName(worktreeRoot string) string {
 	return filepath.Base(worktreeRoot)
 }
 
+// sanitizedSessionNameChars is the union of the two literal-character classes tmux rewrites inside a
+// session name, spelled as the concatenation of the two constants that declare them rather than as a
+// third literal, so adding a character to either class extends SanitizeSessionName with it
+// automatically and the sanitizer can never fall behind validateToldTmuxIdentity's refusals.
+const sanitizedSessionNameChars = rewrittenSessionNameChars + doubledSessionNameChars
+
+// SanitizeSessionName returns name with every character tmux would silently rewrite inside a session
+// name replaced by '_', so a caller composing a session name out of a directory basename it does not
+// control can hand reed an identity validateToldTmuxIdentity accepts.
+//
+// It lives here rather than at its caller because the alphabet it substitutes is this package's own:
+// rewrittenSessionNameChars, doubledSessionNameChars, and firstVisEncodedSessionNameByte's
+// control/DEL/invalid-UTF-8 class are declared in this file and validateToldTmuxIdentity refuses
+// exactly those three. A second copy of the rule anywhere else would drift out of agreement with the
+// check that actually gates the boot, and the drift would surface as a refusal at `up` time rather
+// than at review time.
+//
+// Substituting is only correct where the readable half carries no identity, which is the same
+// argument ServerName's socketSafeBase already rests on: standalonegeom.ReedGeometry appends a
+// "-<hash8>" derived from the normalized target path, so sanitizing costs nothing and "my.repo" and
+// "my_repo" still cannot collapse onto one session. Hub mode deliberately does NOT sanitize and is
+// refused instead (see validateToldTmuxIdentity), because a hub session name is the bare worktree
+// slug with no hash beside it: rewriting '.' there would map sibling worktrees "svc.v2" and "svc_v2"
+// onto one session name and each worktree's engine would adopt the other's panes.
+func SanitizeSessionName(name string) string {
+	var sanitized strings.Builder
+	sanitized.Grow(len(name))
+	for i := 0; i < len(name); {
+		r, size := utf8.DecodeRuneInString(name[i:])
+		// An invalid UTF-8 byte is consumed one byte at a time and substituted here rather than
+		// left to strings.Map, which re-encodes it as U+FFFD -- three printable, valid bytes that
+		// would sail past the vis-encode check while still not being the byte the caller had.
+		if r == utf8.RuneError && size == 1 {
+			sanitized.WriteByte('_')
+			i++
+			continue
+		}
+		if r < 0x20 || r == 0x7F || strings.ContainsRune(sanitizedSessionNameChars, r) {
+			sanitized.WriteByte('_')
+			i += size
+			continue
+		}
+		// Valid multi-byte UTF-8 is written through untouched: tmux's vis pass leaves it alone
+		// (verified live on tmux 3.6, see firstVisEncodedSessionNameByte), so a unicode directory
+		// name must survive sanitization as itself.
+		sanitized.WriteString(name[i : i+size])
+		i += size
+	}
+	return sanitized.String()
+}
+
 // rewrittenSessionNameChars are the characters tmux silently rewrites to '_' inside a session name.
 // tmux does not REJECT them: new-session exits 0 and creates a session under the rewritten name
 // (verified live, tmux 3.6: "a.b" and "a:b" both become "a_b").

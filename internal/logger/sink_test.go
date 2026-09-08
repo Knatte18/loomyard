@@ -13,7 +13,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 var sinkTestFilePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-(\d+)\.log$`)
@@ -105,14 +109,186 @@ func TestEnsureDurableSink_FilenameGrammarAndFields(t *testing.T) {
 	}
 }
 
-func TestEnsureDurableSink_SeamPathLeavesWorktreeRootEmpty(t *testing.T) {
+// TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory is R4-09's end-to-end guard, the
+// one that shows why the alphabet check in trace.go is a containment property and not a cosmetic
+// one: ensureDurableSink interpolates header.TraceID into the filename and hands the result to
+// filepath.Join, which CLEANS it -- so an adopted 'ci-run/../../pwned' used to place the trace file
+// two levels above the logs directory. The assertion is positional, not textual: whatever the
+// filename ends up being, it must sit inside dir, and dir's grandparent must stay empty.
+func TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory(t *testing.T) {
+	grandparent := t.TempDir()
+	parent := filepath.Join(grandparent, "state", ".lyx")
+	dir := filepath.Join(parent, "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(%q) error = %v; want nil", dir, err)
+	}
+
+	resetTraceState(t)
+	t.Setenv("LYX_TRACE_ID", "ci-run/../../pwned")
+	SetDurableSinkDir(dir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	if ok := ensureDurableSink(); !ok {
+		t.Fatalf("ensureDurableSink() ok = false; want true")
+	}
+
+	if got := filepath.Dir(sinkPath); got != dir {
+		t.Errorf("filepath.Dir(sinkPath=%q) = %q; want %q -- the adopted trace ID walked the write out of the logs directory", sinkPath, got, dir)
+	}
+	if files := listSinkDirFiles(t, dir); len(files) != 1 {
+		t.Errorf("listSinkDirFiles(dir) = %v; want exactly one file inside the logs directory", files)
+	}
+	for _, escaped := range []string{parent, grandparent} {
+		if files := listSinkDirFiles(t, escaped); len(files) != 0 {
+			t.Errorf("listSinkDirFiles(%q) = %v; want empty -- no trace file may land above the logs directory", escaped, files)
+		}
+	}
+
+	// A filename Sweep cannot match is the second, independent half of R4-09: the file would never
+	// be ranked or removed and the logs directory would grow without bound.
+	files := listSinkDirFiles(t, dir)
+	if len(files) == 1 && !sinkTestFilePattern.MatchString(files[0]) {
+		t.Errorf("filename %q does not match the retention-sweepable grammar; Sweep would never reclaim it", files[0])
+	}
+}
+
+// TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty pins that an empty
+// header.WorktreeRoot is now a choice the caller made by picking the no-worktree-root-supplied
+// shorthand (SetDurableSinkDir), not a property of the seam itself.
+func TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 
 	ensureDurableSink()
 
 	if header.WorktreeRoot != "" {
-		t.Errorf("header.WorktreeRoot = %q; want empty on the SetDurableSinkDir seam path (geometry never resolved)", header.WorktreeRoot)
+		t.Errorf("header.WorktreeRoot = %q; want empty when SetDurableSinkDir (no-worktree-root-supplied shorthand) was called", header.WorktreeRoot)
+	}
+}
+
+// TestEnsureDurableSink_WorktreeRootSuppliedReachesHeaderAndFile is the populated counterpart to
+// TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty: SetDurableSinkDirWithWorktreeRoot
+// leaves header.WorktreeRoot equal to the supplied value, and the trace file's first line carries
+// it.
+func TestEnsureDurableSink_WorktreeRootSuppliedReachesHeaderAndFile(t *testing.T) {
+	dir := t.TempDir()
+	worktreeRoot := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
+	SetDurableSinkDirWithWorktreeRoot(dir, worktreeRoot)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	ensureDurableSink()
+
+	if header.WorktreeRoot != worktreeRoot {
+		t.Errorf("header.WorktreeRoot = %q; want %q", header.WorktreeRoot, worktreeRoot)
+	}
+
+	files := listSinkDirFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one file", files)
+	}
+	first := readSinkFirstLine(t, filepath.Join(dir, files[0]))
+	if !strings.Contains(first, "worktree_root="+worktreeRoot) {
+		t.Errorf("header line = %q; want it to contain worktree_root=%s", first, worktreeRoot)
+	}
+}
+
+// TestSetDurableSinkDirWithWorktreeRoot_RedirectsSinkFileLocation pins that the override actually
+// redirects the trace file: with the override set before the first record, the file lands in the
+// given directory and no file appears in the cwd-derived location.
+func TestSetDurableSinkDirWithWorktreeRoot_RedirectsSinkFileLocation(t *testing.T) {
+	dir := t.TempDir()
+	worktreeRoot := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
+	SetDurableSinkDirWithWorktreeRoot(dir, worktreeRoot)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	ok := ensureDurableSink()
+	if !ok {
+		t.Fatalf("ensureDurableSink() ok = false; want true")
+	}
+
+	if _, err := os.Stat(sinkPath); err != nil {
+		t.Fatalf("os.Stat(sinkPath=%q) = %v; want the sink file to exist under the overridden directory", sinkPath, err)
+	}
+	if filepath.Dir(sinkPath) != dir {
+		t.Errorf("filepath.Dir(sinkPath) = %q; want %q (the overridden directory)", filepath.Dir(sinkPath), dir)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd() error = %v; want nil", err)
+	}
+	if cwd == dir {
+		t.Fatalf("cwd = %q equals overridden dir %q; test fixture invalid", cwd, dir)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".lyx", "logs")); err == nil {
+		t.Errorf("cwd-derived sink location %q exists; want no file there when the override redirects the sink", filepath.Join(cwd, ".lyx", "logs"))
+	}
+}
+
+// TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile is the ordering
+// obligation as an executable assertion: setting the directory after the sink is already armed
+// does not move the file that was already opened.
+func TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile(t *testing.T) {
+	firstDir := t.TempDir()
+	SetDurableSinkDir(firstDir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	ok := ensureDurableSink()
+	if !ok {
+		t.Fatalf("ensureDurableSink() ok = false; want true")
+	}
+	armedPath := sinkPath
+
+	secondDir := t.TempDir()
+	SetDurableSinkDirWithWorktreeRoot(secondDir, "irrelevant-worktree-root")
+
+	if sinkPath != "" {
+		t.Errorf("sinkPath after SetDurableSinkDirWithWorktreeRoot = %q; want reset to empty until the sink is re-armed", sinkPath)
+	}
+	if _, err := os.Stat(armedPath); err != nil {
+		t.Errorf("os.Stat(armedPath=%q) = %v; want the already-opened file to remain untouched", armedPath, err)
+	}
+}
+
+// TestEnsureDurableSink_ConcurrentRedirectIsRaceFree is the regression guard for the R4 review's
+// R4-20: the lazy first-open read sinkDirOverride and wrote sinkPath, sinkOK, sinkBytesWritten and
+// header from inside a sync.Once with NO lock, while resetDurableSinkLocked wrote all of those AND
+// reassigned that very sync.Once under sinkMu. A SetDurableSinkDir* concurrent with an in-flight
+// first record was therefore a data race on the Once value itself, and the losing order left the
+// PRE-redirect sinkPath installed -- and that redirect is the mechanism keeping a standalone run's
+// trace files out of the operator's own repository.
+//
+// It must be run under `go test -race` to observe the race itself; the positional assertion below
+// holds either way, and is what catches a half-applied reset leaving a path composed from neither
+// generation.
+func TestEnsureDurableSink_ConcurrentRedirectIsRaceFree(t *testing.T) {
+	firstDir := t.TempDir()
+	secondDir := t.TempDir()
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	// Several rounds, because the interleaving that loses is order-dependent: one arm/redirect pair
+	// can easily complete in the safe order by luck.
+	for round := 0; round < 20; round++ {
+		SetDurableSinkDir(firstDir)
+
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() { defer wg.Done(); ensureDurableSink() }()
+		go func() { defer wg.Done(); Arm() }()
+		go func() {
+			defer wg.Done()
+			SetDurableSinkDirWithWorktreeRoot(secondDir, "some-worktree-root")
+		}()
+		wg.Wait()
+
+		// Whichever order won, re-arming must land the sink in the directory the surviving
+		// generation names -- never a stale composite of the two.
+		if !ensureDurableSink() {
+			t.Fatalf("round %d: ensureDurableSink() ok = false; want true", round)
+		}
+		if dir := filepath.Dir(sinkPath); dir != firstDir && dir != secondDir {
+			t.Fatalf("round %d: filepath.Dir(sinkPath=%q) = %q; want one of %q or %q", round, sinkPath, dir, firstDir, secondDir)
+		}
 	}
 }
 
@@ -269,4 +445,41 @@ func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
 	if !strings.Contains(string(data), "second record") {
 		t.Errorf("sink file contents = %q; want the second record present under the recreated original directory", string(data))
 	}
+}
+
+// TestIsLyxWorktree_GatesTheCwdAnchoredFallback pins R6-6's decision: the durable sink's
+// cwd-anchored fallback may arm only inside a worktree lyx actually owns. lyxcwd.Resolve succeeds
+// for any plain git repository standing at its root, and cmd/lyx force-arms the sink on every
+// non-zero exit, so without this gate every refusal — a standalone webster/burler invocation refused
+// before its own sink redirect, or an unknown subcommand that never reached wiring — created
+// <repo>/.lyx/logs inside a checkout lyx does not own.
+func TestIsLyxWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a plain checkout is not a lyx worktree", func(t *testing.T) {
+		t.Parallel()
+
+		hub := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(hub, "plain"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		layout := &lyxcwd.Location{RepoName: "plain", HubPath: hub, WorktreeName: "plain", AnchorRel: "."}
+		if isLyxWorktree(layout) {
+			t.Errorf("isLyxWorktree(%q) = true; want false — arming here writes .lyx into a repository lyx does not own", layout.AnchorPath())
+		}
+	})
+
+	t.Run("an anchored worktree carrying _lyx is a lyx worktree", func(t *testing.T) {
+		t.Parallel()
+
+		hub := t.TempDir()
+		anchor := filepath.Join(hub, "wired", "backend")
+		if err := os.MkdirAll(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		layout := &lyxcwd.Location{RepoName: "wired", HubPath: hub, WorktreeName: "wired", AnchorRel: "backend"}
+		if !isLyxWorktree(layout) {
+			t.Errorf("isLyxWorktree(%q) = false; want true — this is exactly the worktree the fallback exists for", layout.AnchorPath())
+		}
+	})
 }

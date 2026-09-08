@@ -70,12 +70,16 @@ Example:
 	}
 }
 
-// planFindingsHaveBlocking reports whether findings carries at least one planglyph.SeverityBlocking
-// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding: severity, not finding
-// count, decides the verdict on both sides of this parity pair.
+// planFindingsHaveBlocking reports whether findings carries at least one entry that is not
+// explicitly informational, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding:
+// severity, not finding count, decides the verdict on both sides of this parity pair.
+// It tests NOT-informational rather than equals-blocking for the reason that function's own doc
+// gives -- planglyph.Severity is an open string type, and an unrecognized or zero value must not
+// silently pass a gate (crucible round opus-medium-r6, R6-27). The two halves of the pair must keep
+// agreeing about that, so neither is "the equals-blocking one".
 func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 	for _, f := range findings {
-		if f.Severity == planglyph.SeverityBlocking {
+		if f.Severity != planglyph.SeverityInformational {
 			return true
 		}
 	}
@@ -123,11 +127,18 @@ Example:
 			} else {
 				findings, err = planglyph.ValidateFormat(plan, c.env.WorktreeRoot)
 			}
-			if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
+			if err != nil {
 				// Named for quarry, not the plan: an operator reading this envelope must never be
 				// told the plan is invalid when quarry simply could not answer -- this is the
 				// CLI-side half of loomshed's producer-side disposition, and the two must agree.
-				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: quarry could not answer validating plan at "+planDir+": "+err.Error()))
+				// Any OTHER validator error still fails the verb rather than being dropped, with
+				// its own wording: reporting "valid" over a validation that did not finish is the
+				// failure mode internal/planglyph/repo.go's rationale rejects outright.
+				if errors.Is(err, planglyph.ErrQuarryUnavailable) {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: quarry could not answer validating plan at "+planDir+": "+err.Error()))
+					return nil
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validating plan at "+planDir+" failed: "+err.Error()))
 				return nil
 			}
 

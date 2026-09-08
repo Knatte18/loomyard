@@ -113,10 +113,20 @@ Example:
 				Plan:        plan,
 			}
 
+			fingerprintBefore := st.PlanFingerprint
+
 			result, err := websterengine.RecordBatch(deps, batchNumber)
 			if err != nil {
+				// RecordBatch re-baselines st's plan fingerprint the moment BindHandles or
+				// DetectDrift's exact-tier repair rewrites the plan on disk, which can happen on a
+				// call that then blocks. Persist that re-baseline before releasing the lease.
+				saveErr := persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
 				_ = mutateLock.Release()
 				mutateHeld = false
+				if saveErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err.Error(), saveErr)))
+					return nil
+				}
 				if errors.Is(err, websterengine.ErrCardNotDone) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"card_not_done": true}))
 					return nil

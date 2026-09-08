@@ -41,7 +41,8 @@ var ErrPaused = errors.New("webster: paused")
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
 // ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
-// (planglyph.ValidateFormat, called against deps.Geom.WorktreeRoot) reports a non-empty blocking
+// (planglyph.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards
+// excluded) reports a non-empty blocking
 // findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a
 // caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
 // Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
@@ -93,10 +94,39 @@ type BeginResult struct {
 	// AssertedModel is the model BeginBatch asserted Master's pane onto for this batch.
 	AssertedModel string
 	// Advisories is every informational finding the dispatch-boundary re-resolution
-	// (planglyph.ValidateFormat) reported, rendered via Finding.Error, so an operator sees them
+	// (planglyph.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them
 	// without the run stopping — a non-empty blocking findings set never reaches this far, since it
 	// returns ErrPlanDrifted instead.
 	Advisories []string
+}
+
+// completedCards returns every card belonging to a batch that has already reached a terminal
+// classification, in batches' own order.
+//
+// It is what scopes the dispatch-boundary re-resolution (and record-batch's drift detection) to work
+// that has NOT landed yet. A plan describes intended change, so a card already built necessarily
+// contradicts the tree it would otherwise be re-resolved against — its Create target now exists, its
+// Delete target is gone, its Rename's old side no longer resolves — and reporting that as a plan
+// defect wedged every multi-batch plan carrying one of those card types.
+// exclude, when non-zero, additionally counts that batch as completed: record-batch calls this while
+// the batch it is recording is still non-terminal, and that batch's own work has just landed.
+func completedCards(batches []batcher.Batch, st *State, exclude int) []planparser.Card {
+	if st == nil {
+		return nil
+	}
+
+	var done []planparser.Card
+	for _, b := range batches {
+		number, _ := batchIdentity(b)
+		if number != exclude {
+			bs, ok := st.Batches[number]
+			if !ok || bs == nil || !bs.Terminal {
+				continue
+			}
+		}
+		done = append(done, b.Cards...)
+	}
+	return done
 }
 
 // findBatch returns the batcher.Batch in batches whose identity matches number.
@@ -163,6 +193,19 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
 func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
+	// The plan is a hard precondition, refused loudly rather than dereferenced below, for the same
+	// reason RecordBatch refuses one: a nil here is a wiring mistake in a caller, and a nil-pointer
+	// panic names neither the missing field nor the verb that failed to supply it.
+	if deps.Plan == nil {
+		return nil, fmt.Errorf("webster: begin-batch requires a parsed plan; BeginDeps.Plan is nil")
+	}
+	// State is the same kind of hard precondition, and was the half-applied one: it is dereferenced a
+	// few lines below for PlanFingerprint, so the discipline the Plan check states was only actually
+	// enforced for one of the two fields (crucible round opus-medium-r6, R6-21).
+	if deps.State == nil {
+		return nil, fmt.Errorf("webster: begin-batch requires loaded run state; BeginDeps.State is nil")
+	}
+
 	if PauseRequested(deps.Geom.ScratchDir) {
 		return nil, ErrPaused
 	}
@@ -180,9 +223,22 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// below, so this adds no path derivation and no internal/lyxcwd import. An infrastructure error
 	// (errors.Is(err, planglyph.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
 	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
-	resolveFindings, err := planglyph.ValidateFormat(deps.Plan, deps.Geom.WorktreeRoot)
-	if err != nil {
+	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
+	// re-resolving it reports the plan working correctly as a blocking defect.
+	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, completedCards(deps.Batches, deps.State, 0))
+	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it
+	// then keeps going: the status, Create-inversion and containment passes all run after the
+	// rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the
+	// rewrite also survives the pass's own hard-error paths. The staleness re-baseline therefore runs
+	// HERE, ahead of every refusal below, rather than once past them — otherwise state.json keeps the
+	// pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit, and every
+	// later begin-batch refuses it as a foreign one. See this package's doc.go.
+	// A restamp failure never masks resolveErr: the caller is already returning for that reason.
+	if err := restampFingerprint(deps.State, deps.Plan.Dir); err != nil && resolveErr == nil {
 		return nil, err
+	}
+	if resolveErr != nil {
+		return nil, resolveErr
 	}
 	var blocking []string
 	var advisories []string
@@ -252,7 +308,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// WorktreeRoot, not AnchorRoot, is correct in both modes here: hub
 	// mode's WorktreeRoot is the anchor path, the exact value this call
 	// rendered before this Geometry split.
-	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
+	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}

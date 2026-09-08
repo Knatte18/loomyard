@@ -204,7 +204,7 @@ func (e *beginFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
 func (e *beginFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e *beginFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e *beginFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *beginFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
@@ -712,4 +712,142 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 			t.Error("Advisories = []; want at least one informational advisory")
 		}
 	})
+}
+
+// TestBeginBatch_AlreadyBuiltCardsAreNotReResolved proves the dispatch-boundary re-resolution is
+// scoped to work that has not landed. A plan describes intended change, so a card already built
+// contradicts the tree by design: its Create target now exists, which the Create inversion reports
+// as blocking create-already-exists. Re-resolving the whole plan on every batch therefore wedged
+// every multi-batch plan carrying a Create, Delete or Rename card at its second batch.
+func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
+	fx := newBeginFixture(t)
+	// A symbol that genuinely exists in the worktree, so card 1's Create target resolves found.
+	commitFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+
+	built := planparser.Card{
+		Number:         1,
+		Slug:           "json-flag",
+		Type:           planparser.CardTypeCreate,
+		TypeLabelCount: 1,
+		HasType:        true,
+		HasIntent:      true,
+		Intent:         "placeholder intent",
+		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
+		Targets:        []string{"sub#Built"},
+	}
+	pending := planparser.Card{
+		Number:           2,
+		Slug:             "list-tests",
+		Type:             planparser.CardTypeEdit,
+		TypeLabelCount:   1,
+		HasType:          true,
+		HasIntent:        true,
+		Intent:           "placeholder intent",
+		HasImpactSummary: true,
+		ImpactSummary:    "touches the one symbol card 1 created",
+		TargetGroups:     []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"sub#Built"}}},
+		Targets:          []string{"sub#Built"},
+	}
+	fx.Deps.Plan.Cards = []planparser.Card{built, pending}
+	fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{built}}, {Cards: []planparser.Card{pending}}}
+
+	t.Run("card 1 still pending blocks, since its Create target already exists", func(t *testing.T) {
+		fx.Deps.State.Batches = map[int]*websterengine.BatchState{}
+
+		_, err := websterengine.BeginBatch(fx.Deps, 2)
+		if !errors.Is(err, websterengine.ErrPlanDrifted) {
+			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted) while card 1 is still pending", err)
+		}
+		if !strings.Contains(err.Error(), "create-already-exists") {
+			t.Errorf("BeginBatch() error = %v; want it to name create-already-exists", err)
+		}
+	})
+
+	t.Run("card 1 already built dispatches, since its own success is not a defect", func(t *testing.T) {
+		fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+			1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
+		}
+
+		if _, err := websterengine.BeginBatch(fx.Deps, 2); err != nil {
+			t.Fatalf("BeginBatch() error = %v; want nil once card 1's batch is terminal", err)
+		}
+	})
+}
+
+// seedRewritingPlanDir writes a real, parseable plan directory whose first card declares a draft
+// plan: handle spelled differently from what quarry.Name computes for its own declaration head, so
+// begin-batch's ValidateDispatch canonicalizes it and rewrites the card file on disk. Its second
+// card names a glyph that cannot resolve against the fixture's worktree, so the same call also
+// reports a blocking finding — the co-occurrence R4-01/R4-02's re-baseline ordering turns on.
+func seedRewritingPlanDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	files := map[string]string{
+		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n" +
+			"# Plan: canonicalization fixture\n\nTwo cards: one rewrites, one blocks.\n\n" +
+			"## Card Index\n\n1 — json-flag — declares a draft handle whose canonical spelling differs\n" +
+			"2 — list-tests — references a glyph that does not resolve\n",
+		"01-json-flag.md": "# Card 1 — json-flag\n\n**Create:**\n- `plan:internal/foo#Barr` -> `func Bar()`\n\n" +
+			"**Intent:** Declare a draft handle whose canonical spelling differs from the draft.\n",
+		"02-list-tests.md": "# Card 2 — list-tests\n\n**Edit:**\n- `internal/foo#Missing`\n\n" +
+			"**Intent:** Reference a glyph that does not resolve against the tree.\n\n" +
+			"**ImpactSummary:** None — the target does not exist.\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("seed rewriting plan dir %s: %v", name, err)
+		}
+	}
+	return dir
+}
+
+// TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts is the regression test for the round-4
+// review's R4-02. ValidateDispatch's resolve pass canonicalizes handles — rewriting the plan on
+// disk — and then keeps going, so one call routinely both rewrites and reports a blocking finding.
+// With the re-baseline positioned after the ErrPlanDrifted return, state.json kept the pre-rewrite
+// fingerprint while the plan on disk carried webster's own sanctioned edit, and every later
+// begin-batch refused that edit as a foreign one.
+func TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts(t *testing.T) {
+	fx := newBeginFixture(t)
+
+	planDir := seedRewritingPlanDir(t)
+	plan, err := planparser.ParsePlan(planDir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) error = %v", planDir, err)
+	}
+	fx.Deps.Plan = plan
+	fx.Deps.Geom.PlanDir = planDir
+	seeded := mustFingerprint(t, planDir)
+	fx.Deps.State.PlanFingerprint = seeded
+
+	_, err = websterengine.BeginBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrPlanDrifted) {
+		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted) — the unresolvable glyph must block", err)
+	}
+
+	rewritten, readErr := os.ReadFile(filepath.Join(planDir, "01-json-flag.md"))
+	if readErr != nil {
+		t.Fatalf("read 01-json-flag.md: %v", readErr)
+	}
+	if !strings.Contains(string(rewritten), "plan:internal/foo#Bar`") {
+		t.Fatalf("01-json-flag.md = %q; want the draft handle canonicalized on disk — the fixture is not exercising a rewrite at all", rewritten)
+	}
+
+	if fx.Deps.State.PlanFingerprint == seeded {
+		t.Error("State.PlanFingerprint still carries its pre-call value after a call that canonicalized handles on disk; every later begin-batch would refuse webster's own sanctioned rewrite as a foreign edit")
+	}
+}
+
+// TestBeginBatch_NilStateIsRefusedNotPanicked is R6-21's regression test: BeginDeps.Plan was refused
+// loudly while BeginDeps.State was dereferenced unguarded a few lines below, so the stated
+// precondition discipline was enforced for only one of the two fields.
+func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
+	_, err := websterengine.BeginBatch(websterengine.BeginDeps{Plan: &planparser.Plan{}}, 1)
+	if err == nil {
+		t.Fatal("websterengine.BeginBatch(nil State) error = nil; want a refusal naming the missing field")
+	}
+	if !strings.Contains(err.Error(), "State is nil") {
+		t.Errorf("websterengine.BeginBatch(nil State) error = %v; want it to name BeginDeps.State", err)
+	}
 }

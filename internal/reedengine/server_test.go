@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -208,6 +209,77 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 			err := validateToldTmuxIdentity(geom)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateToldTmuxIdentity(SessionName=%q) error = %v; want error: %v", tt.sessionName, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestSanitizeSessionName is the regression guard for the R4 review's R4-10: standalonegeom built
+// its session name from a RAW filepath.Base(target), so pointing standalone mode at a plain checkout
+// named "my.repo" — routine for "foo.js", "site.com", "app.git" — died at the
+// validateToldTmuxIdentity pre-flight telling the operator to rename their own repository. Hub mode
+// never reached it, because hub worktree names are lyx-created and slug-shaped.
+// The exact substitution is pinned per row rather than only "it validates", so a sanitizer that
+// mangles a name it should have passed through fails here too.
+func TestSanitizeSessionName(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain name passes through unchanged", "internal-reed", "internal-reed"},
+		{"underscores and digits pass through", "svc_v2_3", "svc_v2_3"},
+		{"space passes through, tmux leaves it alone", "two words", "two words"},
+		{"valid multi-byte UTF-8 passes through", "svc-åäö-⚙", "svc-åäö-⚙"},
+		{"dot is substituted", "my.repo", "my_repo"},
+		{"every dot is substituted, not just the first", "app.test.git", "app_test_git"},
+		{"colon is substituted", "svc:v2", "svc_v2"},
+		{"backslash is substituted", `bs\slash`, "bs_slash"},
+		{"control character is substituted", "svc\tv3", "svc_v3"},
+		{"DEL is substituted", "svc\x7fv3", "svc_v3"},
+		{"invalid UTF-8 byte is substituted one byte at a time", "svc-\xffv3", "svc-_v3"},
+		{"empty stays empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SanitizeSessionName(tt.input); got != tt.want {
+				t.Errorf("SanitizeSessionName(%q) = %q; want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSanitizeSessionName_OutputAlwaysPassesValidation binds the sanitizer to the validator that
+// declares the rule, which is the whole reason SanitizeSessionName lives in this package: any
+// character class validateToldTmuxIdentity learns to refuse must already be one SanitizeSessionName
+// substitutes, and this case fails the moment the two disagree.
+// A "-<hash8>" suffix is appended exactly as standalonegeom.ReedGeometry appends it, so the assertion
+// is made against the string reed is actually told.
+func TestSanitizeSessionName_OutputAlwaysPassesValidation(t *testing.T) {
+	inputs := []string{
+		"my.repo",
+		"app.test.git",
+		"svc:v2",
+		`bs\slash`,
+		"svc\tv3",
+		"svc\nv3",
+		"svc\x1bv3",
+		"svc\x7fv3",
+		"svc-\xffv3",
+		"svc-åäö-⚙",
+		"two words",
+		"",
+	}
+	for _, input := range inputs {
+		t.Run(strconv.Quote(input), func(t *testing.T) {
+			geom := Geometry{
+				SocketKey:    "lyx-deadbeef",
+				SessionName:  SanitizeSessionName(input) + "-deadbeef",
+				WorktreeRoot: filepath.Join("targets", input),
+				HubPath:      "state",
+			}
+			if err := validateToldTmuxIdentity(geom); err != nil {
+				t.Errorf("validateToldTmuxIdentity(SessionName=%q) error = %v; want nil after sanitization of %q", geom.SessionName, err, input)
 			}
 		})
 	}

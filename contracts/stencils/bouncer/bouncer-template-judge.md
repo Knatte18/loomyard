@@ -3,9 +3,17 @@
      the agent's entire instruction set -- the call runs as a single clean-room agent told only "read
      this file and do exactly what it says".
      Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires all eight non-empty and there are no {{if}}/{{range}} conditionals
+     stencil.Fill requires all nine non-empty and there are no {{if}}/{{range}} conditionals
      anywhere in this file (a required marker inside a conditional branch would render silently
-     blank when present-but-empty -- see internal/stencil/stencil.go). -->
+     blank when present-but-empty -- see internal/stencil/stencil.go).
+     {{.round}} and {{.next_round}} are deliberately DIFFERENT markers, not a typo: the ledger file
+     (`{{.ledger_path}}`, built from ledgerPath(runDir, round)) records the round being judged, while
+     the focus file (`{{.focus_path}}`, built from focusPath(runDir, round+1) -- see focusPath's own
+     doc comment on why the filename names the round the directive is FOR, not the round that wrote
+     it) must record that SAME round-plus-one in its own frontmatter, or readRoundFocus's own
+     round-agrees-with-filename check discards it as malformed (crucible round sonnet-xhigh-r8,
+     LS-1) -- before this fix, both instructions reused {{.round}}, so a compliant judge wrote a
+     focus file whose OWN frontmatter round permanently disagreed with its OWN filename by one. -->
 
 # Bouncer — judge pass, round {{.round}}
 
@@ -98,7 +106,9 @@ focus: []
 
 Frontmatter rules, all strict:
 
-- `round` is a positive integer, here {{.round}}.
+- `round` is a positive integer, here {{.next_round}} -- NOT {{.round}}: this file targets the
+  ROUND AFTER the one you are judging (its own filename already names that round), so its `round:`
+  field must match the filename rather than the round you were asked to review.
 - `exclude_lenses` is a list of strings, possibly empty.
 - `focus` is a list of strings, possibly empty.
 - Both list keys are always present, even when empty -- never omit either key, and never write a

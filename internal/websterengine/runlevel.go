@@ -346,19 +346,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
-	findings, err := planglyph.Validate(plan, deps.Geom.WorktreeRoot)
-	if err != nil && errors.Is(err, planglyph.ErrQuarryUnavailable) {
-		// Its own returned error, named for quarry rather than the plan, distinct from the findings
-		// refusal below -- a gate that could not read the code has not found a plan defect to refuse
-		// the run over, matching internal/loomshed/planvalidate.go's producer-side disposition.
-		return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w", deps.Geom.PlanDir, err)
-	}
-	if hasBlockingFinding(findings) {
-		msgs := make([]string, len(findings))
-		for i, f := range findings {
-			msgs[i] = f.Error()
-		}
-		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
+	// The approval gate fires here, at entry; the full validation gate runs further down, once the
+	// state phase has settled, because its resolve-backed half must be scoped by the completed
+	// cards only state.json knows about (see the ValidateDispatch call below).
+	if !plan.Approved {
+		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan", deps.Geom.PlanDir)
 	}
 
 	if deps.Batcher == nil {
@@ -462,6 +454,53 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
+	// Validation runs HERE — after the state phase settles — rather than at entry, because its
+	// resolve-backed half must be scoped to the cards whose work has NOT landed yet: re-validating
+	// the whole plan on a resume reported every completed Create/Delete/Rename card as a blocking
+	// defect (create-already-exists, glyph-not-found — the plan working exactly as designed) and
+	// permanently refused the very resume this verb's own help promises, wedging both the
+	// documented `lyx webster run` resume flow and loom's own Webster-row re-drive. The scoping is
+	// the same one begin-batch already uses; a fresh run has no completed cards and gets the
+	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
+	// set deliberately omits, already fired at entry above.
+	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, completedCards(batches, st, 0))
+	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
+	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
+	// and is persisted immediately. Restamping only past the refusals left state.json describing the
+	// pre-rewrite bytes, and the first begin-batch then refused this run's own edit as a foreign one.
+	// See this package's doc.go. A restamp or save failure never masks err.
+	if rebaseErr := restampAndSaveFingerprint(deps.Geom, st); rebaseErr != nil {
+		if err == nil {
+			return RunResult{}, rebaseErr
+		}
+		// Both failed. The re-baseline failure is never allowed to MASK err — the validation
+		// verdict is what the operator asked for — but it must not be dropped either: the resolve
+		// pass has already rewritten the plan on disk, so a state.json still holding the
+		// pre-rewrite fingerprint makes the NEXT run refuse this run's own edit as a foreign one,
+		// with ErrFingerprintMismatch, whose advised recourse (--fresh) restarts into the same
+		// wall. Both are reported, in the same shape webstercli's begin-batch and record-batch
+		// already use for this exact coincidence (crucible round opus-medium-r5, R5-3).
+		err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this run had already earned failed: %v", err, rebaseErr)
+	}
+	if err != nil {
+		if errors.Is(err, planglyph.ErrQuarryUnavailable) {
+			// Its own returned error, named for quarry rather than the plan — a gate that could not
+			// read the code has not found a plan defect to refuse the run over, matching
+			// internal/loomshed/planvalidate.go's producer-side disposition.
+			return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w", deps.Geom.PlanDir, err)
+		}
+		return RunResult{}, err
+	}
+	if hasBlockingFinding(findings) {
+		msgs := make([]string, len(findings))
+		for i, f := range findings {
+			msgs[i] = f.Error()
+		}
+		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
+	}
+	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
+	// of both refusals, and persisted itself.
+
 	// Clear any leftover pause flag now that the run has passed every
 	// refusal gate (validation, the plan-fingerprint check) and is
 	// committed to spawning a fresh Master: a resumed run must not
@@ -496,12 +535,16 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// must find its integration prompt already on disk — found live in
 	// crucible round fable-r1, where a Master correctly refused to improvise
 	// one and the stage was unreachable.
+	// The integration-report path is resolved unconditionally: the Master prompt renders it as its
+	// own {{.integration_report_path}} marker regardless of whether the plan carries a "## verify:"
+	// section, with the surrounding prose gating when it matters.
+	integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.Geom.ReportsDir))
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
+	}
+
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
-		integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.Geom.ReportsDir))
-		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
-		}
 		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir)
 		if err != nil {
 			return RunResult{}, err
@@ -518,7 +561,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -619,6 +662,15 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// or stuck for this plan.
 		warnings, err := runIntegrationStage(deps, plan, batches, runResult.Outcome)
 		if err != nil {
+			// runIntegrationStage returns warnings ALONGSIDE its loud done-over-a-failed-suite
+			// error, and every error return here reports the zero RunResult, so those warnings
+			// reach no envelope. They are logged instead rather than dropped: the
+			// "could not be localized because this mode has no fabric repo" notice is the only
+			// explanation an operator gets for an escalation that named no card, and this loud
+			// return is precisely the path that produces one.
+			for _, w := range warnings {
+				logger.Warn("websterengine: integration stage warning", "warning", w)
+			}
 			return RunResult{}, err
 		}
 		runResult.Warnings = append(runResult.Warnings, warnings...)
@@ -865,15 +917,15 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil, nil
 	}
 
-	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = mutateLock.Release() }()
-
-	// Reload state fresh: begin-batch/record-batch mutated and persisted it
-	// repeatedly across Master's whole run, so the in-memory copy captured
-	// before Master ever spawned is stale by the time this stage runs.
+	// This stage runs in three phases, split exactly the way recover-batch splits its own, and for
+	// the same reason: the localization in the middle runs the plan's whole "## verify:" command
+	// once per bisect step — minutes to tens of minutes — and AcquireStateMutation's contract
+	// forbids holding the lease across a long block. Holding it there stalled every concurrent
+	// bracket verb behind an unbounded blocking acquire, with no timeout and no diagnostic.
+	//
+	// Phase 1, unleased: read the card SHAs the search runs over. LoadState is a plain read, and a
+	// fresh one is required — begin-batch/record-batch mutated and persisted state repeatedly across
+	// Master's whole run, so the copy captured before Master ever spawned is long stale.
 	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
 		return nil, err
@@ -882,15 +934,13 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil, fmt.Errorf("webster: integration stage: no state.json to escalate against")
 	}
 
+	// Phase 2, unleased: localize the offending card. "unknown" for both is the honest answer when
+	// there is no fabric repo to bisect against, and the bypass lives at this call site rather than
+	// inside LocalizeIntegrationFailure so a nil bisector is never handed to it — see
+	// RunDeps.OpenBisector's own doc comment.
 	var warnings []string
+	offendingCard, offendingSHA := "unknown", "unknown"
 	if deps.OpenBisector == nil {
-		// No fabric repo in this mode: bypass BisectAndEscalate/bisect
-		// entirely rather than feeding them a nil bisector — see the func
-		// doc comment for why the bypass must live at this call site.
-		RecordIntegrationFailure(st, "unknown", "unknown")
-		if err := AppendIntegrationFailure(deps.Geom.WebsterDir, "unknown", "unknown"); err != nil {
-			return nil, err
-		}
 		warnings = append(warnings, "the integration suite failed and the offending card could not be localized because this mode has no fabric repo to bisect against")
 	} else {
 		bisector, err := deps.OpenBisector()
@@ -898,13 +948,35 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 			return nil, err
 		}
 		shas, labels := accumulatedCardSHAs(batches, st)
-		if err := BisectAndEscalate(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot, deps.Geom.WebsterDir, st); err != nil {
-			return nil, err
+		offendingCard, offendingSHA, err = LocalizeIntegrationFailure(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot)
+		if err != nil {
+			return warnings, err
 		}
 	}
 
+	// Phase 3, leased: record the escalation against a state reloaded fresh under the lease, since
+	// the unleased search above gave every concurrent verb room to persist its own mutations.
+	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
+	if err != nil {
+		return warnings, err
+	}
+	defer func() { _ = mutateLock.Release() }()
+
+	st, err = LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
+	if err != nil {
+		return warnings, err
+	}
+	if st == nil {
+		return warnings, fmt.Errorf("webster: integration stage: no state.json to escalate against")
+	}
+
+	RecordIntegrationFailure(st, offendingCard, offendingSHA)
+	if err := AppendIntegrationFailure(deps.Geom.WebsterDir, offendingCard, offendingSHA); err != nil {
+		return warnings, err
+	}
+
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
-		return nil, err
+		return warnings, err
 	}
 
 	// A Master that claimed outcome: done while the plan-level integration

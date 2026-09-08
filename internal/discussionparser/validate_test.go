@@ -311,3 +311,21 @@ func TestValidate_SupportLogPathIsDirectory(t *testing.T) {
 		t.Errorf("Validate() findings = %v; want none", findings)
 	}
 }
+
+// TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt is R6-28's regression test.
+// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only
+// through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet,
+// entirely ordinary in an agent-written discussion document, made every heading below it report
+// missing. loomshed's Discussion-Validate row maps that to Stuck and bounces to Discussion-Write,
+// respawning on the same document until the bounce budget escalates to a human.
+func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testing.T) {
+	t.Parallel()
+
+	required := []string{"## First", "## Second"}
+	huge := strings.Repeat("A", 128*1024)
+	content := "## First\n" + huge + "\n## Second\n"
+
+	if got := missingSections(content, required); len(got) != 0 {
+		t.Errorf("missingSections(...) = %v; want none — every required heading is present, one just sits below a 128 KB line", got)
+	}
+}

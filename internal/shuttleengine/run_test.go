@@ -24,7 +24,9 @@ import (
 // worktree, with tuning knobs small enough that any later Wait-driving test
 // built on top of it runs fast. anchorPath and worktreeRoot are distinct
 // values (never the same temp dir twice) so a swapped NewRunner argument
-// pair fails a test rather than passing.
+// pair fails a test rather than passing. The fixture's paneCwd is anchorPath
+// by construction, since it is built through NewRunner rather than
+// NewDetachedRunner.
 func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (runner *Runner, anchorPath, worktreeRoot string) {
 	t.Helper()
 	worktreeRoot = t.TempDir()
@@ -62,6 +64,10 @@ func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 		{"empty_worktree_root", anchorPath, "", "empty path"},
 		{"relative_anchor", filepath.Join("sub", "dir"), worktreeRoot, "relative path"},
 		{"anchor_in_a_sibling_tree", t.TempDir(), worktreeRoot, "outside its worktree root"},
+		// NewRunner must still refuse the standalone shape (anchor and worktree root disjoint) even
+		// though NewDetachedRunner accepts it, so the two constructors are provably not
+		// interchangeable.
+		{"standalone_pair_disjoint_dirs", t.TempDir(), t.TempDir(), "outside its worktree root"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -105,6 +111,92 @@ func TestNewRunner_AcceptsHubGeometryShapes(t *testing.T) {
 			runner := NewRunner(&fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}, &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}, tt.anchorPath, worktreeRoot, Config{RunTimeoutMin: 5})
 			if runner.toldErr != nil {
 				t.Errorf("NewRunner(%q, %q).toldErr = %v; want nil", tt.anchorPath, worktreeRoot, runner.toldErr)
+			}
+		})
+	}
+}
+
+// TestNewDetachedRunner_RefusesUnusableToldPaths pins validateDetachedToldPaths' guard, mirroring
+// TestNewRunner_RefusesUnusableToldPaths' shape but driven by strict disjointness rather than
+// containment: anchorPath and worktreeRoot must be two distinct, non-overlapping directories, and
+// paneCwd is checked only for non-empty and absolute. Every public entry point is driven, not just
+// Start, since Interrupt/Send/Inject all resolve their run through the same anchorPath.
+func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
+	anchor := t.TempDir()
+	worktree := t.TempDir()
+	subpathOfWorktree := filepath.Join(worktree, "sub", "dir")
+	if err := os.MkdirAll(subpathOfWorktree, 0o755); err != nil {
+		t.Fatalf("mkdir subpath of worktree: %v", err)
+	}
+	subpathOfAnchor := filepath.Join(anchor, "sub", "dir")
+	if err := os.MkdirAll(subpathOfAnchor, 0o755); err != nil {
+		t.Fatalf("mkdir subpath of anchor: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		anchorPath   string
+		worktreeRoot string
+		paneCwd      string
+		wantIn       string
+	}{
+		{"empty_anchor", "", worktree, anchor, "empty path"},
+		{"empty_worktree_root", anchor, "", anchor, "empty path"},
+		{"empty_pane_cwd", anchor, worktree, "", "empty path"},
+		{"relative_anchor", filepath.Base(anchor), worktree, anchor, "relative path"},
+		{"relative_worktree_root", anchor, filepath.Base(worktree), anchor, "relative path"},
+		{"relative_pane_cwd", anchor, worktree, filepath.Base(anchor), "relative path"},
+		{"equal_pair", anchor, anchor, anchor, "equal to its worktree root"},
+		{"anchor_strictly_inside_worktree", subpathOfWorktree, worktree, subpathOfWorktree, "inside its worktree root"},
+		{"worktree_strictly_inside_anchor", anchor, subpathOfAnchor, anchor, "inside its anchor path"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := NewDetachedRunner(&fakeReed{}, &fakeEngine{}, tt.anchorPath, tt.worktreeRoot, tt.paneCwd, Config{RunTimeoutMin: 5})
+
+			if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Start() error = %v; want it to name %q", err, tt.wantIn)
+			}
+			if err := runner.Interrupt("strand-1"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Interrupt() error = %v; want it to name %q", err, tt.wantIn)
+			}
+			if err := runner.Send("strand-1", "hi"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Send() error = %v; want it to name %q", err, tt.wantIn)
+			}
+			if err := runner.Inject("strand-1", []PaneInput{{Key: "Escape"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Inject() error = %v; want it to name %q", err, tt.wantIn)
+			}
+		})
+	}
+}
+
+// TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions pins the accepted side of
+// validateDetachedToldPaths: a standalone pair of two disjoint absolute directories passes, and
+// paneCwd is accepted whether it equals anchorPath or worktreeRoot — exactly the hub and standalone
+// shapes, neither of which validateDetachedToldPaths refuses since it makes no relational assertion
+// about paneCwd at all.
+// The verdict is asserted through a public entry point (Start's validation short-circuit never
+// firing on the told-path check) rather than by reading the toldErr field directly, since toldErr is
+// unexported implementation, not the contract callers depend on.
+func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *testing.T) {
+	anchor := t.TempDir()
+	worktree := t.TempDir()
+
+	tests := []struct {
+		name    string
+		paneCwd string
+	}{
+		{"paneCwd_equals_anchor", anchor},
+		{"paneCwd_equals_worktree_root", worktree},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
+			runner := NewDetachedRunner(reed, engine, anchor, worktree, tt.paneCwd, Config{RunTimeoutMin: 5})
+
+			if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
+				t.Errorf("Start() error = %v; want the told-path verdict clean for a disjoint standalone pair with paneCwd %q", err, tt.paneCwd)
 			}
 		})
 	}

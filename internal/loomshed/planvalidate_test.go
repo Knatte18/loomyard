@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -286,5 +287,32 @@ func seedGlyphPlanFixture(t *testing.T, anchorPath string, approved bool, create
 	)
 	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
 		t.Fatalf("write overview file: %v", err)
+	}
+}
+
+// TestHasBlockingFinding_UnrecognizedSeverityFailsClosed is R6-27's regression test.
+// planglyph.Severity is an open string type, so an unrecognized value — or the zero value a
+// hand-built Finding carries — took the informational branch and returned Done with the plan
+// directory as its pointer: the run advanced past a finding meant to block it.
+func TestHasBlockingFinding_UnrecognizedSeverityFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		severity planglyph.Severity
+		want     bool
+	}{
+		{"blocking blocks", planglyph.SeverityBlocking, true},
+		{"informational passes", planglyph.SeverityInformational, false},
+		{"the zero value blocks", planglyph.Severity(""), true},
+		{"an unrecognized severity blocks", planglyph.Severity("advisory"), true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := hasBlockingFinding([]planglyph.Finding{{Check: "some-check", Severity: tt.severity}})
+			if got != tt.want {
+				t.Errorf("hasBlockingFinding(severity %q) = %v; want %v", tt.severity, got, tt.want)
+			}
+		})
 	}
 }

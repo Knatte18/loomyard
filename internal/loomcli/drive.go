@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -51,6 +52,14 @@ Example:
 			// ordering.
 			if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.shedPaths.StatusPath+"; run \"lyx loom run\" first to bootstrap this task"))
+				return nil
+			}
+			// The status file must be THIS task's own, for the same reason "lyx loom run" checks:
+			// a worktree forked from a task worktree inherits the old task's `_lyx` state, and the
+			// phase machine would silently resume the inherited run under the wrong slug (crucible
+			// round fable5-high-r3, F-B7).
+			if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, seedSlug(c.location.WorktreeName)); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 

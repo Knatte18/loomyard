@@ -31,6 +31,47 @@ func TestResolveContainment_MemberAndOwnFileSelfOnTwoCardsOverlap(t *testing.T) 
 	}
 }
 
+// TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered proves the finding order is
+// stable across runs. resolveContainment walks a map, and a Go map range is randomised, so a plan
+// carrying several overlaps used to render its findings in a different order on every call.
+func TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{
+		"sub/a.go": "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n\nfunc Baz() {}\n",
+	})
+	repo, err := openRepo(root)
+	if err != nil {
+		t.Fatalf("openRepo(%q) returned error: %v", root, err)
+	}
+	results, err := resolveTargets(repo, []string{"sub#Foo", "sub#Bar", "sub#Baz", "sub/a.go#"})
+	if err != nil {
+		t.Fatalf("resolveTargets(...) returned error: %v", err)
+	}
+
+	plan := &planparser.Plan{Cards: []planparser.Card{
+		{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+		{Number: 2, Slug: "two", Targets: []string{"sub#Bar"}},
+		{Number: 3, Slug: "three", Targets: []string{"sub#Baz"}},
+		{Number: 4, Slug: "four", Targets: []string{"sub/a.go#"}},
+	}}
+
+	first := resolveContainment(plan, results)
+	if len(first) != 3 {
+		t.Fatalf("resolveContainment(...) = %+v; want three containment-file-overlap findings", first)
+	}
+	// Repeat enough times that a randomised map walk would almost certainly diverge at least once.
+	for i := 0; i < 32; i++ {
+		again := resolveContainment(plan, results)
+		if len(again) != len(first) {
+			t.Fatalf("run %d returned %d findings; first run returned %d", i, len(again), len(first))
+		}
+		for j := range first {
+			if again[j] != first[j] {
+				t.Fatalf("run %d finding %d = %+v; first run had %+v — ordering is not deterministic", i, j, again[j], first[j])
+			}
+		}
+	}
+}
+
 func TestResolveContainment_SameCardNoFinding(t *testing.T) {
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	repo, err := openRepo(root)
@@ -102,5 +143,39 @@ func TestResolveContainment_MultipartSecondPartOverlaps(t *testing.T) {
 	got := resolveContainment(plan, results)
 	if len(got) != 1 || got[0].Check != "containment-file-overlap" {
 		t.Fatalf("resolveContainment(multipart) = %+v; want exactly one containment-file-overlap finding", got)
+	}
+}
+
+// TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard is the regression test for R6-3:
+// containment is a WRITE hazard, so a card that only READS a file and a card that only READS a symbol
+// living in it must produce no finding. Building the overlap index from Targets+Uses made every such
+// pair a SeverityBlocking finding, which refuses `lyx webster run` outright and every dispatch after
+// it — on a plan carrying nothing but ordinary read-only references.
+func TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	repo, err := openRepo(root)
+	if err != nil {
+		t.Fatalf("openRepo(%q) returned error: %v", root, err)
+	}
+	results, err := resolveTargets(repo, []string{"sub#Foo", "sub/a.go#"})
+	if err != nil {
+		t.Fatalf("resolveTargets(...) returned error: %v", err)
+	}
+
+	readsOnly := &planparser.Plan{Cards: []planparser.Card{
+		{Number: 1, Slug: "one", Uses: []string{"sub#Foo"}},
+		{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
+	}}
+	if got := resolveContainment(readsOnly, results); len(got) != 0 {
+		t.Errorf("resolveContainment(reads only) = %+v; want no findings — reading overlapping things conflicts with nothing", got)
+	}
+
+	// One writer and one reader is equally safe: nothing serializes on a read.
+	writeThenRead := &planparser.Plan{Cards: []planparser.Card{
+		{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+		{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
+	}}
+	if got := resolveContainment(writeThenRead, results); len(got) != 0 {
+		t.Errorf("resolveContainment(one writer, one reader) = %+v; want no findings", got)
 	}
 }

@@ -69,6 +69,32 @@ func TestNormalizeCardPath(t *testing.T) {
 			want: "../secret.go",
 		},
 		{
+			// R6-5: joining onto root collapsed the doubled separator and erased the leading-"/"
+			// marker card-path-malformed keys on, so the malformed check was silently disabled for
+			// every plan that set a root.
+			name: "malformed single-/ prefix survives a set root, not absorbed into it",
+			root: "internal/boardcli",
+			raw:  "/etc/passwd",
+			want: "/etc/passwd",
+		},
+		{
+			// R6-5: an empty entry became path.Clean("internal/boardcli/") == the root directory,
+			// making the validator's own "empty entry" branch unreachable under a set root.
+			name: "empty entry survives a set root, not resolved to the root directory",
+			root: "internal/boardcli",
+			raw:  "",
+			want: "",
+		},
+		{
+			// A ".." needs no carve-out of its own: it is resolved against root, and only one that
+			// climbs PAST the worktree root survives as a leading "..", which is exactly what
+			// card-path-malformed keys on.
+			name: "a .. that climbs past the worktree root survives a set root as an escape",
+			root: "internal/boardcli",
+			raw:  "../../../secret.go",
+			want: "../secret.go",
+		},
+		{
 			name: "harmless internal .. collapses away, not an escape",
 			root: "internal",
 			raw:  "boardcli/../boardengine/rows.go",
@@ -253,17 +279,18 @@ func TestNormalizeCard_PairsAndTargetsAgree(t *testing.T) {
 
 // pipeline runs normalizeCard then canonicalizeCard on card, in the exact order ParsePlan runs
 // them, and returns the surface map canonicalizeCard populated.
-func pipeline(card *Card, root, cardKey string) map[string]map[string]string {
+func pipeline(card *Card, root, cardKey string) map[string]map[string][]string {
 	normalizeCard(card, root)
-	surface := make(map[string]map[string]string)
+	surface := make(map[string]map[string][]string)
 	canonicalizeCard(card, cardKey, glyph.Go, surface)
 	return surface
 }
 
-// TestCanonicalizeCard_ExtensionGate proves the file-extension gate: an extension-carrying
-// path-shaped ref is canonicalized into its glyph string, while an extensionless one — a bare
-// filename under a non-"." root:, or a bare directory path — survives untouched, leaving card 4's
-// directory-target check something to classify.
+// TestCanonicalizeCard_ExtensionGate proves canonicalizablePath's two halves: an
+// extension-carrying path-shaped ref is canonicalized into its glyph string, a SLASH-FREE
+// extensionless one is canonicalized too — that is classifyRef rule 4's repository-root filename,
+// and leaving it a bare token is what wedged every glyph-backed layer downstream (R9-1) — while a
+// SLASHED extensionless one survives untouched, leaving directory-target something to classify.
 func TestCanonicalizeCard_ExtensionGate(t *testing.T) {
 	t.Parallel()
 
@@ -276,25 +303,34 @@ func TestCanonicalizeCard_ExtensionGate(t *testing.T) {
 		}
 	})
 
-	t.Run("bare extensionless filename under a non-\".\" root: resolves but does not canonicalize", func(t *testing.T) {
+	t.Run("bare extensionless filename under a non-\".\" root: root-joins into a slashed path and does not canonicalize", func(t *testing.T) {
 		t.Parallel()
 		card := Card{Targets: []string{"Makefile"}}
 		pipeline(&card, "internal/boardcli", "1-a")
 		if want := "internal/boardcli/Makefile"; card.Targets[0] != want {
-			t.Errorf("card.Targets[0] = %q; want %q (root-joined, not canonicalized)", card.Targets[0], want)
+			t.Errorf("card.Targets[0] = %q; want %q (root-joined, and slashed-extensionless so not canonicalized)", card.Targets[0], want)
 		}
 	})
 
-	t.Run("bare extensionless filename under an empty root: passes through verbatim", func(t *testing.T) {
+	t.Run("bare extensionless filename under an empty root: canonicalizes to its self glyph", func(t *testing.T) {
 		t.Parallel()
 		card := Card{Targets: []string{"Makefile"}}
 		pipeline(&card, "", "1-a")
-		if want := "Makefile"; card.Targets[0] != want {
+		if want := "Makefile#"; card.Targets[0] != want {
+			t.Errorf("card.Targets[0] = %q; want %q (rule 4's repository-root filename must reach the glyph layers as a glyph)", card.Targets[0], want)
+		}
+	})
+
+	t.Run("worktree-root-escaped extensionless filename canonicalizes under a non-\".\" root:", func(t *testing.T) {
+		t.Parallel()
+		card := Card{Targets: []string{"//LICENSE"}}
+		pipeline(&card, "internal/boardcli", "1-a")
+		if want := "LICENSE#"; card.Targets[0] != want {
 			t.Errorf("card.Targets[0] = %q; want %q", card.Targets[0], want)
 		}
 	})
 
-	t.Run("extensionless directory path survives canonicalization untouched", func(t *testing.T) {
+	t.Run("slashed extensionless directory path survives canonicalization untouched", func(t *testing.T) {
 		t.Parallel()
 		card := Card{Targets: []string{"internal/foo"}}
 		pipeline(&card, "", "1-a")
@@ -302,6 +338,23 @@ func TestCanonicalizeCard_ExtensionGate(t *testing.T) {
 			t.Errorf("card.Targets[0] = %q; want %q (untouched, so directory-target still has something to classify)", card.Targets[0], want)
 		}
 	})
+}
+
+// TestCanonicalizeCard_RootFilenameSurfaceRefRecorded proves the surface lexeme of a rule-4
+// repository-root filename is recorded under its new canonical string, so RewriteRefs can still
+// restore the exact byte-form the card's own file carried.
+func TestCanonicalizeCard_RootFilenameSurfaceRefRecorded(t *testing.T) {
+	t.Parallel()
+
+	card := Card{Targets: []string{"LICENSE"}}
+	surface := make(map[string]map[string][]string)
+	normalizeCard(&card, "")
+	canonicalizeCard(&card, "1-a", glyph.Go, surface)
+
+	got := surface["1-a"]["LICENSE#"]
+	if len(got) != 1 || got[0] != "LICENSE" {
+		t.Fatalf("surface[1-a][LICENSE#] = %#v; want [\"LICENSE\"]", got)
+	}
 }
 
 // TestCanonicalizeCard_GlyphNeverRootJoined proves a glyph-shaped ref copied verbatim from a
@@ -357,7 +410,7 @@ func TestCanonicalizeCard_SurfaceRefs(t *testing.T) {
 	t.Parallel()
 
 	cardA := Card{Targets: []string{"list.go"}}
-	surface := make(map[string]map[string]string)
+	surface := make(map[string]map[string][]string)
 	normalizeCard(&cardA, "internal/boardcli")
 	canonicalizeCard(&cardA, "1-a", glyph.Go, surface)
 
@@ -366,10 +419,31 @@ func TestCanonicalizeCard_SurfaceRefs(t *testing.T) {
 	canonicalizeCard(&cardB, "2-b", glyph.Go, surface)
 
 	const canonical = "internal/boardcli/list.go#"
-	if surface["1-a"][canonical] != "internal/boardcli/list.go" {
-		t.Errorf(`surface["1-a"][%q] = %q; want %q`, canonical, surface["1-a"][canonical], "internal/boardcli/list.go")
+	for _, cardKey := range []string{"1-a", "2-b"} {
+		got := surface[cardKey][canonical]
+		if len(got) != 1 || got[0] != "internal/boardcli/list.go" {
+			t.Errorf(`surface[%q][%q] = %v; want exactly ["internal/boardcli/list.go"]`, cardKey, canonical, got)
+		}
 	}
-	if surface["2-b"][canonical] != "internal/boardcli/list.go" {
-		t.Errorf(`surface["2-b"][%q] = %q; want %q`, canonical, surface["2-b"][canonical], "internal/boardcli/list.go")
+}
+
+// TestCanonicalizeCard_SurfaceRefsKeepsEveryLexemeOnOneCard is R6-13's regression test: one card
+// may spell one canonical ref two ways across two of its own fields, and recording only the last
+// left RewriteRefs rewriting one bullet and leaving the other stale — a half-rewritten card.
+func TestCanonicalizeCard_SurfaceRefsKeepsEveryLexemeOnOneCard(t *testing.T) {
+	t.Parallel()
+
+	card := Card{
+		Targets: []string{"list.go"},
+		Uses:    []string{"//internal/boardcli/list.go"},
+	}
+	surface := make(map[string]map[string][]string)
+	normalizeCard(&card, "internal/boardcli")
+	canonicalizeCard(&card, "1-a", glyph.Go, surface)
+
+	const canonical = "internal/boardcli/list.go#"
+	got := surface["1-a"][canonical]
+	if len(got) != 1 {
+		t.Fatalf(`surface["1-a"][%q] = %v; want one deduplicated lexeme (both spellings normalize to the same path)`, canonical, got)
 	}
 }

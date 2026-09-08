@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
 // fingerprintWriteFiles writes every entry of files (keyed by relative
@@ -147,5 +149,70 @@ func TestFingerprint_IgnoresNonMarkdownAndSubdirs(t *testing.T) {
 
 	if before != after {
 		t.Errorf("fingerprint() changed after adding a non-.md file and a subdirectory .md file; want unchanged (got %q, want %q)", after, before)
+	}
+}
+
+// TestFingerprint_IgnoresTheAmendmentLog covers the amendment log's exclusion from plan identity.
+// DetectDrift's exact-tier repair creates planparser.AmendmentsFileName inside the plan directory,
+// so folding it into the fingerprint made webster's own repair invalidate the plan it had just
+// repaired.
+func TestFingerprint_IgnoresTheAmendmentLog(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fingerprintWriteFiles(t, dir, map[string]string{
+		"00-overview.md": "overview content",
+		"01-card.md":     "card content",
+	})
+
+	before, err := fingerprint(dir)
+	if err != nil {
+		t.Fatalf("fingerprint(before) returned error: %v", err)
+	}
+
+	fingerprintWriteFiles(t, dir, map[string]string{
+		planparser.AmendmentsFileName: "# Amendments\n- Timestamp: t, Card: 1-card, OldGlyph: a#B, NewGlyph: a#C, Tier: exact, SHA: deadbeef\n",
+	})
+
+	after, err := fingerprint(dir)
+	if err != nil {
+		t.Fatalf("fingerprint(after) returned error: %v", err)
+	}
+	if before != after {
+		t.Errorf("fingerprint changed when the amendment log appeared: before %s, after %s", before, after)
+	}
+}
+
+// TestRestampFingerprint_RebaselinesTheStalenessGuard covers the re-baseline both bracket verbs
+// perform after their own sanctioned plan rewrites. Without it, the first batch that bound a handle
+// or repaired drift made every later begin-batch fail ErrFingerprintMismatch on webster's own edit.
+func TestRestampFingerprint_RebaselinesTheStalenessGuard(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fingerprintWriteFiles(t, dir, map[string]string{"01-card.md": "before"})
+
+	original, err := fingerprint(dir)
+	if err != nil {
+		t.Fatalf("fingerprint(original) returned error: %v", err)
+	}
+	st := &State{PlanFingerprint: original}
+
+	// Stand in for BindHandles' own RewriteRefs pass.
+	fingerprintWriteFiles(t, dir, map[string]string{"01-card.md": "after the bind"})
+
+	if err := restampFingerprint(st, dir); err != nil {
+		t.Fatalf("restampFingerprint(...) returned error: %v", err)
+	}
+	if st.PlanFingerprint == original {
+		t.Fatal("restampFingerprint left the stale fingerprint in place")
+	}
+
+	current, err := fingerprint(dir)
+	if err != nil {
+		t.Fatalf("fingerprint(current) returned error: %v", err)
+	}
+	if st.PlanFingerprint != current {
+		t.Errorf("State.PlanFingerprint = %s; want the plan directory's current fingerprint %s", st.PlanFingerprint, current)
 	}
 }

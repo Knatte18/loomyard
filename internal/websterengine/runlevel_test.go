@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -99,8 +100,8 @@ func (e *runFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) 
 func (e *runFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
-func (e *runFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e *runFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e *runFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
+func (e *runFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *runFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
@@ -1376,5 +1377,106 @@ func TestRun_AcyclicPlanReportsNoCycles(t *testing.T) {
 		if strings.Contains(w, "dependency cycle") {
 			t.Errorf("RunResult.Warnings = %v; want no sequencing-cycle warning for an acyclic plan", result.Warnings)
 		}
+	}
+}
+
+// TestRun_ResumeWithCompletedCreateCardIsNotRefused is F2's (round fable5-high-r3) regression
+// test: a resumed run whose state records batch 1 terminal, and whose batch-1 Create target
+// consequently exists on disk, must sail past the entry validation gate — against pre-fix source
+// the gate re-validated the WHOLE plan and refused the resume on create-already-exists, the plan
+// working exactly as designed, wedging the documented `lyx webster run` resume flow permanently
+// (--fresh only fires on a fingerprint mismatch, so there was no way out).
+func TestRun_ResumeWithCompletedCreateCardIsNotRefused(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	// Batch 1's own Create target landed — exactly what a completed Create card leaves behind.
+	commitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "resume-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	wantSessionID := "master-session-resume"
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-resume",
+		result: shuttleengine.Result{
+			Outcome:              shuttleengine.OutcomeAsking,
+			SessionID:            wantSessionID,
+			RunDir:               "/run/dir/resume",
+			LastAssistantMessage: "resumed and asking",
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-resume", wantSessionID)
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	var target *websterengine.MasterAskingError
+	if !errors.As(err, &target) {
+		t.Fatalf("Run() error = %v; want a *MasterAskingError — the resume must reach the Master spawn, never a create-already-exists refusal for its own completed card", err)
+	}
+	if fx.Starter.callCount() != 1 {
+		t.Errorf("Starter.callCount() = %d; want 1 — the resumed run must spawn Master", fx.Starter.callCount())
+	}
+}
+
+// TestRun_UnapprovedPlanRefused pins the approval gate the entry-time ValidateDispatch scoping
+// deliberately does not carry (ValidateDispatch runs the format-only check set): an unapproved
+// plan is refused before batching, state, or any spawn.
+func TestRun_UnapprovedPlanRefused(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	overview := filepath.Join(fx.PlanDir, "00-overview.md")
+	data, err := os.ReadFile(overview)
+	if err != nil {
+		t.Fatalf("read overview: %v", err)
+	}
+	if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "approved: true", "approved: false", 1)), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil || !strings.Contains(err.Error(), "not approved") {
+		t.Fatalf("Run() error = %v; want the not-approved refusal", err)
+	}
+	if fx.Starter.callCount() != 0 {
+		t.Errorf("Starter was reached (%d calls) for an unapproved plan; want zero", fx.Starter.callCount())
+	}
+}
+
+// TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth pins R5-3: when ValidateDispatch
+// returns an error AND persisting the plan-fingerprint re-baseline also fails, Run must report
+// both rather than dropping the second.
+//
+// It matters because the resolve pass has by then already rewritten the plan on disk, so a
+// state.json still holding the pre-rewrite fingerprint makes the NEXT run refuse this run's own
+// edit as a foreign one with ErrFingerprintMismatch — whose advised recourse (--fresh) restarts
+// into the same wall. Pre-fix the operator got no hint at all that this had happened.
+//
+// The validation error is forced by pointing WorktreeRoot at a path with no repository, so
+// planglyph's own openRepo fails; the save failure is forced by making the webster dir read-only
+// after the matching state has been seeded, which is the one directory SaveState writes into.
+func TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{})
+
+	fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "no-such-tree")
+
+	websterDir := fx.Deps.Geom.WebsterDir
+	if err := os.Chmod(websterDir, 0o555); err != nil {
+		t.Fatalf("chmod webster dir read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(websterDir, 0o755) })
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() error = nil; want both the validation failure and the re-baseline persist failure reported")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "re-baseline") {
+		t.Errorf("Run() error = %q; want it to also name the dropped plan-fingerprint re-baseline persist failure", got)
+	}
+	if !errors.Is(err, planglyph.ErrQuarryUnavailable) {
+		t.Errorf("Run() error = %v; want the primary validation failure still classifiable via errors.Is(err, planglyph.ErrQuarryUnavailable) — the re-baseline report must not mask it", err)
 	}
 }

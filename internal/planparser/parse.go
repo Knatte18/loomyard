@@ -5,7 +5,7 @@
 // fail-loud discipline admits no silent-default reading of a malformed plan document structure.
 // Per-card content defects (a missing field, a malformed Rename: bullet) are recorded leniently
 // into the Card model instead, per the lenient-card-parse decision documented in doc.go.
-// The card body grammar itself is format-4's type-label model
+// The card body grammar itself is format-5's type-label model
 // (manifest/designs/plan-card-format.md): a card's own body carries one or more bold type labels
 // (Create/Edit/Delete/Rename/Move/Prosa/Custom), each carrying its own target list and
 // contributing its own TargetGroup, Uses:/Intent:/ImpactSummary: are the remaining recognized
@@ -145,7 +145,7 @@ func ParsePlan(planDir string) (*Plan, error) {
 	// until after this loop finishes.
 	lang, langOK := glyph.Go, language == "go"
 
-	surfaceRefs := make(map[string]map[string]string)
+	surfaceRefs := make(map[string]map[string][]string)
 
 	cards := make([]Card, 0, len(entries))
 	for _, entry := range entries {
@@ -342,7 +342,7 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	return card, nil
 }
 
-// Bold-label prefixes for the seven type labels format-4 recognizes as a card's own target-list
+// Bold-label prefixes for the seven type labels format-5 recognizes as a card's own target-list
 // key (manifest/designs/plan-card-format.md's "Card fields"). The type name is the key — there is
 // no separate "Type:" label. A card body carries one or more of these labels, each contributing
 // its own TargetGroup.
@@ -370,7 +370,7 @@ var typeLabels = map[string]CardType{
 	customLabel: CardTypeCustom,
 }
 
-// Bold-label prefixes for format-4's five remaining recognized field labels.
+// Bold-label prefixes for format-5's five remaining recognized field labels.
 const (
 	usesLabel          = "**Uses:**"
 	intentLabel        = "**Intent:**"

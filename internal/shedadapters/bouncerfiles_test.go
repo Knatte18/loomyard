@@ -3,6 +3,7 @@ package shedadapters
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -470,4 +471,51 @@ func TestWriteFocus_WritesReadableFile(t *testing.T) {
 	if diff := cmp.Diff(f, got); diff != "" {
 		t.Errorf("parseFocus(written file) mismatch (-want +got):\n%s", diff)
 	}
+}
+
+// writeVerdictAndLedger writes a well-formed verdict file and a ledger file (whose own frontmatter
+// round is ledgerRound, independent of the path round its filename encodes) into runDir at round's
+// own verdictPath/ledgerPath, for recordedVerdict's own tests.
+func writeVerdictAndLedger(t *testing.T, runDir string, round, ledgerRound int) {
+	t.Helper()
+	verdict := "---\nverdict: APPROVED\nrationale: \"looks good\"\n---\n"
+	if err := os.WriteFile(verdictPath(runDir, round), []byte(verdict), 0o644); err != nil {
+		t.Fatalf("WriteFile(verdict): %v", err)
+	}
+	ledger := "---\nround: " + strconv.Itoa(ledgerRound) + "\nledger: []\n---\n"
+	if err := os.WriteFile(ledgerPath(runDir, round), []byte(ledger), 0o644); err != nil {
+		t.Fatalf("WriteFile(ledger): %v", err)
+	}
+}
+
+// TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename is LS-1's own regression test (crucible
+// round sonnet-xhigh-r8): a ledger file whose own round: frontmatter field disagrees with the round
+// number its own filename already encodes must not be trusted as "this round has been judged" --
+// recordedVerdict's whole job, per its own doc comment.
+func TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename(t *testing.T) {
+	t.Run("MatchingRoundIsTrusted", func(t *testing.T) {
+		dir := t.TempDir()
+		writeVerdictAndLedger(t, dir, 3, 3)
+
+		verdict, judged := recordedVerdict(dir, 3)
+		if !judged {
+			t.Fatalf("recordedVerdict(round 3) judged = false; want true (a ledger whose own round agrees with its filename)")
+		}
+		if verdict != verdictApproved {
+			t.Errorf("recordedVerdict(round 3) verdict = %q; want %q", verdict, verdictApproved)
+		}
+	})
+
+	t.Run("MismatchedRoundIsNotTrusted", func(t *testing.T) {
+		dir := t.TempDir()
+		// The ledger file lands at round-3-*.md (per verdictPath/ledgerPath(dir, 3)) but its own
+		// frontmatter claims round: 1 -- the exact shape a judge writing the wrong round's own claim
+		// into a file that landed at the right path would produce.
+		writeVerdictAndLedger(t, dir, 3, 1)
+
+		_, judged := recordedVerdict(dir, 3)
+		if judged {
+			t.Error("recordedVerdict(round 3) judged = true; want false -- the ledger's own round: 1 disagrees with its filename's round 3, so it must not be trusted as round 3's judgment")
+		}
+	})
 }

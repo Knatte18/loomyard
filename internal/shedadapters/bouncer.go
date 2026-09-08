@@ -24,6 +24,11 @@ import (
 // bouncerEngineLabel is the short engine label this producer's log lines and error text carry.
 const bouncerEngineLabel = "bouncer"
 
+// bouncerJudgeRole is the shuttleengine.Spec.Role every judge pass carries, pinned as a constant
+// because the judge spawn and the entry-time probe for a live judge must describe the same run for
+// a logged attach to be attributable to the pass that started it.
+const bouncerJudgeRole = "bouncer-judge"
+
 // BouncerConfig configures one Bouncer instance.
 type BouncerConfig struct {
 	// Name is a log-field and error-text identity only, never compared, parsed, or used for
@@ -151,9 +156,17 @@ func NewBouncer(cfg BouncerConfig) (*Bouncer, error) {
 
 var _ shedengine.ShedProducer = (*Bouncer)(nil)
 
-// Call runs one Bouncer iteration: entry-check the context, resolve the round to act on, clear and
-// re-seed an already-approved round before it can replay, and branch into one of four modes --
-// seed, re-bounce, judge, or replay -- mapping the result onto shedengine's contract.
+// Call runs one Bouncer iteration: entry-check the context, resolve the round to act on, probe for
+// a live judge behind a verdict already on disk, clear and re-seed an already-approved round before
+// it can replay, and branch into one of four modes -- seed, re-bounce, judge, or replay -- mapping
+// the result onto shedengine's contract.
+//
+// Entry-time probe: the two modes that act on a verdict already on disk -- the clear and the replay
+// -- spawn nothing themselves, so nothing else in this function would ask whether the judge that
+// wrote that verdict is still alive. It is asked here, before either of them acts, because a
+// recorded verdict needs two files while the judge spawn declares three. Attaching harvests the
+// judgment as this call's own (settle, never clear); finding nothing live leaves both branches
+// below acting on exactly the state they always did.
 //
 // Clear-and-re-seed: when the resolved round is judged and its verdict is APPROVED, this producer
 // has already settled the segment on some earlier call -- its own past Done. Re-entering means the
@@ -184,8 +197,39 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): resolve round: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}
 
+	if n > 0 && b.judged(n) {
+		// A verdict and ledger on disk prove the judge got as far as writing two of the THREE files
+		// its spawn declares as outputs -- never that it finished. A driver crash in the window
+		// between the ledger write and the focus write therefore lands here with a live judge still
+		// holding all three paths, and both branches below would act destructively over it: the
+		// clear archives the run directory out from under it, and the replay writes a synthetic
+		// focus file at a path it declared as an output. Neither respawn could ever be attached to
+		// afterwards either, since the seed spec and the Burler row's spec each name a different
+		// OutputFiles set than the judge's, and Attach matches on that set alone.
+		//
+		// So the probe runs before either branch acts, on the judge spec's own OutputFiles -- the
+		// same "attach if live, else respawn, never both" rule the seed and judge passes already
+		// follow, applied to the two paths that reach a verdict without spawning anything.
+		attached, err := b.awaitLiveJudge(n)
+		if err != nil {
+			return b.degrade(ctx, "shedadapters: bouncer entry-time judge attach probe failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+		}
+		if attached && b.judged(n) {
+			// Re-evaluated after the wait, against what the attached judge has now finished
+			// writing. Reaching here means the judgment landed inside THIS call, so this call is
+			// its harvest and settles it -- exactly as judgeCall's own harvest step does, and never
+			// as the clear below, whose whole premise is a verdict some EARLIER call already
+			// settled the segment on.
+			return b.settle(ctx, n, true)
+		}
+		// Falling through covers both remaining cases with no special-casing: nothing was live (the
+		// clear and replay branches below act on unchanged state, exactly as before), or the
+		// attached judge ended without leaving a verdict and ledger that parse (judged(n) is now
+		// false, so judgeCall re-judges the round with a fresh spawn).
+	}
+
 	if n > 0 {
-		if verdict, ok := b.judgedVerdict(n); ok && verdict == verdictApproved {
+		if verdict, ok := recordedVerdict(b.cfg.RunDir, n); ok && verdict == verdictApproved {
 			// The trigger is state this producer already wrote: an APPROVED verdict sitting on
 			// disk at Call entry is the durable record that some earlier Call settled this
 			// segment. Continuing instead of clearing would replay that stale verdict, which is
@@ -237,41 +281,43 @@ func (b *Bouncer) round1FocusSeeded() bool {
 	return err == nil
 }
 
-// judgedVerdict reads and parses round's verdict file, then reads and parses round's ledger file,
-// returning false on any read or parse failure. It deliberately excludes the focus file, because
-// that file is an input to the next round rather than evidence about this one, and is
-// synthesizable -- including it would let a missing focus file invalidate a judgment that provably
-// happened.
-//
-// The returned bouncerVerdict is the value judged has always thrown away: Call's clear trigger
-// needs the parsed verdict at entry, and judged's discarding of it is what forced settle to re-read
-// the file.
-func (b *Bouncer) judgedVerdict(round int) (bouncerVerdict, bool) {
-	verdictRaw, err := os.ReadFile(verdictPath(b.cfg.RunDir, round))
-	if err != nil {
-		return "", false
-	}
-	verdict, _, err := parseVerdict(verdictRaw)
-	if err != nil {
-		return "", false
-	}
-	ledgerRaw, err := os.ReadFile(ledgerPath(b.cfg.RunDir, round))
-	if err != nil {
-		return "", false
-	}
-	if _, err := parseLedger(ledgerRaw); err != nil {
-		return "", false
-	}
-	return verdict, true
+// judged reports whether round's verdict and ledger files both exist and parse under this
+// Bouncer's own run directory -- the bool half of recordedVerdict, for the callers that act on the
+// fact of a judgment rather than on which way it went.
+func (b *Bouncer) judged(round int) bool {
+	_, ok := recordedVerdict(b.cfg.RunDir, round)
+	return ok
 }
 
-// judged reports whether round's verdict and ledger files both exist and parse. It deliberately
-// excludes the focus file, because that file is an input to the next round rather than evidence
-// about this one, and is synthesizable -- including it would let a missing focus file invalidate
-// a judgment that provably happened.
-func (b *Bouncer) judged(round int) bool {
-	_, ok := b.judgedVerdict(round)
-	return ok
+// awaitLiveJudge probes for a still-live judge run for round and, when it finds one, waits on it
+// before returning true; a not-found probe returns false, and an attach error is returned to the
+// caller rather than swallowed, since a probe that could not determine liveness must never be read
+// as "nothing is running".
+//
+// It reports only whether an attach happened, deliberately carrying no shuttleengine.Result out:
+// this producer's verdict is what the judge wrote to disk, never what the run reported, so every
+// caller re-reads the files afterwards rather than branching on an outcome value.
+//
+// The spec carries only what Attach reads -- the OutputFiles it set-matches a persisted run.json
+// against -- plus Role and Round, identity fields Attach never matches on that are filled anyway so
+// a logged attach is attributable. Rebuilding the judge's full spec here would mean reading and
+// filling the whole judge prompt for a probe that never spawns anything.
+func (b *Bouncer) awaitLiveJudge(round int) (bool, error) {
+	spec := shuttleengine.Spec{
+		OutputFiles: judgeOutputs(b.cfg.RunDir, round),
+		Role:        bouncerJudgeRole,
+		Round:       strconv.Itoa(round),
+	}
+
+	result, attached, err := b.cfg.Shuttle.Attach(spec)
+	if err != nil {
+		return false, err
+	}
+	if !attached {
+		return false, nil
+	}
+	logger.Info("shedadapters: attached to a live bouncer judge run instead of acting on its unfinished verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
+	return true, nil
 }
 
 // degrade is every judge-call infrastructure failure's single exit: it consults cancelErr first
@@ -527,16 +573,13 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	// complete only when every declared output file exists, so a third entry written only on
 	// BLOCKING would make every approval classify non-complete, degrade, and render
 	// shedengine.Done unreachable.
-	outputs := []string{
-		verdictPath(b.cfg.RunDir, n),
-		ledgerPath(b.cfg.RunDir, n),
-		focusPath(b.cfg.RunDir, n+1),
-	}
+	outputs := judgeOutputs(b.cfg.RunDir, n)
 
 	prompt, err := stencil.Fill(judgeTemplate, map[string]string{
 		"rubric":          rubric,
 		"artifacts":       strings.Join(b.cfg.ArtifactPaths, "\n"),
 		"round":           strconv.Itoa(n),
+		"next_round":      strconv.Itoa(n + 1),
 		"report_path":     reportPath,
 		"previous_ledger": previousLedger,
 		"verdict_path":    outputs[0],
@@ -553,7 +596,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Model:       b.cfg.Model,
 		Effort:      b.cfg.Effort,
 		Version:     b.cfg.Version,
-		Role:        "bouncer-judge",
+		Role:        bouncerJudgeRole,
 		Round:       strconv.Itoa(n),
 	}
 

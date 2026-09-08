@@ -26,6 +26,9 @@ const supportedVersion = 1
 // wrapped as "shedbuild: %w", passing yaml's own text and its line-number position through
 // verbatim.
 //
+// A recipe file is exactly ONE YAML document: a second one is a refusal, never a silent truncation
+// of the producer graph.
+//
 // Parse validates nothing about routing: it never checks that OnDone or OnStuck names an existing
 // row, that segments agree, that the graph is acyclic, or that any row is reachable, because
 // shedengine's own validation and internal/shedcheck already own those and a third copy is what
@@ -40,6 +43,20 @@ func Parse(data []byte) (Recipe, error) {
 			return Recipe{}, errors.New("shedbuild: recipe is empty")
 		}
 		return Recipe{}, fmt.Errorf("shedbuild: %w", err)
+	}
+
+	// A recipe file holds exactly ONE YAML document. Decoding once and stopping silently truncated
+	// the producer graph at the first "---": an author resolving a merge conflict, or pasting a
+	// replacement graph below the old one, kept only the prefix — and if that prefix happened to be
+	// self-consistent, shedengine.validate saw no dangling target and the run proceeded on a
+	// truncated pipeline. KnownFields(true) offers no protection past document one (crucible round
+	// opus-medium-r6, R6-26).
+	var trailing yaml.Node
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return Recipe{}, fmt.Errorf("shedbuild: %w", err)
+		}
+		return Recipe{}, fmt.Errorf("shedbuild: recipe carries more than one YAML document (a stray \"---\" at line %d); a recipe is exactly one document, and everything after the first was being dropped silently", trailing.Line)
 	}
 
 	if err := checkRecipeShape(recipe); err != nil {

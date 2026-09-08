@@ -82,7 +82,7 @@ func (e shellLaunchEngine) Startup(_ string) shuttleengine.StartupState {
 }
 
 func (e shellLaunchEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e shellLaunchEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e shellLaunchEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e shellLaunchEngine) ComposeSend(_ string) []shuttleengine.PaneInput  { return nil }
 func (e shellLaunchEngine) ModelSwitchSequence(_ string) []shuttleengine.PaneInput {
 	return nil

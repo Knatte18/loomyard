@@ -20,4 +20,39 @@
 // format-only validation with a warning, the exact failure mode where a plan looks validated and
 // was not; and making the error informational everywhere, which makes the outage invisible at
 // precisely the boundaries whose whole job is to be mechanical. See repo.go and planglyph.go.
+//
+// Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks
+// a claim against without reading Go source — the parallel this package owes planparser's own
+// exhaustively numbered "Validation checks" section in contracts/specs/loom-plan-spec.md, since
+// nothing enumerated these anywhere else:
+//
+//   - glyph-not-found, glyph-ambiguous, glyph-rejected — the resolve status policy (resolve.go),
+//     blocking, over every glyph target that neither a Create group owns nor a Rename pair names as
+//     its New side (a rename destination only exists after the card runs, mirroring planparser's
+//     own path-missing rule that never checks Pairs.New). glyph-rejected is additionally the
+//     Create inversion's own fail-closed arm (create.go), since a Create target is excluded from
+//     the status policy above and would otherwise have no reader at all for an answer neither
+//     policy understands.
+//   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
+//     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
+//   - containment-file-overlap (blocking) — the resolve-backed containment tier (containment.go),
+//     the member-vs-file overlap the syntactic tier cannot see.
+//   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
+//     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the
+//     same glyph.
+//   - rename-old-unresolved (blocking) — renameDeclSource (handle.go), a Rename pair's Old side
+//     that does not resolve found, so no declaration can be derived for its handle-shaped New side.
+//   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
+//     Create declarations AND any Rename pair's still-handle-shaped New side, per cardOwnHandles)
+//     the record-batch delta matched fewer of than it owns.
+//   - plan-references-deleted-symbol (blocking), rename-candidate (informational) — DetectDrift
+//     (drift.go), the exact-tier and evidence-tier halves of drift detection.
+//   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
+//     delta touched outside its own cards' declared targets.
+//   - create-not-done, delete-not-done, rename-not-done (all blocking) — DoneChecks (donecheck.go):
+//     a Create target that still does not resolve, a Delete target that still does, or a Rename
+//     pair whose old side still resolves or whose new side still does not, after the batch that was
+//     supposed to build, remove, or rename it. glyph-rejected is additionally DoneChecks' own
+//     fail-closed arm for a done-check answer outside quarry's four-value status vocabulary,
+//     mirroring the Create inversion's.
 package planglyph

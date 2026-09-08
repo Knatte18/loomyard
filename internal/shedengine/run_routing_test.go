@@ -314,24 +314,40 @@ func TestRun_ProducerError(t *testing.T) {
 		t.Errorf("p3.calls = %d; want 0 -- no further producer is called after an engine-level failure", p3.calls)
 	}
 
-	foundFailure := false
+	// The failing call reached no verdict, so it contributes no history entry -- history[].outcome
+	// has no spelling for "did not get that far", and the empty string is out of vocabulary both
+	// for internal/loomengine's seed-coherence check and for the composed activity line. What an
+	// operator needs is all still here: current_producer names the producer that failed, state is
+	// failed, and error carries its text.
 	for _, entry := range got.History {
 		if entry.Producer == "Plan-Write" {
-			foundFailure = true
+			t.Errorf("persisted History = %+v; want no entry for the failing call, which returned no outcome to record", got.History)
 		}
 	}
-	if !foundFailure {
-		t.Errorf("persisted History = %+v; want an entry recording the failing call", got.History)
+	if got.CurrentProducer != "Plan-Write" {
+		t.Errorf("persisted CurrentProducer = %q; want %q -- the failure is attributed here, not in history", got.CurrentProducer, "Plan-Write")
+	}
+	if !strings.Contains(got.Activity.Wait, wantMsg) {
+		t.Errorf("persisted activity.wait = %q; want it to carry the failure text %q", got.Activity.Wait, wantMsg)
+	}
+	if got.Activity.Last != "Preflight → done" {
+		t.Errorf("persisted activity.last = %q; want %q -- the last real verdict, never a producer name with nothing after the arrow", got.Activity.Last, "Preflight → done")
 	}
 }
 
 func TestRun_UnrecognisedOutcome(t *testing.T) {
 	tests := []struct {
-		name    string
-		outcome Outcome
+		name string
+		// outcome is what the producer returns, and wantRecorded is whether history keeps an
+		// entry for that call. A non-empty wrong value is recorded verbatim, since the value
+		// itself is the diagnosis; the empty string is not, because it is the absence of a
+		// verdict rather than a value received, and persisting it puts a spelling on disk that
+		// is outside history[].outcome's whole vocabulary.
+		outcome      Outcome
+		wantRecorded bool
 	}{
-		{"plausible-looking wrong value", Outcome("approved")},
-		{"empty string", Outcome("")},
+		{"plausible-looking wrong value", Outcome("approved"), true},
+		{"empty string", Outcome(""), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -364,6 +380,15 @@ func TestRun_UnrecognisedOutcome(t *testing.T) {
 				t.Errorf("p2.calls = %d; want 0 -- no further producer is called after an unrecognised outcome", p2.calls)
 			}
 
+			if !tt.wantRecorded {
+				if len(got.History) != 0 {
+					t.Errorf("persisted History = %+v; want none -- an outcome the producer never reached is no value to record, and the run's own error text names the failure", got.History)
+				}
+				if got.Activity.Last != "" {
+					t.Errorf("persisted activity.last = %q; want empty rather than a producer name with nothing after the arrow", got.Activity.Last)
+				}
+				return
+			}
 			if len(got.History) == 0 {
 				t.Fatalf("persisted History is empty; want an entry recording the literal offending value")
 			}

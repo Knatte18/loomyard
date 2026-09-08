@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/quarry/quarry"
 )
 
 // writeFixtureRepo writes files (keyed by repository-relative path) under a fresh t.TempDir() and
@@ -135,5 +137,24 @@ func TestExpand_Success(t *testing.T) {
 	}
 	if answer.ID != "sub#T" {
 		t.Errorf("Expand(%q, %q).ID = %q; want %q", root, "sub#T", answer.ID, "sub#T")
+	}
+}
+
+// TestEnsureResolveCoverage pins F2's coverage guard (crucible round fable-high-r10): a batched
+// Resolve answer covering fewer (or more) targets than asked is ErrQuarryUnavailable, never a
+// silent exemption of the uncovered targets from the resolve-backed validation pass.
+func TestEnsureResolveCoverage(t *testing.T) {
+	targets := []string{"sub#A", "sub#B"}
+
+	if err := ensureResolveCoverage(targets, make([]quarry.ResolveResult, 2)); err != nil {
+		t.Errorf("ensureResolveCoverage() with a covering answer = %v; want nil", err)
+	}
+
+	err := ensureResolveCoverage(targets, make([]quarry.ResolveResult, 1))
+	if err == nil {
+		t.Fatalf("ensureResolveCoverage() with a short answer = nil; want a wrapped ErrQuarryUnavailable — the uncovered target would otherwise silently skip validation")
+	}
+	if !errors.Is(err, ErrQuarryUnavailable) {
+		t.Errorf("ensureResolveCoverage() error = %v; want it to wrap ErrQuarryUnavailable", err)
 	}
 }

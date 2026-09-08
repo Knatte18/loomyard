@@ -39,7 +39,8 @@ A `Create` group's own targets invert this policy: `found`/`multipart` is the bl
 ## The two containment tiers
 
 A card targeting a member glyph and a card targeting the file self glyph of the file that member lives in overlap physically with no string equality between them: no DAG edge, blind parallel dispatch, merge conflict.
-`planparser`'s syntactic tier (`containment-unit-overlap`) catches the unit-level half by comparing parsed `Glyph.Unit` values.
+`planparser`'s syntactic tier (`containment-unit-overlap`) catches the unit-level half by comparing parsed `Glyph.Unit` values,
+and also the self-vs-self cross-granularity case — a file self glyph against another card's self glyph of the directory that file sits directly in — which involves no member glyph at all and is therefore invisible to both the member pairing and the resolve-backed tier below.
 `planglyph`'s resolve-backed tier (`containment-file-overlap`) catches the half string prefixes cannot see: it reads a member's owning file from `ResolveResult.Symbols[].File` (filled by `Resolve` because its entries span files) and matches it against every other card's file self glyph, whose own path comes from `Glyph.UnitPath()`.
 
 ## Glyph-conversion discipline
@@ -65,3 +66,4 @@ Done-checks, drift detection (`internal/planglyph/drift.go`), and the `lyx quarr
 
 - [GitHub issue #226](https://github.com/Knatte18/loomyard/issues/226) — full proposal text.
 - [webster-parallel-execution.md](webster-parallel-execution.md) — the DAG-scheduler consumer waiting on symbol-derived edges.
+- `internal/planglyph/doc.go` — the canonical, enumerated list of every resolve-backed `Finding.Check` ID this package can raise, the parallel this package owes `planparser`'s own numbered checks list in [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md#validation-checks-as-implemented-by-internalplanparser).

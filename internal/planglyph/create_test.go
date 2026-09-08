@@ -3,6 +3,8 @@
 package planglyph
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -35,7 +37,7 @@ func TestCreateFindings_AlreadyExistsFound(t *testing.T) {
 		t.Fatalf("resolveTargets(...) returned error: %v", err)
 	}
 
-	got := createFindings(createPlan("sub#Foo"), results)
+	got := createFindings(createPlan("sub#Foo"), resultByTarget(results))
 	if len(got) != 1 || got[0].Check != "create-already-exists" || got[0].Severity != SeverityBlocking {
 		t.Fatalf("createFindings(found) = %+v; want one blocking create-already-exists finding", got)
 	}
@@ -58,7 +60,7 @@ func TestCreateFindings_AlreadyExistsMultipart(t *testing.T) {
 		t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, quarry.StatusMultipart)
 	}
 
-	got := createFindings(createPlan("sub#init"), results)
+	got := createFindings(createPlan("sub#init"), resultByTarget(results))
 	if len(got) != 1 || got[0].Check != "create-already-exists" {
 		t.Fatalf("createFindings(multipart) = %+v; want one create-already-exists finding", got)
 	}
@@ -78,7 +80,7 @@ func TestCreateFindings_NotFoundUnitFoundPasses(t *testing.T) {
 		t.Fatalf("results[0] = %+v; want not_found with unit: found", results[0])
 	}
 
-	got := createFindings(createPlan("sub#Bar"), results)
+	got := createFindings(createPlan("sub#Bar"), resultByTarget(results))
 	if len(got) != 0 {
 		t.Errorf("createFindings(not_found, unit: found) = %+v; want no findings", got)
 	}
@@ -98,17 +100,120 @@ func TestCreateFindings_NotFoundUnitNotFoundIsInformational(t *testing.T) {
 		t.Fatalf("results[0] = %+v; want not_found with unit: not_found", results[0])
 	}
 
-	got := createFindings(createPlan("newpkg#Bar"), results)
+	got := createFindings(createPlan("newpkg#Bar"), resultByTarget(results))
 	if len(got) != 1 || got[0].Check != "create-new-unit" || got[0].Severity != SeverityInformational {
 		t.Fatalf("createFindings(not_found, unit: not_found) = %+v; want one informational create-new-unit finding", got)
 	}
 }
 
-func TestCreateFindings_HandleTargetNeverReachesResolve(t *testing.T) {
-	// An empty results slice proves the handle was never sent to Resolve at all: createFindings
-	// still runs cleanly and produces no finding for it.
+// TestCreateFindings_HandleTargetWithNoAnswerProducesNoFinding covers the degenerate input: an
+// index carrying no entry for the handle at all leaves createFindings running cleanly with no
+// finding, rather than inventing a verdict it has no answer for.
+func TestCreateFindings_HandleTargetWithNoAnswerProducesNoFinding(t *testing.T) {
 	got := createFindings(createPlan("plan:sub#Bar"), nil)
 	if len(got) != 0 {
-		t.Errorf("createFindings(handle) = %+v; want no findings", got)
+		t.Errorf("createFindings(handle, no answer) = %+v; want no findings", got)
+	}
+}
+
+// TestCreateFindings_HandleTargetIsInverted covers the Create inversion reaching a plan: handle,
+// keyed by the handle the card itself spells. The handle is the shape the plan format prescribes
+// for creating something genuinely new, so leaving it out left the inversion -- and its
+// misspelled-unit protection -- inert in exactly the case it exists for.
+func TestCreateFindings_HandleTargetIsInverted(t *testing.T) {
+	t.Run("already exists", func(t *testing.T) {
+		index := map[string]quarry.ResolveResult{
+			"plan:sub#Bar": {Target: "sub#Bar", Status: quarry.StatusFound},
+		}
+		got := createFindings(createPlan("plan:sub#Bar"), index)
+		if len(got) != 1 || got[0].Check != "create-already-exists" || got[0].Severity != SeverityBlocking {
+			t.Fatalf("createFindings(handle, found) = %+v; want one blocking create-already-exists finding", got)
+		}
+	})
+
+	t.Run("new symbol in an existing unit passes", func(t *testing.T) {
+		index := map[string]quarry.ResolveResult{
+			"plan:sub#Bar": {Target: "sub#Bar", Status: quarry.StatusNotFound, Unit: quarry.StatusFound},
+		}
+		got := createFindings(createPlan("plan:sub#Bar"), index)
+		if len(got) != 0 {
+			t.Errorf("createFindings(handle, not_found/unit: found) = %+v; want no findings", got)
+		}
+	})
+
+	t.Run("new unit is informational", func(t *testing.T) {
+		index := map[string]quarry.ResolveResult{
+			"plan:newpkg#Bar": {Target: "newpkg#Bar", Status: quarry.StatusNotFound, Unit: quarry.StatusNotFound},
+		}
+		got := createFindings(createPlan("plan:newpkg#Bar"), index)
+		if len(got) != 1 || got[0].Check != "create-new-unit" || got[0].Severity != SeverityInformational {
+			t.Fatalf("createFindings(handle, not_found/unit: not_found) = %+v; want one informational create-new-unit finding", got)
+		}
+		if !strings.Contains(got[0].Detail, "newpkg") {
+			t.Errorf("finding detail = %q; want it to name the new unit", got[0].Detail)
+		}
+	})
+}
+
+// TestCreateFindings_UnreadableStatusFailsClosed is R9-6's regression: the Create inversion must
+// fail CLOSED on an answer it cannot read.
+//
+// A Create target is excluded from statusFindings by resolvePass, and statusFindings owns the only
+// other reader of a result carrying no Status — quarry's pre-resolution rejection of the target
+// string itself, which crucible round opus-high-r9 confirmed live is reachable for a path-shaped
+// ref — so without a default arm here such a result had no reader at all and passed the inversion
+// silently, which under the inversion reads as "the target does not exist yet, carry on".
+func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
+	t.Run("pre-resolution rejection is blocking glyph-rejected", func(t *testing.T) {
+		index := map[string]quarry.ResolveResult{
+			"plan:sub#Bar": {Target: "sub#Bar", Error: "a glyph needs a \"#\"", Reason: "no_separator"},
+		}
+		got := createFindings(createPlan("plan:sub#Bar"), index)
+		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
+			t.Fatalf("createFindings(pre-resolution rejection) = %+v; want one blocking glyph-rejected finding", got)
+		}
+		if !strings.Contains(got[0].Detail, "no_separator") {
+			t.Errorf("finding detail = %q; want it to carry quarry's own reason", got[0].Detail)
+		}
+	})
+
+	t.Run("a status outside quarry's vocabulary is blocking glyph-rejected", func(t *testing.T) {
+		index := map[string]quarry.ResolveResult{
+			"plan:sub#Bar": {Target: "sub#Bar", Status: "partially_found"},
+		}
+		got := createFindings(createPlan("plan:sub#Bar"), index)
+		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
+			t.Fatalf("createFindings(unrecognized status) = %+v; want one blocking glyph-rejected finding", got)
+		}
+		if !strings.Contains(got[0].Detail, "partially_found") {
+			t.Errorf("finding detail = %q; want it to name the unrecognized status", got[0].Detail)
+		}
+	})
+}
+
+// TestMatchHandleResults pins F3's per-key guard (crucible round fable-high-r10): a Create handle
+// whose expected glyph got no answer is ErrQuarryUnavailable, never a silent drop — createFindings
+// reads an absent index entry as "not a glyph target" and would skip the Create inversion entirely,
+// which under the inversion means "does not exist yet, carry on".
+func TestMatchHandleResults(t *testing.T) {
+	expected := map[string]string{"plan:sub#New": "sub#New"}
+
+	byHandle, err := matchHandleResults(expected, []quarry.ResolveResult{{Target: "sub#New", Status: quarry.StatusNotFound}})
+	if err != nil {
+		t.Fatalf("matchHandleResults() with a covering answer returned error: %v", err)
+	}
+	if _, ok := byHandle["plan:sub#New"]; !ok {
+		t.Errorf("matchHandleResults() = %v; want the answer re-keyed by the handle %q", byHandle, "plan:sub#New")
+	}
+
+	_, err = matchHandleResults(expected, nil)
+	if err == nil {
+		t.Fatalf("matchHandleResults() with no answer = nil error; want a wrapped ErrQuarryUnavailable — the handle's Create inversion would otherwise silently pass")
+	}
+	if !errors.Is(err, ErrQuarryUnavailable) {
+		t.Errorf("matchHandleResults() error = %v; want it to wrap ErrQuarryUnavailable", err)
+	}
+	if !strings.Contains(err.Error(), "plan:sub#New") {
+		t.Errorf("matchHandleResults() error = %v; want it to name the unanswered handle", err)
 	}
 }

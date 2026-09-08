@@ -114,6 +114,25 @@ Example:
 				waitBudget = time.Duration(c.cfg.PollWaitS) * time.Second
 			}
 
+			// Standalone mode boots its own reed session here, idempotently, because nothing else
+			// can: `lyx reed up` is hub-only, so the advice reed's own "no reed session" error gives
+			// cannot reach standalone geometry at all. recover-batch is not a read-only verb — it
+			// SPAWNS a cold recovery strand through reed.AddStrand, which requires a live session —
+			// and after a run ends its session is gone, so `lyx webster recover-batch N` was the same
+			// impossible-recourse dead end `run` already fixed. Nil in hub mode, where the session is
+			// the operator's or loom's own to manage.
+			//
+			// It runs HERE rather than at the top of this RunE so a call that refuses on a bad batch
+			// number, an unparseable plan, or an absent run boots no substrate at all; the
+			// state-mutation lease is already held across the spawn RecoverSpawnOrAttach itself
+			// performs, so bringing the session up under it adds no new hold.
+			if c.reedUp != nil {
+				if err := c.reedUp(); err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v", err)))
+					return nil
+				}
+			}
+
 			deps := websterengine.RecoverDeps{
 				Starter:    c.starter,
 				Plan:       plan,
@@ -169,17 +188,42 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
+				// Guarded by defer, the same shape every other lease in this package uses
+				// (beginbatch.go, recordbatch.go, and this verb's own first lease). Nothing between
+				// here and the explicit release below returns today, so this leaks nothing now — but
+				// a future `return nil` added inside this block, which is the shape used everywhere
+				// else in these RunEs, would hold mutate.lock for the process lifetime and block
+				// every subsequent bracket verb (crucible round opus-medium-r6, R6-23).
+				terminalHeld := true
+				defer func() {
+					if terminalHeld {
+						_ = terminalLock.Release()
+					}
+				}()
 				fresh, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 				if err == nil && fresh == nil {
 					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s", batchName)
 				}
+				var fingerprintBefore string
+				var postWarnings []string
 				if err == nil {
-					err = websterengine.PersistRecoveryTerminal(fresh, batchNumber, result.Digest)
+					fingerprintBefore = fresh.PlanFingerprint
+					postWarnings, err = websterengine.PersistRecoveryTerminal(deps, fresh, batchNumber, result.Digest)
+					result.Warnings = append(result.Warnings, postWarnings...)
 				}
 				if err == nil {
 					err = websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, fresh)
+				} else if fresh != nil {
+					// The post-batch pass re-baselines the plan fingerprint the moment handle
+					// binding or the exact-tier drift repair rewrites the plan on disk, and it can
+					// then block on a finding computed from the same delta. Persist that
+					// re-baseline for the same reason both bracket verbs do.
+					if saveErr := persistPlanFingerprintRebaseline(c.geom, fresh, fingerprintBefore); saveErr != nil {
+						err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err, saveErr)
+					}
 				}
 				_ = terminalLock.Release()
+				terminalHeld = false
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil

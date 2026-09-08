@@ -142,3 +142,43 @@ func TestStatusFindings(t *testing.T) {
 		}
 	})
 }
+
+// TestTargetCards_IndexesACardOncePerTarget is F1b's (round fable5-high-r3) regression test: both
+// endpoints of every Pairs entry are also projected into Targets, so a Rename card references its
+// own endpoints twice — and targetCards must still attribute one finding per card, not one per
+// occurrence.
+func TestTargetCards_IndexesACardOncePerTarget(t *testing.T) {
+	card := planparser.Card{
+		Number:  1,
+		Slug:    "one",
+		Targets: []string{"sub/a.go#", "sub/b.go#"},
+		Pairs:   []planparser.MovePair{{Old: "sub/a.go#", New: "sub/b.go#"}},
+	}
+	plan := &planparser.Plan{Cards: []planparser.Card{card}}
+
+	index := targetCards(plan)
+	for _, ref := range []string{"sub/a.go#", "sub/b.go#"} {
+		if got := len(index[ref]); got != 1 {
+			t.Errorf("targetCards(...)[%q] has %d entries; want 1 — one attribution per card, not per occurrence", ref, got)
+		}
+	}
+}
+
+// TestStatusFindings_UnrecognizedStatusFailsClosed is R9-6's sibling regression on the status
+// policy: quarry's four-value Status vocabulary is closed today, and a value outside it must fail
+// closed rather than fall out of the switch with no finding, so widening that vocabulary can only
+// ever be a deliberate change here.
+func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
+	plan := &planparser.Plan{Cards: []planparser.Card{{
+		Number: 1, Slug: "one",
+		Targets: []string{"sub#Bar"},
+	}}}
+
+	got := statusFindings(plan, []quarry.ResolveResult{{Target: "sub#Bar", Status: "partially_found"}})
+	if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
+		t.Fatalf("statusFindings(unrecognized status) = %+v; want one blocking glyph-rejected finding", got)
+	}
+	if !strings.Contains(got[0].Detail, "partially_found") {
+		t.Errorf("finding detail = %q; want it to name the unrecognized status", got[0].Detail)
+	}
+}

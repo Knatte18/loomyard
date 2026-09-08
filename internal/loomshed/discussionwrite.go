@@ -48,6 +48,16 @@ func (p *discussionWrite) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return outcome, pointer, err
 	}
 
+	// The seam is asserted here rather than at construction because this producer's constructor
+	// returns the bare seam interface every neighbouring row's shape test reflects over, so it has
+	// no error return to refuse a nil through. The registry entry does guard it (requireSeam in
+	// internal/shedrecipe), which is why no production path reaches this branch — but a nil deref
+	// several producers into a long unattended Shed run is exactly the failure this codebase
+	// already guards against elsewhere, and a named error is a diagnosable one where a panic is not.
+	if p.commit == nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: no commit seam wired; the produced discussion would never be committed", p.name)
+	}
+
 	if err := p.commit(); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit produced artifacts: %w", p.name, err)
 	}

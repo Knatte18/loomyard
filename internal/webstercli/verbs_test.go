@@ -190,7 +190,7 @@ func (e *verbsFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
 func (e *verbsFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
-func (e *verbsFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput { return nil }
+func (e *verbsFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *verbsFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
@@ -698,7 +698,11 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	// report lands on disk, self-reporting the worktree's real HEAD (the
 	// recovery path cross-checks head_sha against the worktree exactly like
 	// record-batch does).
-	writeBatchReport(t, fx.CLI.geom.ReportsDir, strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD")))
+	// "Finishes" means its card's own Create target actually lands and is committed: the terminal
+	// recovery path now runs the same mechanical post-batch pass record-batch does, so a recovery
+	// reporting done over a card whose target never appeared is refused rather than marked terminal.
+	head := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
 
 	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
 	// -- recoverSpawn/archiveStaleReport never runs again, so the report
@@ -872,4 +876,99 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 	if strings.Contains(got, "plan overview not found") {
 		t.Errorf("output contains \"plan overview not found\"; got %q -- a WorktreePath()-based resolution at cli.go's c.planDir assignment would look under the un-anchored worktree root and produce exactly that error", got)
 	}
+}
+
+// TestPersistPlanFingerprintRebaseline covers the round-4 review's R4-01 CLI half: both bracket
+// verbs re-baseline State.PlanFingerprint the instant a sanctioned plan rewrite lands on disk, and
+// either verb can then fail on a later step of the same call. Discarding that re-baseline with the
+// failed call left the plan on disk carrying webster's own edit while state.json recorded the
+// pre-rewrite fingerprint, which every later bracket verb then refused as a foreign edit.
+//
+// The unchanged-fingerprint case must write nothing at all: that is what keeps a genuine foreign
+// edit failing ErrFingerprintMismatch exactly as it did.
+func TestPersistPlanFingerprintRebaseline(t *testing.T) {
+	newGeom := func(t *testing.T) websterengine.Geometry {
+		t.Helper()
+		websterDir := t.TempDir()
+		return websterengine.Geometry{WebsterDir: websterDir, ScratchDir: t.TempDir()}
+	}
+
+	t.Run("unchanged fingerprint writes nothing", func(t *testing.T) {
+		geom := newGeom(t)
+		st := &websterengine.State{RunGUID: "g1", PlanFingerprint: "same"}
+
+		if err := persistPlanFingerprintRebaseline(geom, st, "same"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
+		}
+		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+		if err != nil {
+			t.Fatalf("LoadState() error = %v", err)
+		}
+		if loaded != nil {
+			t.Errorf("LoadState() = %+v; want nil — an unchanged fingerprint must write no state at all", loaded)
+		}
+	})
+
+	t.Run("changed fingerprint is persisted", func(t *testing.T) {
+		geom := newGeom(t)
+		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, &websterengine.State{RunGUID: "g2", PlanFingerprint: "before the rewrite"}); err != nil {
+			t.Fatalf("seed SaveState() error = %v", err)
+		}
+		st := &websterengine.State{RunGUID: "g2", PlanFingerprint: "after the rewrite"}
+
+		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
+		}
+		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+		if err != nil {
+			t.Fatalf("LoadState() error = %v", err)
+		}
+		if loaded == nil {
+			t.Fatal("LoadState() = nil; want the re-baselined state persisted so the next bracket verb reads it")
+		}
+		if loaded.PlanFingerprint != "after the rewrite" {
+			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
+		}
+	})
+
+	// R6-4: the re-baseline persists the FINGERPRINT and nothing else. RecordBatch advances
+	// State.SeenForkTranscripts before the step that can fail, so saving the caller's whole in-memory
+	// State persisted the fork's transcript as consumed on a failed call — and the resumed
+	// record-batch then found no new transcripts and wedged.
+	t.Run("only the fingerprint is persisted, never the caller's other mutations", func(t *testing.T) {
+		geom := newGeom(t)
+		onDisk := &websterengine.State{RunGUID: "g3", PlanFingerprint: "before the rewrite"}
+		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, onDisk); err != nil {
+			t.Fatalf("seed SaveState() error = %v", err)
+		}
+		st := &websterengine.State{
+			RunGUID:             "g3",
+			PlanFingerprint:     "after the rewrite",
+			SeenForkTranscripts: []string{"/transcripts/fork-a.jsonl"},
+		}
+
+		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
+		}
+		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
+		if err != nil {
+			t.Fatalf("LoadState() error = %v", err)
+		}
+		if loaded == nil {
+			t.Fatal("LoadState() = nil; want the re-baselined state persisted")
+		}
+		if loaded.PlanFingerprint != "after the rewrite" {
+			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
+		}
+		if len(loaded.SeenForkTranscripts) != 0 {
+			t.Errorf("LoadState().SeenForkTranscripts = %v; want empty — persisting it marks the fork's transcript consumed on a call that FAILED, and the resumed record-batch then finds nothing to attribute", loaded.SeenForkTranscripts)
+		}
+	})
+
+	t.Run("nil state writes nothing", func(t *testing.T) {
+		geom := newGeom(t)
+		if err := persistPlanFingerprintRebaseline(geom, nil, "anything"); err != nil {
+			t.Fatalf("persistPlanFingerprintRebaseline(nil) error = %v; want nil", err)
+		}
+	})
 }

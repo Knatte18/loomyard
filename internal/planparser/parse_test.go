@@ -1052,8 +1052,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 	}
 	gotSurface := plan.SurfaceRefs["2-json-flag"]
 	for canonical, wantRaw := range wantSurface {
-		if gotSurface[canonical] != wantRaw {
-			t.Errorf("plan.SurfaceRefs[%q][%q] = %q; want %q", "2-json-flag", canonical, gotSurface[canonical], wantRaw)
+		if got := gotSurface[canonical]; len(got) != 1 || got[0] != wantRaw {
+			t.Errorf("plan.SurfaceRefs[%q][%q] = %v; want exactly [%q]", "2-json-flag", canonical, got, wantRaw)
 		}
 	}
 	// A glyph copied verbatim from the fixture is never rewritten, so it never gains a

@@ -238,7 +238,7 @@ func (e *specCapturingEngine) Startup(capture string) shuttleengine.StartupState
 	return shuttleengine.StartupPending
 }
 func (e *specCapturingEngine) InterruptSequence() []shuttleengine.PaneInput      { return nil }
-func (e *specCapturingEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
+func (e *specCapturingEngine) TrustDismissSequence(string) []shuttleengine.PaneInput   { return nil }
 func (e *specCapturingEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
 
 // AuditForks is never reached: Prepare always fails before Runner.Start could ever run this spec to

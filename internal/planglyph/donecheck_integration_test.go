@@ -116,3 +116,120 @@ func TestDoneChecks_QuarryUnavailable(t *testing.T) {
 		t.Errorf("DoneChecks(...) error = %v; want errors.Is(err, ErrQuarryUnavailable)", err)
 	}
 }
+
+// TestDoneChecks_RenameLanded covers a Rename pair whose rename happened: the old side no longer
+// resolves, the new side does, no finding. The New side carries the canonical plan: handle
+// spelling a validated plan's symbol rename always has, proving resolveKeyFor strips it.
+func TestDoneChecks_RenameLanded(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Bar() {}\n"})
+	cards := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{
+			Type:  planparser.CardTypeRename,
+			Refs:  []string{"sub#Foo", "plan:sub#Bar"},
+			Pairs: []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}},
+		}},
+	}}
+
+	got, err := DoneChecks(&planparser.Plan{}, cards, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(...) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("DoneChecks(landed Rename) = %+v; want no findings", got)
+	}
+}
+
+// TestDoneChecks_RenameSkipped is F3's (round fable5-high-r3) regression test: a fork that never
+// performed its declared Rename leaves the old side still resolving and the new side still
+// unresolvable, and BOTH halves must report rename-not-done — against pre-fix source this card
+// recorded clean, since DoneChecks inspected only Create and Delete groups.
+func TestDoneChecks_RenameSkipped(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	cards := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{
+			Type:  planparser.CardTypeRename,
+			Refs:  []string{"sub#Foo", "plan:sub#Bar"},
+			Pairs: []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}},
+		}},
+	}}
+
+	got, err := DoneChecks(&planparser.Plan{}, cards, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(...) returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("DoneChecks(skipped Rename) = %+v; want two rename-not-done findings (old still resolves, new still missing)", got)
+	}
+	for _, f := range got {
+		if f.Check != "rename-not-done" || f.Card != "1-one" {
+			t.Errorf("finding %+v; want Check rename-not-done on card 1-one", f)
+		}
+	}
+}
+
+// TestDoneChecks_FileRenameLanded covers a file-rename pair (both sides self glyphs) whose git mv
+// happened: no finding.
+func TestDoneChecks_FileRenameLanded(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/b.go": "package sub\n\nfunc Foo() {}\n"})
+	cards := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{
+			Type:  planparser.CardTypeRename,
+			Refs:  []string{"sub/a.go#", "sub/b.go#"},
+			Pairs: []planparser.MovePair{{Old: "sub/a.go#", New: "sub/b.go#"}},
+		}},
+	}}
+
+	got, err := DoneChecks(&planparser.Plan{}, cards, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(...) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("DoneChecks(landed file rename) = %+v; want no findings", got)
+	}
+}
+
+// TestDoneChecks_RootFilenameCreateLanded is R9-1's planglyph-side regression: a Create group
+// target naming a repository-root extensionless file must reach DoneChecks already canonicalized
+// to its self glyph, which quarry resolves found once the file exists.
+//
+// Spelled as the bare token "LICENSE" — which is what the parser produced before R9-1's fix, and
+// which classifyRef rule 4 explicitly admits as a legal card ref — quarry rejects the target
+// BEFORE resolution ("a glyph needs a \"#\""), and the card is blocked forever, on every retry,
+// even though it created exactly what it said it would. This test pins both halves: the glyph
+// spelling passes, and the bare token is still the blocking refusal it always was, so the
+// parser-side canonicalization is the thing keeping this correct. Since crucible round
+// fable-high-r10's F1, the refusal is glyph-rejected — the fail-closed arm naming the rejection
+// itself — rather than create-not-done misreading the rejection as "did not resolve".
+func TestDoneChecks_RootFilenameCreateLanded(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{
+		"sub/a.go": "package sub\n",
+		"LICENSE":  "licence text\n",
+	})
+
+	landed := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"LICENSE#"}}},
+	}}
+	got, err := DoneChecks(&planparser.Plan{}, landed, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(canonicalized root filename) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("DoneChecks(canonicalized root filename) = %+v; want no findings", got)
+	}
+
+	bare := []planparser.Card{{
+		Number: 1, Slug: "one",
+		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"LICENSE"}}},
+	}}
+	stale, err := DoneChecks(&planparser.Plan{}, bare, root)
+	if err != nil {
+		t.Fatalf("DoneChecks(bare root filename) returned error: %v", err)
+	}
+	if len(stale) != 1 || stale[0].Check != "glyph-rejected" {
+		t.Fatalf("DoneChecks(bare root filename) = %+v; want exactly one glyph-rejected — this is the failure canonicalization now prevents, named as the rejection it is", stale)
+	}
+}

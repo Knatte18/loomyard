@@ -16,8 +16,38 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
+
+// TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed pins loomcli's half of the R6-27
+// parity pair the same way internal/loomshed/planvalidate_test.go's
+// TestHasBlockingFinding_UnrecognizedSeverityFailsClosed pins loomshed's: planglyph.Severity is an
+// open string type, so an unrecognized value — or the zero value a hand-built Finding carries —
+// must fail CLOSED here too. Until crucible round fable-high-r7 (D2) only the loomshed half had a
+// dedicated test, and the two halves were kept agreeing by reading alone.
+func TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		severity planglyph.Severity
+		want     bool
+	}{
+		{"blocking blocks", planglyph.SeverityBlocking, true},
+		{"informational passes", planglyph.SeverityInformational, false},
+		{"the zero value blocks", planglyph.Severity(""), true},
+		{"an unrecognized severity blocks", planglyph.Severity("advisory"), true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := planFindingsHaveBlocking([]planglyph.Finding{{Check: "some-check", Severity: tt.severity}})
+			if got != tt.want {
+				t.Errorf("planFindingsHaveBlocking(severity %q) = %v; want %v", tt.severity, got, tt.want)
+			}
+		})
+	}
+}
 
 // requiredDiscussionSectionsForTest mirrors internal/discussionparser's own unexported
 // requiredDiscussionSections list. It is duplicated here (rather than imported, since the source is

@@ -99,11 +99,28 @@ func writeRoundFile(t *testing.T, path string) {
 	}
 }
 
-// writeRoundPair writes both of round n's own files under runDir, making it complete.
+// writeRoundPair writes both of round n's own files under runDir, making it complete -- but not
+// judged, which is a separate condition writeJudgedRound adds on top.
 func writeRoundPair(t *testing.T, runDir string, n int) {
 	t.Helper()
 	writeRoundFile(t, roundReviewPath(runDir, n))
 	writeRoundFile(t, roundFixerReportPath(runDir, n))
+}
+
+// writeJudgedRound writes round n's own two files plus the BLOCKING verdict and ledger the
+// segment's Bouncer writes when it rejects that round -- the complete on-disk state of a round the
+// producer may advance past.
+// The verdict is BLOCKING rather than APPROVED because an APPROVED round is one the segment left on
+// a Done, never one the round producer is called after.
+func writeJudgedRound(t *testing.T, runDir string, n int) {
+	t.Helper()
+	writeRoundPair(t, runDir, n)
+	if err := os.WriteFile(verdictPath(runDir, n), []byte(bouncerVerdictContent("BLOCKING")), 0o644); err != nil {
+		t.Fatalf("WriteFile(verdict round %d): %v", n, err)
+	}
+	if err := os.WriteFile(ledgerPath(runDir, n), []byte(bouncerLedgerContent(n)), 0o644); err != nil {
+		t.Fatalf("WriteFile(ledger round %d): %v", n, err)
+	}
 }
 
 // --- Constructor ---
@@ -182,9 +199,9 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		}
 	})
 
-	t.Run("CompleteRoundNAdvancesToNPlus1", func(t *testing.T) {
+	t.Run("JudgedRoundNAdvancesToNPlus1", func(t *testing.T) {
 		runDir := t.TempDir()
-		writeRoundPair(t, runDir, 2)
+		writeJudgedRound(t, runDir, 2)
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
 
@@ -196,6 +213,97 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		}
 		if runner.gotProfiles[0].ReviewPath != roundReviewPath(runDir, 3) {
 			t.Errorf("review path = %q; want %q", runner.gotProfiles[0].ReviewPath, roundReviewPath(runDir, 3))
+		}
+	})
+
+	// The three unjudged cases below are one regression: the segment's Bouncer routes here on every
+	// Stuck it returns, degraded judge exits included, so a transient judge fault used to buy a whole
+	// extra fixer round over a review nobody had judged -- and left round N+1's judge with no round-N
+	// ledger to carry findings forward from.
+	t.Run("CompleteButUnjudgedRoundHandsBackWithoutSpawning", func(t *testing.T) {
+		runDir := t.TempDir()
+		writeRoundPair(t, runDir, 1) // complete, but the Bouncer wrote no verdict for it
+		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		attach := &fakeShuttle{}
+		p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, attach, fixedClock(time.Now()))
+
+		outcome, ptr, err := p.Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if outcome != shedengine.Stuck {
+			t.Errorf("Call() outcome = %q; want %q (control goes back to the Bouncer for a verdict)", outcome, shedengine.Stuck)
+		}
+		if want := roundReviewPath(runDir, 1); ptr.Path != want {
+			t.Errorf("Call() pointer = %q; want %q (the review still owed a verdict)", ptr.Path, want)
+		}
+		if runner.calls != 0 {
+			t.Errorf("runner.Run calls = %d; want 0 -- a fresh round is a real LLM session spent on a review nobody judged", runner.calls)
+		}
+		if attach.attachCalled {
+			t.Error("Attach was called; want the hand-back to precede the live-round probe, since no round is being started")
+		}
+		if n := stampedSiblingCount(t, runDir, filepath.Base(roundReviewPath(runDir, 1))); n != 0 {
+			t.Errorf("stamped archive siblings = %d; want 0 -- the unjudged round's own artifacts are what the Bouncer must judge", n)
+		}
+	})
+
+	t.Run("UnparseableVerdictCountsUnjudged", func(t *testing.T) {
+		runDir := t.TempDir()
+		writeJudgedRound(t, runDir, 1)
+		if err := os.WriteFile(verdictPath(runDir, 1), []byte("garbage, not frontmatter"), 0o644); err != nil {
+			t.Fatalf("WriteFile(unparseable verdict): %v", err)
+		}
+		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+		outcome, _, err := p.Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if outcome != shedengine.Stuck {
+			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+		}
+		if runner.calls != 0 {
+			t.Errorf("runner.Run calls = %d; want 0 -- a verdict the Bouncer will itself re-judge is no verdict", runner.calls)
+		}
+	})
+
+	t.Run("VerdictWithoutLedgerCountsUnjudged", func(t *testing.T) {
+		runDir := t.TempDir()
+		writeJudgedRound(t, runDir, 1)
+		if err := os.Remove(ledgerPath(runDir, 1)); err != nil {
+			t.Fatalf("Remove(ledger): %v", err)
+		}
+		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+		outcome, _, err := p.Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if outcome != shedengine.Stuck {
+			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+		}
+		if runner.calls != 0 {
+			t.Errorf("runner.Run calls = %d; want 0 -- advancing here leaves the next judge with no ledger to carry findings forward from", runner.calls)
+		}
+	})
+
+	t.Run("UnjudgedRoundHandsBackHonouringCancellation", func(t *testing.T) {
+		runDir := t.TempDir()
+		writeRoundPair(t, runDir, 1)
+		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		outcome, _, err := p.Call(ctx)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
+		}
+		if outcome != "" {
+			t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
 		}
 	})
 
@@ -215,7 +323,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 
 	t.Run("ReviewOnlyOrphanCountsIncompleteAndIsArchivedAside", func(t *testing.T) {
 		runDir := t.TempDir()
-		writeRoundPair(t, runDir, 1)
+		writeJudgedRound(t, runDir, 1)
 		writeRoundFile(t, roundReviewPath(runDir, 2)) // orphan: no round-2 fixer report
 
 		instant := time.Date(2026, 8, 20, 10, 15, 0, 0, time.UTC)
@@ -307,8 +415,8 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 
 	t.Run("Rounds1And2CompleteRound3CarriesBothPriorsInOrder", func(t *testing.T) {
 		runDir := t.TempDir()
-		writeRoundPair(t, runDir, 1)
-		writeRoundPair(t, runDir, 2)
+		writeJudgedRound(t, runDir, 1)
+		writeJudgedRound(t, runDir, 2)
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
 
@@ -327,7 +435,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 
 	t.Run("StampedArchiveSiblingNeverHydrated", func(t *testing.T) {
 		runDir := t.TempDir()
-		writeRoundPair(t, runDir, 1)
+		writeJudgedRound(t, runDir, 1)
 		writeRoundFile(t, filepath.Join(runDir, "round-1-review-20260820T101500Z.md"))
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
@@ -344,7 +452,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 	t.Run("RoundWithOnlyOneFileSkippedByHydrationEntirely", func(t *testing.T) {
 		runDir := t.TempDir()
 		writeRoundFile(t, roundReviewPath(runDir, 1)) // no fixer report: incomplete
-		writeRoundPair(t, runDir, 2)
+		writeJudgedRound(t, runDir, 2)
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
 
@@ -363,7 +471,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 
 	t.Run("ToldPriorsPreservedAsPrefix", func(t *testing.T) {
 		runDir := t.TempDir()
-		writeRoundPair(t, runDir, 1)
+		writeJudgedRound(t, runDir, 1)
 		toldReview := filepath.Join(runDir, "told-review.md")
 		toldFixer := filepath.Join(runDir, "told-fixer.md")
 		writeRoundFile(t, toldReview)
@@ -389,7 +497,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 
 	t.Run("FocusFileWithADirectiveIsHydratedAfterDerivedEntries", func(t *testing.T) {
 		runDir := t.TempDir()
-		writeRoundPair(t, runDir, 1)
+		writeJudgedRound(t, runDir, 1)
 		writeFocusFile(t, runDir, 2, focusFile{Round: 2, Focus: []string{"look at the relocation candidate"}})
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
@@ -408,7 +516,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 
 	t.Run("FocusFileWithNoDirectiveIsNotHydrated", func(t *testing.T) {
 		runDir := t.TempDir()
-		writeRoundPair(t, runDir, 1)
+		writeJudgedRound(t, runDir, 1)
 		writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{}, Focus: []string{}})
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
@@ -485,7 +593,7 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 
 func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	runDir := t.TempDir()
-	writeRoundPair(t, runDir, 1)
+	writeJudgedRound(t, runDir, 1)
 	writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{"lensA"}})
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
@@ -513,7 +621,7 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 
 func TestBurlerProducer_Call_RunOptsCarriesRoundToken(t *testing.T) {
 	runDir := t.TempDir()
-	writeRoundPair(t, runDir, 4)
+	writeJudgedRound(t, runDir, 4)
 	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{Model: "m"}, runner, nil)
 
@@ -745,6 +853,17 @@ func TestBurlerProducer_Call_CancelledDuringCompletedRoundLeavesArtifacts(t *tes
 	}
 	if _, statErr := os.Stat(fixerPath); statErr != nil {
 		t.Errorf("completed round's fixer report did not survive: %v", statErr)
+	}
+
+	// The surviving round is judged before the resumed call, exactly as the real sequence judges it:
+	// this row's Stuck routes to the segment's Bouncer, whose BLOCKING verdict routes back here.
+	// Without that verdict the resumed call would hand back rather than advance, which is a different
+	// property (covered in the round-scan cases) than the artifact survival this test is about.
+	if err := os.WriteFile(verdictPath(runDir, 1), []byte(bouncerVerdictContent("BLOCKING")), 0o644); err != nil {
+		t.Fatalf("WriteFile(verdict round 1): %v", err)
+	}
+	if err := os.WriteFile(ledgerPath(runDir, 1), []byte(bouncerLedgerContent(1)), 0o644); err != nil {
+		t.Fatalf("WriteFile(ledger round 1): %v", err)
 	}
 
 	runner2 := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}

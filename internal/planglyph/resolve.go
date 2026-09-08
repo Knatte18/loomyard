@@ -23,9 +23,21 @@ func cardIDOf(c planparser.Card) string {
 // targetCards indexes plan's cards by every glyph target they reference — Targets, Uses, and both
 // Pairs endpoints alike — so a resolve-backed finding can be attributed to every card that
 // references the target, one finding per referencing card, rather than one unattributed finding.
+// A card referencing the same target more than once (both endpoints of every Pairs entry are also
+// projected into Targets, so a Rename card always does) is indexed once per target, never once per
+// occurrence — otherwise one defect reported as two identical findings against the same card.
 func targetCards(plan *planparser.Plan) map[string][]planparser.Card {
 	index := make(map[string][]planparser.Card)
+	seen := make(map[string]map[string]bool)
 	add := func(c planparser.Card, ref string) {
+		id := cardIDOf(c)
+		if seen[ref][id] {
+			return
+		}
+		if seen[ref] == nil {
+			seen[ref] = make(map[string]bool)
+		}
+		seen[ref][id] = true
 		index[ref] = append(index[ref], c)
 	}
 	for _, c := range plan.Cards {
@@ -58,8 +70,10 @@ func sortedCards(cards []planparser.Card) []planparser.Card {
 // glyph-ambiguous, listing every ResolveResult.Candidates entry by its ID; not_found is the
 // blocking finding glyph-not-found, whose detail branches on ResolveResult.Unit — found means the
 // unit is there and only the member is missing (a misspelled member), not_found means the unit
-// itself is missing (a misspelled unit); and a result carrying no Status at all is the blocking
-// finding glyph-rejected, carrying both Error and Reason.
+// itself is missing (a misspelled unit); and EVERY other answer is the blocking finding
+// glyph-rejected — a result carrying no Status at all, which is quarry's pre-resolution rejection
+// carrying Error and Reason instead, and equally a status outside quarry's four-value vocabulary,
+// so the policy fails closed rather than passing an answer it has not been taught to read.
 //
 // This function does not special-case a Create group's targets: resolvePass excludes those before
 // calling statusFindings, and create.go's createFindings handles them instead, so this policy
@@ -70,18 +84,6 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 
 	for _, r := range results {
 		cards := sortedCards(index[r.Target])
-
-		if r.Status == "" {
-			for _, c := range cards {
-				findings = append(findings, Finding{
-					Check:    "glyph-rejected",
-					Card:     cardIDOf(c),
-					Detail:   fmt.Sprintf("target %q was rejected before resolution: error %s, reason %q", r.Target, r.Error, r.Reason),
-					Severity: SeverityBlocking,
-				})
-			}
-			continue
-		}
 
 		switch r.Status {
 		case quarry.StatusFound, quarry.StatusMultipart:
@@ -114,8 +116,35 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 					Severity: SeverityBlocking,
 				})
 			}
+		default:
+			// Fail closed: an absent Status is quarry's pre-resolution rejection of the target
+			// string itself, and any other value is a vocabulary this package has not been taught.
+			// Written as the switch's own default rather than as a pre-switch "" test, so widening
+			// quarry's four-value vocabulary can never silently pass here either (crucible round
+			// opus-high-r9, R9-6).
+			for _, c := range cards {
+				findings = append(findings, Finding{
+					Check:    "glyph-rejected",
+					Card:     cardIDOf(c),
+					Detail:   unreadableStatusDetail("target", r.Target, r),
+					Severity: SeverityBlocking,
+				})
+			}
 		}
 	}
 
 	return findings
+}
+
+// unreadableStatusDetail renders the glyph-rejected detail for a result whose Status neither
+// statusFindings nor createFindings can read: an absent Status is quarry's pre-resolution
+// rejection of the target string itself, carried by Error and Reason instead, while any other
+// value is a resolve status outside the four-value vocabulary quarry documents. noun names what
+// the target is to the caller ("target", "Create target", "done-check target"), so one renderer
+// serves every fail-closed status policy in the package.
+func unreadableStatusDetail(noun, target string, r quarry.ResolveResult) string {
+	if r.Status == "" {
+		return fmt.Sprintf("%s %q was rejected before resolution: error %s, reason %q", noun, target, r.Error, r.Reason)
+	}
+	return fmt.Sprintf("%s %q answered the unrecognized resolve status %q", noun, target, r.Status)
 }

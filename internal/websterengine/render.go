@@ -34,6 +34,7 @@ package websterengine
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -121,28 +122,34 @@ func RecoveryTemplate(stencilsDir string) ([]byte, error) {
 // required-top-level-marker guarantee.
 const noPrecedingBatchDigest = "none (first batch)"
 
-// renderCardPointers renders one `- <SourcePath>` bullet per card in declared order.
-func renderCardPointers(cards []planparser.Card) string {
+// renderCardPointers renders one `- <planDirDisplay>/<card file name>` bullet per card in declared
+// order: each card's SourcePath contributes its file name, re-rooted onto the told plan-directory
+// display. Under hub geometry the display is "_lyx/plan" and the bullets render byte-identically
+// to the old verbatim-SourcePath form; under standalone geometry the display is the derived state
+// directory's absolute plan dir — the only spelling a fork running at the target repo can actually
+// read (crucible round fable5-high-r3, F-A4).
+func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 	bullets := make([]string, 0, len(cards))
 	for _, c := range cards {
-		bullets = append(bullets, fmt.Sprintf("- `%s`", c.SourcePath))
+		bullets = append(bullets, fmt.Sprintf("- `%s/%s`", planDirDisplay, filepath.Base(c.SourcePath)))
 	}
 	return strings.Join(bullets, "\n")
 }
 
 // RenderForkPrompt fills ForkTemplate for one execution batch's in-session fork, read from
 // stencilsDir.
-// Cards' SourcePath pointers are rendered verbatim;
-// {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot.
+// Cards' pointers are rendered re-rooted onto planDir's display form (see renderCardPointers) —
+// promptWorktreeRoot, the pane's own cwd, is the display's relative-spelling base;
+// {{.worktree_root}} is filled from the same caller-supplied promptWorktreeRoot.
 // prevDigest is already rendered as a one-line summary by the caller.
-func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
+func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
 	}
 
 	values := map[string]string{
-		"card_pointers": renderCardPointers(batch.Cards),
+		"card_pointers": renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
 		"report_path":   reportPath,
 		"self_fix_cap":  fmt.Sprintf("%d", selfFixCap),
 		"worktree_root": promptWorktreeRoot,
@@ -163,10 +170,11 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, promptWorktre
 // stencilsDir.
 // Unlike RenderForkPrompt, the recovery strand inherits nothing, so its prompt orients from
 // plan/overview.md and CONSTRAINTS.md before the shared implementer-job body runs.
-// {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot;
-// anchorRoot feeds pattern.Directive's own probe.
+// {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot, which — as the pane's
+// own cwd — is also the card pointers' relative-spelling base (see renderCardPointers);
+// anchorRoot feeds pattern.Directive's own probe alone.
 // pattern_directive is injected if PATTERN is active.
-func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -178,7 +186,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 	}
 
 	values := map[string]string{
-		"card_pointers":     renderCardPointers(batch.Cards),
+		"card_pointers":     renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
 		"report_path":       reportPath,
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
 		"worktree_root":     promptWorktreeRoot,
@@ -224,14 +232,36 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot, st
 // noIntegrationPromptPath is the sentinel RenderMasterPrompt renders when no integration prompt file.
 const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 
+// masterPlanDirDisplay returns the plan-directory spelling the rendered prompts carry: planDir
+// relative to paneCwd when it sits inside it — hub geometry, whose pane runs at the anchor the
+// plan's `_lyx/plan` junction hangs off, so the byte-exact "_lyx/plan" keeps the prompt's own
+// never-reference-_lyx-by-another-path rule self-consistent — and the absolute planDir otherwise,
+// which is standalone geometry, whose plan lives in the derived state directory and is reachable
+// from the pane's cwd by no relative spelling at all.
+// The base is the PANE's cwd (Geometry.WorktreeRoot, where every session actually runs), never
+// AnchorRoot: standalone's AnchorRoot IS the state directory containing the plan, so an
+// anchor-based split rendered the unreachable relative spelling for exactly the mode this function
+// exists to fix (proven live in round fable5-high-r3's second E2E attempt).
+func masterPlanDirDisplay(paneCwd, planDir string) string {
+	if rel, err := filepath.Rel(paneCwd, planDir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(rel)
+	}
+	return planDir
+}
+
 // RenderMasterPrompt fills webster-template-master for one `lyx webster run` invocation, read from
 // the caller-supplied stencilsDir.
 // batches is the sequenced execution order — the caller is responsible for handing it a slice
 // SequenceBatches already reordered, since nothing in this function reorders it further.
-// It fills no {{.worktree_root}} key at all — anchorRoot feeds only pattern.Directive's own probe.
+// It fills no {{.worktree_root}} key at all — anchorRoot feeds pattern.Directive's own probe, and
+// worktreeRoot (the pane's own cwd) feeds only masterPlanDirDisplay's relative-spelling decision.
+// planDir is the told plan directory (Geometry.PlanDir) and integrationReportPath the told
+// integration-report file path, both rendered so a standalone Master — whose plan lives in the
+// derived state directory, not at the pane's own `_lyx/plan` — can actually find what the prompt
+// tells it to read (found live in crucible round fable5-high-r3, F-A4).
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, anchorRoot, stencilsDir string) ([]byte, error) {
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath, planDir, integrationReportPath string, selfFixCap, pollWaitS int, worktreeRoot, anchorRoot, stencilsDir string) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath
@@ -248,6 +278,8 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		"outcome_path":            outcomePath,
 		"summary_path":            summaryPath,
 		"integration_prompt_path": integrationPrompt,
+		"plan_dir":                masterPlanDirDisplay(worktreeRoot, planDir),
+		"integration_report_path": integrationReportPath,
 		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
 		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
 		"pattern_directive":       directive,
@@ -303,8 +335,13 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 	var lines []string
 	for _, b := range batches {
 		number, slug := batchIdentity(b)
+		// The nil-value check is not redundant with ok: a state.json carrying an explicit null for a
+		// batch key parses to a present-but-nil entry, and every other reader of this map
+		// (completedCards, verifyEveryBatchDone, accumulatedCardSHAs, reclaimEntryTimeStrands,
+		// predecessorDigestLine) already guards it. Without it this line panics INSIDE Run's Master
+		// prompt render, taking the run down instead of surfacing a diagnosable error.
 		bs, ok := st.Batches[number]
-		if !ok || !bs.Terminal {
+		if !ok || bs == nil || !bs.Terminal {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("%02d-%s: %s", number, slug, bs.Status))

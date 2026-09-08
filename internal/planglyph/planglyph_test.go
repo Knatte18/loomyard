@@ -6,6 +6,7 @@ package planglyph
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -89,7 +90,7 @@ func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
 	plan := minimalPlan(t, t.TempDir())
 	nonRepo := t.TempDir() + "/does-not-exist"
 
-	got, err := resolvePass(plan, nonRepo)
+	got, err := resolvePass(plan, nonRepo, nil)
 	if got != nil {
 		t.Errorf("resolvePass(...) findings = %+v; want nil under language: none", got)
 	}
@@ -115,6 +116,115 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 	}
 }
 
+// TestCanonicalizeHandles_ReportsWhetherItRewrote pins the signal resolvePass hangs its reload on.
+// resolvePass must re-read the plan exactly when canonicalization changed it on disk, and must
+// treat a failure of that re-read as an infrastructure error rather than silently falling back to
+// the stale in-memory copy — which would run the resolve-backed passes against bytes no longer on
+// disk and report a clean verdict over them. Both halves depend on this second return being
+// truthful.
+func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
+	t.Run("a plan carrying no handle rewrites nothing", func(t *testing.T) {
+		dir, plan := writePlanFixture(t, map[int]string{
+			1: "**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n",
+		})
+
+		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if rewrote {
+			t.Error("CanonicalizeHandles reported a rewrite for a plan carrying no handle")
+		}
+	})
+
+	t.Run("a plan carrying a handle rewrites", func(t *testing.T) {
+		dir, plan := writePlanFixture(t, map[int]string{
+			1: "**Create:**\n- `plan:sub#Draft` -> `func Actual() {}`\n\n**Intent:** one\n",
+			2: "**Uses:**\n- `plan:sub#Draft`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n\n**ImpactSummary:** none\n",
+		})
+
+		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if !rewrote {
+			t.Fatal("CanonicalizeHandles reported no rewrite despite canonicalizing a draft handle")
+		}
+		if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "plan:sub#Actual") {
+			t.Errorf("card 1 = %q; want the canonical handle plan:sub#Actual", got)
+		}
+	})
+
+	// F4's (round fable5-high-r3) regression subtest: canonicalization is idempotent, so a plan
+	// whose handles are already canonical must report rewrote=false and leave every card file's
+	// bytes untouched — against pre-fix source the identity substitution rewrote the files with
+	// identical bytes and reported rewrote=true, forcing a full plan re-parse on every validation
+	// pass for the plan's whole life.
+	t.Run("an already-canonical plan rewrites nothing", func(t *testing.T) {
+		dir, plan := writePlanFixture(t, map[int]string{
+			1: "**Create:**\n- `plan:sub#Actual` -> `func Actual() {}`\n\n**Intent:** one\n",
+			2: "**Uses:**\n- `plan:sub#Actual`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n\n**ImpactSummary:** none\n",
+		})
+		before := readCardFile(t, dir, 1, "card1")
+
+		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if rewrote {
+			t.Error("CanonicalizeHandles reported a rewrite for an already-canonical plan")
+		}
+		if got := readCardFile(t, dir, 1, "card1"); got != before {
+			t.Errorf("card 1 bytes changed across an identity canonicalization:\nbefore: %q\nafter:  %q", before, got)
+		}
+	})
+}
+
+// TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError asserts a plan directory that cannot
+// be read reports as a gate/infrastructure failure, never as a plan finding — the gate could not
+// read the artifact, it did not find a defect in it.
+//
+// R6-12: it must ALSO not be reported as a quarry outage. The failure comes from parsing and writing
+// the plan, so wrapping it in ErrQuarryUnavailable made every caller print "quarry could not answer"
+// for a read-only _lyx/plan and sent the operator at the wrong subsystem. Both callers' non-quarry
+// branch already fails the gate with an accurate, plan-named message.
+func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	planDir := filepath.Join(t.TempDir(), "never-created")
+	plan := &planparser.Plan{
+		Dir:      planDir,
+		Format:   5,
+		Language: "go",
+		Approved: true,
+		Cards: []planparser.Card{{
+			Number:       1,
+			Slug:         "one",
+			Targets:      []string{"plan:sub#Draft"},
+			Declarations: []planparser.CardDeclaration{{Handle: "plan:sub#Draft", Decl: "func Actual() {}"}},
+		}},
+	}
+
+	got, err := ValidateFormat(plan, root)
+	if err == nil {
+		t.Fatal("ValidateFormat(...) error = nil; want an infrastructure failure for an unreadable plan directory")
+	}
+	if errors.Is(err, ErrQuarryUnavailable) {
+		t.Errorf("ValidateFormat(...) error = %v; want it NOT wrapped in ErrQuarryUnavailable — the PLAN could not be read, quarry answered fine", err)
+	}
+	if !strings.Contains(err.Error(), planDir) {
+		t.Errorf("ValidateFormat(...) error = %v; want it to name the plan directory %q an operator can act on", err, planDir)
+	}
+	// The pure findings already collected are still returned alongside the error, per this package's
+	// documented contract; what must NOT appear is any resolve-backed finding, since those passes
+	// would have had to run against a plan the gate could not confirm.
+	for _, f := range got {
+		switch f.Check {
+		case "glyph-not-found", "glyph-ambiguous", "glyph-rejected", "create-already-exists", "create-new-unit", "containment-file-overlap":
+			t.Errorf("ValidateFormat(...) reported resolve-backed finding %+v; want none when the plan could not be read", f)
+		}
+	}
+}
+
 // TestCollectGlyphTargets_DeduplicatesAcrossCards asserts a glyph referenced by two cards
 // collapses into one target, and that non-glyph-shaped refs (a path, a bare symbol, a plan:
 // handle) are excluded.
@@ -129,5 +239,26 @@ func TestCollectGlyphTargets_DeduplicatesAcrossCards(t *testing.T) {
 	got := collectGlyphTargets(plan, glyph.Go)
 	if len(got) != 1 || got[0] != "sub#Foo" {
 		t.Errorf("collectGlyphTargets(...) = %v; want exactly [%q]", got, "sub#Foo")
+	}
+}
+
+// TestResolvePass_FileRenameNewSideIsNotAFinding is F1's (round fable5-high-r3) regression test: a
+// FILE-rename pair's New side canonicalizes to the self glyph of a file that only exists once the
+// rename lands, so it resolves not_found against the pre-rename tree — and the status policy must
+// treat that exactly as planparser's own path-missing check treats Pairs.New: never a finding.
+// Against pre-fix source this reported blocking glyph-not-found (twice, per F1b) and wedged every
+// plan carrying a file rename, including the plan spec's own worked example.
+func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
+	_, plan := writePlanFixture(t, map[int]string{
+		1: "**Rename:**\n- `sub/a.go` -> `sub/b.go`\n\n**Intent:** rename the file\n",
+	})
+
+	got, err := resolvePass(plan, root, nil)
+	if err != nil {
+		t.Fatalf("resolvePass(...) returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("resolvePass(file-rename plan) = %+v; want no findings — the pair's New side names the post-rename destination", got)
 	}
 }

@@ -48,9 +48,10 @@
 // HasImpactSummary, HasVerify), its RetiredLabels (one entry per format-3 label the
 // card body still carried), and the optional Commit and Verify fields.
 //
-// Only path-shaped Targets/Uses/Pairs entries are normalized (see below), and
-// only an extension-carrying path-shaped entry is further canonicalized into
-// its glyph string at parse time; a glyph-, handle-, or symbol-shaped entry is
+// Only path-shaped Targets/Uses/Pairs entries are normalized (see below), and a
+// path-shaped entry is further canonicalized into its glyph string at parse time
+// when it carries a file extension or carries no "/" at all (canonicalizablePath,
+// normalize.go); a glyph-, handle-, or symbol-shaped entry is
 // stored verbatim. Classification is by shape alone, via this package's own
 // pure classifier (classify.go's classifyRef/isPathRef/isGlyphRef/isHandleRef)
 // — never `go doc`, never a process spawn, so the package stays a tier1-pure
@@ -95,11 +96,11 @@
 // pass instead of stopping at the first one. ParsePlan fails loud only on
 // document-structure errors — a missing or undecodable overview file, an unparseable
 // Card Index line, a missing card file, an unparseable card heading, or an inline
-// value where a field admits only a bullet list. The plan format's 27 validation
+// value where a field admits only a bullet list. The plan format's 28 validation
 // checks (card type presence, card-custom-not-alone, path malformation, the bare
-// package-qualified symbol and directory-target hard rules, the Rename pair
-// grammar, the plan: handle consistency checks, on-disk existence, and so on)
-// are implemented by Validate in validate.go, not by ParsePlan itself.
+// package-qualified symbol, directory-target and glyph-malformed hard rules, the
+// Rename pair grammar, the plan: handle consistency checks, on-disk existence,
+// and so on) are implemented by Validate in validate.go, not by ParsePlan itself.
 //
 // # The language: key and the glyph alphabet
 //
@@ -108,8 +109,8 @@
 // default when the key is absent) enables glyph.Go's alphabet, and "none"
 // opts a plan out of it entirely, keeping every pre-glyph symbol-shaped
 // behavior unchanged. Under "go", ParsePlan canonicalizes every
-// extension-carrying path-shaped entry into its glyph string immediately
-// after root:/// resolution, and Plan.SurfaceRefs records each canonicalized
-// entry's pre-canonicalization surface lexeme, keyed by the owning card's
-// identity and the resulting canonical string.
+// canonicalizablePath-eligible path-shaped entry into its glyph string
+// immediately after root:/// resolution, and Plan.SurfaceRefs records EVERY one of a
+// canonicalized entry's pre-canonicalization surface lexemes, keyed by the
+// owning card's identity and the resulting canonical string.
 package planparser
