@@ -12,7 +12,7 @@ Companion to `_mill/loom-review-fable-high-r10.md`. One row per finding, filled 
 | F4 | MEDIUM | fixed | `e6e1d26bb` | `TestSyntacticContainment` (+4 self-vs-self subtests) | `internal/planparser/containment.go`, `internal/planparser/containment_test.go`, `contracts/specs/loom-plan-spec.md` (row 23), `manifest/designs/quarry-glyph-plan-alphabet.md` |
 | F5 | LOW | fixed | `c1c2e5aa8` | `TestValidate_RenamePairShape` (+1 self-old/handle-new subtest), `TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake` (new) | `internal/planparser/validate.go`, `internal/planparser/validate_test.go`, `internal/planglyph/handle.go`, `internal/planglyph/handle_test.go`, `contracts/specs/loom-plan-spec.md` (row 18) |
 | F6 | LOW | fixed | `097a4a691` | `TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing` (new) | `internal/planglyph/handle.go`, `internal/planglyph/handle_test.go` |
-| F7 | LOW | fixed | `pending-sha` | `TestValidate_DirectoryTarget` (+1 detail-remedy subtest) | `internal/planparser/classify.go`, `internal/planparser/validate.go`, `internal/planparser/validate_test.go`, `contracts/specs/loom-plan-spec.md` (directory-target row) |
+| F7 | LOW | fixed | `ed3669e91` | `TestValidate_DirectoryTarget` (+1 detail-remedy subtest) | `internal/planparser/classify.go`, `internal/planparser/validate.go`, `internal/planparser/validate_test.go`, `contracts/specs/loom-plan-spec.md` (directory-target row) |
 
 ## Deferred (with reasons)
 
