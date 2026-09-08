@@ -22,4 +22,9 @@
 // list numbering are stripped, or claude's own "Enter to confirm" gate footer — and it locates that
 // option line with the same helper TrustDismissSequence uses, so the classifier can never name a gate
 // the dismissal would then have to walk blind.
+// The evidence must also sit where a rendered gate puts it: the option line adjacent to the last
+// caret, the footer just below it — because a prose LIST ITEM that begins with an accept phrase
+// ("- Yes, I accept the risk") is itself a matching option line, while the only caret on a healthy
+// pane is its input-box marker at the bottom, far from any transcript prose above (crucible round
+// fable-high-r7, F1).
 package claudeengine

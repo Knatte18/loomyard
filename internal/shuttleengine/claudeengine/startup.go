@@ -54,14 +54,28 @@ var startupGateNeedles = []string{"trustthisfolder", "filesinthisfolder", "yes,i
 // helper so the two can never disagree about what an accepting option is — or claude's own gate
 // footer. Prose carries neither.
 //
-// The residual, stated rather than papered over: a future gate whose accepting option matches none of
-// gateAcceptNeedles AND which also drops the footer would fall through to the ready check. That gate
-// is already undismissable today (TrustDismissSequence returns nothing for it), so what changes is
-// only how it fails — parking until the run timeout instead of dying at the startup deadline. That is
-// the deliberate trade for no longer killing healthy runs over ordinary agent prose.
+// The evidence must also sit where a rendered gate puts it. A real gate is a two-option select
+// list: its caret sits ON one of two ADJACENT option lines with the footer drawn a couple of lines
+// beneath, while a healthy pane's only caret is its input-box marker at the BOTTOM, far from any
+// prose above it. Round 6's fix accepted an accepting-option line ANYWHERE in the capture, so one
+// prose line that begins with an accept phrase after list decoration ("- Yes, I accept the risk")
+// supplied both the needle and the option evidence by itself, and TrustDismissSequence then walked
+// the caret — the healthy pane's own input marker — dozens of lines up into the transcript and
+// pressed Enter (crucible round fable-high-r7, F1). gateIsRendered therefore admits option evidence
+// only adjacent to the last caret (and footer evidence only just below it); a capture with no caret
+// at all keeps its gate classification, since a caret-less gate is dismissed by pressing nothing
+// and the startup window bounds the wait.
+//
+// Two residuals, stated rather than papered over. A future gate whose accepting option matches none
+// of gateAcceptNeedles AND which also drops the footer falls through to the ready check — already
+// undismissable today, so what changes is only how it fails (parking until the run timeout instead
+// of dying at the startup deadline). And prose that opens with an option label verbatim on the line
+// DIRECTLY adjacent to the input-box caret still misclassifies; claude always draws a blank line
+// between the transcript and its input box, so that window is one rendering quirk wide, not one
+// prose line wide.
 func (c *Claude) Startup(capture string) shuttleengine.StartupState {
 	normalized := normalizeCapture(capture)
-	if containsAnyNeedle(normalized, startupGateNeedles) && gateIsRendered(capture, normalized) {
+	if containsAnyNeedle(normalized, startupGateNeedles) && gateIsRendered(capture) {
 		return shuttleengine.StartupTrustPrompt
 	}
 	if strings.Contains(capture, gateCaretMarker) || strings.Contains(normalized, "shortcuts") {
@@ -70,15 +84,72 @@ func (c *Claude) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupPending
 }
 
-// gateIsRendered reports whether capture carries positive evidence of a one-time gate DIALOG, as
-// opposed to a mere mention of one of the phrases startupGateNeedles matches.
-// normalized is capture's whitespace-stripped, lowercased form, passed in rather than recomputed
-// because the caller already has it.
-func gateIsRendered(capture, normalized string) bool {
-	if _, acceptLine := locateGateLines(capture); acceptLine != -1 {
+// gateAcceptAdjacencyLines bounds how far (in lines, either direction) the last accepting-option
+// line may sit from the last caret line and still count as a rendered gate's own option. A real
+// gate's caret sits on one of two adjacent option lines — both live-transcribed gate fixtures show
+// a distance of 0 or 1 — while a healthy pane's input-box caret sits at the bottom, at least a
+// blank line below the transcript prose that could spell an accept phrase.
+const gateAcceptAdjacencyLines = 1
+
+// gateFooterAdjacencyLines bounds how far BELOW the last caret line the gate footer may sit and
+// still count as rendered-gate evidence. Every live-transcribed gate draws it 3 lines under the
+// caret (second option, blank, footer); prose mentioning "Enter to confirm" sits in the transcript
+// ABOVE a healthy pane's input-box caret, never below it, so the strictly-below requirement is what
+// keeps that phrase inert.
+const gateFooterAdjacencyLines = 4
+
+// acceptLineIsGateOption reports whether the located accepting-option line counts as a rendered
+// gate's own option: present, and either adjacent to the last caret line or in a capture with no
+// caret at all (a gate whose options are drawn before its caret — classifying it a gate costs a
+// bounded wait, since the dismissal presses nothing without a caret).
+// It is the ONE adjacency rule Startup's classification and TrustDismissSequence's walk both apply,
+// so the classifier can never name a gate the dismissal would refuse to walk.
+func acceptLineIsGateOption(caretLine, acceptLine int) bool {
+	if acceptLine == -1 {
+		return false
+	}
+	if caretLine == -1 {
 		return true
 	}
-	return strings.Contains(normalized, gateFooterNeedle)
+	distance := acceptLine - caretLine
+	if distance < 0 {
+		distance = -distance
+	}
+	return distance <= gateAcceptAdjacencyLines
+}
+
+// gateIsRendered reports whether capture carries positive evidence of a one-time gate DIALOG, as
+// opposed to a mere mention of one of the phrases startupGateNeedles matches: an accepting-option
+// line adjacent to the last caret (acceptLineIsGateOption), or the gate footer just below it
+// (within gateFooterAdjacencyLines, strictly below — a rendered footer never sits above its own
+// dialog's caret). With no caret in the capture either piece of evidence stands on its own.
+func gateIsRendered(capture string) bool {
+	caretLine, acceptLine := locateGateLines(capture)
+	if acceptLineIsGateOption(caretLine, acceptLine) {
+		return true
+	}
+	footerLine := locateGateFooterLine(capture)
+	if footerLine == -1 {
+		return false
+	}
+	if caretLine == -1 {
+		return true
+	}
+	distance := footerLine - caretLine
+	return distance > 0 && distance <= gateFooterAdjacencyLines
+}
+
+// locateGateFooterLine returns the index, within capture's own lines, of the LAST line carrying the
+// gate footer (gateFooterNeedle), or -1 when absent — last occurrence for the same reason
+// locateGateLines takes it: the gate is drawn at the bottom of the pane, above scrollback.
+func locateGateFooterLine(capture string) int {
+	footerLine := -1
+	for i, line := range strings.Split(capture, "\n") {
+		if strings.Contains(normalizeCapture(line), gateFooterNeedle) {
+			footerLine = i
+		}
+	}
+	return footerLine
 }
 
 // gateOptionDecoration is the set of runes claude may draw BEFORE an option's own label on a select
@@ -97,9 +168,11 @@ const gateOptionDecoration = " \t❯>-*.)([]0123456789"
 //
 // An option line BEGINS with its label once the caret and any list numbering are stripped, and prose
 // does not, so the needle must be a PREFIX of the stripped, normalized line rather than merely
-// present in it. The residual is prose that opens with an option label verbatim ("Yes, I accept, but
-// first…"); it needs a gate needle elsewhere in the same capture to matter at all, and it is far
-// narrower than matching anywhere on any line.
+// present in it. Prose that opens with an option label verbatim after list decoration ("- Yes, I
+// accept the risk") still matches HERE — and such a line supplies the gate needle itself, so it is
+// not gated by needing one elsewhere — which is why this predicate alone is not gate evidence:
+// acceptLineIsGateOption additionally requires the matched line to sit adjacent to the last caret
+// (crucible round fable-high-r7, F1).
 func isGateAcceptOptionLine(line string) bool {
 	label := normalizeCapture(strings.TrimLeft(line, gateOptionDecoration))
 	for _, needle := range gateAcceptNeedles {
@@ -216,9 +289,13 @@ const gateSelectSettleMS = 150
 // at all rather than a blind Enter: pressing whatever is selected is exactly how the old form
 // refused on lyx's behalf. The caller re-probes on its next liveness tick and the startup window
 // bounds the retries, so returning nothing costs a bounded wait and never a wrong keypress.
+// A caret and accepting option that are NOT adjacent (acceptLineIsGateOption, the same rule
+// Startup's own gate evidence applies) also press nothing: a real gate's caret sits on one of two
+// adjacent option lines, so a long walk means the "caret" is a healthy pane's own input-box marker
+// and the "option" is a line of transcript prose (crucible round fable-high-r7, F1).
 func (c *Claude) TrustDismissSequence(capture string) []shuttleengine.PaneInput {
 	caretLine, acceptLine := locateGateLines(capture)
-	if caretLine == -1 || acceptLine == -1 {
+	if caretLine == -1 || !acceptLineIsGateOption(caretLine, acceptLine) {
 		return nil
 	}
 

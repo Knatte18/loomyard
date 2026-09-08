@@ -148,6 +148,26 @@ func TestStartup_Classification(t *testing.T) {
 			capture: "Do you trust the files in this folder?\n\n ❯ Decline\n   Affirm\n\n Enter to confirm · Esc to cancel",
 			want:    shuttleengine.StartupTrustPrompt,
 		},
+		{
+			// R7-F1's first shape: ONE prose line that is a markdown list item beginning with an
+			// accept phrase supplies both the gate needle and (before the adjacency rule) the
+			// accepting-option-line evidence by itself. The only caret is the healthy pane's own
+			// input-box marker at the bottom, far from the prose — a rendered gate's caret sits ON
+			// one of two adjacent option lines, so this must classify Ready.
+			name:    "ready_agent_prose_list_item_starting_with_the_accept_label",
+			capture: "● Here is my assessment:\n\n- Yes, I accept the risk of merging now\n- The suite is green\n\n❯\n? for shortcuts",
+			want:    shuttleengine.StartupReady,
+		},
+		{
+			// R7-F1's second shape: prose carrying the gate FOOTER phrase ("press Enter to
+			// confirm") plus a needle mention. The footer evidence only counts strictly BELOW the
+			// caret, where a rendered gate draws it — transcript prose sits above the input-box
+			// caret, so this must classify Ready rather than killing the run at the startup
+			// deadline.
+			name:    "ready_agent_prose_with_footer_phrase_and_needle_mention",
+			capture: "● The modal's accepting option reads yes, i accept.\n● Then press Enter to confirm the selection.\n\n❯\n? for shortcuts",
+			want:    shuttleengine.StartupReady,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -258,6 +278,15 @@ func TestTrustDismissSequence(t *testing.T) {
 		{
 			name:    "no caret in the capture presses nothing at all",
 			capture: "   Yes, I trust this folder",
+			want:    nil,
+		},
+		{
+			// R7-F1's key-press half: with the accept-phrase prose line far above the healthy
+			// pane's own input-box caret, the pre-fix walk sent a burst of Up presses (history
+			// recall in claude's input box) and an Enter into a live pane. A caret and accepting
+			// option that are not adjacent are not a gate — press nothing.
+			name:    "prose accept line far from the input-box caret presses nothing at all",
+			capture: "● Here is my assessment:\n\n- Yes, I accept the risk of merging now\n- The suite is green\n\n❯\n? for shortcuts",
 			want:    nil,
 		},
 	}
