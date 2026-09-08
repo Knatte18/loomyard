@@ -228,6 +228,31 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		}
 	})
 
+	// R6-9: the missing-plan refusal's recourse must not point at --plan-dir alone. Every first-time
+	// standalone operator hits this refusal before their plan is staged, and following "pass
+	// --plan-dir" passed wiring only to be refused by `run` itself, which cannot spawn Master over a
+	// moved plan. The message must name the DEFAULT location, which is what `run` requires.
+	t.Run("MissingPlanRefusalNamesTheDefaultLocation_StandaloneMode", func(t *testing.T) {
+		target := t.TempDir()
+		stateHome := t.TempDir()
+		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+		defaultPlanDir := filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan")
+
+		c := &websterCLI{}
+		err := c.wire(nil, preflight.ModeStandalone, target, "", "", "")
+		if err == nil {
+			t.Fatal("wire() = nil; want a refusal — no plan is staged")
+		}
+		if !strings.Contains(err.Error(), defaultPlanDir) {
+			t.Errorf("wire() error = %q; want it to name the default plan directory %q that `run` requires", err, defaultPlanDir)
+		}
+		if !strings.Contains(err.Error(), "`run` refuses it") {
+			t.Errorf("wire() error = %q; want it to say `run` refuses a --plan-dir override, so the recourse is not a dead end", err)
+		}
+	})
+
 	t.Run("DefaultSpellingIsNotAnOverride_HubMode", func(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(hub, "warp", ".")

@@ -234,7 +234,12 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		geom.PlanDir = planDir
 	}
 	if !standalonePlanDirHasContent(geom.PlanDir) {
-		return fmt.Errorf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback; pass --plan-dir to point at an authored plan", geom.PlanDir)
+		// The recourse names the DEFAULT location first, deliberately. Saying only "pass --plan-dir"
+		// was a dead end for the one operator who always hits this refusal — the first-time standalone
+		// one, whose plan is not staged yet: following it passed wiring and was then refused by `run`
+		// itself, which cannot spawn Master over a moved plan (Master's in-pane verbs are flagless).
+		// The two messages gave mutually exclusive instructions (crucible round opus-medium-r6, R6-9).
+		return fmt.Errorf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback. Place an authored plan at %s, which is what `run` requires (Master's own in-pane verbs are flagless and resolve that default); --plan-dir points the bracket and read-only verbs at a plan elsewhere, but `run` refuses it", geom.PlanDir, c.standaloneDefaultPlanDir(geom.PlanDir))
 	}
 
 	shuttleCfg, err := shuttleengine.LoadConfig(stateDir, "shuttle")
@@ -342,6 +347,18 @@ func pathContains(outer, inner string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// standaloneDefaultPlanDir returns the standalone default plan directory for a refusal's recourse
+// text: planDirDefault when --plan-dir already moved the plan off it, and current otherwise (in which
+// case current IS the default).
+// It exists so the missing-plan refusal always names the location `run` requires, never the override
+// the operator just supplied.
+func (c *websterCLI) standaloneDefaultPlanDir(current string) string {
+	if c.planDirOverridden {
+		return c.planDirDefault
+	}
+	return current
 }
 
 // samePlanDir reports whether a told --plan-dir names the same directory as the mode's own default.
