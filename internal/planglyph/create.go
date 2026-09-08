@@ -90,12 +90,28 @@ func createHandleResults(repo *quarry.Repo, plan *planparser.Plan) (map[string]q
 		return nil, err
 	}
 
+	return matchHandleResults(expected, results)
+}
+
+// matchHandleResults re-keys a batched Resolve answer over expected's glyph keys by the HANDLE each
+// answer is for, erroring with ErrQuarryUnavailable when any expected glyph got no answer. Every key
+// in expected was put into the resolve's own target list by createHandleResults itself, so a missing
+// answer is quarry's positional contract not holding (resolveTargets' length guard leaves only the
+// echo-mismatch case, where a result's Target is not the string asked about). Dropping the handle
+// instead made createFindings read the absence as "not a glyph target" and skip the Create inversion
+// for it entirely — under the inversion, silence means "does not exist yet, carry on". Same
+// disposition as doneCheckVerdicts' per-key guard, R5-6 (crucible round fable-high-r10, F3).
+// It is split out of createHandleResults so the guard is reachable from a unit test: a real
+// quarry.Repo cannot produce the breach.
+func matchHandleResults(expected map[string]string, results []quarry.ResolveResult) (map[string]quarry.ResolveResult, error) {
 	byGlyph := resultByTarget(results)
 	byHandle := make(map[string]quarry.ResolveResult, len(expected))
 	for handle, key := range expected {
-		if r, ok := byGlyph[key]; ok {
-			byHandle[handle] = r
+		r, ok := byGlyph[key]
+		if !ok {
+			return nil, fmt.Errorf("%w: resolve returned no answer for Create handle %q's expected glyph %q", ErrQuarryUnavailable, handle, key)
 		}
+		byHandle[handle] = r
 	}
 	return byHandle, nil
 }

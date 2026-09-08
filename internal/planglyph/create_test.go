@@ -3,6 +3,7 @@
 package planglyph
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -188,4 +189,31 @@ func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
 			t.Errorf("finding detail = %q; want it to name the unrecognized status", got[0].Detail)
 		}
 	})
+}
+
+// TestMatchHandleResults pins F3's per-key guard (crucible round fable-high-r10): a Create handle
+// whose expected glyph got no answer is ErrQuarryUnavailable, never a silent drop — createFindings
+// reads an absent index entry as "not a glyph target" and would skip the Create inversion entirely,
+// which under the inversion means "does not exist yet, carry on".
+func TestMatchHandleResults(t *testing.T) {
+	expected := map[string]string{"plan:sub#New": "sub#New"}
+
+	byHandle, err := matchHandleResults(expected, []quarry.ResolveResult{{Target: "sub#New", Status: quarry.StatusNotFound}})
+	if err != nil {
+		t.Fatalf("matchHandleResults() with a covering answer returned error: %v", err)
+	}
+	if _, ok := byHandle["plan:sub#New"]; !ok {
+		t.Errorf("matchHandleResults() = %v; want the answer re-keyed by the handle %q", byHandle, "plan:sub#New")
+	}
+
+	_, err = matchHandleResults(expected, nil)
+	if err == nil {
+		t.Fatalf("matchHandleResults() with no answer = nil error; want a wrapped ErrQuarryUnavailable — the handle's Create inversion would otherwise silently pass")
+	}
+	if !errors.Is(err, ErrQuarryUnavailable) {
+		t.Errorf("matchHandleResults() error = %v; want it to wrap ErrQuarryUnavailable", err)
+	}
+	if !strings.Contains(err.Error(), "plan:sub#New") {
+		t.Errorf("matchHandleResults() error = %v; want it to name the unanswered handle", err)
+	}
 }
