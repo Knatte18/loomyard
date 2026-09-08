@@ -42,9 +42,13 @@ func resolveKeyFor(ref string) string {
 // DoneChecks issues one batched resolve over cards' own Create, Delete, and Rename group targets
 // against worktreeRoot's current tree, and applies three rules, all blocking because none is a
 // judgment call: a Create target that still does not resolve found or multipart is check ID
-// create-not-done; a Delete target that still resolves found or multipart is check ID
-// delete-not-done; and a Rename pair whose old side still resolves, or whose new side still does
-// not, is check ID rename-not-done in either direction.
+// create-not-done; a Delete target whose answer is anything but not_found — found, multipart, or
+// ambiguous, whose candidates are still-present declarations of that name — is check ID
+// delete-not-done; and a Rename pair whose old side is still anything but not_found, or whose new
+// side still does not resolve found or multipart, is check ID rename-not-done in either direction.
+// An answer outside quarry's four-value status vocabulary — a pre-resolution rejection, or a status
+// this policy has not been taught — is the blocking finding glyph-rejected for that entry, failing
+// closed exactly as statusFindings and createFindings do (see doneCheckVerdicts).
 //
 // An infrastructure error from the resolve blocks the done-checks rather than passing them: a
 // Create done-check that could not resolve is indistinguishable from a Create that never happened,
@@ -146,7 +150,35 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 			// the plan (crucible round opus-medium-r5, R5-6).
 			return findings, fmt.Errorf("%w: resolve returned no answer for done-check target %q (card %s)", ErrQuarryUnavailable, e.key, cardIDOf(e.card))
 		}
+
+		// Fail closed on an answer outside quarry's four-value vocabulary BEFORE reading it into
+		// either boolean below. The old single boolean ("resolved = found || multipart") folded a
+		// pre-resolution rejection (Status "", Error/Reason set) and any future unrecognized status
+		// into "the target is gone", which fails OPEN for delete-not-done and rename-not-done-old:
+		// an unreadable answer counted as a successful deletion. Same disposition statusFindings and
+		// createFindings adopted in crucible round opus-high-r9's R9-6, and the same glyph-rejected
+		// check ID, so the vocabulary can only ever widen deliberately (crucible round
+		// fable-high-r10, F1).
+		switch r.Status {
+		case quarry.StatusFound, quarry.StatusMultipart, quarry.StatusAmbiguous, quarry.StatusNotFound:
+		default:
+			findings = append(findings, Finding{
+				Check:    "glyph-rejected",
+				Card:     cardIDOf(e.card),
+				Detail:   unreadableStatusDetail("done-check target", e.display, r),
+				Severity: SeverityBlocking,
+			})
+			continue
+		}
+
+		// The two directions read different questions off the four readable statuses. resolved is
+		// the Create direction's bar: the work landed only when the target resolves cleanly (found
+		// or multipart). stillExists is the Delete direction's bar: anything but not_found means a
+		// declaration with that name is still present — INCLUDING ambiguous, whose candidates are
+		// exactly such declarations, so an ambiguous answer must block a deletion verdict rather
+		// than pass it (the old boolean passed it; crucible round fable-high-r10, F1).
 		resolved := r.Status == quarry.StatusFound || r.Status == quarry.StatusMultipart
+		stillExists := r.Status != quarry.StatusNotFound
 
 		switch e.checkID {
 		case "create-not-done":
@@ -159,7 +191,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 				})
 			}
 		case "delete-not-done":
-			if resolved {
+			if stillExists {
 				findings = append(findings, Finding{
 					Check:    "delete-not-done",
 					Card:     cardIDOf(e.card),
@@ -168,7 +200,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 				})
 			}
 		case "rename-not-done-old":
-			if resolved {
+			if stillExists {
 				findings = append(findings, Finding{
 					Check:    "rename-not-done",
 					Card:     cardIDOf(e.card),
