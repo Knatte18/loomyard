@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: unify-webster-burler-wiring
 branch: unify-webster-burler-wiring
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-09-08T12:26:39Z'
+discussion-fix-r2  '2026-09-08T13:08:57Z'
+discussed  '2026-09-08T13:08:57Z'
 ```

@@ -46,7 +46,8 @@ This task removes the duplication and adds the mechanical check that keeps a thi
   Per CLAUDE.md the roadmap moves only for completing or adding a planned item;
   this is a consolidation pass.
 - Any other CLI.
-  Only `webstercli` and `burlercli` are standalone-capable today, and only they are touched.
+  `webstercli` and `burlercli` are the only CLIs that derive standalone **state geometry**, and only they are touched.
+  `internal/quarrycli/cli.go:58-73` also branches on `preflight.ResolveMode`'s hub-vs-standalone verdict, but it derives no state directory and no target — it only picks a root — so it has nothing to share with `cliwire` and stays untouched.
 - `internal/standalonestate`, `internal/standalonegeom`, `internal/hubgeom`, `internal/preflight` — all consumed unchanged.
 
 ## Decisions
@@ -58,7 +59,10 @@ This task removes the duplication and adds the mechanical check that keeps a thi
   `internal/standalonegeom` is the wrong home because its whole contract is that it never touches disk and never derives anything (its own `doc.go` says so explicitly), while this logic stats, reads directories and seeds stencils.
   `internal/standalonestate` is barred outright by the Standalonestate Leaf Invariant (stdlib-only).
   `internal/clihelp` is the wrong altitude: it is generic cobra plumbing for all twelve CLI modules, and this is specific to the two standalone-capable ones.
-- Rejected: folding into `standalonegeom` (breaks its disk-free contract), into `standalonestate` (breaks its leaf invariant), into `clihelp` (wrong altitude).
+- Rejected: folding into `standalonegeom` (breaks its disk-free contract), into `standalonestate` (breaks its leaf invariant), into `clihelp` (wrong altitude), and into `internal/preflight` — the nearest neighbour a plan writer would ask about, since it already owns `ResolveMode` and `docs/overview.md:388` names it the mode selector for standalone-capable CLIs.
+  `preflight` is disqualified on its import set: it imports `internal/lyxcwd` and `internal/fabricengine`, and `cliwire` must import neither (the Told-Geometry Invariant bars `lyxcwd`, and nothing in this wiring touches fabric).
+  Mode *selection* stays in `preflight`;
+  what happens after a mode is chosen is what moves to `cliwire`.
 
 ### API shape — descriptor + methods + package-level pure functions
 
@@ -170,7 +174,7 @@ This task removes the duplication and adds the mechanical check that keeps a thi
   an import allowlist barring `webstercli`/`burlercli` from importing `standalonestate`/`standalonegeom` (too blunt — `standalonegeom`'s geometry builders are legitimately needed after the prologue returns).
 
 The pin is production-only because the invariant is about production wiring.
-Six test call sites exist today and stay where they are: `internal/burlercli/wiring_test.go:68,143,211` (whose helpers move to `cliwire` anyway under the test decision), `internal/webstercli/cli_integration_test.go:46,99`, and `internal/standalonegeom/reedgeom_symlink_integration_test.go`.
+Eight test call sites exist today and stay where they are: `internal/burlercli/wiring_test.go:68,143,211` and `internal/webstercli/wiring_test.go:165` (whose helpers move to `cliwire` anyway under the test decision), `internal/webstercli/cli_integration_test.go:46,99`, and `internal/standalonegeom/reedgeom_symlink_integration_test.go:45,49`.
 Those tests call `Derive` to build a fixture and to assert the real derivation end-to-end — they are not a second copy of the wiring, and forcing them through `cliwire` would make packages that have no reason to depend on it do so.
 An explicit test-file allowlist was rejected as maintenance on something a code review would see anyway;
 production drift is what slips in silently.
@@ -180,14 +184,24 @@ production drift is what slips in silently.
 - Decision: the exported surface is
 
   - `cliwire.Module` — the descriptor: `Name string`, the nested-geometry refusal's two noun phrases, the hub `--target-dir` refusal's subject phrase, and `Plan *PlanRules`.
-  - `cliwire.PlanRules` — `DefaultPlanDir func(base string) string` plus the missing-plan refusal's text.
+  - `cliwire.PlanRules` — `DefaultPlanDir func(base string) string` plus `MissingPlanRefusal func(planDir, defaultPlanDir string) string`.
     Nil on `Module` means the CLI parses no plan.
+    The refusal is a function rather than a bare string because webster's live message interpolates two distinct paths in a fixed order (`geom.PlanDir` first, then `standaloneDefaultPlanDir(...)` — `webstercli/wiring.go:243`), and a bare string cannot reproduce it byte-for-byte.
+    A format string with a documented argument order would also work;
+    a function is chosen because it makes the argument order a compile-time fact rather than a comment.
   - `cliwire.StandaloneRequest` — `Cwd`, `StencilsDirFlag`, `PlanDirFlag`, `TargetDirFlag`.
   - `cliwire.Standalone` — the result: `Target`, `StateDir`, `Hash8`, `StencilsDir`, `PlanDir`, `PlanDirOverridden`, `DefaultPlanDir`.
   - `(Module).ResolveStandalone(StandaloneRequest) (Standalone, error)`.
   - `(Module).RefuseTargetDirInHubMode(flag string) error`.
-  - `(Module).ResolvePlanDir(toldPlanDir, defaultPlanDir string) (planDir string, overridden bool)` — the plan-dir override resolver, shared by `wireHub` and the standalone prologue.
-  - Package-level pure functions `ResolveToldDir`, `NormalizeForContainment`, `SamePlanDir`, `RepositoryRootOf`.
+  - Package-level pure functions `ResolveToldDir`, `NormalizeForContainment`, `SamePlanDir`, `RepositoryRootOf`, and `ResolvePlanDir(toldPlanDir, defaultPlanDir string) (planDir string, overridden bool)` — the plan-dir override resolver, shared by `wireHub` and the standalone prologue.
+    It is a package function, not a `Module` method, because it is infallible, produces no message and reads no descriptor field — the same test the other four pure helpers pass.
+
+`StandaloneRequest` carries the **raw, as-parsed** flag values, exactly as they reach `wire` today.
+`ResolveStandalone` makes them absolute itself via `ResolveToldDir(req.Cwd, …)`.
+This differs from today's arrangement, where `wire` resolves `stencilsDirFlag` and `planDirFlag` before the mode branch (`webstercli/wiring.go:82-88`, `burlercli/wiring.go:73-78`) and hands the resolved values down.
+Both `wire` methods keep doing that for their own hub branch — `wireHub` needs the resolved plan dir — so the standalone path resolves a value that is already absolute.
+That is harmless: `ResolveToldDir` is idempotent on an absolute input (it only cleans it).
+Naming the boundary once here is what stops a later reader from "fixing" the apparent double resolution by moving it back out.
 - Rationale: reads cleanly at the call site (`wireModule.ResolveStandalone(...)`), and the pure helpers stay callable without a descriptor since none of them produces a message.
 - Rejected: a minimal surface keeping the pure helpers unexported (viable, since the shared tests live inside the package anyway, but `ResolveToldDir` has a live cross-file caller — burler's `run.go` resolves `--profile` through it — so it must be exported regardless).
 
