@@ -529,6 +529,68 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	})
 }
 
+// TestValidateCmd_RebaselinesStalePlanFingerprint is WS-1's own regression test (crucible round
+// sonnet-xhigh-r8): validate's own resolve pass can rewrite the plan on disk (handle
+// canonicalization) exactly as begin-batch's own ValidateDispatch call can, but before this fix it
+// never restamped state.json's PlanFingerprint afterward the way every bracket verb already does —
+// so a run's crash/resume guard silently desynced from a plan validate itself had just rewritten,
+// and the next begin-batch/record-batch/run refused the (validate's own sanctioned) edit as a
+// foreign one, forcing --fresh and discarding the run's progress.
+//
+// This drives the observable end state directly rather than depending on quarry's own handle
+// grammar to construct a genuine mid-call rewrite: state.json is seeded with a fingerprint that
+// does NOT match the real on-disk plan (standing in for "the plan changed since state.json was last
+// written, by validate's own rewrite or otherwise"), and the assertion is that validate corrects it
+// to the plan's actual current fingerprint — the same unconditional re-baseline begin-batch performs
+// after every ValidateDispatch call, regardless of whether that specific call happened to rewrite
+// anything.
+func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
+	identity, err := batcher.Select("identity")
+	if err != nil {
+		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
+	}
+
+	c, _ := newTestCLI(t)
+	c.batcher = identity
+	seedValidPlanDir(t, c.geom.PlanDir)
+
+	realFingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
+	if err != nil {
+		t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
+	}
+
+	state := &websterengine.State{
+		RunGUID:         "run-guid",
+		PlanFingerprint: "stale-fingerprint-from-before-the-plan-changed",
+	}
+	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+	if exitCode != 0 {
+		t.Fatalf("validate on a clean plan = %d; want 0, output: %s", exitCode, out.String())
+	}
+
+	reloaded, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState after validate: %v", err)
+	}
+	if reloaded == nil {
+		t.Fatalf("LoadState after validate returned nil; want the seeded state still present")
+	}
+	if reloaded.PlanFingerprint != realFingerprint {
+		t.Errorf("state.json's PlanFingerprint after validate = %q; want %q (the plan's real current fingerprint) — a stale fingerprint left in place is exactly the desync that forces every later begin-batch/record-batch/run to refuse a genuinely current plan as foreign", reloaded.PlanFingerprint, realFingerprint)
+	}
+	// The run's other fields survive the re-baseline untouched — persistPlanFingerprintRebaseline
+	// reloads state fresh and writes only the fingerprint field, never the caller's whole in-memory
+	// copy, for exactly the reason its own doc comment states (R6-4).
+	if reloaded.RunGUID != "run-guid" {
+		t.Errorf("state.json's RunGUID after validate = %q; want %q (the fingerprint restamp must not clobber other fields)", reloaded.RunGUID, "run-guid")
+	}
+}
+
 // TestRecoverBatchCmd_BootsStandaloneReedSessionFirst is R4-11's direct regression test.
 // recover-batch spawns a COLD recovery strand through reed.AddStrand, which needs a live reed
 // session, but it never called the in-process bring-up seam wireStandalone arms. In standalone mode

@@ -56,6 +56,18 @@ func fingerprint(planDir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// Fingerprint is fingerprint's exported seam for a caller outside this package that needs to know
+// the SAME plan-identity digest webster's own bracket verbs compute, without going through
+// BeginBatch/RecordBatch's own State-restamping side effect.
+//
+// webstercli's validate verb is the one caller (crucible round sonnet-xhigh-r8, WS-1): unlike every
+// bracket verb, it runs the same rewrite-capable planglyph pass (handle canonicalization) without
+// ever restamping state.json's PlanFingerprint afterward, so a plan rewritten mid-validate silently
+// desynced the crash/resume guard until this seam existed for it to close that gap with.
+func Fingerprint(planDir string) (string, error) {
+	return fingerprint(planDir)
+}
+
 // restampFingerprint recomputes planDir's fingerprint into st.PlanFingerprint, and is called by
 // each bracket verb after any planglyph pass that may have rewritten the plan on disk.
 //

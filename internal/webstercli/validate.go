@@ -167,7 +167,12 @@ informational findings carried under their own key for visibility. A plan
 carrying at least one blocking finding prints an error envelope carrying
 every finding (check, card, detail, severity) and exits non-zero. validate is
 the lint-without-run pre-flight for a Planner or human; it never spawns
-anything.
+anything -- but it is not read-only: like every bracket verb, its own
+resolve pass can canonicalize a not-yet-canonical plan: handle, rewriting
+the affected card files on disk, and validate re-baselines state.json's
+plan-fingerprint crash/resume guard afterward exactly as begin-batch and
+record-batch already do, so a rewrite it performs is never later mistaken
+for a foreign edit.
 
 Which cards are checked follows the run's own progress, exactly as the
 automatic gate "lyx webster run" applies before forking an implementer does,
@@ -198,18 +203,68 @@ Example:
 				return nil
 			}
 
-			findings, scope, err := c.scopedValidate(plan)
+			// scopedValidate's own resolve pass can canonicalize a not-yet-canonical plan: handle,
+			// rewriting the plan on disk exactly as begin-batch's own ValidateDispatch call can
+			// (CanonicalizeHandles, resolve.go) -- but unlike every bracket verb, validate never
+			// restamped state.json's PlanFingerprint afterward, silently desyncing webster's own
+			// crash/resume guard: the plan on disk carried validate's own sanctioned edit while
+			// state.json kept the pre-rewrite fingerprint, so the next begin-batch/record-batch/run
+			// refused it as a foreign edit and forced --fresh, discarding a live run's progress over
+			// what looked like a read-only lint (crucible round sonnet-xhigh-r8, WS-1). The lease and
+			// reload-then-restamp shape below mirror begin-batch's own restamp discipline exactly —
+			// see persistPlanFingerprintRebaseline's own doc comment for why the restamp reloads
+			// state fresh rather than trusting an in-memory copy.
+			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			defer func() { _ = mutateLock.Release() }()
+
+			st, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			var fingerprintBefore string
+			if st != nil {
+				fingerprintBefore = st.PlanFingerprint
+			}
+
+			findings, scope, validateErr := c.scopedValidate(plan)
+
+			// Re-baseline regardless of validateErr, exactly as begin-batch re-baselines ahead of
+			// every refusal below it: a sanctioned rewrite that already landed on disk is a durable
+			// fact about the plan whether or not a LATER step of this same call then fails. A nil
+			// st (no run in progress) means there is no state.json to desync, so this is a no-op.
+			var rebaseErr error
+			if st != nil {
+				if fp, fpErr := websterengine.Fingerprint(plan.Dir); fpErr != nil {
+					rebaseErr = fpErr
+				} else {
+					st.PlanFingerprint = fp
+					rebaseErr = persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
+				}
+			}
+
+			if validateErr != nil {
 				// Named for quarry, not the plan: an operator reading this envelope must never be
 				// told the plan is invalid when quarry simply could not answer. Any OTHER validator
 				// error still fails the verb rather than being dropped — printing "valid": true over
 				// a validation that did not finish is the failure mode internal/planglyph/repo.go's
 				// own rationale rejects outright.
-				if errors.Is(err, planglyph.ErrQuarryUnavailable) {
-					clihelp.SetExit(cmd.Context(), output.Err(out, "webster: quarry could not answer validating plan: "+err.Error()))
-					return nil
+				msg := "webster: validating plan failed: " + validateErr.Error()
+				if errors.Is(validateErr, planglyph.ErrQuarryUnavailable) {
+					msg = "webster: quarry could not answer validating plan: " + validateErr.Error()
 				}
-				clihelp.SetExit(cmd.Context(), output.Err(out, "webster: validating plan failed: "+err.Error()))
+				if rebaseErr != nil {
+					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v)", msg, rebaseErr)
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
+				return nil
+			}
+			if rebaseErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign", rebaseErr)))
 				return nil
 			}
 
