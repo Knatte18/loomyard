@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: unify-webster-burler-wiring
 branch: unify-webster-burler-wiring
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-09-08T12:26:39Z'
 discussion-fix-r2  '2026-09-08T13:08:57Z'
 discussed  '2026-09-08T13:08:57Z'
 planning  '2026-09-08T13:25:05Z'
+plan-review-r1  '2026-09-08T13:32:58Z'
 ```
