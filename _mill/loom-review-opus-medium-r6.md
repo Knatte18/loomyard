@@ -29,7 +29,7 @@ r6 found it in the code r5 shipped. The campaign README's bar — a safety pass 
 gates and an operator-assisted check — is not met, because this round is not a safety pass: it is a third
 consecutive round with blocking findings.
 
-**Merge-readiness: NOT READY as of round 6's start; READY-pending-verification as of its end**, with one large
+**Merge-readiness: NOT READY as of round 6's start; READY-pending-live-verification as of its end**, with one large
 caveat: this round could not drive live substrate at all (tmux, `lyx reed up` and `tools/deploy` are all refused
 by this session's permission classifier — see below). Every fix is proven hermetically and by reading; none is
 proven against a real claude pane. R6-1 and R6-2 in particular are provider-UI-facing and deserve one live
@@ -440,3 +440,31 @@ Recommendation to the orchestrator: spin this into its own mill-wiki task ("loom
 and non-blocking correctness residue"), one commit per theme, rather than folding it into a glyph-campaign safety
 pass. The full item list is in this round's conversation record and is reproduced by re-running the same sweep.
 
+
+---
+
+## Method note — how this round's breadth was reached
+
+I formed the provider-startup findings (R6-1, R6-2) myself, by reading `claudeengine/startup.go`,
+`wait.go` and `run.go` and then driving a throwaway hermetic probe over `Startup` /
+`TrustDismissSequence` (table above; the probe file was deleted, and permanent regression tests
+landed with the fix instead).
+
+For breadth I also directed three independent adversarial sweeps over separate areas of the surface —
+the glyph surface, the standalone-webster material, and loom's own pre-glyph machinery — each under
+the same clean-room constraint (none of them opened, listed or grepped any `_mill/loom-review-*`
+file). Every finding they raised that appears above I re-derived myself against the code at HEAD
+before recording it, with `file:line` checked firsthand; several were narrowed, and one (a proposed
+`..`-escape carve-out in `normalizeCardPath`) was dropped outright as wrong once I drove it. The
+sweep over out-of-scope pre-glyph machinery is recorded, not fixed, for the reasons stated above.
+
+## What was NOT done, plainly
+
+- **No live substrate at all.** No `lyx loom run`, no `lyx webster run`, no `lyx shuttle run`, no
+  crash-kill, no fresh-fixture gate transcription, no `lyx reed status`/`attach` command to report —
+  because none could be started (see the block near the top). R6-1 and R6-2 change how lyx reads a
+  real claude pane, and neither has been confirmed against one. That is this round's single largest
+  gap and the one thing I would spend the next round's first hour on.
+- **Windows, again.** `pathContains`' new case fold (part of R6-15) is a mechanical mirror of
+  `lyxcwd.samePath`'s already-stated rule. It has never been driven, on this round or any prior one.
+- **`burlercli`'s standalone reed bring-up** stays live-unverified, as it has for every round.
