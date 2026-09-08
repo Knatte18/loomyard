@@ -114,6 +114,13 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
 	if stencilsDirOverride != "" {
+		// The same boundary stat standalone's prologue applies, through the same descriptor method,
+		// so the two modes can never drift on what a told stencils directory must be: a typo'd
+		// --stencils-dir refused here costs nothing, while unchecked it failed only at the first
+		// instruction render, after the run lock and substrate boot (crucible round fable-high-r7, F2).
+		if err := wireModule.RefuseUnreadableStencilsDir(stencilsDirOverride); err != nil {
+			return err
+		}
 		stencilsDir = stencilsDirOverride
 	}
 

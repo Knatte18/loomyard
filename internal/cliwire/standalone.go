@@ -82,6 +82,12 @@ func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 	logger.SetDurableSinkDirWithWorktreeRoot(standalonegeom.LogsDir(stateDir), target)
 
 	stencilsDir := ResolveToldDir(req.Cwd, req.StencilsDirFlag)
+	// The told-override stat mirrors resolveStandaloneTarget's own reason for being fallible: a
+	// curated stencil set that is not there must refuse HERE, before the caller takes the run lock
+	// and boots substrate, not at the first prompt render (crucible round fable-high-r7, F2).
+	if err := m.RefuseUnreadableStencilsDir(stencilsDir); err != nil {
+		return Standalone{}, err
+	}
 	if stencilsDir == "" {
 		// An operator who named a curated stencil set must not have it rewritten from under them --
 		// seed only the standalone DEFAULT, never an explicit override.

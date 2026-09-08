@@ -3,7 +3,10 @@
 
 package cliwire
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 // Module carries one standalone-capable CLI's own variance: its name and the noun phrases that
 // distinguish its refusal messages from its sibling's. Each CLI declares its own Module value in
@@ -82,6 +85,35 @@ func (m Module) RefuseTargetDirInHubMode(flag string) error {
 		return nil
 	}
 	return fmt.Errorf("%s: --target-dir is not honoured in hub mode: %s, and honouring any other value would strand its artifacts outside fabric's positive-only commit pathspec", m.Name, m.HubTargetSubject)
+}
+
+// RefuseUnreadableStencilsDir returns nil for an empty stencilsDir (no override told — each mode
+// derives or seeds its own default) and otherwise requires the already-resolved override to exist as
+// a directory, refusing with a message built from m.Name.
+//
+// It exists because --stencils-dir was the one told-directory flag with no check at the wiring
+// boundary: --target-dir is stat'd (a typo silently retargeted the enclosing repository) and
+// --plan-dir is content-checked, but a typo'd --stencils-dir was honoured silently and failed only
+// at the first stencil read — for `run`, after the run lock was taken, the plan re-resolved, and (in
+// standalone mode) the private reed session's tmux server booted. A refusal is only free before any
+// substrate is booted, which is the same reason the nested-geometry guard runs where it does
+// (crucible round fable-high-r7, F2).
+//
+// Both hub wirings and ResolveStandalone call this same method, so the two modes can never drift
+// apart on what a told stencils directory must be. The derived standalone DEFAULT is exempt by the
+// empty-string contract: it is seeded right where it is derived.
+func (m Module) RefuseUnreadableStencilsDir(stencilsDir string) error {
+	if stencilsDir == "" {
+		return nil
+	}
+	info, err := os.Stat(stencilsDir)
+	if err != nil {
+		return fmt.Errorf("%s: --stencils-dir %s cannot be read: %w -- a curated stencil set that is not there is not an empty one: every prompt render reads from it, and unchecked the failure surfaces only after the run lock is taken and substrate is booted", m.Name, stencilsDir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s: --stencils-dir %s is not a directory -- the stencils directory is a curated stencil set read at call time", m.Name, stencilsDir)
+	}
+	return nil
 }
 
 // refuseNestedStandaloneGeometry refuses a standalone target and derived state directory that are

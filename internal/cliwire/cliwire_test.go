@@ -591,6 +591,42 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		}
 	})
 
+	t.Run("AbsentToldStencilsDirIsRefused", func(t *testing.T) {
+		// R7-F2's regression test: --stencils-dir was the one told-directory flag with no check at
+		// the wiring boundary, so a typo'd value was honoured silently and failed only at the first
+		// prompt render — after the run lock and (standalone) the reed session's tmux boot.
+		setStandaloneStateRoot(t)
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+		target := t.TempDir()
+
+		told := filepath.Join(t.TempDir(), "no-such-stencils")
+		_, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target, StencilsDirFlag: told})
+		if err == nil {
+			t.Fatal("ResolveStandalone() error = nil; want the unreadable --stencils-dir refusal")
+		}
+		if !strings.Contains(err.Error(), "webster") || !strings.Contains(err.Error(), told) {
+			t.Errorf("ResolveStandalone() error = %q; want it to name the module and the told stencils directory %q", err.Error(), told)
+		}
+	})
+
+	t.Run("FileToldStencilsDirIsRefused", func(t *testing.T) {
+		setStandaloneStateRoot(t)
+		t.Cleanup(func() { logger.SetDurableSinkDir("") })
+		target := t.TempDir()
+
+		told := filepath.Join(t.TempDir(), "stencils-as-file")
+		if err := os.WriteFile(told, []byte("x"), 0o644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+		_, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target, StencilsDirFlag: told})
+		if err == nil {
+			t.Fatal("ResolveStandalone() error = nil; want the not-a-directory --stencils-dir refusal")
+		}
+		if !strings.Contains(err.Error(), "is not a directory") {
+			t.Errorf("ResolveStandalone() error = %q; want the not-a-directory refusal", err.Error())
+		}
+	})
+
 	t.Run("SeedFailureOnTheDerivedDefaultIsAHardErrorNamingModuleAndDirectory", func(t *testing.T) {
 		setStandaloneStateRoot(t)
 		t.Cleanup(func() { logger.SetDurableSinkDir("") })

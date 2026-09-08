@@ -136,6 +136,13 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 
 	geom := hubgeom.WebsterGeometry(loc)
 	if stencilsDir != "" {
+		// The same boundary stat standalone's prologue applies, through the same descriptor method,
+		// so the two modes can never drift on what a told stencils directory must be: a typo'd
+		// --stencils-dir refused here costs nothing, while unchecked it failed only at the first
+		// prompt render, after the run lock and substrate boot (crucible round fable-high-r7, F2).
+		if err := wireModule.RefuseUnreadableStencilsDir(stencilsDir); err != nil {
+			return err
+		}
 		geom.StencilsDir = stencilsDir
 	}
 	if planDir != "" {

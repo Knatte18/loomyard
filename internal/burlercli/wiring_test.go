@@ -245,6 +245,11 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(hub, "warp", ".")
 		override := filepath.Join(t.TempDir(), "custom-stencils")
+		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
+		// honoured-override behavior under test here is unchanged.
+		if err := os.MkdirAll(override, 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
 
 		c := &burlerCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", override, ""); err != nil {
@@ -271,6 +276,26 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 
 }
 
+// TestWireHub_AbsentStencilsDirIsRefused is R7-F2's hub-side regression test for this module: a
+// typo'd --stencils-dir used to be honoured silently in hub mode and failed only at the first
+// instruction render, after the run lock and substrate boot. The boundary stat goes through the
+// same cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
+func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
+	t.Parallel()
+	hub := t.TempDir()
+	loc := hubLocation(hub, "warp", ".")
+	told := filepath.Join(t.TempDir(), "no-such-stencils")
+
+	c := &burlerCLI{}
+	err := c.wire(loc, preflight.ModeHub, "", told, "")
+	if err == nil {
+		t.Fatal("wire() = nil; want the unreadable --stencils-dir refusal")
+	}
+	if !strings.Contains(err.Error(), "--stencils-dir") || !strings.Contains(err.Error(), told) {
+		t.Errorf("wire() error = %q; want it to name --stencils-dir and the told directory %q", err.Error(), told)
+	}
+}
+
 // TestWire_RelativeStencilsDirResolvesAgainstCwd is R4-23's direct regression test for this module.
 // --stencils-dir used to be stored verbatim, so a relative value reached the engine unresolved: the
 // CLI process would read it against ITS working directory while the pane burler spawns runs at the
@@ -281,6 +306,12 @@ func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(hub, "warp", ".")
 		cwd := t.TempDir()
+
+		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
+		// unchanged.
+		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
 
 		c := &burlerCLI{}
 		if err := c.wire(loc, preflight.ModeHub, cwd, filepath.Join("custom", "stencils"), ""); err != nil {
@@ -295,6 +326,11 @@ func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
 		target := t.TempDir()
 		setStandaloneStateRoot(t)
 		cwd := t.TempDir()
+		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
+		// unchanged.
+		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
 
 		c := &burlerCLI{}
 		if err := c.wire(nil, preflight.ModeStandalone, cwd, filepath.Join("custom", "stencils"), target); err != nil {

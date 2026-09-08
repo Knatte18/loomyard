@@ -338,6 +338,12 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 		loc := hubLocation(hub, "warp", ".")
 		cwd := t.TempDir()
 
+		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
+		// resolution behavior under test here is unchanged.
+		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+
 		c := &websterCLI{}
 		if err := c.wire(loc, preflight.ModeHub, cwd, filepath.Join("custom", "stencils"), filepath.Join("custom", "plan"), ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
@@ -379,6 +385,25 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 			t.Error("planDirOverridden = true; want false -- a relative spelling of the DEFAULT plan directory has not moved the plan, and run must not refuse to spawn Master over it")
 		}
 	})
+}
+
+// TestWireHub_AbsentStencilsDirIsRefused is R7-F2's hub-side regression test: a typo'd
+// --stencils-dir used to be honoured silently in hub mode and failed only at the first prompt
+// render, after the run lock and substrate boot. The boundary stat goes through the same
+// cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
+func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
+	hub := t.TempDir()
+	loc := hubLocation(hub, "warp", ".")
+	told := filepath.Join(t.TempDir(), "no-such-stencils")
+
+	c := &websterCLI{}
+	err := c.wire(loc, preflight.ModeHub, t.TempDir(), told, "", "")
+	if err == nil {
+		t.Fatal("wire() = nil; want the unreadable --stencils-dir refusal")
+	}
+	if !strings.Contains(err.Error(), "--stencils-dir") || !strings.Contains(err.Error(), told) {
+		t.Errorf("wire() error = %q; want it to name --stencils-dir and the told directory %q", err.Error(), told)
+	}
 }
 
 // TestWire_TargetDirRefusedInHubMode proves --target-dir is refused in hub mode with an error
