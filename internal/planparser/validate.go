@@ -188,7 +188,14 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 
 	// An empty Dir is "no plan directory was told", not a fault: ParsePlan always sets Dir, so this is
 	// the in-memory plan shape tests build. There is nothing on disk to scan and nothing to report.
-	entries, err := os.ReadDir(plan.Dir)
+	// The guard runs BEFORE the ReadDir it guards — reading first and testing afterwards issued a
+	// guaranteed-failing ReadDir("") for every such plan and read as if the empty-Dir case were an
+	// error branch, which is the opposite of what it means.
+	var entries []os.DirEntry
+	var err error
+	if plan.Dir != "" {
+		entries, err = os.ReadDir(plan.Dir)
+	}
 	switch {
 	case plan.Dir == "":
 	case err != nil:
