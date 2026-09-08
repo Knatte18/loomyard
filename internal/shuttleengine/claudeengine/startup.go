@@ -15,17 +15,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// trustDialogNeedles are whitespace-stripped, lowercased phrases identifying claude's trust-this-folder gate.
-var trustDialogNeedles = []string{"trustthisfolder", "filesinthisfolder"}
+// startupGateNeedles are whitespace-stripped, lowercased phrases identifying a one-time claude gate
+// that stands between the launch and a usable TUI.
+//
+// There are two such gates, not one, and both must be listed here rather than only the first.
+// "trustthisfolder"/"filesinthisfolder" identify the trust-this-folder gate. "yes,iaccept"
+// identifies the Bypass Permissions acceptance modal, which claude raises on every
+// --dangerously-skip-permissions launch in a fresh environment — which is every launch lyx makes.
+// Missing the second one is not a missed nicety: the modal draws its own selection caret with the
+// same "❯" glyph Startup reads as its ready marker, so an unrecognized gate is classified
+// StartupReady, the startup deadline stops applying, and the run parks on the dialog for the whole
+// master timeout before reporting "timed out" rather than dying fast (crucible round
+// opus-medium-r5, R5-7).
+//
+// The bypass gate is keyed on its accepting option's own label rather than on its banner text
+// ("Bypass Permissions mode"), because a running claude session renders "bypass permissions" in its
+// own footer: a banner needle would classify every healthy pane as a gate and never reach ready.
+var startupGateNeedles = []string{"trustthisfolder", "filesinthisfolder", "yes,iaccept"}
 
 // Startup classifies the pane's rendered content during launch.
-// Trust gate is checked FIRST (the real dialog contains the "❯" ready marker as its selection
-// caret).
+// Every one-time gate is checked FIRST (each real dialog contains the "❯" ready marker as its own
+// selection caret, so a gate reached after the ready check would be indistinguishable from a
+// booted TUI).
 // Then ready markers (the input marker "❯" or the footer hint "shortcuts") are checked; anything
 // else is still booting.
 func (c *Claude) Startup(capture string) shuttleengine.StartupState {
 	normalized := normalizeCapture(capture)
-	for _, needle := range trustDialogNeedles {
+	for _, needle := range startupGateNeedles {
 		if strings.Contains(normalized, needle) {
 			return shuttleengine.StartupTrustPrompt
 		}
@@ -52,31 +68,33 @@ func (c *Claude) InterruptSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "Escape"}}
 }
 
-// trustAcceptNeedles are whitespace-stripped, lowercased phrases identifying the trust gate's
-// ACCEPTING option line, as distinct from trustDialogNeedles, which identify the gate itself.
-// They are deliberately narrower than trustDialogNeedles: the gate's own prose paragraph asks
-// whether this is "a project you created or one you trust", so a needle broad enough to match the
-// paragraph would locate the wrong line and move the caret to nowhere.
-// Two spellings are carried rather than one so a reworded option ("Yes, I trust this directory")
-// still matches; both are substrings of claude 2.1.263's own "Yes, I trust this folder".
-var trustAcceptNeedles = []string{"trustthisfolder", "yes,itrust"}
+// gateAcceptNeedles are whitespace-stripped, lowercased phrases identifying a gate's ACCEPTING
+// option LINE, as distinct from startupGateNeedles, which identify the gate itself.
+// They are deliberately narrower than a gate needle would need to be: the trust gate's own prose
+// paragraph asks whether this is "a project you created or one you trust", so a needle broad enough
+// to match the paragraph would locate the wrong line and walk the caret to nowhere.
+// The set covers both gates and tolerates a rewording of either — "Yes, I trust this folder" and
+// "Yes, I accept" as claude 2.1.263 spells them today.
+var gateAcceptNeedles = []string{"trustthisfolder", "yes,itrust", "yes,iaccept"}
 
-// trustCaretMarker is the glyph claude renders beside the currently-selected option of a select
+// gateCaretMarker is the glyph claude renders beside the currently-selected option of a select
 // list, the same marker Startup already reads as its ready marker.
-const trustCaretMarker = "❯"
+const gateCaretMarker = "❯"
 
-// trustSelectSettleMS is the pause after each caret-moving key press, so a burst of arrow keys is
+// gateSelectSettleMS is the pause after each caret-moving key press, so a burst of arrow keys is
 // not coalesced into a single escape-sequence read and silently dropped — the same hazard
 // ComposeSend's own leading pause exists for.
-const trustSelectSettleMS = 150
+const gateSelectSettleMS = 150
 
-// TrustDismissSequence returns the key choreography that ACCEPTS claude's trust gate as rendered in
-// capture: enough Down (or Up) presses to move the caret from wherever claude put it onto the
-// "Yes, I trust this folder" option, then Enter.
+// TrustDismissSequence returns the key choreography that ACCEPTS whichever one-time claude gate is
+// rendered in capture: enough Down (or Up) presses to move the caret from wherever claude put it
+// onto the accepting option ("Yes, I trust this folder", "Yes, I accept"), then Enter.
+// One mechanism covers both gates because both are the same two-option select list; nothing here
+// needs to know which of them it is looking at.
 //
 // It is capture-driven rather than a fixed single Enter, and that is not a refinement — the fixed
-// form was a live-confirmed defect. Claude 2.1.263 renders the gate with the caret on the REFUSING
-// option:
+// form was a live-confirmed defect. Claude 2.1.263 renders both gates with the caret on the
+// REFUSING option:
 //
 //	❯ No, exit
 //	  Yes, I trust this folder
@@ -97,11 +115,11 @@ func (c *Claude) TrustDismissSequence(capture string) []shuttleengine.PaneInput 
 	// above it is scrollback that may carry both a stale caret and stale option text.
 	caretLine, acceptLine := -1, -1
 	for i, line := range lines {
-		if strings.Contains(line, trustCaretMarker) {
+		if strings.Contains(line, gateCaretMarker) {
 			caretLine = i
 		}
 		normalized := normalizeCapture(line)
-		for _, needle := range trustAcceptNeedles {
+		for _, needle := range gateAcceptNeedles {
 			if strings.Contains(normalized, needle) {
 				acceptLine = i
 				break
@@ -121,7 +139,7 @@ func (c *Claude) TrustDismissSequence(capture string) []shuttleengine.PaneInput 
 
 	inputs := make([]shuttleengine.PaneInput, 0, steps+1)
 	for i := 0; i < steps; i++ {
-		inputs = append(inputs, shuttleengine.PaneInput{Key: key, SettleMS: trustSelectSettleMS})
+		inputs = append(inputs, shuttleengine.PaneInput{Key: key, SettleMS: gateSelectSettleMS})
 	}
 	return append(inputs, shuttleengine.PaneInput{Key: "Enter"})
 }

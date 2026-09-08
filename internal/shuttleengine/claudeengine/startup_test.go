@@ -10,6 +10,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// realBypassGateCapture is the Bypass Permissions acceptance modal exactly as claude 2.1.263
+// renders it, transcribed from a live pane during crucible round opus-medium-r5. Like the trust
+// gate, its caret sits on the REFUSING option.
+const realBypassGateCapture = `  WARNING: Claude Code running in Bypass Permissions mode
+
+  In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands.
+  This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.
+
+  By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.
+
+  https://code.claude.com/docs/en/security
+
+  ❯ No, exit
+    Yes, I accept
+
+  Enter to confirm · Esc to cancel`
+
 func TestStartup_Classification(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -81,9 +98,25 @@ func TestStartup_Classification(t *testing.T) {
 			// The bypass-permissions ready footer (captured live) carries no
 			// "shortcuts" text at all — "❯" must remain a sufficient ready
 			// marker on its own.
+			// It is also the reason the bypass GATE below is keyed on its own
+			// accepting-option label rather than on its banner text: a needle
+			// matching "bypass permissions" would classify this healthy,
+			// running pane as a gate and never let any run start.
 			name:    "ready_bypass_permissions_footer",
 			capture: "❯\n⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
 			want:    shuttleengine.StartupReady,
+		},
+		{
+			// The bypass-permissions acceptance modal, captured live from a
+			// tmux pane (claude 2.1.263). It is the SECOND one-time gate, raised
+			// after the trust gate clears, on every --dangerously-skip-permissions
+			// launch — which is every launch lyx makes. It carries the "❯" ready
+			// caret exactly as the trust gate does, so classifying it Ready set
+			// *started and let a run park on a dialog for the whole master
+			// timeout (crucible round opus-medium-r5, R5-7).
+			name:    "bypass_permissions_gate_is_a_gate_not_ready",
+			capture: realBypassGateCapture,
+			want:    shuttleengine.StartupTrustPrompt,
 		},
 	}
 	for _, tt := range tests {
@@ -139,7 +172,16 @@ func TestTrustDismissSequence(t *testing.T) {
 			name:    "real gate with the caret on the refusing option moves down first",
 			capture: realTrustGateCapture,
 			want: []shuttleengine.PaneInput{
-				{Key: "Down", SettleMS: trustSelectSettleMS},
+				{Key: "Down", SettleMS: gateSelectSettleMS},
+				{Key: "Enter"},
+			},
+		},
+		{
+			// The same mechanism must carry the SECOND gate with no second code path.
+			name:    "bypass-permissions gate walks the caret onto Yes, I accept",
+			capture: realBypassGateCapture,
+			want: []shuttleengine.PaneInput{
+				{Key: "Down", SettleMS: gateSelectSettleMS},
 				{Key: "Enter"},
 			},
 		},
@@ -152,7 +194,7 @@ func TestTrustDismissSequence(t *testing.T) {
 			name:    "accepting option above the caret moves up",
 			capture: "   Yes, I trust this folder\n ❯ No, exit",
 			want: []shuttleengine.PaneInput{
-				{Key: "Up", SettleMS: trustSelectSettleMS},
+				{Key: "Up", SettleMS: gateSelectSettleMS},
 				{Key: "Enter"},
 			},
 		},
@@ -162,7 +204,7 @@ func TestTrustDismissSequence(t *testing.T) {
 			name:    "only the last caret and last accepting option count",
 			capture: "   Yes, I trust this folder\n ❯ No, exit\n" + realTrustGateCapture,
 			want: []shuttleengine.PaneInput{
-				{Key: "Down", SettleMS: trustSelectSettleMS},
+				{Key: "Down", SettleMS: gateSelectSettleMS},
 				{Key: "Enter"},
 			},
 		},
