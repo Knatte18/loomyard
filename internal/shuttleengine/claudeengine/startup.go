@@ -18,20 +18,34 @@ import (
 // startupGateNeedles are whitespace-stripped, lowercased phrases identifying a one-time claude gate
 // that stands between the launch and a usable TUI.
 //
-// There are two such gates, not one, and both must be listed here rather than only the first.
-// "trustthisfolder"/"filesinthisfolder" identify the trust-this-folder gate. "yes,iaccept"
-// identifies the Bypass Permissions acceptance modal, which claude raises on every
-// --dangerously-skip-permissions launch in a fresh environment — which is every launch lyx makes.
-// Missing the second one is not a missed nicety: the modal draws its own selection caret with the
-// same "❯" glyph Startup reads as its ready marker, so an unrecognized gate is classified
-// StartupReady, the startup deadline stops applying, and the run parks on the dialog for the whole
-// master timeout before reporting "timed out" rather than dying fast (crucible round
-// opus-medium-r5, R5-7).
+// There are two such gates, not one, and both must be recognized here, not only the first. Missing
+// one is not a missed nicety: an unrecognized gate's own selection caret draws the same "❯" glyph
+// Startup reads as its ready marker, so it is classified StartupReady, the startup deadline stops
+// applying, and the run parks on the dialog for the whole master timeout before reporting "timed
+// out" rather than dying fast (crucible round opus-medium-r5, R5-7).
+//
+// Built from gateAcceptNeedles (every recognized accepting-option spelling doubles as proof that
+// whatever dialog carries it is one of the two known gates) plus filesInThisFolderNeedle, the trust
+// gate's own prose phrasing that never appears in an accepting-option line by itself, so
+// isGateAcceptOptionLine alone would never see it. This is deliberate rather than two
+// independently-hand-typed lists: keeping a second, separately-spelled needle set here is exactly
+// how "yes,proceed" — a gate wording gateAcceptNeedles has recognized as dismissable since round
+// opus-medium-r6 (R6-2) — went missing from THIS list instead, letting that same gate rendering
+// silently misclassify as StartupReady whenever its own leading prose paragraph is not also present
+// in the capture (e.g. scrolled or cropped out of a narrow/short viewport) — the R5-7 failure shape,
+// reopened through the sibling list rather than closed once and for all (crucible round
+// sonnet-xhigh-r8, SF-1). Deriving this list from gateAcceptNeedles means a future accepting-option
+// wording added there can never again leave this list behind.
 //
 // The bypass gate is keyed on its accepting option's own label rather than on its banner text
 // ("Bypass Permissions mode"), because a running claude session renders "bypass permissions" in its
 // own footer: a banner needle would classify every healthy pane as a gate and never reach ready.
-var startupGateNeedles = []string{"trustthisfolder", "filesinthisfolder", "yes,iaccept"}
+var startupGateNeedles = append([]string{filesInThisFolderNeedle}, gateAcceptNeedles...)
+
+// filesInThisFolderNeedle is the trust gate's own explanatory-prose phrasing ("the files in this
+// folder"), which never appears in an accepting-option line by itself — unlike every entry in
+// gateAcceptNeedles, it identifies the gate's SURROUNDING TEXT, not one of its two options.
+const filesInThisFolderNeedle = "filesinthisfolder"
 
 // Startup classifies the pane's rendered content during launch.
 // Every one-time gate is checked FIRST (each real dialog contains the "❯" ready marker as its own

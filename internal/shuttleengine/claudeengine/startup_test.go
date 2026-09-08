@@ -59,6 +59,20 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupTrustPrompt,
 		},
 		{
+			// SF-1 (crucible round sonnet-xhigh-r8): the "Yes, proceed" wording's own leading prose
+			// paragraph ("Do you trust the files in this folder?") is what always supplied
+			// startupGateNeedles' hit in every fixture above -- this capture carries ONLY the option
+			// list and the gate footer, the exact shape a cropped or scrolled viewport produces
+			// (reed's capture-pane carries no -S, so it is viewport-only). Before the fix,
+			// startupGateNeedles had no needle for "yes,proceed" at all (unlike gateAcceptNeedles,
+			// which has recognized it as dismissable since R6-2), so this classified StartupReady --
+			// the caret sits right there on the option line -- silently disabling the startup
+			// deadline for a genuinely rendered gate.
+			name:    "trust_prompt_older_wording_no_prose_in_capture",
+			capture: "❯ 2. No, exit\n  1. Yes, proceed\n\nEnter to confirm · Esc to cancel",
+			want:    shuttleengine.StartupTrustPrompt,
+		},
+		{
 			// A gate phrase with a gate's accepting option present but no caret and no ready marker
 			// is still a gate: the option line alone is the positive evidence Startup requires.
 			name:    "trust_prompt_case_insensitive",
