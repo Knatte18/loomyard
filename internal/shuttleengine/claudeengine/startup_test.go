@@ -209,6 +209,18 @@ func TestTrustDismissSequence(t *testing.T) {
 			},
 		},
 		{
+			// The older "Yes, proceed" trust-gate wording TestStartup_Classification has always
+			// treated as a recognized gate must be DISMISSABLE too: a gate the classifier
+			// recognizes and the dismissal cannot act on presses nothing and dies at the startup
+			// deadline (crucible round opus-medium-r6, R6-2).
+			name:    "older Yes, proceed trust-gate wording is dismissable",
+			capture: "Do you trust the files in this folder?\n ❯ 2. No, exit\n   1. Yes, proceed\n Enter to confirm · Esc to cancel",
+			want: []shuttleengine.PaneInput{
+				{Key: "Down", SettleMS: gateSelectSettleMS},
+				{Key: "Enter"},
+			},
+		},
+		{
 			name:    "no accepting option in the capture presses nothing at all",
 			capture: " ❯ Some unrecognized option\n   Another one",
 			want:    nil,

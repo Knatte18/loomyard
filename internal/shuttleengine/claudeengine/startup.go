@@ -74,8 +74,13 @@ func (c *Claude) InterruptSequence() []shuttleengine.PaneInput {
 // paragraph asks whether this is "a project you created or one you trust", so a needle broad enough
 // to match the paragraph would locate the wrong line and walk the caret to nowhere.
 // The set covers both gates and tolerates a rewording of either — "Yes, I trust this folder" and
-// "Yes, I accept" as claude 2.1.263 spells them today.
-var gateAcceptNeedles = []string{"trustthisfolder", "yes,itrust", "yes,iaccept"}
+// "Yes, I accept" as claude 2.1.263 spells them today, plus "Yes, proceed", the older trust-gate
+// wording Startup's own fixture set has always treated as a recognized gate. Missing that third
+// spelling was not a missing nicety either: the gate was classified StartupTrustPrompt and then
+// never dismissed, because no line matched, so every agent spawned against a claude build using it
+// pressed nothing at all and died at the startup deadline as an opaque "died" (crucible round
+// opus-medium-r6, R6-2).
+var gateAcceptNeedles = []string{"trustthisfolder", "yes,itrust", "yes,iaccept", "yes,proceed"}
 
 // gateCaretMarker is the glyph claude renders beside the currently-selected option of a select
 // list, the same marker Startup already reads as its ready marker.

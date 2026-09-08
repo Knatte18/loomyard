@@ -1,0 +1,17 @@
+# `loom` — round 6 (opus-medium-r6) fixer report
+
+Companion to [loom-review-opus-medium-r6.md](loom-review-opus-medium-r6.md). Every row is written as its fix lands
+green and is committed, never reconstructed at the end.
+
+Branch `crucible-loom-glyph-hardening`, no pushes. One commit per finding, message `loom: fix R6-N — <what/why>`.
+
+## Implemented
+
+| ID | Severity | What changed | Test that would have caught it | Commit |
+|---|---|---|---|---|
+| R6-2 | MEDIUM | `gateAcceptNeedles` gains `yes,proceed`, the older trust-gate wording `Startup`'s own fixture set already treated as a recognized gate but `TrustDismissSequence` could never act on. | `TestTrustDismissSequence/older_Yes,_proceed_trust-gate_wording_is_dismissable` (`internal/shuttleengine/claudeengine/startup_test.go`) | see git log |
+
+## Deferred / not fixed this round
+
+See the review report's "Recorded but NOT fixed this round" section: the ~45-item residue from the sweep over
+loom's pre-glyph pipeline machinery, which this round's prompt declares out of scope.
