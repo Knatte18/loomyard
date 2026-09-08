@@ -60,7 +60,9 @@ type driftRepair struct {
 // Past the gates, an exact-tier detection — an entry of delta.Renamed, which quarry populates only
 // under its own AST-exact conditions with no threshold — auto-repairs: the old->new substitution is
 // applied plan-wide through one planparser.RewriteRefs call, the reloaded plan is revalidated with
-// one batched resolve against worktreeRoot, and exactly one planparser.Amendment is appended per
+// one batched resolve against worktreeRoot — whose ANSWERS are read, so a repair that rewrote a ref
+// into a glyph quarry cannot resolve is reported as a blocking finding rather than passing silently,
+// scoped to the glyphs this repair introduced and no others — and exactly one planparser.Amendment is appended per
 // repair, carrying now, the (first, sorted) referencing card, the old and new glyph, the tier word
 // "exact", and sha. Auto-repairing only the tier quarry itself asserts is what keeps loomyard from
 // deciding what quarry deliberately returns as undecided.
@@ -194,9 +196,34 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 		if err != nil {
 			return findings, err
 		}
-		if _, err := resolveTargets(repo, collectGlyphTargets(reloaded, lang)); err != nil {
+		results, err := resolveTargets(repo, collectGlyphTargets(reloaded, lang))
+		if err != nil {
 			return findings, err
 		}
+		// The resolve ANSWERS are read, not just its transport error. Discarding them made
+		// "revalidated" mean only "quarry was reachable": a repair that rewrote a ref into a glyph
+		// answering not_found, ambiguous, or a pre-resolution rejection passed this step silently and
+		// the amendment was appended as if the repair had worked (crucible round opus-medium-r6,
+		// R6-11).
+		// Only the glyphs THIS repair introduced are judged. The question here is "did the
+		// substitution produce something quarry can resolve", not "is the whole plan clean" — the
+		// plan's own status policy is resolvePass's job, runs with the Create and file-rename
+		// exclusions that make it correct, and surfacing it from a drift repair would report
+		// unrelated pre-existing plan state as a consequence of the rename.
+		introduced := make(map[string]bool, len(subs))
+		for _, newID := range subs {
+			introduced[newID] = true
+		}
+		var postRepairResults []quarry.ResolveResult
+		for _, r := range results {
+			if introduced[r.Target] {
+				postRepairResults = append(postRepairResults, r)
+			}
+		}
+		// The findings are surfaced, and the amendments below are still appended: the rewrite DID
+		// land on disk, so its audit record is a fact regardless, and the caller blocks on the
+		// finding rather than on a missing amendment.
+		findings = append(findings, statusFindings(reloaded, postRepairResults)...)
 	}
 
 	for _, r := range repairs {

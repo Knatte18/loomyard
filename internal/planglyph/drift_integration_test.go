@@ -253,3 +253,37 @@ func TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding(t *testi
 		t.Fatalf("findings = %+v; want none — nothing references the deleted symbol", findings)
 	}
 }
+
+// TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported pins R6-11: the post-repair resolve's
+// ANSWERS are read, not just its transport error. Before this, a repair that rewrote a ref into a
+// glyph quarry answers not_found for passed the step described as "revalidated" in silence, and the
+// amendment was appended as if the repair had worked — so the plan carried webster's own edit to a
+// symbol that is not there, with nothing reported.
+func TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported(t *testing.T) {
+	// The fixture repo carries neither sub#Old nor sub#Gone: the rename quarry reports as exact names
+	// a destination that does not exist in the tree the repair is validated against.
+	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Kept() {}\n"})
+
+	dir, plan := writePlanFixture(t, map[int]string{
+		1: "**Uses:**\n- `sub#Old`\n\n**Edit:**\n- `sub#Kept`\n\n**Intent:** one\n",
+	})
+
+	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#Gone"}}},
+	}}
+
+	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	}
+
+	var reported bool
+	for _, f := range findings {
+		if f.Check == "glyph-not-found" && strings.Contains(f.Detail, "sub#Gone") {
+			reported = true
+		}
+	}
+	if !reported {
+		t.Errorf("findings = %+v; want a glyph-not-found naming sub#Gone — the repair rewrote the plan to a symbol that is not in the tree", findings)
+	}
+}
