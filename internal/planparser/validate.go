@@ -184,8 +184,22 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 		indexed[cardFileName(c.Number, c.Slug)] = true
 	}
 
+	// An empty Dir is "no plan directory was told", not a fault: ParsePlan always sets Dir, so this is
+	// the in-memory plan shape tests build. There is nothing on disk to scan and nothing to report.
 	entries, err := os.ReadDir(plan.Dir)
-	if err == nil {
+	switch {
+	case plan.Dir == "":
+	case err != nil:
+		// A plan directory that cannot be listed is a finding, not silence. Swallowing the error
+		// disabled the whole orphaned-card-file half of this check with nothing reported anywhere —
+		// a permission fault, or a plan directory that stopped resolving mid-run, made the check
+		// report CLEAN against its own unconditional guarantee (crucible round opus-medium-r6,
+		// R6-10). The numbering half below still runs, so the failure was invisible.
+		findings = append(findings, ValidationError{
+			Check:  "index-file-mismatch",
+			Detail: fmt.Sprintf("plan directory %s cannot be listed (%v), so no file on disk could be checked against the Card Index", plan.Dir, err),
+		})
+	default:
 		var onDisk []string
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || knownNonCardFiles[e.Name()] {

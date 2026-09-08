@@ -241,8 +241,9 @@ func TestValidate_FormatAndApprovalOrder(t *testing.T) {
 }
 
 // TestValidate_IndexFileMismatch covers the Card Index numbering-sequence half of
-// index-file-mismatch (the orphaned-on-disk-file half is exercised implicitly by every other
-// test's clean plan.Dir == "" case, where os.ReadDir fails and that half is silently skipped).
+// index-file-mismatch. An empty plan.Dir -- the in-memory plan shape most cases here build -- means
+// "no plan directory was told" and scans nothing; a Dir that IS told but cannot be listed is its own
+// finding (see TestValidate_IndexFileMismatch_UnlistablePlanDirIsAFinding).
 func TestValidate_IndexFileMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -268,6 +269,22 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "index-file-mismatch"); got != 1 {
 			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 1", got)
+		}
+	})
+
+	// R6-10: a told plan directory that cannot be listed silently disabled the whole
+	// orphaned-card-file half of this check, with no finding and no error, so the check reported
+	// CLEAN against its own unconditional guarantee.
+	t.Run("an unlistable plan directory is a finding, not silence", func(t *testing.T) {
+		t.Parallel()
+		plan := &planparser.Plan{
+			Format: 5, Approved: true,
+			Dir:   filepath.Join(t.TempDir(), "gone"),
+			Cards: []planparser.Card{validCard(1, "a")},
+		}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "index-file-mismatch"); got != 1 {
+			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 1 — a plan directory that cannot be listed is a defect at this gate", got)
 		}
 	})
 
