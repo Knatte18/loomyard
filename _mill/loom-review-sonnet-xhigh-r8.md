@@ -3,7 +3,67 @@
 Independent, clean-room review. Findings below are formed BEFORE reading any prior round's
 review/fixer report or the campaign handoff, per the "Clean-room review constraint".
 
-Status: IN PROGRESS — appended incrementally per the "Log as you go" requirement.
+Status: REVIEW (Job 1) COMPLETE. See the fixer report
+(`_mill/loom-review-sonnet-xhigh-r8-fixer-report.md`) for Job 2.
+
+## Executive summary
+
+10 findings: **2 BLOCKING, 4 MEDIUM, 3 LOW, 1 NIT.** All CONFIRMED (traced to source or reproduced
+via a throwaway test; none left as merely PLAUSIBLE).
+
+- **SF-1 (BLOCKING)** — the provider-startup seam's OWN needle list (`startupGateNeedles`) is
+  missing a needle for the "Yes, proceed" gate wording that its sibling list (`gateAcceptNeedles`)
+  already recognizes, letting that specific gate rendering misclassify as `StartupReady` and
+  silently disable the startup deadline — the fourth consecutive round to find genuine BLOCKING
+  material in this exact seam (after rounds 5, 6, 7), each a narrower recurrence of the same
+  "two lists identifying the same gate can silently diverge" defect class.
+- **PG-1 (BLOCKING)** — a `#`-shaped glyph ref that fails quarry's own grammar (e.g. a doubled `#`)
+  produces ZERO findings anywhere across all 27 plan-validation checks outside a `Prosa` group — a
+  silent hole in the format's own "fail loud, no `none` sentinel" discipline, on a surface (the
+  glyph alphabet) this campaign exists to harden.
+- **CW-1/CW-2 (MEDIUM)** — cliwire's own two custom AST-based enforcement tests (the sole-caller pin
+  for `standalonestate.Derive`, and the banned-wiring-helper-redeclaration scan) each have a real,
+  demonstrated blind spot (function-value indirection; a `var` holding a func literal instead of a
+  `FuncDecl`) — exactly the kind of gap this round's "second model on cliwire" mandate existed to
+  find.
+- **PG-2 (MEDIUM)** — a Rename card's own `plan:` New-side handle is never bound to its resolved
+  glyph by any code path, permanently losing glyph-level containment/resolution checking for every
+  later legitimate reference to the renamed symbol.
+- **WS-1 (MEDIUM)** — `lyx webster validate`, documented as a side-effect-free lint, can silently
+  rewrite the on-disk plan (handle canonicalization) without restamping `state.json`'s fingerprint —
+  the one caller of that rewrite path in the whole codebase that omits the restamp every sibling
+  caller performs, risking a forced `--fresh` full-plan restart triggered by what looks like a
+  read-only command.
+- **CW-3/LS-1/WS-2 (LOW)**, **CW-4 (NIT)** — see each finding's own writeup.
+
+**Live-driving (high-yield-focus item 1, this round's top priority): ACHIEVED, twice, independently,
+end to end.** Two brand-new fixtures (never seen by claude on this host), each a real
+`lyx webster run` spawning a genuine Master session, both cleanly dismissed BOTH the trust-folder
+gate and the Bypass-Permissions modal automatically and went on to do real agentic work (forked an
+implementer, wrote and committed a file, ran an integration check, reached `outcome: done`). Could
+not additionally catch the raw gate-render frames via tight `tmux capture-pane` polling (a stated
+tooling-latency limit, not a skipped scenario), and did not manage to naturally trigger the specific
+F1 prose-collision shape — the round's own stated fallback ("at minimum confirm both gates dismiss
+end to end") is met, convincingly, twice. See "TOP PRIORITY" below for the full transcript of what
+was attempted.
+
+**Second-model cliwire review (high-yield-focus item 3): DONE**, and it did NOT come back clean —
+2 MEDIUM (CW-1, CW-2), 1 LOW (CW-3), 1 NIT (CW-4), all in the enforcement-test machinery rather than
+the core resolution logic, which held up clean under adversarial pressure from an independent model
+for the second round running.
+
+**General adversarial sweep (high-yield-focus items 2, 4, 5):** covered via a combination of my own
+direct reading (the provider-startup seam and `cliwire` in full) and four parallel, independently
+clean-room sub-agents covering the rest of the named surface (loom pipeline/shed core, the glyph
+plan surface, webster/standalone material) — every sub-agent finding was independently re-verified
+by tracing it to source myself before being adopted into this report, not taken on faith. The loom
+pipeline/shed core surface (item 4's other half) came back essentially clean (1 LOW/NIT-shaped
+finding, LS-1, in ledger round bookkeeping) — this campaign's pre-glyph pipeline machinery really
+does look converged. The glyph surface (seven prior rounds) was NOT clean — PG-1/PG-2 are new,
+real, previously-unfound gaps, item 5's mandate paying off exactly where the prompt hoped it might.
+
+**Merge-readiness and convergence verdict:** see the end of this report, after the fixer report
+records what actually got fixed.
 
 ## What was tested
 
@@ -428,3 +488,74 @@ is enforced by the judge prompt alone, not diffed mechanically).
 Suggested fix: have `recordedVerdict`/`readRoundFocus` assert `parsed.Round == round` and treat a
 mismatch as unparsed (fail-safe to Stuck/re-judge), matching this file's own posture toward every
 other malformed-input shape.
+
+### WS-1 — MEDIUM — `lyx webster validate` can silently rewrite the on-disk plan (handle canonicalization) without restamping `state.json`'s fingerprint, unlike every other caller of the same rewrite path
+
+Delegated review (webster/standalone pass) reported this; independently verified end to end:
+
+- `internal/webstercli/validate.go:143-154` (`scopedValidate`): calls `planglyph.Validate` (no run
+  yet / no terminal batch) or `planglyph.ValidateDispatch` (mid-run) — neither followed by any
+  fingerprint restamp or state mutation of any kind.
+- `internal/planglyph/planglyph.go:37-42` / `:65-79`: both call `resolvePass`, which (`:155-185`)
+  calls `CanonicalizeHandles(pending, planDir, results)` — verified this genuinely rewrites
+  `_lyx/plan/*.md` on disk via `planparser.RewriteRefs` whenever a pending card carries a
+  not-yet-canonical `plan:` handle, and reloads the plan from disk when it does (`rewrote` bool,
+  lines 187-205).
+- `internal/websterengine/beginbatch.go:213-239`: the SAME `ValidateDispatch` call, from the SAME
+  package, is immediately followed by `restampFingerprint(deps.State, deps.Plan.Dir)` — verified
+  directly, with an explicit comment naming exactly why ("otherwise state.json keeps the pre-rewrite
+  fingerprint while the plan on disk carries this run's own sanctioned edit, and every later
+  begin-batch refuses it as a foreign one"). `recordbatch.go` and `runlevel.go` follow the identical
+  restamp-immediately-after pattern at their own `ValidateDispatch`/`BindHandles`/`DetectDrift` call
+  sites.
+
+`webstercli/validate.go` is the one caller of this rewrite-capable pass that never restamps. Concrete
+scenario: a run is in progress (`state.json` holds a fingerprint from the last bracket-verb restamp).
+A pending card's `plan:` handle is not yet canonical. The operator runs `lyx webster validate` —
+exactly the documented "lint-without-run pre-flight for a Planner or human" workflow the command's
+own `Long` text recommends, and which a live scenario like PG-2 above (a Rename card whose New-side
+handle is never bound by any OTHER path) would keep genuinely pending indefinitely. `validate`
+canonicalizes the handle, rewrites the plan file on disk, and reports `{"valid": true, ...}` — while
+`state.json`'s `PlanFingerprint` is left stale. The next bracket verb (`begin-batch`/`record-batch`/
+`recover-batch`/`run`) computes a fresh fingerprint that no longer matches the recorded one and
+refuses with `ErrFingerprintMismatch`, whose only recourse is `--fresh` — archiving `state.json` and
+`reports/` and restarting the ENTIRE plan from batch 1, discarding a live run's progress bookkeeping
+over a self-inflicted, silent side effect of what the command's own docs call a read-only lint.
+
+CONFIRMED — verified `validateCmd`'s full `RunE` (`validate.go:188-231`) contains no restamp call of
+any kind, and no test exercises this: `TestValidateCmd_ScopeFollowsRunProgress`'s mid-run subtest
+saves a `State` with `PlanFingerprint` left at its zero value and never re-checks it after calling
+`validate`, and its fixture cards carry no `plan:` declarations, so it never reaches the rewrite path
+at all.
+
+Severity note: the most direct way to LAND a not-yet-canonical handle mid-run is somewhat narrow on
+its own (an out-of-band plan edit, or a Rename card per PG-2's own gap above) — but `validate`
+silently masking the true state while claiming `"valid": true` is a violation of this codebase's own
+otherwise-exceptionless "restamp immediately after every sanctioned on-disk rewrite" discipline, with
+no comment anywhere justifying the omission the way every other narrowing decision in this codebase is
+justified.
+
+Fix: mirror `persistPlanFingerprintRebaseline` (`internal/webstercli/cli.go:283-296`) inside
+`validateCmd`'s `RunE` — under `AcquireStateMutation`, if `LoadState` returns a non-nil state,
+recompute the fingerprint after `scopedValidate` returns and persist it if it changed. Also correct
+`validate`'s own doc text ("it never spawns anything") to acknowledge it can rewrite plan files via
+handle canonicalization, since that claim currently implies no side effects at all.
+
+### WS-2 — LOW — stale/incorrect doc comment on `websterengine.Geometry.WorktreeRoot`
+
+Delegated review (webster/standalone pass) reported this; independently verified:
+`internal/websterengine/geometry.go:22-24` claims "webster's is the anchor-anchored value every one
+of its CLI call sites passes today" — true for hub mode
+(`internal/hubgeom/webstergeom.go:25`: `WorktreeRoot: anchorPath`) but demonstrably false for
+standalone mode (`internal/standalonegeom/webstergeom.go:34`: `WorktreeRoot: target`, deliberately
+DISJOINT from the anchor/state directory — confirmed by that file's own correct, contradicting
+comment at line 28). "Every one of its CLI call sites" overstates a claim that holds for hub mode
+only.
+
+Severity: LOW — comment-only; both individual constructors are themselves correct and correctly
+documented. Worth fixing precisely because this campaign's fingerprint bugs have repeatedly grown
+from a false assumed invariant like "WorktreeRoot == AnchorRoot always" — cheap to fix, so fixed
+this round.
+
+Fix: scope the claim to hub mode explicitly, or drop the generalization in favor of pointing at each
+geometry constructor's own (correct) comment.
