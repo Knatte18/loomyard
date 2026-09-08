@@ -100,7 +100,9 @@ For `ResolveStandalone`'s own comment, the ordering paragraph is webster's and b
 - **Requirements:** Create `internal/cliwire/module.go` in `package cliwire`, declaring the descriptor types and the two message-producing pieces that read them.
 
   `type Module struct` with exactly these fields, each carrying its own doc comment naming what it varies:
-  - `Name string` — the CLI's own name, used as the `"<name>: "` prefix on every error this package returns (`"webster"`, `"burler"`).
+  - `Name string` — the CLI's own name, used as the `"<name>: "` prefix on every error this package returns.
+    Its doc comment names no CLI and lists no example value, under the same rule the four fields below follow;
+    each caller's own `wireModule` declaration is where the concrete name lives.
   - `StateArtifacts string` — the nested-geometry refusal's noun phrase for what standalone keeps outside the target.
   - `TargetRole string` — the nested-geometry refusal's noun phrase for the target.
   - `TargetRecourse string` — the reverse-nesting refusal's recourse clause opener.
@@ -230,9 +232,9 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
   after batch 2 no surviving test in either CLI package asserts any descriptor field's text, and the retained `TestWire_TargetDirRefusedInHubMode` only checks that the error mentions `--target-dir`.
 
   Declare the test helpers, each with the doc comment its predecessor in `internal/webstercli/wiring_test.go` carries:
-  - `hash8For(t *testing.T, target string) string` — returns `standalonestate.Derive`'s `hash8` under the environment `t.Setenv` has already installed.
-  - `hash8AndStateDir(t *testing.T, target string) (stateDir, hash8 string)` — returns both of `standalonestate.Derive`'s values under that same already-installed environment, the predecessor of burler's helper of the same name.
-    Every case that drives `ResolveStandalone` needs `stateDir` — to seed the default plan directory, to assert against `standalonegeom.LogsDir(stateDir)` and `standalonegeom.StencilsDir(stateDir)`, and to make the derived stencils path uncreatable — so this is the helper those cases call, not `hash8For`.
+  - `hash8AndStateDir(t *testing.T, target string) (stateDir, hash8 string)` — returns both of `standalonestate.Derive`'s values under the environment `t.Setenv` has already installed, the predecessor of burler's helper of the same name and of webster's narrower `hash8For`.
+    Every case that drives `ResolveStandalone` needs `stateDir` — to seed the default plan directory, to assert against `standalonegeom.LogsDir(stateDir)` and `standalonegeom.StencilsDir(stateDir)`, and to make the derived stencils path uncreatable — so this one helper covers them all.
+    Do not also declare a `hash8`-only `hash8For`: no case listed below needs it, and Go reports no error for a dead test helper.
   - `seedGitRepositoryRoot(t *testing.T, dir string) string` — creates `dir/.git` as a directory and returns `dir`, spawning no git.
   - `seedPlanDir(t *testing.T, dir string)` — `MkdirAll` plus one minimal `00-overview.md`, the predecessor of webster's `seedStandalonePlanDir`.
   - `setStandaloneStateRoot(t *testing.T)` — redirects both `XDG_STATE_HOME` and `LOCALAPPDATA` to fresh `t.TempDir()` values, the predecessor of burler's helper of the same name.
@@ -279,7 +281,9 @@ webster: --target-dir is not honoured in hub mode: the worktree is already the t
 `verify:` runs the full untagged suite plus a scoped tagged run over the four packages this task's behaviour lives in.
 
 The untagged half is deliberately unscoped, and this is the batch's `verify-full-suite` justification: `internal/cliwire` is a new package that batch 2 makes a cross-cutting dependency of two CLI packages, and batch 3 adds two AST-walking enforcement tests that parse every `.go` file under `internal/` and `cmd/` — so a change anywhere in the tree can fail this task's own gates.
-`cmd/lyx/prerunlogging_test.go` also asserts the standalone durable-sink redirect that this batch relocates into `ResolveStandalone`.
+`cmd/lyx/prerunlogging_test.go` source-guards the ordering dependency this batch's `ResolveStandalone` rests on — that root's own pre-run emits no Info-or-above record before `seedStencils`, the sink being armed lazily on the first such record anywhere in the process.
+It does not itself assert the redirect;
+it guards the precondition without which the redirect could never bind.
 A scoped run would leave both of those unchecked.
 It also matches the hub's configured `pipeline.done_gate`, so the batch gate and the task gate agree.
 

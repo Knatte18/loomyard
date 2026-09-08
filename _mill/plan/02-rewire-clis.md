@@ -120,6 +120,7 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   - `internal/burlercli/wiring_test.go`
   - `internal/burlercli/run.go`
   - `internal/burlercli/cli_test.go`
+  - `cmd/lyx/prerunlogging_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -152,8 +153,22 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   Pin that with one new tier-1 case appended to `internal/burlercli/cli_test.go`, named `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd`.
   Nothing pins it today — `cli_test.go` covers only the missing-`--profile` refusal and `decodeProfile` — and neither batch-3 check would catch a swapped or dropped first argument, so a silent regression to the process working directory is reachable.
   Drive the `run` verb the way `TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo` already does, with `c.cwd` pointed at a `t.TempDir()` holding a profile file, passing that file's name as a **relative** `--profile` value.
-  Assert the emitted error does not contain `read --profile` — the read having succeeded is the whole claim;
-  the invocation is expected to fail later, at wiring or engine construction, and that later failure is not what this case asserts.
+
+  The fixture must stop the flow at `decodeProfile`, and this is the case's central constraint rather than an incidental detail.
+  Write the profile file with content that fails `decodeProfile`'s strict decode, so `run`'s `RunE` returns at the decode error and never reaches `c.reedUp`.
+  Reaching `c.reedUp` would call `reedEngine.Up()` and boot a live tmux/reed session from an untagged tier-1 test, which the Test Tier Purity Invariant forbids;
+  state that prohibition in the test's own doc comment so a later editor does not "fix" the fixture by making the profile valid.
+
+  Assert **positively** that the output contains `profile YAML` — `decodeProfile`'s own error prefix — and additionally that it does not contain `read --profile`.
+  The positive half is what makes the case falsifiable: reaching the decode error proves `os.ReadFile` succeeded, which proves the relative `--profile` resolved against `c.cwd`.
+  A `does not contain` assertion alone would pass vacuously whenever the invocation ended earlier, and it can end earlier — `run`'s `RunE` checks `clihelp.ShouldAbort` first and returns `nil` on a failed pre-run, so an aborted wiring would satisfy the negative assertion without ever exercising the resolution the case exists to pin.
+  Note that wiring runs in `PersistentPreRunE`, ahead of `RunE`, so the pre-run must genuinely succeed for this case to mean anything;
+  if the group guard requires the seam cwd to be a git repository, seed a `.git` entry in it the way `seedGitRepositoryRoot` does.
+
+  Redirect both `XDG_STATE_HOME` and `LOCALAPPDATA` to fresh `t.TempDir()` values before the call, and do not mark the case `t.Parallel()`.
+  This is not optional hygiene: a successful pre-run reaches the real `standalonestate.Derive` and the real `stencilstore.Reconcile`, so without both redirects this untagged case seeds a stencils tree and a trace sink into the developer's own state home.
+  `internal/burlercli/cli_integration_test.go` sets both and carries `//go:build integration` for exactly this reason.
+  Restore the sink with `t.Cleanup(func() { logger.SetDurableSinkDir("") })`.
   Do not `os.Chdir` and do not depend on the process working directory in any way.
 
   Fix `internal/burlercli/wiring.go`'s import block: add `github.com/Knatte18/loomyard/internal/cliwire`, then drop every import the rewrite orphans.
@@ -176,6 +191,12 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
   the file-header comment's claim about being "the one call site of `standalonestate.Derive`";
   and `seedGitRepositoryRoot`'s doc, which names `repositoryRootOf`, now `cliwire.RepositoryRootOf` — only if the helper survives the deletion pass above.
 
+  Retarget `cmd/lyx/prerunlogging_test.go`'s header comment and its failure message as well.
+  Both say the guard exists because cobra runs "webstercli's and burlercli's `wireStandalone`, which now redirect the durable trace sink to `standalonegeom.LogsDir(stateDir)` the moment `standalonestate.Derive` returns" — prose this batch invalidates, since after cards 6 and 7 neither `wireStandalone` performs that redirect and `cliwire.ResolveStandalone` does.
+  Name `cliwire.ResolveStandalone` as the redirect's owner and keep every other claim in that file unchanged;
+  the guard itself, its assertions and its build tag are untouched.
+  This retarget lives in card 7 rather than card 6 because the comment names both CLIs and is only fully stale once burler's move has landed too.
+
   Retarget `wireStandalone`'s own doc comment in `internal/burlercli/wiring.go` too, for the same reason card 6 gives: it is production prose no AST-matching enforcement test can catch.
   It opens by naming `resolveStandaloneTarget` as what settled the target and calls this "the only place `standalonestate.Derive` is ever called in this package", and both claims are false after this card.
   Rewrite it to describe what the function now does — call `wireModule.ResolveStandalone` and compose burler's own engine onto the result — and point at `cliwire.ResolveStandalone` for the prologue's ordering and two-asymmetry rules, which the same card already moves onto that function.
@@ -193,7 +214,7 @@ That is composition proof that `wireHub` calls `RefuseTargetDirInHubMode` at all
 
 ## Batch Tests
 
-`verify:` is the same two-command pair every batch runs, and the same `verify-full-suite` justification applies: this batch is the one that makes `internal/cliwire` a real cross-cutting dependency, `cmd/lyx/prerunlogging_test.go` asserts the standalone durable-sink redirect this batch relocates, and the hub's own `pipeline.done_gate` is the same repo-wide command.
+`verify:` is the same two-command pair every batch runs, and the same `verify-full-suite` justification applies: this batch is the one that makes `internal/cliwire` a real cross-cutting dependency, `cmd/lyx/prerunlogging_test.go` source-guards the ordering precondition the relocated redirect rests on — not the redirect itself — and the hub's own `pipeline.done_gate` is the same repo-wide command.
 
 The tagged half carries the load for this batch specifically.
 `internal/webstercli/cli_integration_test.go` and `internal/burlercli/cli_integration_test.go` exercise the real `standalonestate.Derive` and the real standalone stencil seed end-to-end through each CLI's public entry point, which is precisely the path these two cards re-route.

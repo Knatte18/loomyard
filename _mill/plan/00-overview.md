@@ -3,7 +3,7 @@
 ```yaml
 task: "Unify webster/burler CLI wiring into a shared module"
 slug: "unify-webster-burler-wiring"
-approved: false
+approved: true
 skip_checks: ["verify-full-suite"]
 started: "20260908-131955"
 parent: "crucible-loom-glyph-hardening"
@@ -112,6 +112,7 @@ batches:
 
 - `CONSTRAINTS.md`
 - `docs/overview.md`
+- `cmd/lyx/prerunlogging_test.go`
 - `internal/burlercli/cli_test.go`
 - `internal/burlercli/run.go`
 - `internal/burlercli/wiring.go`
