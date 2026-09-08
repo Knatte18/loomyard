@@ -19,6 +19,14 @@ commit-per-fix, a test that would have caught the bug, green gates before commit
 I then read every delegated production diff myself before the final gates — recorded below where
 that reading changed the disposition.
 
+**Orchestrator note:** the table below originally omitted seven rows (R4-07, R4-11, R4-23, R4-25,
+R4-26, R4-33, R4-34) whose commits had already landed on the branch under this same round's session
+before this report was last saved — a paperwork gap, not a missing fix.
+The orchestrator's independent verification found the gap via `git log`, confirmed each of the seven
+commits genuinely implements its finding (production diff + regression test, same session
+attribution as every other round-4 commit), and completed the table to match the branch's actual
+state.
+
 ## Implemented
 
 | Finding | Severity | Fix | Commit |
@@ -29,9 +37,11 @@ that reading changed the disposition.
 | R4-04 | MEDIUM | `Bouncer.Call` probes for a live judge on the judge spec's own three `OutputFiles` before either the clear or the replay branch acts; an attach harvests the judgment as this call's own settle, a not-found probe leaves both branches acting on unchanged state | `73a25ae78` |
 | R4-05 | MEDIUM | The Plan-Review rubric no longer tells the judge that `Custom` escapes `bare-symbol-target` and `directory-target` — it escapes only the two group-scoped checks, and states so | `162af6ae2` |
 | R4-06 | MEDIUM | The Plan-Write stencil's worked skeleton carries `**ImpactSummary:**`, so the one example the prompt supplies no longer models a card `card-missing-field` blocks | `7c87359ba` |
+| R4-07 | MEDIUM | `lyx webster validate` now scopes its gate the same way `webster run` scopes its own, so validate no longer advertises parity with a check run never actually performs | `a204b4c24` |
 | R4-08 | MEDIUM | `standalonestate.derive` validates the environment-supplied base: a relative `XDG_STATE_HOME` is ignored per the XDG spec, a relative `LOCALAPPDATA` or home is a loud error, and the returned `stateDir` is asserted absolute | `5f7388bd9` |
 | R4-09 | MEDIUM | An adopted `LYX_TRACE_ID` is validated against the minted 16-lowercase-hex alphabet in both entry points, so it can neither escape the logs directory through `filepath.Join`'s cleaning nor make the retention sweep permanently blind | `1503d3fc6` |
 | R4-10 | MEDIUM | New `reedengine.SanitizeSessionName` (owned by the package that owns the tmux identity rules) sanitizes standalone's session name, so a repo directory containing `.` or `:` no longer makes standalone mode unusable | `37d507b65` |
+| R4-11 | MEDIUM | Standalone `recover-batch` boots its own reed session before spawning the recovery strand, instead of spawning a strand with no session for it to attach to | `e955d56d7` |
 | R4-12 | MEDIUM | `bisect`'s deferred `RestoreBranch` error is surfaced rather than dropped, so a failed restore no longer leaves the operator on a detached mid-plan HEAD while the run reports success | `b4813d58c` |
 | R4-13 | MEDIUM | `BurlerProducer` advances past the highest complete round only when that round carries a parsing verdict AND ledger; otherwise it hands control back to the Bouncer, spawning nothing, so a degraded judge no longer costs a whole fixer session and silently resets the ledger chain | `7d2a20d07` |
 | R4-14 | LOW | All three planglyph gates fail on ANY validator error, not only the quarry-named one — the `errors.Is` conjunct let anything else be dropped and the plan reported clean | `21d67d13e` |
@@ -42,13 +52,18 @@ that reading changed the disposition.
 | R4-19 | LOW | Both failed terminals in `shedengine.Run` join the persist error with the producer error instead of replacing it | `3ede78ca4` |
 | R4-20 | LOW | The durable sink's lazy arm runs under `sinkMu` (a plain guarded bool, not a `sync.Once` that is reassigned under that same mutex), closing a real data race on the `Once` value that could leave the pre-redirect sink path installed | `1c2043896` |
 | R4-21 | LOW | `ScopeGuard` inspects `delta.Renamed`, so a rename touched outside the batch's declared targets is reported — quarry removes an exact pair's constituents from Created and Deleted, so it reached neither existing loop | `2b0d2dca1` |
+| R4-23 | LOW | `--plan-dir`/`--stencils-dir` are resolved against cwd once, at the wiring boundary, instead of being stored verbatim and possibly relative | `c5e4641a8` |
 | R4-24 | LOW | New exported `standalonestate.Normalize` gives the geometry builders the same symlink-resolved spelling `hash8` is computed from, so identity and session name cannot disagree across two spellings of one repo | `74be4ccee` |
+| R4-25 | LOW | The "state dir nested in the target" refusal now fires at the wiring boundary, before the wrong cause could be blamed | `3bb2a4a42` |
+| R4-26 | LOW | The standalone target is normalized to its repository root, once, at the CLI boundary, instead of defaulting to cwd with no git-root normalization | `af468b9d4`, doc `ea0f03584` |
 | R4-27 | NIT | `CanonicalizeHandles` length-guards `quarry.Name`'s positional answer, reporting a mismatch as an infrastructure error instead of panicking before the echo check can run | `87d9a01f3` |
 | R4-28 | NIT | `formatPlanFindings` calls `Finding.Error()` instead of re-deriving its layout, making its own "described identically" promise hold by construction | `39b88160e` |
 | R4-29 | NIT | `loom.md` names a live check ID (`depends-on-order` is a format-3 ghost) and states which checks `Custom` does not escape | `6e8c3b990` |
 | R4-30 | NIT | A producer that returned an error with no outcome records no history entry at all. Worse than a nit in the end: `loomengine`'s coherence check rejects any `history[].outcome` outside `{done, stuck}`, so an ordinary hard failure at either Preflight row wrote a value that made the status file permanently un-resumable. `shed.md`'s own append rule updated to name both no-verdict exceptions | `e02078dff`, `3be1d7159` |
 | R4-31 | NIT | `prosa-symbol-target`'s detail names the shape rule the entry failed rather than asserting it is a symbol | `55e5eab55` |
 | R4-32 | NIT | Plan-Write and Discussion-Write name a missing commit seam instead of nil-panicking on the Done path | `0394b97f1` |
+| R4-33 | NIT | `webstercli/wiring.go`'s comment now states the sink redirect's real placement obligation (it does not in fact run before `resolveStandaloneTarget`/`standalonestate.Derive`), and pins it with a test | `75729758a` |
+| R4-34 | NIT | Master's failure ladder gets a `card_not_done` rung, and a new test pins ladder coverage of every refusal flag `record-batch` can emit | `a70174e84` |
 | R4-35 | NIT | The integration stage's warnings are logged on the loud done-over-a-failed-suite return instead of being discarded with the zero `RunResult` | `24d4ff9ac` |
 | R4-36 | LOW | The entry-time reclaim logs the live agent it kills, per the Live-Substrate Spawn Observability rule | `260bf9dcb` |
 | R4-37 | LOW | A failed reed liveness probe fails the reclaim instead of being read as "not live", which had left a leftover agent running beside its replacement. The pinned test asserting the old behaviour is updated with the reasoning for overturning it | `260bf9dcb` |
