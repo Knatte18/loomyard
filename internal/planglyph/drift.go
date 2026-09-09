@@ -205,8 +205,22 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 		if err != nil {
 			return findings, err
 		}
-		results, err := resolveTargets(repo, collectGlyphTargets(reloaded, lang))
+		targets := collectGlyphTargets(reloaded, lang)
+		results, err := resolveTargets(repo, targets)
 		if err != nil {
+			return findings, err
+		}
+		// Per-key answer coverage, mirroring doneCheckVerdicts' own guard (donecheck.go): every
+		// target THIS post-repair batch actually requested must carry an answer, since
+		// ensureResolveCoverage (repo.go) only pins the batch's own length against itself and says
+		// nothing about which key each position landed on. The scope is answer coverage only — an
+		// introduced glyph absent from the reloaded plan entirely (an unlanded substitution, or a
+		// newID that failed glyph.Parse inside collectGlyphTargets) keeps today's silent behavior
+		// deliberately: a glyph absent from the reloaded plan cannot drift, and whatever IS in the
+		// plan is governed by ordinary validation. Returning here — before the amendment loop —
+		// means no amendment is appended on a coverage miss, exactly like the sibling transport-error
+		// path above.
+		if err := ensurePostRepairCoverage(targets, results); err != nil {
 			return findings, err
 		}
 		// The resolve ANSWERS are read, not just its transport error. Discarding them made
@@ -229,9 +243,11 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 				postRepairResults = append(postRepairResults, r)
 			}
 		}
-		// The findings are surfaced, and the amendments below are still appended: the rewrite DID
-		// land on disk, so its audit record is a fact regardless, and the caller blocks on the
-		// finding rather than on a missing amendment.
+		// The findings are surfaced, and the amendments below are appended regardless of what those
+		// findings say: the rewrite DID land on disk, so its audit record is a fact regardless, and
+		// the caller blocks on the finding rather than on a missing amendment. Only an infrastructure
+		// error — the resolve failing outright, or failing this coverage guard — skips the amendment
+		// loop, exactly as the resolveTargets error path above already does.
 		findings = append(findings, statusFindings(reloaded, postRepairResults)...)
 	}
 
@@ -254,4 +270,31 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 	}
 
 	return findings, nil
+}
+
+// ensurePostRepairCoverage reports the ErrQuarryUnavailable-wrapped infrastructure error DetectDrift
+// returns when results does not carry an answer for every entry of targets: the per-key answer
+// coverage guard for DetectDrift's post-repair resolve, mirroring doneCheckVerdicts' own per-key
+// guard (donecheck.go). ensureResolveCoverage (repo.go) already pins the batch's own LENGTH against
+// itself, but says nothing about which key each position landed on — a length match with a duplicate
+// or substituted key would still leave a requested target unanswered, and that miss would otherwise
+// read as a silent pass through the introduced-glyph filter below DetectDrift applies to results.
+//
+// The guard's scope is answer coverage only: it asserts every target actually requested in the
+// post-repair batch received an answer. An introduced glyph absent from the reloaded plan entirely
+// (an unlanded substitution, or a newID that fails glyph.Parse inside collectGlyphTargets) keeps
+// today's silent behavior deliberately — a glyph absent from the reloaded plan cannot drift, and
+// whatever is in the plan is governed by ordinary validation.
+//
+// It is split out of DetectDrift so the guard is reachable from a unit test, the same reason
+// ensureResolveCoverage is split out of resolveTargets: a real quarry.Repo always satisfies the
+// positional contract, so no test through one can produce the breach.
+func ensurePostRepairCoverage(targets []string, results []quarry.ResolveResult) error {
+	index := resultByTarget(results)
+	for _, target := range targets {
+		if _, ok := index[target]; !ok {
+			return fmt.Errorf("%w: resolve returned no answer for post-repair target %q", ErrQuarryUnavailable, target)
+		}
+	}
+	return nil
 }
