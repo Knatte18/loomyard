@@ -943,6 +943,72 @@ func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns is the regression guard for
+// d0e5a0e7b's coverage gap (crucible round sonnet5-xhigh-r3, F1): the started seed
+// (`run.attached && run.state.Started`) must still run the startup probe when a candidate is
+// attached but its persisted RunState.Started is false -- exactly the attached-but-never-actually-
+// started shape a driver killed before its first liveness tick, or a launch against a nonexistent
+// binary, both leave behind.
+//
+// Before d0e5a0e7b, the seed was `run.attached` alone, so this exact case skipped the startup probe
+// entirely and burned the full run deadline before misclassifying OutcomeTimeout. Reverting the
+// fix here (started := run.attached, dropping the state.Started conjunct) reproduces exactly that:
+// the run deadline (10 minutes, virtual) is what would bind instead of the 1-second startup
+// deadline, so this test's own elapsed-time assertion below fails loudly rather than merely running
+// slower, unlike the pre-existing smoke test this gap escaped (TestSmokeDriveStandalone_
+// AdvancesMachineFromExistingSeed only asserts the final state, never the elapsed time or outcome
+// kind, so the old seed's mismeasurement made it slower, not failing).
+//
+// TestAttach_StartedSeededTrue (attach_test.go) pins the opposite half -- attached AND Started true
+// skips the probe -- but seeds started: true on both the pre- and post-fix code paths, so it cannot
+// distinguish them; this test is deliberately the mirror case a fake engine that never reaches
+// StartupReady, proving the probe actually reruns rather than merely existing.
+func TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+	outputFile := filepath.Join(runDir, "out.md")       // never created
+
+	reed := &fakeReed{
+		StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+	}
+	// StartupPending forever: the provider never reaches StartupReady, so a run that correctly
+	// re-runs the startup probe classifies OutcomeDied at the 1s startup deadline; a run that
+	// wrongly skips the probe (the pre-fix bug) falls through to the 10-minute run deadline instead.
+	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner: runner,
+		spec:   Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+		runDir: runDir,
+		// state.Started is the zero value (false): a persisted run.json whose provider never
+		// reached StartupReady, exactly what a driver killed pre-first-liveness-tick leaves behind.
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false},
+		clock:    fc,
+		deadline: fc.Now().Add(10 * time.Minute),
+		// attached: true is the other half of the pre-fix bug's seed: Attach always sets this,
+		// regardless of the candidate's own Started value, so attached alone must never be
+		// sufficient to skip the probe.
+		attached: true,
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDied {
+		t.Errorf("Outcome = %q; want %q -- an attached-but-never-started run must still fail the startup probe, not wait out the full run timeout", result.Outcome, OutcomeDied)
+	}
+	// The startup deadline is 1s and the run deadline is 10 minutes (virtual clock): a run that
+	// wrongly skipped the probe burns the whole 10 minutes before OutcomeTimeout, so bounding the
+	// elapsed virtual time to well under a minute is what actually distinguishes "the probe reran"
+	// from "the probe was skipped and this merely got lucky on the outcome" -- the same shape
+	// TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath already uses for its own sibling cases.
+	if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
+		t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window) -- an elapsed time near 10 minutes means the startup probe was skipped and the RUN deadline bound this instead, reopening d0e5a0e7b's bug", elapsed)
+	}
+}
+
 func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
