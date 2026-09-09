@@ -15,6 +15,14 @@ Round context: round 1 (`opus5-high-r1`) closed F1–F5 and drove eleven live sc
 
 (provisional entries appended as formed)
 
+### F-R2-1 (provisional) — `.Status` tripwire does not match the `Unit` selector, the third Status-typed reading surface
+
+- File: `internal/planglyph/status_enforcement_test.go:58` (`statusVocabularySelectors = {Status, Known, Rejected}`).
+- Scenario: `quarry.ResolveResult.Unit` is a `Status`-typed field drawing from the same vocabulary (quarry's contract: set only on `not_found`, carrying `found`/`not_found`). A NEW planglyph consumer branching on `r.Unit` alone — e.g. `if r.Unit == quarry.StatusFound { treat member as merely missing } else { treat unit as gone }` — names no `Status`, `Known`, or `Rejected` selector anywhere and therefore ships invisible to the tripwire, exactly the blind-spot class round 1's F2 closed for `Rejected()`. The two existing `Unit` readers (`create.go:174` inside `createFindings`, `resolve.go:99` inside `statusFindings`) are both already inside allowlisted functions, so adding `"Unit"` to the selector set costs zero allowlist churn and closes the last unmatched spelling of the vocabulary.
+- Severity: NIT (no current fail-open consumer exists; this is enforcement-machinery completeness, not a behavior defect).
+- Suggested fix: add `"Unit": true` to `statusVocabularySelectors`, extend the file's doc comment, and add a seeded self-test for the Unit spelling mirroring `TestStatusHitsIn_CatchesRejectedConsumer`.
+- CONFIRMED (traced: grep over planglyph production files shows `.Unit` read in exactly the two allowlisted functions; the tripwire's matcher provably cannot see a bare-Unit consumer since `statusHitsIn` matches only the three named selectors).
+
 ## Docs & operability findings
 
 (provisional entries appended as formed)
