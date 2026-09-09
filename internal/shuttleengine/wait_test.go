@@ -1009,6 +1009,79 @@ func TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied is F1's regression guard
+// (crucible round opus5-high-r4): the startup window expiring is a NEGATIVE answer, and
+// checkLivenessTick's own doc comment already promises that a satisfied file contract outranks
+// every negative answer — but classifyStartupWindow used to return a bare OutcomeDied on the clock
+// alone, while the not-tracked and not-live branches beside it both consulted the file contract
+// first.
+//
+// Each subtest pins a pane that is LIVE and never reaches StartupReady — the three ways a run sits
+// out its startup window, the same set TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath covers —
+// with every declared output file ALREADY WRITTEN and events.jsonl never created, so the file
+// contract is the only evidence the run finished and the startup deadline is the only thing that
+// ever classifies it. Reverting the fix (a bare `return OutcomeDied` in classifyStartupWindow)
+// makes every case here fail on the outcome, since the pre-fix code cannot reach OutcomeDone from
+// this path at all.
+//
+// Reproduced live before being written: driven through the real built binary against a real wired
+// hub, a provider that wrote both of Discussion-Write's output files and then stayed alive without
+// rendering a TUI was recorded as `state=failed`, `shuttle run outcome died`, with both files
+// present on disk.
+func TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied(t *testing.T) {
+	tests := []struct {
+		name string
+		// startupScript drains FIFO and its last entry then repeats forever, so a single-entry
+		// script pins the pane in that state for the whole run.
+		startupScript []StartupState
+		captureErr    error
+	}{
+		{"trust_prompt_that_never_clears", []StartupState{StartupTrustPrompt}, nil},
+		{"pane_capture_fails_every_probe", nil, errors.New("capture pane: no such pane")},
+		{"still_booting", []StartupState{StartupPending}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+			outputFile := filepath.Join(runDir, "out.md")
+			// The whole point of the case: the agent's file contract IS satisfied, and nothing else
+			// says so — no events line was ever written for pollEventsTick to classify from.
+			touchOutputFile(t, outputFile)
+
+			reed := &fakeReed{
+				StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+				CaptureErr:  tt.captureErr,
+			}
+			engine := &fakeEngine{StartupScript: tt.startupScript}
+			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+				clock:    fc,
+				deadline: fc.Now().Add(10 * time.Minute),
+			}
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q; want %q — every declared output file exists, and a satisfied file contract outranks an expired startup window exactly as it outranks a dead pane", result.Outcome, OutcomeDone)
+			}
+			// The startup deadline is 1s and the run deadline 10 minutes, so this also pins WHICH
+			// deadline produced the answer: a run that somehow reached OutcomeDone off the run
+			// deadline instead would have burned the whole 10 minutes of virtual time first.
+			if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
+				t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window)", elapsed)
+			}
+		})
+	}
+}
+
 func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created

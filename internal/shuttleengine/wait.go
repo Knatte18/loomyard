@@ -389,8 +389,8 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	return run.classifyStartupWindow(startupDeadline), nil
 }
 
-// classifyStartupWindow reports OutcomeDied once startupDeadline has passed on a run whose provider
-// has still not reached StartupReady, and "" while that window is still open.
+// classifyStartupWindow reports the run's outcome once startupDeadline has passed on a run whose
+// provider has still not reached StartupReady, and "" while that window is still open.
 //
 // It is called from every not-yet-started exit of checkLivenessTick, not just the still-booting one,
 // because the startup window belongs to the WINDOW rather than to one classification within it.
@@ -398,11 +398,45 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 // never takes, and a pane that fails every capture — skip the deadline entirely and burn the full
 // run_timeout_min (30 minutes by default) instead of startup_timeout_s (90), and be reported as
 // OutcomeTimeout ("the agent was working") rather than OutcomeDied ("it never started").
+//
+// The expired answer comes from classifyDeadlineExpiry rather than being a bare OutcomeDied,
+// because an expired startup window is a NEGATIVE answer like any other and the file contract
+// outranks all of them — see that function for the whole argument.
 func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
 	if run.clock.Now().After(startupDeadline) {
-		return OutcomeDied
+		return run.classifyDeadlineExpiry(OutcomeDied)
 	}
 	return ""
+}
+
+// classifyDeadlineExpiry reports the outcome for a deadline that has just expired: OutcomeDone when
+// the run's file contract is already satisfied, and expired otherwise.
+//
+// It exists because a deadline answers "has the clock run out", never "did this run finish", and
+// the two deadlines in this file — the startup window and the run deadline — both used to publish
+// the first as though it were the second. checkLivenessTick's own doc comment already states the
+// governing rule ("a satisfied file contract wins over every negative answer"), and its
+// not-tracked and not-live branches both honour it; the two deadline paths did not, so a run whose
+// agent had written every file in OutputFiles but left no parseable terminal event behind was
+// classified OutcomeDied at startup_timeout_s or OutcomeTimeout at the run deadline. Reproduced
+// live in crucible round opus5-high-r4 against the real built binary, once per deadline: both of
+// Discussion-Write's declared output files present on disk, events.jsonl never written, and the
+// step recorded as a shed failure — after which the next resume archived the finished files and
+// re-ran the step, which is precisely the rework manifest/designs/loom.md's crash-recovery step 1
+// ("inside an attached or started run's own wait loop … the step finished; read it and advance")
+// exists to prevent.
+//
+// allOutputFilesExist is vacuously true for an empty list, which would make this wrong for a run
+// with no declared outputs — there is none: Spec.validate refuses an empty OutputFiles on the Start
+// path, and on the Attach path collectAttachCandidates set-matches against a persisted RunState
+// written by a validated Start, so an empty spec matches no candidate and no *Run is ever built for
+// it. Spec.validate states the same rule from the other side when it refuses a spec whose output
+// file ALREADY exists, "a pre-existing file would satisfy the file contract immediately".
+func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
+	if allOutputFilesExist(run.spec.OutputFiles) {
+		return OutcomeDone
+	}
+	return expired
 }
 
 // identity returns the run's identifying fields with an empty Outcome: what Wait hands back
