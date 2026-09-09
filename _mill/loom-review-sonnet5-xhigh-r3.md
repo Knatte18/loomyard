@@ -63,6 +63,20 @@ final severity ordering are written last, after Job 1 completes.
 - `go test -count=5 ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/... ./cmd/lyx/...` — all `ok`.
 - `go test ./...` (full repo, once) — all `ok`, nothing skipped that shouldn't be.
 
+### Live smoke suite (real tmux, real detached driver, zero real LLM subprocesses)
+
+- `which tmux` → `/usr/bin/tmux` (present, confirmed before relying on any smoke test's clean skip).
+- `go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` — all 11 tests PASS in 14.07s.
+  Notably `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` completed in 5.18s (matches the
+  `d0e5a0e7b` commit's own claim of "~6s, not ~62s" — confirms the started-gating fix is live and
+  fast on this exact test, on the current tree, before I've made any changes of my own).
+- Teardown check: `pgrep -f tmux` immediately after the run showed two PIDs; re-checked with `ps -fp`
+  a few seconds later and only one remained (485544, started `sep.02`, PPID 1 — a pre-existing
+  environment tmux server that predates this whole session by a week, not something the smoke suite
+  spawned; the other PID had already exited on its own by the second check, consistent with a
+  `registerBootstrapTeardown` cleanup completing asynchronously). No new stray tmux server survived
+  the suite.
+
 ## Findings (provisional, severity TBD at the end)
 
 - **F-C1 (thread C, code, severity TBD — leaning LOW, CONFIRMED via trace, not live-reproduced —
