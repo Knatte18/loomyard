@@ -82,6 +82,13 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer —
 // a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own
 // signature carries no occurrence of the identifier it is supposed to declare.
+//
+// The r.Status != quarry.StatusFound check below is Found-only by design, not an oversight left
+// over from before the vocabulary was widened: StatusMultipart is deliberately excluded alongside
+// StatusNotFound/StatusAmbiguous/the fail-closed default, because accepting a multipart answer would
+// mean arbitrarily choosing r.Symbols[0] as "the" declaration to rename from, out of several
+// declarations the language itself allows to differ from each other. A Rename pair's old side must
+// name exactly one declaration for renameSignature to have anything unambiguous to derive from.
 func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
 	r, resolved := results[oldRef]
 	if !resolved || r.Status != quarry.StatusFound {

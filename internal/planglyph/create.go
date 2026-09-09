@@ -166,6 +166,13 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 					}
 					// unit: found passes with no finding.
 				default:
+					// StatusAmbiguous is deliberately routed to this same default/glyph-rejected arm
+					// rather than a case of its own passing or handled as a distinct Create-specific
+					// finding: a Create target answering ambiguous means an existing declaration
+					// already occupies (part of) that name, which is exactly the create-already-exists
+					// hazard above, and reporting it as an unreadable status rather than inventing a
+					// third Create-only disposition keeps this switch's vocabulary the same shape as
+					// every other fail-closed .Status consumer in the package.
 					findings = append(findings, Finding{
 						Check:    "glyph-rejected",
 						Card:     c.ID(),
