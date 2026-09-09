@@ -101,6 +101,11 @@ Hub built with the real binary: two local bare remotes (`fixt.git` cloned from t
 
 - No tmux server was started by my live driving (all webster/loom verbs ran with `assertedModel` pre-matched, so no inject; no `lyx webster run`/`lyx loom run` was ever invoked). The one live `tmux` process on the host (pid 485544) predates this session by a week (started Sep 2, user's own sessions "0"/"10" on the default socket) and is not mine to kill; the smoke suite's own cleanup left no additional server. Scratch fixtures live under the gitignored `.scratch/live-r2/` and are removed at the end of Job 2.
 
+### Post-fix verification (Job 2)
+
+- After F-R2-2 landed: binary rebuilt, the L2b/L3 duplicate-declaration fixture re-driven — both ambiguous arms now render `internal/greet#Dup (internal/greet/dup1.go), internal/greet#Dup (internal/greet/dup2.go)`.
+- After both fixes: full hermetic gate rerun (`go build ./...`, `go vet`, `go test -count=5` over all eight in-scope package trees) — all green; `golangci-lint` clean over planglyph; final-binary spot check of the L1 canonicalization scenario green.
+
 ### Not verified, and why
 
 - Windows-specific path behavior — unreachable from this Linux host; named, never-executed gap.
