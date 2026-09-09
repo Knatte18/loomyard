@@ -70,11 +70,13 @@ func TestVerifySeedOwnership(t *testing.T) {
 
 	// DecodeFailurePasses pins that a malformed status file (an unknown top-level field, exactly
 	// what a corrupted or hand-edited status.json produces) is ownership's business to pass on, not
-	// to refuse: CheckSeed (run as the Loom-Preflight producer inside Shed.Run) is the check that
-	// owns diagnosing and reporting seed incoherence. Reproduced live: before this test existed, a
-	// poisoned status file made both "lyx loom run" and "lyx loom drive" refuse on the envelope
-	// before ever spawning a driver or reaching CheckSeed's own coherence verdict, contradicting
-	// this function's own doc comment ("each is some other check's business").
+	// to refuse. A decode failure is diagnosed by the spawned driver's Shed.Run step-1 read gate,
+	// which does the same strict read at the top of its loop and errors on it before any producer
+	// (the Loom-Preflight row that calls CheckSeed included) is ever looked up — so CheckSeed itself
+	// never runs on a decode failure, and this ownership check must not stand in for the step-1 gate.
+	// Reproduced live: before this test existed, a poisoned status file made both "lyx loom run" and
+	// "lyx loom drive" refuse on the envelope before ever spawning a driver, contradicting this
+	// function's own doc comment ("each is some other check's business").
 	t.Run("DecodeFailurePasses", func(t *testing.T) {
 		dir := t.TempDir()
 		statusPath := filepath.Join(dir, "status.json")
