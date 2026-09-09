@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-registry-core
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -28,6 +28,7 @@ planning  '2026-09-09T06:04:56Z'
 plan-review-r1  '2026-09-09T06:13:26Z'
 planned  '2026-09-09T06:13:53Z'
 implementing  '2026-09-09T06:14:17Z'
+approved-registry-core  '2026-09-09T06:18:37Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-09-09T06:14:17Z'
 ```yaml
 batches:
   - name: registry-core
-    state: running
+    state: approved
     implementer_session: c35cda8d-ed05-4216-984c-7f048cc73ab7
     start_sha: 729b401367ec90d93283289f68ba7499ff3a0783
+    commit_sha: d69c498578c7c605913beac28f9ecd4ad4109075
     verify_baseline_failures: []
   - name: exported-surface
     state: pending
