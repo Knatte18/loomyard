@@ -109,7 +109,7 @@ func normalizeRefSlice(refs []string, root string) {
 // migration can introduce: without this gate, a non-empty root: would turn "shedrecipe.Lookup"
 // into "internal/boardcli/shedrecipe.Lookup".
 func normalizeRefIfPath(root, raw string) string {
-	if !isPathRef(raw) {
+	if _, disp := lookup(gateNormalizePath, raw); disp != dispKeep {
 		return raw
 	}
 	return normalizeCardPath(root, raw)
@@ -175,7 +175,10 @@ func canonicalizablePath(raw string) bool {
 // level.
 func canonicalizeCard(card *Card, cardKey string, lang glyph.Language, surface map[string]map[string][]string) {
 	canon := func(raw string) string {
-		if !isPathRef(raw) || !canonicalizablePath(raw) {
+		if _, disp := lookup(gateCanonicalizePath, raw); disp != dispKeep {
+			return raw
+		}
+		if !canonicalizablePath(raw) {
 			return raw
 		}
 		g, err := glyph.Self(lang, raw)
