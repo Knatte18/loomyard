@@ -128,7 +128,8 @@ AFTER you have written your own independent findings, you MAY consult the prior 
    a handful of its scenarios as spot-checks).
    Also assess docs accuracy (do the docs match the code?), operability, and **test-coverage
    soundness** — a fix whose regression test would still pass if the fix were reverted is not
-   actually guarded; see the seeded residual below for a concrete instance of exactly this.
+   actually guarded (round 3's F1 was exactly this shape; check whether ANY of round 3's own new
+   tests/fixes have the same defect before assuming the lesson has already been fully applied).
 
 ## High-yield focus — where this campaign's bugs would live (drive these, do not just read them)
 The pure/unit-tested parts of `internal/planparser`/`internal/planglyph` are usually solid (both
@@ -181,23 +182,19 @@ This is where you should spend the bulk of your live-driving time this round. Th
 starting points, not a checklist to close and stop — the whole point of thread C is that you find
 what these don't name.
 
-- **The seeded residual (see "Round context" below for full detail): the `Started`-gating fix has
-  no test that would catch its own regression.** Confirm this yourself by sabotage (revert
-  `wait.go`'s `started := run.attached && run.state.Started` to `started := run.attached`, rerun
-  every test in `internal/shuttleengine` and the full smoke suite) before you trust either my
-  characterization of the gap or your own first impression — then close it: a fake-engine-based unit
-  test in `internal/shuttleengine` that seeds `attached: true, state.Started: false` against an
-  engine whose `Startup` never returns `StartupReady`, proving the startup probe actually re-runs and
-  classifies `OutcomeDied` within `startup_timeout_s` rather than the full `run_timeout_min`.
-- **`RunState.Started`'s persistence path.** It's written by `checkLivenessTick` on `StartupReady`,
-  "best-effort" per its own comment (`saveRunState` failure is only logged). Is a failed persist here
-  actually harmless, or does it silently reopen the exact bug just fixed on the NEXT `Attach` after a
-  driver restart? Trace it, don't just trust the comment.
-- **`VerifySeedOwnership` vs `CheckSeed`'s disposition-sharing claim.** The fix's own commit message
-  says `CheckSeed` "already draws exactly this line" for `state.ErrDecode`. Read `CheckSeed` yourself
-  and confirm every OTHER failure mode the two functions might disagree on (a lock-acquire failure,
-  a permission error, a symlink loop) is handled identically, not just the one case this fix touched.
-- **Other layers doing another layer's job.** The core defect class both new fixes share is one
+- **CLOSED, do not re-litigate as if unknown (but a fresh angle that reveals a real gap in the fix
+  itself is fair game):** the `Started`-gating coverage gap (round 3's F1, now covered by
+  `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`), the `VerifySeedOwnership` vs
+  `CheckSeed` disposition-sharing claim (round 3 traced every failure mode reachable from
+  `VerifySeedOwnership`'s own call sites and found them handled identically — confirmed sound, not a
+  finding), and `RunState.Started`'s best-effort persistence path (round 3 traced it; a failed persist
+  costs one extra startup probe on the next `Attach`, never a silent reopening of the bug — confirmed
+  sound). Spend a few minutes independently spot-checking these hold rather than a full re-derivation.
+- **Round 3's documented "Accepted residual" (crash mid-registration)** — the `AddStrand`/`run.json`
+  race in `internal/shuttleengine/run.go`'s `Start` — is genuinely worth your own look (see "Round
+  context" above for the specific question seeded: is there a detection/reconciliation mitigation
+  round 3 didn't consider, even if the window itself can't be closed by reordering?).
+- **Other layers doing another layer's job.** The core defect class the fixes so far share is one
   function answering a question that belongs to a function downstream of it (ownership-check
   escalating a coherence question; a startup-liveness field trusting a plain-liveness field). Read
   `internal/loomengine`'s and `internal/shuttleengine`'s other precondition/gate functions
@@ -230,86 +227,52 @@ what these don't name.
   never-executed gap in your convergence verdict rather than trying to fake it.
 
 ## Round context seeded from prior-round verification
-**Round 3 — RESIDUAL TO CLOSE (thread B/C), plus a genuinely open adversarial pass. Thread A is
-CONVERGED — carry it forward, do not re-review it from scratch.**
+**Round 4 — SAFETY PASS on thread B/C. There is NO assigned residual this round.** Thread A remains
+CONVERGED (carry it forward, light touch only). Thread B/C is NOT yet converged — round 3 was
+assigned a residual and found a second new issue in the same pass, which the orchestrator correctly
+judged as evidence the area has more to find, not evidence it is settled (a round that finds
+something is the normal middle of a campaign, not its end — see `crucible/README.md`'s reed/fabric
+worked examples: 7 and 6 rounds respectively before one first came back clean). This round's whole
+job is to be that clean round, or to prove it isn't: do a genuinely independent pass over the SAME
+bootstrap/crash-recovery scope round 3 covered, and either find something round 3 and the
+orchestrator's verification both missed, or honestly confirm merge-readiness. "No new defects, the
+area looks sound" is the expected, valuable outcome of a safety pass — do not manufacture a finding
+to have something to report, and do not pad severity to seem thorough.
 
-**Thread A — CLOSED-AND-VERIFIED across two independent rounds, two different models (do NOT
-re-litigate; a regression found by your own live driving is fair game, a fresh review of it from
-first principles is not):**
-- Round 1 (`opus5-high-r1`, Opus/high): 5 findings (F1-F5), 0 behavior regressions in the migrated
-  ref-shape/quarry-Status gates — enforcement/doc gaps only. All fixed, orchestrator-verified via
-  sabotage-proof on every new test, file-scope diff match, and independent pre-existing-failure
-  reproduction of the two smoke tests (see thread B below — that's where they came from).
-- Round 2 (`fable5-high-r2`, Fable/high, safety pass): 16 live scenarios, 2 findings (F-R2-1 NIT,
-  F-R2-2 LOW), 0 regressions, PLUS an independent refutation of round 1's own claim that the
-  pre-resolution-rejection branch was "structurally unreachable live" — round 2 produced it live
-  (a Create card targeting the malformed handle `plan:nounit`), and the orchestrator reproduced that
-  live scenario independently, from scratch, in a throwaway fixture. Both fixes sabotage-proved by
-  the orchestrator.
-- Conclusion, independently verified twice: `centralize-glyph-shape-enum` and
-  `quarry-bump-v0-2-0-status-helpers` are behavior-preserving. This is settled; spend only a light
-  regression-alertness pass here (a handful of spot-check re-drives), not a fresh review.
+**Thread B/C's prior rounds, summarized (see `_mill/loom-review-HANDOFF.md` for full detail — you
+MAY read that file, it's the orchestrator's own state, but per the clean-room constraint above you
+still may NOT read it until your OWN findings list is complete):**
+- Three production commits (`d0e5a0e7b`, `aba2c270a`, `69886823e`) fixed the two originally-flagged
+  smoke-test failures. All three independently verified correct by both round 3 and the orchestrator.
+- Round 3 (`sonnet5-xhigh-r3`) closed a coverage gap in `d0e5a0e7b` (a new sabotage-proved regression
+  test, `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`) and found one new, real,
+  narrow issue (a microsecond-scale race between `Runner.Start`'s `AddStrand` and its `run.json`
+  persist — structurally unclosable by reordering, documented as a second "Accepted residual" in
+  `manifest/designs/loom.md` rather than code-fixed) plus a docs gap (now closed).
+- **CLOSED-AND-VERIFIED, do not re-litigate from scratch:** all of the above. A regression found by
+  your OWN live driving is fair game to report; re-deriving the same conclusion from first principles
+  is not a new finding.
+- **Worth your own independent judgment, not spoon-fed:** is the documented "Accepted residual"
+  (the `AddStrand`/`run.json` race) actually as narrow and unclosable as round 3 concluded, or is
+  there a mitigation round 3 didn't consider (e.g. a reconciliation sweep that could detect — even if
+  not prevent — an orphaned live pane with no owning `run.json`, the way `sweepOrphans` already does
+  the reverse case)? You are not required to find one, but you should genuinely look rather than
+  accept the "unclosable" conclusion at face value.
 
-**Thread B — RESIDUAL TO CLOSE.** After rounds 1-2 converged, the operator separately asked for the
-two pre-existing smoke-test failures thread A's rounds had both flagged as out-of-scope
-(`TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy`,
-`TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed`) to actually be fixed. That work was done
-by a standalone fix agent OUTSIDE this crucible loop — NOT a `crucible-reviewer-<effort>` round, no
-clean-room review discipline, no independent sabotage-proof except what the orchestrator did
-after the fact. Three commits landed:
-- `d0e5a0e7b` — `internal/shuttleengine/wait.go`'s `started` seed changed from `run.attached` alone
-  to `run.attached && run.state.Started`, closing a real bug: an attached-but-never-actually-started
-  run (driver killed before its first liveness tick, or launched against a nonexistent binary) was
-  classified as already-started, skipping the startup probe and waiting out the full
-  `run_timeout_min` before a misleading `OutcomeTimeout` instead of a fast, correct `OutcomeDied` at
-  `startup_timeout_s`. New persisted `RunState.Started bool` field.
-- `aba2c270a` — the smoke test's own assertion was rewritten (a real, separate defect: it asserted
-  `status.History` growth, which the design never guarantees for a producer call that reaches no
-  verdict — see `internal/shedengine/run_routing_test.go`'s `TestRun_ProducerError`) to check
-  `state`/`error`/`current_producer`/unchanged-history instead.
-- `69886823e` — `internal/loomengine/seed.go`'s `VerifySeedOwnership` no longer escalates a
-  `state.ErrDecode` failure as its own error; it now returns `nil` and defers to `CheckSeed`
-  (`Loom-Preflight` producer) to diagnose it, matching that function's own documented "some other
-  check's business" contract.
+State plainly in your executive summary whether this round found something (residual → re-seed,
+rotate again) or came back clean (safety pass + the orchestrator's own gates need to agree before
+this thread is called converged — that is the orchestrator's call to make after your report, not
+yours to declare).
 
-**The orchestrator independently verified all three commits**: cold-state hermetic gates green
-across the whole repo, file-scope diff matched exactly, and BOTH new/changed tests sabotage-proved
-— with one result that did NOT fully hold up:
-
-- `69886823e` (`VerifySeedOwnership`) is **solidly guarded**: reverting the `errors.Is(err,
-  state.ErrDecode)` branch made both the new unit test (`TestVerifySeedOwnership/DecodeFailurePasses`)
-  AND the smoke test itself fail, exactly as expected. No residual here.
-- `d0e5a0e7b` (`wait.go`'s `started` gating) has a **coverage gap**: reverting `started := run.attached
-  && run.state.Started` back to `started := run.attached` did NOT make the smoke test
-  (`TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed`) fail — it still passed, just taking
-  ~62 seconds instead of ~6, because `aba2c270a`'s corrected assertion checks only the FINAL state
-  (`running`→`failed`), never how fast it got there. `TestAttach_StartedSeededTrue` (the one
-  shuttleengine unit test touching this) also does not catch it — it seeds `started: true` on both
-  the old and new code paths, so it can't distinguish them; it only pins the ALREADY-started case,
-  never the never-started-but-attached case the bug was actually about.
-
-**This coverage gap is your seeded residual — close it.** The production fix (`d0e5a0e7b`) is real
-and correct; only its regression coverage is missing. Independently confirm the gap yourself first
-(don't take my word for it — the sabotage above is cheap to repeat), then add what actually closes
-it: a `internal/shuttleengine` unit test seeding `attached: true` with `state.Started: false`,
-against a fake engine whose `Startup` never returns `StartupReady` (so a real regression would hang
-or misclassify), asserting the startup probe DOES fire and the run classifies `OutcomeDied` at
-(or near) `startup_timeout_s` — not `run_timeout_min`. Use a fake clock so the test itself stays
-fast regardless of which timeout it's proving fires.
-
-**Thread C — genuinely open.** Beyond closing the seeded residual, do a real adversarial pass over
-the bootstrap/crash-recovery surface named in "High-yield focus, thread B/C" above. Two real,
-previously-unknown production bugs were found in this area by accident in the last few hours —
-treat that as evidence there may be a third, not as "the two are now fixed so this area is clean."
-"No new defects found, the area looks sound" is still a valuable, honest outcome if that's what a
-genuinely adversarial pass turns up — don't manufacture findings to have something to report.
+**Thread A, for reference (already summarized above — converged, light touch only):** two models
+(Opus round 1, Fable round 2 safety pass) independently agree `centralize-glyph-shape-enum` and
+`quarry-bump-v0-2-0-status-helpers` are behavior-preserving. Not this round's focus.
 
 State the **merge bar**: correctness in the NORMAL single-instance flow, driven for real, is the
-gate for both threads. Thread A has no concurrency angle (established across two rounds). For
-thread B/C, a genuine crash-mid-operation / kill-and-resume scenario IS in scope (that's the whole
-point of this area), but an artificial N-concurrent stress suite is not warranted unless you find a
-specific race to chase — this is a correctness pass, not a concurrency-hardening campaign like
-`reed`'s.
+gate. Thread A has no concurrency angle (established across two rounds). For thread B/C, a genuine
+crash-mid-operation / kill-and-resume scenario IS in scope (that's the whole point of this area), but
+an artificial N-concurrent stress suite is not warranted unless you find a specific race to chase —
+this is a correctness pass, not a concurrency-hardening campaign like `reed`'s.
 
 ## Live-substrate cost declaration (BLOCKING section — read before driving anything)
 **LLM-DRIVING: no, for every scenario this round's mission actually calls for** — and this is a
@@ -429,9 +392,11 @@ external dependency you don't control (e.g. a quarry upstream bug). Even then sa
 the specific reason, in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None outstanding from thread A (both prior rounds' deferred items are resolved — see "Round context"
-above). The seeded residual for THIS round (the `Started`-gating coverage gap) is not a "deferred
-item" in this sense — it's this round's primary assignment, not something to merely re-evaluate.
+- Round 3's documented "Accepted residual" (the `AddStrand`/`run.json` crash-mid-registration race,
+  `internal/shuttleengine/run.go`) — deferred as documentation rather than a code fix because round 3
+  judged it structurally unclosable by reordering. Re-evaluate whether that judgment holds (see
+  "Round context" above and "High-yield focus, thread B/C" above for the specific angle to check —
+  a detection/reconciliation mitigation, not necessarily a full close).
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT — not just BLOCKING/MEDIUM ones.
