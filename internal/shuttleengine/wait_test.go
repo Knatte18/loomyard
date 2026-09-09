@@ -1131,6 +1131,87 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 	}
 }
 
+// TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins is crucible round fable5-high-r5's F1
+// regression guard: the reed-status-error cap is a THIRD place — beyond round opus5-high-r4's two
+// deadline paths — where Wait finalized a negative outcome without first consulting the file
+// contract checkLivenessTick's own doc comment governs ("a satisfied file contract wins over every
+// negative answer").
+//
+// reed.Status errors on every call (the shape a crash-corrupted or truncated reed.json, or a
+// torn-down session, produces), so the run reaches maxStatusRetries consecutive liveness failures
+// and would abandon itself with a mechanism error — but every declared output file is on disk, so
+// the run finished and must classify OutcomeDone instead of re-running completed work on the next
+// resume. events.jsonl is never created, so the ONLY path to done is the mechanism-failure cap's own
+// file-contract check: reverting finishedDespiteMechanismFailure makes this fail with the
+// consecutive-status-failure error. Reproduced live against the real built binary before being
+// written (truncating a live run's reed.json).
+func TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+
+	reed := &fakeReed{StatusErr: errors.New(`reed state file is unreadable: unmarshal state: unexpected end of JSON input`)}
+	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done despite reed.Status erroring", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever reed's own bookkeeping did", result.Outcome, OutcomeDone)
+	}
+}
+
+// TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins is the events-file half of F1: the
+// events-unreadable cap is the fourth place Wait finalized a negative outcome without consulting the
+// file contract.
+//
+// ParseEvents fails on every call (a corrupted or garbage events.jsonl), so the run reaches
+// maxEventsReadRetries consecutive parse failures — but every declared output file is on disk, so it
+// finished and must classify OutcomeDone. LivenessEveryNPolls is high so the events cap, not a
+// liveness tick, is what fires; reverting finishedDespiteMechanismFailure makes this fail with the
+// events-file-unreadable error.
+func TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte("garbage that never parses\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: true}}}}}
+	engine := &fakeEngine{ParseEventsErr: errors.New("parse events: malformed")}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done despite an unparseable events.jsonl", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever the events file holds", result.Outcome, OutcomeDone)
+	}
+}
+
 func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created

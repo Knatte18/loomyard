@@ -167,6 +167,11 @@ func (run *Run) Wait() (Result, error) {
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
+				// A satisfied file contract outranks this mechanism failure exactly as it outranks
+				// every other negative answer in this loop -- see finishedDespiteMechanismFailure.
+				if result, ferr, ok := run.finishedDespiteMechanismFailure(); ok {
+					return result, ferr
+				}
 				return run.identity(), fmt.Errorf("shuttle: events file unreadable after %d attempts: %w", maxEventsReadRetries, err)
 			}
 		} else {
@@ -186,6 +191,12 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
+					// A satisfied file contract outranks this mechanism failure exactly as it
+					// outranks every other negative answer in this loop -- see
+					// finishedDespiteMechanismFailure.
+					if result, ferr, ok := run.finishedDespiteMechanismFailure(); ok {
+						return result, ferr
+					}
 					switch {
 					case errors.Is(err, errStrandNotTracked):
 						return run.identity(), fmt.Errorf("shuttle: reed did not track strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
@@ -440,6 +451,37 @@ func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
 		return OutcomeDone
 	}
 	return expired
+}
+
+// finishedDespiteMechanismFailure finalizes OutcomeDone when the run's file contract is already
+// satisfied at a point Wait would otherwise abandon the run with a mechanism-failure error, and
+// reports whether it did (the bool is false, with a zero Result and nil error, when the contract is
+// not satisfied and the caller must surface its mechanism error unchanged).
+//
+// It exists for the same reason classifyDeadlineExpiry does, extended to Wait's two retry-exhausted
+// exits: the events file staying unreadable for maxEventsReadRetries consecutive ticks, and
+// reed.Status erroring for maxStatusRetries consecutive ticks, both answer "has reed's own
+// bookkeeping or the events file gone wrong", never "did this run finish". checkLivenessTick's own
+// doc comment already governs both -- "a satisfied file contract wins over every negative answer" --
+// and its not-tracked and not-live branches beside these exits both honour it; the two
+// retry-exhausted caps did not, so a run whose agent had written every declared output file but left
+// reed.json corrupt (a crash, a full disk, a kill -9 during a reed write) or events.jsonl
+// unparseable was recorded as a mechanism failure, after which the next resume archived the finished
+// files and re-ran the step -- precisely the rework manifest/designs/loom.md's crash-recovery step 1
+// exists to prevent. Reproduced live in crucible round fable5-high-r5 against the real built binary:
+// a shuttle run whose declared output file was on disk, reed.json truncated mid-run, returned the
+// consecutive-status-failure mechanism error rather than OutcomeDone.
+//
+// The empty-OutputFiles vacuous-truth concern classifyDeadlineExpiry documents does not arise here
+// either, and for the same reason: Spec.validate refuses an empty OutputFiles on the Start path and
+// collectAttachCandidates set-matches against a validated Start's persisted record on the Attach
+// path, so no *Run with an empty OutputFiles ever reaches this loop.
+func (run *Run) finishedDespiteMechanismFailure() (Result, error, bool) {
+	if allOutputFilesExist(run.spec.OutputFiles) {
+		result, err := run.finalize(OutcomeDone, "")
+		return result, err, true
+	}
+	return Result{}, nil, false
 }
 
 // identity returns the run's identifying fields with an empty Outcome: what Wait hands back
