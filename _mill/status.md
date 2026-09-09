@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-exported-surface
+phase: approved-planparser-migration
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-09-09T06:13:53Z'
 implementing  '2026-09-09T06:14:17Z'
 approved-registry-core  '2026-09-09T06:18:37Z'
 approved-exported-surface  '2026-09-09T06:22:03Z'
+approved-planparser-migration  '2026-09-09T06:27:33Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     commit_sha: b41ddde5eb09b67408860b34dd2822d448a8d123
     verify_baseline_failures: []
   - name: planparser-migration
-    state: running
+    state: approved
     implementer_session: c1518fb1-3e5f-4829-ae74-88dff5c8db31
     start_sha: eb9a72e718b73bb88e001d73176167a6fc0fa165
+    commit_sha: df03fef69f3e4e28bbd2c3a325f2c25d19efff0e
     verify_baseline_failures: []
   - name: planglyph-migration
     state: pending
