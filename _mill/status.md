@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r6
+phase: discussed
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: null
@@ -21,4 +21,6 @@ discussion-gap-fix-r3  '2026-09-09T05:30:51Z'
 discussion-gap-fix-r4  '2026-09-09T05:36:04Z'
 discussion-gap-fix-r5  '2026-09-09T05:40:45Z'
 discussion-gap-fix-r6  '2026-09-09T05:44:08Z'
+discussion-fix-r7  '2026-09-09T05:47:11Z'
+discussed  '2026-09-09T05:47:11Z'
 ```
