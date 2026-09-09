@@ -366,6 +366,25 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	}
 }
 
+// poisonStatusFileMalformed overwrites loc's already-seeded status file with genuinely malformed
+// JSON (not merely an unknown field) and commits it weft-side. It is the second poison shape the
+// crash-recovery design promises never looks like bootstrap's own gate: unlike the unknown-field
+// shape poisonStatusFile writes, malformed JSON does not decode even leniently, so before crucible
+// round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom run`) refuse on the
+// envelope before ever spawning a driver. loomshed.Seed now maps a decode failure to ErrSeedExists,
+// so both poison shapes reach the same "a driver that died is a run that finished" bootstrap path.
+func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
+	t.Helper()
+	statusPath := loomengine.LoomStatusFile(loc)
+	if err := os.WriteFile(statusPath, []byte(`{ "current_producer": "Discussion-Write", "state": "run`), 0o644); err != nil {
+		t.Fatalf("write malformed status: %v", err)
+	}
+	rec := fabricengine.NewMutations("")
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+		t.Fatalf("commit malformed status: %v", err)
+	}
+}
+
 // statusStrandCount returns how many of eng's tracked strands carry the given name.
 func statusStrandCount(t *testing.T, eng *reedengine.Engine, name string) int {
 	t.Helper()
@@ -640,6 +659,62 @@ func TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *test
 	}
 	if string(after) != string(poisonedBytes) {
 		t.Errorf("status file changed after the failed drive; want it untouched -- a persist must never have happened")
+	}
+}
+
+// (e2) `lyx loom run` against a MALFORMED-JSON status file proceeds to the tmux handover exactly as
+// the unknown-field shape does, rather than refusing on the envelope at the Seed step. This is
+// crucible round fable5-high-r5's F3 regression guard, and the composed CLI-verb half its unit tests
+// (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see: only the
+// real `lyx loom run` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn ->
+// handshake chain against a poisoned weft-committed status file.
+//
+// Before the fix, loomshed.Seed returned the raw decode error (not ErrSeedExists) for malformed
+// JSON, so step 2 of `lyx loom run` refused on the envelope before ever spawning a driver — the very
+// "poisoned status file looks like bootstrap's own gate" state the crash-recovery design forbids.
+// After it, Seed maps the decode failure to ErrSeedExists, the bootstrap tolerates it, and the
+// spawned driver's own Shed.Run step-1 read gate diagnoses the decode failure in the driver log,
+// exactly as TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy pins for the unknown-field
+// shape.
+func TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy(t *testing.T) {
+	tmuxBinaryPath(t)
+	exe := buildLyxBinary(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	registerBootstrapTeardown(t, loc, worktree)
+
+	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	if err != nil {
+		t.Fatalf("first bootstrap: %v; output: %s", err, firstOut)
+	}
+	for _, pid := range findDriverPIDs(worktree) {
+		_ = proc.KillPID(pid)
+	}
+	waitRunLockFree(t, loc, 20*time.Second)
+
+	poisonStatusFileMalformed(t, loc)
+
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	if err != nil {
+		t.Fatalf("second (malformed-status) bootstrap: %v; output: %s", err, stdout)
+	}
+
+	// Proceeded to step 7 rather than refusing at step 2's Seed: no controlling terminal here, so the
+	// handover itself cannot succeed and tmux says so on stderr — which is the evidence it was
+	// REACHED. A Seed refusal would have written a JSON envelope and never got here.
+	if !strings.Contains(stdout, "not a terminal") {
+		t.Errorf("second bootstrap output = %q; want the tmux handover reached, not a Seed refusal before it", stdout)
+	}
+	if strings.Contains(stdout, `"ok":false`) {
+		t.Errorf("second bootstrap emitted a refusal envelope: %s -- a malformed status file must defer to the driver's own read gate, not refuse at the Seed step", stdout)
+	}
+
+	// The driver log carries the decode failure from Shed.Run's own step-1 read gate.
+	driverLog, err := os.ReadFile(loomengine.LoomDriverLog(loc))
+	if err != nil {
+		t.Fatalf("read driver log: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(string(driverLog)), "decode") {
+		t.Errorf("driver log = %q; want it to name the malformed status file's decode failure", driverLog)
 	}
 }
 
