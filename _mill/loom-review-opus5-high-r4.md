@@ -16,7 +16,42 @@ _(written last)_
 
 ## Findings
 
-_(appended as formed)_
+### F1 — `classifyStartupWindow`'s `OutcomeDied` ignores a satisfied file contract (MEDIUM, CONFIRMED live)
+
+`internal/shuttleengine/wait.go:401-406` (`classifyStartupWindow`), reached from `wait.go:365`, `wait.go:389`.
+
+`checkLivenessTick`'s own doc comment (`wait.go:325-327`) states the rule plainly:
+
+> A satisfied file contract wins over every negative answer: the agent's output files ARE its return value, so their existence classifies OutcomeDone whether the pane died or reed simply stopped tracking or addressing it.
+
+Its two negative branches honour that — the not-tracked branch (`wait.go:336`) and the not-live branch (`wait.go:342`) both call `allOutputFilesExist` before returning a negative answer.
+The third negative answer, the startup window expiring, does not: `classifyStartupWindow` returns `OutcomeDied` on the clock alone.
+`manifest/designs/loom.md:344-348` (crash recovery, step 1) says the same thing from the design side — inside a started or attached run's own wait loop, a complete output file means the step finished.
+
+**Failure scenario (reproduced live, not traced).** A run whose pane stays live, whose provider never classifies `StartupReady` inside `startup_timeout_s` (a capture that keeps failing — `wait.go:362` explicitly routes that case here — or a provider whose viewport does not carry the ready markers), and whose `events.jsonl` carries no parseable event, but which HAS written every file in `spec.OutputFiles`.
+`pollEventsTick` never classifies it, because it only tests the file contract after successfully parsing NEW event bytes (`wait.go:259`); the startup deadline then classifies the run `OutcomeDied`.
+
+**Observed.** Driven through the real built binary against a real wired hub, with the provider replaced by a script that writes both of Discussion-Write's declared output files and then stays alive without rendering a TUI or appending to `events.jsonl`:
+
+- `_lyx/discussion/decision-record.md` and `_lyx/discussion/support-log.md` both present on disk;
+- `events.jsonl` never created;
+- `run.json`: `"outcome": "died"`, `"started": false`;
+- `_lyx/loom/status.json`: `state=failed`, `error="shedadapters: Discussion-Write (shuttle): shuttle run outcome died"`.
+
+**Cost.** The step genuinely finished, and is recorded as a failure. On the next resume `SingleLLMProducer.Call` finds nothing attachable (the record's `Outcome` is now terminal), so it runs `archiveStaleOutputs` over the two completed files and respawns a fresh agent — finished work archived and redone, which is exactly the outcome the file contract exists to prevent.
+
+**Suggested fix.** Consult the file contract before the deadline turns into `OutcomeDied`, the same way the two sibling branches already do — the check is `allOutputFilesExist(run.spec.OutputFiles)`, already in this file. Placing it on the expiry path alone cannot change behaviour for any run that has not reached its startup deadline.
+
+### F2 — `Wait`'s run-deadline `OutcomeTimeout` ignores a satisfied file contract (MEDIUM, CONFIRMED live)
+
+`internal/shuttleengine/wait.go:206-208` (`Wait`'s deadline branch).
+
+The same asymmetry, one level up and on the other deadline: when `run.deadline` passes, `Wait` finalizes `OutcomeTimeout` without ever asking whether the output files are present.
+A run whose agent wrote every declared output file but emitted no parseable terminal event is classified as "the agent was still working when the clock ran out", when in fact its file contract — the thing `manifest/designs/loom.md:340-348` makes the authority on whether a step finished — was satisfied.
+
+This is one defect class with F1, at the campaign's named shape: a check answering a question (*did this run finish?*) using only the fact it happens to hold (*the clock*), while the fact that actually owns the answer (*the output files*) sits one line away and is consulted by every neighbouring branch.
+
+**Suggested fix.** Same as F1: test the file contract before finalizing the negative classification.
 
 ## What was tested
 
