@@ -3,7 +3,7 @@
 ```yaml
 task: "Centralize glyph ref-shape enumeration"
 slug: "centralize-glyph-shape-enum"
-approved: false
+approved: true
 started: "20260909-055817"
 parent: "main"
 root: ""
