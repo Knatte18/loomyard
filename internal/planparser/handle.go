@@ -161,7 +161,7 @@ func handleClaims(plan *Plan) map[string][]handleClaim {
 			claims[d.Handle] = append(claims[d.Handle], handleClaim{card: id})
 		}
 		for _, p := range c.Pairs {
-			if classifyRef(p.New) != refKindHandle {
+			if _, disp := lookup(gateHandleClaims, p.New); disp != dispKeep {
 				continue
 			}
 			claims[p.New] = append(claims[p.New], handleClaim{card: id, fromRename: true})
@@ -203,7 +203,7 @@ func referencedHandles(plan *Plan) map[string][]string {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, r := range fields {
-				if classifyRef(r) != refKindHandle {
+				if _, disp := lookup(gateReferencedHandles, r); disp != dispKeep {
 					continue
 				}
 				referenced[r] = append(referenced[r], cardID(c))

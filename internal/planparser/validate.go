@@ -394,7 +394,7 @@ func checkBareSymbolTarget(plan *Plan) []ValidationError {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, t := range fields {
-				if classifyRef(t) != refKindSymbol {
+				if _, disp := lookup(gateBareSymbolTarget, t); disp != dispFinding {
 					continue
 				}
 				findings = append(findings, ValidationError{
@@ -435,7 +435,7 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, t := range fields {
-				if classifyRef(t) != refKindPath {
+				if _, disp := lookup(gateDirectoryTarget, t); disp != dispKeep {
 					continue
 				}
 				if !strings.Contains(t, "/") || hasFileExtension(t) {
@@ -488,7 +488,7 @@ func checkGlyphMalformed(plan *Plan) []ValidationError {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, t := range fields {
-				if classifyRef(t) != refKindGlyph {
+				if _, disp := lookup(gateGlyphMalformed, t); disp != dispKeep {
 					continue
 				}
 				if _, err := parseGlyph(lang, t); err != nil {
@@ -664,7 +664,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, r := range fields {
-				if classifyRef(r) != refKindHandle {
+				if _, disp := lookup(gateHandleMalformed, r); disp != dispKeep {
 					continue
 				}
 				unit, ok := handleUnit(r)
@@ -701,7 +701,10 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 // pair has no declaration head to name and is exempt from both of checkRenamePairShape's checks —
 // it belongs in the same group as a plain path pair.
 func isFileRenamePair(lang glyph.Language, p MovePair) bool {
-	if classifyRef(p.Old) != refKindGlyph || classifyRef(p.New) != refKindGlyph {
+	if _, disp := lookup(gateFileRenamePair, p.Old); disp != dispKeep {
+		return false
+	}
+	if _, disp := lookup(gateFileRenamePair, p.New); disp != dispKeep {
 		return false
 	}
 	oldGlyph, err := parseGlyph(lang, p.Old)
@@ -749,7 +752,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 			if isFileRenamePair(lang, p) {
 				continue
 			}
-			if k := classifyRef(p.New); k != refKindHandle {
+			if k, disp := lookup(gateRenameTo, p.New); disp == dispFinding {
 				findings = append(findings, ValidationError{
 					Check: "rename-to-not-handle",
 					Card:  cardID(c),
@@ -759,7 +762,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 					),
 				})
 			}
-			if k := classifyRef(p.Old); k != refKindGlyph {
+			if k, disp := lookup(gateRenameFrom, p.Old); disp == dispFinding {
 				findings = append(findings, ValidationError{
 					Check: "rename-from-not-glyph",
 					Card:  cardID(c),
@@ -768,7 +771,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 						c.Number, p.Old, p.New, refKindName(k),
 					),
 				})
-			} else if classifyRef(p.New) == refKindHandle {
+			} else if _, disp := lookup(gateRenameTo, p.New); disp == dispKeep {
 				// A symbol rename's old side must name a SYMBOL — a member glyph — because the
 				// to-side declaration is derived from the resolved old symbol. A SELF glyph old side
 				// paired with a handle new side is neither admitted shape (not a symbol rename, not
@@ -989,7 +992,7 @@ func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 					if gl, err := parseGlyph(lang, t); err == nil && gl.IsSelf() {
 						continue
 					}
-				} else if isPathRef(t) {
+				} else if _, disp := lookup(gateProsaPathOnly, t); disp == dispKeep {
 					continue
 				}
 				// The detail names what the entry FAILED to be rather than asserting it is a
