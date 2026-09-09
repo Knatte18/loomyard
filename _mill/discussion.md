@@ -35,7 +35,7 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 **Out:**
 
-- Quarry's `glyph` package (separate repo `github.com/Knatte18/quarry`, pinned `v0.1.0`) — explicitly ruled out as a home for any of this by the task proposal; no changes there.
+- Changes to quarry (separate repo `github.com/Knatte18/quarry`, pinned `v0.1.0`, live worktree `/home/knatte/Code/quarry/wts/quarry`) — not because the repo is off limits (same author, originally part of loomyard), but per Decision: quarry-role below: the ref-shape vocabulary is plan-format semantics quarry deliberately never sees, and the two quarry-side improvements this task identified are filed as [quarry#30](https://github.com/Knatte18/quarry/issues/30) and [quarry#31](https://github.com/Knatte18/quarry/issues/31) for their own task there.
 - Exporting `RefKind`/`ClassifyRef` — planglyph deliberately never 4-way-classifies (see Decision: parse-success-glyph-test-kept); the enum and classifier stay unexported.
 - Any change to `classifyRef`'s five spec-pinned rules or any observable classification/validation behavior, except the two named hardenings (see Decision: behavior-preservation).
 - `renameSignature`'s Go-declaration shape logic (`internal/planglyph/handle.go:88-97`) — declaration grammar, not ref shape; stays as is.
@@ -59,7 +59,7 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 - Decision: every planparser site that branches on `refKind` declares its handling as data — a per-site policy mapping every kind to a disposition — registered in one package-level ledger in the registry file.
   Filter-shaped sites (keep-one-kind, keep-subset) consult their policy through a lookup helper;
-  behavior-dispatch sites that need per-kind *code* (`diskPathForRef`, `refKindName`) stay as switches but must name every kind or carry a fail-closed `default` arm, and are listed in the ledger too.
+  behavior-dispatch sites that need per-kind *code* (`diskPathForRef`, `refKindName`) stay as switches but must name every kind or carry a fail-closed `default` arm, are listed in the ledger too, and **both relocate into the registry file** — so the enforcement test below needs no per-function exemption.
   Two meta-tests enforce it:
   (1) a completeness test asserting every registered policy's domain equals the full kind list — adding a fifth kind fails every site's policy until each is re-acknowledged;
   (2) a grep-shaped enforcement test (precedent: `internal/cliwire`'s bannedecl/callerset enforcement tests, `cmd/lyx/tierpurity_test.go`) asserting no `classifyRef`/`refKind` comparison and no open-coded `plan:` string op (`HasPrefix`/`TrimPrefix`/concat against `HandlePrefix`) exists outside the registry file and the exported handle helpers, in either package.
@@ -95,6 +95,20 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
   switching to shape classification would change behavior for malformed refs and would require exporting the classifier this design keeps internal.
 - Rejected: routing both sites through an exported `ClassifyRef` (behavior change, contradicts registry-home-and-exported-surface).
 
+### quarry-role
+
+- Decision: the registry stays in `internal/planparser`; quarry itself changes nothing in this task.
+  The two producer-side improvements this task's inventory identified are filed as quarry issues for their own task there:
+  [quarry#30](https://github.com/Knatte18/quarry/issues/30) — enforce per-target coverage in `Resolve`/`Name`'s batch contract (keyed answers or producer-verified alignment), which would let loomyard delete `ensureResolveCoverage` and the per-key guards this task hardens;
+  [quarry#31](https://github.com/Knatte18/quarry/issues/31) — a fail-closed `Status` vocabulary helper (`Known()`/`Rejected()`), which would shrink this task's `.Status` tripwire to "every consumer guards via `Known()`".
+  This task's Q6/Q7 guards are written against quarry as it is (`v0.1.0`); if the issues land later, a follow-up task migrates the guards onto the new API.
+- Rationale: the ref-shape vocabulary (`plan:` handles, path/symbol spellings, `root:`/`//` resolution) is plan-format semantics — quarry never sees a handle by design, and teaching it that vocabulary inverts the layering;
+  the registry's only consumers are the two loomyard packages, and iterating a cross-repo API during migration would need a version bump or `replace` per round;
+  this agent is spawned in the loomyard worktree and does not edit another repo from here.
+  Not adopted as rationale: "quarry is a shared dependency ruled out by the proposal" — the operator (quarry's author) explicitly reopened it; the boundary is hensiktsmessighet per family, not repo ownership.
+- Rejected: expanding this task to fix families 1–2 at the source in quarry now (two-repo task with version coordination, and the loomyard-side guards are needed against the pinned version regardless);
+  moving shape classification into quarry (inverted layering).
+
 ### status-family-disposition
 
 - Decision: no registry for `quarry.ResolveResult.Status` consumers.
@@ -104,6 +118,7 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
   (3) document two intentional asymmetries in place: `renameDeclSource`'s Found-only rule (`handle.go:119` — accepting `Multipart` would arbitrarily derive from `Symbols[0]`), and `createFindings`' routing of `Ambiguous` to the `default`/`glyph-rejected` arm (`create.go:151-171`).
 - Rationale: round 10's claim that `doneCheckVerdicts` was "the last unswitched `Status` consumer" is disproven by inventory (containment.go:112 remains), so one real fix is owed;
   but 5 of 7 consumers already fail closed — the family is near-consolidated and needs a tripwire, not a table, exactly as the task proposal steers.
+  The producer-side fix (a fail-closed `Status` helper in quarry) is filed as [quarry#31](https://github.com/Knatte18/quarry/issues/31) — see Decision: quarry-role.
 - Rejected: full registry treatment (proposal explicitly warns against it);
   doing nothing (leaves a live fail-open hole).
 
@@ -114,6 +129,7 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
   (1) add the missing per-key guard in `drift.go`'s post-repair path (`drift.go:208-227`): after resolving `collectGlyphTargets(reloaded, lang)`, assert every glyph in the `introduced` set actually received an answer before filtering, erroring `ErrQuarryUnavailable` on a miss, mirroring `DoneChecks`' per-key guard (`donecheck.go:139-149`);
   (2) add a grep chokepoint test pinning `repo.Resolve(` to `resolveTargets` (`repo.go:97`) and `quarry.Name(` to `CanonicalizeHandles` (`handle.go:224`), so the existing length-guard chokepoints (`ensureResolveCoverage`, the Name length+echo guard) cannot be bypassed by a future call site.
 - Rationale: inventory confirms round 10's consolidation claim holds for this family — every batch boundary is guarded except drift's post-repair site, which is unreachable-in-practice only because of the length guard it does not itself own.
+  The producer-side fix (coverage enforced in `Resolve`/`Name`'s own contract) is filed as [quarry#30](https://github.com/Knatte18/quarry/issues/30) — see Decision: quarry-role.
 - Rejected: doing nothing (leaves the drift soft spot resting on a guard it cannot see);
   a coverage registry (nothing left to register).
 
@@ -156,10 +172,10 @@ The file is a tier1-pure leaf (string analysis only, never stats disk, never cal
 
 ### planparser migration sites (Inventory A)
 
-True switches (stay switches, ledger-listed, default-arm-required):
+True switches (stay switches, ledger-listed, default-arm-required, both relocated into the registry file per Decision: kind-policy-ledger):
 
 - `validate.go:360-374` `diskPathForRef` — the sole ref→disk-path mapper (Path→itself; Glyph→language gate + `parseGlyph` + `IsSelf` + `UnitPath`; Symbol/Handle→default not-ok). Feeds `checkCardPathMalformed`, `checkPathMissing`, `createTargetsUnion`, `renameTargetsUnion`.
-- `validate.go:828-843` `refKindName` — exhaustive kind→prose switch with deliberate non-panicking fallthrough ("an unrecognized shape"). The registry nucleus; promote to the registry file.
+- `validate.go:828-843` `refKindName` — exhaustive kind→prose switch with deliberate non-panicking fallthrough ("an unrecognized shape"). The registry nucleus.
 
 Single-kind filters (migrate to policy lookups):
 
@@ -248,3 +264,4 @@ From CONSTRAINTS.md, binding on this task:
 - **Q:** Behavior contract? **A:** Pure refactor except the two named hardenings, each with its own new test; existing test files untouched; other defects found mid-migration become follow-up findings.
 - **Q:** Docs? **A:** New Ref-Shape Registry Invariant in CONSTRAINTS.md + a registry sentence in `quarry-glyph-plan-alphabet.md`, same commit; spec and overview untouched.
 - **Q:** Dead wrappers? **A:** `isHandleRef` superseded by exported `IsHandleRef`; `isGlyphRef` deleted; `isPathRef` stays unexported.
+- **Q:** Is quarry off limits as a home for any of this? **A:** No — the operator (quarry's author) rejected the proposal's "ruled out" framing; the boundary is appropriateness per family, not repo ownership. Outcome: registry stays in planparser (layering — quarry never sees `plan:` vocabulary), and the two producer-side improvements are filed as quarry#30 (batch coverage in the API contract) and quarry#31 (fail-closed `Status` helper) for their own task in that repo.
