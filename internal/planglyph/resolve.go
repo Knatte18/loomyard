@@ -130,13 +130,13 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 }
 
 // unreadableStatusDetail renders the glyph-rejected detail for a result whose Status neither
-// statusFindings nor createFindings can read: an absent Status is quarry's pre-resolution
-// rejection of the target string itself, carried by Error and Reason instead, while any other
-// value is a resolve status outside the four-value vocabulary quarry documents. noun names what
-// the target is to the caller ("target", "Create target", "done-check target"), so one renderer
-// serves every fail-closed status policy in the package.
+// statusFindings nor createFindings can read: quarry.ResolveResult.Rejected reports whether r is
+// quarry's pre-resolution rejection of the target string itself, carried by Error and Reason
+// instead, while any other value is a resolve status outside the four-value vocabulary quarry
+// documents. noun names what the target is to the caller ("target", "Create target", "done-check
+// target"), so one renderer serves every fail-closed status policy in the package.
 func unreadableStatusDetail(noun, target string, r quarry.ResolveResult) string {
-	if r.Status == "" {
+	if r.Rejected() {
 		return fmt.Sprintf("%s %q was rejected before resolution: error %s, reason %q", noun, target, r.Error, r.Reason)
 	}
 	return fmt.Sprintf("%s %q answered the unrecognized resolve status %q", noun, target, r.Status)

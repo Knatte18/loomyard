@@ -3,7 +3,7 @@ module github.com/Knatte18/loomyard
 go 1.26
 
 require (
-	github.com/Knatte18/quarry v0.1.0
+	github.com/Knatte18/quarry v0.2.0
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/gofrs/flock v0.8.1
 	github.com/google/go-cmp v0.7.0
