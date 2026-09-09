@@ -147,7 +147,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 		for _, c := range sortedCards(cards) {
 			findings = append(findings, Finding{
 				Check:    "plan-references-deleted-symbol",
-				Card:     cardIDOf(c),
+				Card:     c.ID(),
 				Detail:   fmt.Sprintf("card %d references %q, which the delta reports deleted with no corresponding rename", c.Number, s.ID),
 				Severity: SeverityBlocking,
 			})
@@ -178,7 +178,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 		for _, c := range sortedCards(cards) {
 			findings = append(findings, Finding{
 				Check: "rename-candidate",
-				Card:  cardIDOf(c),
+				Card:  c.ID(),
 				Detail: fmt.Sprintf(
 					"card %d references %q, deleted with %d evidence-tier rename candidate(s) — mechanical evidence only, the rename-versus-genuine-delete decision is the reviewer's, never the pipeline's: %s",
 					c.Number, entry.ID, len(entry.Candidates), strings.Join(candidateParts, "; "),
@@ -200,7 +200,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 	if err != nil {
 		return findings, err
 	}
-	if lang, ok := resolveLanguage(reloaded); ok {
+	if lang, ok := reloaded.GlyphLanguage(); ok {
 		repo, err := openRepo(worktreeRoot)
 		if err != nil {
 			return findings, err
@@ -239,7 +239,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 		sorted := sortedCards(r.cards)
 		card := ""
 		if len(sorted) > 0 {
-			card = cardIDOf(sorted[0])
+			card = sorted[0].ID()
 		}
 		if err := planparser.AppendAmendment(planDir, planparser.Amendment{
 			Timestamp: now,

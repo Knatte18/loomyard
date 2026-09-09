@@ -61,7 +61,7 @@ func resolveKeyFor(ref string) string {
 // never asked about — and it too returns a wrapped ErrQuarryUnavailable rather than skipping the
 // entry, which would silently pass whichever blocking check that target carried.
 func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {
-	if _, ok := resolveLanguage(plan); !ok {
+	if _, ok := plan.GlyphLanguage(); !ok {
 		return nil, nil
 	}
 
@@ -148,7 +148,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 			// infrastructure, the way CanonicalizeHandles guards quarry.Name's positional contract
 			// (handle.go), so nobody reads "quarry did not answer for this target" as a verdict on
 			// the plan (crucible round opus-medium-r5, R5-6).
-			return findings, fmt.Errorf("%w: resolve returned no answer for done-check target %q (card %s)", ErrQuarryUnavailable, e.key, cardIDOf(e.card))
+			return findings, fmt.Errorf("%w: resolve returned no answer for done-check target %q (card %s)", ErrQuarryUnavailable, e.key, e.card.ID())
 		}
 
 		// Fail closed on an answer outside quarry's four-value vocabulary BEFORE reading it into
@@ -164,7 +164,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 		default:
 			findings = append(findings, Finding{
 				Check:    "glyph-rejected",
-				Card:     cardIDOf(e.card),
+				Card:     e.card.ID(),
 				Detail:   unreadableStatusDetail("done-check target", e.display, r),
 				Severity: SeverityBlocking,
 			})
@@ -185,7 +185,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 			if !resolved {
 				findings = append(findings, Finding{
 					Check:    "create-not-done",
-					Card:     cardIDOf(e.card),
+					Card:     e.card.ID(),
 					Detail:   fmt.Sprintf("Create target %q still does not resolve", e.display),
 					Severity: SeverityBlocking,
 				})
@@ -194,7 +194,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 			if stillExists {
 				findings = append(findings, Finding{
 					Check:    "delete-not-done",
-					Card:     cardIDOf(e.card),
+					Card:     e.card.ID(),
 					Detail:   fmt.Sprintf("Delete target %q still resolves %s", e.display, r.Status),
 					Severity: SeverityBlocking,
 				})
@@ -203,7 +203,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 			if stillExists {
 				findings = append(findings, Finding{
 					Check:    "rename-not-done",
-					Card:     cardIDOf(e.card),
+					Card:     e.card.ID(),
 					Detail:   fmt.Sprintf("Rename pair's old side %q still resolves %s — the rename did not happen", e.display, r.Status),
 					Severity: SeverityBlocking,
 				})
@@ -212,7 +212,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 			if !resolved {
 				findings = append(findings, Finding{
 					Check:    "rename-not-done",
-					Card:     cardIDOf(e.card),
+					Card:     e.card.ID(),
 					Detail:   fmt.Sprintf("Rename pair's new side %q still does not resolve — the rename did not happen", e.display),
 					Severity: SeverityBlocking,
 				})

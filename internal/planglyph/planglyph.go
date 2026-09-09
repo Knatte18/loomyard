@@ -77,11 +77,11 @@ func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed []pl
 	return findings, err
 }
 
-// cardIDSet indexes cards by their own cardIDOf.
+// cardIDSet indexes cards by their own ID.
 func cardIDSet(cards []planparser.Card) map[string]bool {
 	set := make(map[string]bool, len(cards))
 	for _, c := range cards {
-		set[cardIDOf(c)] = true
+		set[c.ID()] = true
 	}
 	return set
 }
@@ -110,7 +110,7 @@ func pendingCardsByID(plan *planparser.Plan, done map[string]bool) *planparser.P
 	scoped := *plan
 	kept := make([]planparser.Card, 0, len(plan.Cards))
 	for _, c := range plan.Cards {
-		if done[cardIDOf(c)] {
+		if done[c.ID()] {
 			continue
 		}
 		kept = append(kept, c)
@@ -152,7 +152,7 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // directory: RewriteRefs re-parses it itself, so a handle bound in a pending card is still spelled
 // consistently across every card file, including the completed ones.
 func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]bool) ([]Finding, error) {
-	lang, ok := resolveLanguage(plan)
+	lang, ok := plan.GlyphLanguage()
 	if !ok {
 		return nil, nil
 	}
@@ -240,20 +240,6 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 	findings = append(findings, resolveContainment(current, results)...)
 
 	return findings, nil
-}
-
-// resolveLanguage maps plan.Language to the glyph.Language quarry's alphabet uses, mirroring
-// planparser's own unexported planLanguage exactly: "" and "go" map to glyph.Go; anything else,
-// including "none", reports the not-ok second return. This is a five-line switch over the same
-// public Plan.Language field every other planglyph function already reads, not a second
-// implementation of any validation check.
-func resolveLanguage(plan *planparser.Plan) (glyph.Language, bool) {
-	switch plan.Language {
-	case "", "go":
-		return glyph.Go, true
-	default:
-		return glyph.Language(""), false
-	}
 }
 
 // renameNewTargetSet returns the set of every Rename pair's New-side ref across plan, matching the

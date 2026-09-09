@@ -38,7 +38,7 @@ func writingTargetCards(plan *planparser.Plan) map[string][]planparser.Card {
 	seen := make(map[string]map[string]bool)
 	for _, c := range plan.Cards {
 		for _, t := range c.Targets {
-			id := cardIDOf(c)
+			id := c.ID()
 			if seen[t][id] {
 				continue
 			}
@@ -61,7 +61,7 @@ func writingTargetCards(plan *planparser.Plan) map[string][]planparser.Card {
 // editing any part of a multipart symbol touches that file. Findings are blocking, matching the
 // syntactic tier's own severity.
 func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) []Finding {
-	lang, ok := resolveLanguage(plan)
+	lang, ok := plan.GlyphLanguage()
 	if !ok {
 		return nil
 	}
@@ -129,7 +129,7 @@ func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) [
 	var findings []Finding
 	for _, m := range members {
 		for _, s := range selves {
-			if cardIDOf(m.card) == cardIDOf(s.card) {
+			if m.card.ID() == s.card.ID() {
 				continue // a card cannot conflict with itself.
 			}
 			if !m.files[s.file] {
@@ -137,10 +137,10 @@ func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) [
 			}
 			findings = append(findings, Finding{
 				Check: "containment-file-overlap",
-				Card:  cardIDOf(m.card),
+				Card:  m.card.ID(),
 				Detail: fmt.Sprintf(
 					"card %d's member glyph physically overlaps card %s's own file self glyph naming %q",
-					m.card.Number, cardIDOf(s.card), s.file,
+					m.card.Number, s.card.ID(), s.file,
 				),
 				Severity: SeverityBlocking,
 			})

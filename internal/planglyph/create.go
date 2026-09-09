@@ -151,7 +151,7 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 				case quarry.StatusFound, quarry.StatusMultipart:
 					findings = append(findings, Finding{
 						Check:    "create-already-exists",
-						Card:     cardIDOf(c),
+						Card:     c.ID(),
 						Detail:   fmt.Sprintf("Create target %q already resolves %s", t, r.Status),
 						Severity: SeverityBlocking,
 					})
@@ -159,7 +159,7 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 					if r.Unit == quarry.StatusNotFound {
 						findings = append(findings, Finding{
 							Check:    "create-new-unit",
-							Card:     cardIDOf(c),
+							Card:     c.ID(),
 							Detail:   fmt.Sprintf("Create target %q introduces a new unit", t),
 							Severity: SeverityInformational,
 						})
@@ -168,7 +168,7 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 				default:
 					findings = append(findings, Finding{
 						Check:    "glyph-rejected",
-						Card:     cardIDOf(c),
+						Card:     c.ID(),
 						Detail:   unreadableStatusDetail("Create target", t, r),
 						Severity: SeverityBlocking,
 					})

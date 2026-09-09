@@ -149,7 +149,7 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 // whether a failure to re-read it is a real infrastructure failure or merely an in-memory plan that
 // was never on disk to begin with.
 func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry.ResolveResult) ([]Finding, bool, error) {
-	if _, ok := resolveLanguage(plan); !ok {
+	if _, ok := plan.GlyphLanguage(); !ok {
 		return nil, false, nil
 	}
 
@@ -159,7 +159,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	var sources []declSource
 
 	for _, c := range plan.Cards {
-		card := cardIDOf(c)
+		card := c.ID()
 		for _, d := range c.Declarations {
 			unit, ok := planparser.HandleUnit(d.Handle)
 			if !ok {
@@ -331,7 +331,7 @@ func cardOwnHandles(c planparser.Card) []string {
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite, mirroring CanonicalizeHandles.
 func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, error) {
-	if _, ok := resolveLanguage(plan); !ok {
+	if _, ok := plan.GlyphLanguage(); !ok {
 		return nil, nil
 	}
 
@@ -377,7 +377,7 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 		if matched < len(handles) {
 			findings = append(findings, Finding{
 				Check:    "bind-count-mismatch",
-				Card:     cardIDOf(c),
+				Card:     c.ID(),
 				Detail:   fmt.Sprintf("card %d owns %d handle(s) but the record-batch delta matched only %d", c.Number, len(handles), matched),
 				Severity: SeverityBlocking,
 			})
