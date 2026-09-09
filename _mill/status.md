@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
-plan: null
+plan: _mill/plan
 parent: main
 task: Centralize glyph ref-shape enumeration
 task_description: |
@@ -23,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-09T05:40:45Z'
 discussion-gap-fix-r6  '2026-09-09T05:44:08Z'
 discussion-fix-r7  '2026-09-09T05:47:11Z'
 discussed  '2026-09-09T05:47:11Z'
+planning  '2026-09-09T06:04:56Z'
 ```
