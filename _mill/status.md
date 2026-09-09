@@ -56,7 +56,9 @@ batches:
     commit_sha: df03fef69f3e4e28bbd2c3a325f2c25d19efff0e
     verify_baseline_failures: []
   - name: planglyph-migration
-    state: pending
+    state: running
+    implementer_session: 3e777f08-c602-40aa-bac2-1e8a3ed2045f
+    start_sha: f4d74608cda26116f581df777183ac0097a8c7ad
     verify_baseline_failures: []
   - name: status-family
     state: pending
