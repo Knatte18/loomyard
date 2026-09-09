@@ -105,10 +105,45 @@ Job 2 closes (a fake-clock unit test seeding `attached: true, state.Started: fal
 engine whose `Startup` never returns `StartupReady`, asserting `OutcomeDied` at/near
 `startup_timeout_s` rather than the full run timeout).
 
-## Findings (provisional, severity TBD at the end)
+### Additional live adversarial scenario: double kill-and-resume cycle
 
-- **F-C1 (thread C, code, severity TBD — leaning LOW, CONFIRMED via trace, not live-reproduced —
-  see reasoning).** `internal/shuttleengine/run.go`'s `Start` has a narrow, structurally-inherent
+Wrote a throwaway (never committed) `//go:build smoke` test in `internal/loomcli` reusing
+`newWiredPairFixture`/`buildLyxBinary`/`runLoomCLINoFatal`: bootstrap once, kill the driver, run
+`loom drive` standalone (cycle 1), then kill nothing further and run `loom drive` standalone AGAIN
+immediately (cycle 2) against the now-`failed` status row, to check whether the started-gating fix
+regresses on a SECOND consecutive resume rather than only the first.
+
+- Cycle 1: `loom drive` exited 1 in 4.60s, outcome `died`, status `state=failed`.
+- Cycle 2: `loom drive` exited 1 in 4.65s, outcome `died`, status `state=failed`, with a genuinely
+  NEW `strandGUID`/`sessionID`/run dir (not a re-attach to cycle 1's leftover run) — correct, since
+  `dispositionCandidate` treats a terminal `Outcome` value ("died") as `verdictRespawnEligible`
+  regardless of the pane's own liveness, so Attach never re-attaches to an already-terminal record.
+- Both cycles classified fast and consistently; no regression across repeated resumes. Deleted the
+  scratch test file afterward (`git status --short` confirmed a clean tree) — it was a driving
+  harness, not a deliverable.
+
+Conclusion: sound. No new defect found on this angle — a valuable, honest "the area holds up" result
+per the review prompt's own explicit allowance not to manufacture findings.
+
+## Findings
+
+### F1 (thread B, the seeded residual — MEDIUM, CONFIRMED by independent sabotage)
+`internal/shuttleengine/wait.go`'s `d0e5a0e7b` fix (`started := run.attached && run.state.Started`)
+is itself correct, but carries no regression test: reverting it to the pre-fix
+`started := run.attached` leaves the ENTIRE hermetic suite green (`go test ./internal/shuttleengine/...`)
+and even leaves the one smoke test the fix was written for STILL PASSING — merely slower (62s vs
+~5s) and misclassified (`outcome=timeout` instead of `outcome=died`), because `aba2c270a`'s corrected
+assertion checks only the final `running`→`failed` state transition, never the outcome kind or the
+elapsed time. `TestAttach_StartedSeededTrue` cannot catch it either, by construction (it seeds
+`started: true` on both the old and new code paths). Independently reproduced via sabotage (see
+"What was tested" above) before trusting the campaign's own characterization.
+**Fix:** a fake-clock `internal/shuttleengine` unit test seeding `attached: true`,
+`state.Started: false`, against a fake engine whose `Startup` never returns `StartupReady`, asserting
+the startup probe fires and classifies `OutcomeDied` at (near) `startup_timeout_s` rather than the
+full run timeout — this is what the review prompt's own seeded residual specifies, and what actually
+closes the gap (confirmed by re-running the same sabotage against the new test in Job 2).
+
+### F2 (thread C, code — LOW, CONFIRMED via trace, not live-reproduced — see reasoning) `internal/shuttleengine/run.go`'s `Start` has a narrow, structurally-inherent
   race between `r.reed.AddStrand(...)` succeeding (which actually creates the live tmux pane and
   starts the launch command running inside it) and `saveRunState(runDir, state)` persisting
   `run.json` for it. A process killed in exactly that window (a real `kill -9`, not merely "before
@@ -138,14 +173,87 @@ engine whose `Startup` never returns `StartupReady`, asserting `OutcomeDied` at/
   matching this codebase's own established idiom for narrow, currently-unfixable residuals (e.g.
   `sendVerified`'s "Residual, stated rather than papered over" comment).
 
+### F3 (thread B/C, docs — LOW, CONFIRMED)
+None of the three thread-B commits (`d0e5a0e7b`, `aba2c270a`, `69886823e`) touched a single doc file
+— confirmed by their diffstats (`git show --stat`, read in full during Job 1). Two of them changed
+observable behavior that this repo's own doc-lifecycle convention
+(`CLAUDE.md`: "Task completion — docs land in the same commit") and this review prompt's own Job 2
+instructions both require to land with a doc update in the same change:
+- `d0e5a0e7b` introduced `RunState.Started` and the whole started-gating mechanism it drives; grepped
+  `manifest/designs/loom.md` for `Started` — zero matches. The "Crash recovery" section's step 2
+  ("Is the agent's session still alive?") describes the attach decision purely in terms of a
+  `run.json`'s `Outcome` and reed liveness, which is now materially incomplete: an attached run can
+  additionally still need the startup probe, and the doc gives a reader no way to know that.
+- `69886823e` changed `VerifySeedOwnership`'s disposition for a decode failure. Grepped the same file
+  for `VerifySeedOwnership` — zero matches; it was never documented even at its original
+  introduction (predates this campaign), but the crash-recovery section is exactly where a reader
+  would look for "what happens to a poisoned status file at the bootstrap gate", and it says nothing.
+**Fix:** add both to `manifest/designs/loom.md`'s "Crash recovery" section (the natural home per its
+own heading and existing content) in the same change as F1/F2's other doc touches.
+
 ## Executive summary
 
-(written last)
+Thread A (`centralize-glyph-shape-enum`, `quarry-bump-v0-2-0-status-helpers`) stays CONVERGED: a
+light-touch regression-alertness pass (full `go test`/`go vet`/`-tags integration` re-run including
+the real-quarry-driven `DetectDrift` tests, plus a fresh read of `shape.go`'s registry and its
+meta-tests) found nothing new and nothing regressed. Not re-reviewed from scratch, per the campaign's
+own instruction.
+
+Thread B's seeded residual (the `Started`-gating coverage gap) is CONFIRMED by independent sabotage,
+not merely trusted, and closed in Job 2 with the exact test the campaign specified (F1, MEDIUM).
+
+Thread C's genuinely-open adversarial pass over the wider bootstrap/crash-recovery surface produced
+one new, real, CONFIRMED-via-trace finding: a narrow (microsecond-scale) crash window between
+`AddStrand` succeeding and `run.json` being persisted, which can leave a genuinely live, unreachable
+pane behind and cause a duplicate agent on the next spawn (F2, LOW) — structurally unclosable by
+reordering (a two-store transaction problem), so it is documented as a second accepted residual
+rather than "fixed" in the sense of eliminated. One additional live adversarial scenario (a
+double-kill-and-resume cycle) and one additional code-tracing investigation (the
+`VerifySeedOwnership`/`CheckSeed` disposition-sharing claim, for every failure mode beyond the one
+`69886823e` touched) both came back clean — reported as explicitly-checked-and-sound rather than
+silently assumed.
+
+One docs gap (F3, LOW): none of the three thread-B commits updated `manifest/designs/loom.md`,
+despite two of them changing observable crash-recovery behavior this repo's own convention requires
+to land with a doc update in the same change.
+
+**Top risks:** none BLOCKING. F1 is the highest-priority item (a real production fix with
+inadequate regression coverage — the exact "test-coverage soundness" axis this campaign calls out),
+closed in Job 2. F2 is real but exceptionally narrow and is closed by documentation rather than code.
+F3 is a straightforward doc-completeness gap.
+
+**Merge-readiness opinion (pre-fix):** thread A is merge-ready as-is (converged, re-confirmed).
+Thread B/C is merge-ready ONCE F1's test lands (the production code itself, `d0e5a0e7b`/`aba2c270a`/
+`69886823e`, is already correct and needs no code change) and F2/F3's doc updates land. See the
+fixer report for the final, post-fix verdict.
 
 ## Scope assessment
 
-(written last)
+**Thread A — plan-vs-shipped:** `manifest/designs/quarry-glyph-plan-alphabet.md`'s "Status: Done"
+v1 behavior (handle lifecycle, resolve status policy, both containment tiers, infrastructure-error
+disposition) is still exactly what the refactored code delivers — re-confirmed by the full hermetic
++ integration suite and a read of the registry/status-helper call sites; nothing shipped beyond scope
+and nothing was found deferred-that-should-be-v1.
+
+**Thread B — plan-vs-shipped:** the two originally-flagged smoke-test failures are genuinely fixed
+(`d0e5a0e7b`, `aba2c270a`), and a real, adjacent production bug (`69886823e`) was found and fixed
+alongside them, all matching `manifest/designs/loom.md`'s "Crash recovery" design intent (a driver
+that dies must never look like a broken bootstrap; each layer answers only the question it owns).
+The one gap is coverage (F1) and docs (F3), not behavior.
+
+**Thread C — plan-vs-shipped:** no plan document promises a specific bar here beyond the design
+doc's general crash-recovery principles; this thread's job was an open-ended adversarial pass, which
+surfaced one narrow, honestly-scoped residual (F2) and confirmed the rest of the reachable surface
+(the disposition-sharing claim, the double-kill-resume cycle, the general shape of every `Attach`
+call site) sound.
 
 ## Docs & operability findings
 
-(written last)
+- F3 above (`manifest/designs/loom.md`'s crash-recovery section is silent on `RunState.Started` and
+  on `VerifySeedOwnership`'s decode-tolerant disposition).
+- Operability: the driver log (`internal/loomengine.LoomDriverLog`) already names the concrete
+  failure text for every scenario driven this round (decode failures, shuttle-run-died); no gap
+  found there.
+- No CONSTRAINTS.md invariant needs updating: none of this round's findings introduce a new
+  cross-cutting rule enforced by tests across multiple packages — F1 is a test-coverage fix, F2/F3
+  are documentation-only.
