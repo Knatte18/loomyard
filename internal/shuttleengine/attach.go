@@ -273,6 +273,35 @@ const (
 // dispositionCandidate resolves c's strand via reed's strand table and returns exactly one of the
 // three verdicts, per the enumeration in mechanism-failures-do-not-attach-and-do-not-blindly-respawn.
 func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, spec Spec, minAge time.Duration, now time.Time) attachVerdict {
+	// A satisfied file contract wins over every negative liveness answer here, exactly as it does
+	// inside Wait's own poll loop (checkLivenessTick's governing rule, and the four exit paths crucible
+	// rounds opus5-high-r4 and fable5-high-r5 hardened): a candidate whose persisted Outcome still
+	// reads runOutcomeRunning AND whose every declared output file is already on disk is a run that
+	// FINISHED whatever reed now thinks of its pane. The agent's output files are its return value, so
+	// a driver that crashed after the agent wrote them all — leaving run.json at "running" because no
+	// Wait ever classified it — is a done step, not one to respawn. Attaching lets the reconstructed
+	// run's own Wait harvest it as OutcomeDone through those same file-contract-first branches, and
+	// finalize then cleans it up; respawning over it instead archives the finished files and re-runs the
+	// whole (expensive) LLM step, the exact rework the crash-recovery contract exists to prevent
+	// (manifest/designs/loom.md, "A dead claude with a finished output file is, to loom, a done step").
+	//
+	// This never fires on a Discussion-Validate bounce, so it does not reopen the crash-versus-bounce
+	// trap that bars a producer-level file-existence check: a bounce re-enters its producer only after
+	// the prior run reached OutcomeDone, at which point finalize already removed that run's directory —
+	// so no "running" run.json survives to match here. Spec.validate refuses a spec whose output file
+	// already exists on the Start path, so a "running" run.json is proof the files appeared AFTER this
+	// run began (genuine agent evidence), never the pre-existing files a bounce leaves behind with no
+	// owning run.json at all. Gating on runOutcomeRunning is what keeps the two cases apart: a terminal
+	// or cleaned-up record is excluded, and only a run still declaring itself in flight is harvested.
+	//
+	// allOutputFilesExist is vacuously true for an empty list, which is unreachable here for the same
+	// reason classifyDeadlineExpiry documents: collectAttachCandidates set-matches against a persisted
+	// RunState written by a validated Start, and Spec.validate refuses an empty OutputFiles, so no
+	// candidate with an empty output set is ever built.
+	if c.state.Outcome == runOutcomeRunning && allOutputFilesExist(spec.OutputFiles) {
+		return verdictAttachable
+	}
+
 	strand, tracked := strandStatusByGUID(strands, c.state.StrandGUID)
 
 	if tracked && strand.Live {
