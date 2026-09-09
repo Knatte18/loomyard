@@ -74,7 +74,7 @@ The bump plus a targeted adoption pass replaces the hand-rolled vocabulary guard
 - Decision: update the prose that hand-enumerates the four values so it names `Known()` / `quarry.Statuses` as the source of truth — `doneCheckVerdicts`' guard comment (`donecheck.go:154-161`) and `status_enforcement_test.go`'s file doc comment. Leave `allowedStatusConsumers` itself unchanged.
 - Rationale: the comments currently assert lyx's own four-value enumeration as the standard. After the swap that is quarry's job, and a comment that still recites the list is the next thing to drift.
 - Rejected: leaving the comments. `status_enforcement_test.go`'s doc comment explicitly instructs a future author to write "a switch with a default arm, or a boolean derived only after a vocabulary guard"; `r.Status.Known()` is now the canonical spelling of that guard and the instruction should say so.
-- Note: no `.Status` *consumer function* is added or renamed, so `allowedStatusConsumers`' six `(file, function)` pairs stay exactly as they are. `unreadableStatusDetail` keeps its entry even though its body no longer names `.Status` directly — `r.Rejected()` is not a `Status` selector, so the AST tripwire simply stops hitting that function; an unused allowlist entry is harmless and removing it would only invite re-adding it later.
+- Note: no `.Status` *consumer function* is added or renamed, so `allowedStatusConsumers`' six `(file, function)` pairs stay exactly as they are — every one of them, `unreadableStatusDetail` included, remains a live entry. The `Rejected()` swap removes the `r.Status == ""` selector from that function's first branch, but its second branch still returns `fmt.Sprintf("... unrecognized resolve status %q", r.Status)` (`resolve.go:142`), so the AST tripwire keeps hitting the function and keeps needing the allowlist entry.
 
 ### no-doc-changes
 
@@ -111,7 +111,7 @@ The bump plus a targeted adoption pass replaces the hand-rolled vocabulary guard
 
 **The two AST tripwires in the package.** Both parse the package's own production `.go` files via `runtime.Caller(0)` and must keep passing:
 
-- `status_enforcement_test.go` — flags any `ast.SelectorExpr` named `Status` outside `allowedStatusConsumers`. The `Known()` swap keeps the selector inside `doneCheckVerdicts` (already allowlisted); the `Rejected()` swap removes the last `Status` selector from `unreadableStatusDetail` (also already allowlisted, so no failure either way).
+- `status_enforcement_test.go` — flags any `ast.SelectorExpr` named `Status` outside `allowedStatusConsumers`. Both swaps are invisible to it: `r.Status.Known()` keeps a `Status` selector inside `doneCheckVerdicts`, and `unreadableStatusDetail` keeps one in its second branch's format argument (`r.Status`, `resolve.go:142`) even after the first branch's `r.Status == ""` becomes `r.Rejected()`. Both functions are already allowlisted, and both allowlist entries stay live.
 - `chokepoint_enforcement_test.go` — pins every `Resolve` call to `resolveTargets` and every `quarry.Name` call to `CanonicalizeHandles`. Untouched by this task; named here so the plan does not accidentally introduce a call site.
 
 **Test seam.** `doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.ResolveResult) ([]Finding, error)` was split out of `DoneChecks` specifically so unreachable-through-a-real-`quarry.Repo` conditions can be unit-tested (documented at `donecheck.go:135-137`). It takes a caller-supplied `map[string]quarry.ResolveResult`, so a synthetic `ResolveResult` carrying any `Status` string — including one outside the vocabulary — can be fed straight in. `donecheck_test.go` already exercises this seam; the new completeness test belongs alongside it.
@@ -130,9 +130,9 @@ From `CONSTRAINTS.md` (only the ones this task can touch):
 
 ## Testing
 
-`internal/planglyph` is the only package with test changes. TDD is a natural fit for the completeness test: it can be written and made to fail against the current literal switch before the `Known()` swap lands.
+`internal/planglyph` is the only package with test changes. There is no TDD candidate here, and the plan should not manufacture one: the completeness test's only failing mechanism is table-vs-`quarry.Statuses` drift, and with today's four statuses the coverage assertion passes and the per-status rows match current behavior exactly — so the test is green both before and after the `Known()` swap. It is a drift guard written alongside the change, not a failing-first test. That is the intended shape: it is designed to fail on a *future* quarry release, not on today's code.
 
-**TDD candidate — vocabulary completeness (new test, `internal/planglyph`).**
+**Vocabulary-completeness drift guard (new test, `internal/planglyph`).**
 The test is built around a locally declared expectation table, keyed by `quarry.Status`, whose value names the expected disposition for **all four** of `doneCheckVerdicts`' `checkID` arms — `create-not-done`, `delete-not-done`, `rename-not-done-old`, `rename-not-done-new` (`donecheck.go:183-220`). All four are equally exposed to a widened vocabulary: `create-not-done` and `rename-not-done-new` both read `resolved`, `delete-not-done` and `rename-not-done-old` both read `stillExists`, so listing only the create/delete pair would leave the two rename arms unasserted. Four table entries today:
 
 | status | `create-not-done` | `delete-not-done` | `rename-not-done-old` | `rename-not-done-new` |
