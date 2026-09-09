@@ -5,17 +5,37 @@ Round context: round 1 (`opus5-high-r1`) closed F1–F5 and drove eleven live sc
 
 ## Executive summary
 
-(written last)
+Round 2 safety pass, clean-room. I read both refactors end to end (the `shape.go` kind-policy registry with its four meta-tests and two AST scans; every `Status`/`Known()`/`Rejected()` call site against quarry v0.2.0's actual source contract), ran all hermetic gates (build/vet/`-count=5` — all green), and drove SIXTEEN live scenarios (L1–L16) through the real built `cmd/lyx` binary: `lyx webster validate`/`begin-batch`/`record-batch` in real standalone geometry with real git history and real seeded session transcripts, and `lyx loom validate-plan` in a real fabric hub built with `lyx fabric clone`/`add`.
+
+**No behavior regression found in either refactor.** Every migrated gate dispatched correctly live; both containment tiers, both Create-inversion directions, ambiguous handling, the rename exact-tier auto-bind (prior regression NOT reopened), deliberate drift blocking, undeclared-exact-rename auto-repair with exactly one amendment, evidence-tier candidates staying informational, both quarry-outage dispositions, and the `root:` normalization gate all match `quarry-glyph-plan-alphabet.md`.
+
+Findings: **0 BLOCKING, 0 MEDIUM, 1 LOW, 1 NIT, plus one verification-record correction.**
+
+- Top item of note (not a code defect): round 1's claim that the pre-resolution-rejection branch is structurally unreachable live is WRONG — I produced it live (L4) through a Create group's malformed `plan:` handle, and the code behaved correctly (blocking `glyph-rejected`, accurate rejection detail). The branch is live-proven, which strengthens, not weakens, merge-readiness.
+- F-R2-2 (LOW, operability): the ambiguous-candidate detail renders duplicate identical IDs with no per-candidate file — the typical Go ambiguity (same name declared twice in one unit) reads as "ambiguous among: X, X".
+- F-R2-1 (NIT): the `.Status` tripwire does not match the `Unit` selector, the last unmatched Status-typed reading surface.
+
+**Merge-readiness: READY.** No new defects in the two refactors; the two findings are enforcement/operability polish, fixed this round.
 
 ## Scope assessment
 
-(written last)
+- **Ref-shape registry centralization** (`internal/planparser/shape.go` + `classify.go`/`handle.go`): shipped as specified. All thirteen gates carry complete four-kind policies; both sync meta-tests, the completeness meta-test, and both AST boundary scans are present and honest (seeded self-tests prove the matchers fire). No production dispatch site outside the declared files touches `refKind`/`classifyRef` or open-codes `plan:` surgery (scans green; grep concurs). Live driving exercised eleven of the thirteen gates' dispositions with no panic and no silently skipped ref; the fail-closed panic is unreachable today precisely because the meta-tests force completeness — the intended design.
+- **quarry v0.2.0 Status-helper adoption** (`internal/planglyph`): shipped as specified. `Known()` (`answer.go:65`) and `Rejected()` (`answer.go:262`) mean exactly what the call sites assume; the six allowlisted consumers each fail closed; classification is IDENTICAL to the documented pre-refactor policy for all four statuses plus the rejection shape (verified by table tests `status_completeness_test.go` AND live: found/multipart pass, ambiguous blocks with candidates, not_found blocks with the Unit-branched detail, rejection blocks via `glyph-rejected` — L2–L4, L10–L13).
+- Nothing shipped beyond scope; no plan-promised behavior missing. Docs (`quarry-glyph-plan-alphabet.md`, `planglyph/doc.go` check-ID list, CONSTRAINTS.md invariants) match the as-built code as read and as driven.
 
 ## Code findings
 
-(provisional entries appended as formed)
+Final severity order: F-R2-2 (LOW), F-R2-1 (NIT). No BLOCKING or MEDIUM findings.
 
-### F-R2-1 (provisional) — `.Status` tripwire does not match the `Unit` selector, the third Status-typed reading surface
+### F-R2-2 (LOW, operability) — ambiguous-candidate details render duplicate identical IDs with no per-candidate file
+
+- Files: `internal/planglyph/create.go:163-171` (the `StatusAmbiguous` arm round 1's F3 added) and its sibling `internal/planglyph/resolve.go:84-95` (`glyph-ambiguous`).
+- Scenario (CONFIRMED live, L2b/L3): the one Go ambiguity actually constructible — the same name declared in two files of one unit — yields candidates that share one glyph ID, so the operator-facing detail reads `already resolves ambiguous among existing declarations: internal/greet#Dup, internal/greet#Dup` / `ambiguous among candidates: internal/greet#Dup, internal/greet#Dup`. Two identical strings tell the operator nothing about WHERE the colliding declarations are ("why is it ambiguous with itself?"); `ResolveResult.Candidates[].File` carries exactly the missing half (Resolve fills File because its entries span files).
+- Severity: LOW — dispositions are all correct; only the message under-informs, in the case that is the common one live.
+- Suggested fix: one shared candidate renderer (ID plus `(file)` when File is non-empty) used by both arms, so the two cannot drift; extend the existing tests' expectations.
+- CONFIRMED (reproduced live through the real binary, both arms).
+
+### F-R2-1 (NIT) — `.Status` tripwire does not match the `Unit` selector, the third Status-typed reading surface
 
 - File: `internal/planglyph/status_enforcement_test.go:58` (`statusVocabularySelectors = {Status, Known, Rejected}`).
 - Scenario: `quarry.ResolveResult.Unit` is a `Status`-typed field drawing from the same vocabulary (quarry's contract: set only on `not_found`, carrying `found`/`not_found`). A NEW planglyph consumer branching on `r.Unit` alone — e.g. `if r.Unit == quarry.StatusFound { treat member as merely missing } else { treat unit as gone }` — names no `Status`, `Known`, or `Rejected` selector anywhere and therefore ships invisible to the tripwire, exactly the blind-spot class round 1's F2 closed for `Rejected()`. The two existing `Unit` readers (`create.go:174` inside `createFindings`, `resolve.go:99` inside `statusFindings`) are both already inside allowlisted functions, so adding `"Unit"` to the selector set costs zero allowlist churn and closes the last unmatched spelling of the vocabulary.
@@ -25,7 +45,15 @@ Round context: round 1 (`opus5-high-r1`) closed F1–F5 and drove eleven live sc
 
 ## Docs & operability findings
 
-(provisional entries appended as formed)
+### F-R2-3 (verification-record correction, no code/doc change) — round 1's "structurally unreachable" claim about the `Rejected()` branch is refuted
+
+Live scenario L4 (below) produced the `unreadableStatusDetail` `Rejected()` branch through the real binary: a Create group ref `plan:nounit` (no `#`) is skipped by `CanonicalizeHandles` (no unit to derive), but `createHandleResults` still resolves its `resolveKeyFor` body (`"nounit"`), quarry rejects it pre-resolution (`no_separator`), and `createFindings`' fail-closed default arm renders the blocking `glyph-rejected` with the rejection detail. The same route exists for `DoneChecks` at record-batch (a malformed handle or bare-symbol Delete/Create ref resolves to an unparseable target). The CODE is correct and matches `quarry-glyph-plan-alphabet.md` ("A pre-resolution rejection ... is blocking (glyph-rejected)") — no production doc claims unreachability (grep confirms), so the only fix owed is this corrected record; round 1's report stays untouched as that round's own durable record.
+
+### Docs accuracy
+
+- `internal/planglyph/doc.go`'s check-ID enumeration matches every raiser found by reading and by live driving (all four `glyph-rejected` raisers named — round 1's F5 holds).
+- `manifest/designs/quarry-glyph-plan-alphabet.md`'s Create-inversion paragraph (including the `ambiguous` row F3 added) matches live behavior exactly (L2a/L2b/L3).
+- `CONSTRAINTS.md`'s Ref-Shape Registry Invariant names both syncs, the completeness meta-test, and the per-scan exempt sets — all exactly as implemented (F1 holds).
 
 ## What was tested
 
@@ -62,6 +90,22 @@ Hub built with the real binary: two local bare remotes (`fixt.git` cloned from t
 
 - **L14 — `lyx loom validate-plan` parity pair in the hub.** Plan seeded in the pair's `_lyx/plan` (draft handle `plan:internal/greet#praiseFn`, `approved: false`). `lyx loom validate-plan`: `{"ok":true,...}` AND both card files canonicalized on disk to `plan:internal/greet#Praise` (through the weft-linked `_lyx`). `lyx loom validate-plan --require-approved`: exactly one extra blocking finding, `plan-unapproved`. Gate Self-Check Parity holds live through the loom verb. MATCHES SPEC.
 - **L15 — quarry outage through the loom verb.** `chmod 000` on the worktree's `internal/greet`: `{"error":"loom: quarry could not answer validating plan at <plan-dir>: planglyph: quarry could not answer: resolve: engine: ... permission denied","ok":false}` — the CLI-side quarry-named disposition, never "the plan is invalid". Restored cleanly.
+
+- **L16 — `root:` normalization gate + malformed glyph.** Plan with `root: internal`; card entries `greet/greet.go` (root-joined, canonicalized, resolves — no finding), `shedrecipe.Lookup` (NOT root-joined — the finding's detail shows the verbatim symbol, so `gateNormalizePath` skipped it: the "single sharpest regression this migration can introduce" did not happen), `internal/greet##` (→ `glyph-malformed` with quarry's parse error). First run of L16 accidentally reused L13's stale `state.json`, and `webster validate` honestly reported `"scope":"pending"` and skipped the completed-by-state card — documented run-progress scoping, not a defect; rerun with clean state produced the two expected blocking findings. MATCHES SPEC.
+
+### Smoke suite (tagged, zero real LLM subprocesses)
+
+- `which tmux` → present (no skip masquerading as a pass). `go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1`: 9 PASS, 2 FAIL — exactly the two failures the round context names as pre-existing: `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` (Discussion-Write shuttle `run outcome timeout`; history did not advance) and `TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy` (driver log empty; wants the poisoned-status decode failure named). **Deferred-item re-evaluation:** both sit in loom's driver bootstrap / Discussion-Write shuttle path — neither touches `internal/planparser`/`internal/planglyph` nor any `Status`/ref-shape dispatch — so they are genuinely out of this campaign's scope and stay deferred.
+
+### Teardown
+
+- No tmux server was started by my live driving (all webster/loom verbs ran with `assertedModel` pre-matched, so no inject; no `lyx webster run`/`lyx loom run` was ever invoked). The one live `tmux` process on the host (pid 485544) predates this session by a week (started Sep 2, user's own sessions "0"/"10" on the default socket) and is not mine to kill; the smoke suite's own cleanup left no additional server. Scratch fixtures live under the gitignored `.scratch/live-r2/` and are removed at the end of Job 2.
+
+### Not verified, and why
+
+- Windows-specific path behavior — unreachable from this Linux host; named, never-executed gap.
+- A real `quarry.Name` length/echo-mismatch and a batched-Resolve coverage breach — unproducible through a real quarry (its contract always holds); covered by the unit-seam tests (`ensureResolveCoverage`, `matchHandleResults`, `ensurePostRepairCoverage`), which is the only way those guards can be exercised.
+- The full LLM-driven phase machine (real Discussion-Write/Burler/Plan-Write) — per the cost declaration, this campaign's mechanics never touch an LLM, and nothing I drove suggested otherwise; no felt need arose.
 
 ### Spec/contract reading notes
 
