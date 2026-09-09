@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-status-family
+phase: approved-batch-coverage
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-exported-surface  '2026-09-09T06:22:03Z'
 approved-planparser-migration  '2026-09-09T06:27:33Z'
 approved-planglyph-migration  '2026-09-09T06:32:28Z'
 approved-status-family  '2026-09-09T06:37:18Z'
+approved-batch-coverage  '2026-09-09T06:40:36Z'
 ```
 
 ## Batches
@@ -70,9 +71,10 @@ batches:
     commit_sha: 0d130d77557b970611b7748bd000c9f6787f2202
     verify_baseline_failures: []
   - name: batch-coverage
-    state: running
+    state: approved
     implementer_session: ef9684aa-7b63-458f-924d-d14419cd4de2
     start_sha: b31976dcf4bc250c322cffeb87ffd8038124b9bc
+    commit_sha: 813f9b3035a3b7a7a08d261212066a9ad62f4718
     verify_baseline_failures: []
   - name: boundary-enforcement
     state: pending
