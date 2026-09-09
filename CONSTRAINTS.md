@@ -228,7 +228,8 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 `internal/planparser` is the sole declarer of ref-shape vocabulary — classification (`classifyRef`/`refKind`) and the `plan:` handle grammar (`HandlePrefix` and the exported handle helpers).
 
 - Every ref-shape decision in `internal/planparser` and `internal/planglyph` routes through the kind-policy ledger in `internal/planparser/shape.go` or the exported handle vocabulary.
-- Named enforcement: the enum↔slice sync meta-test, the ledger completeness meta-test, and the AST-based boundary-enforcement scans with per-scan package-qualified exempt sets (`{internal/planparser/classify.go, internal/planparser/shape.go}` for the `refKind` scan, plus `internal/planparser/handle.go` for the `plan:`-op scan; no planglyph file is exempt).
+- Named enforcement: the `refKind` enum↔`allRefKinds` sync meta-test, the `refGate` constants↔`ledger` keys sync meta-test, the ledger completeness meta-test, and the AST-based boundary-enforcement scans with per-scan package-qualified exempt sets (`{internal/planparser/classify.go, internal/planparser/shape.go}` for the `refKind` scan, plus `internal/planparser/handle.go` for the `plan:`-op scan; no planglyph file is exempt).
+- The two sync meta-tests are separate obligations and both parse a const block from the AST, because Go cannot reflect over constants: ledger completeness ranges `ledger`'s own keys and therefore cannot see a gate missing from it entirely.
 
 ## Glyph Conversion Chokepoint Invariant
 

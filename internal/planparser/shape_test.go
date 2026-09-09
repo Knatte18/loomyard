@@ -1,11 +1,25 @@
-// shape_test.go is the Ref-Shape Registry's own self-enforcement suite: it proves the registry
-// stays in sync with classify.go's refKind enum (TestRefKindEnumMatchesAllRefKinds), that every
-// ledger policy covers the whole kind domain (TestLedgerCompleteness), and that the lookup path
-// fails closed on an undeclared disposition rather than silently skipping the ref
-// (TestLookupFailsClosedOnUndeclaredKind). The AST-parsing test follows the idiom of
-// internal/cliwire/bannedecl_enforcement_test.go: stdlib go/parser only, repo root resolved from
-// runtime.Caller(0), production files only (this file itself is a _test.go file and is never
-// parsed as a scan target).
+// shape_test.go is the Ref-Shape Registry's own self-enforcement suite. The registry's fail-closed
+// promise rests on TWO independent syncs, and this file proves both, in both directions:
+//
+//   - classify.go's refKind enum <-> allRefKinds (TestRefKindEnumMatchesAllRefKinds), so a fifth
+//     kind cannot be added without every gate's policy being re-acknowledged; and
+//   - shape.go's own refGate const block <-> ledger's key set (TestRefGateConstantsMatchLedger), so
+//     a fourteenth gate cannot be declared -- nor a ledger key typo'd -- without a ledger entry.
+//
+// It further proves every ledger policy covers the whole kind domain (TestLedgerCompleteness) and
+// that the lookup path fails closed on an undeclared disposition rather than silently skipping the
+// ref (TestLookupFailsClosedOnUndeclaredKind).
+//
+// Both sync tests parse a const block out of the AST rather than ranging a Go value, and for the
+// same reason: Go cannot reflect over a package's constants, so a const block absent from its
+// companion collection is invisible to any test that ranges only the collection. That asymmetry is
+// exactly the gap TestRefGateConstantsMatchLedger closes -- TestLedgerCompleteness ranges ledger,
+// so a refGate constant with NO ledger entry contributed no iteration and passed, leaving lookup to
+// panic at runtime inside a live CLI verb (crucible round opus5-high-r1, F1).
+//
+// The AST-parsing tests follow the idiom of internal/cliwire/bannedecl_enforcement_test.go: stdlib
+// go/parser only, repo root resolved from runtime.Caller(0), production files only (this file
+// itself is a _test.go file and is never parsed as a scan target).
 
 package planparser
 
@@ -15,6 +29,7 @@ import (
 	"go/token"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 )
 
@@ -114,9 +129,116 @@ func TestRefKindEnumMatchesAllRefKinds(t *testing.T) {
 	}
 }
 
+// refGateValuesDeclared parses internal/planparser/shape.go and returns the VALUE of every constant
+// declared in its refGate-typed const block -- "bare-symbol-target", "directory-target", and so on.
+//
+// It reads values rather than identifier names because ledger is keyed by the refGate value, so a
+// value is what the two sides actually have in common: a constant whose identifier is spelled
+// correctly but whose string value is typo'd is precisely one of the two defects this enables
+// TestRefGateConstantsMatchLedger to catch, and a name-based comparison would miss it.
+//
+// Only the const block whose first ValueSpec carries the explicit refGate type is read, mirroring
+// refKindConstNamesInDeclarationOrder's own block selection; a spec whose value is not a plain
+// string literal is skipped, since the registry declares none and a computed gate value would have
+// no stable identity to compare against anyway.
+func refGateValuesDeclared(t *testing.T) []refGate {
+	t.Helper()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not determine planparser source directory location")
+	}
+	shapePath := filepath.Join(filepath.Dir(thisFile), "shape.go")
+
+	fset := token.NewFileSet()
+	astFile, err := parser.ParseFile(fset, shapePath, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", shapePath, err)
+	}
+
+	var gates []refGate
+	for _, decl := range astFile.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST || len(gd.Specs) == 0 {
+			continue
+		}
+		first, ok := gd.Specs[0].(*ast.ValueSpec)
+		if !ok || first.Type == nil {
+			continue
+		}
+		ident, ok := first.Type.(*ast.Ident)
+		if !ok || ident.Name != "refGate" {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, value := range vs.Values {
+				lit, ok := value.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				unquoted, err := strconv.Unquote(lit.Value)
+				if err != nil {
+					t.Fatalf("unquote refGate constant value %s in %s: %v", lit.Value, shapePath, err)
+				}
+				gates = append(gates, refGate(unquoted))
+			}
+		}
+	}
+
+	return gates
+}
+
+// TestRefGateConstantsMatchLedger asserts set equality, in both directions, between the refGate
+// constants shape.go declares and the gates ledger registers a policy for.
+//
+// The forward direction is the one with teeth: a gate declared and dispatched through lookup but
+// never given a ledger entry yields a nil policy map, so lookupIn reads the disposition zero value
+// and PANICS -- out of `lyx loom validate-plan` or `lyx webster begin-batch`, on the first plan
+// whose refs reach that gate, as a raw Go panic rather than a finding or an error envelope.
+// TestLedgerCompleteness cannot see that case at all, because it iterates ledger's own keys and an
+// absent key contributes no iteration.
+//
+// The reverse direction catches the same defect approached from the other side: a ledger key that
+// matches no declared constant is a typo'd or stale entry, which leaves the real gate's policy
+// undeclared and produces the identical runtime panic.
+func TestRefGateConstantsMatchLedger(t *testing.T) {
+	t.Parallel()
+
+	declared := refGateValuesDeclared(t)
+	if len(declared) == 0 {
+		t.Fatal("refGateValuesDeclared found no refGate const block in shape.go")
+	}
+
+	declaredSet := make(map[refGate]bool, len(declared))
+	for _, gate := range declared {
+		if declaredSet[gate] {
+			t.Errorf("shape.go declares the refGate value %q more than once; every gate must have a distinct value", gate)
+		}
+		declaredSet[gate] = true
+	}
+
+	for gate := range declaredSet {
+		if _, ok := ledger[gate]; !ok {
+			t.Errorf("shape.go declares refGate %q but ledger registers no policy for it; lookup would panic on the first ref reaching that gate (see CONSTRAINTS.md's Ref-Shape Registry Invariant)", gate)
+		}
+	}
+	for gate := range ledger {
+		if !declaredSet[gate] {
+			t.Errorf("ledger registers a policy for %q, which shape.go declares no refGate constant for; the gate it was meant to cover is left undeclared and lookup would panic on it", gate)
+		}
+	}
+}
+
 // TestLedgerCompleteness asserts, for every refGate registered in ledger, that the policy's key
 // set equals allRefKinds' members exactly -- no missing kind, no extra key -- so adding a fifth
 // kind fails every gate's policy until each is re-acknowledged.
+//
+// It says nothing about a gate MISSING from ledger entirely: a map range cannot visit an absent
+// key. TestRefGateConstantsMatchLedger above owns that half.
 func TestLedgerCompleteness(t *testing.T) {
 	t.Parallel()
 
