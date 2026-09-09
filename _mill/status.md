@@ -30,5 +30,8 @@ implementing  '2026-09-09T08:43:55Z'
 ```yaml
 batches:
   - name: quarry-bump-and-adoption
-    state: pending
+    state: running
+    implementer_session: 93d938b8-942c-441d-976b-ff748055fdca
+    start_sha: cb52d197ba6235b5316f8bc4e6c5c80a9512ad82
+    verify_baseline_failures: []
 ```
