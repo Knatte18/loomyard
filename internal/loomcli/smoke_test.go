@@ -490,14 +490,27 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	if err != nil || !foundBefore {
 		t.Fatalf("read status file before standalone drive: found=%v err=%v", foundBefore, err)
 	}
+	if before.State != shedengine.StateRunning {
+		t.Fatalf("status state before standalone drive = %q; want %q -- the killed driver must have left its row in flight", before.State, shedengine.StateRunning)
+	}
 
 	// The timeout is generous and the exit code is deliberately not asserted. What this case is
 	// about is the VERB advancing the machine standalone, and in a fixture with no provider the row
 	// it advances into ends in a launch failure -- a legitimate non-zero exit that says the driver
 	// did its job and the (absent) agent did not. Asserting exit 0 instead made this test depend on
 	// a real provider session completing, which is how it came to spawn one, block on it, and time
-	// out. The durable assertion is the status file's own history, which is what "advances the
-	// machine" means and is true regardless of how the row ended.
+	// out.
+	//
+	// The durable assertion is the status file's own state/error transition, NOT history length: a
+	// producer call that returns an error reaches no verdict, and shedengine's own appendHistory
+	// (see its doc comment, and internal/shedengine/run_routing_test.go's TestRun_ProducerError)
+	// deliberately records no history entry for it -- current_producer, state, and error carry the
+	// failure instead. A prior version of this test asserted history growth here and passed only by
+	// accident, because the OLD, buggy shuttleengine Wait took the full run/discussion timeout
+	// (~61s) to classify the dead pane, long enough that the assertion was never reached before this
+	// test's own timeout in CI; once Wait's started-gating fix let the dead pane classify fast
+	// (~startup_timeout_s), the same "no history entry" outcome surfaced immediately and revealed
+	// the stale assertion.
 	driveOut, driveCode, err := runLoomCLINoFatal(exe, worktree, 3*time.Minute, "loom", "drive")
 	if err != nil {
 		t.Fatalf("loom drive: %v; output: %s", err, driveOut)
@@ -508,8 +521,17 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	if err != nil || !foundAfter {
 		t.Fatalf("read status file after standalone drive: found=%v err=%v", foundAfter, err)
 	}
-	if len(after.History) <= len(before.History) {
-		t.Errorf("history length after standalone drive = %d; want more than before (%d) -- the machine must advance", len(after.History), len(before.History))
+	if after.State != shedengine.StateFailed {
+		t.Errorf("status state after standalone drive = %q; want %q -- the machine must advance from running to a durably recorded failure", after.State, shedengine.StateFailed)
+	}
+	if after.Error == "" {
+		t.Errorf("status error after standalone drive is empty; want the shuttle failure's own text recorded")
+	}
+	if after.CurrentProducer != before.CurrentProducer {
+		t.Errorf("current_producer changed from %q to %q; want it unchanged -- the failure is attributed to the same row, not routed onward", before.CurrentProducer, after.CurrentProducer)
+	}
+	if len(after.History) != len(before.History) {
+		t.Errorf("history length changed from %d to %d; want unchanged -- a producer call that reached no verdict records no history entry", len(before.History), len(after.History))
 	}
 }
 
