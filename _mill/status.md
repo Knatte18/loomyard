@@ -49,7 +49,9 @@ batches:
     commit_sha: b41ddde5eb09b67408860b34dd2822d448a8d123
     verify_baseline_failures: []
   - name: planparser-migration
-    state: pending
+    state: running
+    implementer_session: c1518fb1-3e5f-4829-ae74-88dff5c8db31
+    start_sha: eb9a72e718b73bb88e001d73176167a6fc0fa165
     verify_baseline_failures: []
   - name: planglyph-migration
     state: pending
