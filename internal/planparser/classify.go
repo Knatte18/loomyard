@@ -94,18 +94,3 @@ func isLowerAlphanumeric(s string) bool {
 	}
 	return true
 }
-
-// isPathRef is a convenience wrapper reporting whether raw classifies as a path.
-func isPathRef(raw string) bool {
-	return classifyRef(raw) == refKindPath
-}
-
-// isGlyphRef is a convenience wrapper reporting whether raw classifies as a glyph.
-func isGlyphRef(raw string) bool {
-	return classifyRef(raw) == refKindGlyph
-}
-
-// isHandleRef is a convenience wrapper reporting whether raw classifies as a plan: handle.
-func isHandleRef(raw string) bool {
-	return classifyRef(raw) == refKindHandle
-}

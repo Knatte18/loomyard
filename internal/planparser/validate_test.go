@@ -1772,7 +1772,7 @@ func TestValidate_PathMissing_Glyphs(t *testing.T) {
 		}
 	})
 
-	t.Run("language none: glyph-shaped entry is skipped, matching pre-glyph isPathRef-only behavior", func(t *testing.T) {
+	t.Run("language none: glyph-shaped entry is skipped, matching pre-glyph path-only behavior", func(t *testing.T) {
 		t.Parallel()
 		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo/missing.go#"})
 		plan := &planparser.Plan{Format: 5, Approved: true, Language: "none", Cards: []planparser.Card{card}}
