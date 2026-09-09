@@ -1772,7 +1772,7 @@ func TestValidate_PathMissing_Glyphs(t *testing.T) {
 		}
 	})
 
-	t.Run("language none: glyph-shaped entry is skipped, matching pre-glyph isPathRef-only behavior", func(t *testing.T) {
+	t.Run("language none: glyph-shaped entry is skipped, matching pre-glyph path-only behavior", func(t *testing.T) {
 		t.Parallel()
 		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"internal/foo/missing.go#"})
 		plan := &planparser.Plan{Format: 5, Approved: true, Language: "none", Cards: []planparser.Card{card}}
@@ -1883,5 +1883,18 @@ Framing paragraph.
 	}
 	if len(findings) != 0 {
 		t.Errorf("findings = %v; want none", findings)
+	}
+}
+
+// TestCardID asserts Card.ID renders the same "N-<slug>" identity Validate's own findings key
+// their Card field on. This file is package planparser_test, an external test package with no
+// access to validate.go's unexported cardID, so the equivalence is expressed against the same
+// "N-<slug>" format cardID itself produces, rather than by calling it directly.
+func TestCardID(t *testing.T) {
+	t.Parallel()
+
+	c := planparser.Card{Number: 3, Slug: "exported-surface"}
+	if got, want := c.ID(), "3-exported-surface"; got != want {
+		t.Errorf("Card.ID() = %q; want %q", got, want)
 	}
 }

@@ -53,7 +53,9 @@
 // when it carries a file extension or carries no "/" at all (canonicalizablePath,
 // normalize.go); a glyph-, handle-, or symbol-shaped entry is
 // stored verbatim. Classification is by shape alone, via this package's own
-// pure classifier (classify.go's classifyRef/isPathRef/isGlyphRef/isHandleRef)
+// pure classifier (classify.go's classifyRef) and the shape.go ref-shape
+// registry's ledger gates, which every dispatch site consults via lookup
+// rather than comparing classifyRef's return value itself
 // — never `go doc`, never a process spawn, so the package stays a tier1-pure
 // leaf per the Test Tier Purity Invariant. glyphref.go holds the sole
 // path->glyph call (glyph.Self) and the sole glyph->path call

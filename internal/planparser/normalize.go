@@ -3,9 +3,10 @@
 // resolves one raw card path against the plan's root:, and normalizeCard applies it to every path
 // field on a single Card — both its card-level Targets/Uses/Pairs and every one of its own
 // TargetGroups' Refs/Pairs.
-// Normalization is classifier-gated: normalizeCard and normalizeRefSlice consult classify.go's
-// isPathRef before touching an entry, so only path-shaped refs are rewritten — a symbol entry
-// (e.g. "shedrecipe.Lookup") passes through verbatim, never picking up a spurious root: prefix.
+// Normalization is classifier-gated: normalizeCard and normalizeRefSlice consult shape.go's
+// gateNormalizePath ledger gate (via lookup) before touching an entry, so only path-shaped refs
+// are rewritten — a symbol entry (e.g. "shedrecipe.Lookup") passes through verbatim, never picking
+// up a spurious root: prefix.
 // ParsePlan calls normalizeCard exactly once per card, right after that card's body is parsed, so
 // every downstream consumer — Validate included — only ever sees plain, forward-slash,
 // worktree-relative paths for the refs that are paths at all.
@@ -67,7 +68,8 @@ func cleanPosixPath(p string) string {
 
 // normalizeCard rewrites card.Targets, card.Uses, both endpoints of every card.Pairs entry, and
 // every card.TargetGroups[i].Refs/Pairs entry in place against root, applying normalizeCardPath
-// only to entries isPathRef classifies as paths — a symbol entry passes through verbatim.
+// only to entries gateNormalizePath (via lookup) classifies as paths — a symbol entry passes
+// through verbatim.
 // RenameRaw is never normalized on either side: it holds unparsed sub-bullet text captured
 // verbatim so rename-format has something to report.
 // The card-level fields and each group's own fields are normalized independently rather than one
@@ -104,12 +106,12 @@ func normalizeRefSlice(refs []string, root string) {
 	}
 }
 
-// normalizeRefIfPath applies normalizeCardPath to raw only when isPathRef classifies it as a
-// path; a symbol-shaped raw is returned unchanged. This is the single sharpest regression this
-// migration can introduce: without this gate, a non-empty root: would turn "shedrecipe.Lookup"
-// into "internal/boardcli/shedrecipe.Lookup".
+// normalizeRefIfPath applies normalizeCardPath to raw only when gateNormalizePath (via lookup)
+// classifies it as a path; a symbol-shaped raw is returned unchanged.
+// This is the single sharpest regression this migration can introduce: without this gate, a
+// non-empty root: would turn "shedrecipe.Lookup" into "internal/boardcli/shedrecipe.Lookup".
 func normalizeRefIfPath(root, raw string) string {
-	if !isPathRef(raw) {
+	if _, disp := lookup(gateNormalizePath, raw); disp != dispKeep {
 		return raw
 	}
 	return normalizeCardPath(root, raw)
@@ -175,7 +177,10 @@ func canonicalizablePath(raw string) bool {
 // level.
 func canonicalizeCard(card *Card, cardKey string, lang glyph.Language, surface map[string]map[string][]string) {
 	canon := func(raw string) string {
-		if !isPathRef(raw) || !canonicalizablePath(raw) {
+		if _, disp := lookup(gateCanonicalizePath, raw); disp != dispKeep {
+			return raw
+		}
+		if !canonicalizablePath(raw) {
 			return raw
 		}
 		g, err := glyph.Self(lang, raw)

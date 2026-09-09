@@ -38,7 +38,7 @@ func writingTargetCards(plan *planparser.Plan) map[string][]planparser.Card {
 	seen := make(map[string]map[string]bool)
 	for _, c := range plan.Cards {
 		for _, t := range c.Targets {
-			id := cardIDOf(c)
+			id := c.ID()
 			if seen[t][id] {
 				continue
 			}
@@ -60,8 +60,23 @@ func writingTargetCards(plan *planparser.Plan) map[string][]planparser.Card {
 // symbols and therefore several files; the overlap is reported when any of them matches, since
 // editing any part of a multipart symbol touches that file. Findings are blocking, matching the
 // syntactic tier's own severity.
+//
+// The member-glyph target loop below disposes of an unresolved or unreadable answer in two
+// deliberately different ways. A target absent from index (!resolved) keeps a silent continue:
+// absence is structurally legitimate here, because canonicalization can rewrite a plan: handle into
+// a glyph ref that was never part of this pass's own resolve batch, so "no answer" is not a defect
+// to report. A target that DID get an answer is a fail-closed vocabulary guard instead, in the same
+// shape as doneCheckVerdicts (donecheck.go): StatusFound and StatusMultipart proceed to read
+// Symbols; StatusNotFound and StatusAmbiguous keep today's silent skip of the member entry — a
+// target that plainly does not resolve, or resolves to several candidates nothing chose between, is
+// not a containment hazard; and anything outside that four-value vocabulary, the zero-value Status
+// included, raises the blocking finding glyph-rejected (via unreadableStatusDetail, resolve.go)
+// instead of silently dropping the member from the containment index, one finding per referencing
+// card. statusFindings' own default arm already reports the same anomalous target under the same
+// check ID; the double report is accepted by design here, exactly as createFindings and
+// doneCheckVerdicts already double-report against the same fail-closed policy.
 func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) []Finding {
-	lang, ok := resolveLanguage(plan)
+	lang, ok := plan.GlyphLanguage()
 	if !ok {
 		return nil
 	}
@@ -80,6 +95,7 @@ func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) [
 
 	var members []memberEntry
 	var selves []selfEntry
+	var findings []Finding
 
 	// byTarget is a map, and a Go map range is randomised, so walking it directly made the finding
 	// order differ between two runs over an identical plan whenever more than one overlap existed.
@@ -109,27 +125,42 @@ func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) [
 		}
 
 		r, resolved := index[target]
-		if !resolved || (r.Status != quarry.StatusFound && r.Status != quarry.StatusMultipart) {
+		if !resolved {
+			// Deliberately silent: see this function's own doc comment above.
 			continue
 		}
-		files := make(map[string]bool)
-		for _, s := range r.Symbols {
-			if s.File != "" {
-				files[s.File] = true
+		switch r.Status {
+		case quarry.StatusFound, quarry.StatusMultipart:
+			files := make(map[string]bool)
+			for _, s := range r.Symbols {
+				if s.File != "" {
+					files[s.File] = true
+				}
 			}
-		}
-		if len(files) == 0 {
-			continue
-		}
-		for _, c := range cards {
-			members = append(members, memberEntry{card: c, files: files})
+			if len(files) == 0 {
+				continue
+			}
+			for _, c := range cards {
+				members = append(members, memberEntry{card: c, files: files})
+			}
+		case quarry.StatusNotFound, quarry.StatusAmbiguous:
+			// Not a containment hazard: nothing resolved to overlap against.
+		default:
+			// Fail closed: see this function's own doc comment above.
+			for _, c := range cards {
+				findings = append(findings, Finding{
+					Check:    "glyph-rejected",
+					Card:     c.ID(),
+					Detail:   unreadableStatusDetail("member target", target, r),
+					Severity: SeverityBlocking,
+				})
+			}
 		}
 	}
 
-	var findings []Finding
 	for _, m := range members {
 		for _, s := range selves {
-			if cardIDOf(m.card) == cardIDOf(s.card) {
+			if m.card.ID() == s.card.ID() {
 				continue // a card cannot conflict with itself.
 			}
 			if !m.files[s.file] {
@@ -137,10 +168,10 @@ func resolveContainment(plan *planparser.Plan, results []quarry.ResolveResult) [
 			}
 			findings = append(findings, Finding{
 				Check: "containment-file-overlap",
-				Card:  cardIDOf(m.card),
+				Card:  m.card.ID(),
 				Detail: fmt.Sprintf(
 					"card %d's member glyph physically overlaps card %s's own file self glyph naming %q",
-					m.card.Number, cardIDOf(s.card), s.file,
+					m.card.Number, s.card.ID(), s.file,
 				),
 				Severity: SeverityBlocking,
 			})

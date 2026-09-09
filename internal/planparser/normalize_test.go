@@ -277,6 +277,40 @@ func TestNormalizeCard_PairsAndTargetsAgree(t *testing.T) {
 	}
 }
 
+// TestNormalizeRefIfPath_GateAcrossAllKinds pins gateNormalizePath, the single root:-join gate this
+// migration's own doc comment calls its highest-risk site: under a non-"." root, a path-shaped raw
+// is root:-joined, and every other shape -- a bare symbol, a glyph, a plan: handle -- passes through
+// byte-identical, plus the "//" worktree-root escape resolving to its worktree-root-relative form
+// regardless of root.
+func TestNormalizeRefIfPath_GateAcrossAllKinds(t *testing.T) {
+	t.Parallel()
+
+	const root = "internal/boardcli"
+
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "path is root-joined", raw: "list.go", want: "internal/boardcli/list.go"},
+		{name: "bare symbol passes through untouched", raw: "boardcli.RowJSON", want: "boardcli.RowJSON"},
+		{name: "glyph passes through untouched", raw: "internal/boardcli#RowJSON", want: "internal/boardcli#RowJSON"},
+		{name: "plan: handle passes through untouched", raw: "plan:internal/boardcli#RowJSON", want: "plan:internal/boardcli#RowJSON"},
+		{name: "\"//\" worktree-root escape resolves relative to the worktree root, not root", raw: "//cmd/lyx/main.go", want: "cmd/lyx/main.go"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := normalizeRefIfPath(root, tt.raw)
+			if got != tt.want {
+				t.Errorf("normalizeRefIfPath(%q, %q) = %q; want %q", root, tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
 // pipeline runs normalizeCard then canonicalizeCard on card, in the exact order ParsePlan runs
 // them, and returns the surface map canonicalizeCard populated.
 func pipeline(card *Card, root, cardKey string) map[string]map[string][]string {

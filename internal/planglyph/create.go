@@ -11,7 +11,6 @@ package planglyph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
@@ -68,7 +67,7 @@ func createHandleResults(repo *quarry.Repo, plan *planparser.Plan) (map[string]q
 				continue
 			}
 			for _, ref := range g.Refs {
-				if !strings.HasPrefix(ref, planparser.HandlePrefix) {
+				if !planparser.IsHandleRef(ref) {
 					continue
 				}
 				if _, seen := expected[ref]; seen {
@@ -152,7 +151,7 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 				case quarry.StatusFound, quarry.StatusMultipart:
 					findings = append(findings, Finding{
 						Check:    "create-already-exists",
-						Card:     cardIDOf(c),
+						Card:     c.ID(),
 						Detail:   fmt.Sprintf("Create target %q already resolves %s", t, r.Status),
 						Severity: SeverityBlocking,
 					})
@@ -160,16 +159,23 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 					if r.Unit == quarry.StatusNotFound {
 						findings = append(findings, Finding{
 							Check:    "create-new-unit",
-							Card:     cardIDOf(c),
+							Card:     c.ID(),
 							Detail:   fmt.Sprintf("Create target %q introduces a new unit", t),
 							Severity: SeverityInformational,
 						})
 					}
 					// unit: found passes with no finding.
 				default:
+					// StatusAmbiguous is deliberately routed to this same default/glyph-rejected arm
+					// rather than a case of its own passing or handled as a distinct Create-specific
+					// finding: a Create target answering ambiguous means an existing declaration
+					// already occupies (part of) that name, which is exactly the create-already-exists
+					// hazard above, and reporting it as an unreadable status rather than inventing a
+					// third Create-only disposition keeps this switch's vocabulary the same shape as
+					// every other fail-closed .Status consumer in the package.
 					findings = append(findings, Finding{
 						Check:    "glyph-rejected",
-						Card:     cardIDOf(c),
+						Card:     c.ID(),
 						Detail:   unreadableStatusDetail("Create target", t, r),
 						Severity: SeverityBlocking,
 					})

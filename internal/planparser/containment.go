@@ -50,7 +50,7 @@ func syntacticContainment(plan *Plan, lang glyph.Language) []ValidationError {
 
 	for _, c := range plan.Cards {
 		for _, t := range c.Targets {
-			if classifyRef(t) != refKindGlyph {
+			if _, disp := lookup(gateSyntacticContainment, t); disp != dispKeep {
 				continue
 			}
 			g, err := parseGlyph(lang, t)

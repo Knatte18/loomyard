@@ -297,31 +297,6 @@ func TestRenameSignature(t *testing.T) {
 	}
 }
 
-// TestDraftHandleIdentifier covers the qualified-member case: a method handle's member half is
-// "Owner.Name", and only the Name half ever belongs in a declaration head.
-func TestDraftHandleIdentifier(t *testing.T) {
-	cases := []struct {
-		handle string
-		want   string
-		wantOK bool
-	}{
-		{handle: "plan:internal/alpha#Renamed", want: "Renamed", wantOK: true},
-		{handle: "plan:internal/alpha#Counter.Tally", want: "Tally", wantOK: true},
-		{handle: "plan:internal/alpha#", wantOK: false},
-		{handle: "plan:internal/alpha", wantOK: false},
-	}
-
-	for _, tc := range cases {
-		got, ok := draftHandleIdentifier(tc.handle)
-		if ok != tc.wantOK {
-			t.Fatalf("draftHandleIdentifier(%q) ok = %v; want %v", tc.handle, ok, tc.wantOK)
-		}
-		if ok && got != tc.want {
-			t.Errorf("draftHandleIdentifier(%q) = %q; want %q", tc.handle, got, tc.want)
-		}
-	}
-}
-
 // TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration proves a method Rename pair
 // canonicalizes end to end against a real repository. Before renameSignature this produced the
 // declaration "func (c *Counter.Tallyer) Count() int", which quarry rejected as member_too_deep,

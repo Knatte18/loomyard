@@ -16,6 +16,7 @@ Plain file paths keep validating and packing exactly as before — glyph and pat
 `internal/planglyph` owns every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top.
 `planglyph.ValidateFormat`/`Validate` **call** `planparser.ValidateFormat`/`Validate` and append only resolve findings — no check is implemented twice, so the parity pair (`ValidateFormat` for the pre-approval gate, `Validate` adding the `plan-unapproved` check) cannot drift.
 Both packages derive no path of their own: `planparser.Validate(plan, worktreeRoot)` and `planglyph.Validate(plan, worktreeRoot)` share the same told-geometry shape, per the Told-Geometry Invariant (`CONSTRAINTS.md`).
+Ref-shape dispatch across both packages is single-sourced too: the kind-policy registry (`internal/planparser/shape.go`) and the exported handle vocabulary are the only ways either package acts on a ref's shape, per the Ref-Shape Registry Invariant (`CONSTRAINTS.md`).
 
 ## The handle lifecycle: draft, canonicalize, bind
 

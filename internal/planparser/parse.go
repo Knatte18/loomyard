@@ -157,8 +157,9 @@ func ParsePlan(planDir string) (*Plan, error) {
 		normalizeCard(&card, root)
 		if langOK {
 			// Canonicalize strictly after normalizeCard, on the same card, never before: canonicalization
-			// is gated on isPathRef exactly as normalizeRefIfPath is, and canonicalizing first would put
-			// every ref on the non-path side of that gate, silently switching root: off plan-wide.
+			// is gated on gateCanonicalizePath (via lookup) exactly as normalizeRefIfPath's
+			// gateNormalizePath is, and canonicalizing first would put every ref on the non-path side of
+			// that gate, silently switching root: off plan-wide.
 			canonicalizeCard(&card, cardID(card), lang, surfaceRefs)
 		}
 		cards = append(cards, card)

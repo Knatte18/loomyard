@@ -13,13 +13,6 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// cardIDOf mirrors planparser's own unexported cardID exactly: "N-<slug>". planglyph needs the
-// same stable identifier to attribute a Finding to a card, and this one-line formatting is
-// duplicated rather than exported from planparser as its own seam.
-func cardIDOf(c planparser.Card) string {
-	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
-}
-
 // targetCards indexes plan's cards by every glyph target they reference — Targets, Uses, and both
 // Pairs endpoints alike — so a resolve-backed finding can be attributed to every card that
 // references the target, one finding per referencing card, rather than one unattributed finding.
@@ -30,7 +23,7 @@ func targetCards(plan *planparser.Plan) map[string][]planparser.Card {
 	index := make(map[string][]planparser.Card)
 	seen := make(map[string]map[string]bool)
 	add := func(c planparser.Card, ref string) {
-		id := cardIDOf(c)
+		id := c.ID()
 		if seen[ref][id] {
 			return
 		}
@@ -55,11 +48,11 @@ func targetCards(plan *planparser.Plan) map[string][]planparser.Card {
 	return index
 }
 
-// sortedCards returns cards sorted by their own cardIDOf, for deterministic finding order.
+// sortedCards returns cards sorted by their own ID, for deterministic finding order.
 func sortedCards(cards []planparser.Card) []planparser.Card {
 	sorted := make([]planparser.Card, len(cards))
 	copy(sorted, cards)
-	sort.Slice(sorted, func(i, j int) bool { return cardIDOf(sorted[i]) < cardIDOf(sorted[j]) })
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID() < sorted[j].ID() })
 	return sorted
 }
 
@@ -96,7 +89,7 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 			for _, c := range cards {
 				findings = append(findings, Finding{
 					Check:    "glyph-ambiguous",
-					Card:     cardIDOf(c),
+					Card:     c.ID(),
 					Detail:   fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, strings.Join(ids, ", ")),
 					Severity: SeverityBlocking,
 				})
@@ -111,7 +104,7 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 			for _, c := range cards {
 				findings = append(findings, Finding{
 					Check:    "glyph-not-found",
-					Card:     cardIDOf(c),
+					Card:     c.ID(),
 					Detail:   detail,
 					Severity: SeverityBlocking,
 				})
@@ -125,7 +118,7 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 			for _, c := range cards {
 				findings = append(findings, Finding{
 					Check:    "glyph-rejected",
-					Card:     cardIDOf(c),
+					Card:     c.ID(),
 					Detail:   unreadableStatusDetail("target", r.Target, r),
 					Severity: SeverityBlocking,
 				})

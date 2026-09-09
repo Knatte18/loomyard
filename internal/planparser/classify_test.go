@@ -97,30 +97,32 @@ func TestClassifyRef(t *testing.T) {
 	}
 }
 
-// TestIsPathRef_IsGlyphRef_IsHandleRef covers the three convenience wrappers directly, one
-// representative case each, so a future refactor of classifyRef's return value cannot silently
-// break one wrapper while the table above still passes.
-func TestIsPathRef_IsGlyphRef_IsHandleRef(t *testing.T) {
+// TestClassifyRef_PathGlyphHandleShapes covers the same shape distinctions the retired
+// isPathRef/isGlyphRef/isHandleRef convenience wrappers once covered directly, one representative
+// case each, re-expressed against classifyRef (comparing to the expected refKind) and the exported
+// IsHandleRef, so a future refactor of classifyRef's return value cannot silently break one shape
+// while the table above still passes.
+func TestClassifyRef_PathGlyphHandleShapes(t *testing.T) {
 	t.Parallel()
 
-	if !isPathRef("list.go") {
-		t.Errorf("isPathRef(%q) = false; want true", "list.go")
+	if got := classifyRef("list.go"); got != refKindPath {
+		t.Errorf("classifyRef(%q) = %v; want refKindPath", "list.go", got)
 	}
-	if isPathRef("internal/boardcli#RowJSON") {
-		t.Errorf("isPathRef(%q) = true; want false", "internal/boardcli#RowJSON")
-	}
-
-	if !isGlyphRef("internal/boardcli#RowJSON") {
-		t.Errorf("isGlyphRef(%q) = false; want true", "internal/boardcli#RowJSON")
-	}
-	if isGlyphRef("list.go") {
-		t.Errorf("isGlyphRef(%q) = true; want false", "list.go")
+	if got := classifyRef("internal/boardcli#RowJSON"); got == refKindPath {
+		t.Errorf("classifyRef(%q) = refKindPath; want not refKindPath", "internal/boardcli#RowJSON")
 	}
 
-	if !isHandleRef("plan:approve") {
-		t.Errorf("isHandleRef(%q) = false; want true", "plan:approve")
+	if got := classifyRef("internal/boardcli#RowJSON"); got != refKindGlyph {
+		t.Errorf("classifyRef(%q) = %v; want refKindGlyph", "internal/boardcli#RowJSON", got)
 	}
-	if isHandleRef("list.go") {
-		t.Errorf("isHandleRef(%q) = true; want false", "list.go")
+	if got := classifyRef("list.go"); got == refKindGlyph {
+		t.Errorf("classifyRef(%q) = refKindGlyph; want not refKindGlyph", "list.go")
+	}
+
+	if !IsHandleRef("plan:approve") {
+		t.Errorf("IsHandleRef(%q) = false; want true", "plan:approve")
+	}
+	if IsHandleRef("list.go") {
+		t.Errorf("IsHandleRef(%q) = true; want false", "list.go")
 	}
 }

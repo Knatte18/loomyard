@@ -5,8 +5,10 @@
 package planglyph
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -84,5 +86,45 @@ func TestDetectDrift_GateOneSeesEveryDeclaredDestinationForOneOldSide(t *testing
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, planparser.AmendmentsFileName)); !os.IsNotExist(statErr) {
 		t.Errorf("amendments file exists after a declared rename; want none — gate one repairs nothing")
+	}
+}
+
+// TestEnsurePostRepairCoverage_UnansweredTargetErrors is card 12's regression for the per-key answer
+// coverage guard: a target the post-repair batch actually requested, but which the resolve answer
+// does not cover, must fail closed with ErrQuarryUnavailable naming the missing target — exactly as
+// doneCheckVerdicts' own per-key guard does (donecheck.go) — rather than let the miss pass silently
+// through DetectDrift's introduced-glyph filter.
+func TestEnsurePostRepairCoverage_UnansweredTargetErrors(t *testing.T) {
+	targets := []string{"sub#Bar", "sub#Baz"}
+	results := []quarry.ResolveResult{
+		{Target: "sub#Bar", Status: quarry.StatusFound},
+		// sub#Baz requested but never answered.
+	}
+
+	err := ensurePostRepairCoverage(targets, results)
+	if err == nil {
+		t.Fatal("ensurePostRepairCoverage(unanswered target) = nil error; want an error naming the unanswered target")
+	}
+	if !errors.Is(err, ErrQuarryUnavailable) {
+		t.Errorf("ensurePostRepairCoverage(unanswered target) error = %v; want errors.Is(err, ErrQuarryUnavailable)", err)
+	}
+	if !strings.Contains(err.Error(), "sub#Baz") {
+		t.Errorf("ensurePostRepairCoverage(unanswered target) error = %v; want it to name %q", err, "sub#Baz")
+	}
+}
+
+// TestEnsurePostRepairCoverage_FullCoveragePasses is the guard's positive half: a result set
+// covering every requested target returns nil even when the results ALSO carry an answer for a
+// glyph outside the requested batch — the introduced-glyph-absent-from-batch case stays a silent
+// pass, since the guard's scope is answer coverage of the requested targets only.
+func TestEnsurePostRepairCoverage_FullCoveragePasses(t *testing.T) {
+	targets := []string{"sub#Bar"}
+	results := []quarry.ResolveResult{
+		{Target: "sub#Bar", Status: quarry.StatusFound},
+		{Target: "sub#Unrelated", Status: quarry.StatusFound},
+	}
+
+	if err := ensurePostRepairCoverage(targets, results); err != nil {
+		t.Errorf("ensurePostRepairCoverage(full coverage) = %v; want nil", err)
 	}
 }
