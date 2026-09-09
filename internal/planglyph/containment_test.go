@@ -179,3 +179,53 @@ func TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard(t *testing.T) {
 		t.Errorf("resolveContainment(one writer, one reader) = %+v; want no findings", got)
 	}
 }
+
+// TestResolveContainment_UnreadableStatusFailsClosed is card 10's regression for the Status half of
+// resolveContainment's member-target disposition: a synthetic ResolveResult carrying a Status
+// outside quarry's four-value vocabulary must surface the blocking glyph-rejected finding rather
+// than silently drop the member from the containment index. Both an out-of-vocabulary Status string
+// and the zero-value Status (quarry's own pre-resolution rejection shape, carrying Error and Reason
+// instead of a Status) are exercised, since both routes fall through to the same default arm.
+func TestResolveContainment_UnreadableStatusFailsClosed(t *testing.T) {
+	plan := &planparser.Plan{
+		Language: "go",
+		Cards: []planparser.Card{
+			{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+		},
+	}
+
+	t.Run("OutOfVocabularyStatus", func(t *testing.T) {
+		results := []quarry.ResolveResult{{Target: "sub#Foo", Status: quarry.Status("weird")}}
+		got := resolveContainment(plan, results)
+		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Card != "1-one" || got[0].Severity != SeverityBlocking {
+			t.Fatalf("resolveContainment(out-of-vocabulary Status) = %+v; want exactly one blocking glyph-rejected finding on card 1-one", got)
+		}
+	})
+
+	t.Run("ZeroValueStatusWithErrorAndReason", func(t *testing.T) {
+		results := []quarry.ResolveResult{{Target: "sub#Foo", Error: "boom", Reason: "unparseable target"}}
+		got := resolveContainment(plan, results)
+		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Card != "1-one" || got[0].Severity != SeverityBlocking {
+			t.Fatalf("resolveContainment(zero-value Status) = %+v; want exactly one blocking glyph-rejected finding on card 1-one", got)
+		}
+	})
+}
+
+// TestResolveContainment_AbsentTargetSkipsSilently is card 10's pin for the OTHER half of the same
+// disposition: a member target entirely absent from the results index (the !resolved branch) stays
+// a silent skip, never a finding and never a containment entry, because canonicalization can rewrite
+// a plan: handle into a glyph ref that this pass's own resolve batch never carried. This is the
+// legal case the Status-half fail-closed guard above deliberately does not touch.
+func TestResolveContainment_AbsentTargetSkipsSilently(t *testing.T) {
+	plan := &planparser.Plan{
+		Language: "go",
+		Cards: []planparser.Card{
+			{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+		},
+	}
+
+	got := resolveContainment(plan, nil)
+	if len(got) != 0 {
+		t.Errorf("resolveContainment(absent target) = %+v; want no findings — absence is legal here", got)
+	}
+}
