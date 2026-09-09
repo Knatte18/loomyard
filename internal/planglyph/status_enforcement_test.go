@@ -1,16 +1,16 @@
 // status_enforcement_test.go is the .Status tripwire: it parses every production .go file directly
 // under internal/planglyph and flags any ast.SelectorExpr whose Sel is exactly "Status" that sits
-// outside an allowlisted enclosing function. quarry.ResolveResult.Status is a closed four-value
-// vocabulary (StatusFound, StatusMultipart, StatusNotFound, StatusAmbiguous) plus the zero value
-// (quarry's own pre-resolution rejection shape); a consumer that reads it without a vocabulary
-// guard fails OPEN the moment quarry widens the vocabulary or answers with a pre-resolution
-// rejection, exactly the family of defect crucible rounds opus-high-r9 (R9-6) and fable-high-r10
-// (F1) both found and fixed one call site at a time. This test does not re-verify that today's
-// allowlisted consumers actually handle the vocabulary correctly -- their own regression tests do
-// that. It exists so that a NEW .Status read, added later without reading this file, is caught
-// before it ships: the failure message instructs the author to make the new consumer fail closed
-// (a switch with a default arm, or a boolean derived only after a vocabulary guard) and then add it
-// here, rather than letting silence stand in for review.
+// outside an allowlisted enclosing function. quarry.ResolveResult.Status is a vocabulary owned by
+// quarry.Statuses (today StatusFound, StatusMultipart, StatusNotFound, StatusAmbiguous) plus the
+// zero value (quarry's own pre-resolution rejection shape); a consumer that reads it without a
+// vocabulary guard fails OPEN the moment quarry widens the vocabulary or answers with a
+// pre-resolution rejection, exactly the family of defect crucible rounds opus-high-r9 (R9-6) and
+// fable-high-r10 (F1) both found and fixed one call site at a time. This test does not re-verify
+// that today's allowlisted consumers actually handle the vocabulary correctly -- their own
+// regression tests do that. It exists so that a NEW .Status read, added later without reading this
+// file, is caught before it ships: the failure message instructs the author to make the new
+// consumer fail closed (quarry.Status.Known(), the canonical spelling of that guard, or a boolean
+// derived only after one) and then add it here, rather than letting silence stand in for review.
 //
 // The scan is deliberately scoped to this package alone. internal/quarrycli also reads .Status, but
 // it renders quarry's own answer verbatim back to the operator rather than making a plan/gate
@@ -137,9 +137,9 @@ func TestStatusEnforcement_NoOutOfAllowlistConsumer(t *testing.T) {
 
 	if len(failures) > 0 {
 		t.Errorf(".Status tripwire fired for consumer(s) not in the allowlist: %v -- a new .Status "+
-			"consumer must handle the vocabulary fail-closed (a switch with a default arm, or a "+
-			"boolean derived only after a vocabulary guard) and then be added to "+
-			"allowedStatusConsumers in status_enforcement_test.go; see that file's own doc comment",
+			"consumer must handle the vocabulary fail-closed (quarry.Status.Known(), or a boolean "+
+			"derived only after a vocabulary guard) and then be added to allowedStatusConsumers in "+
+			"status_enforcement_test.go; see that file's own doc comment",
 			failures)
 	}
 }
