@@ -13,7 +13,7 @@
 // consumer fail closed (quarry.Status.Known(), the canonical spelling of that guard, or a boolean
 // derived only after one) and then add it here, rather than letting silence stand in for review.
 //
-// The scan matches all THREE spellings the vocabulary can be read through, not the field alone.
+// The scan matches all FOUR spellings the vocabulary can be read through, not the field alone.
 // quarry v0.2.0 introduced Status.Known and ResolveResult.Rejected. A scan keyed on "Status" caught
 // the first only incidentally -- Known is called ON r.Status, so the field selector is still there --
 // and the second not at all, since Rejected names no "Status" anywhere. That blind spot pointed the
@@ -55,10 +55,19 @@ import (
 // named no "Status" selector, so it shipped invisible to the scan (crucible round opus5-high-r1,
 // F2). "Known" is matched too, for uniformity: it is the fail-closed spelling and its consumers
 // belong in the same allowlist, reviewed by the same rule.
+//
+// "Unit" is the last spelling the vocabulary can be read through: ResolveResult.Unit is a
+// Status-typed field (quarry's contract: set only on a not_found, carrying found or not_found), so
+// a consumer branching on r.Unit alone names no other selector in this set and would ship
+// unreviewed without it (crucible round fable5-high-r2, F-R2-1). Like the refKind scan in
+// internal/planparser, the match is a name-shape check: a selector named Unit on a NON-Status type
+// (quarry.NameResult.Unit, quarry.Declaration.Unit, glyph.Glyph.Unit) trips it too, and such a
+// reviewed consumer earns an allowlist row exactly like a real status reader.
 var statusVocabularySelectors = map[string]bool{
 	"Status":   true,
 	"Known":    true,
 	"Rejected": true,
+	"Unit":     true,
 }
 
 // statusHit records one ast.SelectorExpr reading the resolve-status vocabulary (a Sel named by
@@ -87,6 +96,12 @@ var allowedStatusConsumers = []allowedStatusConsumer{
 	{"donecheck.go", "doneCheckVerdicts"},
 	{"handle.go", "renameDeclSource"},
 	{"containment.go", "resolveContainment"},
+	// CanonicalizeHandles reads Unit-named selectors that are NOT the status vocabulary --
+	// quarry.NameResult.Unit and quarry.Declaration.Unit, the batched Name call's echo pair,
+	// compared to each other in its own fail-closed echo guard -- but the scan is a name-shape
+	// check and cannot tell those apart from ResolveResult.Unit, so the reviewed function earns
+	// its row here rather than a carve-out in the matcher.
+	{"handle.go", "CanonicalizeHandles"},
 }
 
 // statusHitsIn returns every statusHit astFile's declarations contain: for each top-level
@@ -223,6 +238,29 @@ func newRejectedConsumer(r quarry.ResolveResult) bool {
 	got := statusHitsIn(astFile)
 	if len(got) != 1 || got[0].fn != "newRejectedConsumer" {
 		t.Errorf("statusHitsIn(...) = %+v; want exactly one hit tagged \"newRejectedConsumer\" -- a Rejected() read is a status-vocabulary consumer and must trip the tripwire", got)
+	}
+}
+
+// TestStatusHitsIn_CatchesUnitConsumer pins the Unit spelling (crucible round fable5-high-r2,
+// F-R2-1): ResolveResult.Unit draws from the same Status vocabulary, so a consumer branching on it
+// alone is a status-vocabulary consumer even though it names no Status, Known, or Rejected selector
+// anywhere.
+func TestStatusHitsIn_CatchesUnitConsumer(t *testing.T) {
+	const src = `package fakeplanglyph
+
+func newUnitConsumer(r quarry.ResolveResult) bool {
+	return r.Unit == "found"
+}
+`
+	fset := token.NewFileSet()
+	astFile, err := parser.ParseFile(fset, "fakeplanglyph.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture source: %v", err)
+	}
+
+	got := statusHitsIn(astFile)
+	if len(got) != 1 || got[0].fn != "newUnitConsumer" {
+		t.Errorf("statusHitsIn(...) = %+v; want exactly one hit tagged \"newUnitConsumer\" -- a Unit read is a status-vocabulary consumer and must trip the tripwire", got)
 	}
 }
 
