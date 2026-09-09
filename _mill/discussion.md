@@ -31,7 +31,7 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 - Family 1 hardening (`quarry.ResolveResult.Status`): fix the one confirmed fail-open consumer (`internal/planglyph/containment.go:112`), add a grep tripwire test over `.Status` consumers, document two intentional asymmetries in place.
 - Family 2 hardening (batched-answer coverage): add the missing per-key guard in `internal/planglyph/drift.go`'s post-repair path, add a grep chokepoint test pinning `repo.Resolve` to `resolveTargets` and `quarry.Name` to `CanonicalizeHandles`.
 - New CONSTRAINTS.md invariant ("Ref-Shape Registry Invariant") and a registry sentence in `manifest/designs/quarry-glyph-plan-alphabet.md`'s package-ownership section, same commit as the code they describe.
-- Deletion of the dead `isGlyphRef` wrapper; `isHandleRef` is superseded by the exported `IsHandleRef`.
+- Deletion of all three classifier wrappers: `isGlyphRef` (dead), `isHandleRef` (superseded by the exported `IsHandleRef`), and `isPathRef` (its three callers are all policy-migration sites, emptying its caller set — see Decision: dead-wrappers).
 
 **Out:**
 
@@ -75,9 +75,12 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
   its glyph-enabled branch consults `parseGlyph`/`IsSelf`, not `refKind`, and stays outside the ledger.
   Filter-shaped sites (keep-one-kind, keep-subset) consult their policy through the lookup helper;
   the two behavior-dispatch switches stay switches inside `shape.go` but must name every kind or carry a fail-closed `default` arm, and are ledger-listed.
-  Two meta-tests enforce it:
-  (1) a completeness test asserting every registered policy's domain equals the full kind list — adding a fifth kind fails every gate's policy until each is re-acknowledged;
-  (2) a grep-shaped enforcement test (precedent: `internal/cliwire`'s bannedecl/callerset enforcement tests, `cmd/lyx/tierpurity_test.go`) asserting no `classifyRef`/`refKind` comparison and no open-coded `plan:` string op (`HasPrefix`/`TrimPrefix`/concat against `HandlePrefix`, or the raw `"plan:"` literal) exists outside `{classify.go, shape.go}` and the exported handle helpers (planparser's `handle.go`), in either package.
+  **The kind list's own source of truth:** `shape.go` declares the canonical `allRefKinds` slice, and a source-scanning meta-test parses `classify.go`'s `refKind` const block (the same read-the-source idiom as the grep enforcement tests) and asserts the declared constant count equals `len(allRefKinds)` — so a fifth kind added to the enum fails this test immediately, which then cascades into every policy's completeness failure; the slice can never silently lag the enum.
+  Three meta-tests enforce it:
+  (1) the enum↔slice sync test just described;
+  (2) a completeness test asserting every registered policy's domain equals `allRefKinds` — adding a fifth kind fails every gate's policy until each is re-acknowledged;
+  (3) a grep-shaped enforcement test (precedent: `internal/cliwire`'s bannedecl/callerset enforcement tests, `cmd/lyx/tierpurity_test.go`) asserting no `classifyRef`/`refKind` comparison and no open-coded `plan:` string op (`HasPrefix`/`TrimPrefix`/concat against `HandlePrefix`, or the raw `"plan:"` literal) exists outside `{classify.go, shape.go}` and the exported handle helpers (planparser's `handle.go`), in either package.
+  **The greps scan production files only — `*_test.go` is excluded by design:** test files legitimately call `classifyRef` directly (`classify_test.go`'s table) and spell raw `plan:` refs as fixtures (79 occurrences across six planparser test files today); the invariant binds production dispatch sites, not test inputs.
 - Rationale: this is the task's requirement 4 made concrete — a declared-but-unhandled variant becomes a test failure at every consumer, not a silent skip at one.
   Grep/AST-lite enforcement tests are established repo idiom; a `go/analysis` dependency is not.
 - Rejected: an `exhaustive`-lint via `go/analysis` (new dependency, no repo precedent);
@@ -103,8 +106,9 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 ### parse-success-glyph-test-kept
 
-- Decision: `collectGlyphTargets` (`planglyph.go:285-290`) and `resolveContainment` (`planglyph/containment.go:95-104`) keep parse-success (`glyph.Parse` returning nil error) as their glyph test;
-  only their handle-exclusion guards reroute through the exported `IsHandleRef`.
+- Decision: `collectGlyphTargets` (`planglyph.go:285-290`) and `resolveContainment` (`planglyph/containment.go:95-104`) keep parse-success (`glyph.Parse` returning nil error) as their glyph test.
+  Only `collectGlyphTargets`' explicit handle-exclusion guard (`HasPrefix` at `planglyph.go:285`) reroutes through the exported `IsHandleRef`;
+  `resolveContainment` has no such guard — it excludes handles implicitly via `glyph.Parse` failure (`containment.go:96`'s comment) — and is left **unchanged**: adding a guard there would be a new code path, not a rerouting.
   The known divergence — a malformed `#`-carrying ref is `refKindGlyph` to planparser but silently dropped by planglyph — is documented at both sites as intentional and covered: `checkGlyphMalformed` (`validate.go:520`) already raises the blocking finding for exactly that ref.
 - Rationale: planglyph's test is resolve-oriented by design (its own comment at `planglyph.go:277-281` justifies "no shape classifier of planglyph's own");
   switching to shape classification would change behavior for malformed refs and would require exporting the classifier this design keeps internal.
@@ -143,7 +147,8 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 - Decision: no new chokepoint.
   Two actions:
   (1) add the missing per-key guard in `drift.go`'s post-repair path (`drift.go:208-227`): after resolving `collectGlyphTargets(reloaded, lang)`, assert every glyph in the `introduced` set actually received an answer before filtering, erroring `ErrQuarryUnavailable` on a miss, mirroring `DoneChecks`' per-key guard (`donecheck.go:139-149`) —
-  the guard returns at the resolve boundary exactly like the sibling transport-error path (`drift.go:209-211`) already does, i.e. *before* the amendment loop (`drift.go:238-254`), so no amendment is appended on a coverage miss: an infrastructure failure produces no audit record, same as a transport failure today;
+  the guard returns at the resolve boundary exactly like the sibling transport-error path (`drift.go:209-211`) already does, i.e. *before* the amendment loop (`drift.go:238-254`), so no amendment is appended on a coverage miss: an infrastructure failure produces no audit record, same as a transport failure today —
+  and `drift.go:232-234`'s in-code comment ("the amendments are appended regardless") is amended in the same change to say "regardless of *findings*, never on an infrastructure error", so it does not contradict the new early-return;
   (2) add a grep chokepoint test pinning `repo.Resolve(` to `resolveTargets` (`repo.go:97`) and `quarry.Name(` to `CanonicalizeHandles` (`handle.go:224`), so the existing length-guard chokepoints (`ensureResolveCoverage`, the Name length+echo guard) cannot be bypassed by a future call site.
 - Rationale: inventory confirms round 10's consolidation claim holds for this family — every batch boundary is guarded except drift's post-repair site, which is unreachable-in-practice only because of the length guard it does not itself own.
   The producer-side fix (coverage enforced in `Resolve`/`Name`'s own contract) is filed as [quarry#30](https://github.com/Knatte18/quarry/issues/30) — see Decision: quarry-role.
@@ -260,7 +265,8 @@ From CONSTRAINTS.md, binding on this task:
 
 ## Testing
 
-- **Regression floor:** `go test ./internal/planparser/... ./internal/planglyph/...` green with zero edits to existing test files — the crucible regression suite is the behavior-preservation proof.
+- **Regression floor:** `go test ./internal/planparser/... ./internal/planglyph/...` green with zero edits to existing test files, with exactly two sanctioned, behavior-neutral exceptions: `classify_test.go:100-126` (`TestClassifyRefWrappers` calls the three wrappers being deleted — it is rewired to `classifyRef`/the exported `IsHandleRef`, or folded into the registry tests) and `doc.go:56` (the package doc names all three wrappers and is updated to the registry vocabulary).
+  Every crucible-derived regression test stays byte-untouched — those are the behavior-preservation proof.
   (`CGO_ENABLED=1` + C compiler required per the Quarry CGO Requirement Invariant; planglyph integration tests spawn quarry.)
 - **TDD candidates (write the test first, watch it fail):**
   the ledger completeness meta-test (add a fake fifth kind in a test-local copy is not possible against a package-level ledger — instead assert domain equality against the declared kind list, and unit-test the disposition zero-value fail-closed lookup path);
@@ -268,7 +274,7 @@ From CONSTRAINTS.md, binding on this task:
   the `containment.go:112` fail-open fix (a `ResolveResult` with an out-of-vocabulary `Status` must surface, not silently drop the member from the containment index);
   the drift per-key guard (an `introduced` glyph absent from the post-repair answer must error `ErrQuarryUnavailable`, not silently produce no finding).
 - **Migration safety:** `normalizeRefIfPath` is the highest-risk site (the single `root:`-join gate) — its policy migration gets dedicated table-driven cases covering all four kinds plus the `//` escape.
-- **Meta-tests to add:** ledger completeness; grep enforcement (no `classifyRef`/`refKind` comparisons outside the registry file; no open-coded `plan:` ops in either package outside the exported helpers); `.Status` tripwire (every consumer allowlisted + fail-closed); batch chokepoint pins (`repo.Resolve(` only in `resolveTargets`, `quarry.Name(` only in `CanonicalizeHandles`).
+- **Meta-tests to add:** enum↔slice sync (`classify.go`'s `refKind` const count == `len(allRefKinds)`, via source scan); ledger completeness (every policy's domain == `allRefKinds`); grep enforcement (no `classifyRef`/`refKind` comparisons outside `{classify.go, shape.go}`; no open-coded `plan:` ops in either package outside the exported helpers; production files only, `*_test.go` excluded); `.Status` tripwire (every consumer allowlisted + fail-closed); batch chokepoint pins (`repo.Resolve(` only in `resolveTargets`, `quarry.Name(` only in `CanonicalizeHandles`).
 - **Exported-surface tests:** `IsHandleRef`/`HandleBody`/`NewHandle`/`HandleMember`/`HandleIdentifier`/`GlyphLanguage`/`Card.ID` each get direct unit tests in planparser; planglyph's migrated call sites are covered by its existing suites.
 - Exact assertion shapes are mill-plan's job.
 
@@ -283,7 +289,8 @@ From CONSTRAINTS.md, binding on this task:
 - **Q:** Batch-coverage family? **A:** Add drift's missing per-key guard and the chokepoint grep pins. No new chokepoint.
 - **Q:** Behavior contract? **A:** Pure refactor except the two named hardenings, each with its own new test; existing test files untouched; other defects found mid-migration become follow-up findings.
 - **Q:** Docs? **A:** New Ref-Shape Registry Invariant in CONSTRAINTS.md + a registry sentence in `quarry-glyph-plan-alphabet.md`, same commit; spec and overview untouched.
-- **Q:** Dead wrappers? **A:** `isHandleRef` superseded by exported `IsHandleRef`; `isGlyphRef` deleted; `isPathRef` stays unexported.
+- **Q:** Dead wrappers? **A:** All three deleted — `isHandleRef` superseded by exported `IsHandleRef`; `isGlyphRef` dead; `isPathRef`'s caller set is emptied by the policy migration (initial answer "stays unexported" superseded in review r2 — see Decision: dead-wrappers).
 - **Q:** Is quarry off limits as a home for any of this? **A:** No — the operator (quarry's author) rejected the proposal's "ruled out" framing; the boundary is appropriateness per family, not repo ownership. Outcome: registry stays in planparser (layering — quarry never sees `plan:` vocabulary), and the two producer-side improvements are filed as quarry#30 (batch coverage in the API contract) and quarry#31 (fail-closed `Status` helper) for their own task in that repo.
 - **Q:** Which file is the registry, and is `classify.go` inside the enforcement boundary? **A:** [auto-pick] New `internal/planparser/shape.go` holds ledger/policies/lookup + the two relocated switches; the enforcement boundary is exactly `{classify.go, shape.go}`, and `classify.go`'s open-coded `"plan:"` literal is replaced by `HandlePrefix`. **Why:** keeps `classify.go`'s spec-pinned classifier untouched while giving the greps a two-file exemption with no per-function carve-outs (review r2, BLOCKING).
 - **Q:** Disposition vocabulary and ledger granularity? **A:** [auto-pick] Three values (`dispKeep`/`dispSkip`/`dispFinding`) plus invalid zero (fail-closed lookup); the ledger unit is one kind-gate, not one function — `checkRenamePairShape` registers two policies (its `IsSelf` third arm is a glyph-grammar refinement outside ledger scope), `isFileRenamePair` one policy over both sides, `checkProsaSymbolTarget` one policy for its `language: none` branch only. **Why:** makes the completeness meta-test's domain assertion well-defined at every multi-gate and language-forked site (review r2, BLOCKING).
+- **Q:** What keeps the kind list in sync with `classify.go`'s enum? **A:** [auto-pick] `shape.go` declares the canonical `allRefKinds` slice, and a source-scanning meta-test asserts `classify.go`'s `refKind` const-block declaration count equals `len(allRefKinds)`. **Why:** without it, a fifth enum constant fails nothing until someone remembers to append the slice — exactly the silent-lag requirement 4 exists to prevent (review r3, BLOCKING).
