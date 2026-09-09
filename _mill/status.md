@@ -77,6 +77,8 @@ batches:
     commit_sha: 813f9b3035a3b7a7a08d261212066a9ad62f4718
     verify_baseline_failures: []
   - name: boundary-enforcement
-    state: pending
+    state: running
+    implementer_session: eec8af86-008d-4129-8e79-7be6dd0e2ac9
+    start_sha: bb9e35a373f63d61a13d5f7c529efaa7ee645b1f
     verify_baseline_failures: []
 ```
