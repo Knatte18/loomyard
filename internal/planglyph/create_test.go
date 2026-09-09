@@ -202,6 +202,18 @@ func TestCreateFindings_AmbiguousIsAlreadyExists(t *testing.T) {
 	if !strings.Contains(got[0].Detail, "ambiguous") || !strings.Contains(got[0].Detail, "sub#Dup") {
 		t.Errorf("finding detail = %q; want it to name both the ambiguity and the colliding candidates", got[0].Detail)
 	}
+	// Every candidate's declaring FILE must be named too: the constructible Go ambiguity is the
+	// same name declared twice in one unit, where every candidate shares one glyph ID, so an
+	// ID-only detail read "ambiguous among: X, X" and located neither declaration (crucible round
+	// fable5-high-r2, F-R2-2).
+	for _, cand := range results[0].Candidates {
+		if cand.File == "" {
+			t.Fatalf("fixture candidate %+v carries no File; the fixture assumption behind this assertion broke", cand)
+		}
+		if !strings.Contains(got[0].Detail, cand.File) {
+			t.Errorf("finding detail = %q; want it to locate candidate %q via its file %q", got[0].Detail, cand.ID, cand.File)
+		}
+	}
 }
 
 func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {

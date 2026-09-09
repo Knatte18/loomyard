@@ -11,7 +11,6 @@ package planglyph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
@@ -160,14 +159,10 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 						Severity: SeverityBlocking,
 					})
 				case quarry.StatusAmbiguous:
-					ids := make([]string, 0, len(r.Candidates))
-					for _, cand := range r.Candidates {
-						ids = append(ids, cand.ID)
-					}
 					findings = append(findings, Finding{
 						Check:    "create-already-exists",
 						Card:     c.ID(),
-						Detail:   fmt.Sprintf("Create target %q already resolves ambiguous among existing declarations: %s", t, strings.Join(ids, ", ")),
+						Detail:   fmt.Sprintf("Create target %q already resolves ambiguous among existing declarations: %s", t, candidateList(r.Candidates)),
 						Severity: SeverityBlocking,
 					})
 				case quarry.StatusNotFound:
