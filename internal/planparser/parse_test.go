@@ -648,7 +648,7 @@ func TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped(t *t
 
 // TestParsePlan_Card_HandleSurvivesNormalizeCard proves a handle-shaped Create target passes
 // through normalizeCard byte-identical, even under a non-"." root:, because classifyRef already
-// classifies it refKindHandle and normalizeRefIfPath gates on isPathRef.
+// classifies it refKindHandle and normalizeRefIfPath gates on gateNormalizePath (via lookup).
 func TestParsePlan_Card_HandleSurvivesNormalizeCard(t *testing.T) {
 	t.Parallel()
 

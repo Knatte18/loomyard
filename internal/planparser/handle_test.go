@@ -185,6 +185,144 @@ func TestCheckHandleMalformed_FileUnitHandle(t *testing.T) {
 	}
 }
 
+func TestIsHandleRef(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "handle-shaped", raw: "plan:internal/foo#NewThing", want: true},
+		{name: "handle prefix alone", raw: "plan:", want: true},
+		{name: "glyph-shaped", raw: "internal/foo#NewThing", want: false},
+		{name: "path-shaped", raw: "internal/foo/bar.go", want: false},
+		{name: "empty", raw: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsHandleRef(tt.raw); got != tt.want {
+				t.Errorf("IsHandleRef(%q) = %v; want %v", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandleBody(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		raw      string
+		wantBody string
+		wantOK   bool
+	}{
+		{name: "handle-shaped", raw: "plan:internal/foo#NewThing", wantBody: "internal/foo#NewThing", wantOK: true},
+		{name: "handle prefix alone", raw: "plan:", wantBody: "", wantOK: true},
+		{name: "glyph-shaped", raw: "internal/foo#NewThing", wantOK: false},
+		{name: "path-shaped", raw: "internal/foo/bar.go", wantOK: false},
+		{name: "empty", raw: "", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body, ok := HandleBody(tt.raw)
+			if ok != tt.wantOK {
+				t.Fatalf("HandleBody(%q) ok = %v; want %v", tt.raw, ok, tt.wantOK)
+			}
+			if ok && body != tt.wantBody {
+				t.Errorf("HandleBody(%q) body = %q; want %q", tt.raw, body, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestNewHandle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		glyphID string
+		want    string
+	}{
+		{name: "member glyph", glyphID: "internal/foo#NewThing", want: "plan:internal/foo#NewThing"},
+		{name: "empty", glyphID: "", want: "plan:"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := NewHandle(tt.glyphID); got != tt.want {
+				t.Errorf("NewHandle(%q) = %q; want %q", tt.glyphID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandleMember(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		handle     string
+		wantMember string
+		wantOK     bool
+	}{
+		{name: "member handle", handle: "plan:internal/alpha#Renamed", wantMember: "Renamed", wantOK: true},
+		{name: "qualified member handle", handle: "plan:internal/alpha#Counter.Tally", wantMember: "Counter.Tally", wantOK: true},
+		{name: "no # at all", handle: "plan:internal/alpha", wantOK: false},
+		{name: "empty member", handle: "plan:internal/alpha#", wantMember: "", wantOK: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			member, ok := HandleMember(tt.handle)
+			if ok != tt.wantOK {
+				t.Fatalf("HandleMember(%q) ok = %v; want %v", tt.handle, ok, tt.wantOK)
+			}
+			if ok && member != tt.wantMember {
+				t.Errorf("HandleMember(%q) member = %q; want %q", tt.handle, member, tt.wantMember)
+			}
+		})
+	}
+}
+
+// TestHandleIdentifier ports planglyph's draftHandleIdentifier table verbatim as its assertion
+// base (internal/planglyph/handle_test.go's TestDraftHandleIdentifier), per the overview's
+// behavior-preservation Shared Decision.
+func TestHandleIdentifier(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		handle string
+		want   string
+		wantOK bool
+	}{
+		{handle: "plan:internal/alpha#Renamed", want: "Renamed", wantOK: true},
+		{handle: "plan:internal/alpha#Counter.Tally", want: "Tally", wantOK: true},
+		{handle: "plan:internal/alpha#", wantOK: false},
+		{handle: "plan:internal/alpha", wantOK: false},
+	}
+
+	for _, tc := range cases {
+		got, ok := HandleIdentifier(tc.handle)
+		if ok != tc.wantOK {
+			t.Fatalf("HandleIdentifier(%q) ok = %v; want %v", tc.handle, ok, tc.wantOK)
+		}
+		if ok && got != tc.want {
+			t.Errorf("HandleIdentifier(%q) = %q; want %q", tc.handle, got, tc.want)
+		}
+	}
+}
+
 // TestCheckHandleMalformed_FileUnitRuleScopedToDeclarations is R9-5's regression: the file-unit
 // rule binds a handle whose unit half is actually READ, which is a Create declaration's, and must
 // not bind one claimed ONLY as a Rename pair's to-side.

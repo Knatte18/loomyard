@@ -52,6 +52,66 @@ func HandleUnit(handle string) (string, bool) {
 	return handleUnit(handle)
 }
 
+// IsHandleRef reports whether raw is a "plan:" handle. It implements exactly classifyRef's rule 1
+// (the "plan:" prefix test, classify.go) and is the one handle-vs-not predicate other packages
+// consume — never re-implemented against classifyRef itself, since that classifier stays
+// unexported.
+func IsHandleRef(raw string) bool {
+	return strings.HasPrefix(raw, HandlePrefix)
+}
+
+// HandleBody returns the substring of raw after HandlePrefix, and true when IsHandleRef(raw).
+// It reports ("", false) for a raw that is not handle-shaped at all. This is the "plan:"-strip
+// internal/planglyph's resolveKeyFor and BindHandles open-code today; both are migrated onto this
+// accessor rather than re-deriving the strip.
+func HandleBody(raw string) (string, bool) {
+	if !IsHandleRef(raw) {
+		return "", false
+	}
+	return strings.TrimPrefix(raw, HandlePrefix), true
+}
+
+// NewHandle builds a draft "plan:" handle over glyphID. It is the one sanctioned handle
+// construction: every caller that needs to spell a handle from a glyph-shaped body uses this
+// rather than concatenating HandlePrefix itself.
+func NewHandle(glyphID string) string {
+	return HandlePrefix + glyphID
+}
+
+// HandleMember returns the member-name portion of a plan: handle — the substring after its first
+// "#" — and whether one was found. Local string work over loomyard's own plan: token, never glyph
+// grammar, so the Glyph Conversion Chokepoint is untouched. Port of
+// internal/planglyph's draftHandleMember.
+func HandleMember(handle string) (string, bool) {
+	idx := strings.Index(handle, "#")
+	if idx == -1 {
+		return "", false
+	}
+	return handle[idx+1:], true
+}
+
+// HandleIdentifier returns the bare declared identifier a plan: handle's member half names: its
+// last dot-separated component. A member is "Name" for a free declaration and "Owner.Name" for a
+// method, and only the Name half ever appears in a declaration head — a method's owner is carried
+// by its receiver clause, not by its identifier. Substituting the qualified form into a signature
+// produces text a declaration head can never legally carry. Reports false for a handle carrying no
+// member at all, or one whose member (or final dot-segment) is empty. Like HandleMember this is
+// local string work over loomyard's own plan: token, never glyph grammar. Port of
+// internal/planglyph's draftHandleIdentifier.
+func HandleIdentifier(handle string) (string, bool) {
+	member, ok := HandleMember(handle)
+	if !ok || member == "" {
+		return "", false
+	}
+	if idx := strings.LastIndex(member, "."); idx != -1 {
+		member = member[idx+1:]
+	}
+	if member == "" {
+		return "", false
+	}
+	return member, true
+}
+
 // declaredHandles maps every handle declared by some card's own Create group (via
 // CardDeclaration) to every card ID that declares it, in card order. A handle declared twice by
 // the same card appears once per declaration.
@@ -101,7 +161,7 @@ func handleClaims(plan *Plan) map[string][]handleClaim {
 			claims[d.Handle] = append(claims[d.Handle], handleClaim{card: id})
 		}
 		for _, p := range c.Pairs {
-			if classifyRef(p.New) != refKindHandle {
+			if _, disp := lookup(gateHandleClaims, p.New); disp != dispKeep {
 				continue
 			}
 			claims[p.New] = append(claims[p.New], handleClaim{card: id, fromRename: true})
@@ -143,7 +203,7 @@ func referencedHandles(plan *Plan) map[string][]string {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, r := range fields {
-				if classifyRef(r) != refKindHandle {
+				if _, disp := lookup(gateReferencedHandles, r); disp != dispKeep {
 					continue
 				}
 				referenced[r] = append(referenced[r], cardID(c))

@@ -28,38 +28,6 @@ type declSource struct {
 	decl   quarry.Declaration
 }
 
-// draftHandleMember returns the member-name portion of a plan: handle — the substring after its
-// first "#" — local string work over planglyph's own plan: token, never glyph grammar, so it does
-// not touch the glyph-conversion-chokepoint Shared Decision.
-func draftHandleMember(handle string) (string, bool) {
-	idx := strings.Index(handle, "#")
-	if idx == -1 {
-		return "", false
-	}
-	return handle[idx+1:], true
-}
-
-// draftHandleIdentifier returns the bare declared identifier a plan: handle's member half names:
-// its last dot-separated component. A member is "Name" for a free declaration and "Owner.Name" for
-// a method, and only the Name half ever appears in a declaration head — a method's owner is carried
-// by its receiver clause, not by its identifier. Substituting the qualified form into a signature
-// produces text like "func (c *Counter) Counter.Tally() int", which quarry.Name then rejects as
-// member_too_deep. Like draftHandleMember this is local string work over loomyard's own plan:
-// token, never glyph grammar.
-func draftHandleIdentifier(handle string) (string, bool) {
-	member, ok := draftHandleMember(handle)
-	if !ok || member == "" {
-		return "", false
-	}
-	if idx := strings.LastIndex(member, "."); idx != -1 {
-		member = member[idx+1:]
-	}
-	if member == "" {
-		return "", false
-	}
-	return member, true
-}
-
 // identifierPattern caches one compiled word-boundary matcher per identifier, so renameSignature
 // does not recompile the same pattern for every Rename pair in a plan.
 var identifierPattern sync.Map // string -> *regexp.Regexp
@@ -114,6 +82,13 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer —
 // a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own
 // signature carries no occurrence of the identifier it is supposed to declare.
+//
+// The r.Status != quarry.StatusFound check below is Found-only by design, not an oversight left
+// over from before the vocabulary was widened: StatusMultipart is deliberately excluded alongside
+// StatusNotFound/StatusAmbiguous/the fail-closed default, because accepting a multipart answer would
+// mean arbitrarily choosing r.Symbols[0] as "the" declaration to rename from, out of several
+// declarations the language itself allows to differ from each other. A Rename pair's old side must
+// name exactly one declaration for renameSignature to have anything unambiguous to derive from.
 func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
 	r, resolved := results[oldRef]
 	if !resolved || r.Status != quarry.StatusFound {
@@ -138,7 +113,7 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 		}, false
 	}
 
-	identifier, ok := draftHandleIdentifier(newHandle)
+	identifier, ok := planparser.HandleIdentifier(newHandle)
 	if !ok {
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",
@@ -181,7 +156,7 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 // whether a failure to re-read it is a real infrastructure failure or merely an in-memory plan that
 // was never on disk to begin with.
 func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry.ResolveResult) ([]Finding, bool, error) {
-	if _, ok := resolveLanguage(plan); !ok {
+	if _, ok := plan.GlyphLanguage(); !ok {
 		return nil, false, nil
 	}
 
@@ -191,7 +166,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	var sources []declSource
 
 	for _, c := range plan.Cards {
-		card := cardIDOf(c)
+		card := c.ID()
 		for _, d := range c.Declarations {
 			unit, ok := planparser.HandleUnit(d.Handle)
 			if !ok {
@@ -200,7 +175,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Unit: unit, Decl: d.Decl}})
 		}
 		for _, p := range c.Pairs {
-			if !strings.HasPrefix(p.New, planparser.HandlePrefix) {
+			if !planparser.IsHandleRef(p.New) {
 				continue
 			}
 			src, finding, ok := renameDeclSource(card, p.Old, p.New, resultIndex)
@@ -253,7 +228,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			})
 			continue
 		}
-		canonical := planparser.HandlePrefix + res.ID
+		canonical := planparser.NewHandle(res.ID)
 		canonicalOwners[canonical] = append(canonicalOwners[canonical], src.handle)
 	}
 
@@ -332,7 +307,7 @@ func cardOwnHandles(c planparser.Card) []string {
 		handles = append(handles, d.Handle)
 	}
 	for _, p := range c.Pairs {
-		if strings.HasPrefix(p.New, planparser.HandlePrefix) {
+		if planparser.IsHandleRef(p.New) {
 			handles = append(handles, p.New)
 		}
 	}
@@ -363,7 +338,7 @@ func cardOwnHandles(c planparser.Card) []string {
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite, mirroring CanonicalizeHandles.
 func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, error) {
-	if _, ok := resolveLanguage(plan); !ok {
+	if _, ok := plan.GlyphLanguage(); !ok {
 		return nil, nil
 	}
 
@@ -399,7 +374,7 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 		cardSubs := make(map[string]string, len(handles))
 		matched := 0
 		for _, h := range handles {
-			expected := strings.TrimPrefix(h, planparser.HandlePrefix)
+			expected := resolveKeyFor(h)
 			if bound(expected) {
 				matched++
 				cardSubs[h] = expected
@@ -409,7 +384,7 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 		if matched < len(handles) {
 			findings = append(findings, Finding{
 				Check:    "bind-count-mismatch",
-				Card:     cardIDOf(c),
+				Card:     c.ID(),
 				Detail:   fmt.Sprintf("card %d owns %d handle(s) but the record-batch delta matched only %d", c.Number, len(handles), matched),
 				Severity: SeverityBlocking,
 			})

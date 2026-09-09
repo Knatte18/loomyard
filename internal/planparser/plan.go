@@ -7,6 +7,8 @@
 
 package planparser
 
+import "fmt"
+
 // CardType is the type label a card's own body declares — the key of the card's target list
 // (`**Create:**`, `**Edit:**`, and so on) per manifest/designs/plan-card-format.md.
 type CardType string
@@ -223,4 +225,11 @@ type CardDeclaration struct {
 // renamed to New.
 type MovePair struct {
 	Old, New string
+}
+
+// ID returns the stable "N-<slug>" identifier used to name a card, exported so
+// internal/planglyph can delete its cardIDOf duplicate (internal/planglyph/resolve.go). It renders
+// identically to validate.go's own unexported cardID.
+func (c Card) ID() string {
+	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }

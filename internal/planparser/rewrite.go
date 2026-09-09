@@ -159,7 +159,7 @@ func rewriteBulletLine(line string, lexemeSubs map[string]string) (string, bool)
 		if !newChanged {
 			newNew = newRef
 		}
-		if oldChanged && strings.HasPrefix(oldRef, HandlePrefix) && !strings.HasPrefix(newOld, HandlePrefix) {
+		if oldChanged && IsHandleRef(oldRef) && !IsHandleRef(newOld) {
 			return leading + "- `" + newOld + "`", true
 		}
 		return leading + "- `" + newOld + "` -> `" + newNew + "`", true

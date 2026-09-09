@@ -57,7 +57,7 @@ const (
 // relative file self glyph ("<root>/Makefile#"), which quarry resolves found; the directory-target
 // finding's own detail names that remedy (crucible round fable-high-r10, F7).
 func classifyRef(raw string) refKind {
-	if strings.HasPrefix(raw, "plan:") {
+	if strings.HasPrefix(raw, HandlePrefix) {
 		return refKindHandle
 	}
 
@@ -93,19 +93,4 @@ func isLowerAlphanumeric(s string) bool {
 		return false
 	}
 	return true
-}
-
-// isPathRef is a convenience wrapper reporting whether raw classifies as a path.
-func isPathRef(raw string) bool {
-	return classifyRef(raw) == refKindPath
-}
-
-// isGlyphRef is a convenience wrapper reporting whether raw classifies as a glyph.
-func isGlyphRef(raw string) bool {
-	return classifyRef(raw) == refKindGlyph
-}
-
-// isHandleRef is a convenience wrapper reporting whether raw classifies as a plan: handle.
-func isHandleRef(raw string) bool {
-	return classifyRef(raw) == refKindHandle
 }

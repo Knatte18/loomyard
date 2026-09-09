@@ -28,3 +28,9 @@ func planLanguage(plan *Plan) (glyph.Language, bool) {
 		return glyph.Language(""), false
 	}
 }
+
+// GlyphLanguage is planLanguage's exported form, so internal/planglyph can delete its verbatim
+// resolveLanguage duplicate (internal/planglyph/planglyph.go).
+func (p *Plan) GlyphLanguage() (glyph.Language, bool) {
+	return planLanguage(p)
+}

@@ -223,6 +223,13 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 
 - Consumers read only from the `planparser.Plan` model. `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), and `AppendAmendment` (the append-only amendment log) are the three write paths — and no others.
 
+## Ref-Shape Registry Invariant
+
+`internal/planparser` is the sole declarer of ref-shape vocabulary — classification (`classifyRef`/`refKind`) and the `plan:` handle grammar (`HandlePrefix` and the exported handle helpers).
+
+- Every ref-shape decision in `internal/planparser` and `internal/planglyph` routes through the kind-policy ledger in `internal/planparser/shape.go` or the exported handle vocabulary.
+- Named enforcement: the enum↔slice sync meta-test, the ledger completeness meta-test, and the AST-based boundary-enforcement scans with per-scan package-qualified exempt sets (`{internal/planparser/classify.go, internal/planparser/shape.go}` for the `refKind` scan, plus `internal/planparser/handle.go` for the `plan:`-op scan; no planglyph file is exempt).
+
 ## Glyph Conversion Chokepoint Invariant
 
 loomyard performs no glyph↔path conversion of its own.

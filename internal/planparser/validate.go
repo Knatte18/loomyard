@@ -57,7 +57,8 @@ func (v ValidationError) Error() string {
 	return fmt.Sprintf("%s/%s: %s", v.Check, v.Card, v.Detail)
 }
 
-// cardID returns the stable "N-<slug>" identifier Validate uses to name a card.
+// cardID returns the stable "N-<slug>" identifier Validate uses to name a card. It renders
+// identically to Card.ID (plan.go), the exported form other packages consume.
 func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }
@@ -345,36 +346,6 @@ func cardPathMalformedReason(p string) string {
 	return ""
 }
 
-// diskPathForRef maps raw to the disk-relative path checkCardPathMalformed and checkPathMissing
-// (and their two union builders) key on: a path-shaped raw maps to itself; a glyph-shaped raw maps
-// through parseGlyph followed by Glyph.UnitPath() -- the one glyph->path call, per the
-// glyph-conversion-chokepoint Shared Decision -- but only for a self glyph (IsSelf() true). A
-// member glyph names a symbol within its unit, not the unit itself, so mapping it to its unit's
-// directory and existence-checking that directory would answer a question these two checks were
-// never meant to answer (member existence is internal/planglyph's resolve-backed business); a
-// member glyph is therefore skipped (ok false) exactly like a not-ok UnitPath or a failed
-// parseGlyph, rather than reported. Any other shape (a plan: handle, a bare symbol) is also
-// skipped. ok is also false whenever plan.Language reports not-ok (e.g. "none"): a glyph-shaped
-// entry is never resolved when the plan has opted out of the alphabet.
-func diskPathForRef(plan *Plan, raw string) (string, bool) {
-	switch classifyRef(raw) {
-	case refKindPath:
-		return raw, true
-	case refKindGlyph:
-		lang, ok := planLanguage(plan)
-		if !ok {
-			return "", false
-		}
-		g, err := parseGlyph(lang, raw)
-		if err != nil || !g.IsSelf() {
-			return "", false
-		}
-		return g.UnitPath()
-	default:
-		return "", false
-	}
-}
-
 // checkCardPathMalformed implements card-path-malformed: every path- or self-glyph-shaped
 // Targets/Uses entry must map (via diskPathForRef) to a disk path that is non-empty, relative,
 // clean, and free of ".." escapes. Symbol-, handle-, and member-glyph-shaped entries are skipped,
@@ -423,7 +394,7 @@ func checkBareSymbolTarget(plan *Plan) []ValidationError {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, t := range fields {
-				if classifyRef(t) != refKindSymbol {
+				if _, disp := lookup(gateBareSymbolTarget, t); disp != dispFinding {
 					continue
 				}
 				findings = append(findings, ValidationError{
@@ -464,7 +435,7 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, t := range fields {
-				if classifyRef(t) != refKindPath {
+				if _, disp := lookup(gateDirectoryTarget, t); disp != dispKeep {
 					continue
 				}
 				if !strings.Contains(t, "/") || hasFileExtension(t) {
@@ -517,7 +488,7 @@ func checkGlyphMalformed(plan *Plan) []ValidationError {
 	for _, c := range plan.Cards {
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, t := range fields {
-				if classifyRef(t) != refKindGlyph {
+				if _, disp := lookup(gateGlyphMalformed, t); disp != dispKeep {
 					continue
 				}
 				if _, err := parseGlyph(lang, t); err != nil {
@@ -693,7 +664,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 
 		for _, fields := range [][]string{c.Targets, c.Uses} {
 			for _, r := range fields {
-				if classifyRef(r) != refKindHandle {
+				if _, disp := lookup(gateHandleMalformed, r); disp != dispKeep {
 					continue
 				}
 				unit, ok := handleUnit(r)
@@ -730,7 +701,10 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 // pair has no declaration head to name and is exempt from both of checkRenamePairShape's checks —
 // it belongs in the same group as a plain path pair.
 func isFileRenamePair(lang glyph.Language, p MovePair) bool {
-	if classifyRef(p.Old) != refKindGlyph || classifyRef(p.New) != refKindGlyph {
+	if _, disp := lookup(gateFileRenamePair, p.Old); disp != dispKeep {
+		return false
+	}
+	if _, disp := lookup(gateFileRenamePair, p.New); disp != dispKeep {
 		return false
 	}
 	oldGlyph, err := parseGlyph(lang, p.Old)
@@ -778,7 +752,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 			if isFileRenamePair(lang, p) {
 				continue
 			}
-			if k := classifyRef(p.New); k != refKindHandle {
+			if k, disp := lookup(gateRenameTo, p.New); disp == dispFinding {
 				findings = append(findings, ValidationError{
 					Check: "rename-to-not-handle",
 					Card:  cardID(c),
@@ -788,7 +762,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 					),
 				})
 			}
-			if k := classifyRef(p.Old); k != refKindGlyph {
+			if k, disp := lookup(gateRenameFrom, p.Old); disp == dispFinding {
 				findings = append(findings, ValidationError{
 					Check: "rename-from-not-glyph",
 					Card:  cardID(c),
@@ -797,7 +771,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 						c.Number, p.Old, p.New, refKindName(k),
 					),
 				})
-			} else if classifyRef(p.New) == refKindHandle {
+			} else if _, disp := lookup(gateRenameTo, p.New); disp == dispKeep {
 				// A symbol rename's old side must name a SYMBOL — a member glyph — because the
 				// to-side declaration is derived from the resolved old symbol. A SELF glyph old side
 				// paired with a handle new side is neither admitted shape (not a symbol rename, not
@@ -821,25 +795,6 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 	}
 
 	return findings
-}
-
-// refKindName names a refKind in the prose form checkRenamePairShape's own findings use, so a
-// finding says what the offending side actually is rather than only what it failed to be.
-func refKindName(k refKind) string {
-	switch k {
-	case refKindPath:
-		return "a file path"
-	case refKindSymbol:
-		return "a bare symbol"
-	case refKindGlyph:
-		return "a glyph"
-	case refKindHandle:
-		return "a plan: handle"
-	}
-	// Unreachable while classifyRef returns only the four kinds above, and deliberately not a
-	// panic: this package is lenient at card level, and a shape it cannot name is still a shape it
-	// must report rather than crash the whole validation pass over.
-	return "an unrecognized shape"
 }
 
 // checkRenameMechanicMissing implements rename-mechanic-missing: a plan with at least one Rename
@@ -1037,7 +992,7 @@ func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 					if gl, err := parseGlyph(lang, t); err == nil && gl.IsSelf() {
 						continue
 					}
-				} else if isPathRef(t) {
+				} else if _, disp := lookup(gateProsaPathOnly, t); disp == dispKeep {
 					continue
 				}
 				// The detail names what the entry FAILED to be rather than asserting it is a
