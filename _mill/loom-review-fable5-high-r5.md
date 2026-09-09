@@ -26,6 +26,15 @@
 - Suggested fix: at each mechanism-failure return in `Wait`, consult the file contract first (`allOutputFilesExist(run.spec.OutputFiles)` → `run.finalize(OutcomeDone, "")`), mirroring `classifyDeadlineExpiry`'s reasoning; add regression tests for both caps with the contract satisfied; update `manifest/designs/loom.md`'s crash-recovery step-1 enumeration ("each of the five consults the file contract first") in the same change.
 - Status: traced (CONFIRMED by code path; unit-reproducible — to be proven by the new regression tests in Job 2).
 
+### F3 (provisional, MEDIUM, traced — live confirmation planned): malformed-JSON status poisoning still stops `lyx loom run` on the envelope, at the Seed step
+
+- `manifest/designs/loom.md:380` promises "A poisoned status file must never look like it belongs to bootstrap's own gate", naming BOTH poisoning shapes: "malformed JSON, an unknown field". Commit `69886823e` fixed `VerifySeedOwnership` for both shapes (ErrDecode covers both).
+- But `lyx loom run`'s step 2 calls `loomshed.Seed` BEFORE `VerifySeedOwnership` (`internal/loomcli/run.go:101`), and `Seed` reads the existing file through `state.UpdateJSON`'s lenient `readJSONUnlocked` (`internal/state/state.go:92-94`, `internal/state/state.go:122-125`): an unknown field is tolerated (found=true → `ErrSeedExists` → tolerated by the bootstrap), but MALFORMED JSON errors out of `UpdateJSON` before `mutate` runs — so `Seed` returns "unmarshal state: invalid character ...", which is not `ErrSeedExists`, and the bootstrap refuses on the envelope at step 2. The driver is never spawned, the tmux handover never happens, and the failure looks exactly like "bootstrap's own gate" — the state 69886823e existed to remove.
+- The smoke rig (`internal/loomcli/smoke_test.go:334-341`, `poisonStatusFile`) only ever poisons with an unknown top-level field, and its own doc comment leans on Seed's leniency for exactly that shape — so the malformed-JSON half of the design promise is untested and, on the run path, unmet.
+- `lyx loom drive` is fine for both shapes (no Seed call; ownership passes; Shed.Run's step-1 gate reports the decode failure in drive's own envelope/log).
+- Suggested fix: `Seed` treats a present-but-undecodable status file as "present" — refuse-to-overwrite via `ErrSeedExists` (never overwrite: destroying even a corrupt in-flight file discards forensic state) — deferring the decode diagnosis to the driver's own step-1 read gate. Mechanically: wrap `readJSONUnlocked`'s unmarshal failure in the existing `state.ErrDecode` sentinel, and have `Seed` map `errors.Is(err, state.ErrDecode)` to `ErrSeedExists` with text saying the file exists but is unreadable. Extend the smoke rig (or a cheaper integration test) with the malformed-JSON shape. Update `loom.md` in the same change.
+- Status: traced (CONFIRMED by code path; to be reproduced live against the real built binary during live driving, and again after the fix).
+
 ## Docs & operability findings (provisional)
 
 ### F2 (provisional, NIT, traced): decode-failure diagnosis is mis-attributed to the Loom-Preflight producer in three places
