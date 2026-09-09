@@ -2,78 +2,81 @@
 
 Campaign, thread A: confirm live that `centralize-glyph-shape-enum` and
 `quarry-bump-v0-2-0-status-helpers` are genuinely behavior-preserving when driven through loom's
-real built binary. **CONVERGED (round 1-2) — see below.**
-Campaign, thread B/C (round 3+): the operator asked for two pre-existing smoke-test failures to be
-fixed as a standalone task outside the crucible loop; that fix work surfaced two real production
-bugs and one coverage gap, so the campaign has reopened around loom's bootstrap/crash-recovery
-machinery. See `_mill/loom-crucible-orchestrator-kickoff.md` for the original brief (thread A only —
-thread B/C postdates it).
+real built binary. **CONVERGED (rounds 1-2).**
+Campaign, thread B/C: fix two pre-existing smoke-test failures, then independently review that fix
+work plus a wider adversarial pass over loom's bootstrap/crash-recovery machinery. **CONVERGED
+(round 3).** See `_mill/loom-crucible-orchestrator-kickoff.md` for the original (thread-A-only)
+brief.
 
 ## Current state
-**Round 3 seeded, awaiting operator's model+effort pick.** Thread A stays converged and carried
-forward untouched. Thread B/C is the live work: close a coverage gap the orchestrator found in an
-otherwise-correct production fix, plus a genuinely open adversarial pass over the wider
-bootstrap/crash-recovery area (two real bugs were just found there by accident, outside any crucible
-round).
+**CONVERGED, all three threads.** Round 3 (Sonnet/xhigh) closed the seeded residual (a coverage gap
+in an otherwise-correct production fix) and ran a genuine adversarial pass over the wider
+bootstrap/crash-recovery area, finding one new, honestly-narrow, documentation-closed residual. The
+orchestrator independently verified every claim from a cold state. Ready for the operator's
+push/merge decision.
 
 ## CLOSED-AND-VERIFIED
 
-### Thread A (rounds 1-2, commit range `8503e22f3..c0adce527`) — CONVERGED, do not re-litigate
-**Round 1 (`opus5-high-r1`)**: F1 (registry gate↔ledger sync unenforced), F2 (`.Status` tripwire
-blind to `Rejected()`), F3 (ambiguous Create target mis-messaged — the one behavior change, a strict
-improvement), F4 (no test drove a real `quarry.DeltaGit` answer through `DetectDrift`), F5 (stale
-doc list). All 5 fixed, all independently reproduced by the orchestrator (sabotage-proofs, file-scope
-diff, doc updates).
+### Thread A (rounds 1-2, commit range `8503e22f3..c0adce527`)
+Two refactors (`centralize-glyph-shape-enum`, `quarry-bump-v0-2-0-status-helpers`) are
+**behavior-preserving** — established by diff audit + 27 combined live scenarios across two models
+(Opus round 1, Fable round 2, safety pass), both independently gated by the orchestrator. Round 2
+additionally refuted one of round 1's own claims with live evidence, independently reproduced by the
+orchestrator. Full per-finding detail: `git show 17b5c35c2^:_mill/loom-review-HANDOFF.md` and this
+file's own prior versions in git history.
 
-**Round 2 (`fable5-high-r2`, safety pass)**: 16 live scenarios, F-R2-1 (NIT), F-R2-2 (LOW), plus a
-refutation of round 1's own "structurally unreachable" claim about the `Rejected()` branch — round 2
-produced it live, and the orchestrator independently reproduced that live scenario from scratch in a
-throwaway fixture.
+### Thread B (fix agent + round 3, commit range `c0adce527..9e9b3b3ca`)
+Three production commits (`d0e5a0e7b` shuttleengine `Started`-gating, `aba2c270a` smoke-test
+assertion fix, `69886823e` `VerifySeedOwnership` decode-tolerance) fix the two originally-flagged
+smoke-test failures. All three are **correct** — independently verified by both the orchestrator and
+round 3 (Sonnet/xhigh). One coverage gap found (see round 3 below) and closed.
 
-Both refactors are **behavior-preserving**, established by diff audit + 27 combined live scenarios
-across two models (Opus, Fable), both independently gated. Full per-finding detail:
-`git show 17b5c35c2:_mill/loom-review-HANDOFF.md` (round-1-only version) and this file's own history
-for the round-2 version.
+### Round 3 (`sonnet5-xhigh-r3`, commit range `b7434917f..9e9b3b3ca`)
+3 findings, 0 BLOCKING, 1 MEDIUM, 2 LOW, all fixed:
+- **F1 (MEDIUM, the seeded residual)** — `d0e5a0e7b`'s `Started`-gating fix had no regression test:
+  reverting `wait.go`'s `started := run.attached && run.state.Started` back to `run.attached` left
+  the entire hermetic suite green AND left the target smoke test passing (just ~62s instead of ~5s,
+  misclassified as `timeout` instead of `died`), because the corrected assertion only checks final
+  state, never outcome kind or elapsed time. **Independently re-confirmed by the orchestrator via the
+  same sabotage** before trusting round 3's characterization. Closed with
+  `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`
+  (`internal/shuttleengine/wait_test.go`) — a fake-clock unit test asserting `OutcomeDied` at
+  `startup_timeout_s`, not the full run timeout. **The orchestrator sabotage-proved this new test
+  too**: reverting the gating makes it fail with the exact assertions it's supposed to catch;
+  restoring produces an empty diff. The old `TestAttach_StartedSeededTrue` remains unable to catch
+  this class of regression (confirmed still passing under sabotage) — expected, since it only pins
+  the already-started case.
+- **F2 (LOW, new thread-C finding)** — a narrow (microsecond-scale), structurally-inherent race in
+  `shuttleengine.Runner.Start` between `AddStrand` succeeding (creating a live pane) and `run.json`
+  persisting: a kill in that exact window leaves a genuinely live, unreachable pane that the next
+  `Start` duplicates alongside. Not closable by reordering (a two-independent-stores /
+  two-phase-commit problem). Documented — not code-fixed — as a second "Accepted residual" in
+  `manifest/designs/loom.md`'s Crash Recovery section, plus a code comment at the exact spot in
+  `run.go`. Orchestrator reviewed the doc/comment text: accurate, correctly distinguishes this window
+  from the pre-existing documented residual, matches the codebase's own idiom.
+- **F3 (LOW)** — none of the three thread-B commits updated `manifest/designs/loom.md`, despite two
+  changing observable crash-recovery behavior. Closed: the Crash Recovery section now names
+  `RunState.Started`'s startup-probe-skip condition and `VerifySeedOwnership`'s decode-tolerant
+  disposition.
+- Also investigated and confirmed sound (no finding): the `VerifySeedOwnership`/`CheckSeed`
+  disposition-sharing claim for every failure mode beyond the one commit touched, and a live
+  double-kill-resume cycle through the real binary (two consecutive `loom drive` resumes both
+  classify fast and correctly, no accumulating regression).
 
-### Thread B (fix agent work, commit range `c0adce527..69886823e`) — one of two commits solid
-The operator asked for the two smoke-test failures thread A's rounds both flagged out-of-scope to be
-fixed directly. A standalone fix agent (NOT a crucible round — no clean-room discipline) produced:
-- `d0e5a0e7b` — `internal/shuttleengine/wait.go`'s `started` seed: `run.attached` alone →
-  `run.attached && run.state.Started`. Real bug, real fix: an attached-but-never-started run (driver
-  killed pre-first-liveness-tick, or launched against a nonexistent binary) was wrongly treated as
-  already-started, skipping the startup probe and waiting out the full `run_timeout_min` for a
-  misleading `OutcomeTimeout` instead of a fast, correct `OutcomeDied`.
-- `aba2c270a` — fixed a separate, real defect in the smoke test's own assertion (asserted
-  `status.History` growth, which the design never guarantees for a producer call reaching no
-  verdict — see `TestRun_ProducerError`). Now checks state/error/current_producer/unchanged-history.
-- `69886823e` — `internal/loomengine/seed.go`'s `VerifySeedOwnership` no longer escalates a
-  `state.ErrDecode` failure as its own error; defers to `CheckSeed` instead, per that function's own
-  documented contract.
+**Orchestrator's independent verification of round 3**: file-scope diff matched exactly
+(`wait_test.go` test-only, `run.go` comment-only, `loom.md` docs-only — no stray reformat despite
+round 3's own aborted `mdreflow` experiment), cold-state hermetic gates green repo-wide, live smoke
+suite 11/11 green with the target test at ~5.2s, sabotage-proof of the new regression test
+reproduced independently.
 
-**Orchestrator's independent verification**: cold-state hermetic gates green repo-wide, file-scope
-diff matched, both new/changed tests sabotage-proved — with an asymmetric result:
-- **`69886823e` is solidly guarded** — sabotage (reverting the `errors.Is(err, state.ErrDecode)`
-  check) made both the new unit test and the smoke test fail, exactly as expected.
-- **`d0e5a0e7b` has a coverage gap** — sabotage (reverting to `started := run.attached`) did NOT make
-  the smoke test fail; it just took ~62s instead of ~6s, because `aba2c270a`'s corrected assertion
-  checks only the final state, not the speed of getting there. `TestAttach_StartedSeededTrue` also
-  can't catch it (it seeds `started: true` regardless, so it can't distinguish old from new
-  behavior). The production fix is real and correct; only its regression coverage is missing.
-
-## RESIDUAL currently seeded (round 3)
-**Close the `d0e5a0e7b` coverage gap**: add a `internal/shuttleengine` unit test seeding
-`attached: true, state.Started: false` against a fake engine whose `Startup` never returns
-`StartupReady`, proving the startup probe re-runs and classifies `OutcomeDied` at (near)
-`startup_timeout_s`, not `run_timeout_min`. Plus a genuinely open adversarial pass ("thread C") over
-loom's wider bootstrap/crash-recovery surface — two real bugs were found there by accident in one
-afternoon; that's reason to look harder, not reason to assume it's now clean. Full detail seeded in
-`_mill/loom-review-prompt.md`'s "Round context" section.
+## RESIDUAL currently seeded
+None. All three threads converged.
 
 ## DEFERRED list
-None outstanding. (Thread A's prior deferred items are resolved; see above.)
+None outstanding.
 
 ## Next action
-Get the operator's model + effort pick for round 3 (rotate away from whichever was used most
-recently — Opus and Fable both already used at high effort), then spawn
-`subagent_type: crucible-reviewer-<effort>` with `model: <pick>`, prompt: "Read
-`_mill/loom-review-prompt.md` and do exactly what it says.", tagged `<model>-<effort>-r3`.
+Campaign converged across all threads, pending the operator's push/merge call. No further crucible
+round is expected unless the operator wants one (e.g. an operator-assisted live check, or a fresh
+adversarial pass on a different area) — re-seed `_mill/loom-review-prompt.md` if so; do not assume
+one is needed.
