@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-boundary-enforcement
+phase: holistic-reviewing
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-planglyph-migration  '2026-09-09T06:32:28Z'
 approved-status-family  '2026-09-09T06:37:18Z'
 approved-batch-coverage  '2026-09-09T06:40:36Z'
 approved-boundary-enforcement  '2026-09-09T06:44:32Z'
+holistic-reviewing  '2026-09-09T06:44:54Z'
 ```
 
 ## Batches
