@@ -24,7 +24,7 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 **In:**
 
-- A kind-policy registry inside `internal/planparser` (ledger of per-site `map[refKind]disposition` policies + completeness meta-test + grep-shaped enforcement tests).
+- A kind-policy registry inside `internal/planparser` (new file `shape.go`: ledger of per-kind-gate `map[refKind]disposition` policies + completeness meta-test + grep-shaped enforcement tests with boundary `{classify.go, shape.go}`).
 - Migration of every `refKind` dispatch site in `internal/planparser` onto the registry (full site list under Technical context).
 - An exported handle-vocabulary surface on `internal/planparser` (`IsHandleRef`, `HandleBody`, `NewHandle`, `HandleMember`, `HandleIdentifier`, joining existing `HandlePrefix`/`HandleUnit`), and migration of every open-coded handle string op in `internal/planglyph` onto it.
 - Export of two duplicated seams: `Plan.GlyphLanguage()` (replaces planglyph's `resolveLanguage` duplicate of planparser's `planLanguage`) and `Card.ID()` (replaces planglyph's `cardIDOf` duplicate of planparser's `cardID`).
@@ -57,12 +57,27 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 ### kind-policy-ledger
 
-- Decision: every planparser site that branches on `refKind` declares its handling as data — a per-site policy mapping every kind to a disposition — registered in one package-level ledger in the registry file.
-  Filter-shaped sites (keep-one-kind, keep-subset) consult their policy through a lookup helper;
-  behavior-dispatch sites that need per-kind *code* (`diskPathForRef`, `refKindName`) stay as switches but must name every kind or carry a fail-closed `default` arm, are listed in the ledger too, and **both relocate into the registry file** — so the enforcement test below needs no per-function exemption.
+- Decision: every planparser kind-gate on `refKind` declares its handling as data — a policy mapping every kind to a disposition — registered in one package-level ledger in the registry file.
+  **The registry file is a new `internal/planparser/shape.go`**, holding the ledger, the policies, the lookup helper, and the two relocated behavior-dispatch switches (`diskPathForRef`, `refKindName`);
+  `classify.go` keeps the enum and `classifyRef` unchanged.
+  **The enforcement boundary is exactly the pair `{classify.go, shape.go}`** — the greps exempt both files and nothing else.
+  `classify.go`'s one open-coded `"plan:"` literal (`classify.go:60`) is replaced by the same-package `HandlePrefix` const (behavior-identical, keeps the file tier1-pure), so no literal-exemption is needed inside the boundary either.
+  **Disposition vocabulary — exactly three values plus an invalid zero:**
+  `dispKeep` (the gate acts on this kind), `dispSkip` (the gate deliberately ignores this kind — the ref passes through untouched), `dispFinding` (the gate raises its own finding for this kind);
+  the zero value means "undeclared" and the lookup helper fails closed on it (test failure/panic, never a silent skip).
+  **Ledger granularity — the unit is one kind-gate, not one function.**
+  A function with several independent gates registers one named policy per gate.
+  Worked examples:
+  `checkRenamePairShape` registers two policies — the to-side gate (Handle=`dispKeep`, Glyph/Path/Symbol=`dispFinding` → `rename-to-not-handle`) and the from-side gate (Glyph=`dispKeep`, Handle/Path/Symbol=`dispFinding` → `rename-from-not-glyph`);
+  its third arm (self-glyph-old + handle-new) is not a kind-gate at all — it is a glyph-grammar refinement (`IsSelf`) running inside the from-side's `dispKeep` arm, documented at the site as outside ledger scope.
+  `isFileRenamePair` registers one policy applied to both pair sides (Glyph=`dispKeep`, others=`dispSkip` — a non-glyph side just means "not a file-rename pair").
+  `checkProsaSymbolTarget` registers one policy for its `language: none` branch only (Path=`dispKeep` i.e. passes clean, Glyph/Handle/Symbol=`dispFinding`);
+  its glyph-enabled branch consults `parseGlyph`/`IsSelf`, not `refKind`, and stays outside the ledger.
+  Filter-shaped sites (keep-one-kind, keep-subset) consult their policy through the lookup helper;
+  the two behavior-dispatch switches stay switches inside `shape.go` but must name every kind or carry a fail-closed `default` arm, and are ledger-listed.
   Two meta-tests enforce it:
-  (1) a completeness test asserting every registered policy's domain equals the full kind list — adding a fifth kind fails every site's policy until each is re-acknowledged;
-  (2) a grep-shaped enforcement test (precedent: `internal/cliwire`'s bannedecl/callerset enforcement tests, `cmd/lyx/tierpurity_test.go`) asserting no `classifyRef`/`refKind` comparison and no open-coded `plan:` string op (`HasPrefix`/`TrimPrefix`/concat against `HandlePrefix`) exists outside the registry file and the exported handle helpers, in either package.
+  (1) a completeness test asserting every registered policy's domain equals the full kind list — adding a fifth kind fails every gate's policy until each is re-acknowledged;
+  (2) a grep-shaped enforcement test (precedent: `internal/cliwire`'s bannedecl/callerset enforcement tests, `cmd/lyx/tierpurity_test.go`) asserting no `classifyRef`/`refKind` comparison and no open-coded `plan:` string op (`HasPrefix`/`TrimPrefix`/concat against `HandlePrefix`, or the raw `"plan:"` literal) exists outside `{classify.go, shape.go}` and the exported handle helpers (planparser's `handle.go`), in either package.
 - Rationale: this is the task's requirement 4 made concrete — a declared-but-unhandled variant becomes a test failure at every consumer, not a silent skip at one.
   Grep/AST-lite enforcement tests are established repo idiom; a `go/analysis` dependency is not.
 - Rejected: an `exhaustive`-lint via `go/analysis` (new dependency, no repo precedent);
@@ -80,7 +95,7 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 ### planglyph-dedup-seams
 
-- Decision: beyond the handle vocabulary, export `Plan.GlyphLanguage() (string, bool)` (method form of planparser's unexported `planLanguage`) and `Card.ID() string` (method form of unexported `cardID`);
+- Decision: beyond the handle vocabulary, export `Plan.GlyphLanguage() (glyph.Language, bool)` (method form of planparser's unexported `planLanguage`, which returns `(glyph.Language, bool)` — the exported method keeps that return type verbatim so every migrated call site compiles unchanged) and `Card.ID() string` (method form of unexported `cardID`);
   planglyph's verbatim duplicates (`resolveLanguage` at `planglyph.go:251-258`, `cardIDOf` at `resolve.go:16-21`) are deleted, call sites migrated.
 - Rationale: both duplicates carry comments admitting they mirror planparser's unexported originals;
   same visibility pathology as `refKind`, tiny diff, and `planLanguage` is the master gate on all shape logic — exactly the kind of thing that must not drift between the packages.
@@ -114,7 +129,8 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 - Decision: no registry for `quarry.ResolveResult.Status` consumers.
   Three actions instead:
   (1) fix the one confirmed fail-open site, `resolveContainment`'s bare 2-of-4 allow-list at `planglyph/containment.go:112` (an unknown/absent status silently drops a member from the containment index, so an overlap goes unreported) — give it the same vocabulary-guard-then-derive shape `doneCheckVerdicts` uses (`donecheck.go:162-181`), with a regression test;
-  (2) add a grep tripwire test asserting every `.Status` switch/comparison in `internal/planglyph` sits in an allowlisted, fail-closed form (switch-with-default, or a boolean derived after a vocabulary guard), so a *future* unguarded consumer is caught;
+  (2) add a grep tripwire test asserting every `.Status` switch/comparison in `internal/planglyph` sits in an allowlisted, fail-closed form (switch-with-default, or a boolean derived after a vocabulary guard), so a *future* unguarded consumer is caught
+  — `internal/quarrycli` also consumes `Status` (`resolve.go:48`, `expand.go:45`), both fail-closed today and deliberately outside this tripwire's file scope (quarrycli renders quarry's own output verbatim and is not part of the validation surface this task hardens);
   (3) document two intentional asymmetries in place: `renameDeclSource`'s Found-only rule (`handle.go:119` — accepting `Multipart` would arbitrarily derive from `Symbols[0]`), and `createFindings`' routing of `Ambiguous` to the `default`/`glyph-rejected` arm (`create.go:151-171`).
 - Rationale: round 10's claim that `doneCheckVerdicts` was "the last unswitched `Status` consumer" is disproven by inventory (containment.go:112 remains), so one real fix is owed;
   but 5 of 7 consumers already fail closed — the family is near-consolidated and needs a tripwire, not a table, exactly as the task proposal steers.
@@ -126,7 +142,8 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 - Decision: no new chokepoint.
   Two actions:
-  (1) add the missing per-key guard in `drift.go`'s post-repair path (`drift.go:208-227`): after resolving `collectGlyphTargets(reloaded, lang)`, assert every glyph in the `introduced` set actually received an answer before filtering, erroring `ErrQuarryUnavailable` on a miss, mirroring `DoneChecks`' per-key guard (`donecheck.go:139-149`);
+  (1) add the missing per-key guard in `drift.go`'s post-repair path (`drift.go:208-227`): after resolving `collectGlyphTargets(reloaded, lang)`, assert every glyph in the `introduced` set actually received an answer before filtering, erroring `ErrQuarryUnavailable` on a miss, mirroring `DoneChecks`' per-key guard (`donecheck.go:139-149`) —
+  the guard returns at the resolve boundary exactly like the sibling transport-error path (`drift.go:209-211`) already does, i.e. *before* the amendment loop (`drift.go:238-254`), so no amendment is appended on a coverage miss: an infrastructure failure produces no audit record, same as a transport failure today;
   (2) add a grep chokepoint test pinning `repo.Resolve(` to `resolveTargets` (`repo.go:97`) and `quarry.Name(` to `CanonicalizeHandles` (`handle.go:224`), so the existing length-guard chokepoints (`ensureResolveCoverage`, the Name length+echo guard) cannot be bypassed by a future call site.
 - Rationale: inventory confirms round 10's consolidation claim holds for this family — every batch boundary is guarded except drift's post-repair site, which is unreachable-in-practice only because of the length guard it does not itself own.
   The producer-side fix (coverage enforced in `Resolve`/`Name`'s own contract) is filed as [quarry#30](https://github.com/Knatte18/quarry/issues/30) — see Decision: quarry-role.
@@ -156,11 +173,14 @@ Why now: the campaign is closed and merged, round 9/10's narrowed scope confirme
 
 ### dead-wrappers
 
-- Decision: `isHandleRef` is superseded by the exported `IsHandleRef` (its in-package callers migrate);
+- Decision: all three wrappers go.
+  `isHandleRef` is superseded by the exported `IsHandleRef` (its in-package callers migrate);
   `isGlyphRef` is deleted (zero production callers; its test coverage folds into the registry tests);
-  `isPathRef` stays unexported (three in-package production callers, no external consumer).
+  `isPathRef` is deleted too — its only three production callers (`normalize.go:112`, `normalize.go:178`, `validate.go:1040`) are all policy-lookup migration sites in Inventory A, so after migration the wrapper is exactly as dead as `isGlyphRef`.
+  (Supersedes the Q&A log's initial "stays unexported" answer, which predated noticing that the migration empties its caller set — review r2 finding.)
 - Rationale: keep-for-symmetry is dead API; the wrappers' stated purpose (guarding `classifyRef`'s return-value shape) is subsumed by the registry meta-tests.
-- Rejected: keeping both for symmetry.
+- Rejected: keeping any wrapper for symmetry;
+  keeping `isPathRef` alongside an empty caller set.
 
 ## Technical context
 
@@ -265,3 +285,5 @@ From CONSTRAINTS.md, binding on this task:
 - **Q:** Docs? **A:** New Ref-Shape Registry Invariant in CONSTRAINTS.md + a registry sentence in `quarry-glyph-plan-alphabet.md`, same commit; spec and overview untouched.
 - **Q:** Dead wrappers? **A:** `isHandleRef` superseded by exported `IsHandleRef`; `isGlyphRef` deleted; `isPathRef` stays unexported.
 - **Q:** Is quarry off limits as a home for any of this? **A:** No — the operator (quarry's author) rejected the proposal's "ruled out" framing; the boundary is appropriateness per family, not repo ownership. Outcome: registry stays in planparser (layering — quarry never sees `plan:` vocabulary), and the two producer-side improvements are filed as quarry#30 (batch coverage in the API contract) and quarry#31 (fail-closed `Status` helper) for their own task in that repo.
+- **Q:** Which file is the registry, and is `classify.go` inside the enforcement boundary? **A:** [auto-pick] New `internal/planparser/shape.go` holds ledger/policies/lookup + the two relocated switches; the enforcement boundary is exactly `{classify.go, shape.go}`, and `classify.go`'s open-coded `"plan:"` literal is replaced by `HandlePrefix`. **Why:** keeps `classify.go`'s spec-pinned classifier untouched while giving the greps a two-file exemption with no per-function carve-outs (review r2, BLOCKING).
+- **Q:** Disposition vocabulary and ledger granularity? **A:** [auto-pick] Three values (`dispKeep`/`dispSkip`/`dispFinding`) plus invalid zero (fail-closed lookup); the ledger unit is one kind-gate, not one function — `checkRenamePairShape` registers two policies (its `IsSelf` third arm is a glyph-grammar refinement outside ledger scope), `isFileRenamePair` one policy over both sides, `checkProsaSymbolTarget` one policy for its `language: none` branch only. **Why:** makes the completeness meta-test's domain assertion well-defined at every multi-gate and language-forked site (review r2, BLOCKING).
