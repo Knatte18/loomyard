@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-status-family  '2026-09-09T06:37:18Z'
 approved-batch-coverage  '2026-09-09T06:40:36Z'
 approved-boundary-enforcement  '2026-09-09T06:44:32Z'
 holistic-reviewing  '2026-09-09T06:44:54Z'
+holistic-fixing  '2026-09-09T06:47:57Z'
 ```
 
 ## Batches
