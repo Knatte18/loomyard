@@ -12,7 +12,7 @@ started. Nothing pushed.
 | ID | Severity | Status | Commit |
 | --- | --- | --- | --- |
 | F1 | MEDIUM | FIXED | `d41442393` |
-| F2 | MEDIUM | FIXED | `59ce07aea` |
+| F2 | MEDIUM | FIXED | `3c4a4de35` |
 | F3 | LOW | FIXED | `73d07399b` |
 | F5 | LOW | FIXED | `2b73b66e9` |
 | F4 | MEDIUM | FIXED | `cf3c3fc11` |
@@ -35,7 +35,7 @@ two; it now names both and records that ledger completeness structurally cannot 
 
 No production code changed — the defect was in what the tests guaranteed, not in the registry.
 
-### F2 — widen the status tripwire to the v0.2.0 predicate spellings (`59ce07aea`)
+### F2 — widen the status tripwire to the v0.2.0 predicate spellings (`3c4a4de35`)
 
 `internal/planglyph/status_enforcement_test.go`: introduced `statusVocabularySelectors`
 (`Status`, `Known`, `Rejected`) and matched against it in `statusHitsIn` instead of the bare
