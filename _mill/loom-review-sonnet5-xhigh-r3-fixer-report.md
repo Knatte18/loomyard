@@ -96,3 +96,33 @@ heading untouched), so the Markdown Link Integrity invariant is not implicated.
 ## Deferred
 
 None. Every recorded finding (F1, F2, F3), across all severities, was fixed this round.
+
+## Final verification (after all three fixes landed)
+
+- `go build ./...` — clean.
+- `go vet ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/...` — clean.
+- `go test -count=5 ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/... ./cmd/lyx/...` — all `ok`.
+- `go test ./...` (full repo) — all `ok`.
+- `go test -tags integration ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/loomcli/... ./internal/loomengine/... ./internal/loomshed/... ./internal/preflight/... ./internal/preflightshed/...` — all `ok`.
+- Rebuilt the `lyx` binary fresh (`go build -o <scratch>/lyx ./cmd/lyx`) and reran the live smoke
+  suite: `go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` — all 11 PASS,
+  `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` at 5.16s (unchanged from Job 1's
+  pre-fix observation — expected, since F1/F2/F3 touched no code that test exercises: F1 added a
+  test, F2/F3 added comments/docs).
+- Teardown: `pgrep -af tmux` after the run showed only the same pre-existing environment tmux server
+  (pid 485544) observed throughout Job 1 — no new stray process from this round's work.
+- Considered running `tools/mdreflow` against `manifest/designs/loom.md` to mechanically confirm the
+  new paragraphs' semantic-line-break compliance; it reflowed the ENTIRE file (94 insertions/78
+  deletions) rather than just the new content, which is far outside this fix's scope and would have
+  mixed an unrelated repo-wide reformat into a narrow doc addition — reverted that run and kept the
+  hand-checked, narrowly-scoped edit instead (verified manually against the rule: one sentence per
+  line, plus a break at the one semicolon boundary the new prose introduced).
+
+## Merge-readiness verdict
+
+**MERGE-READY.** Thread A: converged, re-confirmed, unchanged. Thread B: the seeded residual is
+closed with a sabotage-proved regression test; the production fixes (`d0e5a0e7b`, `aba2c270a`,
+`69886823e`) were already correct. Thread C: one narrow, honestly-scoped residual found and
+documented (not eliminable by a code change), one docs gap closed, and everything else driven this
+round (the disposition-sharing claim, a double-kill-resume live cycle, every `Attach` call site)
+came back sound. No BLOCKING or unresolved MEDIUM findings remain.
