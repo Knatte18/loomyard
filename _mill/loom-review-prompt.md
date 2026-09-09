@@ -156,13 +156,56 @@ landed. Treat each as an INVARIANT you must actively verify by driving the real 
   never-executed gap in your convergence verdict rather than trying to fake it.
 
 ## Round context seeded from prior-round verification
-**Round 1 — this is the campaign's first round, so there is no prior residual.** Your mission is the
-safety-verification dummy task described above in "High-yield focus": drive all four scenarios
-(Create+canonicalize, Rename exact-tier auto-bind, deliberate drift, fail-closed `lookup`) plus the
-`Status.Known()`/`Rejected()` call-site audit, live, through the real built `cmd/lyx` binary — not
-just by reading the code or re-running the existing unit suite. This is NOT a generic full review of
-`loom`; stay scoped to confirming these two refactors are genuinely behavior-preserving under real
-driving. There is nothing CLOSED-AND-VERIFIED yet to avoid re-litigating.
+**Round 2 — SAFETY PASS. There is no known residual.** Round 1 (`opus5-high-r1`) drove all four
+campaign scenarios live through the real built `cmd/lyx` binary (`lyx loom validate-plan` and
+`lyx webster record-batch`), found 5 findings (0 behavior regressions in the migrated gates — 3
+were enforcement/test gaps in the refactors' own safety machinery, 1 was a wrong operator-facing
+message with no wrong disposition, 1 was a doc omission), fixed all 5, and the orchestrator
+independently reproduced every claim from a cold state on the committed tree: hermetic gates green,
+the file-scope diff matched exactly, all four sabotage-proofs (F1/F2/F3/F4) reproduced the exact
+failure the round reported, the doc updates landed as claimed, and the two smoke-test failures the
+round flagged as pre-existing were independently confirmed pre-existing at the seed commit
+`8503e22f3` via a `git archive` snapshot (not a new worktree).
+
+**CLOSED-AND-VERIFIED (do NOT re-litigate):**
+- F1 — `refGate` constants ↔ `ledger` keys sync now enforced by `TestRefGateConstantsMatchLedger`
+  (`internal/planparser/shape_test.go`); `CONSTRAINTS.md`'s Ref-Shape Registry Invariant updated to
+  name both syncs. Commit `d41442393`.
+- F2 — the `.Status` tripwire (`internal/planglyph/status_enforcement_test.go`) now matches
+  `Status`/`Known`/`Rejected` selectors, not just `Status`. Commit `3c4a4de35`.
+- F3 — an ambiguous Create target now reports `create-already-exists` with candidates named,
+  instead of the wrong "unrecognized resolve status" message (`internal/planglyph/create.go`); the
+  design doc's Create-inversion paragraph gained the missing `ambiguous` row. Commit `73d07399b`.
+- F4 — a real `quarry.DeltaGit` answer now drives `DetectDrift`'s gate one in an integration-tagged
+  test (`internal/planglyph/drift_integration_test.go`), closing the "only synthetic deltas were ever
+  tested" gap. Commit `cf3c3fc11`.
+- F5 — `internal/planglyph/doc.go`'s Check-ID list now names all four `glyph-rejected` raisers,
+  including `containment.go`'s. Commit `2b73b66e9`.
+- All eleven of round 1's live scenarios (Create+canonicalize reaching both the declaring AND
+  referencing card; both Create-inversion directions; a genuine `ambiguous` on both a non-Create and
+  a Create target; Rename exact-tier auto-bind with the named prior regression NOT reopened;
+  deliberate drift correctly blocking with no auto-repair; exact-tier auto-repair with exactly one
+  amendment; a `Delete`-by-path card) are independently confirmed correct — do not re-drive these as
+  if they were unknown, though re-driving one as a spot-check within your own broader pass is fine.
+
+**Your mission:** a genuinely independent clean-room pass to find anything round 1 and the
+orchestrator's verification both missed, OR honestly confirm merge-readiness — "no new defects, ship
+it" is the expected, valuable outcome of a safety pass, not a failure to find something. Stay scoped
+to the two refactors (ref-shape registry centralization, quarry v0.2.0 Status helper adoption) and
+their live-driven behavior; this is still not a generic full review of `loom`.
+
+Two things worth your independent judgment, not spoon-fed as findings:
+- Round 1 named the pre-resolution-rejection branch (`ResolveResult.Rejected()` in
+  `unreadableStatusDetail`, every `glyph-rejected` fail-closed arm keyed on it) as **structurally
+  unreachable in live operation today**, proven by one live attempt (L11). Decide for yourself
+  whether that reachability claim actually holds, or whether there's a live path round 1 didn't try.
+- The two pre-existing smoke-test failures
+  (`TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy`,
+  `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed`) remain out of this campaign's scope
+  (they sit in loom's driver bootstrap/phase machine, not in `planparser`/`planglyph`) — do not fix
+  them, but if your own reading suggests they are NOT actually unrelated to the two refactors under
+  test, say so explicitly; that would upgrade them from "someone else's problem" to an in-scope
+  finding.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow, driven for
 real through the mechanisms above, is the gate. There is no N×-concurrent suite for this campaign —
@@ -269,7 +312,10 @@ external dependency you don't control (e.g. a quarry upstream bug). Even then sa
 the specific reason, in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None — this is round 1.
+- The two pre-existing smoke-test failures named above — round 1 deliberately did not fix them
+  (one-concern-per-round). Re-evaluate whether they are genuinely out of scope for THIS campaign
+  (they are, unless your own reading finds otherwise — see "Your mission" above), not whether they
+  should be fixed here regardless.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT — not just BLOCKING/MEDIUM ones.
