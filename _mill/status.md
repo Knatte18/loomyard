@@ -70,7 +70,9 @@ batches:
     commit_sha: 0d130d77557b970611b7748bd000c9f6787f2202
     verify_baseline_failures: []
   - name: batch-coverage
-    state: pending
+    state: running
+    implementer_session: ef9684aa-7b63-458f-924d-d14419cd4de2
+    start_sha: b31976dcf4bc250c322cffeb87ffd8038124b9bc
     verify_baseline_failures: []
   - name: boundary-enforcement
     state: pending
