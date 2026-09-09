@@ -56,6 +56,13 @@ final severity ordering are written last, after Job 1 completes.
   `VerifySeedOwnership` can experience the same way. Recorded so a later round does not need to
   re-derive this.
 
+### Hermetic commands (all green, cold state)
+
+- `go build ./...` — clean, no output.
+- `go vet ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/...` — clean, no output.
+- `go test -count=5 ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/... ./cmd/lyx/...` — all `ok`.
+- `go test ./...` (full repo, once) — all `ok`, nothing skipped that shouldn't be.
+
 ## Findings (provisional, severity TBD at the end)
 
 - **F-C1 (thread C, code, severity TBD — leaning LOW, CONFIRMED via trace, not live-reproduced —
