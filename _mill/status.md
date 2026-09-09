@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -24,4 +24,5 @@ discussion-gap-fix-r6  '2026-09-09T05:44:08Z'
 discussion-fix-r7  '2026-09-09T05:47:11Z'
 discussed  '2026-09-09T05:47:11Z'
 planning  '2026-09-09T06:04:56Z'
+plan-review-r1  '2026-09-09T06:13:26Z'
 ```
