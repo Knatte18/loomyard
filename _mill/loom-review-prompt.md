@@ -128,7 +128,7 @@ AFTER you have written your own independent findings, you MAY consult the prior 
    a handful of its scenarios as spot-checks).
    Also assess docs accuracy (do the docs match the code?), operability, and **test-coverage
    soundness** — a fix whose regression test would still pass if the fix were reverted is not
-   actually guarded (round 3's F1 was exactly this shape; check whether ANY of rounds 3 or 4's own new
+   actually guarded (round 3's F1 was exactly this shape; check whether ANY of rounds 3-5's own new
    tests/fixes have the same defect before assuming the lesson has already been fully applied).
 
 ## High-yield focus — where this campaign's bugs would live (drive these, do not just read them)
@@ -183,22 +183,23 @@ starting points, not a checklist to close and stop — the whole point of thread
 what these don't name.
 
 - **CLOSED, do not re-litigate as if unknown (but a fresh angle that reveals a real gap in the fix
-  itself is fair game):** the `Started`-gating coverage gap (round 3, `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`),
-  the `VerifySeedOwnership` vs `CheckSeed` disposition-sharing claim (round 3, confirmed sound), 
-  `RunState.Started`'s best-effort persistence path (round 3, confirmed sound), and BOTH
-  `classifyDeadlineExpiry` call sites — the startup-window and run-deadline paths in
-  `internal/shuttleengine/wait.go` (round 4's F1/F2, now both routed through one helper and covered
-  by `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied` /
-  `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`). Spend a few minutes independently
-  spot-checking these hold rather than a full re-derivation.
+  itself is fair game):** the `Started`-gating coverage gap (round 3), the `VerifySeedOwnership` vs
+  `CheckSeed` disposition-sharing claim (round 3, confirmed sound), `RunState.Started`'s best-effort
+  persistence path (round 3, confirmed sound), ALL FOUR file-contract-first call sites in
+  `internal/shuttleengine/wait.go` — `classifyDeadlineExpiry`'s two (startup-window, run-deadline;
+  round 4) and `finishedDespiteMechanismFailure`'s two (events-unreadable cap, status-failure cap;
+  round 5) — and the `Seed`/`state.ErrDecode` malformed-JSON fix (round 5). Spend a few minutes
+  independently spot-checking these hold rather than a full re-derivation.
 - **The documented "Accepted residual" (crash mid-registration)** — the `AddStrand`/`run.json` race
   in `internal/shuttleengine/run.go`'s `Start` — is genuinely worth your own look (see "Round context"
-  above for the specific question seeded: is there a detection/reconciliation mitigation two prior
+  above for the specific question seeded: is there a detection/reconciliation mitigation three prior
   rounds didn't consider, even if the window itself can't be closed by reordering?).
-- **Is `classifyDeadlineExpiry`'s shape — a terminal classification finalized without consulting the
-  "did this actually finish" signal — present anywhere ELSE** in the bootstrap/crash-recovery surface,
-  not just the two sites round 4 already found and fixed? Two instances of one shape in one function
-  is reason to check neighboring functions, not reason to assume the shape is now fully swept.
+- **Is there a FIFTH instance of the file-contract-first shape** somewhere else in
+  `internal/shuttleengine` or the wider bootstrap/crash-recovery surface, beyond the four sites
+  rounds 4-5 already found and fixed (all four so far live in one function, `Wait`)? Four instances
+  in one file is reason to check OUTSIDE that file too — `Attach`'s own error returns, `Start`'s
+  failure paths, anything in `internal/loomengine`/`internal/loomcli` that finalizes a step as
+  failed — not just to re-read `Wait` more carefully.
 - **Other layers doing another layer's job.** The core defect class the fixes so far share is one
   function answering a question that belongs to a function downstream of it (ownership-check
   escalating a coherence question; a startup-liveness field trusting a plain-liveness field). Read
@@ -232,16 +233,16 @@ what these don't name.
   never-executed gap in your convergence verdict rather than trying to fake it.
 
 ## Round context seeded from prior-round verification
-**Round 5 — SAFETY PASS on thread B/C, attempt three. There is NO assigned residual this round.**
+**Round 6 — SAFETY PASS on thread B/C, attempt four. There is NO assigned residual this round.**
 Thread A remains CONVERGED (carry it forward, light touch only). Thread B/C is NOT yet
-converged — TWO prior safety-pass attempts have each found real defects: round 3 (assigned a
-residual, also found one new issue) and round 4 (a genuinely clean-slate safety pass with no
-assigned residual, which still found two real, live-reproduced MEDIUM bugs). Per
-`crucible/README.md`'s reed/fabric worked examples (7 and 6 rounds respectively before one first
-came back clean), this is not yet an alarming round count, but it does mean: do not assume this area
-is "almost done" — approach it exactly as adversarially as round 4 did, not more leniently because
-two rounds already passed over it. This round's job is to be the first genuinely clean round, or to
-prove it isn't.
+converged — THREE prior safety-pass attempts have each found real defects (round 3, round 4, round
+5), and rounds 4 and 5 together found FOUR instances of one defect shape across two different
+functions' worth of exit paths, all in `internal/shuttleengine/wait.go`. Per `crucible/README.md`'s
+reed/fabric worked examples (7 and 6 rounds respectively before one first came back clean), this is
+still within normal range, but four instances of one shape found in two consecutive rounds is a
+strong signal the sweep is not yet complete — approach `wait.go` (and anything shaped like it) with
+MORE suspicion this round, not less. This round's job is to be the first genuinely clean round, or
+to prove it isn't.
 
 **Thread B/C's prior rounds, summarized (see `_mill/loom-review-HANDOFF.md` for full detail — you
 MAY read that file, it's the orchestrator's own state, but per the clean-room constraint above you
@@ -249,42 +250,62 @@ still may NOT read it until your OWN findings list is complete). Note the findin
 namespaced by round tag because "F1"/"F2"/"F3" repeats across rounds with different meanings —
 always cite the round tag alongside any finding ID:**
 - Three production commits (`d0e5a0e7b`, `aba2c270a`, `69886823e`) fixed the two originally-flagged
-  smoke-test failures. Independently verified correct by rounds 3, 4, and the orchestrator (each
+  smoke-test failures. Independently verified correct by rounds 3, 4, 5, and the orchestrator (each
   re-sabotage-proved them independently rather than trusting the prior account).
 - Round 3 (`sonnet5-xhigh-r3`) closed a coverage gap in `d0e5a0e7b` (regression test
   `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`) and documented, not code-fixed, a
   narrow `AddStrand`/`run.json` crash-mid-registration race in `internal/shuttleengine/run.go`'s
   `Start` as an "Accepted residual" in `manifest/designs/loom.md` (structurally unclosable by
   reordering the two writes — a two-independent-stores problem).
-- Round 4 (`opus5-high-r4`), a genuine safety pass, found TWO real, live-reproduced MEDIUM defects
-  sharing one shape: `internal/shuttleengine/wait.go`'s two deadline-expiry paths
-  (`classifyStartupWindow` for the startup window, `Wait`'s own run-deadline branch) both finalized a
-  negative outcome (`OutcomeDied`/`OutcomeTimeout`) without checking whether the run's declared
-  output files already existed — while the function's sibling not-tracked/not-live branches DID
-  check, per `checkLivenessTick`'s own doc comment ("a satisfied file contract wins over every
-  negative answer"). A step that had genuinely finished was recorded as failed, and the next resume
-  archived the finished files and respawned over completed work. Fixed via a shared
-  `classifyDeadlineExpiry` helper (both deadline paths now route through it) — see
+- Round 4 (`opus5-high-r4`) found the campaign's now-recurring defect shape for the first time, TWICE:
+  `internal/shuttleengine/wait.go`'s two deadline-expiry paths (`classifyStartupWindow` for the
+  startup window, `Wait`'s own run-deadline branch) both finalized a negative outcome
+  (`OutcomeDied`/`OutcomeTimeout`) without checking whether the run's declared output files already
+  existed — while the function's sibling not-tracked/not-live branches DID check, per
+  `checkLivenessTick`'s own doc comment ("a satisfied file contract wins over every negative
+  answer"). Fixed via a shared `classifyDeadlineExpiry` helper — see
   `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied` and
-  `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`. Round 4 also independently
-  re-verified `d0e5a0e7b`'s fix end-to-end for the first time with a real `kill -9` inside the
-  startup window against a genuinely live pane. Round 4 also extended the `AddStrand`/`run.json`
-  residual's documentation with why the obvious detection mitigation (a reverse sweep) isn't free
-  either (it would require parsing `Launch.Cmd`, which `Launch`'s own contract forbids) — the
-  residual itself remains deliberately unfixed, an operator design tradeoff.
-- **CLOSED-AND-VERIFIED, do not re-litigate from scratch:** all of the above, including BOTH
-  `classifyDeadlineExpiry` call sites (do not report "the deadline paths ignore the file contract" as
-  if it were new — that is exactly round 4's F1/F2, already fixed). A regression found by your OWN
-  live driving is fair game to report; re-deriving the same conclusion from first principles is not a
-  new finding.
+  `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`. Also extended the
+  `AddStrand`/`run.json` residual's documentation with why the obvious detection mitigation (a
+  reverse sweep) isn't free either (it would require parsing `Launch.Cmd`, which `Launch`'s own
+  contract forbids).
+- Round 5 (`fable5-high-r5`) found the SAME shape TWICE MORE, in the same file's other two negative
+  exits: `Wait`'s two mechanism-failure caps (`maxEventsReadRetries`, `maxStatusRetries`) also
+  finalized a mechanism error without consulting the file contract first. Fixed via a new
+  `finishedDespiteMechanismFailure` helper (mirrors `classifyDeadlineExpiry`) — see
+  `TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins` and
+  `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins`. Round 5 also found and fixed a
+  SEPARATE MEDIUM defect: `manifest/designs/loom.md`'s promise that a poisoned status file (malformed
+  JSON OR an unknown field) never looks like bootstrap's own gate held for the unknown-field shape
+  but NOT for malformed JSON on the `lyx loom run` path — `loomshed.Seed` aborted with a raw decode
+  error instead of the tolerant `ErrSeedExists` path. Fixed by wrapping the lenient decode error in
+  `state.ErrDecode` (`internal/state/state.go`) and mapping it to `ErrSeedExists` in `Seed`
+  (`internal/loomshed/seed.go`) — see `TestSeed_RefusesUndecodableFileAsExists`,
+  `TestCorruptFile` (extended), and the new smoke test
+  `TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy`. Round 5 also corrected three
+  doc/comment sites that mis-attributed a decode-failure diagnosis to the Loom-Preflight producer
+  (it's actually `Shed.Run`'s step-1 read gate), and re-confirmed the `AddStrand`/`run.json`
+  residual's "genuinely unclosable" judgment with no new angle.
+- **Incidental, OUT OF loom's scope, not fixed:** round 5 also hit a real bug in `fabric` (not
+  loom) — `lyx fabric clone` names the weft primary branch after the weft bare's own HEAD rather
+  than the warp's primary branch name when they differ. Not this campaign's job; do not spend time
+  on it, but if your own driving trips over it again, don't be surprised.
+- **CLOSED-AND-VERIFIED, do not re-litigate from scratch:** all of the above, including ALL FOUR
+  `classifyDeadlineExpiry`/`finishedDespiteMechanismFailure` call sites across both helpers (do not
+  report "an exit path ignores the file contract" as if it were new without first checking it isn't
+  one of these four) and the `Seed`/`state.ErrDecode` malformed-JSON fix. A regression found by your
+  OWN live driving is fair game to report; re-deriving the same conclusion from first principles is
+  not a new finding.
 - **Worth your own independent judgment, not spoon-fed:**
-  - Is `classifyDeadlineExpiry` the ONLY place in `internal/shuttleengine` (or elsewhere in the
-    bootstrap/crash-recovery surface) where a negative/terminal classification is finalized without
-    first checking whatever "did the work actually finish" signal that layer owns? Round 4 found two
-    instances of one shape in one function; that is exactly the kind of thing worth checking for a
-    third instance of, in a different function, before assuming the shape is now fully swept.
-  - Is the documented `AddStrand`/`run.json` "Accepted residual" actually as unclosable as two rounds
-    now agree, or is there an angle neither considered? You are not required to find one.
+  - Given FOUR instances of one shape have now been found across TWO functions (`Wait`'s deadline
+    paths, `Wait`'s mechanism-failure caps) in ONE file, is there a FIFTH instance somewhere else in
+    `internal/shuttleengine` or the wider bootstrap/crash-recovery surface? Consider: every place a
+    negative/terminal outcome is finalized, not just inside `Wait` — `Attach`'s own error returns,
+    `Start`'s failure paths, anything in `internal/loomengine`/`internal/loomcli` that reports a step
+    failed. A shape found four times in one file is reason to check OUTSIDE that file too, not just
+    inside it more carefully.
+  - Is the documented `AddStrand`/`run.json` "Accepted residual" actually as unclosable as three
+    rounds now agree, or is there an angle none of them considered? You are not required to find one.
 
 State plainly in your executive summary whether this round found something (residual → re-seed,
 rotate again) or came back clean (safety pass + the orchestrator's own gates need to agree before
@@ -421,10 +442,12 @@ the specific reason, in the fixer report's deferred section.
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
 - The documented "Accepted residual" (the `AddStrand`/`run.json` crash-mid-registration race,
   `internal/shuttleengine/run.go`) — deferred as documentation rather than a code fix because rounds
-  3 and 4 both judged it structurally unclosable by reordering, and round 4 additionally found the
+  3, 4, and 5 all judged it structurally unclosable by reordering, and round 4 additionally found the
   obvious detection mitigation isn't free either (it would require parsing `Launch.Cmd`, which
-  `Launch`'s own contract forbids). Re-evaluate whether that two-round judgment holds (see "Round
+  `Launch`'s own contract forbids). Re-evaluate whether that three-round judgment holds (see "Round
   context" above and "High-yield focus, thread B/C" above for the specific angle to check).
+- The fabric weft-branch-naming bug round 5 hit incidentally — out of loom's scope, not this
+  campaign's job, not something to spend time on unless your own driving trips over it again.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT — not just BLOCKING/MEDIUM ones.
