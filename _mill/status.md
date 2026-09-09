@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: planned
 slug: quarry-bump-v0-2-0-status-helpers
 branch: quarry-bump-v0-2-0-status-helpers
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussion-fix-r4  '2026-09-09T08:32:22Z'
 discussed  '2026-09-09T08:32:22Z'
 planning  '2026-09-09T08:38:12Z'
 plan-review-r1  '2026-09-09T08:43:02Z'
+planned  '2026-09-09T08:43:22Z'
 ```
