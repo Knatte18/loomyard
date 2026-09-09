@@ -3,7 +3,7 @@
 ```yaml
 task: Bump quarry to v0.2.0 and adopt Status.Known()/Rejected()
 slug: quarry-bump-v0-2-0-status-helpers
-approved: false
+approved: true
 started: 20260909-083542
 parent: main
 root: ""
