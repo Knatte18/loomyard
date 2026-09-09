@@ -5,99 +5,100 @@ Campaign, thread A: confirm live that `centralize-glyph-shape-enum` and
 real built binary. **CONVERGED (rounds 1-2).**
 Campaign, thread B/C: fix two pre-existing smoke-test failures, then independently review that fix
 work plus a wider adversarial pass over loom's bootstrap/crash-recovery machinery. **STILL NOT
-CONVERGED after round 5** — three consecutive safety-pass attempts (rounds 3, 4, 5) have each found
-real defects. See `_mill/loom-crucible-orchestrator-kickoff.md` for the original (thread-A-only)
-brief.
+CONVERGED after round 6** — four consecutive rounds (3, 4, 5, 6) have each found real defects. See
+`_mill/loom-crucible-orchestrator-kickoff.md` for the original (thread-A-only) brief.
 
 ## Current state
-**Thread A: CONVERGED**, unchanged since round 2, re-confirmed by round 5's light-touch pass.
-**Thread B/C: NOT CONVERGED, round 6 needed.** Models tried on this thread: Sonnet (r3), Opus (r4),
-Fable (r5) — all three have now found real defects here. The campaign's core defect class
-("a terminal/negative classification answers a question using only a proxy fact, ignoring the fact
-that actually owns the answer, one line away") has now been found in FOUR call sites across two
-rounds (r4: two deadline paths; r5: two mechanism-failure caps) all in `internal/shuttleengine/wait.go`.
-Round 6 should treat this as a strong signal to sweep `Wait` (and its neighbors) for a fifth instance
-rather than assume the last two closed it.
+**Thread A: CONVERGED**, unchanged since round 2, re-confirmed by round 6's light-touch pass.
+**Thread B/C: NOT CONVERGED.** The campaign's core defect class ("a terminal/negative classification
+answers a question using only a proxy fact, ignoring the fact that actually owns the answer, one
+line away") has now been found in FIVE call sites across three rounds: r4 (2, both in `Wait`'s
+deadline paths), r5 (2, both in `Wait`'s mechanism-failure caps), r6 (1, in `Attach`'s
+`dispositionCandidate` — the first instance OUTSIDE `Wait`). **Recommendation for round 7: switch
+strategy from another broad adversarial pass to an exhaustive SWEEP** — per
+`crucible/README.md`'s own fabric-campaign refinement ("when the tail starts circling, stop
+reviewing and start counting"), five instances of one shape found by four rounds of ad-hoc adversarial
+reading is exactly the signal to stop hoping a fifth round spots instance #6 live, and instead
+enumerate EVERY place in the bootstrap/crash-recovery surface that finalizes a terminal/negative
+outcome, in a table, with a reason for each row (checks the completion signal / doesn't need to /
+genuinely doesn't and is a new finding). This was discussed with the operator; see whether it was
+acted on before assuming another generic safety-pass round is still the right shape.
 
 ## CLOSED-AND-VERIFIED
 
-### Thread A (rounds 1-2) — unchanged; re-confirmed by round 5's live `validate-plan` driving
-(handle canonicalization + on-disk rewrite, Create inversion both directions, ambiguous-with-file,
-file-rename — no regression).
+### Thread A (rounds 1-2) — unchanged; re-confirmed by round 6's live `validate-plan` driving
+(canonicalization, Create inversion, ambiguous, both not-found branches, both containment tiers,
+rename-to gate, handle collision, infra-error disposition — no regression).
 
 ### Thread B, the three original production fixes (commit range `c0adce527..69886823e`)
-`d0e5a0e7b`, `aba2c270a`, `69886823e` — independently re-verified correct by rounds 3, 4, 5, and the
-orchestrator each time (never trusted from a prior account).
+`d0e5a0e7b`, `aba2c270a`, `69886823e` — independently re-verified correct by rounds 3, 4, 5, 6, and
+the orchestrator each time.
 
 ### Round 3 (`sonnet5-xhigh-r3`) — closed the `Started`-gating coverage gap; documented the
 `AddStrand`/`run.json` crash-mid-registration race as an accepted residual.
 
-### Round 4 (`opus5-high-r4`) — found F1/F2 (MEDIUM): both of `wait.go`'s deadline-expiry paths
-(`classifyStartupWindow`, `Wait`'s run-deadline branch) finalized a negative outcome without
-consulting the file contract. Fixed via `classifyDeadlineExpiry`. Also extended the
-crash-mid-registration residual's documentation (F3, NIT) with why the obvious detection mitigation
-isn't free either.
+### Round 4 (`opus5-high-r4`) — found instances 1-2 of the recurring shape: `wait.go`'s two
+deadline-expiry paths. Fixed via `classifyDeadlineExpiry`.
 
-### Round 5 (`fable5-high-r5`, commit range `5f378a79f..d8a681d9b`) — found the SAME defect shape in
-two MORE places:
-- **F1 (MEDIUM)** — `Wait`'s two mechanism-failure exits (`maxEventsReadRetries` cap,
-  `maxStatusRetries` cap) finalized a mechanism-failure error without checking the file contract
-  first, unlike every neighboring branch. **Reproduced live**: a real `lyx shuttle run` with its
-  output file written, then `reed.json` truncated mid-run — the mechanism failure won over a
-  satisfied file contract. Fixed via a new `finishedDespiteMechanismFailure` helper (same shape as
-  round 4's `classifyDeadlineExpiry`).
-- **F3 (MEDIUM)** — `manifest/designs/loom.md` and commit `69886823e` promise a poisoned status file
-  (malformed JSON OR an unknown field) never looks like bootstrap's own gate. The unknown-field half
-  held; the malformed-JSON half did not on the `lyx loom run` path — `loomshed.Seed` read the file
-  through a lenient decoder that aborted on malformed JSON with a raw error instead of the tolerant
-  `ErrSeedExists` path. **Reproduced live**: a truly non-JSON status file made `lyx loom run` refuse
-  before spawning a driver. Fixed by wrapping the lenient decode error in `state.ErrDecode` and
-  mapping it to `ErrSeedExists` in `Seed`.
-- **F2 (NIT)** — three doc/comment sites mis-attributed the decode-failure diagnosis to the
-  Loom-Preflight producer; it's actually `Shed.Run`'s step-1 read gate (the producer never runs on a
-  decode failure). Corrected.
-- Round 5 also re-confirmed round 4's two fixes are still intact and re-confirmed the
-  `AddStrand`/`run.json` residual's "genuinely unclosable" judgment with no new angle.
+### Round 5 (`fable5-high-r5`) — found instances 3-4: `wait.go`'s two mechanism-failure caps. Fixed
+via `finishedDespiteMechanismFailure`. Also fixed a separate MEDIUM (malformed-JSON status file
+still refusing `lyx loom run` at the Seed step) and a NIT (doc mis-attribution).
 
-**Orchestrator's independent verification of round 5**: file-scope diff matched exactly (10 files,
-none unexpected), cold-state hermetic gates green repo-wide (`go build`, `go vet`, `go test ./...`),
-**all three new/changed guards independently sabotage-proved**: F1's two call sites (each reverted to
-bare pre-fix behavior, each failed exactly as claimed), F3's two layers (`state.go`'s `ErrDecode`
-wrap AND `seed.go`'s mapping to `ErrSeedExists`, each sabotaged separately — confirmed the
-unknown-field case stays correctly unaffected by the `state.go` layer alone), full smoke suite now
-12/12 green (new `TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy` included).
+### Round 6 (`fable5-xhigh-r6`, commit range `0ea41c1ae..b97eec1db`) — found instance 5, the first
+OUTSIDE `wait.go`:
+- **F1 (MEDIUM)** — `internal/shuttleengine/attach.go`'s `dispositionCandidate` classified a
+  `run.json` still at `outcome:running` with every declared output file already on disk as
+  `verdictRespawnEligible` whenever its pane was dead/untracked — the entry-side twin of the four
+  `Wait`-side defects. A driver that crashed AFTER the agent finished its work had the finished
+  output files archived and the whole (expensive) LLM step re-run on the next resume. **Reproduced
+  live**: staged a finished Discussion-Write in a real fabric hub with a dead strand — before the
+  fix, `lyx loom drive` archived the sentinel files and respawned; after, history gained
+  `Discussion-Write:done` and the machine advanced. Fixed by classifying an
+  `outcome==running && allOutputFilesExist` candidate as attachable before the liveness dispatch, so
+  the reconstructed run's own (already-hardened) `Wait` harvests it. Proven safe against the
+  crash-versus-bounce trap: a bounce leaves no `running` run.json (a completed run's `finalize`
+  already removed its directory), so the new guard is unreachable from that path.
+- Round 6 also re-confirmed all four `Wait`-side fixes (rounds 4-5), the `Started`-gating and
+  `VerifySeedOwnership`/`CheckSeed` disposition-sharing claims (round 3), and the
+  `AddStrand`/`run.json` "Accepted residual" judgment (rounds 3-5) with no new angle — three-round
+  agreement now on that residual staying documented rather than code-fixed.
+- Also tripped over round 5's known out-of-scope fabric weft-branch-naming bug again while building
+  its hub fixture; worked around it (not loom's job to fix).
 
-## Incidental finding, OUT OF loom's scope, not fixed — surface to the operator when convenient
-Round 5 hit a real bug in **fabric**, not loom: `lyx fabric clone` names the weft primary branch
-after the weft bare repo's own HEAD (e.g. `master` from git's init default) rather than after the
-warp's primary branch name, when the two differ — contradicting fabric's stated "named after the
-paired warp branch" scheme. Caused a subsequent `lyx fabric add` to fail with `invalid reference:
-main-weft` in round 5's own fixture setup (worked around by pointing the bare's HEAD at `main` before
-cloning). Not a loom finding, not this campaign's job to fix. Worth a separate ticket/task through
-the normal mill flow if the operator wants it tracked.
+**Orchestrator's independent verification of round 6**: file-scope diff matched exactly (`attach.go`,
+`attach_test.go`, `loom.md`), cold-state hermetic gates green repo-wide, **the new regression test
+independently sabotage-proved**: reverted the new top-of-function guard in `dispositionCandidate` —
+all four subtests of `TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn` failed
+exactly as claimed, while the negative-control test
+(`TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`) correctly stayed green
+throughout (proving the new test isn't vacuously failing/passing) — restored to an empty diff. Smoke
+suite 12/12 green (the fixer report said "13", a minor counting typo in its own text, not a
+correctness issue — the actual run and content are what were verified).
+
+## Incidental finding, OUT OF loom's scope, not fixed — still outstanding
+Fabric's `lyx fabric clone` names the weft primary branch after the weft bare repo's own HEAD rather
+than the warp's primary branch name when they differ (originally hit in round 5, hit again in round
+6). Not a loom finding. Worth a separate ticket through the normal mill flow if the operator wants it
+tracked — nobody has opened one yet.
 
 ## RESIDUAL currently seeded
-None specific — round 6 should be seeded as another genuine safety pass (no assigned residual), but
-with an explicit note to sweep `Wait` (and structurally similar functions elsewhere) for a possible
-FIFTH instance of the same defect shape, given four have now been found in two consecutive rounds.
+None specific from round 6 (its one finding is fixed). See "Current state" above for the
+recommended strategy shift for round 7 — a sweep rather than another ad-hoc adversarial pass.
 
 ## DEFERRED list
-- The `AddStrand`/`run.json` crash-mid-registration race — operator-decision item, now re-confirmed
-  by three independent rounds (3, 4, 5) as genuinely unclosable by reordering, with the detection
-  tradeoff fully documented in `manifest/designs/loom.md`.
-- The fabric weft-branch-naming bug above — not loom's scope; a separate task if the operator wants
-  it tracked.
+- The `AddStrand`/`run.json` crash-mid-registration race — operator-decision item, now agreed
+  unclosable-by-reordering across THREE independent rounds (3, 4, 5; round 6 re-confirmed with no
+  new angle — four rounds total). Detection tradeoff fully documented in `manifest/designs/loom.md`.
+- The fabric weft-branch-naming bug — not loom's scope.
 
 ## Next action
-Get the operator's model + effort pick for round 6. All three rotation models (Opus, Fable, Sonnet)
-have now each found real defects on this thread at least once — there is no "untried" model left, so
-picking any of them again is fine; consider whichever has the highest effort tier available if the
-operator wants to push toward a decisive final pass (max), given the defect density found so far.
-Re-seed `_mill/loom-review-prompt.md`'s "Round context" folding round 5's findings into
-CLOSED-AND-VERIFIED (WITH file/test names, not just round-relative "F1" labels, since IDs collide
-across rounds), then spawn `subagent_type: crucible-reviewer-<effort>`, `model: <pick>`, tagged
-`<model>-<effort>-r6`.
-**Do not call thread B/C converged until a round with no assigned residual comes back with nothing
-new.** Three attempts in a row have each found real defects — this is still within the range the
-method's own worked examples show as normal (reed: 7 rounds, fabric: 6), but it does mean the area
-is genuinely defect-dense, not nearly clean.
+Discuss with the operator whether round 7 should be a sweep (enumerate every terminal/negative-outcome
+call site across the bootstrap/crash-recovery surface — `Wait`, `Attach`, `Start`,
+`internal/loomengine`, `internal/loomcli`, `internal/loomshed` — in a table, with a reason per row)
+rather than another generic adversarial safety pass, per the fabric campaign's own "stop reviewing,
+start counting" refinement. If the operator agrees, seed the review prompt accordingly and pick a
+model — a sweep is well-suited to a systematic, lower-creativity task, so effort tier doesn't need to
+be the highest available; if the operator prefers another ad-hoc pass instead, that's their call to
+make, not a default to fall back to silently.
+**Do not call thread B/C converged until a round with no assigned residual — sweep or ad-hoc —
+comes back with nothing new.**
