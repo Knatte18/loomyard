@@ -57,7 +57,7 @@ const (
 // relative file self glyph ("<root>/Makefile#"), which quarry resolves found; the directory-target
 // finding's own detail names that remedy (crucible round fable-high-r10, F7).
 func classifyRef(raw string) refKind {
-	if strings.HasPrefix(raw, "plan:") {
+	if strings.HasPrefix(raw, HandlePrefix) {
 		return refKindHandle
 	}
 
