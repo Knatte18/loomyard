@@ -348,6 +348,10 @@ For the step it was on:
    This is never a producer-level shortcut answering "do files exist" on its own: inside a run there is an agent to attribute the completion to, while at the producer level a `Discussion-Validate` bounce makes the files-exist question true without any agent having run — the trap the next section resolves.
 2. **Else, is the agent's session still alive?** `shuttleengine.Runner.Attach`, probed before anything is archived, scans the run-dir root for a `run.json` whose `OutputFiles` match the spec's and whose persisted `Outcome` is still `"running"`, then asks `reed` (see [overview.md#modules](../../docs/overview.md#modules)) whether that record's `StrandGUID` is still tracked with a live pane.
    A match: re-attach, just wait on its `Stop` hook (do **not** respawn — that would duplicate).
+   Attaching does not by itself skip the startup probe: `reed` reporting the pane alive only means the pane's own process is alive, never that the provider inside it ever came up — a driver killed before its first liveness tick, or a launch against a nonexistent binary, both leave a live pane whose `run.json` still reads `"running"`.
+   The probe is skipped only when the record's persisted `RunState.Started` is ALSO true, set once by that attempt's own startup probe the moment it first observed the provider ready and never by `Attach` itself.
+   When `Started` is false the attach still re-attaches — it just re-runs the startup probe first,
+   so a never-booted pane fails fast at `startup_timeout_s` instead of silently waiting out the full run timeout for a misleading `OutcomeTimeout`.
    **Every row that spawns an agent answers this question, and which rows do so is not left implicit here, because for a while it was and only one of them did.**
    `SingleLLMProducer` probes it for `Discussion-Write` and `Plan-Write`;
    `shedadapters.Bouncer` probes it three times over, for all three segments' `*-Bouncer` rows: on its seed pass, on its judge pass, and once more at `Call` entry before it acts on a verdict already on disk.
@@ -371,10 +375,19 @@ The two are told apart purely by whether an agent for this producer is still ali
 anything else — including both files present but nothing alive — means respawn.
 File existence alone never answers this question, which is exactly what made a naive producer-level file-existence check ping-pong the two cases until the bounce budget was exhausted.
 
+**A poisoned status file must never look like it belongs to bootstrap's own gate.** `loomengine.VerifySeedOwnership` — the ownership check both `lyx loom run` (step 0b, [Entry point](#entry-point--the-session-bootstrap)) and `lyx loom drive` run before a driver is ever spawned — passes a status file that fails to decode (malformed JSON, an unknown field) rather than refusing on it: a decode failure is `CheckSeed`'s own business, diagnosed once the spawned driver reaches its `Loom-Preflight` producer inside `Shed.Run`, never ownership's.
+Escalating a decode failure at the ownership gate used to stop the bootstrap before it ever spawned a driver, took the run lock, or reached the tmux handover, for a condition the driver's own run loop already surfaces in its own log — the same "one layer answering a question that belongs to a downstream layer" shape both residuals below are about.
+
 **Accepted residual.** A crash in the window between a run reaching `done` and Shed persisting that outcome re-runs the completed step from scratch: `Attach` finds nothing live, because `finalize` already ran its cleanup, so the producer archives a finished interview and re-interviews from the top — in interactive mode, the operator answers the whole interview twice.
 This trade is the right direction.
 The only thing that would rescue that window is a producer-level file-existence check, and that check is the trap itself: on a `Discussion-Validate` bounce the files are also present and complete-looking, and treating that as `Done` there ping-pongs the run until its bounce budget blocks it — a frequent hard failure is worse than a narrow one that costs only rework.
 The deliberate non-fix, should this window ever bite in practice: a marker distinguishing "these files were produced by a run that reached `done`" from "these files are merely present" — a new durable-state contract, not designed here.
+
+**Accepted residual (crash mid-registration).** A crash between `shuttleengine.Runner.Start`'s own `AddStrand` call succeeding — which already creates the live pane and starts its launch command running inside it — and that same `Start` call's `run.json` persisting leaves a genuinely live pane in reed's own strand table with no `run.json` anywhere naming it.
+`Attach`'s candidate scan works from `run.json` files under the run-dir root, never from reed's strand table directly, so it can never discover this pane;
+the orphan sweep (`sweepOrphansOpportunistic`) only removes run directories whose strand has gone stale, never the reverse — a live strand with no owning directory at all.
+The next `Start` for the same step therefore spawns a genuinely new pane alongside the orphaned one: two agents on one step, the exact hazard step 2's `Attach` probe above otherwise exists to prevent.
+This window is narrower and earlier than the done-but-not-yet-persisted window above — it is the registration step of a run that has not yet even started waiting, not a run that already finished — and, like that one, is not closable by reordering the two writes: any ordering just relocates the same kind of gap between two independent stores (reed's own persisted strand table and shuttleengine's own `run.json`), a two-phase-commit problem rather than a bug in either store on its own.
 
 **This section's own heading is pinned.**
 `manifest/roadmap.md` and this file's own [Graceful pause](#graceful-pause) section both link `#crash-recovery--resume-on-output-files-not-live-processes`, so the heading text above stays exactly as written even though the rule beneath it has changed — `CONSTRAINTS.md`'s Markdown Link Integrity invariant binds.

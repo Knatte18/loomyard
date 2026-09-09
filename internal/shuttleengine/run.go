@@ -266,6 +266,26 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		return nil, fmt.Errorf("shuttle: add strand: %w", err)
 	}
 
+	// Residual, stated rather than papered over (crucible round sonnet5-xhigh-r3, F2): AddStrand
+	// just above is the point of no return — reed has already created the pane and started the
+	// launch command running inside it — but nothing below has persisted run.json yet. A process
+	// killed in exactly this window (between AddStrand returning and saveRunState completing, not
+	// merely "before the first liveness tick" — this is narrower and earlier than that) leaves a
+	// genuinely live, running pane in reed's own strand table with no run.json anywhere naming its
+	// StrandGUID. collectAttachCandidates scans run.json files, never reed's strand table directly,
+	// so Attach can never discover it; sweepOrphans only removes run DIRECTORIES whose strand is no
+	// longer live, with no reverse check for a live strand with no owning directory at all. The next
+	// Start for the same step therefore spawns a genuinely new pane alongside the orphaned one — the
+	// duplicate-agent hazard this package otherwise goes to considerable lengths to prevent
+	// (errStrandNotTracked, errStrandPaneBindingCleared, verdictError, the whole Attach mechanism).
+	// This is NOT the same window as manifest/designs/loom.md's other documented "Accepted residual"
+	// (a run that already reached a terminal outcome, racing its own finalize persist); this one is
+	// the registration step of a run that has not yet even started waiting. It is not closable by
+	// reordering these two writes: any ordering just relocates the same kind of window between two
+	// independent stores (reed's own persisted state and this package's own run.json) — a
+	// two-phase-commit problem, not a bug in either store on its own. See
+	// manifest/designs/loom.md's "Crash recovery" section for the second Accepted-residual entry
+	// this comment is paired with.
 	state := RunState{
 		RunID:        runID,
 		StrandGUID:   strand.GUID,
