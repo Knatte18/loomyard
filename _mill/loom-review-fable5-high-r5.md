@@ -28,7 +28,16 @@
 
 ## Docs & operability findings (provisional)
 
-(none yet)
+### F2 (provisional, NIT, traced): decode-failure diagnosis is mis-attributed to the Loom-Preflight producer in three places
+
+- On a poisoned status file (malformed JSON / unknown field), the spawned driver's `shedengine.Run` hard-errors at its step-1 read gate (`run.go:71-77`, `state.ReadJSONStrict` → `ErrDecode`) BEFORE any producer is looked up — the Loom-Preflight producer (and thus `CheckSeed`) never runs. `CheckSeed`'s own doc comment states this pre-emption explicitly ("CheckSeedIncoherent via the state.ErrDecode branch: step 1's identical strict read errors first").
+- Yet three places written by commit `69886823e` attribute the diagnosis to CheckSeed-as-producer:
+  - `internal/loomengine/seed.go:129-131` (VerifySeedOwnership doc): "CheckSeed's coherence rules, exercised as the Loom-Preflight producer inside Shed.Run".
+  - `internal/loomengine/seedownership_test.go` (DecodeFailurePasses comment): "CheckSeed (run as the Loom-Preflight producer inside Shed.Run) is the check that owns diagnosing and reporting seed incoherence".
+  - `manifest/designs/loom.md:380`: "a decode failure is `CheckSeed`'s own business, diagnosed once the spawned driver reaches its `Loom-Preflight` producer inside `Shed.Run`".
+- The BEHAVIOR is correct (ownership passes, the driver's own run loop surfaces the decode error in its own log, bootstrap proceeds to handover), and the layering decision is sound; only the attribution of WHICH downstream layer surfaces it is wrong — it is Shed.Run's step-1 read gate (the same decoder, one layer above the producer), not the Loom-Preflight producer. 69886823e's commit message also claims the driver "exits fast without ever taking the run lock", which is false (Shed.Run acquires the run lock before its step-1 read and releases it on return) — commit messages are immutable, but the surviving docs should not repeat the error.
+- Suggested fix: reword the three doc sites to attribute the decode-failure surfacing to Shed.Run's step-1 strict read gate (with CheckSeed diagnosing only when called directly over told paths), per CheckSeed's own pre-emption note.
+- Status: traced (CONFIRMED by code reading: shedengine/run.go:71-77 vs loomshed/loompreflight.go).
 
 ## What was tested
 
