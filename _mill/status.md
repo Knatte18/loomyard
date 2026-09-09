@@ -42,7 +42,9 @@ batches:
     commit_sha: d69c498578c7c605913beac28f9ecd4ad4109075
     verify_baseline_failures: []
   - name: exported-surface
-    state: pending
+    state: running
+    implementer_session: 5b89aca2-482b-4c05-9acc-78e976104169
+    start_sha: b9ebef34cec6568ca96d4b777aadd983359fd28f
     verify_baseline_failures: []
   - name: planparser-migration
     state: pending
