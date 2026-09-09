@@ -67,6 +67,7 @@ The bump plus a targeted adoption pass replaces the hand-rolled vocabulary guard
 - Decision: confine production changes to `internal/planglyph` and `go.mod`/`go.sum`. Record `internal/quarrycli`'s `describeRejectedResolve` as a follow-up, do not change it here.
 - Rationale: the task brief names `internal/planglyph` as the audit surface. `quarrycli` renders quarry's answer verbatim to the operator rather than making a plan/gate decision from it — `status_enforcement_test.go`'s own doc comment already explains why it sits outside this validation surface.
 - Follow-up recorded (not this task): `internal/quarrycli/resolve.go:80` spells the rejection test `r.Error != ""`. quarry's `Rejected()` doc explicitly names that spelling as the rejected alternative — it "would read false for a rejection whose message happened to be empty, where `Status == ""` still holds", in which case `describeRejectedResolve` falls through and prints an empty status. Cosmetic today, one line to fix, worth its own small task.
+- **Durable destination for that follow-up: the implementation commit's own message body.** `_mill/` is a task-branch-only tree — `origin/main` carries no `_mill/` path — so this file does not survive `mill-merge` and cannot itself be the record. Per `CLAUDE.md`, hardening-level notes that do not warrant a roadmap entry are "covered by git history and the module docs"; a paragraph in the landing commit's message is durable on `main`, costs no diff, and does not force a roadmap move the `no-doc-changes` decision rules out. The plan must therefore include that paragraph in the commit message it specifies — naming the file, the line, and the one-line fix — rather than leaving the follow-up only here. Deliberately not a wiki task: `manifest/roadmap.md` gains no item for a one-line hardening fix, and a wiki task with no roadmap item behind it has nothing to point at.
 - Rejected: folding the `quarrycli` one-liner into this commit. It is a real (if minor) correctness deviation, but widening a bump-and-adopt commit past its stated surface is the operator's call, not this task's.
 
 ### comment-prose-updates
@@ -141,6 +142,8 @@ The test is built around a locally declared expectation table, keyed by `quarry.
 | `multipart` | no finding | fires | fires | no finding |
 | `ambiguous` | fires | fires | fires | fires |
 | `not_found` | fires | no finding | no finding | fires |
+
+**Reading the table:** the four column headers name `doneCheckEntry.checkID` arms — the switch labels at `donecheck.go:183-220` — not the `Finding.Check` strings the arms emit. Those differ for the rename pair: `rename-not-done-old` and `rename-not-done-new` both emit `Check: "rename-not-done"` (`donecheck.go:205` and `donecheck.go:214`), distinguished only by their detail strings ("Rename pair's old side %q still resolves %s — the rename did not happen" vs "Rename pair's new side %q still does not resolve — the rename did not happen"). A test asserting on `Check` alone cannot tell the two rename columns apart; drive each arm with its own `doneCheckEntry` and assert on the detail, or on the entry that produced the finding.
 
 Assert, in this order:
 
