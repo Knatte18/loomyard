@@ -53,3 +53,20 @@
 Environment: go1.26.0 linux/amd64, tmux present at /usr/bin/tmux, gcc present. Worktree `/home/knatte/Code/loomyard/wts/crucible-loom-refshape-registry`, branch `crucible-loom-refshape-registry`, HEAD `5f378a79f` at start, tree clean.
 
 (observations appended below as each command/scenario returns)
+
+### Hermetic gates (all green)
+
+- `go build ./...` — exit 0.
+- `go vet ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/...` — exit 0.
+- `go test -count=5` over the same set plus `./cmd/lyx/...` — all ok (loomengine 0.05s, loomcli 0.16s, loomshed 0.06s, planparser 0.11s, planglyph 0.12s, websterengine 0.10s, webstercli 0.22s, shuttleengine 0.16s, claudeengine 0.38s, cmd/lyx 1.35s), exit 0.
+- `go test ./...` full repo, once — exit 0, no failures.
+
+### Code-reading pass (clean-room, before any prior-round material)
+
+- Thread B commits diffed against parents (`git show d0e5a0e7b`, `aba2c270a`, `69886823e`); each verified against current source.
+  - `d0e5a0e7b`: `started := run.attached && run.state.Started` (wait.go:161) with persist-on-StartupReady (wait.go:380-383) — sound; `RunState.Started` zero-value-compat reasoning checks out; `TestAttach_StartedSeededTrue` seeds `started: true` explicitly so the test now proves the seed, not the field.
+  - `aba2c270a`: rewritten assertions match `shedengine.Run`'s actual producer-error contract (run.go:209-222 — StateFailed, error text, current_producer unchanged, `appendHistory` skips an empty outcome). Verified `TestRun_ProducerError`'s contract is the one asserted.
+  - `69886823e`: `VerifySeedOwnership` ErrDecode-pass verified against `CheckSeed`'s identical `errors.Is(rerr, state.ErrDecode)` line — the "this exact same line" claim is TRUE (seed.go:84 vs seed.go:144). But the fix's doc attribution has a defect (F2) and its design goal is only half-met on the run path (F3).
+- `internal/shedengine/run.go` (six-step loop), `coherence.go`, `loomshed/loompreflight.go`, `loomshed/seed.go`, `loomcli/bootstrap.go`, `loomcli/run.go`, `loomcli/drive.go`, `shuttleengine/{run,attach,rundir,wait,spec}.go` read in full; `internal/state/state.go` read in full (UpdateJSON's decode-abort contract is the F3 pivot).
+- Smoke suite read in full: poisoning rig is unknown-field-only (smoke_test.go:334-341); run-path poisoning coverage (`TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy`) relies on Seed's leniency, which malformed JSON does not enjoy (F3).
+- Thread A spot-check: `planparser/shape.go` ledger + fail-closed `lookup` re-read; quarry v0.2.0 module cache consulted (`Status.Known()` = closed four-value vocabulary, false for ""; `ResolveResult.Rejected()` = `Status == ""`); `planglyph` call sites (`donecheck.go:163` fail-closed `!Known()`, `resolve.go:155` `Rejected()` in `unreadableStatusDetail`) match the spec's dispositions.
