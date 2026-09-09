@@ -4,16 +4,46 @@ Campaign, thread A: confirm live that `centralize-glyph-shape-enum` and
 `quarry-bump-v0-2-0-status-helpers` are genuinely behavior-preserving when driven through loom's
 real built binary. **CONVERGED (rounds 1-2).**
 Campaign, thread B/C: fix two pre-existing smoke-test failures, then independently review that fix
-work plus a wider adversarial pass over loom's bootstrap/crash-recovery machinery. **CONVERGED
-(round 3).** See `_mill/loom-crucible-orchestrator-kickoff.md` for the original (thread-A-only)
+work plus a wider adversarial pass over loom's bootstrap/crash-recovery machinery. **NOT YET
+CONVERGED — see "Current state" below; corrected 2026-09-09 after the operator pushed back on an
+overclaim.** See `_mill/loom-crucible-orchestrator-kickoff.md` for the original (thread-A-only)
 brief.
 
 ## Current state
-**CONVERGED, all three threads.** Round 3 (Sonnet/xhigh) closed the seeded residual (a coverage gap
-in an otherwise-correct production fix) and ran a genuine adversarial pass over the wider
-bootstrap/crash-recovery area, finding one new, honestly-narrow, documentation-closed residual. The
-orchestrator independently verified every claim from a cold state. Ready for the operator's
-push/merge decision.
+**Thread A is CONVERGED** (2 independent rounds, 2 models, round 2 was a genuine safety pass that
+found nothing new — this is the evidentiary bar the method actually asks for).
+
+**Thread B/C is NOT YET CONVERGED, despite an earlier version of this note claiming it was.**
+Round 3 (Sonnet/xhigh) is real, valuable work — the seeded residual is genuinely closed and
+independently sabotage-proved by the orchestrator — but it was not a safety pass: it was ASSIGNED a
+residual to close, and it found a SECOND new, real issue (F2) in the same pass. A round that finds
+something is evidence the area has more to find, not evidence it is now clean. Thread A only earned
+"converged" after round 2 ran with NO assigned residual and came back clean. Thread B/C has not yet
+had that round. Per `crucible/README.md`'s own worked examples: reed took 7 rounds before one came
+back clean, fabric took 6 — a single round finding real bugs is the normal middle of a campaign, not
+its end.
+
+**Named limits, independent of any further round count** (state these in any future convergence
+claim, don't let them go unsaid again):
+- **No real LLM-driven phase machine has been driven anywhere in this campaign.** Every scenario
+  across all three rounds went through no-LLM mechanical entry points (`validate-plan`,
+  `record-batch`) or a fixture config with a deliberately-broken `claude:` binary path. The actual
+  production path (`lyx loom run` reaching a real Discussion-Write, a real Burler review round, a
+  real Plan-Write) has zero live-driving evidence from this campaign. This was a deliberate, correct
+  cost-scoping decision for thread A (per `quarry-glyph-plan-alphabet.md`'s "no LLM involved") — but
+  it means thread B/C's "the bootstrap area is sound" conclusion is scoped to the no-LLM paths only.
+- No concurrency/stress testing was run (deliberately out of scope per the round-3 prompt's own merge
+  bar) — F2 (the `AddStrand`/`run.json` race) was found by code tracing, not live reproduction, and
+  there could be siblings a concurrent stress pass would surface that a single-threaded read-through
+  cannot.
+- No Windows-path testing (unreachable from this host).
+- No operator-assisted live/visual check has been done at any point in this campaign.
+
+## Ready for push/merge NOW: thread A only.
+Thread B/C's code changes so far (the three production fixes plus round 3's test/doc additions) are
+each individually well-verified and safe to merge on their own correctness — nothing here says "don't
+merge what exists." The overclaim was specifically about calling the AREA (bootstrap/crash-recovery)
+settled, which is a broader claim than "these specific commits are correct."
 
 ## CLOSED-AND-VERIFIED
 
@@ -70,13 +100,16 @@ suite 11/11 green with the target test at ~5.2s, sabotage-proof of the new regre
 reproduced independently.
 
 ## RESIDUAL currently seeded
-None. All three threads converged.
+None from round 3 itself (F1/F2/F3 are all closed). But thread B/C as a WHOLE has not had its
+safety-pass round yet — that is the next round's assignment, not a specific code residual.
 
 ## DEFERRED list
 None outstanding.
 
 ## Next action
-Campaign converged across all threads, pending the operator's push/merge call. No further crucible
-round is expected unless the operator wants one (e.g. an operator-assisted live check, or a fresh
-adversarial pass on a different area) — re-seed `_mill/loom-review-prompt.md` if so; do not assume
-one is needed.
+Get the operator's decision on whether to run a genuine safety-pass round for thread B/C (a
+DIFFERENT model from Sonnet — Opus or Fable, whichever the operator picks — with NO assigned residual,
+told explicitly to try to find what rounds 3's own pass missed, over the same bootstrap/crash-recovery
+scope) before calling that thread converged. If the operator instead decides the current evidence is
+enough (their call, not this orchestrator's), record that decision here explicitly with their
+reasoning, rather than silently treating silence as agreement.
