@@ -72,6 +72,11 @@ type seedAttachRunOpts struct {
 	outputFiles    []string
 	outcome        string
 	includeOutcome bool
+	// started seeds RunState.Started. Omitted from every existing call site but the ones that
+	// specifically pin started-seed behavior, since Go's zero value (false) is what a run.json a
+	// pre-Started-field binary wrote also decodes to — the fixture default matches the production
+	// default.
+	started bool
 }
 
 // seedAttachRun writes a run.json fixture at <root>/<id>/run.json built from a plain map rather than
@@ -92,6 +97,7 @@ func seedAttachRun(t *testing.T, root, id string, opts seedAttachRunOpts) string
 		"settingsPath": filepath.Join(runDir, settingsFileName),
 		"eventsPath":   filepath.Join(runDir, eventsFileName),
 		"createdAt":    time.Now().UTC().Format(time.RFC3339),
+		"started":      opts.started,
 	}
 	if opts.includeOutcome {
 		fields["outcome"] = opts.outcome
@@ -908,11 +914,15 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 	})
 }
 
-// TestAttach_StartedSeededTrue pins the started seed: attaching to a strand whose CapturePane
-// returns a mid-turn capture (no ready markers) must not classify OutcomeDied after
+// TestAttach_StartedSeededTrue pins the started seed: attaching to a strand whose run.json already
+// carries Started: true (a prior Wait already observed StartupReady for it) and whose CapturePane
+// now returns a mid-turn capture (no ready markers) must not classify OutcomeDied after
 // startup_timeout_s, and must not play the trust-dismiss key sequence even when the capture happens
-// to contain a trust-dialog phrase — because the startup probe must never run at all on an attached
-// run.
+// to contain a trust-dialog phrase — because the startup probe must never run at all once BOTH
+// attached and the persisted Started are true. Without the seeded started:true, this run.json would
+// decode with Started still at its zero value (false), and the mid-turn capture here would instead
+// correctly re-trigger the startup probe — proving the seed, not just the field's existence, is what
+// this test exercises.
 func TestAttach_StartedSeededTrue(t *testing.T) {
 	reed := &fakeReed{
 		StatusQueue:  []reedengine.StatusResult{liveStatus("strand-1", "%1")},
@@ -925,7 +935,7 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
-	runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+	runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true, started: true})
 	eventsPath := filepath.Join(runDir, eventsFileName)
 
 	fc := newFakeClock(time.Now())

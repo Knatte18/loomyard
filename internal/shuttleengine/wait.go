@@ -138,15 +138,27 @@ func (run *Run) Wait() (Result, error) {
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
-	// started seeds from run.attached rather than hard-coding false: an attached run has already
-	// been confirmed live via Attach's own reed reads — strictly stronger evidence than the capture
-	// heuristic below provides — so re-running the startup probe against a pane that is mid-turn
-	// would misclassify a live interview as OutcomeDied one startup_timeout_s after attach, or worse,
-	// play the trust-dismiss key sequence into a live agent's pane if its capture happens to trip a
-	// trust-dialog needle. The not-tracked and not-live branches of checkLivenessTick sit above this
-	// short-circuit, so an attached run keeps full liveness coverage — only the startup probe is
-	// skipped.
-	started := run.attached
+	// started seeds from run.state.Started, persisted the moment the ORIGINAL Start (or a prior
+	// attach) actually observed StartupReady — not from run.attached alone. Attach's own reed reads
+	// are strictly stronger evidence than the capture heuristic below for telling a pane APART FROM
+	// NOTHING, but they cannot tell a booted, mid-turn provider apart from a pane whose launch
+	// command already failed (a live shell sitting at its own prompt after a bad binary path) or
+	// whose driver was killed before its own first liveness tick ever ran: reed reports both "live",
+	// and the run's own run.json still carries the runOutcomeRunning sentinel in every one of those
+	// cases, because nothing ever wrote a terminal Outcome to it. Trusting attachment alone there
+	// skips the startup probe for a run that never passed it, which trades a fast, correctly
+	// classified OutcomeDied at startup_timeout_s for a full run_timeout_min/spec.Timeout wait ending
+	// in a misleading OutcomeTimeout. Started is false for every run.json a pre-this-change binary
+	// wrote too, which is the same safe direction as RunState.Outcome's own compat rule: the probe
+	// runs one extra time rather than being skipped when it should not have been.
+	// Once Started is true the original reasoning still holds: re-running the probe against a pane
+	// that is mid-turn would misclassify a live interview as OutcomeDied one startup_timeout_s after
+	// attach, or worse, play the trust-dismiss key sequence into a live agent's pane if its capture
+	// happens to trip a trust-dialog needle — so a confirmed-ready attach still skips it. The
+	// not-tracked and not-live branches of checkLivenessTick sit above this short-circuit, so an
+	// attached run keeps full liveness coverage regardless of Started — only the startup probe
+	// itself is conditional on it.
+	started := run.attached && run.state.Started
 	eventsFailures := 0
 	statusFailures := 0
 
@@ -356,6 +368,16 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	switch run.runner.engine.Startup(capture) {
 	case StartupReady:
 		*started = true
+		// Persisted immediately, not left for finalize: this is the one fact a killed driver must
+		// not lose, since it is what tells a LATER Attach apart a genuinely booted, mid-turn pane
+		// from one whose launch already failed (see Wait's own doc comment on started). Best-effort,
+		// like every other mid-run persistence in this package (finalize's Outcome write) — a save
+		// failure here costs a future re-attach one extra startup probe, never this run's own
+		// correctness.
+		run.state.Started = true
+		if err := saveRunState(run.runDir, run.state); err != nil {
+			logger.Warn("shuttle: persist run started failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
+		}
 		return "", nil
 	case StartupTrustPrompt:
 		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence(capture)); err != nil {

@@ -121,8 +121,11 @@ func (r *Runner) Attach(spec Spec) (Result, bool, error) {
 		// that hit OutcomeTimeout leaves both its strand and its run dir behind, and inheriting
 		// CreatedAt would re-attach and re-time-it-out on every resume forever.
 		deadline: r.clock.Now().Add(normalized.Timeout),
-		// attached seeds Wait's started so it never re-runs the startup probe against a live,
-		// mid-turn pane.
+		// attached is paired with candidate.state.Started inside Wait's own started-seeding (see its
+		// doc comment): Wait only ever skips the startup probe when BOTH are true, since attached
+		// alone means "reed still reports this pane's process alive", never "the provider inside it
+		// ever reached StartupReady" — a killed driver or a bad launch binary both leave a live pane
+		// with Started still false.
 		attached: true,
 	}
 
