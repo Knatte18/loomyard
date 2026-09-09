@@ -128,7 +128,7 @@ AFTER you have written your own independent findings, you MAY consult the prior 
    a handful of its scenarios as spot-checks).
    Also assess docs accuracy (do the docs match the code?), operability, and **test-coverage
    soundness** — a fix whose regression test would still pass if the fix were reverted is not
-   actually guarded (round 3's F1 was exactly this shape; check whether ANY of round 3's own new
+   actually guarded (round 3's F1 was exactly this shape; check whether ANY of rounds 3 or 4's own new
    tests/fixes have the same defect before assuming the lesson has already been fully applied).
 
 ## High-yield focus — where this campaign's bugs would live (drive these, do not just read them)
@@ -183,17 +183,22 @@ starting points, not a checklist to close and stop — the whole point of thread
 what these don't name.
 
 - **CLOSED, do not re-litigate as if unknown (but a fresh angle that reveals a real gap in the fix
-  itself is fair game):** the `Started`-gating coverage gap (round 3's F1, now covered by
-  `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`), the `VerifySeedOwnership` vs
-  `CheckSeed` disposition-sharing claim (round 3 traced every failure mode reachable from
-  `VerifySeedOwnership`'s own call sites and found them handled identically — confirmed sound, not a
-  finding), and `RunState.Started`'s best-effort persistence path (round 3 traced it; a failed persist
-  costs one extra startup probe on the next `Attach`, never a silent reopening of the bug — confirmed
-  sound). Spend a few minutes independently spot-checking these hold rather than a full re-derivation.
-- **Round 3's documented "Accepted residual" (crash mid-registration)** — the `AddStrand`/`run.json`
-  race in `internal/shuttleengine/run.go`'s `Start` — is genuinely worth your own look (see "Round
-  context" above for the specific question seeded: is there a detection/reconciliation mitigation
-  round 3 didn't consider, even if the window itself can't be closed by reordering?).
+  itself is fair game):** the `Started`-gating coverage gap (round 3, `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`),
+  the `VerifySeedOwnership` vs `CheckSeed` disposition-sharing claim (round 3, confirmed sound), 
+  `RunState.Started`'s best-effort persistence path (round 3, confirmed sound), and BOTH
+  `classifyDeadlineExpiry` call sites — the startup-window and run-deadline paths in
+  `internal/shuttleengine/wait.go` (round 4's F1/F2, now both routed through one helper and covered
+  by `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied` /
+  `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`). Spend a few minutes independently
+  spot-checking these hold rather than a full re-derivation.
+- **The documented "Accepted residual" (crash mid-registration)** — the `AddStrand`/`run.json` race
+  in `internal/shuttleengine/run.go`'s `Start` — is genuinely worth your own look (see "Round context"
+  above for the specific question seeded: is there a detection/reconciliation mitigation two prior
+  rounds didn't consider, even if the window itself can't be closed by reordering?).
+- **Is `classifyDeadlineExpiry`'s shape — a terminal classification finalized without consulting the
+  "did this actually finish" signal — present anywhere ELSE** in the bootstrap/crash-recovery surface,
+  not just the two sites round 4 already found and fixed? Two instances of one shape in one function
+  is reason to check neighboring functions, not reason to assume the shape is now fully swept.
 - **Other layers doing another layer's job.** The core defect class the fixes so far share is one
   function answering a question that belongs to a function downstream of it (ownership-check
   escalating a coherence question; a startup-liveness field trusting a plain-liveness field). Read
@@ -227,37 +232,59 @@ what these don't name.
   never-executed gap in your convergence verdict rather than trying to fake it.
 
 ## Round context seeded from prior-round verification
-**Round 4 — SAFETY PASS on thread B/C. There is NO assigned residual this round.** Thread A remains
-CONVERGED (carry it forward, light touch only). Thread B/C is NOT yet converged — round 3 was
-assigned a residual and found a second new issue in the same pass, which the orchestrator correctly
-judged as evidence the area has more to find, not evidence it is settled (a round that finds
-something is the normal middle of a campaign, not its end — see `crucible/README.md`'s reed/fabric
-worked examples: 7 and 6 rounds respectively before one first came back clean). This round's whole
-job is to be that clean round, or to prove it isn't: do a genuinely independent pass over the SAME
-bootstrap/crash-recovery scope round 3 covered, and either find something round 3 and the
-orchestrator's verification both missed, or honestly confirm merge-readiness. "No new defects, the
-area looks sound" is the expected, valuable outcome of a safety pass — do not manufacture a finding
-to have something to report, and do not pad severity to seem thorough.
+**Round 5 — SAFETY PASS on thread B/C, attempt three. There is NO assigned residual this round.**
+Thread A remains CONVERGED (carry it forward, light touch only). Thread B/C is NOT yet
+converged — TWO prior safety-pass attempts have each found real defects: round 3 (assigned a
+residual, also found one new issue) and round 4 (a genuinely clean-slate safety pass with no
+assigned residual, which still found two real, live-reproduced MEDIUM bugs). Per
+`crucible/README.md`'s reed/fabric worked examples (7 and 6 rounds respectively before one first
+came back clean), this is not yet an alarming round count, but it does mean: do not assume this area
+is "almost done" — approach it exactly as adversarially as round 4 did, not more leniently because
+two rounds already passed over it. This round's job is to be the first genuinely clean round, or to
+prove it isn't.
 
 **Thread B/C's prior rounds, summarized (see `_mill/loom-review-HANDOFF.md` for full detail — you
 MAY read that file, it's the orchestrator's own state, but per the clean-room constraint above you
-still may NOT read it until your OWN findings list is complete):**
+still may NOT read it until your OWN findings list is complete). Note the finding IDs below are
+namespaced by round tag because "F1"/"F2"/"F3" repeats across rounds with different meanings —
+always cite the round tag alongside any finding ID:**
 - Three production commits (`d0e5a0e7b`, `aba2c270a`, `69886823e`) fixed the two originally-flagged
-  smoke-test failures. All three independently verified correct by both round 3 and the orchestrator.
-- Round 3 (`sonnet5-xhigh-r3`) closed a coverage gap in `d0e5a0e7b` (a new sabotage-proved regression
-  test, `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`) and found one new, real,
-  narrow issue (a microsecond-scale race between `Runner.Start`'s `AddStrand` and its `run.json`
-  persist — structurally unclosable by reordering, documented as a second "Accepted residual" in
-  `manifest/designs/loom.md` rather than code-fixed) plus a docs gap (now closed).
-- **CLOSED-AND-VERIFIED, do not re-litigate from scratch:** all of the above. A regression found by
-  your OWN live driving is fair game to report; re-deriving the same conclusion from first principles
-  is not a new finding.
-- **Worth your own independent judgment, not spoon-fed:** is the documented "Accepted residual"
-  (the `AddStrand`/`run.json` race) actually as narrow and unclosable as round 3 concluded, or is
-  there a mitigation round 3 didn't consider (e.g. a reconciliation sweep that could detect — even if
-  not prevent — an orphaned live pane with no owning `run.json`, the way `sweepOrphans` already does
-  the reverse case)? You are not required to find one, but you should genuinely look rather than
-  accept the "unclosable" conclusion at face value.
+  smoke-test failures. Independently verified correct by rounds 3, 4, and the orchestrator (each
+  re-sabotage-proved them independently rather than trusting the prior account).
+- Round 3 (`sonnet5-xhigh-r3`) closed a coverage gap in `d0e5a0e7b` (regression test
+  `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`) and documented, not code-fixed, a
+  narrow `AddStrand`/`run.json` crash-mid-registration race in `internal/shuttleengine/run.go`'s
+  `Start` as an "Accepted residual" in `manifest/designs/loom.md` (structurally unclosable by
+  reordering the two writes — a two-independent-stores problem).
+- Round 4 (`opus5-high-r4`), a genuine safety pass, found TWO real, live-reproduced MEDIUM defects
+  sharing one shape: `internal/shuttleengine/wait.go`'s two deadline-expiry paths
+  (`classifyStartupWindow` for the startup window, `Wait`'s own run-deadline branch) both finalized a
+  negative outcome (`OutcomeDied`/`OutcomeTimeout`) without checking whether the run's declared
+  output files already existed — while the function's sibling not-tracked/not-live branches DID
+  check, per `checkLivenessTick`'s own doc comment ("a satisfied file contract wins over every
+  negative answer"). A step that had genuinely finished was recorded as failed, and the next resume
+  archived the finished files and respawned over completed work. Fixed via a shared
+  `classifyDeadlineExpiry` helper (both deadline paths now route through it) — see
+  `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied` and
+  `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`. Round 4 also independently
+  re-verified `d0e5a0e7b`'s fix end-to-end for the first time with a real `kill -9` inside the
+  startup window against a genuinely live pane. Round 4 also extended the `AddStrand`/`run.json`
+  residual's documentation with why the obvious detection mitigation (a reverse sweep) isn't free
+  either (it would require parsing `Launch.Cmd`, which `Launch`'s own contract forbids) — the
+  residual itself remains deliberately unfixed, an operator design tradeoff.
+- **CLOSED-AND-VERIFIED, do not re-litigate from scratch:** all of the above, including BOTH
+  `classifyDeadlineExpiry` call sites (do not report "the deadline paths ignore the file contract" as
+  if it were new — that is exactly round 4's F1/F2, already fixed). A regression found by your OWN
+  live driving is fair game to report; re-deriving the same conclusion from first principles is not a
+  new finding.
+- **Worth your own independent judgment, not spoon-fed:**
+  - Is `classifyDeadlineExpiry` the ONLY place in `internal/shuttleengine` (or elsewhere in the
+    bootstrap/crash-recovery surface) where a negative/terminal classification is finalized without
+    first checking whatever "did the work actually finish" signal that layer owns? Round 4 found two
+    instances of one shape in one function; that is exactly the kind of thing worth checking for a
+    third instance of, in a different function, before assuming the shape is now fully swept.
+  - Is the documented `AddStrand`/`run.json` "Accepted residual" actually as unclosable as two rounds
+    now agree, or is there an angle neither considered? You are not required to find one.
 
 State plainly in your executive summary whether this round found something (residual → re-seed,
 rotate again) or came back clean (safety pass + the orchestrator's own gates need to agree before
@@ -392,11 +419,12 @@ external dependency you don't control (e.g. a quarry upstream bug). Even then sa
 the specific reason, in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-- Round 3's documented "Accepted residual" (the `AddStrand`/`run.json` crash-mid-registration race,
-  `internal/shuttleengine/run.go`) — deferred as documentation rather than a code fix because round 3
-  judged it structurally unclosable by reordering. Re-evaluate whether that judgment holds (see
-  "Round context" above and "High-yield focus, thread B/C" above for the specific angle to check —
-  a detection/reconciliation mitigation, not necessarily a full close).
+- The documented "Accepted residual" (the `AddStrand`/`run.json` crash-mid-registration race,
+  `internal/shuttleengine/run.go`) — deferred as documentation rather than a code fix because rounds
+  3 and 4 both judged it structurally unclosable by reordering, and round 4 additionally found the
+  obvious detection mitigation isn't free either (it would require parsing `Launch.Cmd`, which
+  `Launch`'s own contract forbids). Re-evaluate whether that two-round judgment holds (see "Round
+  context" above and "High-yield focus, thread B/C" above for the specific angle to check).
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT — not just BLOCKING/MEDIUM ones.
