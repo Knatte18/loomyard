@@ -49,9 +49,10 @@ The bump plus a targeted adoption pass replaces the hand-rolled vocabulary guard
 
 ### statuses-completeness-test
 
-- Decision: add a test in `internal/planglyph` that ranges `quarry.Statuses` and asserts each enumerated value receives an explicit, named disposition from `doneCheckVerdicts`, alongside cases for the zero value and a synthetic out-of-vocabulary status.
-  A status quarry adds later, which `Known()` would newly admit but `doneCheckVerdicts`' `resolved`/`stillExists` booleans have never been taught, must make this test fail.
-- Rationale: `Known()` moves the definition of "readable" from lyx to quarry. That is the point of the primitive, but it means a widened vocabulary now passes lyx's guard and lands on booleans derived only from `StatusFound`/`StatusMultipart`/`StatusNotFound` — a new status would silently read as `resolved == false, stillExists == true`, producing a plausible-looking `create-not-done` / `delete-not-done` verdict instead of the honest `glyph-rejected` diagnostic. Ranging the newly-exported `Statuses` converts that runtime fail-open into a build-time failure, and it is the one place `Statuses` earns its export.
+- Decision: add a test in `internal/planglyph` built around a **locally declared, exhaustive expectation table** — `map[quarry.Status]<expected disposition>`, one entry per status the test author has consciously taught `doneCheckVerdicts` to handle, where the disposition names the expected verdict for each of the four `checkID` arms.
+  The test asserts the table and `quarry.Statuses` cover each other exactly: every entry in `quarry.Statuses` has a table entry (a new quarry status fails here) and every table key is in `quarry.Statuses` (a status quarry *removed* fails here too). Only then does it drive `doneCheckVerdicts` per status and compare against the table.
+- The failing mechanism is the table's exhaustiveness assertion, not the per-status behavior assertions. A hypothetical fifth status admitted by `Known()` yields `resolved == false, stillExists == true` and so produces perfectly ordinary `create-not-done`/`rename-not-done-new`/`delete-not-done`/`rename-not-done-old` findings — never `glyph-rejected` — which is exactly why a behavior assertion cannot catch it and the coverage assertion must.
+- Rationale: `Known()` moves the definition of "readable" from lyx to quarry. That is the point of the primitive, but it means a widened vocabulary now passes lyx's guard and lands on booleans derived only from `StatusFound`/`StatusMultipart`/`StatusNotFound` — a new status would silently read as `resolved == false, stillExists == true`, producing a plausible-looking `create-not-done` / `delete-not-done` / `rename-not-done` verdict instead of the honest `glyph-rejected` diagnostic. Asserting an exhaustive local table against the newly-exported `Statuses` converts that runtime fail-open into a build-time failure, and it is the one place `Statuses` earns its export.
 - Rejected: keeping the literal four-case switch as the mitigation (Q1 option 2). That preserves fail-closed behavior but keeps the duplication, and it leaves quarry's vocabulary and lyx's copy of it free to drift with nothing detecting it.
 - Rejected: accepting the hazard undetected. The whole `status_enforcement_test.go` tripwire exists because this exact family of defect shipped twice already.
 
@@ -132,17 +133,29 @@ From `CONSTRAINTS.md` (only the ones this task can touch):
 `internal/planglyph` is the only package with test changes. TDD is a natural fit for the completeness test: it can be written and made to fail against the current literal switch before the `Known()` swap lands.
 
 **TDD candidate — vocabulary completeness (new test, `internal/planglyph`).**
-Drive `doneCheckVerdicts` through its exported-for-test seam with a synthetic `index map[string]quarry.ResolveResult`, once per entry in `quarry.Statuses`, plus two extra cases: the zero-value `Status` (`""`, quarry's pre-resolution rejection, with `Error`/`Reason` populated) and a synthetic out-of-vocabulary status string. Assert:
+The test is built around a locally declared expectation table, keyed by `quarry.Status`, whose value names the expected disposition for **all four** of `doneCheckVerdicts`' `checkID` arms — `create-not-done`, `delete-not-done`, `rename-not-done-old`, `rename-not-done-new` (`donecheck.go:183-220`). All four are equally exposed to a widened vocabulary: `create-not-done` and `rename-not-done-new` both read `resolved`, `delete-not-done` and `rename-not-done-old` both read `stillExists`, so listing only the create/delete pair would leave the two rename arms unasserted. Four table entries today:
 
-- every value in `quarry.Statuses` produces a verdict from the create/delete rules and never a `glyph-rejected` finding;
-- the zero value and the out-of-vocabulary string both produce exactly the `glyph-rejected` finding, with the detail `unreadableStatusDetail` renders for each (the two branches differ);
-- the test's own coverage is keyed off `len(quarry.Statuses)` rather than a hard-coded 4, so a widened vocabulary that nobody taught `doneCheckVerdicts` fails here.
+| status | `create-not-done` | `delete-not-done` | `rename-not-done-old` | `rename-not-done-new` |
+| --- | --- | --- | --- | --- |
+| `found` | no finding | fires | fires | no finding |
+| `multipart` | no finding | fires | fires | no finding |
+| `ambiguous` | fires | fires | fires | fires |
+| `not_found` | fires | no finding | no finding | fires |
+
+Assert, in this order:
+
+- **The coverage assertion, which is the whole point of the test:** the table's key set and `quarry.Statuses` cover each other exactly — every `quarry.Statuses` entry has a table entry, and every table key appears in `quarry.Statuses`. A status quarry adds fails the first direction; a status quarry removes fails the second. Neither is a `len()` comparison: comparing lengths alone would pass a same-size swap, and sizing a range loop off `len(quarry.Statuses)` asserts nothing at all.
+- Then, per status, drive `doneCheckVerdicts` through its seam with a synthetic `index map[string]quarry.ResolveResult` and one `doneCheckEntry` per `checkID`, and compare the findings against that status's table row.
+- Separately, the zero-value `Status` (`""`, quarry's pre-resolution rejection, with `Error`/`Reason` populated) and a synthetic out-of-vocabulary status string each produce exactly the `glyph-rejected` finding — with the detail `unreadableStatusDetail` renders for each, the two branches differing — and no create/delete/rename verdict.
+
+Explicitly **not** an assertion in this test: "every value in `quarry.Statuses` never yields `glyph-rejected`". That is true of a hypothetical fifth status too — `Known()` would admit it and the booleans would emit an ordinary verdict — so it cannot detect the condition this test exists to catch.
 
 **Regression scenarios that must stay green (existing tests in `donecheck_test.go`, `donecheck_integration_test.go`).**
 
 - `create-not-done` fires for `not_found` and for `ambiguous`, and does not fire for `found`/`multipart`.
 - `delete-not-done` fires for `found`, `multipart` **and** `ambiguous` (the `fable-high-r10` F1 fix — `stillExists` is `!= not_found`, so ambiguous blocks a deletion verdict), and does not fire for `not_found`.
-- A pre-resolution rejection (`Status == ""`) yields `glyph-rejected`, not a create/delete verdict — the fail-closed behavior both crucible rounds installed.
+- `rename-not-done` fires from the old side (`rename-not-done-old`, reading `stillExists`) and from the new side (`rename-not-done-new`, reading `resolved`), with the two distinct detail strings unchanged.
+- A pre-resolution rejection (`Status == ""`) yields `glyph-rejected`, not a create/delete/rename verdict — the fail-closed behavior both crucible rounds installed.
 - An index missing a key the caller asked about still returns the `ErrQuarryUnavailable` infrastructure error, unchanged.
 
 **`unreadableStatusDetail` rendering.** Existing assertions on the two detail strings (rejected-before-resolution vs unrecognized-status) must be unchanged by the `Rejected()` swap — that is the proof the swap is behavior-preserving.
@@ -160,4 +173,6 @@ Drive `doneCheckVerdicts` through its exported-for-test seam with a synthetic `i
 - **Q:** What about prose that hand-enumerates the four values? **A:** [auto-pick] update `doneCheckVerdicts`' guard comment and `status_enforcement_test.go`'s file doc comment to name `Known()`/`quarry.Statuses` as the source of truth; leave `allowedStatusConsumers` alone. **Why:** a comment reciting a list that is no longer lyx's to own is the next thing to drift; no consumer function is added or renamed, so the allowlist itself is correct as-is.
 - **Q:** Testing approach? **A:** [auto-pick] table test over `quarry.Statuses` plus the zero value and a synthetic unknown, through the existing `doneCheckVerdicts` seam. **Why:** that seam exists precisely so conditions unreachable through a real `quarry.Repo` can be unit-tested.
 - **Q:** Bump mechanics? **A:** [auto-pick] `go get ...@v0.2.0` then `go mod tidy`, committing `go.mod` and `go.sum`. **Why:** hand-editing `go.mod` leaves `go.sum` stale; the v0.1.0→v0.2.0 diff was verified purely additive, so no other call site should need touching.
+- **Q:** [review r2, BLOCKING:design] The completeness test as first specified could not fail — a fifth status would yield `resolved == false, stillExists == true` and produce an ordinary verdict, so "never `glyph-rejected`" passes, and keying off `len(quarry.Statuses)` sizes a loop rather than asserting anything. What is the concrete failing mechanism? **A:** [auto-resolve] a locally declared per-status expectation table asserted exhaustive in both directions against `quarry.Statuses`. **Why:** an added status has no table entry and a removed one leaves an orphan key, so the coverage assertion — not any behavior assertion — is what fails; the contradicting "never `glyph-rejected`" and `len()` phrasings are dropped and replaced with an explicit note saying why they cannot work.
+- **Q:** [review r2, NIT:scope] `doneCheckVerdicts` has four `checkID` arms, but the test spec named only the create/delete rules. **A:** [auto-resolve] name all four explicitly, with a per-arm expectation table. **Why:** `rename-not-done-new` reads the same `resolved` boolean as `create-not-done` and `rename-not-done-old` the same `stillExists` as `delete-not-done`, so the rename arms carry identical exposure to a widened vocabulary and covering them "transitively" would leave them unasserted.
 - **Q:** Any doc updates? **A:** [auto-pick] none. **Why:** hardening/polish does not move `manifest/roadmap.md` per `CLAUDE.md`; no new cross-cutting invariant, no module-table change, no observable CLI behavior change.

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-gap-fix-r2
 slug: quarry-bump-v0-2-0-status-helpers
 branch: quarry-bump-v0-2-0-status-helpers
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-09T08:14:09Z'
+discussion-gap-fix-r2  '2026-09-09T08:25:34Z'
 ```
