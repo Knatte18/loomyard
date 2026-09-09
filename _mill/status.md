@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-quarry-bump-and-adoption
+phase: holistic-reviewing
 slug: quarry-bump-v0-2-0-status-helpers
 branch: quarry-bump-v0-2-0-status-helpers
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-review-r1  '2026-09-09T08:43:02Z'
 planned  '2026-09-09T08:43:22Z'
 implementing  '2026-09-09T08:43:55Z'
 approved-quarry-bump-and-adoption  '2026-09-09T08:52:55Z'
+holistic-reviewing  '2026-09-09T08:53:34Z'
 ```
 
 ## Batches
