@@ -124,17 +124,30 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 // the OLD task's Finalize, with the status envelope naming the old slug (crucible round
 // fable5-high-r3, F-B7).
 //
-// A missing file, an empty recorded slug, and a product that does not decode all pass: each is
-// some other check's business (the caller's own missing-file handling, and CheckSeed's coherence
-// rules) — this function answers ownership alone. A read or lock failure is returned as its own
-// error, never converted into a verdict.
+// A missing file, an empty recorded slug, a product that does not decode, and a decode failure on
+// the outer shed envelope itself (malformed JSON or an unknown field) all pass: each is some other
+// check's business (the caller's own missing-file handling, and CheckSeed's coherence rules,
+// exercised as the Loom-Preflight producer inside Shed.Run) — this function answers ownership
+// alone. Escalating a decode failure here stopped the bootstrap before it ever spawned a driver or
+// reached the tmux handover, for a condition the driver's own run loop already surfaces in its own
+// log — reproduced live via a poisoned status file that made both "lyx loom run" and "lyx loom
+// drive" refuse on the envelope instead of reaching CheckSeed's own coherence verdict.
+// A genuine read or lock failure — anything that is not a decode failure — is still returned as its
+// own error, never converted into a verdict: CheckSeed draws this exact same line (see its own
+// rerr-handling), and this function draws it the same way for the same reason.
 func VerifySeedOwnership(statusPath, statusLockPath, wantSlug string) error {
 	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
 		return err
 	}
 	shed, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
-	if err != nil || !found {
+	if err != nil {
+		if errors.Is(err, state.ErrDecode) {
+			return nil
+		}
 		return err
+	}
+	if !found {
+		return nil
 	}
 
 	var product Status
