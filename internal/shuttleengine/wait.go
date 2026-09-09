@@ -204,7 +204,10 @@ func (run *Run) Wait() (Result, error) {
 		}
 
 		if run.clock.Now().After(run.deadline) {
-			return run.finalize(OutcomeTimeout, "")
+			// classifyDeadlineExpiry, not a bare OutcomeTimeout: the run deadline answers "has the
+			// clock run out", never "did this run finish", and a run whose every output file is on
+			// disk finished whatever the clock says — see that function.
+			return run.finalize(run.classifyDeadlineExpiry(OutcomeTimeout), "")
 		}
 
 		run.clock.Sleep(interval)

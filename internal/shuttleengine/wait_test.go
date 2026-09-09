@@ -1082,6 +1082,55 @@ func TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied(t *testing.T
 	}
 }
 
+// TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout is F2's regression guard (crucible
+// round opus5-high-r4): the run deadline expiring is the second place a clock used to publish
+// itself as a verdict on whether the run finished.
+//
+// The run here has already reached StartupReady (started is seeded true through the persisted
+// RunState, so the startup probe never runs and cannot be what classifies this), every declared
+// output file is on disk, and events.jsonl is never created — so the file contract is the only
+// evidence of completion and the RUN deadline is the only thing that ever fires. Reverting the fix
+// (a bare `return run.finalize(OutcomeTimeout, "")`) makes this fail on the outcome.
+//
+// Reproduced live before being written: a provider that rendered the ready marker, wrote both of
+// Discussion-Write's output files, and then stayed alive without appending to events.jsonl was
+// recorded as `run.json` outcome "timeout" with started true, and the step as a shed failure.
+func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+
+	reed := &fakeReed{
+		StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+	}
+	// StartupScript deliberately left empty: with started seeded true the startup probe must never
+	// run, so any Startup call at all would mean this test is measuring the wrong deadline.
+	engine := &fakeEngine{}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 300})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: true},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+		attached: true,
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever the clock says", result.Outcome, OutcomeDone)
+	}
+	if len(engine.StartupCalls) != 0 {
+		t.Errorf("engine.StartupCalls = %v; want none — started was seeded true, so the RUN deadline is what this case measures", engine.StartupCalls)
+	}
+}
+
 func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
