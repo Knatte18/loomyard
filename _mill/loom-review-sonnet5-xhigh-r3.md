@@ -77,6 +77,34 @@ final severity ordering are written last, after Job 1 completes.
   `registerBootstrapTeardown` cleanup completing asynchronously). No new stray tmux server survived
   the suite.
 
+### Sabotage-proof of the seeded residual (the `Started`-gating coverage gap)
+
+Independently reproduced the coverage gap the campaign seeded, before trusting the orchestrator's own
+characterization of it:
+
+- Reverted `internal/shuttleengine/wait.go`'s `started := run.attached && run.state.Started` back to
+  `started := run.attached` (the pre-`d0e5a0e7b` behavior).
+- `go build ./...` — still builds clean (as expected — this is a pure logic change, not a type
+  change).
+- `go test ./internal/shuttleengine/... -v -run TestAttach_StartedSeededTrue` — **still PASSES**.
+  Confirms the round-context claim exactly: this test seeds `started: true` on both the old and new
+  code paths, so it cannot distinguish them.
+- `go test ./internal/shuttleengine/...` (the whole package, sabotaged) — **still `ok`**, no failures
+  anywhere in the hermetic unit suite.
+- `go test -tags smoke ./internal/loomcli/... -run TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed -v -count=1`
+  (sabotaged) — **still PASSES**, but takes **61.98s** instead of ~5s, and the driver's own log line
+  now reads `outcome=timeout` instead of `outcome=died`. This is the exact mismeasurement `d0e5a0e7b`
+  fixed, silently un-fixed by the sabotage, invisible to every existing test because `aba2c270a`'s
+  corrected assertion only checks the FINAL state (`running` → `failed`) and never the outcome kind
+  or the elapsed time.
+- Restored `wait.go` from a pre-sabotage backup; `git diff --stat internal/shuttleengine/wait.go`
+  produced no output, confirming an exact, clean restore before continuing the review.
+
+Conclusion: the seeded residual is independently CONFIRMED, not merely trusted. This is exactly what
+Job 2 closes (a fake-clock unit test seeding `attached: true, state.Started: false` against an
+engine whose `Startup` never returns `StartupReady`, asserting `OutcomeDied` at/near
+`startup_timeout_s` rather than the full run timeout).
+
 ## Findings (provisional, severity TBD at the end)
 
 - **F-C1 (thread C, code, severity TBD — leaning LOW, CONFIRMED via trace, not live-reproduced —
