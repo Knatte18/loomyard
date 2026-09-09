@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -26,4 +26,25 @@ discussed  '2026-09-09T05:47:11Z'
 planning  '2026-09-09T06:04:56Z'
 plan-review-r1  '2026-09-09T06:13:26Z'
 planned  '2026-09-09T06:13:53Z'
+implementing  '2026-09-09T06:14:17Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: registry-core
+    state: pending
+  - name: exported-surface
+    state: pending
+  - name: planparser-migration
+    state: pending
+  - name: planglyph-migration
+    state: pending
+  - name: status-family
+    state: pending
+  - name: batch-coverage
+    state: pending
+  - name: boundary-enforcement
+    state: pending
 ```
