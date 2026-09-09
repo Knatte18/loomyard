@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
@@ -39,6 +39,7 @@ holistic-reviewing  '2026-09-09T06:44:54Z'
 holistic-fixing  '2026-09-09T06:47:57Z'
 nits-fixed-holistic  '2026-09-09T06:48:41Z'
 holistic-approved  '2026-09-09T06:48:47Z'
+done  '2026-09-09T06:50:15Z'
 ```
 
 ## Batches
