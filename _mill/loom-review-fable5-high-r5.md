@@ -6,13 +6,26 @@
 
 ## Executive summary
 
-(written last)
+Round 5, third safety-pass attempt on thread B/C. This round is NOT clean: it found **three** real defects — two MEDIUM (both reproduced live against the real built binary) and one NIT — and every one of them is the SAME shape the two prior safety passes named as this campaign's core defect class ("a terminal/negative classification finalized without consulting the did-this-actually-finish signal that layer owns" / "one layer answering a question that belongs to a downstream layer"). Round 4 found two instances of that shape in the two deadline paths; the review prompt explicitly asked whether there is a THIRD instance in a neighboring function. The answer is yes:
 
-## Scope assessment
+- **F1 (MEDIUM, CONFIRMED live):** `Wait`'s two mechanism-failure exits (events-unreadable cap, reed-status-error cap) finalize a negative outcome WITHOUT consulting the file contract — while every other branch in the same file (not-tracked, not-live, both deadlines) does. A finished run whose reed bookkeeping was reset (a crash-corrupted reed.json, a torn-down session, a renamed worktree) is recorded as failed, and the next resume archives the finished files and respawns over completed work. This is round 4's F1/F2 shape, one exit-type over, in the same function.
+- **F3 (MEDIUM, CONFIRMED live):** `manifest/designs/loom.md`'s crash-recovery section and commit `69886823e` both promise a poisoned status file — "malformed JSON, an unknown field" — never looks like bootstrap's own gate. The unknown-field half holds; the malformed-JSON half does NOT on the `lyx loom run` path: `Seed` reads the existing file through the lenient decoder before `VerifySeedOwnership` is ever reached, so a malformed status file makes `run` refuse on the envelope before spawning a driver — the exact state the fix existed to remove. `lyx loom drive` is correct.
+- **F2 (NIT, CONFIRMED):** three doc/comment sites written by `69886823e` attribute the decode-failure diagnosis to "CheckSeed run as the Loom-Preflight producer inside Shed.Run"; it is actually surfaced one layer above the producer, by Shed.Run's own step-1 read gate (the Loom-Preflight producer never runs on a decode failure — CheckSeed's own doc comment says so). Confirmed live: `lyx loom drive`'s envelope reads `shedengine: read status file ...: state: decode failed`.
 
-(in progress)
+Thread A (the two original refactors) is CONVERGED and re-confirmed by independent live driving of `validate-plan` — canonicalization + on-disk `RewriteRefs`, the Create inversion in both directions, ambiguous-with-file-candidates, and file-rename all behave exactly as `quarry-glyph-plan-alphabet.md` specifies, with no regression.
 
-## Code findings (provisional, appended as formed)
+The three new commits themselves (`d0e5a0e7b`, `aba2c270a`, `69886823e`) are correct; F1/F2/F3 are defects in the WIDER area those commits opened up (thread C), which is exactly what thread C was scoped to find. All three are fixable this round with no operator decision or external dependency. The AddStrand/run.json "Accepted residual" is re-confirmed as genuinely unclosable-by-reordering; no new angle.
+
+Merge-readiness: **NOT converged this round** — three real defects found, all fixed in Job 2 (see fixer report). The orchestrator should re-seed and rotate once more; a genuinely clean round has not yet happened on thread B/C.
+
+## Scope assessment (plan-vs-shipped)
+
+- **Thread A (scope/omfang):** shipped == specified. `quarry-glyph-plan-alphabet.md`'s handle lifecycle, resolve status policy, Create inversion, both containment tiers, and infrastructure-error disposition are all delivered and behave as written under live driving. The Ref-Shape Registry and Glyph Conversion Chokepoint invariants hold; the fail-closed `lookup` ledger is intact. No deferred-that-should-be-v1, no shipped-beyond-scope.
+- **Thread B/C (correctness/crash-recovery):** the shipped bootstrap/crash-recovery behavior MOSTLY matches `loom.md`'s "Crash recovery" promises, with two concrete gaps against the doc's own words: F1 (the doc's "each of the five consults the file contract first, and each classifies `done` when it is satisfied" is contradicted by the two mechanism-failure exits, which are a sixth and seventh negative answer the doc's enumeration does not cover but its governing rule should) and F3 (the doc's "A poisoned status file must never look like it belongs to bootstrap's own gate" is false for malformed JSON on the run path). F2 is a scope-accurate behavior with an inaccurate doc attribution.
+
+## Code findings (severity-ranked)
+
+Severity order: F1 (MEDIUM), F3 (MEDIUM), F2 (NIT). All three CONFIRMED. Full detail below in discovery order.
 
 ### F1 (provisional, MEDIUM, traced): Wait's two mechanism-failure exits finalize without consulting the file contract
 
