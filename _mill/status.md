@@ -63,7 +63,9 @@ batches:
     commit_sha: c6e474bba841dc4e06ceb997992bf3d334c66ec8
     verify_baseline_failures: []
   - name: status-family
-    state: pending
+    state: running
+    implementer_session: 7bd4de2e-c256-4ee0-9048-97e67e7b93bf
+    start_sha: 5044fbc762de35d4657d79ac384dd4ae5c066f58
     verify_baseline_failures: []
   - name: batch-coverage
     state: pending
