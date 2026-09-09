@@ -6,6 +6,7 @@ slug: centralize-glyph-shape-enum
 branch: centralize-glyph-shape-enum
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Centralize glyph ref-shape enumeration
 task_description: |
   Centralize glyph ref-shape enumeration
@@ -34,17 +35,26 @@ implementing  '2026-09-09T06:14:17Z'
 ```yaml
 batches:
   - name: registry-core
-    state: pending
+    state: running
+    implementer_session: c35cda8d-ed05-4216-984c-7f048cc73ab7
+    start_sha: 729b401367ec90d93283289f68ba7499ff3a0783
+    verify_baseline_failures: []
   - name: exported-surface
     state: pending
+    verify_baseline_failures: []
   - name: planparser-migration
     state: pending
+    verify_baseline_failures: []
   - name: planglyph-migration
     state: pending
+    verify_baseline_failures: []
   - name: status-family
     state: pending
+    verify_baseline_failures: []
   - name: batch-coverage
     state: pending
+    verify_baseline_failures: []
   - name: boundary-enforcement
     state: pending
+    verify_baseline_failures: []
 ```
