@@ -151,17 +151,16 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 			return findings, fmt.Errorf("%w: resolve returned no answer for done-check target %q (card %s)", ErrQuarryUnavailable, e.key, e.card.ID())
 		}
 
-		// Fail closed on an answer outside quarry's four-value vocabulary BEFORE reading it into
-		// either boolean below. The old single boolean ("resolved = found || multipart") folded a
-		// pre-resolution rejection (Status "", Error/Reason set) and any future unrecognized status
-		// into "the target is gone", which fails OPEN for delete-not-done and rename-not-done-old:
-		// an unreadable answer counted as a successful deletion. Same disposition statusFindings and
+		// Fail closed on an answer outside quarry's vocabulary — quarry.Status.Known(), the
+		// predicate quarry.Statuses now owns — BEFORE reading it into either boolean below. The
+		// old single boolean ("resolved = found || multipart") folded a pre-resolution rejection
+		// (Status "", Error/Reason set) and any future unrecognized status into "the target is
+		// gone", which fails OPEN for delete-not-done and rename-not-done-old: an unreadable
+		// answer counted as a successful deletion. Same disposition statusFindings and
 		// createFindings adopted in crucible round opus-high-r9's R9-6, and the same glyph-rejected
 		// check ID, so the vocabulary can only ever widen deliberately (crucible round
 		// fable-high-r10, F1).
-		switch r.Status {
-		case quarry.StatusFound, quarry.StatusMultipart, quarry.StatusAmbiguous, quarry.StatusNotFound:
-		default:
+		if !r.Status.Known() {
 			findings = append(findings, Finding{
 				Check:    "glyph-rejected",
 				Card:     e.card.ID(),
