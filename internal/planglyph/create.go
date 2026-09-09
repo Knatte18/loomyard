@@ -11,7 +11,6 @@ package planglyph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
@@ -68,7 +67,7 @@ func createHandleResults(repo *quarry.Repo, plan *planparser.Plan) (map[string]q
 				continue
 			}
 			for _, ref := range g.Refs {
-				if !strings.HasPrefix(ref, planparser.HandlePrefix) {
+				if !planparser.IsHandleRef(ref) {
 					continue
 				}
 				if _, seen := expected[ref]; seen {

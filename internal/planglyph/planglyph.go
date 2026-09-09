@@ -7,7 +7,6 @@ package planglyph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
@@ -282,7 +281,7 @@ func renameNewTargetSet(plan *planparser.Plan) map[string]bool {
 func collectGlyphTargets(plan *planparser.Plan, lang glyph.Language) []string {
 	seen := make(map[string]bool)
 	add := func(raw string) {
-		if strings.HasPrefix(raw, planparser.HandlePrefix) {
+		if planparser.IsHandleRef(raw) {
 			return
 		}
 		if _, err := glyph.Parse(lang, raw); err != nil {

@@ -12,7 +12,6 @@ package planglyph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
@@ -31,10 +30,11 @@ type doneCheckEntry struct {
 
 // resolveKeyFor maps a Create/Delete group's own ref to the string DoneChecks actually resolves:
 // a plan: handle strips to its expected-glyph half, and every other ref (a plain glyph, or a path
-// naming a whole new/removed file) resolves as-is.
+// naming a whole new/removed file) resolves as-is. planparser.HandleBody is the handle grammar's
+// owner; this is a thin wrapper over it.
 func resolveKeyFor(ref string) string {
-	if strings.HasPrefix(ref, planparser.HandlePrefix) {
-		return strings.TrimPrefix(ref, planparser.HandlePrefix)
+	if body, ok := planparser.HandleBody(ref); ok {
+		return body
 	}
 	return ref
 }

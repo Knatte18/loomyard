@@ -28,38 +28,6 @@ type declSource struct {
 	decl   quarry.Declaration
 }
 
-// draftHandleMember returns the member-name portion of a plan: handle — the substring after its
-// first "#" — local string work over planglyph's own plan: token, never glyph grammar, so it does
-// not touch the glyph-conversion-chokepoint Shared Decision.
-func draftHandleMember(handle string) (string, bool) {
-	idx := strings.Index(handle, "#")
-	if idx == -1 {
-		return "", false
-	}
-	return handle[idx+1:], true
-}
-
-// draftHandleIdentifier returns the bare declared identifier a plan: handle's member half names:
-// its last dot-separated component. A member is "Name" for a free declaration and "Owner.Name" for
-// a method, and only the Name half ever appears in a declaration head — a method's owner is carried
-// by its receiver clause, not by its identifier. Substituting the qualified form into a signature
-// produces text like "func (c *Counter) Counter.Tally() int", which quarry.Name then rejects as
-// member_too_deep. Like draftHandleMember this is local string work over loomyard's own plan:
-// token, never glyph grammar.
-func draftHandleIdentifier(handle string) (string, bool) {
-	member, ok := draftHandleMember(handle)
-	if !ok || member == "" {
-		return "", false
-	}
-	if idx := strings.LastIndex(member, "."); idx != -1 {
-		member = member[idx+1:]
-	}
-	if member == "" {
-		return "", false
-	}
-	return member, true
-}
-
 // identifierPattern caches one compiled word-boundary matcher per identifier, so renameSignature
 // does not recompile the same pattern for every Rename pair in a plan.
 var identifierPattern sync.Map // string -> *regexp.Regexp
@@ -138,7 +106,7 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 		}, false
 	}
 
-	identifier, ok := draftHandleIdentifier(newHandle)
+	identifier, ok := planparser.HandleIdentifier(newHandle)
 	if !ok {
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",
@@ -200,7 +168,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Unit: unit, Decl: d.Decl}})
 		}
 		for _, p := range c.Pairs {
-			if !strings.HasPrefix(p.New, planparser.HandlePrefix) {
+			if !planparser.IsHandleRef(p.New) {
 				continue
 			}
 			src, finding, ok := renameDeclSource(card, p.Old, p.New, resultIndex)
@@ -253,7 +221,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			})
 			continue
 		}
-		canonical := planparser.HandlePrefix + res.ID
+		canonical := planparser.NewHandle(res.ID)
 		canonicalOwners[canonical] = append(canonicalOwners[canonical], src.handle)
 	}
 
@@ -332,7 +300,7 @@ func cardOwnHandles(c planparser.Card) []string {
 		handles = append(handles, d.Handle)
 	}
 	for _, p := range c.Pairs {
-		if strings.HasPrefix(p.New, planparser.HandlePrefix) {
+		if planparser.IsHandleRef(p.New) {
 			handles = append(handles, p.New)
 		}
 	}
@@ -399,7 +367,7 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 		cardSubs := make(map[string]string, len(handles))
 		matched := 0
 		for _, h := range handles {
-			expected := strings.TrimPrefix(h, planparser.HandlePrefix)
+			expected := resolveKeyFor(h)
 			if bound(expected) {
 				matched++
 				cardSubs[h] = expected
