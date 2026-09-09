@@ -57,7 +57,8 @@ func (v ValidationError) Error() string {
 	return fmt.Sprintf("%s/%s: %s", v.Check, v.Card, v.Detail)
 }
 
-// cardID returns the stable "N-<slug>" identifier Validate uses to name a card.
+// cardID returns the stable "N-<slug>" identifier Validate uses to name a card. It renders
+// identically to Card.ID (plan.go), the exported form other packages consume.
 func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }

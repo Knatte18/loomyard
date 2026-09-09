@@ -1885,3 +1885,16 @@ Framing paragraph.
 		t.Errorf("findings = %v; want none", findings)
 	}
 }
+
+// TestCardID asserts Card.ID renders the same "N-<slug>" identity Validate's own findings key
+// their Card field on. This file is package planparser_test, an external test package with no
+// access to validate.go's unexported cardID, so the equivalence is expressed against the same
+// "N-<slug>" format cardID itself produces, rather than by calling it directly.
+func TestCardID(t *testing.T) {
+	t.Parallel()
+
+	c := planparser.Card{Number: 3, Slug: "exported-surface"}
+	if got, want := c.ID(), "3-exported-surface"; got != want {
+		t.Errorf("Card.ID() = %q; want %q", got, want)
+	}
+}
