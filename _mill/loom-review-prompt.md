@@ -128,8 +128,10 @@ AFTER you have written your own independent findings, you MAY consult the prior 
    a handful of its scenarios as spot-checks).
    Also assess docs accuracy (do the docs match the code?), operability, and **test-coverage
    soundness** — a fix whose regression test would still pass if the fix were reverted is not
-   actually guarded (round 3's F1 was exactly this shape; check whether ANY of rounds 3-5's own new
-   tests/fixes have the same defect before assuming the lesson has already been fully applied).
+   actually guarded (round 3's F1 was exactly this shape; check whether ANY of rounds 3-6's own new
+   tests/fixes — INCLUDING this round's own tripwire test — have the same defect before assuming the
+   lesson has already been fully applied. A tripwire test that doesn't actually trip is the single
+   most on-theme mistake this round could make.).
 
 ## High-yield focus — where this campaign's bugs would live (drive these, do not just read them)
 The pure/unit-tested parts of `internal/planparser`/`internal/planglyph` are usually solid (both
@@ -185,21 +187,21 @@ what these don't name.
 - **CLOSED, do not re-litigate as if unknown (but a fresh angle that reveals a real gap in the fix
   itself is fair game):** the `Started`-gating coverage gap (round 3), the `VerifySeedOwnership` vs
   `CheckSeed` disposition-sharing claim (round 3, confirmed sound), `RunState.Started`'s best-effort
-  persistence path (round 3, confirmed sound), ALL FOUR file-contract-first call sites in
-  `internal/shuttleengine/wait.go` — `classifyDeadlineExpiry`'s two (startup-window, run-deadline;
-  round 4) and `finishedDespiteMechanismFailure`'s two (events-unreadable cap, status-failure cap;
-  round 5) — and the `Seed`/`state.ErrDecode` malformed-JSON fix (round 5). Spend a few minutes
-  independently spot-checking these hold rather than a full re-derivation.
+  persistence path (round 3, confirmed sound), ALL FIVE file-contract-first call sites —
+  `classifyDeadlineExpiry`'s two (startup-window, run-deadline; round 4),
+  `finishedDespiteMechanismFailure`'s two (events-unreadable cap, status-failure cap; round 5), and
+  `Attach`'s `dispositionCandidate` guard (round 6) — and the `Seed`/`state.ErrDecode` malformed-JSON
+  fix (round 5). Spend a few minutes independently spot-checking these hold rather than a full
+  re-derivation.
 - **The documented "Accepted residual" (crash mid-registration)** — the `AddStrand`/`run.json` race
-  in `internal/shuttleengine/run.go`'s `Start` — is genuinely worth your own look (see "Round context"
-  above for the specific question seeded: is there a detection/reconciliation mitigation three prior
-  rounds didn't consider, even if the window itself can't be closed by reordering?).
-- **Is there a FIFTH instance of the file-contract-first shape** somewhere else in
-  `internal/shuttleengine` or the wider bootstrap/crash-recovery surface, beyond the four sites
-  rounds 4-5 already found and fixed (all four so far live in one function, `Wait`)? Four instances
-  in one file is reason to check OUTSIDE that file too — `Attach`'s own error returns, `Start`'s
-  failure paths, anything in `internal/loomengine`/`internal/loomcli` that finalizes a step as
-  failed — not just to re-read `Wait` more carefully.
+  in `internal/shuttleengine/run.go`'s `Start` — is now FOUR-ROUND SETTLED (rounds 3-6). Per "Round
+  context" above, do not re-open this one this round; the round's assigned residual is the
+  Completion Signal Invariant hardening, not this.
+- **This round's PRIMARY job is the assigned residual** (see "Round context" above) — the
+  Completion Signal Invariant doc comment, CONSTRAINTS.md paragraph, and sabotage-proved tripwire
+  test. A further open hunt for a sixth `allOutputFilesExist`-shaped instance is welcome if time
+  allows (the investigation that concluded "none found" was not itself a crucible round), but must
+  not crowd out closing the residual.
 - **Other layers doing another layer's job.** The core defect class the fixes so far share is one
   function answering a question that belongs to a function downstream of it (ownership-check
   escalating a coherence question; a startup-liveness field trusting a plain-liveness field). Read
@@ -233,16 +235,58 @@ what these don't name.
   never-executed gap in your convergence verdict rather than trying to fake it.
 
 ## Round context seeded from prior-round verification
-**Round 6 — SAFETY PASS on thread B/C, attempt four. There is NO assigned residual this round.**
-Thread A remains CONVERGED (carry it forward, light touch only). Thread B/C is NOT yet
-converged — THREE prior safety-pass attempts have each found real defects (round 3, round 4, round
-5), and rounds 4 and 5 together found FOUR instances of one defect shape across two different
-functions' worth of exit paths, all in `internal/shuttleengine/wait.go`. Per `crucible/README.md`'s
-reed/fabric worked examples (7 and 6 rounds respectively before one first came back clean), this is
-still within normal range, but four instances of one shape found in two consecutive rounds is a
-strong signal the sweep is not yet complete — approach `wait.go` (and anything shaped like it) with
-MORE suspicion this round, not less. This round's job is to be the first genuinely clean round, or
-to prove it isn't.
+**Round 7 — RESIDUAL TO CLOSE (a specific, pre-scoped hardening), plus continued thread C
+vigilance.** Thread A remains CONVERGED (carry it forward, light touch only). Thread B/C has now had
+FOUR consecutive rounds (3, 4, 5, 6) each find a real defect, five of them (rounds 4-6) sharing one
+recurring shape: a negative/terminal run-outcome classification finalized without first consulting
+`allOutputFilesExist`, the fact that actually answers whether the run finished. All five are fixed
+and independently verified. Round 6 found the fifth instance in `Attach`'s `dispositionCandidate`
+(the first outside `wait.go`) — see the summary below.
+
+**The operator asked a fair question after round 6: does this recurring shape warrant its own
+mill task, the way `centralize-glyph-shape-enum` (this campaign's original subject) centralized ~12
+hand-rolled ref-shape checks into one registry?** A dedicated, skeptical investigation (a fresh
+general-purpose agent, not a crucible round) was run to answer this on the evidence, not on
+pattern-matching to the precedent. Its conclusion, independently reached: **no** — the
+`shape.go` ledger mechanism needs a closed value enum to build a flat map/AST-diff over, and this
+domain doesn't have one (three genuinely different return shapes, two different caller identities,
+one extra guarding precondition that only one of the three sites needs). All five sites already
+route through the SAME existing, correct, pre-campaign function (`allOutputFilesExist`) — the bugs
+were omissions to call it, not divergent reimplementations of it. A forced shared checkpoint would
+either carry dead logic most of the time or need an awkward parameter, for weaker enforcement than a
+targeted alternative. Full reasoning: `_mill/task-proposal-completion-signal-centralization.md`
+(you MAY read this now — it is not a crucible round artifact and does not match the clean-room
+constraint's `loom-review-*` exclusion, though there is nothing round-specific to spoil by reading it
+early; it is provided as this round's seed material, not something to independently re-derive).
+
+**This round's residual — implement the investigation's own recommended lightweight hardening, not
+a new mill task:**
+1. A named "Completion Signal Invariant" doc-comment section in `internal/shuttleengine/wait.go`'s
+   package doc comment, stating the rule once: any code path in this package that finalizes
+   `OutcomeDied`, `OutcomeTimeout`, a mechanism-failure `error`, or `verdictRespawnEligible` must
+   first consult `allOutputFilesExist` over the run's `OutputFiles`, directly or via
+   `classifyDeadlineExpiry`/`finishedDespiteMechanismFailure`/the `Attach`-side guard.
+2. One `CONSTRAINTS.md` paragraph cross-referencing that doc comment and naming the five fixed
+   instances (rounds 4-6), so a future reader who checks CONSTRAINTS.md first (the repo's own stated
+   discipline) finds this rule the way they'd find the Ref-Shape Registry Invariant.
+3. A literal-count regression test (NOT an AST-diffed ledger — the investigation is explicit that a
+   ledger doesn't fit here) that walks `wait.go` and `attach.go` for the known negative-verdict
+   return sites and asserts the count matches today's audited set (7 `allOutputFilesExist` call
+   sites — `wait.go:273,350,356,450,480`, `attach.go:301,345` — verify these line numbers still hold
+   before writing the test; they will drift if anything above them in the file changes), failing
+   loudly with a message telling a future editor to confirm a new site calls the check and update
+   the test's expected set. This is a tripwire that forces a human look, not a completeness proof —
+   say so in the test's own doc comment, exactly as the investigation's proposal does.
+4. **Sabotage-prove the tripwire test itself**, the same discipline every other regression test in
+   this campaign has needed: add an 8th, unguarded negative-verdict return site in a scratch copy,
+   confirm the test fails and names it, then remove the scratch addition and confirm the test passes
+   again. A tripwire that doesn't actually trip is worse than no tripwire.
+5. Do NOT build a `shape.go`-style ledger/registry, a new package, a `CompletionChecker` type, or an
+   interface — the investigation is explicit these are the wrong shape for this domain. Do NOT touch
+   `internal/loomengine`/`internal/loomcli`/`internal/loomshed` for this residual — the investigation
+   confirmed the defect shape does not recur there (different, unrelated completion signals). Do NOT
+   re-open the `AddStrand`/`run.json` "Accepted residual" as part of this residual — separate,
+   already-settled question (see below).
 
 **Thread B/C's prior rounds, summarized (see `_mill/loom-review-HANDOFF.md` for full detail — you
 MAY read that file, it's the orchestrator's own state, but per the clean-room constraint above you
@@ -250,62 +294,42 @@ still may NOT read it until your OWN findings list is complete). Note the findin
 namespaced by round tag because "F1"/"F2"/"F3" repeats across rounds with different meanings —
 always cite the round tag alongside any finding ID:**
 - Three production commits (`d0e5a0e7b`, `aba2c270a`, `69886823e`) fixed the two originally-flagged
-  smoke-test failures. Independently verified correct by rounds 3, 4, 5, and the orchestrator (each
-  re-sabotage-proved them independently rather than trusting the prior account).
-- Round 3 (`sonnet5-xhigh-r3`) closed a coverage gap in `d0e5a0e7b` (regression test
-  `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`) and documented, not code-fixed, a
-  narrow `AddStrand`/`run.json` crash-mid-registration race in `internal/shuttleengine/run.go`'s
-  `Start` as an "Accepted residual" in `manifest/designs/loom.md` (structurally unclosable by
-  reordering the two writes — a two-independent-stores problem).
-- Round 4 (`opus5-high-r4`) found the campaign's now-recurring defect shape for the first time, TWICE:
-  `internal/shuttleengine/wait.go`'s two deadline-expiry paths (`classifyStartupWindow` for the
-  startup window, `Wait`'s own run-deadline branch) both finalized a negative outcome
-  (`OutcomeDied`/`OutcomeTimeout`) without checking whether the run's declared output files already
-  existed — while the function's sibling not-tracked/not-live branches DID check, per
-  `checkLivenessTick`'s own doc comment ("a satisfied file contract wins over every negative
-  answer"). Fixed via a shared `classifyDeadlineExpiry` helper — see
-  `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied` and
-  `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`. Also extended the
-  `AddStrand`/`run.json` residual's documentation with why the obvious detection mitigation (a
-  reverse sweep) isn't free either (it would require parsing `Launch.Cmd`, which `Launch`'s own
-  contract forbids).
-- Round 5 (`fable5-high-r5`) found the SAME shape TWICE MORE, in the same file's other two negative
-  exits: `Wait`'s two mechanism-failure caps (`maxEventsReadRetries`, `maxStatusRetries`) also
-  finalized a mechanism error without consulting the file contract first. Fixed via a new
-  `finishedDespiteMechanismFailure` helper (mirrors `classifyDeadlineExpiry`) — see
-  `TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins` and
-  `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins`. Round 5 also found and fixed a
-  SEPARATE MEDIUM defect: `manifest/designs/loom.md`'s promise that a poisoned status file (malformed
-  JSON OR an unknown field) never looks like bootstrap's own gate held for the unknown-field shape
-  but NOT for malformed JSON on the `lyx loom run` path — `loomshed.Seed` aborted with a raw decode
-  error instead of the tolerant `ErrSeedExists` path. Fixed by wrapping the lenient decode error in
-  `state.ErrDecode` (`internal/state/state.go`) and mapping it to `ErrSeedExists` in `Seed`
-  (`internal/loomshed/seed.go`) — see `TestSeed_RefusesUndecodableFileAsExists`,
-  `TestCorruptFile` (extended), and the new smoke test
-  `TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy`. Round 5 also corrected three
-  doc/comment sites that mis-attributed a decode-failure diagnosis to the Loom-Preflight producer
-  (it's actually `Shed.Run`'s step-1 read gate), and re-confirmed the `AddStrand`/`run.json`
-  residual's "genuinely unclosable" judgment with no new angle.
-- **Incidental, OUT OF loom's scope, not fixed:** round 5 also hit a real bug in `fabric` (not
-  loom) — `lyx fabric clone` names the weft primary branch after the weft bare's own HEAD rather
-  than the warp's primary branch name when they differ. Not this campaign's job; do not spend time
-  on it, but if your own driving trips over it again, don't be surprised.
-- **CLOSED-AND-VERIFIED, do not re-litigate from scratch:** all of the above, including ALL FOUR
-  `classifyDeadlineExpiry`/`finishedDespiteMechanismFailure` call sites across both helpers (do not
-  report "an exit path ignores the file contract" as if it were new without first checking it isn't
-  one of these four) and the `Seed`/`state.ErrDecode` malformed-JSON fix. A regression found by your
-  OWN live driving is fair game to report; re-deriving the same conclusion from first principles is
-  not a new finding.
-- **Worth your own independent judgment, not spoon-fed:**
-  - Given FOUR instances of one shape have now been found across TWO functions (`Wait`'s deadline
-    paths, `Wait`'s mechanism-failure caps) in ONE file, is there a FIFTH instance somewhere else in
-    `internal/shuttleengine` or the wider bootstrap/crash-recovery surface? Consider: every place a
-    negative/terminal outcome is finalized, not just inside `Wait` — `Attach`'s own error returns,
-    `Start`'s failure paths, anything in `internal/loomengine`/`internal/loomcli` that reports a step
-    failed. A shape found four times in one file is reason to check OUTSIDE that file too, not just
-    inside it more carefully.
-  - Is the documented `AddStrand`/`run.json` "Accepted residual" actually as unclosable as three
-    rounds now agree, or is there an angle none of them considered? You are not required to find one.
+  smoke-test failures. Independently verified correct by rounds 3-6 and the orchestrator.
+- Round 3 (`sonnet5-xhigh-r3`) closed a coverage gap in `d0e5a0e7b` and documented, not code-fixed,
+  a narrow `AddStrand`/`run.json` crash-mid-registration race in `internal/shuttleengine/run.go`'s
+  `Start` as an "Accepted residual" (structurally unclosable by reordering — a two-independent-stores
+  problem).
+- Round 4 (`opus5-high-r4`) found instances 1-2 of the recurring shape (`wait.go`'s two
+  deadline-expiry paths). Fixed via `classifyDeadlineExpiry`.
+- Round 5 (`fable5-high-r5`) found instances 3-4 (`wait.go`'s two mechanism-failure caps). Fixed via
+  `finishedDespiteMechanismFailure`. Also fixed a separate MEDIUM (malformed-JSON status file still
+  refusing `lyx loom run` at the Seed step) and a NIT (doc mis-attribution).
+- Round 6 (`fable5-xhigh-r6`) found instance 5, the first outside `wait.go`: `Attach`'s
+  `dispositionCandidate` classified a `run.json` still at `outcome:running` with every declared
+  output file on disk as respawn-eligible whenever its pane was dead — the entry-side twin of the
+  four `Wait`-side defects. Fixed by classifying `outcome==running && allOutputFilesExist` as
+  attachable before the liveness dispatch. Round 6 also re-confirmed all four `Wait`-side fixes, the
+  `Started`-gating and `VerifySeedOwnership`/`CheckSeed` claims, and the `AddStrand`/`run.json`
+  residual judgment (now agreed by FOUR rounds) with no new angle. Also tripped over (again, not
+  fixed) round 5's incidental fabric weft-branch-naming bug.
+- **CLOSED-AND-VERIFIED, do not re-litigate from scratch:** all of the above, including ALL FIVE
+  `allOutputFilesExist`-consulting call sites (do not report "an exit path ignores the file
+  contract" as if new without first checking it isn't one of these five) and the
+  `Seed`/`state.ErrDecode` malformed-JSON fix. A regression found by your OWN live driving is fair
+  game; re-deriving the same conclusion from first principles is not a new finding.
+- **The `AddStrand`/`run.json` "Accepted residual" is now FOUR-ROUND SETTLED** (rounds 3, 4, 5, 6 all
+  independently agree it's structurally unclosable by reordering and the detection mitigation isn't
+  free either). Do not re-open it this round — this round's residual is the one seeded above, not
+  this one. If your own driving happens to surface a genuinely new angle on it anyway, report it, but
+  do not go looking.
+- **Incidental, OUT OF loom's scope, not fixed:** the fabric weft-branch-naming bug (rounds 5-6). Not
+  this campaign's job.
+
+**Beyond the assigned residual, if time/budget allows:** a lighter thread-C pass is still welcome —
+the investigation's "no sixth instance found" conclusion was itself independently derived (not a
+crucible round), so a crucible round's own live-driving eyes on the same question is not redundant.
+But the residual above is the round's primary, must-close assignment; do not let an open-ended hunt
+crowd it out.
 
 State plainly in your executive summary whether this round found something (residual → re-seed,
 rotate again) or came back clean (safety pass + the orchestrator's own gates need to agree before
@@ -441,13 +465,11 @@ the specific reason, in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
 - The documented "Accepted residual" (the `AddStrand`/`run.json` crash-mid-registration race,
-  `internal/shuttleengine/run.go`) — deferred as documentation rather than a code fix because rounds
-  3, 4, and 5 all judged it structurally unclosable by reordering, and round 4 additionally found the
-  obvious detection mitigation isn't free either (it would require parsing `Launch.Cmd`, which
-  `Launch`'s own contract forbids). Re-evaluate whether that three-round judgment holds (see "Round
-  context" above and "High-yield focus, thread B/C" above for the specific angle to check).
-- The fabric weft-branch-naming bug round 5 hit incidentally — out of loom's scope, not this
-  campaign's job, not something to spend time on unless your own driving trips over it again.
+  `internal/shuttleengine/run.go`) is now FOUR-ROUND SETTLED (rounds 3, 4, 5, 6). Per "Round context"
+  above, do NOT spend this round's time re-opening it — it is explicitly not this round's residual.
+  Only report something on it if your own driving stumbles onto a genuinely new angle unprompted.
+- The fabric weft-branch-naming bug (rounds 5-6) — out of loom's scope, not this campaign's job, not
+  something to spend time on unless your own driving trips over it again.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT — not just BLOCKING/MEDIUM ones.
