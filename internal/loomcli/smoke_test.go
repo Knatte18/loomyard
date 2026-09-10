@@ -286,6 +286,40 @@ func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) 
 	}
 }
 
+// waitForCurrentProducer polls loc's status file until it records want as the current producer with
+// the machine still running, or fails the test after timeout.
+//
+// It exists because "kill the detached driver, then assert the row it was on" is a race unless the
+// row is ESTABLISHED first, and a killed-at-an-arbitrary-moment driver lands on whichever row it
+// happened to reach. Killing without this wait made
+// TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed fail intermittently whenever the kill
+// landed while the driver was still on Loom-Preflight: the follow-up drive then legitimately
+// completed that row and advanced to the next one, so both the current_producer-unchanged and the
+// history-unchanged assertions reported a routing bug that was not there (crucible round
+// opus5-high-r7, F5 -- reproduced on the pre-round tree, so it predates that round's own changes).
+//
+// The poll interval is deliberately short relative to the window it is catching: with the fixture's
+// startup_timeout_s of 2, Discussion-Write is the current producer for roughly two seconds before
+// its providerless launch is classified, which a 25ms poll cannot miss.
+func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last string
+	for {
+		st, found, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+		if err == nil && found {
+			last = string(st.CurrentProducer)
+			if st.CurrentProducer == want && st.State == shedengine.StateRunning {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status file never recorded current_producer %q while running within %s (last seen %q); the driver never reached the row this test kills it on", want, timeout, last)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
 // weftCommitCount returns the number of commits reachable from HEAD in the git repository at dir.
 func weftCommitCount(t *testing.T, dir string) int {
 	t.Helper()
@@ -500,6 +534,12 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 		t.Fatalf("bootstrap: %v; output: %s", err, stdout)
 	}
 
+	// Establish WHICH row the driver is killed on before killing it. Every assertion below is about
+	// the follow-up drive re-entering that same row, and a driver killed at an arbitrary moment lands
+	// on whichever row it happened to reach -- see waitForCurrentProducer for the intermittent
+	// failure that made this explicit.
+	waitForCurrentProducer(t, loc, "Discussion-Write", 30*time.Second)
+
 	for _, pid := range findDriverPIDs(worktree) {
 		_ = proc.KillPID(pid)
 	}
@@ -511,6 +551,9 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	}
 	if before.State != shedengine.StateRunning {
 		t.Fatalf("status state before standalone drive = %q; want %q -- the killed driver must have left its row in flight", before.State, shedengine.StateRunning)
+	}
+	if before.CurrentProducer != "Discussion-Write" {
+		t.Fatalf("current_producer before standalone drive = %q; want %q -- the kill landed on a different row than the one waited for, so the attribution assertions below would be racing rather than testing", before.CurrentProducer, "Discussion-Write")
 	}
 
 	// The timeout is generous and the exit code is deliberately not asserted. What this case is
