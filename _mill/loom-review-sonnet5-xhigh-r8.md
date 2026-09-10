@@ -36,7 +36,71 @@ neither reopened by this round's reading or driving.
 
 ## Code findings (severity-ranked)
 
-_(provisional — appended as found)_
+_(provisional — appended as found; final severity ordering written last)_
+
+### F1 (MEDIUM, CONFIRMED by tracing) — an AuditForks failure's deliberately-preserved run directory/strand is invisible to every reclaim path, so a later resume silently redoes the round and the pane leaks forever
+
+`internal/shuttleengine/wait.go:554-595` (`finalize`). When `outcome == OutcomeDone && run.spec.ForkSubagents` and `engine.AuditForks` returns an error, `finalize` returns early (line 578) BEFORE the `cleaned` block (lines 583-591) that would `RemoveStrand` and `os.RemoveAll(run.runDir)`. This is **deliberate and already tested** — `internal/shuttleengine/wait_test.go:1427-1484`'s `TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome` (round `fable5-high-r2`'s R2-F2 regression guard) explicitly asserts the strand and run dir must survive "for the caller to diagnose what the audit could not read." I am NOT proposing to reverse that — it is a considered, tested design choice, not an oversight, and reversing it unilaterally would be exactly the kind of "obvious fix" the campaign's own review discipline warns against.
+
+The gap R2 did not consider is what happens **after** an operator has diagnosed the failure and the run is resumed (`AuditForks` only runs for `ForkSubagents: true` specs — `internal/websterengine/runlevel.go:584`'s Master row and `internal/burlerengine/engine.go:146`'s cluster-fan Burler rounds, the only two production call sites):
+
+- The persisted `run.json`'s `Outcome` is already the terminal string `"done"` (written unconditionally before the audit block, `wait.go:563-566`), never `runOutcomeRunning`.
+- `dispositionCandidate` (`attach.go:381-393`) gates its `verdictAttachable` classification on `c.state.Outcome == runOutcomeRunning`. A `"done"` record with its strand still tracked+live therefore falls to `verdictRespawnEligible`, not `verdictAttachable` — `Attach` reports "nothing to attach," even though the run in fact finished and its output files are sitting right there.
+- `sweepOrphansOpportunistic` (`rundir.go:230-276`, called from `run.go`'s `Start`) only removes a directory whose strand is **absent** from reed's live-guid set. Because cleanup never ran, the strand is still present in reed's table, so the sweep skips it — forever, unless something else removes the strand.
+- For `burlerengine`'s cluster-fan path (`internal/shedadapters/burler.go`), there is **no other reclaim mechanism at all**: `BurlerProducer.Call`'s only recourse when `Attach` reports not-found is `archiveStaleOutputs` on the round's own `[]string{reviewPath, fixerReportPath}` (discarding the genuinely-finished review+fixer-report into an archive subdirectory) followed by a **brand-new** `engine.Round` spawn — a full, expensive cluster round redone from scratch. The original run directory and its live/idle pane are never revisited by anything ever again: a permanent leak.
+- For `websterengine`'s Master row, the consequence is bounded rather than permanent: `runlevel.go`'s `reclaimEntryTimeStrands` (line 277) unconditionally `removeStrandIfLive`s the recorded `st.MasterStrand` on the **next** `lyx webster run` invocation before spawning a fresh Master, so the old strand does eventually get removed and a later `sweepOrphansOpportunistic` can then clean the directory — but only after `archiveStaleOutcome`/`ArchiveStaleSummary` (line 515-518) have already archived away a Master run that may have completed **the entire batch loop** (both `outcomePath` and `summaryPath` present means the whole run, not just one batch, reached its terminal report), forcing a second full Master session merely to re-confirm work already on disk.
+
+`AuditForks` failing is not a theoretical edge case: `internal/shuttleengine/claudeengine/audit.go:36`'s own doc comment states "A missing parent transcript or unreadable fork transcript is an error," and `audit_test.go`'s `TestAuditForks_MissingParentTranscriptErrors` pins exactly that. The transcript lives under `~/.claude/projects/<encoded-cwd>/`, outside the run's own directory, so it can be missing/stale for reasons unrelated to whether the agent's own work actually finished (a `paneCwd` mismatch, a cleared project cache, session bookkeeping under a different encoded path).
+
+**Why I am not force-fixing this in code**: doing so safely requires telling apart two states that `RunState` currently cannot distinguish — a `KeepPane`-preserved run (deliberately kept alive forever for manual `lyx shuttle run --keep-pane` debugging, `internal/shuttlecli/run.go:136`, entirely outside loom's own automated pipeline) and an `AuditForks`-preserved run (meant to be diagnosed once, then reclaimed). `RunState` has no field recording which reason applied. A sweep or Attach change generalized from "Outcome is terminal" would also reclaim (or fail to reclaim) `KeepPane` runs, breaking that feature's own guarantee. Resolving this cleanly needs either a persisted reason field or a `websterengine`-style dedicated reclaim step generalized to `BurlerProducer` — a real design decision, not a mechanical fix, so per this campaign's own rule for genuine design tradeoffs I am documenting it as a new, named residual (see the Job 2 fix below) rather than guessing at an architecture change.
+
+CONFIRMED by full code trace across `wait.go`, `attach.go`, `rundir.go`, `internal/shedadapters/burler.go`, `internal/websterengine/runlevel.go`; not yet reproduced against the live substrate (constructing a live `AuditForks` failure needs a real Claude Code transcript layout, which is out of this round's live-driving budget — see Live-Substrate section). This is a genuinely different defect shape from the six recurring "negative-outcome-skips-file-contract" instances: here the outcome classification itself (`OutcomeDone`) is already correct, and the gap is a **missing reclaim path for an intentionally-orphaned resource**, one layer past where the recurring shape lived.
+
+### F1 — `validate-discussion`/`validate-plan` use the full `wire()`, unlike `status`/`pause`, so an unrelated broken module config fails the writer agent's own self-check instead of reporting discussion/plan validity (MEDIUM, CONFIRMED)
+
+`internal/loomcli/cli.go:133` (`verbReadsStatusOnly`) names exactly `"status"` and `"pause"` as the
+two verbs routed through `wireStatusPathsOnly` (`wiring.go:172`), which loads nothing beyond
+`location`/`cwd`/`shedPaths` and therefore cannot fail on an unrelated module's config.
+Every other verb — including `validate-discussion` and `validate-plan` — goes through the full
+`wire()` (`wiring.go:193`), which eagerly loads EIGHT things before the verb body ever runs:
+`loom.yaml` (strict), `reed.yaml`, `shuttle.yaml`, `webster.yaml`, `landing.yaml` (strict),
+`burler.yaml`, the model-spec registry, and `batcher.Active`, plus `ResolveReview`.
+
+But `validateDiscussionCmd`/`validatePlanCmd` (`validate.go`) only ever read
+`c.env.DecisionRecordPath`/`c.env.SupportLogPath` (validate-discussion) or
+`c.env.AnchorPath`/`c.env.WorktreeRoot` (validate-plan) — none of which need any config load at all;
+`wireStatusPathsOnly` already proves as much for `status`/`pause`'s own field needs.
+
+`wireStatusPathsOnly`'s own doc comment names the exact failure mode this reopens: *"a Discussion-Write
+agent rewrote loom.yaml mid-run and from that moment the operator had neither the read-out nor the
+emergency brake for a run that was still going"* — the live incident that got `status`/`pause` their
+lightweight wiring. `validate-discussion`/`validate-plan` are exposed to the identical hazard, and
+concretely so: `contracts/stencils/loom/loom-template-discussion.md:122` and
+`loom-template-plan.md:207` both instruct the live writer agent to run `lyx loom validate-discussion`/
+`lyx loom validate-plan` as its own pre-handoff self-check — a fresh subprocess invocation of the CLI,
+re-running `wire()` from scratch, while other producers (or the same agent) may be actively mid-write
+on `loom.yaml`/`webster.yaml`/`landing.yaml`/`burler.yaml`/`batcher.yaml`/the model registry.
+
+**Scenario:** an in-flight Discussion-Write agent (or a sibling process) has `loom.yaml` (or any of
+the other 7 config sources `wire()` loads) transiently malformed — the exact "agent rewrote a config
+mid-run" shape `wireStatusPathsOnly`'s own history names as observed live. The writer agent's own
+self-check, `lyx loom validate-discussion`, run per its stencil's own instructions before handoff,
+now fails with an unrelated config-load error instead of reporting on the discussion's actual
+validity — the self-check the agent was told to trust is unavailable for a reason that has nothing to
+do with the discussion file it is checking. Symmetrically for `validate-plan` against `loom.yaml`/
+`webster.yaml`/etc. while `Plan-Write` (or a sibling) is running.
+
+CONFIRMED by code reading: `verbReadsStatusOnly`'s switch is exhaustive and literal
+(`"status", "pause"` only); `validateDiscussionCmd`/`validatePlanCmd`'s bodies read only the
+env/anchor fields named above; `loomengine.LoadConfig`/`landingshed.LoadConfig` are the two STRICT
+loaders per the Config Strictness Invariant (`CONSTRAINTS.md`), so a malformed `loom.yaml` or
+`landing.yaml` — not just the ones a validate verb cares about — hard-fails `wire()` before either
+verb's own body runs.
+
+**Fix direction:** extend the lightweight-wiring path to cover `validate-discussion`/`validate-plan`
+too — either broaden `wireStatusPathsOnly` to also fill the handful of `c.env` fields these two verbs
+read (all four are cheap accessors off `location`, no I/O), or give them their own equally-light
+helper, and add both names to (an appropriately renamed) `verbReadsStatusOnly`.
 
 ## Docs & operability findings
 
