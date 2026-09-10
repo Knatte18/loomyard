@@ -19,7 +19,20 @@ _(written last)_
 
 ## Scope assessment (plan vs shipped)
 
-_(to fill in during/after review)_
+Thread A (`centralize-glyph-shape-enum`, `quarry-bump-v0-2-0-status-helpers`): CONVERGED per two
+prior independent rounds (opus5-high-r1, fable5-high-r2). This round's own light-touch pass
+(design-doc re-read of `manifest/designs/quarry-glyph-plan-alphabet.md`, plus a live spot-check —
+see What-was-tested) found no regression. Not re-litigated in full.
+
+Thread B/C: this round's mandate is a genuinely open, no-residual adversarial pass over
+`manifest/designs/loom.md`'s "Crash recovery" section, deliberately widened away from
+`wait.go`/`attach.go` (six instances found and fixed across rounds 3-7, now protected by a
+sabotage-proofed AST tripwire) toward the surrounding surface: `shuttleengine/run.go`'s `Start`,
+`finalize`, `sweepOrphansOpportunistic`, `internal/loomengine/**`, `internal/loomcli/**`,
+`internal/loomshed/**`. Read in full (see below); no shipped-beyond-scope or
+deferred-that-should-be-v1 gaps found beyond the two already-accepted, already-settled residuals
+(the `AddStrand`/`run.json` crash-mid-registration window, and the done-but-not-persisted window) —
+neither reopened by this round's reading or driving.
 
 ## Code findings (severity-ranked)
 
