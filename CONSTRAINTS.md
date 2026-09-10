@@ -126,6 +126,17 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`header --blocking`, `lyx loom status --watch`, `lyx loom run`/`lyx run`.
 - Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`.
 
+## Completion Signal Invariant
+
+Every code path in `internal/shuttleengine` that finalizes a NEGATIVE answer to "did this run finish" consults `allOutputFilesExist` over the run's `OutputFiles` first.
+
+- The negative answers are `OutcomeDied`, `OutcomeTimeout`, a mechanism-failure `error`, and `verdictRespawnEligible`.
+  The check is reached directly or through the three helpers that own it: `classifyDeadlineExpiry` and `finishedDespiteMechanismFailure` (`wait.go`), `soleFinishedCandidate` (`attach.go`).
+- A clock expiring, `reed` losing a strand, `reed.Status` erroring, the events file staying unreadable, `reed.json` being absent or undecodable — each answers "has something gone wrong", never "did this run finish", and the agent's output files are its return value.
+- Stated at length in `wait.go`'s own file doc comment, under the same heading;
+  six instances were fixed across crucible rounds `opus5-high-r4` (both deadlines), `fable5-high-r5` (both retry-exhausted caps), `fable5-xhigh-r6` (`Attach`'s `dispositionCandidate`) and `opus5-high-r7` (`Attach`'s three reed-state gates).
+- Enforcement is a **tripwire, not a completeness proof** (`internal/shuttleengine/completionsignal_enforcement_test.go`): two AST scans pin the audited negative-verdict return sites and the audited `allOutputFilesExist` call sites in `wait.go`/`attach.go`, so adding an exit or deleting a guard fails loudly and forces a human to confirm. Deliberately NOT a `shape.go`-style ledger — that mechanism needs a closed value enum, and these outcomes span three types in two files.
+
 ## Shuttle Provider-Seam Invariant
 
 Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
@@ -228,7 +239,8 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 `internal/planparser` is the sole declarer of ref-shape vocabulary — classification (`classifyRef`/`refKind`) and the `plan:` handle grammar (`HandlePrefix` and the exported handle helpers).
 
 - Every ref-shape decision in `internal/planparser` and `internal/planglyph` routes through the kind-policy ledger in `internal/planparser/shape.go` or the exported handle vocabulary.
-- Named enforcement: the enum↔slice sync meta-test, the ledger completeness meta-test, and the AST-based boundary-enforcement scans with per-scan package-qualified exempt sets (`{internal/planparser/classify.go, internal/planparser/shape.go}` for the `refKind` scan, plus `internal/planparser/handle.go` for the `plan:`-op scan; no planglyph file is exempt).
+- Named enforcement: the `refKind` enum↔`allRefKinds` sync meta-test, the `refGate` constants↔`ledger` keys sync meta-test, the ledger completeness meta-test, and the AST-based boundary-enforcement scans with per-scan package-qualified exempt sets (`{internal/planparser/classify.go, internal/planparser/shape.go}` for the `refKind` scan, plus `internal/planparser/handle.go` for the `plan:`-op scan; no planglyph file is exempt).
+- The two sync meta-tests are separate obligations and both parse a const block from the AST, because Go cannot reflect over constants: ledger completeness ranges `ledger`'s own keys and therefore cannot see a gate missing from it entirely.
 
 ## Glyph Conversion Chokepoint Invariant
 

@@ -72,6 +72,11 @@ type seedAttachRunOpts struct {
 	outputFiles    []string
 	outcome        string
 	includeOutcome bool
+	// started seeds RunState.Started. Omitted from every existing call site but the ones that
+	// specifically pin started-seed behavior, since Go's zero value (false) is what a run.json a
+	// pre-Started-field binary wrote also decodes to — the fixture default matches the production
+	// default.
+	started bool
 }
 
 // seedAttachRun writes a run.json fixture at <root>/<id>/run.json built from a plain map rather than
@@ -92,6 +97,7 @@ func seedAttachRun(t *testing.T, root, id string, opts seedAttachRunOpts) string
 		"settingsPath": filepath.Join(runDir, settingsFileName),
 		"eventsPath":   filepath.Join(runDir, eventsFileName),
 		"createdAt":    time.Now().UTC().Format(time.RFC3339),
+		"started":      opts.started,
 	}
 	if opts.includeOutcome {
 		fields["outcome"] = opts.outcome
@@ -302,9 +308,11 @@ func TestAttach_Multiplicity(t *testing.T) {
 	})
 }
 
-// TestAttach_DeadPane covers a strand tracked with a dead pane (PaneID != ""): unambiguous evidence
-// the agent is gone, so it needs neither the age rule nor the output-files tie-breaker — respawn
-// at both a young and an old directory age.
+// TestAttach_DeadPane covers a strand tracked with a dead pane (PaneID != "") and NO satisfied file
+// contract (the output file is never created here): unambiguous evidence the agent is gone with no
+// finished work to harvest, so it needs neither the age rule nor the output-files tie-breaker —
+// respawn at both a young and an old directory age. The running-record-with-a-satisfied-contract case
+// is the opposite disposition and lives in TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn.
 func TestAttach_DeadPane(t *testing.T) {
 	for _, age := range []struct {
 		name string
@@ -528,37 +536,106 @@ func TestAttach_NegativeTimeout(t *testing.T) {
 	}
 }
 
-// TestAttach_LeftoverOutputFilesExist covers leftover-run-dir-from-a-completed-run: in a
-// non-attachable branch, a matched record whose output files all already exist is respawn-eligible
-// at any directory age — including a directory younger than the age guard (the fast-bounce-after-
-// failed-cleanup case) and a KeepPane leftover.
-func TestAttach_LeftoverOutputFilesExist(t *testing.T) {
+// TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn is the F1 regression guard
+// (crucible round fable5-xhigh-r6): a run.json whose persisted Outcome still reads runOutcomeRunning
+// AND whose every declared output file is already on disk is a run that FINISHED but whose driver
+// crashed before any Wait could classify it — so it is harvested as OutcomeDone rather than
+// archived-and-respawned, for every negative liveness answer (untracked, a dead pane, and a cleared
+// pane binding) and at any directory age.
+//
+// Before the fix, dispositionCandidate routed all three of these to verdictRespawnEligible (the dead
+// pane directly, the other two via leftoverThenAgeVerdict's own files-exist branch), so Attach
+// reported not-found and SingleLLMProducer archived the finished files and re-ran the whole LLM step —
+// reproduced live in round fable5-xhigh-r6 against a staged Discussion-Write. Reverting the attach.go
+// change makes every subtest here fail with found=false, so the guard is load-bearing rather than
+// vacuous.
+//
+// The strand shape governs only how the reconstructed run's own Wait harvests it: checkLivenessTick's
+// not-tracked and not-live branches both consult allOutputFilesExist first and classify OutcomeDone,
+// so all three shapes reach the same Done outcome and the same run-dir cleanup.
+func TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn(t *testing.T) {
 	tests := []struct {
-		name string
-		age  time.Duration
+		name   string
+		status reedengine.StatusResult
+		age    time.Duration
 	}{
-		{"fast_bounce_young_dir", 10 * time.Second},
-		{"keep_pane_leftover_old_dir", 2 * time.Minute},
+		{"untracked_strand_young_dir", reedengine.StatusResult{Strands: nil}, 10 * time.Second},
+		{"untracked_strand_old_dir", reedengine.StatusResult{Strands: nil}, 2 * time.Minute},
+		{"dead_pane_young_dir", deadStatus("strand-1", "%1"), 10 * time.Second},
+		{"binding_cleared_old_dir", deadStatus("strand-1", ""), 2 * time.Minute},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{tt.status}}
+			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
 			seedPresentReedState(t, dotLyxDir)
 			fc := newFakeClock(time.Now())
 			runner.clock = fc
 
 			outputFile := filepath.Join(runRoot, "out.md")
 			touchOutputFile(t, outputFile)
-			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
 			setDirAge(t, runDir, fc.Now().Add(-tt.age))
 
 			result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
 			if err != nil {
 				t.Fatalf("Attach() error = %v; want nil", err)
 			}
+			if !found {
+				t.Fatal("found = false; want true — a running record whose file contract is satisfied is a finished run to harvest, not a leftover to respawn over")
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q; want %q — the reconstructed run's Wait harvests the satisfied file contract", result.Outcome, OutcomeDone)
+			}
+			if _, err := os.Stat(runDir); !os.IsNotExist(err) {
+				t.Errorf("run dir still exists after Done cleanup, stat err = %v", err)
+			}
+		})
+	}
+}
+
+// TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors pins the other side of the F1 fix:
+// a running record whose output files are NOT all present is never harvested — a partially-written or
+// never-started run has no finished work to attribute, so the ordinary liveness dispositioning still
+// applies (respawn for a confirmed-dead pane; an age-gated error for the ambiguous untracked/
+// binding-cleared answers). This is what keeps the harvest gated on a genuinely satisfied contract
+// rather than on the run.json's mere presence.
+func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    reedengine.StatusResult
+		age       time.Duration
+		wantError bool
+	}{
+		{"dead_pane_respawns", deadStatus("strand-1", "%1"), 10 * time.Second, false},
+		{"untracked_old_dir_respawns", reedengine.StatusResult{Strands: nil}, 2 * time.Minute, false},
+		{"untracked_young_dir_errors", reedengine.StatusResult{Strands: nil}, 10 * time.Second, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{tt.status}}
+			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			seedPresentReedState(t, dotLyxDir)
+			fc := newFakeClock(time.Now())
+			runner.clock = fc
+
+			// Output file deliberately NOT created: the file contract is unsatisfied.
+			outputFile := filepath.Join(runRoot, "out.md")
+			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+			setDirAge(t, runDir, fc.Now().Add(-tt.age))
+
+			result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
+			if tt.wantError {
+				if err == nil {
+					t.Fatal("Attach() error = nil; want an error — a young untracked candidate with no finished output cannot be ruled dead")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Attach() error = %v; want nil", err)
+			}
 			if found {
-				t.Errorf("found = true; want false — a leftover from a finished run, not an interrupted one")
+				t.Errorf("found = true; want false — an unsatisfied file contract is not a finished run to harvest")
 			}
 			if result != (Result{}) {
 				t.Errorf("result = %+v; want zero Result", result)
@@ -908,11 +985,15 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 	})
 }
 
-// TestAttach_StartedSeededTrue pins the started seed: attaching to a strand whose CapturePane
-// returns a mid-turn capture (no ready markers) must not classify OutcomeDied after
+// TestAttach_StartedSeededTrue pins the started seed: attaching to a strand whose run.json already
+// carries Started: true (a prior Wait already observed StartupReady for it) and whose CapturePane
+// now returns a mid-turn capture (no ready markers) must not classify OutcomeDied after
 // startup_timeout_s, and must not play the trust-dismiss key sequence even when the capture happens
-// to contain a trust-dialog phrase — because the startup probe must never run at all on an attached
-// run.
+// to contain a trust-dialog phrase — because the startup probe must never run at all once BOTH
+// attached and the persisted Started are true. Without the seeded started:true, this run.json would
+// decode with Started still at its zero value (false), and the mid-turn capture here would instead
+// correctly re-trigger the startup probe — proving the seed, not just the field's existence, is what
+// this test exercises.
 func TestAttach_StartedSeededTrue(t *testing.T) {
 	reed := &fakeReed{
 		StatusQueue:  []reedengine.StatusResult{liveStatus("strand-1", "%1")},
@@ -925,7 +1006,7 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
-	runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+	runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true, started: true})
 	eventsPath := filepath.Join(runDir, eventsFileName)
 
 	fc := newFakeClock(time.Now())
@@ -987,5 +1068,108 @@ func TestAttach_LaterGoesNotLive_StillClassifiesDone(t *testing.T) {
 	}
 	if result.Outcome != OutcomeDone {
 		t.Errorf("Outcome = %q; want %q — output files satisfied the file contract despite the pane going not-live", result.Outcome, OutcomeDone)
+	}
+}
+
+// TestAttach_ReedStateUnavailable_HarvestsFinishedRun covers crucible round opus5-high-r7's F1: each
+// of Attach's three reed-state gates — an unreadable reed.json, an absent one, and a Status() that
+// errors — must consult the file contract before refusing, exactly as Wait's two retry-exhausted
+// caps do via finishedDespiteMechanismFailure.
+//
+// All three gates sit AHEAD of dispositionCandidate, so round fable5-xhigh-r6's guard there could
+// never reach them: a run whose agent had written every declared output file before its driver died
+// hard-failed the whole Shed step instead of being harvested, and the run directory was left in
+// place for every later resume to re-refuse identically (sweepOrphansOpportunistic only runs inside
+// Start, which the refusal never reaches). Reproduced live against the real built binary before the
+// fix — a Discussion-Write with both output files on disk and reed's strand table removed under it.
+//
+// Each case drives the reconstructed run all the way to its own Outcome rather than stopping at
+// found == true, because harvesting is only correct if Wait can actually classify OutcomeDone with
+// reed still broken — which it can, through the not-tracked branch or, for the Status()-errors case,
+// through finishedDespiteMechanismFailure after maxStatusRetries.
+func TestAttach_ReedStateUnavailable_HarvestsFinishedRun(t *testing.T) {
+	tests := []struct {
+		name      string
+		seedState func(t *testing.T, dotLyxDir string)
+		statusErr error
+	}{
+		{"unreadable_reed_json", seedUnreadableReedState, nil},
+		{"absent_reed_json", func(t *testing.T, _ string) { t.Helper() }, nil},
+		{"reed_status_errors", seedPresentReedState, errors.New("tmux: no server running")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{StatusErr: tt.statusErr}
+			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+			tt.seedState(t, dotLyxDir)
+
+			outputFile := filepath.Join(runRoot, "out.md")
+			touchOutputFile(t, outputFile)
+			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+
+			result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
+			if err != nil {
+				t.Fatalf("Attach() error = %v; want nil — an unavailable strand table answers \"reed's bookkeeping went wrong\", never \"did this run finish\"", err)
+			}
+			if !found {
+				t.Fatal("found = false; want true — a running record whose file contract is satisfied is a finished run to harvest, whatever reed can or cannot say about it")
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q; want %q — the reconstructed run's Wait must classify the satisfied file contract even with reed still unavailable", result.Outcome, OutcomeDone)
+			}
+			if _, statErr := os.Stat(runDir); !os.IsNotExist(statErr) {
+				t.Errorf("run dir still exists after the Done cleanup, stat err = %v; want it removed — an unharvested directory is what makes every later resume re-refuse", statErr)
+			}
+		})
+	}
+}
+
+// TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun pins the other side of F1's fix:
+// the harvest is gated on a genuinely satisfied file contract plus a record still declaring itself
+// running, and every reed gate keeps its original refusal when either is missing.
+//
+// The unsatisfied-contract row is what keeps the crash-versus-bounce trap shut, and the terminal-record
+// row is what keeps a record that already ended from being re-harvested. The two-running-records row
+// covers soleFinishedCandidate's exactly-one rule: reed is precisely the thing that cannot be
+// consulted to pick between them here, so falling through to the gate's own refusal is the honest
+// answer rather than choosing one silently.
+func TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun(t *testing.T) {
+	tests := []struct {
+		name            string
+		createOutput    bool
+		outcome         string
+		secondRunning   bool
+		wantErrFragment string
+	}{
+		{"unsatisfied_file_contract", false, runOutcomeRunning, false, "no reed state file"},
+		{"already_terminal_record", true, string(OutcomeDone), false, "no reed state file"},
+		{"two_running_records", true, runOutcomeRunning, true, "no reed state file"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{}
+			runner, _, _, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			// reed.json deliberately not seeded: the absent-state-file gate.
+
+			outputFile := filepath.Join(runRoot, "out.md")
+			if tt.createOutput {
+				touchOutputFile(t, outputFile)
+			}
+			seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: tt.outcome, includeOutcome: true})
+			if tt.secondRunning {
+				seedAttachRun(t, runRoot, "run-2", seedAttachRunOpts{strandGUID: "strand-2", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+			}
+
+			_, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
+			if err == nil {
+				t.Fatal("Attach() error = nil; want the reed-gate refusal — nothing here is a finished run to harvest")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrFragment) {
+				t.Errorf("Attach() error = %q; want it to contain %q", err.Error(), tt.wantErrFragment)
+			}
+			if found {
+				t.Error("found = true; want false — a refusal never reports an attached run")
+			}
+		})
 	}
 }

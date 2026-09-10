@@ -82,15 +82,11 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 		case quarry.StatusFound, quarry.StatusMultipart:
 			// Both pass with no finding.
 		case quarry.StatusAmbiguous:
-			ids := make([]string, 0, len(r.Candidates))
-			for _, cand := range r.Candidates {
-				ids = append(ids, cand.ID)
-			}
 			for _, c := range cards {
 				findings = append(findings, Finding{
 					Check:    "glyph-ambiguous",
 					Card:     c.ID(),
-					Detail:   fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, strings.Join(ids, ", ")),
+					Detail:   fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, candidateList(r.Candidates)),
 					Severity: SeverityBlocking,
 				})
 			}
@@ -127,6 +123,26 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 	}
 
 	return findings
+}
+
+// candidateList renders a batched Resolve answer's ambiguous candidates for an operator-facing
+// detail: each candidate's ID, with its declaring file appended in parentheses when the answer
+// carries one (Resolve fills Symbol.File because its entries span files). The file is the
+// load-bearing half for the one ambiguity Go actually produces — the same name declared twice in
+// one unit — where every candidate shares a single glyph ID, so an ID-only rendering read
+// "ambiguous among: X, X", naming the collision without locating either declaration (crucible
+// round fable5-high-r2, F-R2-2). One renderer serves both ambiguous arms — statusFindings above
+// and createFindings (create.go) — so the two details cannot drift.
+func candidateList(candidates []quarry.Symbol) string {
+	parts := make([]string, 0, len(candidates))
+	for _, cand := range candidates {
+		if cand.File != "" {
+			parts = append(parts, fmt.Sprintf("%s (%s)", cand.ID, cand.File))
+			continue
+		}
+		parts = append(parts, cand.ID)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // unreadableStatusDetail renders the glyph-rejected detail for a result whose Status neither

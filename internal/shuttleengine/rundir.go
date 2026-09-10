@@ -91,6 +91,18 @@ type RunState struct {
 	// in-flight worktree upgraded mid-Asking attach to an idle pane and wait
 	// out a freshly restarted run_timeout_min.
 	Outcome string `json:"outcome"`
+	// Started is false when Start first persists this record, and is flipped true and re-persisted
+	// the moment Wait's own startup probe observes the provider reach shuttleengine.StartupReady —
+	// never by Attach, and never merely from the strand being reed-live. It exists because "reed
+	// still reports this strand's pane alive" is not the same fact as "the provider inside that pane
+	// ever came up": a driver killed between Start and its own first liveness tick, or a launch whose
+	// binary does not exist, both leave a live pane sitting at its own shell prompt with Outcome still
+	// the runOutcomeRunning sentinel — indistinguishable from a genuinely booted, mid-turn run by
+	// outcome and liveness alone. Attach reads this field to decide whether the run it reconstructs
+	// may skip Wait's startup probe (see Wait's own started-seeding doc comment); false is the safe
+	// default a pre-this-change binary's run.json also decodes to, so an old record costs one extra
+	// probe rather than silently skipping one it never earned.
+	Started bool `json:"started"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

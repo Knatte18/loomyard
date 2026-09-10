@@ -163,6 +163,59 @@ func TestCreateFindings_HandleTargetIsInverted(t *testing.T) {
 // string itself, which crucible round opus-high-r9 confirmed live is reachable for a path-shaped
 // ref — so without a default arm here such a result had no reader at all and passed the inversion
 // silently, which under the inversion reads as "the target does not exist yet, carry on".
+// TestCreateFindings_AmbiguousIsAlreadyExists drives a REAL ambiguous answer — two declarations of
+// the same name, in two files of one package, which quarry resolves ambiguous — and pins both
+// halves of F3's fix (crucible round opus5-high-r1): the disposition stays blocking, and the check
+// ID and detail now name the hazard that actually occurred.
+//
+// Before the fix this arm fell through to default/glyph-rejected and rendered via
+// unreadableStatusDetail as `Create target "sub#Dup" answered the unrecognized resolve status
+// "ambiguous"` — false, since ambiguous is one of quarry's four documented statuses, and it pointed
+// the operator at quarry rather than at the colliding declarations in their own tree.
+func TestCreateFindings_AmbiguousIsAlreadyExists(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{
+		"sub/a.go": "package sub\n\nfunc Dup() {}\n",
+		"sub/b.go": "package sub\n\nfunc Dup() {}\n",
+	})
+	repo, err := openRepo(root)
+	if err != nil {
+		t.Fatalf("openRepo(%q) returned error: %v", root, err)
+	}
+	results, err := resolveTargets(repo, []string{"sub#Dup"})
+	if err != nil {
+		t.Fatalf("resolveTargets(...) returned error: %v", err)
+	}
+	if got := results[0].Status; got != quarry.StatusAmbiguous {
+		t.Fatalf("fixture did not produce the status under test: resolve(sub#Dup).Status = %q; want %q", got, quarry.StatusAmbiguous)
+	}
+
+	got := createFindings(createPlan("sub#Dup"), resultByTarget(results))
+	if len(got) != 1 {
+		t.Fatalf("createFindings(ambiguous) = %+v; want exactly one finding", got)
+	}
+	if got[0].Check != "create-already-exists" || got[0].Severity != SeverityBlocking {
+		t.Errorf("createFindings(ambiguous) = %+v; want a blocking create-already-exists finding", got[0])
+	}
+	if strings.Contains(got[0].Detail, "unrecognized") {
+		t.Errorf("finding detail = %q; ambiguous is a status quarry documents and must never be reported as unrecognized", got[0].Detail)
+	}
+	if !strings.Contains(got[0].Detail, "ambiguous") || !strings.Contains(got[0].Detail, "sub#Dup") {
+		t.Errorf("finding detail = %q; want it to name both the ambiguity and the colliding candidates", got[0].Detail)
+	}
+	// Every candidate's declaring FILE must be named too: the constructible Go ambiguity is the
+	// same name declared twice in one unit, where every candidate shares one glyph ID, so an
+	// ID-only detail read "ambiguous among: X, X" and located neither declaration (crucible round
+	// fable5-high-r2, F-R2-2).
+	for _, cand := range results[0].Candidates {
+		if cand.File == "" {
+			t.Fatalf("fixture candidate %+v carries no File; the fixture assumption behind this assertion broke", cand)
+		}
+		if !strings.Contains(got[0].Detail, cand.File) {
+			t.Errorf("finding detail = %q; want it to locate candidate %q via its file %q", got[0].Detail, cand.ID, cand.File)
+		}
+	}
+}
+
 func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
 	t.Run("pre-resolution rejection is blocking glyph-rejected", func(t *testing.T) {
 		index := map[string]quarry.ResolveResult{

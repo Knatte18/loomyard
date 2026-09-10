@@ -2,6 +2,7 @@ package state_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,6 +82,27 @@ func TestCorruptFile(t *testing.T) {
 	_, _, err := state.ReadJSON[sample](path, lockPath)
 	if err == nil {
 		t.Fatal("ReadJSON() on corrupt file error = nil; want non-nil")
+	}
+	// The lenient read path now wraps ErrDecode too, matching ReadJSONStrict, so a caller can tell a
+	// decode failure apart from a read or lock failure with errors.Is (loomshed.Seed relies on this
+	// to refuse rather than escalate a present-but-undecodable status file — crucible round
+	// fable5-high-r5, F3).
+	if !errors.Is(err, state.ErrDecode) {
+		t.Errorf("ReadJSON() on corrupt file error = %v; want errors.Is(err, ErrDecode)", err)
+	}
+
+	// UpdateJSON shares the same lenient read, so it aborts before its mutate with the same wrapped
+	// error and never overwrites the corrupt file.
+	mutateCalled := false
+	uerr := state.UpdateJSON(path, lockPath, func(cur sample, found bool) (sample, error) {
+		mutateCalled = true
+		return cur, nil
+	})
+	if !errors.Is(uerr, state.ErrDecode) {
+		t.Errorf("UpdateJSON() on corrupt file error = %v; want errors.Is(err, ErrDecode)", uerr)
+	}
+	if mutateCalled {
+		t.Error("UpdateJSON() called mutate on a corrupt file; want it to abort before mutate so the file is left untouched")
 	}
 }
 

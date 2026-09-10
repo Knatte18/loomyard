@@ -1,8 +1,14 @@
 // attach.go implements Runner.Attach: the crash-recovery half of the run loop, which answers "is
 // there a still-live, never-terminated run for this exact output-file set" before a caller respawns
 // a fresh agent over one that may already be working. It scans the run-dir root for a matching
-// run.json, dispositions each match against reed's own liveness answer, and — on exactly one live
-// match — reconstructs a *Run over the persisted state and hands it to Wait, never calling Start.
+// run.json, dispositions each match, and — on exactly one attachable match — reconstructs a *Run
+// over the persisted state and hands it to Wait, never calling Start.
+// The disposition consults TWO facts in a fixed precedence, not one: the run's own file contract
+// first, reed's liveness answer only after. A matched record still reading runOutcomeRunning whose
+// every declared output file is already on disk is a run that FINISHED, and is harvested whatever
+// reed says — including when reed cannot be read at all, which is what soleFinishedCandidate is for.
+// See the Completion Signal Invariant in wait.go's own package doc comment for the rule this file
+// is the entry-side half of.
 
 package shuttleengine
 
@@ -57,13 +63,27 @@ func (r *Runner) Attach(spec Spec) (Result, bool, error) {
 	// ReedOps.Status() — reedengine's loadOrInitStateLocked substitutes an empty &ReedState{} for a
 	// not-found file, so Status() succeeds with zero strands for an absent state file,
 	// indistinguishable from a healthy table that simply does not list this guid.
+	//
+	// Each of the three reed gates below consults soleFinishedCandidate BEFORE reporting its
+	// refusal, for the same reason Wait's two retry-exhausted caps consult
+	// finishedDespiteMechanismFailure: an unreadable, absent, or unanswerable strand table says
+	// "reed's own bookkeeping has gone wrong", never "did this run finish", and the file contract
+	// answers the second question without needing reed at all.
 	dotLyxDir := filepath.Join(r.anchorPath, lyxdirs.DotLyxDirName)
 	st, err := reedengine.LoadState(dotLyxDir)
 	if err != nil {
+		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
+			logger.Warn("shuttle: attach: harvesting a finished run despite an unreadable reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
+			return r.reconstructAndWait(finished, normalized)
+		}
 		warnAttachCandidates(candidates, "shuttle: attach: load reed state failed", err)
 		return Result{}, false, fmt.Errorf("shuttle: attach: load reed state at %s: %w — an absent or unreadable strand table is not evidence any run is dead; check \"lyx reed status\"", dotLyxDir, err)
 	}
 	if st == nil {
+		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
+			logger.Warn("shuttle: attach: harvesting a finished run despite an absent reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "seeAlso", "lyx reed status")
+			return r.reconstructAndWait(finished, normalized)
+		}
 		warnAttachCandidates(candidates, "shuttle: attach: no reed state file", nil)
 		return Result{}, false, fmt.Errorf("shuttle: attach: no reed state file at %s — an absent strand table is not evidence any of the %d matching run dir(s) are dead; check \"lyx reed status\"", dotLyxDir, len(candidates))
 	}
@@ -72,6 +92,10 @@ func (r *Runner) Attach(spec Spec) (Result, bool, error) {
 	// live.
 	status, err := r.reed.Status()
 	if err != nil {
+		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
+			logger.Warn("shuttle: attach: harvesting a finished run despite a failing reed status", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
+			return r.reconstructAndWait(finished, normalized)
+		}
 		warnAttachCandidates(candidates, "shuttle: attach: reed status failed", err)
 		return Result{}, false, fmt.Errorf("shuttle: attach: reed status: %w — check \"lyx reed status\"", err)
 	}
@@ -101,7 +125,63 @@ func (r *Runner) Attach(spec Spec) (Result, bool, error) {
 		return Result{}, false, nil
 	}
 
-	candidate := attachable[0]
+	return r.reconstructAndWait(attachable[0], normalized)
+}
+
+// soleFinishedCandidate returns the one candidate among candidates whose persisted record still
+// reads runOutcomeRunning while spec's file contract is ALREADY satisfied, and reports whether
+// exactly one such candidate exists.
+//
+// It is Attach's half of the Completion Signal Invariant for the three gates that sit ahead of
+// dispositionCandidate — an unreadable reed.json, an absent one, and a Status() that will not
+// answer. Each of those three used to abandon every candidate with an error, which is the same
+// omission crucible rounds opus5-high-r4, fable5-high-r5 and fable5-xhigh-r6 fixed five times over
+// inside Wait and once inside dispositionCandidate: a negative answer finalized from a proxy fact
+// (here, reed's bookkeeping being unavailable) when the fact that actually settles "did this run
+// finish" — the agent's own output files — is one call away. Reproduced live in crucible round
+// opus5-high-r7 against the real built binary: a Discussion-Write whose agent had written both
+// declared output files before its driver died, with reed's strand table removed under it (the
+// `git clean -xdf` of `.lyx` that sweepOrphansOpportunistic's own doc comment names as a sanctioned
+// operator action), hard-failed the step with "attach: no reed state file" instead of harvesting the
+// finished work — the exact rework manifest/designs/loom.md's crash-recovery step 2 exists to
+// prevent, one layer earlier than the six exits already hardened.
+//
+// The runOutcomeRunning gate is what keeps this from reopening the crash-versus-bounce trap, for the
+// reason dispositionCandidate's own comment gives at length: a bounce leaves the files present with
+// no owning "running" run.json at all, because finalize removed that directory when the prior run
+// reached OutcomeDone.
+//
+// Exactly one is required rather than the first of several, because picking one of two finished
+// candidates is the same refusal Attach already makes for two live ones — and falling through to the
+// gate's own error is the honest answer there, since reed is precisely what cannot be consulted to
+// tell them apart. allOutputFilesExist is checked once rather than per candidate because it reads
+// the SPEC's file set, which every candidate set-matched to get here.
+func soleFinishedCandidate(candidates []attachCandidate, spec Spec) (attachCandidate, bool) {
+	if !allOutputFilesExist(spec.OutputFiles) {
+		return attachCandidate{}, false
+	}
+	var finished attachCandidate
+	count := 0
+	for _, c := range candidates {
+		if c.state.Outcome == runOutcomeRunning {
+			finished = c
+			count++
+		}
+	}
+	if count != 1 {
+		return attachCandidate{}, false
+	}
+	return finished, true
+}
+
+// reconstructAndWait builds a *Run over candidate's persisted state and blocks on its Wait,
+// returning Wait's own Result and error alongside a true "found" bool.
+//
+// It is a shared seam rather than inline code because Attach reaches it from two kinds of place: the
+// ordinary one-attachable-match tail, and each of the three reed-gate harvests above. Duplicating
+// the literal at four sites is exactly how one of them would drift — offset, deadline, or attached
+// set differently on the path nobody reads as often.
+func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec) (Result, bool, error) {
 	run := &Run{
 		runner: r,
 		// spec is the caller's own normalized spec, never one rebuilt from run.json: RunState
@@ -121,8 +201,11 @@ func (r *Runner) Attach(spec Spec) (Result, bool, error) {
 		// that hit OutcomeTimeout leaves both its strand and its run dir behind, and inheriting
 		// CreatedAt would re-attach and re-time-it-out on every resume forever.
 		deadline: r.clock.Now().Add(normalized.Timeout),
-		// attached seeds Wait's started so it never re-runs the startup probe against a live,
-		// mid-turn pane.
+		// attached is paired with candidate.state.Started inside Wait's own started-seeding (see its
+		// doc comment): Wait only ever skips the startup probe when BOTH are true, since attached
+		// alone means "reed still reports this pane's process alive", never "the provider inside it
+		// ever reached StartupReady" — a killed driver or a bad launch binary both leave a live pane
+		// with Started still false.
 		attached: true,
 	}
 
@@ -270,6 +353,35 @@ const (
 // dispositionCandidate resolves c's strand via reed's strand table and returns exactly one of the
 // three verdicts, per the enumeration in mechanism-failures-do-not-attach-and-do-not-blindly-respawn.
 func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, spec Spec, minAge time.Duration, now time.Time) attachVerdict {
+	// A satisfied file contract wins over every negative liveness answer here, exactly as it does
+	// inside Wait's own poll loop (checkLivenessTick's governing rule, and the four exit paths crucible
+	// rounds opus5-high-r4 and fable5-high-r5 hardened): a candidate whose persisted Outcome still
+	// reads runOutcomeRunning AND whose every declared output file is already on disk is a run that
+	// FINISHED whatever reed now thinks of its pane. The agent's output files are its return value, so
+	// a driver that crashed after the agent wrote them all — leaving run.json at "running" because no
+	// Wait ever classified it — is a done step, not one to respawn. Attaching lets the reconstructed
+	// run's own Wait harvest it as OutcomeDone through those same file-contract-first branches, and
+	// finalize then cleans it up; respawning over it instead archives the finished files and re-runs the
+	// whole (expensive) LLM step, the exact rework the crash-recovery contract exists to prevent
+	// (manifest/designs/loom.md, "A dead claude with a finished output file is, to loom, a done step").
+	//
+	// This never fires on a Discussion-Validate bounce, so it does not reopen the crash-versus-bounce
+	// trap that bars a producer-level file-existence check: a bounce re-enters its producer only after
+	// the prior run reached OutcomeDone, at which point finalize already removed that run's directory —
+	// so no "running" run.json survives to match here. Spec.validate refuses a spec whose output file
+	// already exists on the Start path, so a "running" run.json is proof the files appeared AFTER this
+	// run began (genuine agent evidence), never the pre-existing files a bounce leaves behind with no
+	// owning run.json at all. Gating on runOutcomeRunning is what keeps the two cases apart: a terminal
+	// or cleaned-up record is excluded, and only a run still declaring itself in flight is harvested.
+	//
+	// allOutputFilesExist is vacuously true for an empty list, which is unreachable here for the same
+	// reason classifyDeadlineExpiry documents: collectAttachCandidates set-matches against a persisted
+	// RunState written by a validated Start, and Spec.validate refuses an empty OutputFiles, so no
+	// candidate with an empty output set is ever built.
+	if c.state.Outcome == runOutcomeRunning && allOutputFilesExist(spec.OutputFiles) {
+		return verdictAttachable
+	}
+
 	strand, tracked := strandStatusByGUID(strands, c.state.StrandGUID)
 
 	if tracked && strand.Live {
@@ -297,9 +409,18 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// Not tracked at all (the errStrandNotTracked case). The age escape exists here — and
 	// deliberately not for the absent-state-file answer above — because erroring unconditionally
 	// deadlocks resume permanently: the only thing that ever removes such a directory is
-	// sweepOrphansOpportunistic, which runs inside Start, which this error path never reaches. An
-	// absent or unreadable reed.json is repaired in-band by "lyx reed up", or simply by
-	// "lyx loom run", which calls reed.Up() itself.
+	// sweepOrphansOpportunistic, which runs inside Start, which this error path never reaches.
+	//
+	// The two reed-state answers differ in whether anything repairs them, and only one of them
+	// does. An ABSENT reed.json is recreated in-band by "lyx reed up", or simply by "lyx loom run"
+	// and "lyx loom drive", which both call reed.Up() themselves. An UNREADABLE one is not: reed
+	// refuses every verb that loads state, "lyx reed up" included, and declines to repair it on
+	// purpose, because every repair it could perform amounts to discarding the strand table (see
+	// reedengine's unreadableStateError, which states this and names the operator's two real
+	// remedies — "lyx reed down", or deleting the file by hand). Confirmed live in crucible round
+	// opus5-high-r7: "lyx loom drive" over a truncated reed.json refuses at its own reed.Up() and
+	// never reaches this file at all. That is why soleFinishedCandidate, not this age escape, is
+	// what keeps a finished run harvestable through those gates.
 	return leftoverThenAgeVerdict(c, spec, minAge, now)
 }
 
