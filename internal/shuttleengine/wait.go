@@ -20,6 +20,43 @@
 // driver's own log, which captures stderr and therefore only Warn and above. An operator asking "is
 // this interview waiting for me, or is it wedged?" reads the trace sink -- stated here because the
 // design that introduced AwaitOperator asserted the driver log records each ask, and it does not.
+//
+// # Completion Signal Invariant
+//
+// Any code path in this package that finalizes a NEGATIVE answer to "did this run finish" -- an
+// OutcomeDied, an OutcomeTimeout, a mechanism-failure error, or a verdictRespawnEligible -- must
+// first consult allOutputFilesExist over the run's OutputFiles, directly or through one of the three
+// helpers that own the check: classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here),
+// or soleFinishedCandidate (attach.go).
+//
+// The rule exists because those are two different questions and only one of them is the one being
+// asked. A clock running out, reed no longer tracking a strand, reed's pane binding going stale,
+// reed.Status erroring for maxStatusRetries consecutive ticks, the events file staying unreadable
+// for maxEventsReadRetries, reed.json being absent or undecodable at attach time -- every one of
+// those answers "has something gone wrong", and none of them answers "did this run finish". The
+// agent's output files ARE its return value, so a run that wrote all of them finished, whatever went
+// wrong afterwards. Publishing the first answer as though it were the second records a completed,
+// expensive LLM step as a failure, after which the next resume archives the finished files and
+// re-runs it -- precisely the rework manifest/designs/loom.md's crash-recovery step 1 exists to
+// prevent.
+//
+// It is named here, rather than left implied by the individual helpers, because it was omitted SIX
+// times by six different edits before anyone noticed it was one rule: crucible rounds opus5-high-r4
+// (both deadlines), fable5-high-r5 (both retry-exhausted caps), fable5-xhigh-r6 (Attach's
+// dispositionCandidate) and opus5-high-r7 (Attach's three reed-state gates) each found the next
+// instance by asking "is there another exit shaped like the ones already fixed". Every one was an
+// omission to CALL an already-correct, already-shared primitive -- never a divergent
+// reimplementation of it -- which is why this is a stated invariant plus a tripwire test
+// (completionsignal_enforcement_test.go) rather than a registry in the shape of
+// internal/planparser/shape.go's ref-shape ledger. That mechanism needs a closed value enum to build
+// a flat map over, and the negative outcomes here live in three different types across two files.
+// See CONSTRAINTS.md's own Completion Signal Invariant entry for the cross-reference a reader who
+// checks constraints first will find.
+//
+// The one structural precondition the rule rests on: allOutputFilesExist is vacuously true for an
+// empty list, and no *Run with an empty OutputFiles ever exists. Spec.validate refuses one on the
+// Start path, and collectAttachCandidates set-matches against a persisted RunState written by a
+// validated Start, so the Attach path cannot produce one either.
 
 package shuttleengine
 
@@ -138,15 +175,27 @@ func (run *Run) Wait() (Result, error) {
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
-	// started seeds from run.attached rather than hard-coding false: an attached run has already
-	// been confirmed live via Attach's own reed reads — strictly stronger evidence than the capture
-	// heuristic below provides — so re-running the startup probe against a pane that is mid-turn
-	// would misclassify a live interview as OutcomeDied one startup_timeout_s after attach, or worse,
-	// play the trust-dismiss key sequence into a live agent's pane if its capture happens to trip a
-	// trust-dialog needle. The not-tracked and not-live branches of checkLivenessTick sit above this
-	// short-circuit, so an attached run keeps full liveness coverage — only the startup probe is
-	// skipped.
-	started := run.attached
+	// started seeds from run.state.Started, persisted the moment the ORIGINAL Start (or a prior
+	// attach) actually observed StartupReady — not from run.attached alone. Attach's own reed reads
+	// are strictly stronger evidence than the capture heuristic below for telling a pane APART FROM
+	// NOTHING, but they cannot tell a booted, mid-turn provider apart from a pane whose launch
+	// command already failed (a live shell sitting at its own prompt after a bad binary path) or
+	// whose driver was killed before its own first liveness tick ever ran: reed reports both "live",
+	// and the run's own run.json still carries the runOutcomeRunning sentinel in every one of those
+	// cases, because nothing ever wrote a terminal Outcome to it. Trusting attachment alone there
+	// skips the startup probe for a run that never passed it, which trades a fast, correctly
+	// classified OutcomeDied at startup_timeout_s for a full run_timeout_min/spec.Timeout wait ending
+	// in a misleading OutcomeTimeout. Started is false for every run.json a pre-this-change binary
+	// wrote too, which is the same safe direction as RunState.Outcome's own compat rule: the probe
+	// runs one extra time rather than being skipped when it should not have been.
+	// Once Started is true the original reasoning still holds: re-running the probe against a pane
+	// that is mid-turn would misclassify a live interview as OutcomeDied one startup_timeout_s after
+	// attach, or worse, play the trust-dismiss key sequence into a live agent's pane if its capture
+	// happens to trip a trust-dialog needle — so a confirmed-ready attach still skips it. The
+	// not-tracked and not-live branches of checkLivenessTick sit above this short-circuit, so an
+	// attached run keeps full liveness coverage regardless of Started — only the startup probe
+	// itself is conditional on it.
+	started := run.attached && run.state.Started
 	eventsFailures := 0
 	statusFailures := 0
 
@@ -155,6 +204,11 @@ func (run *Run) Wait() (Result, error) {
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
+				// A satisfied file contract outranks this mechanism failure exactly as it outranks
+				// every other negative answer in this loop -- see finishedDespiteMechanismFailure.
+				if result, ferr, ok := run.finishedDespiteMechanismFailure(); ok {
+					return result, ferr
+				}
 				return run.identity(), fmt.Errorf("shuttle: events file unreadable after %d attempts: %w", maxEventsReadRetries, err)
 			}
 		} else {
@@ -174,6 +228,12 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
+					// A satisfied file contract outranks this mechanism failure exactly as it
+					// outranks every other negative answer in this loop -- see
+					// finishedDespiteMechanismFailure.
+					if result, ferr, ok := run.finishedDespiteMechanismFailure(); ok {
+						return result, ferr
+					}
 					switch {
 					case errors.Is(err, errStrandNotTracked):
 						return run.identity(), fmt.Errorf("shuttle: reed did not track strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
@@ -192,7 +252,10 @@ func (run *Run) Wait() (Result, error) {
 		}
 
 		if run.clock.Now().After(run.deadline) {
-			return run.finalize(OutcomeTimeout, "")
+			// classifyDeadlineExpiry, not a bare OutcomeTimeout: the run deadline answers "has the
+			// clock run out", never "did this run finish", and a run whose every output file is on
+			// disk finished whatever the clock says — see that function.
+			return run.finalize(run.classifyDeadlineExpiry(OutcomeTimeout), "")
 		}
 
 		run.clock.Sleep(interval)
@@ -356,6 +419,16 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	switch run.runner.engine.Startup(capture) {
 	case StartupReady:
 		*started = true
+		// Persisted immediately, not left for finalize: this is the one fact a killed driver must
+		// not lose, since it is what tells a LATER Attach apart a genuinely booted, mid-turn pane
+		// from one whose launch already failed (see Wait's own doc comment on started). Best-effort,
+		// like every other mid-run persistence in this package (finalize's Outcome write) — a save
+		// failure here costs a future re-attach one extra startup probe, never this run's own
+		// correctness.
+		run.state.Started = true
+		if err := saveRunState(run.runDir, run.state); err != nil {
+			logger.Warn("shuttle: persist run started failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
+		}
 		return "", nil
 	case StartupTrustPrompt:
 		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence(capture)); err != nil {
@@ -367,8 +440,8 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	return run.classifyStartupWindow(startupDeadline), nil
 }
 
-// classifyStartupWindow reports OutcomeDied once startupDeadline has passed on a run whose provider
-// has still not reached StartupReady, and "" while that window is still open.
+// classifyStartupWindow reports the run's outcome once startupDeadline has passed on a run whose
+// provider has still not reached StartupReady, and "" while that window is still open.
 //
 // It is called from every not-yet-started exit of checkLivenessTick, not just the still-booting one,
 // because the startup window belongs to the WINDOW rather than to one classification within it.
@@ -376,11 +449,76 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 // never takes, and a pane that fails every capture — skip the deadline entirely and burn the full
 // run_timeout_min (30 minutes by default) instead of startup_timeout_s (90), and be reported as
 // OutcomeTimeout ("the agent was working") rather than OutcomeDied ("it never started").
+//
+// The expired answer comes from classifyDeadlineExpiry rather than being a bare OutcomeDied,
+// because an expired startup window is a NEGATIVE answer like any other and the file contract
+// outranks all of them — see that function for the whole argument.
 func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
 	if run.clock.Now().After(startupDeadline) {
-		return OutcomeDied
+		return run.classifyDeadlineExpiry(OutcomeDied)
 	}
 	return ""
+}
+
+// classifyDeadlineExpiry reports the outcome for a deadline that has just expired: OutcomeDone when
+// the run's file contract is already satisfied, and expired otherwise.
+//
+// It exists because a deadline answers "has the clock run out", never "did this run finish", and
+// the two deadlines in this file — the startup window and the run deadline — both used to publish
+// the first as though it were the second. checkLivenessTick's own doc comment already states the
+// governing rule ("a satisfied file contract wins over every negative answer"), and its
+// not-tracked and not-live branches both honour it; the two deadline paths did not, so a run whose
+// agent had written every file in OutputFiles but left no parseable terminal event behind was
+// classified OutcomeDied at startup_timeout_s or OutcomeTimeout at the run deadline. Reproduced
+// live in crucible round opus5-high-r4 against the real built binary, once per deadline: both of
+// Discussion-Write's declared output files present on disk, events.jsonl never written, and the
+// step recorded as a shed failure — after which the next resume archived the finished files and
+// re-ran the step, which is precisely the rework manifest/designs/loom.md's crash-recovery step 1
+// ("inside an attached or started run's own wait loop … the step finished; read it and advance")
+// exists to prevent.
+//
+// allOutputFilesExist is vacuously true for an empty list, which would make this wrong for a run
+// with no declared outputs — there is none: Spec.validate refuses an empty OutputFiles on the Start
+// path, and on the Attach path collectAttachCandidates set-matches against a persisted RunState
+// written by a validated Start, so an empty spec matches no candidate and no *Run is ever built for
+// it. Spec.validate states the same rule from the other side when it refuses a spec whose output
+// file ALREADY exists, "a pre-existing file would satisfy the file contract immediately".
+func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
+	if allOutputFilesExist(run.spec.OutputFiles) {
+		return OutcomeDone
+	}
+	return expired
+}
+
+// finishedDespiteMechanismFailure finalizes OutcomeDone when the run's file contract is already
+// satisfied at a point Wait would otherwise abandon the run with a mechanism-failure error, and
+// reports whether it did (the bool is false, with a zero Result and nil error, when the contract is
+// not satisfied and the caller must surface its mechanism error unchanged).
+//
+// It exists for the same reason classifyDeadlineExpiry does, extended to Wait's two retry-exhausted
+// exits: the events file staying unreadable for maxEventsReadRetries consecutive ticks, and
+// reed.Status erroring for maxStatusRetries consecutive ticks, both answer "has reed's own
+// bookkeeping or the events file gone wrong", never "did this run finish". checkLivenessTick's own
+// doc comment already governs both -- "a satisfied file contract wins over every negative answer" --
+// and its not-tracked and not-live branches beside these exits both honour it; the two
+// retry-exhausted caps did not, so a run whose agent had written every declared output file but left
+// reed.json corrupt (a crash, a full disk, a kill -9 during a reed write) or events.jsonl
+// unparseable was recorded as a mechanism failure, after which the next resume archived the finished
+// files and re-ran the step -- precisely the rework manifest/designs/loom.md's crash-recovery step 1
+// exists to prevent. Reproduced live in crucible round fable5-high-r5 against the real built binary:
+// a shuttle run whose declared output file was on disk, reed.json truncated mid-run, returned the
+// consecutive-status-failure mechanism error rather than OutcomeDone.
+//
+// The empty-OutputFiles vacuous-truth concern classifyDeadlineExpiry documents does not arise here
+// either, and for the same reason: Spec.validate refuses an empty OutputFiles on the Start path and
+// collectAttachCandidates set-matches against a validated Start's persisted record on the Attach
+// path, so no *Run with an empty OutputFiles ever reaches this loop.
+func (run *Run) finishedDespiteMechanismFailure() (Result, error, bool) {
+	if allOutputFilesExist(run.spec.OutputFiles) {
+		result, err := run.finalize(OutcomeDone, "")
+		return result, err, true
+	}
+	return Result{}, nil, false
 }
 
 // identity returns the run's identifying fields with an empty Outcome: what Wait hands back

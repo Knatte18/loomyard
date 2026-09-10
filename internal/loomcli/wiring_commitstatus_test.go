@@ -248,17 +248,17 @@ func TestNewCommitStatusSeam_MergeActiveSkips(t *testing.T) {
 	}
 }
 
-// TestWireStatusPathsOnly_CommitStatusFilled asserts wireStatusPathsOnly leaves
-// c.shedPaths.CommitStatus non-nil, even though the read-only status/pause verbs it serves never
-// call Run and so never invoke it -- filling it anyway keeps the two ShedPaths literals structurally
-// identical, per wiring.go's own comment at that site.
-func TestWireStatusPathsOnly_CommitStatusFilled(t *testing.T) {
+// TestWireLightweight_CommitStatusFilled asserts wireLightweight leaves c.shedPaths.CommitStatus
+// non-nil, even though every verb on this lightweight path is read-only and so never invokes it --
+// filling it anyway keeps the two ShedPaths literals structurally identical, per wiring.go's own
+// comment at that site.
+func TestWireLightweight_CommitStatusFilled(t *testing.T) {
 	t.Parallel()
 
 	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
 	c := &loomCLI{}
-	c.wireStatusPathsOnly(location, location.AnchorPath())
+	c.wireLightweight(location, location.AnchorPath())
 
 	if c.shedPaths.CommitStatus == nil {
 		t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")

@@ -286,6 +286,40 @@ func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) 
 	}
 }
 
+// waitForCurrentProducer polls loc's status file until it records want as the current producer with
+// the machine still running, or fails the test after timeout.
+//
+// It exists because "kill the detached driver, then assert the row it was on" is a race unless the
+// row is ESTABLISHED first, and a killed-at-an-arbitrary-moment driver lands on whichever row it
+// happened to reach. Killing without this wait made
+// TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed fail intermittently whenever the kill
+// landed while the driver was still on Loom-Preflight: the follow-up drive then legitimately
+// completed that row and advanced to the next one, so both the current_producer-unchanged and the
+// history-unchanged assertions reported a routing bug that was not there (crucible round
+// opus5-high-r7, F5 -- reproduced on the pre-round tree, so it predates that round's own changes).
+//
+// The poll interval is deliberately short relative to the window it is catching: with the fixture's
+// startup_timeout_s of 2, Discussion-Write is the current producer for roughly two seconds before
+// its providerless launch is classified, which a 25ms poll cannot miss.
+func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last string
+	for {
+		st, found, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+		if err == nil && found {
+			last = string(st.CurrentProducer)
+			if st.CurrentProducer == want && st.State == shedengine.StateRunning {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status file never recorded current_producer %q while running within %s (last seen %q); the driver never reached the row this test kills it on", want, timeout, last)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
 // weftCommitCount returns the number of commits reachable from HEAD in the git repository at dir.
 func weftCommitCount(t *testing.T, dir string) int {
 	t.Helper()
@@ -363,6 +397,25 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	rec := fabricengine.NewMutations("")
 	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit poisoned status: %v", err)
+	}
+}
+
+// poisonStatusFileMalformed overwrites loc's already-seeded status file with genuinely malformed
+// JSON (not merely an unknown field) and commits it weft-side. It is the second poison shape the
+// crash-recovery design promises never looks like bootstrap's own gate: unlike the unknown-field
+// shape poisonStatusFile writes, malformed JSON does not decode even leniently, so before crucible
+// round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom run`) refuse on the
+// envelope before ever spawning a driver. loomshed.Seed now maps a decode failure to ErrSeedExists,
+// so both poison shapes reach the same "a driver that died is a run that finished" bootstrap path.
+func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
+	t.Helper()
+	statusPath := loomengine.LoomStatusFile(loc)
+	if err := os.WriteFile(statusPath, []byte(`{ "current_producer": "Discussion-Write", "state": "run`), 0o644); err != nil {
+		t.Fatalf("write malformed status: %v", err)
+	}
+	rec := fabricengine.NewMutations("")
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+		t.Fatalf("commit malformed status: %v", err)
 	}
 }
 
@@ -481,6 +534,12 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 		t.Fatalf("bootstrap: %v; output: %s", err, stdout)
 	}
 
+	// Establish WHICH row the driver is killed on before killing it. Every assertion below is about
+	// the follow-up drive re-entering that same row, and a driver killed at an arbitrary moment lands
+	// on whichever row it happened to reach -- see waitForCurrentProducer for the intermittent
+	// failure that made this explicit.
+	waitForCurrentProducer(t, loc, "Discussion-Write", 30*time.Second)
+
 	for _, pid := range findDriverPIDs(worktree) {
 		_ = proc.KillPID(pid)
 	}
@@ -490,14 +549,30 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	if err != nil || !foundBefore {
 		t.Fatalf("read status file before standalone drive: found=%v err=%v", foundBefore, err)
 	}
+	if before.State != shedengine.StateRunning {
+		t.Fatalf("status state before standalone drive = %q; want %q -- the killed driver must have left its row in flight", before.State, shedengine.StateRunning)
+	}
+	if before.CurrentProducer != "Discussion-Write" {
+		t.Fatalf("current_producer before standalone drive = %q; want %q -- the kill landed on a different row than the one waited for, so the attribution assertions below would be racing rather than testing", before.CurrentProducer, "Discussion-Write")
+	}
 
 	// The timeout is generous and the exit code is deliberately not asserted. What this case is
 	// about is the VERB advancing the machine standalone, and in a fixture with no provider the row
 	// it advances into ends in a launch failure -- a legitimate non-zero exit that says the driver
 	// did its job and the (absent) agent did not. Asserting exit 0 instead made this test depend on
 	// a real provider session completing, which is how it came to spawn one, block on it, and time
-	// out. The durable assertion is the status file's own history, which is what "advances the
-	// machine" means and is true regardless of how the row ended.
+	// out.
+	//
+	// The durable assertion is the status file's own state/error transition, NOT history length: a
+	// producer call that returns an error reaches no verdict, and shedengine's own appendHistory
+	// (see its doc comment, and internal/shedengine/run_routing_test.go's TestRun_ProducerError)
+	// deliberately records no history entry for it -- current_producer, state, and error carry the
+	// failure instead. A prior version of this test asserted history growth here and passed only by
+	// accident, because the OLD, buggy shuttleengine Wait took the full run/discussion timeout
+	// (~61s) to classify the dead pane, long enough that the assertion was never reached before this
+	// test's own timeout in CI; once Wait's started-gating fix let the dead pane classify fast
+	// (~startup_timeout_s), the same "no history entry" outcome surfaced immediately and revealed
+	// the stale assertion.
 	driveOut, driveCode, err := runLoomCLINoFatal(exe, worktree, 3*time.Minute, "loom", "drive")
 	if err != nil {
 		t.Fatalf("loom drive: %v; output: %s", err, driveOut)
@@ -508,8 +583,17 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	if err != nil || !foundAfter {
 		t.Fatalf("read status file after standalone drive: found=%v err=%v", foundAfter, err)
 	}
-	if len(after.History) <= len(before.History) {
-		t.Errorf("history length after standalone drive = %d; want more than before (%d) -- the machine must advance", len(after.History), len(before.History))
+	if after.State != shedengine.StateFailed {
+		t.Errorf("status state after standalone drive = %q; want %q -- the machine must advance from running to a durably recorded failure", after.State, shedengine.StateFailed)
+	}
+	if after.Error == "" {
+		t.Errorf("status error after standalone drive is empty; want the shuttle failure's own text recorded")
+	}
+	if after.CurrentProducer != before.CurrentProducer {
+		t.Errorf("current_producer changed from %q to %q; want it unchanged -- the failure is attributed to the same row, not routed onward", before.CurrentProducer, after.CurrentProducer)
+	}
+	if len(after.History) != len(before.History) {
+		t.Errorf("history length changed from %d to %d; want unchanged -- a producer call that reached no verdict records no history entry", len(before.History), len(after.History))
 	}
 }
 
@@ -618,6 +702,62 @@ func TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *test
 	}
 	if string(after) != string(poisonedBytes) {
 		t.Errorf("status file changed after the failed drive; want it untouched -- a persist must never have happened")
+	}
+}
+
+// (e2) `lyx loom run` against a MALFORMED-JSON status file proceeds to the tmux handover exactly as
+// the unknown-field shape does, rather than refusing on the envelope at the Seed step. This is
+// crucible round fable5-high-r5's F3 regression guard, and the composed CLI-verb half its unit tests
+// (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see: only the
+// real `lyx loom run` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn ->
+// handshake chain against a poisoned weft-committed status file.
+//
+// Before the fix, loomshed.Seed returned the raw decode error (not ErrSeedExists) for malformed
+// JSON, so step 2 of `lyx loom run` refused on the envelope before ever spawning a driver — the very
+// "poisoned status file looks like bootstrap's own gate" state the crash-recovery design forbids.
+// After it, Seed maps the decode failure to ErrSeedExists, the bootstrap tolerates it, and the
+// spawned driver's own Shed.Run step-1 read gate diagnoses the decode failure in the driver log,
+// exactly as TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy pins for the unknown-field
+// shape.
+func TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy(t *testing.T) {
+	tmuxBinaryPath(t)
+	exe := buildLyxBinary(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	registerBootstrapTeardown(t, loc, worktree)
+
+	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	if err != nil {
+		t.Fatalf("first bootstrap: %v; output: %s", err, firstOut)
+	}
+	for _, pid := range findDriverPIDs(worktree) {
+		_ = proc.KillPID(pid)
+	}
+	waitRunLockFree(t, loc, 20*time.Second)
+
+	poisonStatusFileMalformed(t, loc)
+
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	if err != nil {
+		t.Fatalf("second (malformed-status) bootstrap: %v; output: %s", err, stdout)
+	}
+
+	// Proceeded to step 7 rather than refusing at step 2's Seed: no controlling terminal here, so the
+	// handover itself cannot succeed and tmux says so on stderr — which is the evidence it was
+	// REACHED. A Seed refusal would have written a JSON envelope and never got here.
+	if !strings.Contains(stdout, "not a terminal") {
+		t.Errorf("second bootstrap output = %q; want the tmux handover reached, not a Seed refusal before it", stdout)
+	}
+	if strings.Contains(stdout, `"ok":false`) {
+		t.Errorf("second bootstrap emitted a refusal envelope: %s -- a malformed status file must defer to the driver's own read gate, not refuse at the Seed step", stdout)
+	}
+
+	// The driver log carries the decode failure from Shed.Run's own step-1 read gate.
+	driverLog, err := os.ReadFile(loomengine.LoomDriverLog(loc))
+	if err != nil {
+		t.Fatalf("read driver log: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(string(driverLog)), "decode") {
+		t.Errorf("driver log = %q; want it to name the malformed status file's decode failure", driverLog)
 	}
 }
 

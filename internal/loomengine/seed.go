@@ -124,17 +124,35 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 // the OLD task's Finalize, with the status envelope naming the old slug (crucible round
 // fable5-high-r3, F-B7).
 //
-// A missing file, an empty recorded slug, and a product that does not decode all pass: each is
-// some other check's business (the caller's own missing-file handling, and CheckSeed's coherence
-// rules) — this function answers ownership alone. A read or lock failure is returned as its own
-// error, never converted into a verdict.
+// A missing file, an empty recorded slug, a product that does not decode, and a decode failure on
+// the outer shed envelope itself (malformed JSON or an unknown field) all pass: each is some other
+// check's business — the caller's own missing-file handling, and, for the coherence cases (an empty
+// slug and the like), CheckSeed's own rules. A decode failure specifically is diagnosed one layer
+// earlier than CheckSeed: the spawned driver's Shed.Run step-1 read gate does the same strict
+// ReadJSONStrict read at the top of its loop and errors on it BEFORE any producer — the
+// Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer
+// never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
+// Either way this function answers ownership alone. Escalating a decode failure here stopped the
+// bootstrap before it ever spawned a driver or reached the tmux handover, for a condition the
+// driver's own run loop already surfaces in its own log — reproduced live via a poisoned status
+// file that made both "lyx loom run" and "lyx loom drive" refuse on the envelope instead of letting
+// the spawned driver's own step-1 gate report the decode failure.
+// A genuine read or lock failure — anything that is not a decode failure — is still returned as its
+// own error, never converted into a verdict: CheckSeed draws this exact same line (see its own
+// rerr-handling), and this function draws it the same way for the same reason.
 func VerifySeedOwnership(statusPath, statusLockPath, wantSlug string) error {
 	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
 		return err
 	}
 	shed, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
-	if err != nil || !found {
+	if err != nil {
+		if errors.Is(err, state.ErrDecode) {
+			return nil
+		}
 		return err
+	}
+	if !found {
+		return nil
 	}
 
 	var product Status

@@ -119,7 +119,10 @@ func matchHandleResults(expected map[string]string, results []quarry.ResolveResu
 // handle-shaped alike — index is keyed by the ref as the card spells it, so a handle resolves
 // through the answer createHandleResults collected for the glyph it stands for. A found or
 // multipart result is the blocking finding create-already-exists, naming the target and the status
-// that contradicts it. A not_found result with unit: found passes with no finding: creating a
+// that contradicts it. An ambiguous result is the same blocking create-already-exists finding,
+// naming every candidate: several existing declarations occupy that name, which contradicts a card
+// creating it exactly as one existing declaration does.
+// A not_found result with unit: found passes with no finding: creating a
 // package is creating its first symbol, so demanding unit: found is incoherent for a Create target
 // — the package does not exist apart from its files. A not_found result with unit: not_found
 // produces the informational finding create-new-unit, naming the new unit explicitly, so a
@@ -155,6 +158,13 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 						Detail:   fmt.Sprintf("Create target %q already resolves %s", t, r.Status),
 						Severity: SeverityBlocking,
 					})
+				case quarry.StatusAmbiguous:
+					findings = append(findings, Finding{
+						Check:    "create-already-exists",
+						Card:     c.ID(),
+						Detail:   fmt.Sprintf("Create target %q already resolves ambiguous among existing declarations: %s", t, candidateList(r.Candidates)),
+						Severity: SeverityBlocking,
+					})
 				case quarry.StatusNotFound:
 					if r.Unit == quarry.StatusNotFound {
 						findings = append(findings, Finding{
@@ -166,13 +176,20 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 					}
 					// unit: found passes with no finding.
 				default:
-					// StatusAmbiguous is deliberately routed to this same default/glyph-rejected arm
-					// rather than a case of its own passing or handled as a distinct Create-specific
-					// finding: a Create target answering ambiguous means an existing declaration
-					// already occupies (part of) that name, which is exactly the create-already-exists
-					// hazard above, and reporting it as an unreadable status rather than inventing a
-					// third Create-only disposition keeps this switch's vocabulary the same shape as
-					// every other fail-closed .Status consumer in the package.
+					// Only genuinely unreadable answers reach here now: a pre-resolution rejection
+					// (no Status) and any value outside quarry's four-value vocabulary.
+					// StatusAmbiguous used to be routed here too, on the reasoning that an ambiguous
+					// Create target IS the create-already-exists hazard and needed no third
+					// disposition. The disposition was right and is unchanged -- blocking, and for
+					// the same reason -- but the DETAIL was rendered by unreadableStatusDetail, whose
+					// non-rejection branch reads "answered the unrecognized resolve status", and
+					// ambiguous is a status quarry documents and Status.Known() admits. The message
+					// therefore told an operator that quarry had returned something lyx could not
+					// read, when lyx reads it perfectly and is refusing the plan because a
+					// declaration already occupies that name -- sending them at quarry instead of at
+					// their own card, with no mention of the remedy or the colliding candidates
+					// (crucible round opus5-high-r1, F3). Ambiguous now has its own arm above,
+					// reporting create-already-exists with its candidates named.
 					findings = append(findings, Finding{
 						Check:    "glyph-rejected",
 						Card:     c.ID(),

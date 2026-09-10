@@ -35,6 +35,7 @@ Every glyph the plan references is resolved in one batched `(*quarry.Repo).Resol
 A pre-resolution rejection (`ResolveResult.Error`/`Reason`, no `Status`) is blocking (`glyph-rejected`).
 
 A `Create` group's own targets invert this policy: `found`/`multipart` is the blocking finding (`create-already-exists`) — a target that already exists contradicts the card creating it — while `not_found` with `unit: found` passes with no finding, because creating a package is creating its first symbol, so the package's own directory already existing is the ordinary case, not a defect.
+`ambiguous` is the same blocking `create-already-exists` finding, listing every candidate: several existing declarations occupying the name contradicts a card creating it exactly as one does, so it is reported as the hazard it is rather than as an unreadable answer.
 `not_found` with `unit: not_found` produces an informational `create-new-unit` finding naming the new unit explicitly, so a misspelled unit cannot silently create a package nobody intended.
 
 ## The two containment tiers

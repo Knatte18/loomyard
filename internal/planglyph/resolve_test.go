@@ -85,6 +85,15 @@ func TestStatusFindings(t *testing.T) {
 			if !strings.Contains(got[0].Detail, cand.ID) {
 				t.Errorf("Detail = %q; want it to list candidate %q", got[0].Detail, cand.ID)
 			}
+			// The declaring file is required alongside the ID: both fixture candidates share the
+			// glyph ID amb#Foo, so an ID-only detail named the collision twice without locating
+			// either declaration (crucible round fable5-high-r2, F-R2-2).
+			if cand.File == "" {
+				t.Fatalf("fixture candidate %+v carries no File; the fixture assumption behind this assertion broke", cand)
+			}
+			if !strings.Contains(got[0].Detail, cand.File) {
+				t.Errorf("Detail = %q; want it to locate candidate %q via its file %q", got[0].Detail, cand.ID, cand.File)
+			}
 		}
 	})
 
@@ -180,5 +189,47 @@ func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Detail, "partially_found") {
 		t.Errorf("finding detail = %q; want it to name the unrecognized status", got[0].Detail)
+	}
+}
+
+// TestCandidateList pins the shared ambiguous-candidate renderer both glyph-ambiguous
+// (statusFindings) and create-already-exists (createFindings) delegate to: a candidate carrying a
+// File is located as "ID (file)", one without keeps the bare ID, so identically-named declarations
+// — which share one glyph ID — stay tellable apart by their files (crucible round fable5-high-r2,
+// F-R2-2).
+func TestCandidateList(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []quarry.Symbol
+		want       string
+	}{
+		{
+			"same ID in two files stays distinguishable",
+			[]quarry.Symbol{
+				{ID: "amb#Foo", File: "amb/a.go"},
+				{ID: "amb#Foo", File: "amb/b.go"},
+			},
+			"amb#Foo (amb/a.go), amb#Foo (amb/b.go)",
+		},
+		{
+			"a candidate with no file keeps the bare ID",
+			[]quarry.Symbol{{ID: "amb#Foo"}},
+			"amb#Foo",
+		},
+		{
+			"mixed presence renders each candidate on its own terms",
+			[]quarry.Symbol{
+				{ID: "amb#Foo", File: "amb/a.go"},
+				{ID: "amb#Bar"},
+			},
+			"amb#Foo (amb/a.go), amb#Bar",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := candidateList(tt.candidates); got != tt.want {
+				t.Errorf("candidateList(...) = %q; want %q", got, tt.want)
+			}
+		})
 	}
 }

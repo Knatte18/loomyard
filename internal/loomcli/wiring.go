@@ -154,9 +154,10 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 	}
 }
 
-// wireStatusPathsOnly builds the minimum a read-only status verb needs onto c: location, cwd, and
-// the two status-file paths. It loads no module config, constructs no engine, and can fail only if
-// loomengine's own path accessors do, which they cannot.
+// wireLightweight builds the minimum the verbUsesLightweightWiring set needs onto c: location, cwd,
+// the two status-file paths, and (for the two validate verbs) the four c.env path fields
+// validateDiscussionCmd/validatePlanCmd read. It loads no module config, constructs no engine, and
+// can fail only if loomengine's own path accessors do, which they cannot.
 //
 // It exists because wire() below loads eight module configs, a model-spec registry and the active
 // batchifier before any verb body runs, so a fault in ANY of them refused "lyx loom status" and
@@ -165,26 +166,40 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // neither the read-out nor the emergency brake for a run that was still going. pause is the
 // documented graceful-stop mechanism; losing it to an unrelated config problem inverts the cost.
 //
+// Crucible round sonnet5-xhigh-r8's F2 extended this path to validate-discussion/validate-plan for
+// the identical reason: both writer agents' own stencils instruct them to run these two verbs as a
+// pre-handoff self-check, mid-run, while a sibling process may be actively rewriting any of the eight
+// configs wire() loads -- and validateDiscussionCmd/validatePlanCmd (validate.go) read only
+// DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, none of which need any config load.
+//
 // The verbs that actually build producers -- run and drive -- deliberately keep the full wire(), and
 // keep failing early on a bad config, because for them an unloadable config is a real refusal rather
 // than an unrelated one. That is the same reasoning wire()'s own landingCfg comment already gives
 // for loading landing.yaml eagerly.
-func (c *loomCLI) wireStatusPathsOnly(location *lyxcwd.Location, cwd string) {
+func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.location = location
 	c.cwd = cwd
-	// CommitStatus is filled here too, even though wireStatusPathsOnly's own read-only verbs (status,
-	// pause) never call Run and so never invoke it: filling both literals keeps them structurally
-	// identical, so a future verb promoted from this path to wire()'s cannot silently lose the hook.
-	// loomCommitStatusDeps builds three closures and performs no I/O at build time, so it neither
-	// loads config nor opens a fabric -- this doc comment's own claim that wireStatusPathsOnly "loads
-	// no module config, constructs no engine, and can fail only if loomengine's own path accessors
-	// do" stays true with this fill in place.
+	// CommitStatus is filled here too, even though every verb on this path is read-only and so never
+	// invokes it: filling both literals keeps them structurally identical, so a future verb promoted
+	// from this path to wire()'s cannot silently lose the hook. loomCommitStatusDeps builds three
+	// closures and performs no I/O at build time, so it neither loads config nor opens a fabric --
+	// this doc comment's own claim that wireLightweight "loads no module config, constructs no
+	// engine, and can fail only if loomengine's own path accessors do" stays true with this fill in
+	// place.
 	c.shedPaths = loomrecipe.ShedPaths{
 		StatusPath:     loomengine.LoomStatusFile(location),
 		LockPath:       loomengine.LoomRunLock(location),
 		StatusLockPath: loomengine.LoomStatusLock(location),
 		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location)),
 	}
+	// c.env is otherwise left at its zero value deliberately: status/pause read nothing from it, and
+	// filling only the four fields validate-discussion/validate-plan actually read (rather than the
+	// whole of wire()'s c.env assembly) is what keeps this path from re-acquiring the eight-config
+	// load it exists to avoid.
+	c.env.AnchorPath = location.AnchorPath()
+	c.env.WorktreeRoot = location.WorktreePath()
+	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
+	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 }
 
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at

@@ -112,8 +112,8 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		return nil
 	}
 
-	if verbReadsStatusOnly(cmd.Name()) {
-		c.wireStatusPathsOnly(location, cwd)
+	if verbUsesLightweightWiring(cmd.Name()) {
+		c.wireLightweight(location, cwd)
 		return nil
 	}
 
@@ -125,14 +125,20 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 	return nil
 }
 
-// verbReadsStatusOnly reports whether the named loom subcommand needs nothing beyond the resolved
-// location and the two status-file paths -- no module config, no engine, no producer.
+// verbUsesLightweightWiring reports whether the named loom subcommand needs nothing beyond the
+// resolved location, the two status-file paths, and a handful of cheap path accessors -- no module
+// config, no engine, no producer.
 //
-// The set is exactly the two read-only status verbs. Every other verb builds or drives producers and
-// keeps the full wire(), including its early config refusal.
-func verbReadsStatusOnly(name string) bool {
+// The set is the two read-only status verbs (status, pause) plus the two standalone format
+// self-checks (validate-discussion, validate-plan), which read only c.env's path fields and never a
+// loaded config -- crucible round sonnet5-xhigh-r8's F2 extended the set from the original two after
+// finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated
+// module's broken config, the identical hazard that got status/pause this lightweight path in the
+// first place (see wireLightweight's own doc comment for that history). Every other verb builds or
+// drives producers and keeps the full wire(), including its early config refusal.
+func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause":
+	case "status", "pause", "validate-discussion", "validate-plan":
 		return true
 	default:
 		return false

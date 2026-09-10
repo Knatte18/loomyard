@@ -49,7 +49,7 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 	// The refuse-if-exists decision is made under the held lock, via UpdateJSON's own found
 	// argument -- never as a stat followed by a write, which would leave a TOCTOU window between
 	// the check and the write.
-	return state.UpdateJSON(statusPath, statusLockPath, func(_ shedengine.Status, found bool) (shedengine.Status, error) {
+	err = state.UpdateJSON(statusPath, statusLockPath, func(_ shedengine.Status, found bool) (shedengine.Status, error) {
 		if found {
 			return shedengine.Status{}, fmt.Errorf("%w: %q already exists; Seed refuses to overwrite an in-flight run's history", ErrSeedExists, statusPath)
 		}
@@ -61,4 +61,24 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 			Product:         product,
 		}, nil
 	})
+	if err != nil && errors.Is(err, state.ErrDecode) {
+		// A present-but-undecodable status file (malformed JSON, an unknown top-level field) is
+		// still PRESENT: Seed's whole contract is never to overwrite an existing status file, and a
+		// corrupt one is exactly what must not be destroyed -- it may be the only forensic record of
+		// what an in-flight run was doing when it broke. So this is the same refusal as a
+		// cleanly-decoding file, reported as ErrSeedExists for the session bootstrap to tolerate.
+		// UpdateJSON aborts before its mutate on a decode failure, so no write happened and the file
+		// is left untouched.
+		//
+		// This defers the decode diagnosis to the spawned driver's own Shed.Run step-1 read gate,
+		// exactly as the unknown-field shape already did (UpdateJSON's lenient read tolerates an
+		// unknown field, so that shape decodes here and takes the found branch above). Without this
+		// mapping the malformed-JSON shape made `lyx loom run` refuse on the envelope before ever
+		// spawning a driver -- the very state manifest/designs/loom.md's crash-recovery section
+		// promises a poisoned status file never presents as ("A poisoned status file must never look
+		// like it belongs to bootstrap's own gate"), reproduced live in crucible round
+		// fable5-high-r5 (F3). `lyx loom drive` was already correct, since it never calls Seed.
+		return fmt.Errorf("%w: %q already exists but does not decode; Seed refuses to overwrite it, deferring the decode diagnosis to the driver's own preflight read", ErrSeedExists, statusPath)
+	}
+	return err
 }

@@ -943,6 +943,275 @@ func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns is the regression guard for
+// d0e5a0e7b's coverage gap (crucible round sonnet5-xhigh-r3, F1): the started seed
+// (`run.attached && run.state.Started`) must still run the startup probe when a candidate is
+// attached but its persisted RunState.Started is false -- exactly the attached-but-never-actually-
+// started shape a driver killed before its first liveness tick, or a launch against a nonexistent
+// binary, both leave behind.
+//
+// Before d0e5a0e7b, the seed was `run.attached` alone, so this exact case skipped the startup probe
+// entirely and burned the full run deadline before misclassifying OutcomeTimeout. Reverting the
+// fix here (started := run.attached, dropping the state.Started conjunct) reproduces exactly that:
+// the run deadline (10 minutes, virtual) is what would bind instead of the 1-second startup
+// deadline, so this test's own elapsed-time assertion below fails loudly rather than merely running
+// slower, unlike the pre-existing smoke test this gap escaped (TestSmokeDriveStandalone_
+// AdvancesMachineFromExistingSeed only asserts the final state, never the elapsed time or outcome
+// kind, so the old seed's mismeasurement made it slower, not failing).
+//
+// TestAttach_StartedSeededTrue (attach_test.go) pins the opposite half -- attached AND Started true
+// skips the probe -- but seeds started: true on both the pre- and post-fix code paths, so it cannot
+// distinguish them; this test is deliberately the mirror case a fake engine that never reaches
+// StartupReady, proving the probe actually reruns rather than merely existing.
+func TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+	outputFile := filepath.Join(runDir, "out.md")       // never created
+
+	reed := &fakeReed{
+		StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+	}
+	// StartupPending forever: the provider never reaches StartupReady, so a run that correctly
+	// re-runs the startup probe classifies OutcomeDied at the 1s startup deadline; a run that
+	// wrongly skips the probe (the pre-fix bug) falls through to the 10-minute run deadline instead.
+	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner: runner,
+		spec:   Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+		runDir: runDir,
+		// state.Started is the zero value (false): a persisted run.json whose provider never
+		// reached StartupReady, exactly what a driver killed pre-first-liveness-tick leaves behind.
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false},
+		clock:    fc,
+		deadline: fc.Now().Add(10 * time.Minute),
+		// attached: true is the other half of the pre-fix bug's seed: Attach always sets this,
+		// regardless of the candidate's own Started value, so attached alone must never be
+		// sufficient to skip the probe.
+		attached: true,
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDied {
+		t.Errorf("Outcome = %q; want %q -- an attached-but-never-started run must still fail the startup probe, not wait out the full run timeout", result.Outcome, OutcomeDied)
+	}
+	// The startup deadline is 1s and the run deadline is 10 minutes (virtual clock): a run that
+	// wrongly skipped the probe burns the whole 10 minutes before OutcomeTimeout, so bounding the
+	// elapsed virtual time to well under a minute is what actually distinguishes "the probe reran"
+	// from "the probe was skipped and this merely got lucky on the outcome" -- the same shape
+	// TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath already uses for its own sibling cases.
+	if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
+		t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window) -- an elapsed time near 10 minutes means the startup probe was skipped and the RUN deadline bound this instead, reopening d0e5a0e7b's bug", elapsed)
+	}
+}
+
+// TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied is F1's regression guard
+// (crucible round opus5-high-r4): the startup window expiring is a NEGATIVE answer, and
+// checkLivenessTick's own doc comment already promises that a satisfied file contract outranks
+// every negative answer — but classifyStartupWindow used to return a bare OutcomeDied on the clock
+// alone, while the not-tracked and not-live branches beside it both consulted the file contract
+// first.
+//
+// Each subtest pins a pane that is LIVE and never reaches StartupReady — the three ways a run sits
+// out its startup window, the same set TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath covers —
+// with every declared output file ALREADY WRITTEN and events.jsonl never created, so the file
+// contract is the only evidence the run finished and the startup deadline is the only thing that
+// ever classifies it. Reverting the fix (a bare `return OutcomeDied` in classifyStartupWindow)
+// makes every case here fail on the outcome, since the pre-fix code cannot reach OutcomeDone from
+// this path at all.
+//
+// Reproduced live before being written: driven through the real built binary against a real wired
+// hub, a provider that wrote both of Discussion-Write's output files and then stayed alive without
+// rendering a TUI was recorded as `state=failed`, `shuttle run outcome died`, with both files
+// present on disk.
+func TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied(t *testing.T) {
+	tests := []struct {
+		name string
+		// startupScript drains FIFO and its last entry then repeats forever, so a single-entry
+		// script pins the pane in that state for the whole run.
+		startupScript []StartupState
+		captureErr    error
+	}{
+		{"trust_prompt_that_never_clears", []StartupState{StartupTrustPrompt}, nil},
+		{"pane_capture_fails_every_probe", nil, errors.New("capture pane: no such pane")},
+		{"still_booting", []StartupState{StartupPending}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+			outputFile := filepath.Join(runDir, "out.md")
+			// The whole point of the case: the agent's file contract IS satisfied, and nothing else
+			// says so — no events line was ever written for pollEventsTick to classify from.
+			touchOutputFile(t, outputFile)
+
+			reed := &fakeReed{
+				StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+				CaptureErr:  tt.captureErr,
+			}
+			engine := &fakeEngine{StartupScript: tt.startupScript}
+			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+				clock:    fc,
+				deadline: fc.Now().Add(10 * time.Minute),
+			}
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q; want %q — every declared output file exists, and a satisfied file contract outranks an expired startup window exactly as it outranks a dead pane", result.Outcome, OutcomeDone)
+			}
+			// The startup deadline is 1s and the run deadline 10 minutes, so this also pins WHICH
+			// deadline produced the answer: a run that somehow reached OutcomeDone off the run
+			// deadline instead would have burned the whole 10 minutes of virtual time first.
+			if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
+				t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window)", elapsed)
+			}
+		})
+	}
+}
+
+// TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout is F2's regression guard (crucible
+// round opus5-high-r4): the run deadline expiring is the second place a clock used to publish
+// itself as a verdict on whether the run finished.
+//
+// The run here has already reached StartupReady (started is seeded true through the persisted
+// RunState, so the startup probe never runs and cannot be what classifies this), every declared
+// output file is on disk, and events.jsonl is never created — so the file contract is the only
+// evidence of completion and the RUN deadline is the only thing that ever fires. Reverting the fix
+// (a bare `return run.finalize(OutcomeTimeout, "")`) makes this fail on the outcome.
+//
+// Reproduced live before being written: a provider that rendered the ready marker, wrote both of
+// Discussion-Write's output files, and then stayed alive without appending to events.jsonl was
+// recorded as `run.json` outcome "timeout" with started true, and the step as a shed failure.
+func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+
+	reed := &fakeReed{
+		StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+	}
+	// StartupScript deliberately left empty: with started seeded true the startup probe must never
+	// run, so any Startup call at all would mean this test is measuring the wrong deadline.
+	engine := &fakeEngine{}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 300})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: true},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+		attached: true,
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever the clock says", result.Outcome, OutcomeDone)
+	}
+	if len(engine.StartupCalls) != 0 {
+		t.Errorf("engine.StartupCalls = %v; want none — started was seeded true, so the RUN deadline is what this case measures", engine.StartupCalls)
+	}
+}
+
+// TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins is crucible round fable5-high-r5's F1
+// regression guard: the reed-status-error cap is a THIRD place — beyond round opus5-high-r4's two
+// deadline paths — where Wait finalized a negative outcome without first consulting the file
+// contract checkLivenessTick's own doc comment governs ("a satisfied file contract wins over every
+// negative answer").
+//
+// reed.Status errors on every call (the shape a crash-corrupted or truncated reed.json, or a
+// torn-down session, produces), so the run reaches maxStatusRetries consecutive liveness failures
+// and would abandon itself with a mechanism error — but every declared output file is on disk, so
+// the run finished and must classify OutcomeDone instead of re-running completed work on the next
+// resume. events.jsonl is never created, so the ONLY path to done is the mechanism-failure cap's own
+// file-contract check: reverting finishedDespiteMechanismFailure makes this fail with the
+// consecutive-status-failure error. Reproduced live against the real built binary before being
+// written (truncating a live run's reed.json).
+func TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+
+	reed := &fakeReed{StatusErr: errors.New(`reed state file is unreadable: unmarshal state: unexpected end of JSON input`)}
+	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done despite reed.Status erroring", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever reed's own bookkeeping did", result.Outcome, OutcomeDone)
+	}
+}
+
+// TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins is the events-file half of F1: the
+// events-unreadable cap is the fourth place Wait finalized a negative outcome without consulting the
+// file contract.
+//
+// ParseEvents fails on every call (a corrupted or garbage events.jsonl), so the run reaches
+// maxEventsReadRetries consecutive parse failures — but every declared output file is on disk, so it
+// finished and must classify OutcomeDone. LivenessEveryNPolls is high so the events cap, not a
+// liveness tick, is what fires; reverting finishedDespiteMechanismFailure makes this fail with the
+// events-file-unreadable error.
+func TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte("garbage that never parses\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: true}}}}}
+	engine := &fakeEngine{ParseEventsErr: errors.New("parse events: malformed")}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done despite an unparseable events.jsonl", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever the events file holds", result.Outcome, OutcomeDone)
+	}
+}
+
 func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created

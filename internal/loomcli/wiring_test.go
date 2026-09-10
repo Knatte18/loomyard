@@ -573,11 +573,15 @@ func TestWire_PlanSpecEvaluatesToExpectedShape(t *testing.T) {
 	}
 }
 
-// TestVerbReadsStatusOnly pins the exact set of verbs that skip the full engine-stack construction.
-// Adding a verb here silently would be a real regression: a verb that builds or drives producers
-// needs wire()'s early config refusal, and getting that wrong moves the failure from the operator's
-// terminal into a detached driver log.
-func TestVerbReadsStatusOnly(t *testing.T) {
+// TestVerbUsesLightweightWiring pins the exact set of verbs that skip the full engine-stack
+// construction. Adding a verb here silently would be a real regression: a verb that builds or
+// drives producers needs wire()'s early config refusal, and getting that wrong moves the failure
+// from the operator's terminal into a detached driver log.
+//
+// validate-discussion/validate-plan want true as of crucible round sonnet5-xhigh-r8's F2: both are
+// standalone format self-checks the writer agents' own stencils run mid-task, so they must not
+// depend on an unrelated module's config health any more than status/pause do.
+func TestVerbUsesLightweightWiring(t *testing.T) {
 	tests := []struct {
 		name string
 		verb string
@@ -585,34 +589,37 @@ func TestVerbReadsStatusOnly(t *testing.T) {
 	}{
 		{"Status", "status", true},
 		{"Pause", "pause", true},
+		{"ValidateDiscussion", "validate-discussion", true},
+		{"ValidatePlan", "validate-plan", true},
 		{"Run", "run", false},
 		{"Drive", "drive", false},
-		{"ValidateDiscussion", "validate-discussion", false},
-		{"ValidatePlan", "validate-plan", false},
 		{"UnknownVerb", "something-else", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := verbReadsStatusOnly(tt.verb); got != tt.want {
-				t.Errorf("verbReadsStatusOnly(%q) = %v; want %v", tt.verb, got, tt.want)
+			if got := verbUsesLightweightWiring(tt.verb); got != tt.want {
+				t.Errorf("verbUsesLightweightWiring(%q) = %v; want %v", tt.verb, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestWireStatusPathsOnly_FillsTheStatusPathsWithoutLoadingAnyConfig is the regression guard for the
-// defect: "lyx loom pause" and "lyx loom status" used to run the whole of wire(), so a fault in any
-// of eight module configs refused them both -- taking away the operator's read-out and the
-// documented emergency brake for a run that was still going. The location fixture here has no
-// _lyx/config directory at all, which is the strongest form of "no config is loaded".
-func TestWireStatusPathsOnly_FillsTheStatusPathsWithoutLoadingAnyConfig(t *testing.T) {
+// TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig is the regression guard for the defect:
+// "lyx loom pause" and "lyx loom status" used to run the whole of wire(), so a fault in any of eight
+// module configs refused them both -- taking away the operator's read-out and the documented
+// emergency brake for a run that was still going. Extended by crucible round sonnet5-xhigh-r8's F2
+// to also prove the four c.env path fields validate-discussion/validate-plan read get filled by this
+// same no-config-load path, rather than those two verbs staying on wire()'s full stack. The location
+// fixture here has no _lyx/config directory at all, which is the strongest form of "no config is
+// loaded".
+func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	// Deliberately NOT hubLocation: this location's anchor has no _lyx/config directory at all, so
 	// a path that loaded any module config could not possibly succeed here.
 	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
 	c := &loomCLI{}
-	c.wireStatusPathsOnly(location, location.AnchorPath())
+	c.wireLightweight(location, location.AnchorPath())
 
 	if c.location != location {
 		t.Errorf("location = %v; want the told location", c.location)
@@ -629,15 +636,26 @@ func TestWireStatusPathsOnly_FillsTheStatusPathsWithoutLoadingAnyConfig(t *testi
 	if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
 		t.Error("LockPath and StatusLockPath name the same file; shedengine.validate rejects that outright")
 	}
+	// The four fields validate-discussion/validate-plan actually read must be filled -- this is the
+	// whole point of F2's fix -- from the told location's own cheap accessors, no I/O.
+	if c.env.AnchorPath != location.AnchorPath() {
+		t.Errorf("env.AnchorPath = %q; want %q", c.env.AnchorPath, location.AnchorPath())
+	}
+	if c.env.WorktreeRoot != location.WorktreePath() {
+		t.Errorf("env.WorktreeRoot = %q; want %q", c.env.WorktreeRoot, location.WorktreePath())
+	}
+	if c.env.DecisionRecordPath != loomengine.DiscussionDecisionRecord(location) {
+		t.Errorf("env.DecisionRecordPath = %q; want %q", c.env.DecisionRecordPath, loomengine.DiscussionDecisionRecord(location))
+	}
+	if c.env.SupportLogPath != loomengine.DiscussionSupportLog(location) {
+		t.Errorf("env.SupportLogPath = %q; want %q", c.env.SupportLogPath, loomengine.DiscussionSupportLog(location))
+	}
 	// Nothing that a module config would have filled may be populated: that is what proves no load
 	// happened rather than merely that none failed.
 	if c.reed != nil {
-		t.Error("reed engine was constructed; want the status-only path to build no engine")
+		t.Error("reed engine was constructed; want the lightweight path to build no engine")
 	}
 	if c.runner != nil {
-		t.Error("shuttle runner was constructed; want the status-only path to build no engine")
-	}
-	if c.env.AnchorPath != "" {
-		t.Errorf("env was assembled (AnchorPath = %q); want the status-only path to assemble no Env", c.env.AnchorPath)
+		t.Error("shuttle runner was constructed; want the lightweight path to build no engine")
 	}
 }
