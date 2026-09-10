@@ -72,7 +72,7 @@ neither reopened by this round's reading or driving.
 
 ## Code findings (severity-ranked)
 
-_(provisional — appended as found; final severity ordering written last)_
+Two findings, both MEDIUM, both fixed in Job 2 (see the fixer report).
 
 ### F1 (MEDIUM, CONFIRMED by tracing) — an AuditForks failure's deliberately-preserved run directory/strand is invisible to every reclaim path, so a later resume silently redoes the round and the pane leaks forever
 
