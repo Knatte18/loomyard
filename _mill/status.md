@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: crucible-loom-refshape-registry
 branch: crucible-loom-refshape-registry
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-09T10:13:13Z'
+done  '2026-09-10T14:35:01Z'
 ```
