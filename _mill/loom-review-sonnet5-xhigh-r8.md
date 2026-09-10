@@ -67,3 +67,25 @@ _(appended incrementally, one entry per command/scenario)_
   `/nonexistent/lyx-smoke-has-no-provider` fixture, as the cost declaration promised).
 - Teardown check: `pgrep -af tmux` after the run shows no tmux server process (only my own grep
   invocation matching its own command line, not a hit) -> zero stray tmux confirmed.
+- `go test -tags integration ./internal/planglyph/... -run "RealDelta"` -> both real-quarry-backed
+  rename-repair tests pass (`TestDetectDrift_RealDeltaGateOneRecognizesDeclaredRename`,
+  `TestDetectDrift_RealDeltaExactTierRepairsUndeclaredRename`), confirming thread A's exact-tier
+  auto-repair against a genuine git delta and a genuine `quarry.Repo.Resolve` call still holds.
+
+### Static read coverage (thread B/C widened surface) — full-file reads, not skims
+Personally read in full: `internal/shuttleengine/{run.go,rundir.go,spec.go,wait.go,attach.go,doc.go}`;
+`internal/loomengine/{seed.go,coherence.go,discussion.go,plan.go,status.go}`;
+`internal/loomcli/{bootstrap.go,drive.go,run.go,pause.go,status.go,seedinput.go,wiring.go,
+landingdeps.go,validate.go,cli.go}`; `internal/loomshed/{loompreflight.go,seed.go,discussionwrite.go,
+planwrite.go,webster.go,planvalidate.go,ctx.go,batchifier.go}`; `internal/loomrecipe/loomrecipe.go`;
+`internal/websterengine/recordbatch.go`; `internal/preflight/preflight.go`; both `Attach` call sites
+in `internal/shedadapters/{bouncer.go,burler.go}` (to confirm the Attach-before-Start/Run ordering
+`shuttleengine/doc.go` requires of every caller holds at every call site, not just
+`SingleLLMProducer`'s). Cross-checked `contracts/recipes/loom-recipe.yaml`'s 17 rows/routing against
+`manifest/designs/loom.md`'s 15-row table and `docs/overview.md`'s module descriptions -- both consistent, no drift.
+
+Two independent forks (same session, clean-room re-briefed to hunt race/wrong-layer-check/
+unpersisted-transition/partial-error-path shapes, explicitly told not to re-derive the closed
+completion-signal shape) read every remaining production file in `internal/loomcli` and
+`internal/loomshed` plus `internal/loomengine`'s remaining files (`review.go`, `prompt.go`,
+`report.go`, `config.go`, `configtemplate.go`) not covered above. Both reported no findings.
