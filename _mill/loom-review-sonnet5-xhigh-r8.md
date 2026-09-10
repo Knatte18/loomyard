@@ -89,3 +89,10 @@ unpersisted-transition/partial-error-path shapes, explicitly told not to re-deri
 completion-signal shape) read every remaining production file in `internal/loomcli` and
 `internal/loomshed` plus `internal/loomengine`'s remaining files (`review.go`, `prompt.go`,
 `report.go`, `config.go`, `configtemplate.go`) not covered above. Both reported no findings.
+
+### Race-detector pass (extra adversarial coverage beyond the prompt's floor)
+- `go test -race ./internal/shuttleengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/loomengine/...` -> all `ok`, no races.
+- `go test -race -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` -> all 14 smoke tests
+  PASS under `-race`, including `TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver`
+  (the concurrent-bootstrap-invocation scenario) and the two harvest-shaped tripwires. No races
+  flagged anywhere in the widened surface.
