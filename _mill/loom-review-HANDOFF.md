@@ -5,24 +5,40 @@ Campaign, thread A: confirm live that `centralize-glyph-shape-enum` and
 real built binary. **CONVERGED (rounds 1-2).**
 Campaign, thread B/C: fix two pre-existing smoke-test failures, then independently review that fix
 work plus a wider adversarial pass over loom's bootstrap/crash-recovery machinery. **STILL NOT
-CONVERGED after round 6** — four consecutive rounds (3, 4, 5, 6) have each found real defects. See
-`_mill/loom-crucible-orchestrator-kickoff.md` for the original (thread-A-only) brief.
+CONVERGED after round 6; round 7 IN FLIGHT.** See `_mill/loom-crucible-orchestrator-kickoff.md` for
+the original (thread-A-only) brief.
 
 ## Current state
 **Thread A: CONVERGED**, unchanged since round 2, re-confirmed by round 6's light-touch pass.
-**Thread B/C: NOT CONVERGED.** The campaign's core defect class ("a terminal/negative classification
-answers a question using only a proxy fact, ignoring the fact that actually owns the answer, one
-line away") has now been found in FIVE call sites across three rounds: r4 (2, both in `Wait`'s
-deadline paths), r5 (2, both in `Wait`'s mechanism-failure caps), r6 (1, in `Attach`'s
-`dispositionCandidate` — the first instance OUTSIDE `Wait`). **Recommendation for round 7: switch
-strategy from another broad adversarial pass to an exhaustive SWEEP** — per
-`crucible/README.md`'s own fabric-campaign refinement ("when the tail starts circling, stop
-reviewing and start counting"), five instances of one shape found by four rounds of ad-hoc adversarial
-reading is exactly the signal to stop hoping a fifth round spots instance #6 live, and instead
-enumerate EVERY place in the bootstrap/crash-recovery surface that finalizes a terminal/negative
-outcome, in a table, with a reason for each row (checks the completion signal / doesn't need to /
-genuinely doesn't and is a new finding). This was discussed with the operator; see whether it was
-acted on before assuming another generic safety-pass round is still the right shape.
+**Thread B/C: NOT CONVERGED.** Four consecutive rounds (3, 4, 5, 6) each found real defects, five of
+them (r4-r6) sharing one recurring shape — a negative/terminal classification answering a question
+using a proxy fact instead of the fact that actually owns the answer.
+
+**After round 6, the operator asked whether this recurring shape warrants its own centralization
+task, the way `centralize-glyph-shape-enum` (this campaign's original subject) centralized ~12
+hand-rolled ref-shape checks into one AST-enforced registry.** A dedicated, skeptical investigation
+(a fresh general-purpose agent, NOT a crucible round — deliberately, so it wouldn't just agree with
+the orchestrator's framing) was spawned to answer this on evidence. Its independent conclusion,
+written to `_mill/task-proposal-completion-signal-centralization.md` (read this file for full
+reasoning — it is NOT a crucible round artifact and doesn't match the clean-room constraint's
+exclusion pattern): **partial — the `shape.go` ledger mechanism doesn't transplant here** (no closed
+value enum to build a flat map/AST-diff over; the five sites differ in return type, caller identity,
+and guarding precondition in ways that would force an awkward shared checkpoint). It recommended a
+lightweight alternative instead of a full mill task: a named "Completion Signal Invariant" doc
+comment, a `CONSTRAINTS.md` paragraph, and a sabotage-proved tripwire test pinning the known-audited
+negative-verdict-return-site count — estimated half a day, no new abstraction, no new package.
+
+**Round 7 (`opus-high-r7`) was seeded with exactly that as its assigned residual, plus continued
+light thread-C vigilance if time allowed. It is CURRENTLY RUNNING — Job 1 (review) is committed and
+complete; Job 2 (fix) was in progress as of this handoff's last refresh.** Do NOT act on round 7's
+findings until its own completion notification arrives AND the orchestrator has independently
+verified it (file-scope diff, cold-state hermetic gates, sabotage-proof of every new/changed test) —
+this handoff deliberately does not detail round 7's in-flight findings, per the operator's own
+instruction, precisely so a context reset doesn't cause premature action on unverified work. If you
+are picking this campaign up fresh: check `git log --oneline` on this branch for commits after
+`533c0a75c` (the round-7 re-seed) to see how far round 7 actually got, and read
+`_mill/loom-review-opus5-high-r7.md`/`-fixer-report.md` (if the fixer report exists yet) directly
+rather than trusting this paragraph's staleness.
 
 ## CLOSED-AND-VERIFIED
 
@@ -92,13 +108,12 @@ recommended strategy shift for round 7 — a sweep rather than another ad-hoc ad
 - The fabric weft-branch-naming bug — not loom's scope.
 
 ## Next action
-Discuss with the operator whether round 7 should be a sweep (enumerate every terminal/negative-outcome
-call site across the bootstrap/crash-recovery surface — `Wait`, `Attach`, `Start`,
-`internal/loomengine`, `internal/loomcli`, `internal/loomshed` — in a table, with a reason per row)
-rather than another generic adversarial safety pass, per the fabric campaign's own "stop reviewing,
-start counting" refinement. If the operator agrees, seed the review prompt accordingly and pick a
-model — a sweep is well-suited to a systematic, lower-creativity task, so effort tier doesn't need to
-be the highest available; if the operator prefers another ad-hoc pass instead, that's their call to
-make, not a default to fall back to silently.
-**Do not call thread B/C converged until a round with no assigned residual — sweep or ad-hoc —
-comes back with nothing new.**
+**Wait for round 7's completion notification, then independently verify it** (file-scope diff
+against commit `533c0a75c`, cold-state hermetic gates, sabotage-proof of every new/changed test,
+smoke suite) before treating any of its findings as settled. Do not touch the module's code or
+`git add`/commit anything while it is still running (Hard Rule 3).
+Once round 7 is verified: update this handoff with its actual (verified) findings, decide whether
+thread B/C is converged or needs another round (per the standing rule below), and get the operator's
+model+effort pick for any further round.
+**Do not call thread B/C converged until a round with no assigned residual comes back with nothing
+new.**

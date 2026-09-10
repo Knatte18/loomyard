@@ -46,8 +46,13 @@ finding including the two NITs is closed. Whether thread B/C is *converged* is t
 call, not mine — my input to it is that this round found a real defect, so the thread's own bar
 ("a round that comes back clean") is not met yet.
 
-**Counts by severity:** 1 MEDIUM (F1), 1 LOW (F2), 2 NIT (F3, F4), plus the assigned residual (R1).
-All five closed in Job 2.
+**Counts by severity:** 2 MEDIUM (F1, F5), 1 LOW (F2), 2 NIT (F3, F4), plus the assigned residual
+(R1). All six closed in Job 2.
+
+F5 was found during Job 2's verification pass rather than Job 1, and is recorded in full below with
+that provenance stated. It is a pre-existing race in the live smoke suite's own
+`TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` — verified pre-existing by reproducing it
+on the pre-round tree — that makes the gate accuse loom of a routing bug about one run in three.
 
 ## Scope assessment — plan-promised vs shipped
 
@@ -317,6 +322,48 @@ dispositions each match against reed's own liveness answer, and — on exactly o
 reconstructs a `*Run`". Since round 6 the first thing `dispositionCandidate` does is NOT consult
 reed's liveness answer, and after F1 two more paths reach a `*Run` with no reed answer at all.
 Same class as F3, different file; recorded separately because they are separate edits.
+
+### F5 — `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` races the row it kills the driver on
+
+**Severity: MEDIUM. CONFIRMED — reproduced roughly 1 run in 3, and reproduced on the PRE-round tree,
+so it predates this round's own changes.**
+
+`internal/loomcli/smoke_test.go`'s `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` —
+one of the three files thread B puts under review, since commit `aba2c270a` rewrote this exact
+test's assertion.
+
+**Found during Job 2's verification pass, not Job 1.** Recorded here anyway, clearly marked, rather
+than only in the fixer report: it is a finding about the code under review, and a reader of this
+report should not have to reconstruct it from a commit message.
+
+The test bootstraps a driver with `lyx loom run`, kills it immediately, and then asserts that the
+follow-up `lyx loom drive` re-enters the SAME row — via `current_producer` unchanged and history
+length unchanged. But nothing establishes which row the driver was on when it was killed. When the
+kill lands while the driver is still at `Loom-Preflight` (a fast row), the follow-up `drive`
+legitimately completes that row and advances to `Discussion-Write`, so both assertions fire:
+
+```
+smoke_test.go:550: current_producer changed from "Loom-Preflight" to "Discussion-Write";
+                   want it unchanged -- the failure is attributed to the same row, not routed onward
+smoke_test.go:553: history length changed from 1 to 2;
+                   want unchanged -- a producer call that reached no verdict records no history entry
+```
+
+Both messages accuse loom of a routing bug that is not there. That is the worst shape a gate can
+have in a campaign like this one: a future round re-running the live suite either chases a phantom
+regression or, having learned to dismiss it, misses a real one.
+
+**Reproduction and provenance.** Running the test alone passes; running it after another
+tmux-and-hub test in the same package fails intermittently — 1 of 3 on my host. Verified NOT caused
+by this round by rebuilding the pre-round tree (`git show 6bec8892d:` for the five files this round
+touches, this round's new test file removed) and reproducing the same failure there with only
+pre-existing tests: `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning` followed by this
+one, 1 failure in 3 runs, same two assertions.
+
+**Suggested fix.** Establish the precondition instead of racing it: poll the status file until it
+records `current_producer: Discussion-Write` with the machine still running, and only then kill.
+Weakening the assertions is the wrong direction — the test's own doc comment explains at length why
+the history-length claim is the durable one, and that claim is correct once the row is pinned.
 
 ### R1 — the round's assigned residual: the Completion Signal Invariant is nowhere named
 
