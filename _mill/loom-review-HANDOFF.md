@@ -5,14 +5,19 @@ Campaign, thread A: confirm live that `centralize-glyph-shape-enum` and
 real built binary. **CONVERGED (rounds 1-2).**
 Campaign, thread B/C: fix two pre-existing smoke-test failures, then independently review that fix
 work plus a wider adversarial pass over loom's bootstrap/crash-recovery machinery. **STILL NOT
-CONVERGED after round 7.** See `_mill/loom-crucible-orchestrator-kickoff.md` for the original
+CONVERGED after round 8.** See `_mill/loom-crucible-orchestrator-kickoff.md` for the original
 (thread-A-only) brief.
 
 ## Current state
-**Thread A: CONVERGED**, unchanged since round 2, re-confirmed by round 6's light-touch pass.
-**Thread B/C: NOT CONVERGED.** Five consecutive rounds (3, 4, 5, 6, 7) each found real defects, six of
-them (r4-r7) sharing one recurring shape — a negative/terminal classification answering a question
-using a proxy fact instead of the fact that actually owns the answer.
+**Thread A: CONVERGED**, unchanged since round 2, re-confirmed by round 6's light-touch pass and
+round 8's live spot-checks (Create-inversion both directions, `glyph-not-found`, a live handle
+canonicalization rewrite proven on disk).
+**Thread B/C: NOT CONVERGED.** Six consecutive rounds (3, 4, 5, 6, 7, 8) each found real defects. Six
+of them (r4-r7) shared one recurring shape (a negative/terminal classification answering a question
+using a proxy fact instead of the fact that actually owns the answer) — now closed AND structurally
+tripwired (round 7's R1). **Round 8 was the first genuinely open, no-assigned-residual round, and it
+still found two new, DIFFERENT-shaped defects** — so the standing convergence rule (a no-residual
+round with nothing new) is still not met.
 
 **After round 6, the operator asked whether this recurring shape warrants its own centralization
 task, the way `centralize-glyph-shape-enum` (this campaign's original subject) centralized ~12
@@ -141,6 +146,55 @@ for real this campaign. No content damage (the swept-in text was accurate and is
 same refresh), but a reminder that the hazard is real, not theoretical, and worth restating to future
 round agents: commit only your own round's files, never a broad `git add -A`.
 
+### Round 8 (`sonnet5-xhigh-r8`, commit range `45447a39b..4d4f3fe28`) — first genuine no-residual
+round, deliberately steered away from `wait.go`/`attach.go` toward `run.go`'s `Start`/`finalize`,
+`internal/loomengine`, `internal/loomcli`, `internal/loomshed`. Found TWO new, genuinely
+DIFFERENT-shaped defects (neither is a seventh instance of the recurring completion-signal shape):
+
+- **F1 (MEDIUM, found by full code trace, NOT live — disposed as a documented "Accepted residual",
+  same pattern as the `AddStrand`/`run.json` one)** — a run classified `OutcomeDone` whose spec sets
+  `ForkSubagents` and whose `AuditForks` call then fails (`finalize`, `wait.go:568-579`) leaves its
+  strand and run directory alive forever: `run.state.Outcome` is already persisted to the terminal
+  `"done"` sentinel BEFORE the audit runs (line 563-566), so the record can never again read
+  `runOutcomeRunning` — the one value `dispositionCandidate` requires to consider a candidate
+  attachable — and the strand is never removed from reed (the `cleaned` block that would do so sits
+  AFTER the audit's early-return), so it never goes absent from reed's live set either, which is what
+  `sweepOrphansOpportunistic` requires to sweep a directory. **Orchestrator independently traced all
+  three claims directly in the code** (`wait.go:554-589`, `attach.go:381,388`,
+  `run.go:372-387`) and confirms the finding is accurate: this really is a permanent leak for
+  `burlerengine`'s cluster-fan rounds, with `websterengine`'s Master row escaping only by the
+  accident of its own unconditional entry-time strand reclaim (which itself silently redoes
+  already-finished work rather than reclaiming it cleanly). Genuinely a design decision, not a code
+  fix: closing it needs a persisted reason field distinguishing an `AuditForks`-preserved run (meant
+  to be reclaimed once diagnosed) from a `KeepPane`-preserved one (meant to stay alive indefinitely).
+  Documented in `manifest/designs/loom.md`'s crash-recovery section as a third named "Accepted
+  residual", matching the section's existing convention. Not live-reproduced (constructing a real
+  `AuditForks` failure needs a genuine Claude Code fork-transcript layout, correctly judged out of
+  this round's live-driving budget) — the orchestrator accepts the code-trace-only disposition as
+  proportionate, the same standard the `AddStrand`/`run.json` residual was held to.
+- **F2 (MEDIUM, code-fixed, orchestrator-verified)** — `validate-discussion`/`validate-plan` (the
+  writer agents' own stencil-mandated pre-handoff self-checks) ran through the FULL eight-config
+  `wire()` instead of the lightweight path `status`/`pause` already use for the identical,
+  previously-live-observed hazard (a sibling process's config transiently broken mid-run). Fixed by
+  extending the existing lightweight-wiring mechanism
+  (`wireStatusPathsOnly`→`wireLightweight`, `verbReadsStatusOnly`→`verbUsesLightweightWiring`) to
+  cover both verbs, filling exactly the four `c.env` path fields (`AnchorPath`, `WorktreeRoot`,
+  `DecisionRecordPath`, `SupportLogPath`) those two verbs' own code actually reads — orchestrator
+  confirmed via grep that `validate.go`'s `validateDiscussionCmd`/`validatePlanCmd` read no other
+  `c.env` field. **Orchestrator independently sabotage-proved both regression tests, each in
+  isolation**: reverting the `cli.go` switch-case addition fails `TestVerbUsesLightweightWiring`'s
+  two new subtests exactly, with `Status`/`Pause`/`Run`/`Drive`/`UnknownVerb` staying green throughout
+  (not vacuous); reverting the four-field fill in `wireLightweight` fails all four of
+  `TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig`'s new assertions exactly. Both restored
+  to a byte-for-byte empty diff.
+
+**Orchestrator's independent verification of round 8**: file-scope diff matched the round's own
+report exactly (`cli.go`, `wiring.go`, `wiring_test.go`, `wiring_commitstatus_test.go`,
+`manifest/designs/loom.md`, plus the two report files). Cold-state `go build`/`go vet`/full
+`go test ./...` all green; live smoke suite 13/13 green (round 8 added no new smoke test — F2 is
+unit-level, F1 is documentation-only, consistent with their claimed shapes). Both regression tests
+sabotage-proved as described above.
+
 ## Incidental finding, OUT OF loom's scope, not fixed — still outstanding
 Fabric's `lyx fabric clone` names the weft primary branch after the weft bare repo's own HEAD rather
 than the warp's primary branch name when they differ (originally hit in round 5, hit again in round
@@ -148,24 +202,34 @@ than the warp's primary branch name when they differ (originally hit in round 5,
 tracked — nobody has opened one yet.
 
 ## RESIDUAL currently seeded
-None (round 7's assigned residual, R1, is closed and verified; its one new finding, F1, is also
-fixed). Round 8 needs a fresh operator decision on strategy — see "Next action".
+None. Round 9 needs a fresh operator decision on strategy — see "Next action".
 
 ## DEFERRED list
 - The `AddStrand`/`run.json` crash-mid-registration race — operator-decision item, now agreed
   unclosable-by-reordering across THREE independent rounds (3, 4, 5; round 6 re-confirmed with no
-  new angle — four rounds total). Detection tradeoff fully documented in `manifest/designs/loom.md`.
+  new angle — four rounds total; round 8 did not touch it). Detection tradeoff fully documented in
+  `manifest/designs/loom.md`.
+- The `AuditForks`-failure orphan (round 8's F1) — operator-decision item, found by code trace, not
+  live. Needs a persisted "reason this run is kept alive" field to distinguish an
+  `AuditForks`-preserved run from a `KeepPane`-preserved one before it can be closed safely.
+  Documented in `manifest/designs/loom.md` as a third named "Accepted residual". Only one round's
+  worth of scrutiny so far (unlike the AddStrand/run.json residual's four), so worth an independent
+  second look by a future round rather than treating it as settled this early.
 - The fabric weft-branch-naming bug — not loom's scope.
 
 ## Next action
-Round 7 is independently verified (see "Current state") and does NOT qualify as convergence — it
-both had an assigned residual (R1) and found a new sixth instance (F1). Get the operator's
-model+effort pick for round 8. Six instances of the recurring shape across four rounds (r4-r7) is a
-strong signal per `crucible/README.md`'s own fabric-campaign refinement ("when the tail starts
-circling, stop reviewing and start counting") that another ad-hoc adversarial pass may keep finding
-one-at-a-time instances indefinitely — worth raising with the operator again now that a sixth has
-turned up in a residual-execution round rather than an adversarial one, though the tripwire test
-(R1) is specifically meant to make a seventh instance impossible rather than merely findable, so the
-open question is now "does the tripwire actually close this off" rather than "where is instance 7".
+Round 8 is independently verified (see "Current state" and the round-8 entry above) and does NOT
+qualify as convergence — it was the first genuinely open, no-assigned-residual round, and it still
+found two new, differently-shaped defects (F1, F2). Get the operator's model+effort pick for round 9.
+
+Worth naming explicitly: round 8 is genuine evidence in FAVOR of the tripwire strategy working as
+intended — a full round of unconstrained adversarial reading, deliberately pointed away from
+`wait.go`/`attach.go`, found zero instances of the recurring completion-signal shape and two
+unrelated defects elsewhere instead. That is closer to what convergence looks like than any prior
+round, even though it does not itself qualify (the bar is nothing new, not nothing-of-the-old-shape).
+Round 9 should probably be another genuinely open no-residual pass, continuing to widen away from
+`wait.go`/`attach.go` (now six-rounds-read and tripwired) and from `internal/loomcli/wiring.go`/
+`cli.go` (round 8's F2 area, now fixed and tested) toward whatever surface has had the least
+clean-room attention so far — raise this with the operator rather than assuming it.
 **Do not call thread B/C converged until a round with no assigned residual comes back with nothing
 new.**
