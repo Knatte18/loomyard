@@ -32,3 +32,12 @@ _(provisional — appended as found)_
 ## What was tested
 
 _(appended incrementally, one entry per command/scenario)_
+
+### Environment check
+- `which gcc clang go tmux` -> gcc `/usr/bin/gcc`, go `/usr/bin/go`, tmux `/usr/bin/tmux` present (clang absent, gcc suffices). `go env CGO_ENABLED` -> `1`. `go version` -> `go1.26.0 linux/amd64`.
+  No environment gap blocks any of this round's scenarios.
+
+### Hermetic suite
+- `go build ./...` -> clean, no output.
+- `go vet ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/...` -> clean, no output.
+- `go test -count=5 ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/... ./cmd/lyx/...` -> all `ok`, no failures/flakes across 5 iterations each.
