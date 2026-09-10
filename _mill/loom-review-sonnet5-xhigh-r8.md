@@ -15,7 +15,43 @@ final severity ordering are written last.
 
 ## Executive summary
 
-_(written last)_
+This round had **no assigned residual** — full adversarial freedom, deliberately steered away from
+`wait.go`/`attach.go` (six recurring-shape instances found and fixed across rounds 3-7, now
+sabotage-tripwired) toward the surrounding surface: `shuttleengine/run.go`'s `Start`, `finalize`,
+`sweepOrphansOpportunistic`, and all of `internal/loomengine`/`internal/loomcli`/`internal/loomshed`.
+
+**This round found something NEW, twice — thread B/C is not yet converged.** Both findings are
+genuinely different shapes from the six-instance recurring pattern (a negative-verdict classification
+skipping the file-contract check), so the tripwire correctly did not (and could not) catch either:
+
+- **F1 (MEDIUM, CONFIRMED by full code trace, including reading the exact test that pins the
+  deliberate design choice it builds on):** a fork-audit failure deliberately preserves a `OutcomeDone`
+  run's strand+directory for diagnosis (a considered, tested choice from round `fable5-high-r2` — NOT
+  what this finding disputes) — but nothing ever reclaims it afterward. `dispositionCandidate` gates
+  `verdictAttachable` on `Outcome == "running"`, so a `"done"` record is `verdictRespawnEligible`
+  forever; `sweepOrphansOpportunistic` only removes directories whose strand is *absent*, and this
+  strand is never removed. For `burlerengine`'s cluster-fan Burler rounds there is no other reclaim
+  path at all: a resumed round archives the genuinely-finished review+fixer-report and spawns a whole
+  new round over a permanently leaked pane. This is a **missing reclaim path for an intentionally-kept
+  resource**, a different shape than "skipped the file contract."
+- **F2 (MEDIUM, CONFIRMED by code reading):** `validate-discussion`/`validate-plan` go through the
+  full, eight-config-loading `wire()` instead of the lightweight path `status`/`pause` already use —
+  and the writer agent's own stencils instruct it to run exactly these two verbs as a pre-handoff
+  self-check, mid-run, while a sibling process could have any of those configs transiently broken (the
+  precise, live-observed incident that motivated `status`/`pause`'s lightweight wiring in the first
+  place). This is a **check answering a question one layer up from where it should**: a discussion/plan
+  validity question made to depend on an unrelated module's config health.
+
+**Merge-readiness opinion:** ship-blocking for neither — both are real but narrow (F1 needs
+`ForkSubagents: true` AND an `AuditForks` failure; F2 needs a config transiently broken mid-run) — but
+both are fixed in Job 2 below per this campaign's own "fix every finding" rule, all severities included.
+Thread A remains converged; this round's own live-driving spot-check (real binary, real hub fixture,
+five scenarios spanning glyph resolution, Create-inversion both directions, and a live handle-
+canonicalization rewrite proven on disk) found no regression. Hermetic (`build`/`vet`/`test -count=5`),
+full-repo, smoke, integration (`-tags integration`, real quarry), and race-detector (`-race`) runs are
+all green. No environment gap blocked anything this round needed. Full adversarial freedom was used —
+both findings came from reading the widened surface end to end (not from re-deriving the closed
+recurring shape) plus live driving; nothing was skipped for cost reasons.
 
 ## Scope assessment (plan vs shipped)
 
@@ -105,6 +141,18 @@ helper, and add both names to (an appropriately renamed) `verbReadsStatusOnly`.
 ## Docs & operability findings
 
 _(provisional — appended as found)_
+
+- **F1 needs a docs update, not just a code deferral.** `manifest/designs/loom.md`'s "Crash recovery"
+  section already documents two "Accepted residual" cases (the done-but-not-persisted window, and the
+  `AddStrand`/`run.json` crash-mid-registration window) but says nothing about the `AuditForks`-failure
+  orphan F1 describes — a resource genuinely left behind by design (per R2-F2's own tested intent) with
+  no reclaim path, which is exactly the shape the existing "Accepted residual" convention exists to
+  record. Job 2 adds a third such entry rather than leaving this gap undocumented (see the fixer report).
+- No other docs/operability inaccuracy found: `contracts/recipes/loom-recipe.yaml`'s 17 rows/routing
+  still match `manifest/designs/loom.md`'s 15-row table (three collapsed segment pairs, `Plan-Sweep`
+  as the table's extra row — the documented, deliberate divergence); `docs/overview.md`'s module
+  descriptions for `loomengine`/`loomcli`/`loomshed`/`shuttleengine` still match the as-built code
+  read this round.
 
 ## What was tested
 
