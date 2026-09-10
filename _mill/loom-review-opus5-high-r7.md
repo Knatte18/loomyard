@@ -120,6 +120,28 @@ run the real `Delta`), `TestDetectDrift_RenameMatchingCardPairProducesNoFindingN
 never repairs), and the whole `TestCreateFindings_*`/`TestCanonicalizeHandles_*`/`TestBindHandles_*`
 families.
 
+### Thread B/C — live driving through the REAL built binary (the round's main event)
+
+Same real hub, with both `shuttle.yaml` (`claude: /nonexistent/lyx-r7-has-no-provider`,
+`startup_timeout_s: 2`) and `loom.yaml` (`discussion_timeout_min: 1`) patched exactly the way
+`providerlessShuttleConfig`/`fastDeadlineLoomConfig` do, so ZERO real provider subprocesses ran.
+Every command was foreground and its envelope + the durable trace sink
+(`.lyx/logs/trace-*.log`) read.
+
+| # | scenario | observed |
+|---|---|---|
+| B0 | `lyx loom drive` on a never-seeded pair | `{"error":"loom: no status file at …/_lyx/loom/status.json; run \"lyx loom run\" first to bootstrap this task"}` — the drive-may-not-seed refusal, correct |
+| B1 | `lyx loom run` — real bootstrap | seeded `_lyx/loom/status.json`, created `.lyx/reed.json`, brought up a real tmux session (socket `lyx-demo3-HUB-21a7e62b`), added the `loom-status` strand live, spawned the detached driver, then failed the terminal handover with `open terminal failed: not a terminal` (expected in a non-tty). Driver ran and halted at `Preflight` on `worktree-clean` — a genuine, correctly-diagnosed halt |
+| B1b | clean the pair, `lyx loom drive` again | reached `Discussion-Write`, started a REAL shuttle run (`shuttle: run started`), the providerless launch failed, and it classified `died` at `startup_timeout_s` — a real `.lyx/shuttle/<id>/run.json` on disk with `outcome:"died"`, `started:false` |
+| **B2** | **round 6's fix, live**: put that record back to `outcome:"running"`, write both declared output files, re-drive | trace sink: `shuttle: run attached` → `shuttle: cleanup: remove strand failed (non-fatal)` → `shuttle: run finished`. **The crashed-but-finished run was harvested rather than respawned over** — round 6's `dispositionCandidate` guard confirmed working end to end on the real substrate, including the untracked-strand path |
+| B3 | same, with `reed.json` deleted on a 50 ms cadence during the drive | the delete landed AFTER `Attach` had already harvested; the machine then bounced through `Discussion-Validate` and respawned. Recorded because it is what made the timing requirement for B5 explicit |
+| B4 | crashed-but-finished run + TRUNCATED `reed.json`, `lyx loom drive` | `{"error":"reed state file …/.lyx/reed.json is unreadable: state: decode failed: unmarshal state: unexpected end of JSON input — … Either run \"lyx reed down\" … or delete …"}`. **`drive` refuses at its own `reed.Up()`**, which is upstream of `Attach` — so F1's `LoadState`-*error* gate is shielded from `lyx loom drive`/`lyx loom run` by `Up()`. It also directly disproves F2's claim: `up` does not repair the file, it refuses on it |
+| **B5** | **F1, live**: same crashed-but-finished state, `reed.json` held absent for the whole drive (the `git clean -xdf .lyx` / lost-strand-table case `run.go:361` names as a sanctioned operator action) | `{"error":"shedadapters: Discussion-Write (shuttle): shuttle attach: shuttle: attach: no reed state file at …/.lyx — an absent strand table is not evidence any of the 1 matching run dir(s) are dead; check \"lyx reed status\"","ok":false}` — **the step hard-failed and the finished, expensive output was never harvested.** `ls .lyx/shuttle` afterwards still shows `aaaa1111…` untouched and both discussion files still at their canonical (un-archived) paths: nothing advanced, nothing was cleaned up |
+
+B2 and B5 are the same on-disk state, differing only in whether reed's strand table is readable.
+B2 harvests; B5 hard-fails. That is F1, reproduced: **CONFIRMED, live, against the real built
+binary.**
+
 ## Findings
 
 (Appended provisionally as spotted.)
