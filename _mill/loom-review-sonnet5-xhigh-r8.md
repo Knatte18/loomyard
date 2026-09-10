@@ -41,3 +41,16 @@ _(appended incrementally, one entry per command/scenario)_
 - `go build ./...` -> clean, no output.
 - `go vet ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/...` -> clean, no output.
 - `go test -count=5 ./internal/loomengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/planparser/... ./internal/planglyph/... ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/... ./cmd/lyx/...` -> all `ok`, no failures/flakes across 5 iterations each.
+- `go test ./...` (full repo) -> all `ok`, nothing broken downstream (shuttleengine consumers burlerengine/websterengine/shedadapters all green).
+
+### Smoke suite
+- `which tmux` -> `/usr/bin/tmux` present, so a skip cannot masquerade as a pass.
+- `go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` -> 14 tests, all PASS in 18.7s.
+  Notably includes the prior rounds' own regression tripwires still green:
+  `TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone` (round 7's F1 shape),
+  `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning` (round 6's shape),
+  `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` (round 7's F5 race fix).
+  Zero real LLM subprocesses observed (log lines show `outcome=died` against the
+  `/nonexistent/lyx-smoke-has-no-provider` fixture, as the cost declaration promised).
+- Teardown check: `pgrep -af tmux` after the run shows no tmux server process (only my own grep
+  invocation matching its own command line, not a hit) -> zero stray tmux confirmed.
