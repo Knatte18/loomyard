@@ -55,16 +55,24 @@
 // pane liveness. Neither field grows a Claude specific — both stay provider-invariant, per the
 // Shuttle Provider-Seam Invariant.
 //
-// Runner.Attach answers one question: is there a still-live, never-terminated run for this exact
-// output-file set, and if so, wait on it instead of starting a second agent.
-// That question is answered on live-agent evidence plus the persisted RunState.Outcome, never on
-// output-file existence at the caller's level — the shortcut manifest/designs/loom.md's own
-// crash-recovery ladder warns against, since a bounce that re-runs a producer over already-present
-// files looks identical to a genuinely finished run from the caller's side.
-// The two signals are a deliberate two-line-of-defence framing, not redundancy: the persisted record
-// answers "did this run end", and reed answers "is the process there", and the two fail in different
-// directions — a crash mid-run leaves the record at "running" with reed still tracking a live pane,
-// while a corrupted or torn-down reed session leaves the record honest but the process unreachable.
+// Runner.Attach answers one question: is there a still-live-or-already-finished, never-terminated
+// run for this exact output-file set, and if so, wait on it instead of starting a second agent.
+// That question is answered on the persisted RunState.Outcome plus, in a fixed precedence, the run's
+// own file contract and then reed's live-agent evidence — never on output-file existence at the
+// CALLER's level, which is the shortcut manifest/designs/loom.md's own crash-recovery ladder warns
+// against, since a bounce that re-runs a producer over already-present files looks identical to a
+// genuinely finished run from the caller's side. Inside Attach the same file-existence question is
+// safe, and for the reason that ladder gives: it is asked only of a matched run.json still declaring
+// itself "running", which is an agent to attribute the files to and which a bounce never leaves
+// behind.
+// The three signals are a deliberate defence-in-depth framing, not redundancy. The persisted record
+// answers "did this run end"; the file contract answers "did its agent finish"; reed answers "is the
+// process there" — and they fail in different directions. A crash mid-run leaves the record at
+// "running" with reed still tracking a live pane; a crash AFTER the agent wrote every output file
+// leaves the record at "running" with reed's answer irrelevant, which is why the file contract
+// outranks reed rather than following it (and why an unreadable, absent, or unanswerable strand
+// table still harvests such a run rather than refusing — see attach.go's soleFinishedCandidate);
+// a corrupted or torn-down reed session leaves the record honest but the process unreachable.
 // Attach reconstructs its *Run explicitly, without ever calling Start, so sweepOrphansOpportunistic
 // never runs on the attach path; a caller must therefore probe Attach before anything else that could
 // sweep the very directory it is looking for.
