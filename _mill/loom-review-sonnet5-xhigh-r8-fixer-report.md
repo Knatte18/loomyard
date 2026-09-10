@@ -56,12 +56,30 @@ reasons (`KeepPane` debugging vs. `AuditForks`-diagnosis), which is a real desig
 persisted field, or a `websterengine`-style dedicated reclaim step generalized to `BurlerProducer`),
 not a mechanical fix a review-round agent should make unilaterally.
 
-**What was done instead:** documented as a new named "Accepted residual" in
-`manifest/designs/loom.md`'s "Crash recovery" section, matching the convention the two existing
-entries there already use (see the fix below), so the gap is durably recorded rather than left to be
-rediscovered.
+**What was done instead:** added a third "Accepted residual (fork-audit-failure orphan)" entry to
+`manifest/designs/loom.md`'s "Crash recovery — resume on output files, not live processes" section
+(that section carried exactly two before this change), immediately after the existing
+crash-mid-registration entry, matching that section's established voice and level of detail: what the
+gap is, why it exists (the deliberate, already-tested `fable5-high-r2` design choice it builds on),
+the concrete consequence for both production call sites (`burlerengine`'s cluster-fan `Burler` rounds
+— permanent leak; `websterengine`'s Master row — bounded but still forces a redundant re-run), and why
+it stays documented rather than fixed. This is the same disposition the codebase already gives the
+two structurally identical crash-recovery gaps (the done-but-not-persisted window and the
+`AddStrand`/`run.json` crash-mid-registration window), for the same reason: closing any of the three
+needs a new durable-state contract, an operator decision this round is not positioned to make
+unilaterally. Commit: `loom: fix F1 (r8) — document the AuditForks-failure orphan as a third Accepted
+residual`.
 
-_(doc fix landing next, see following commit)_
+**Verification:** doc-only change — no production behavior moved. `go build ./...` and the full
+`go test ./...` both stay green (re-confirmed after this commit). No Markdown Link Integrity concern:
+the section's own pinned heading (`#crash-recovery--resume-on-output-files-not-live-processes`) is
+untouched, and the new entry adds no new inbound/outbound links of its own.
+
+**No regression test added, deliberately:** this documents a known, deliberately unfixed gap — there
+is no code behavior change to pin with a test, and inventing one would misrepresent an accepted
+tradeoff as a guarded invariant it is not. The existing `TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome`
+(round `fable5-high-r2`) already guards the design choice this residual builds on; that test is
+untouched and still green.
 
 ## Deferred items
 
@@ -92,5 +110,5 @@ _(doc fix landing next, see following commit)_
 - `internal/loomcli/wiring.go`
 - `internal/loomcli/wiring_test.go`
 - `internal/loomcli/wiring_commitstatus_test.go`
-- `manifest/designs/loom.md` (F1's new Accepted-residual entry, next commit)
+- `manifest/designs/loom.md` (F1's new Accepted-residual entry)
 - `_mill/loom-review-sonnet5-xhigh-r8.md`, `_mill/loom-review-sonnet5-xhigh-r8-fixer-report.md`
