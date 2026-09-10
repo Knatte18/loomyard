@@ -103,6 +103,11 @@ untouched and still green.
 - Live driving: real `lyx` binary built fresh, real hand-built hub fixture via `lyx fabric
   clone`/`lyx fabric add`, `lyx loom validate-plan`/`validate-discussion`/`status`/`drive` invoked
   directly, both pre- and post-fix.
+- Final re-confirmation after both fixes landed: `go vet` (campaign package set), `go test -count=5`
+  (campaign package set), `go test ./...` (full repo), and `go test -tags smoke ./internal/loomcli/...
+  -run Smoke -v -count=1` — all green, all 13 smoke tests PASS, zero stray tmux processes after
+  teardown (confirmed via `pgrep -af tmux` after a brief settle wait for the suite's own async
+  cleanup).
 
 ## Changed files
 
