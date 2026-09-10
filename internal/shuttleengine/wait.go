@@ -20,6 +20,43 @@
 // driver's own log, which captures stderr and therefore only Warn and above. An operator asking "is
 // this interview waiting for me, or is it wedged?" reads the trace sink -- stated here because the
 // design that introduced AwaitOperator asserted the driver log records each ask, and it does not.
+//
+// # Completion Signal Invariant
+//
+// Any code path in this package that finalizes a NEGATIVE answer to "did this run finish" -- an
+// OutcomeDied, an OutcomeTimeout, a mechanism-failure error, or a verdictRespawnEligible -- must
+// first consult allOutputFilesExist over the run's OutputFiles, directly or through one of the three
+// helpers that own the check: classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here),
+// or soleFinishedCandidate (attach.go).
+//
+// The rule exists because those are two different questions and only one of them is the one being
+// asked. A clock running out, reed no longer tracking a strand, reed's pane binding going stale,
+// reed.Status erroring for maxStatusRetries consecutive ticks, the events file staying unreadable
+// for maxEventsReadRetries, reed.json being absent or undecodable at attach time -- every one of
+// those answers "has something gone wrong", and none of them answers "did this run finish". The
+// agent's output files ARE its return value, so a run that wrote all of them finished, whatever went
+// wrong afterwards. Publishing the first answer as though it were the second records a completed,
+// expensive LLM step as a failure, after which the next resume archives the finished files and
+// re-runs it -- precisely the rework manifest/designs/loom.md's crash-recovery step 1 exists to
+// prevent.
+//
+// It is named here, rather than left implied by the individual helpers, because it was omitted SIX
+// times by six different edits before anyone noticed it was one rule: crucible rounds opus5-high-r4
+// (both deadlines), fable5-high-r5 (both retry-exhausted caps), fable5-xhigh-r6 (Attach's
+// dispositionCandidate) and opus5-high-r7 (Attach's three reed-state gates) each found the next
+// instance by asking "is there another exit shaped like the ones already fixed". Every one was an
+// omission to CALL an already-correct, already-shared primitive -- never a divergent
+// reimplementation of it -- which is why this is a stated invariant plus a tripwire test
+// (completionsignal_enforcement_test.go) rather than a registry in the shape of
+// internal/planparser/shape.go's ref-shape ledger. That mechanism needs a closed value enum to build
+// a flat map over, and the negative outcomes here live in three different types across two files.
+// See CONSTRAINTS.md's own Completion Signal Invariant entry for the cross-reference a reader who
+// checks constraints first will find.
+//
+// The one structural precondition the rule rests on: allOutputFilesExist is vacuously true for an
+// empty list, and no *Run with an empty OutputFiles ever exists. Spec.validate refuses one on the
+// Start path, and collectAttachCandidates set-matches against a persisted RunState written by a
+// validated Start, so the Attach path cannot produce one either.
 
 package shuttleengine
 
