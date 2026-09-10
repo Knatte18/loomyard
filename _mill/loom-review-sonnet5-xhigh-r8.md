@@ -56,7 +56,7 @@ The gap R2 did not consider is what happens **after** an operator has diagnosed 
 
 CONFIRMED by full code trace across `wait.go`, `attach.go`, `rundir.go`, `internal/shedadapters/burler.go`, `internal/websterengine/runlevel.go`; not yet reproduced against the live substrate (constructing a live `AuditForks` failure needs a real Claude Code transcript layout, which is out of this round's live-driving budget — see Live-Substrate section). This is a genuinely different defect shape from the six recurring "negative-outcome-skips-file-contract" instances: here the outcome classification itself (`OutcomeDone`) is already correct, and the gap is a **missing reclaim path for an intentionally-orphaned resource**, one layer past where the recurring shape lived.
 
-### F1 — `validate-discussion`/`validate-plan` use the full `wire()`, unlike `status`/`pause`, so an unrelated broken module config fails the writer agent's own self-check instead of reporting discussion/plan validity (MEDIUM, CONFIRMED)
+### F2 — `validate-discussion`/`validate-plan` use the full `wire()`, unlike `status`/`pause`, so an unrelated broken module config fails the writer agent's own self-check instead of reporting discussion/plan validity (MEDIUM, CONFIRMED)
 
 `internal/loomcli/cli.go:133` (`verbReadsStatusOnly`) names exactly `"status"` and `"pause"` as the
 two verbs routed through `wireStatusPathsOnly` (`wiring.go:172`), which loads nothing beyond
@@ -153,6 +153,49 @@ unpersisted-transition/partial-error-path shapes, explicitly told not to re-deri
 completion-signal shape) read every remaining production file in `internal/loomcli` and
 `internal/loomshed` plus `internal/loomengine`'s remaining files (`review.go`, `prompt.go`,
 `report.go`, `config.go`, `configtemplate.go`) not covered above. Both reported no findings.
+
+### Thread A live-driving spot-check against the REAL BUILT binary (own fixture, no test harness)
+Built `lyx` fresh (`CGO_ENABLED=1 go build -o <scratch>/bin/lyx -ldflags "-X .../buildinfo.Channel=dev"
+./cmd/lyx`), then built a real hub fixture by hand with the REAL `lyx fabric clone`/`lyx fabric add`
+verbs (not a Go test harness, not `hubforge` — a genuinely separate, disposable scratch fixture:
+a local bare clone of this repo as the warp remote, a fresh local bare weft, `lyx fabric clone
+<weft-bare> <warp-bare>` to wire the hub, `lyx fabric add loom-live-check` for the task pair), so
+`_lyx/config/*.yaml` are the real shipped templates a real `lyx fabric add` writes, not a hand-rolled
+approximation. Confirmed a real Go symbol (`internal/loomengine#LoomRunLock`) is present in the
+cloned warp worktree for quarry to resolve against. All runs below are `lyx loom validate-plan`
+against this fixture's own `_lyx/plan/`, invoked directly (no `go test`, no wrapper):
+- **Edit against a real existing symbol** -> `{"ok":true,...}`. Baseline pass confirmed.
+- **Edit against a nonexistent member** (`internal/loomengine#ThisSymbolDoesNotExistAtAll`) ->
+  blocking `glyph-not-found`, detail correctly says "unit exists but the member is missing" (matches
+  `quarry-glyph-plan-alphabet.md`'s branching on `ResolveResult.Unit`).
+- **Create-inversion, already-exists** (`Create: internal/loomengine#LoomRunLock`, a real symbol) ->
+  blocking `create-already-exists`, exact wording "already resolves found". Matches spec.
+- **Create-inversion, new unit** (`Create: internal/brandnewpkgfixture#NewThing`, package that does
+  not exist on disk) -> `{"ok":true,...}` with an `informational` `create-new-unit` finding under its
+  own key, matching spec's `not_found`/`unit: not_found` -> pass-with-informational-finding rule.
+- **Handle canonicalization, live rewrite proven**: a Create card declared
+  `plan:internal/loomengine#WrongDraftName -> \`func MyBrandNewHelper() {}\`` (deliberately wrong
+  draft member name), referenced from a second card's `Uses:`. Before `validate-plan`: both card
+  files on disk say `WrongDraftName`. After: `validate-plan` returns `{"ok":true,...}` AND both card
+  files on disk have been rewritten in place to `plan:internal/loomengine#MyBrandNewHelper` — the
+  declaring card AND the referencing card both updated, proving `CanonicalizeHandles` +
+  `planparser.RewriteRefs` work end to end through the real CLI, real quarry resolution, and a real
+  git worktree, not just the unit-test fixtures. This is the single most direct confirmation this
+  round did that thread A's "compute, never trust" handle contract still holds live.
+- Also incidentally proved a format rule working correctly that isn't in the campaign's own
+  "High-yield focus" list: a `plan:` handle declared by one card but referenced by no other card is
+  itself a blocking `handle-unreferenced` finding — encountered on the first canonicalization attempt
+  (a single-card plan), fixed by adding the referencing second card, and not mistaken for a bug in
+  canonicalization itself.
+- Teardown: this fixture spawns no tmux/reed session at all (`validate-plan` is a pure mechanical
+  verb, no shuttle spawn) and lives entirely under this session's own scratchpad directory outside
+  the reviewed repo, so no stray-process or repo-contamination cleanup is owed.
+- Deliberately NOT re-driven this round: the `record-batch`/`DetectDrift` rename-exact-tier and
+  deliberate-drift scenarios, and the registry fail-closed `lookup` panic scenario — thread A is
+  converged and this round's mandate points its live-driving budget at thread B/C; the integration
+  suite's real-quarry `TestDetectDrift_RealDelta*` tests (see Smoke suite above) already re-confirm
+  the rename-exact-tier path holds against a genuine git delta without needing a hand-built fixture
+  for it too.
 
 ### Race-detector pass (extra adversarial coverage beyond the prompt's floor)
 - `go test -race ./internal/shuttleengine/... ./internal/loomcli/... ./internal/loomshed/... ./internal/loomengine/...` -> all `ok`, no races.
