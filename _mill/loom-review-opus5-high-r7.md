@@ -3,9 +3,79 @@
 Clean-room round-7 review of the `loom` module per `_mill/loom-review-prompt.md`.
 Written incrementally during Job 1 ("Log as you go"); the executive summary and final severity ordering were written last.
 
+## Executive summary
+
+**This round found something.** Thread B/C is NOT converged: a fifth consecutive round has turned up
+a real defect of the same recurring shape, and it is the **sixth instance** — the one the
+independent "should this be centralized?" investigation looked for and did not find, because it
+scoped its search to sites that return a *verdict* and these three return an *error*.
+
+**F1 (MEDIUM, CONFIRMED live):** `Runner.Attach`'s three reed-state gates
+(`attach.go:64`, `:68`, `:76`) abandon every candidate — including one whose persisted record still
+reads `outcome:"running"` and whose every declared output file is already on disk — without ever
+consulting `allOutputFilesExist`. They sit UPSTREAM of round 6's `dispositionCandidate` guard, so
+round 6's fix cannot reach them. Reproduced end to end against the real built binary (scenario B5):
+the identical on-disk state that B2 harvests as `done` when reed's table is readable becomes a hard
+`shedadapters: Discussion-Write (shuttle): shuttle attach: …` step failure when it is not, with the
+finished, expensive LLM output left unharvested and the run directory left in place. That is exactly
+the rework `manifest/designs/loom.md`'s crash-recovery step 2 promises will not happen.
+
+**The round's assigned residual (the Completion Signal Invariant hardening) is also closed** — doc
+comment, `CONSTRAINTS.md` paragraph, literal-count tripwire test, and the tripwire's own sabotage
+proof — and the tripwire was written to catch F1's shape too, not only the verdict-returning shape
+the brief's line-number hint describes (see R1 below for why that distinction was load-bearing).
+
+**Top risks, ranked**
+
+1. F1's failure mode is a *hard step failure*, not silent rework — it is loud, but it needs operator
+   intervention to clear, and the trigger (reed's strand table unreadable or absent under a run whose
+   agent already finished) is one reed's own documentation calls "not rare" and one `run.go:361`
+   names as a sanctioned operator action.
+2. The recurring shape has now produced six instances across four consecutive rounds. The
+   investigation's "none found" conclusion was reached against a narrower definition of the class
+   than the class actually has. That is worth carrying forward as a re-seed, not as convergence.
+3. Thread A remains converged. 13 live `validate-plan` scenarios against a real hub, a real
+   quarry-resolvable Go tree and real git history reproduced every behavior
+   `quarry-glyph-plan-alphabet.md` specifies, including a genuinely `ambiguous` resolve and the
+   `ErrQuarryUnavailable` disposition. No regression.
+
+**Merge-readiness opinion.** After the fixes in this round's fixer report: **ready to merge.** The
+branch is green (`go build`, `vet`, `-count=5`, full `go test ./...`, the 12-case live smoke suite),
+F1 is fixed and its fix is proved live by re-running the scenario that reproduced it, and every
+finding including the two NITs is closed. Whether thread B/C is *converged* is the orchestrator's
+call, not mine — my input to it is that this round found a real defect, so the thread's own bar
+("a round that comes back clean") is not met yet.
+
+**Counts by severity:** 1 MEDIUM (F1), 1 LOW (F2), 2 NIT (F3, F4), plus the assigned residual (R1).
+All five closed in Job 2.
+
+## Scope assessment — plan-promised vs shipped
+
+- **Thread A (`centralize-glyph-shape-enum`, `quarry-bump-v0-2-0-status-helpers`):** shipped ==
+  promised. Every behavior `manifest/designs/quarry-glyph-plan-alphabet.md` specifies for the handle
+  lifecycle, the resolve status policy, the Create inversion, both containment tiers and the
+  infrastructure-error disposition was reproduced live and matched. Nothing deferred-that-should-be-v1;
+  nothing shipped beyond scope. The `Ref-Shape Registry Invariant`'s claim that every ref-shape
+  decision routes through `shape.go`'s ledger holds: all thirteen policies are complete over all four
+  `refKind`s, and three of them were driven live on `refKindSymbol` with no panic.
+- **Thread B/C (bootstrap / crash recovery):** shipped **falls short of** promised, in one place.
+  `manifest/designs/loom.md:352-357` promises that a matched `"running"` record whose output files are
+  all on disk "is a run that FINISHED, harvested as `done` whatever `reed` now thinks of its pane —
+  a dead pane, a strand `reed` no longer tracks, a cleared pane binding". `Attach` delivers that for
+  every case where reed *answers*, and delivers the opposite (a hard refusal) for the three cases
+  where reed cannot be *read at all* — which are strictly weaker evidence than the ones the doc
+  already says do not matter. F1 closes that gap; the doc gains the same sentence in the same commit.
+- **The layering rule** the brief states ("every layer must answer only the question it owns") is
+  otherwise honoured throughout the area I read: `mustSpawnDriver`, `awaitRunLock`,
+  `dispositionForHandshake`, `resolveStatusStrandAction` (`internal/loomcli/bootstrap.go`),
+  `CheckSeed`/`VerifySeedOwnership` (`internal/loomengine/seed.go`), and `sweepOrphansOpportunistic`
+  (`run.go:348-397`) each answer exactly one question and each documents why. F1 is the exception,
+  not a pattern of exceptions.
+
 ## Status
 
-Job 1 in progress — this file is appended to as each command/scenario returns.
+Job 1 COMPLETE. Findings below are final; Job 2's work is recorded in
+`_mill/loom-review-opus5-high-r7-fixer-report.md`.
 
 ## What was tested
 
@@ -148,7 +218,8 @@ binary.**
 
 ### F1 — `Attach`'s three reed-state gates abandon a finished run without consulting the file contract (the SIXTH instance of the recurring shape)
 
-**Severity: MEDIUM. CONFIRMED** (traced statically here; live reproduction recorded under "What was tested").
+**Severity: MEDIUM. CONFIRMED — reproduced live against the real built binary** (scenario B5 under
+"What was tested"; contrast with B2, the identical on-disk state with a readable reed table).
 
 `internal/shuttleengine/attach.go:64`, `:68`, `:76`.
 
@@ -237,11 +308,129 @@ places it is consulted. A reader who takes `doc.go` as the package's summary of 
 description that no longer matches `attach.go`. `attach.go`'s own file doc comment (`attach.go:1-5`)
 has the same gap.
 
+### F4 — `attach.go`'s file doc comment describes only the liveness half of the disposition
+
+**Severity: NIT. CONFIRMED.**
+
+`internal/shuttleengine/attach.go:1-5` says Attach "scans the run-dir root for a matching `run.json`,
+dispositions each match against reed's own liveness answer, and — on exactly one live match —
+reconstructs a `*Run`". Since round 6 the first thing `dispositionCandidate` does is NOT consult
+reed's liveness answer, and after F1 two more paths reach a `*Run` with no reed answer at all.
+Same class as F3, different file; recorded separately because they are separate edits.
+
+### R1 — the round's assigned residual: the Completion Signal Invariant is nowhere named
+
+**Not a defect — the pre-scoped hardening this round was assigned.** Recorded here so the round's
+own report is complete.
+
+The rule "any code path in `internal/shuttleengine` that finalizes `OutcomeDied`, `OutcomeTimeout`,
+a mechanism-failure `error`, or `verdictRespawnEligible` must first consult `allOutputFilesExist`"
+exists today only as prose scattered across five doc comments
+(`checkLivenessTick`'s "a satisfied file contract wins over every negative answer",
+`classifyDeadlineExpiry`'s, `finishedDespiteMechanismFailure`'s, `dispositionCandidate`'s, and
+`wait.go`'s file header). It is not named, not in `CONSTRAINTS.md`, and nothing mechanical notices
+when a new negative-verdict exit is added without it. Six instances across four rounds is the
+evidence that this matters.
+
+**Audited call-site set, verified against the current files before writing anything** (the brief
+asks for this explicitly, since the line numbers drift): `allOutputFilesExist(` appears at exactly
+seven production call sites — `wait.go:273` (`pollEventsTick`), `:350` and `:356`
+(`checkLivenessTick`'s not-tracked and not-live branches), `:450` (`classifyDeadlineExpiry`),
+`:480` (`finishedDespiteMechanismFailure`); `attach.go:301` (`dispositionCandidate`) and `:345`
+(`leftoverThenAgeVerdict`). All seven confirmed present at those exact lines.
+
+**One correction to the brief's own sketch, and it is load-bearing.** The brief describes the
+tripwire as asserting "the count matches today's audited set (7 `allOutputFilesExist` call sites)",
+but its own sabotage requirement is to "add an 8th, unguarded negative-verdict return site … confirm
+the test fails and names it". A test that counts `allOutputFilesExist` calls **cannot** fail on an
+unguarded new negative-verdict return, because an unguarded return adds no such call — it would be
+exactly the tripwire-that-does-not-trip the brief warns is "the single most on-theme mistake this
+round could make". The test therefore tracks **negative-verdict return sites** (the thing that can
+grow unguarded) as its primary assertion, and pins the seven `allOutputFilesExist` sites as a
+*second* assertion (which catches the opposite mutation — a guard being deleted). Both are needed;
+neither subsumes the other. F1 is itself the proof: it is three negative exits that never called
+`allOutputFilesExist`, so a call-counting test would have reported "7, as expected" while the bug
+was live.
+
 ## Docs & operability findings
 
-(Appended provisionally as spotted.)
+- F2, F3 and F4 above are comment/doc-accuracy findings; all three are fixed in Job 2 alongside
+  their code.
+- `manifest/designs/loom.md:352-357` (crash-recovery step 2) describes `Attach`'s file-contract-first
+  rule entirely inside the matched-record disposition, with no mention that three reed-state gates
+  sit ahead of it and refuse before it runs. Updated in the same change as F1.
+- **Operability, positive:** the durable trace sink made every one of the B-series scenarios legible
+  without any added instrumentation — `shuttle: run attached` / `run started` / `run finished` at
+  Info, and the orphan-sweep and cleanup failures at Warn, were exactly what was needed to tell B2's
+  harvest apart from B3's respawn. The Live-Substrate Spawn Observability invariant is paying for
+  itself.
+- **Operability, negative (F1's second-order cost):** when `Attach` refuses at a reed gate, nothing
+  ever removes the matching run directory — `sweepOrphansOpportunistic` runs only inside `Start`,
+  which the refusal never reaches (`attach.go:330-335` says this in as many words about a different
+  branch). So every subsequent resume re-reads the same directory and re-refuses identically until
+  the operator applies reed's own out-of-band remedy. Confirmed in B5: `ls .lyx/shuttle` after the
+  refusal still showed the candidate directory untouched.
 
-- F2 and F3 above are comment/doc-accuracy findings; both are fixed in Job 2 alongside their code.
+## Test-coverage soundness — did rounds 3-6's own regression tests actually trip?
+
+The brief asks whether any of rounds 3-6's fixes carry a test that would still pass if the fix were
+reverted (round 3's F1 was that shape). I answered it by mutation testing rather than by reading:
+the whole repo was copied to a scratch tree (`<scratchpad>/mutant`, `.git` excluded), each fix
+reverted there one at a time, and the package suite re-run.
+
+| mutation | result |
+|---|---|
+| M1 — `classifyDeadlineExpiry` always returns `expired` (reverts round 4) | FAIL: `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied`, `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout` |
+| M2 — `finishedDespiteMechanismFailure` never fires (reverts round 5) | FAIL: `TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins`, `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins` |
+| M3 — `dispositionCandidate`'s guard deleted (reverts round 6) | FAIL: `TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn` |
+| M4 — `started := run.attached` alone (reverts round 3's `d0e5a0e7b` gap fix) | FAIL: `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns` |
+| M5 — `VerifySeedOwnership` escalates `state.ErrDecode` (reverts `69886823e`) | FAIL: `TestVerifySeedOwnership` |
+
+**All five trip.** No prior round shipped a test that would survive its own fix being reverted; the
+lesson from round 3's F1 has been applied consistently. Every file was restored from its `.orig`
+copy immediately after each run, and the scratch tree is outside the worktree, so no production or
+test file in the repo was touched during Job 1.
+
+## Independent spot-checks of the CLOSED items (brief asks for minutes, not a re-derivation)
+
+- **`VerifySeedOwnership` vs `CheckSeed` disposition-sharing claim (round 3, "confirmed sound").**
+  Independently re-checked: the line both draw is *decode-failure is not an infrastructure error,
+  everything else is* — `seed.go:84-88` (CheckSeed: `errors.Is(rerr, state.ErrDecode)` → a
+  `CheckSeedIncoherent` verdict, else `return Report{}, rerr`) and `seed.go:148-153`
+  (VerifySeedOwnership: same predicate → `nil`, else `return err`). They act differently on the
+  decode side (a recorded verdict vs a pass) because they answer different questions, which is the
+  point; the error/not-error line itself is identical. Claim holds.
+- **`RunState.Started`'s best-effort persistence (round 3).** `wait.go:391-394` persists inside the
+  `StartupReady` arm and degrades a save failure to `logger.Warn`, matching `finalize`'s own Outcome
+  write. B1b's real run.json on disk carried `"started": false` for a launch that never came up, and
+  M4 proves the gating is guarded. Sound.
+- **The `AddStrand`/`run.json` "Accepted residual" (four-round settled).** Not re-opened, per the
+  brief. Nothing in my own driving surfaced a new angle on it.
+- **The `Seed`/`state.ErrDecode` malformed-JSON fix (round 5).**
+  `TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy` passed in the live smoke run.
+- **The fabric weft-branch-naming bug (rounds 5-6, out of scope).** Tripped over it a third time
+  while building this round's hub: a weft remote whose default branch is `master` while the warp's is
+  `main` produces a weft prime on `master-weft`, and `lyx fabric add <slug>` then fails with
+  `fatal: invalid reference: main-weft`, rolling the pair back. Recorded only because the brief says
+  to report it if driving trips over it; NOT fixed, not loom's scope.
+
+## What could NOT be verified, and why
+
+- **`lyx webster record-batch <NN>` as a live entry point to `DetectDrift`.** `RecordBatch` reaches
+  `DetectDrift` only past the bracket-discipline check, an incremental fork audit over real provider
+  transcripts, and the per-card done-checks, so driving it needs a genuine LLM-driven webster batch.
+  That is banned by this campaign's cost declaration and its design intent says it is not needed.
+  Driven instead through the `//go:build integration` suite, which builds real git rename commits and
+  calls the real `quarry.Delta`/`Resolve` (60 cases, all pass). Named here rather than skipped
+  silently, per the brief.
+- **Windows path behavior.** Unreachable from this Linux host. A named, never-executed gap — not a
+  claim of coverage.
+- **F1's `reed.Status()`-failure gate (`attach.go:76`) specifically.** The `st == nil` gate
+  (`attach.go:68`) was reproduced live; forcing `Status()` itself to error live would need reed's
+  foreign-session refusal, which I could not construct deterministically from the CLI in this
+  fixture. The three gates are structurally identical (all three return `(Result{}, false, err)`
+  from the same block, all three ahead of `dispositionCandidate`), the fix covers all three, and the
+  fix's new hermetic tests cover each gate independently.
 - `manifest/designs/loom.md:352-357` (crash-recovery step 2) describes `Attach`'s file-contract-first
   rule but places it entirely inside the matched-record disposition, with no mention that three
   reed-state gates sit ahead of it. It needs the F1 fix recorded in the same change.
