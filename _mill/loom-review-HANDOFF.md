@@ -5,13 +5,13 @@ Campaign, thread A: confirm live that `centralize-glyph-shape-enum` and
 real built binary. **CONVERGED (rounds 1-2).**
 Campaign, thread B/C: fix two pre-existing smoke-test failures, then independently review that fix
 work plus a wider adversarial pass over loom's bootstrap/crash-recovery machinery. **STILL NOT
-CONVERGED after round 6; round 7 IN FLIGHT.** See `_mill/loom-crucible-orchestrator-kickoff.md` for
-the original (thread-A-only) brief.
+CONVERGED after round 7.** See `_mill/loom-crucible-orchestrator-kickoff.md` for the original
+(thread-A-only) brief.
 
 ## Current state
 **Thread A: CONVERGED**, unchanged since round 2, re-confirmed by round 6's light-touch pass.
-**Thread B/C: NOT CONVERGED.** Four consecutive rounds (3, 4, 5, 6) each found real defects, five of
-them (r4-r6) sharing one recurring shape — a negative/terminal classification answering a question
+**Thread B/C: NOT CONVERGED.** Five consecutive rounds (3, 4, 5, 6, 7) each found real defects, six of
+them (r4-r7) sharing one recurring shape — a negative/terminal classification answering a question
 using a proxy fact instead of the fact that actually owns the answer.
 
 **After round 6, the operator asked whether this recurring shape warrants its own centralization
@@ -22,23 +22,62 @@ the orchestrator's framing) was spawned to answer this on evidence. Its independ
 written to `_mill/task-proposal-completion-signal-centralization.md` (read this file for full
 reasoning — it is NOT a crucible round artifact and doesn't match the clean-room constraint's
 exclusion pattern): **partial — the `shape.go` ledger mechanism doesn't transplant here** (no closed
-value enum to build a flat map/AST-diff over; the five sites differ in return type, caller identity,
-and guarding precondition in ways that would force an awkward shared checkpoint). It recommended a
-lightweight alternative instead of a full mill task: a named "Completion Signal Invariant" doc
-comment, a `CONSTRAINTS.md` paragraph, and a sabotage-proved tripwire test pinning the known-audited
-negative-verdict-return-site count — estimated half a day, no new abstraction, no new package.
+value enum to build a flat map/AST-diff over; the five sites known at the time differ in return type,
+caller identity, and guarding precondition in ways that would force an awkward shared checkpoint). It
+recommended a lightweight alternative instead of a full mill task: a named "Completion Signal
+Invariant" doc comment, a `CONSTRAINTS.md` paragraph, and a sabotage-proved tripwire test pinning the
+known-audited negative-verdict-return-site count. The operator agreed this is normal crucible work,
+not a separate task — "well ett og slett bare vanlig Crucible."
 
-**Round 7 (`opus-high-r7`) was seeded with exactly that as its assigned residual, plus continued
-light thread-C vigilance if time allowed. It is CURRENTLY RUNNING — Job 1 (review) is committed and
-complete; Job 2 (fix) was in progress as of this handoff's last refresh.** Do NOT act on round 7's
-findings until its own completion notification arrives AND the orchestrator has independently
-verified it (file-scope diff, cold-state hermetic gates, sabotage-proof of every new/changed test) —
-this handoff deliberately does not detail round 7's in-flight findings, per the operator's own
-instruction, precisely so a context reset doesn't cause premature action on unverified work. If you
-are picking this campaign up fresh: check `git log --oneline` on this branch for commits after
-`533c0a75c` (the round-7 re-seed) to see how far round 7 actually got, and read
-`_mill/loom-review-opus5-high-r7.md`/`-fixer-report.md` (if the fixer report exists yet) directly
-rather than trusting this paragraph's staleness.
+**Round 7 (`opus5-high-r7`, commit range `533c0a75c..c62cd1061`) executed exactly that residual, and
+in doing so found the SIXTH instance the investigation's own search had missed** — because that
+search scoped itself to sites returning a *verdict*, and this instance returns an *error* instead.
+Independently verified by the orchestrator (file-scope diff, cold-state `go build`/`go vet`/
+`go test -count=5`/`go test ./...`, live smoke suite 13/13 green including the new F1 reproduction
+test, F5's de-race fix confirmed stable over 5 consecutive runs, and — critically — sabotage-proofing
+both F1's fix and the new tripwire test in **both** mutation directions (unguarded new exit; deleted
+guard), each restored to a byte-for-byte empty diff). All findings below are orchestrator-verified,
+not merely round-self-reported.
+
+- **F1 (MEDIUM, the sixth instance, reproduced live)** — `Attach`'s three reed-state gates
+  (`attach.go:73,82,93`, pre-fix line numbers) sit AHEAD of round 6's `dispositionCandidate` guard and
+  abandoned every candidate — including a `runOutcomeRunning` record whose every declared output file
+  was already on disk — the moment `reed`'s own strand table was unreadable, absent, or wouldn't
+  answer `Status()`. Fixed via `soleFinishedCandidate` (new in `attach.go`), consulted by all three
+  gates before they report refusal, gated on exactly one `runOutcomeRunning` candidate with a
+  satisfied file contract (two such candidates correctly falls through to the original refusal — reed
+  is precisely what would be needed to pick between them). Reproduced live against the real built
+  binary: a `Discussion-Write` with both output files on disk and `reed.json` removed under it
+  (sanctioned `git clean -xdf` of `.lyx`) hard-failed with `"no reed state file"` before the fix,
+  harvested as `OutcomeDone` after. New smoke test:
+  `TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone`.
+- **R1 (the assigned residual, closed)** — named "Completion Signal Invariant" section added to
+  `wait.go`'s package doc (cross-referenced from `attach.go`'s own doc comment); a `CONSTRAINTS.md`
+  paragraph naming all six now-known instances; a two-assertion AST tripwire test
+  (`completionsignal_enforcement_test.go`) pinning BOTH the negative-verdict-*return-site* count
+  (primary — catches an unguarded new exit) and the `allOutputFilesExist` *call-site* count
+  (secondary — catches a deleted guard). **One correction to the brief was load-bearing**: the
+  original brief specified a call-site-count-only tripwire, which round 7 itself proved cannot catch
+  its own F1 (three unguarded exits existed the whole time the call-site count read correct) — it
+  redesigned the primary assertion around return sites instead. The orchestrator independently
+  sabotage-proved both directions on both assertions: an added unguarded exit trips
+  `NegativeVerdictReturnSites` (not `FileContractCallSites`); a deleted guard call trips
+  `FileContractCallSites` (not `NegativeVerdictReturnSites`) — confirming the two assertions are
+  independent, neither vacuous, and correctly non-overlapping.
+- **F5 (MEDIUM, pre-existing, not part of the recurring shape)** — the live smoke suite's own
+  `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` killed the driver at an arbitrary moment
+  then asserted the follow-up drive re-entered the same row — a real ~1-in-3 race, not a loom routing
+  bug. Fixed by adding `waitForCurrentProducer`, which polls the status file until the driver has
+  actually reached the row the test means to kill it on, before killing it. Orchestrator ran this test
+  `-count=5` after the fix: 5/5 green (previously flaky at roughly this rate per the round's own
+  reproduction on the pre-round tree).
+- **F2 (LOW)** / **F3, F4 (NIT)** — doc-comment accuracy fixes in `attach.go`/`doc.go` (a stale claim
+  that `reed` repairs an unreadable `reed.json` when it explicitly refuses to; a package-doc `Attach`
+  summary and file-doc comment predating round 6/7's file-contract-first guard). Reviewed, consistent
+  with the current code.
+
+Full detail: `_mill/loom-review-opus5-high-r7.md` (review) and
+`_mill/loom-review-opus5-high-r7-fixer-report.md` (fixer report).
 
 ## CLOSED-AND-VERIFIED
 
@@ -91,6 +130,17 @@ throughout (proving the new test isn't vacuously failing/passing) — restored t
 suite 12/12 green (the fixer report said "13", a minor counting typo in its own text, not a
 correctness issue — the actual run and content are what were verified).
 
+### Round 7 (`opus5-high-r7`, commit range `533c0a75c..c62cd1061`) — found instance 6, closed the
+assigned residual (R1), plus F2 (LOW)/F3/F4 (NIT) doc fixes and F5 (MEDIUM, pre-existing smoke flake,
+unrelated to the recurring shape). Full detail in "Current state" above — orchestrator-verified
+including sabotage-proofing of F1's fix and both directions of R1's new tripwire test. One process
+note: the orchestrator's own pending handoff edit (this file, mid-refresh at the time) was
+inadvertently swept into round 7's own final commit (`c62cd1061`) rather than committed separately by
+the orchestrator in a clean tree — the exact Hard Rule 3 hazard the method warns about, materialized
+for real this campaign. No content damage (the swept-in text was accurate and is superseded by this
+same refresh), but a reminder that the hazard is real, not theoretical, and worth restating to future
+round agents: commit only your own round's files, never a broad `git add -A`.
+
 ## Incidental finding, OUT OF loom's scope, not fixed — still outstanding
 Fabric's `lyx fabric clone` names the weft primary branch after the weft bare repo's own HEAD rather
 than the warp's primary branch name when they differ (originally hit in round 5, hit again in round
@@ -98,8 +148,8 @@ than the warp's primary branch name when they differ (originally hit in round 5,
 tracked — nobody has opened one yet.
 
 ## RESIDUAL currently seeded
-None specific from round 6 (its one finding is fixed). See "Current state" above for the
-recommended strategy shift for round 7 — a sweep rather than another ad-hoc adversarial pass.
+None (round 7's assigned residual, R1, is closed and verified; its one new finding, F1, is also
+fixed). Round 8 needs a fresh operator decision on strategy — see "Next action".
 
 ## DEFERRED list
 - The `AddStrand`/`run.json` crash-mid-registration race — operator-decision item, now agreed
@@ -108,12 +158,14 @@ recommended strategy shift for round 7 — a sweep rather than another ad-hoc ad
 - The fabric weft-branch-naming bug — not loom's scope.
 
 ## Next action
-**Wait for round 7's completion notification, then independently verify it** (file-scope diff
-against commit `533c0a75c`, cold-state hermetic gates, sabotage-proof of every new/changed test,
-smoke suite) before treating any of its findings as settled. Do not touch the module's code or
-`git add`/commit anything while it is still running (Hard Rule 3).
-Once round 7 is verified: update this handoff with its actual (verified) findings, decide whether
-thread B/C is converged or needs another round (per the standing rule below), and get the operator's
-model+effort pick for any further round.
+Round 7 is independently verified (see "Current state") and does NOT qualify as convergence — it
+both had an assigned residual (R1) and found a new sixth instance (F1). Get the operator's
+model+effort pick for round 8. Six instances of the recurring shape across four rounds (r4-r7) is a
+strong signal per `crucible/README.md`'s own fabric-campaign refinement ("when the tail starts
+circling, stop reviewing and start counting") that another ad-hoc adversarial pass may keep finding
+one-at-a-time instances indefinitely — worth raising with the operator again now that a sixth has
+turned up in a residual-execution round rather than an adversarial one, though the tripwire test
+(R1) is specifically meant to make a seventh instance impossible rather than merely findable, so the
+open question is now "does the tripwire actually close this off" rather than "where is instance 7".
 **Do not call thread B/C converged until a round with no assigned residual comes back with nothing
 new.**
