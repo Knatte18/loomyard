@@ -1,0 +1,34 @@
+# `loom` review — round `sonnet5-xhigh-r8`
+
+Round context: NO ASSIGNED RESIDUAL — a genuine, open, no-residual adversarial safety pass over
+loom's driver bootstrap / crash-recovery machinery, per the operator's explicit steer this round.
+Thread A (the two original refactors) is CONVERGED — light-touch regression pass only.
+Thread B/C's prior six instances of the recurring "negative/terminal outcome finalized without
+consulting `allOutputFilesExist`" shape are CLOSED-AND-VERIFIED and protected by a sabotage-proofed
+AST tripwire (`completionsignal_enforcement_test.go`) — this round deliberately widens away from
+`wait.go`/`attach.go` toward `run.go`'s `Start`, `finalize`, `internal/loomengine`,
+`internal/loomcli`, `internal/loomshed`.
+
+This report is being built incrementally per the "Log as you go" requirement — the What-was-tested
+section and provisional findings are appended as Job 1 proceeds; only the executive summary and
+final severity ordering are written last.
+
+## Executive summary
+
+_(written last)_
+
+## Scope assessment (plan vs shipped)
+
+_(to fill in during/after review)_
+
+## Code findings (severity-ranked)
+
+_(provisional — appended as found)_
+
+## Docs & operability findings
+
+_(provisional — appended as found)_
+
+## What was tested
+
+_(appended incrementally, one entry per command/scenario)_
