@@ -56,7 +56,7 @@ The gap R2 did not consider is what happens **after** an operator has diagnosed 
 
 CONFIRMED by full code trace across `wait.go`, `attach.go`, `rundir.go`, `internal/shedadapters/burler.go`, `internal/websterengine/runlevel.go`; not yet reproduced against the live substrate (constructing a live `AuditForks` failure needs a real Claude Code transcript layout, which is out of this round's live-driving budget — see Live-Substrate section). This is a genuinely different defect shape from the six recurring "negative-outcome-skips-file-contract" instances: here the outcome classification itself (`OutcomeDone`) is already correct, and the gap is a **missing reclaim path for an intentionally-orphaned resource**, one layer past where the recurring shape lived.
 
-### F2 — `validate-discussion`/`validate-plan` use the full `wire()`, unlike `status`/`pause`, so an unrelated broken module config fails the writer agent's own self-check instead of reporting discussion/plan validity (MEDIUM, CONFIRMED)
+### F2 (MEDIUM, CONFIRMED) — `validate-discussion`/`validate-plan` use the full `wire()`, unlike `status`/`pause`, so an unrelated broken module config fails the writer agent's own self-check instead of reporting discussion/plan validity
 
 `internal/loomcli/cli.go:133` (`verbReadsStatusOnly`) names exactly `"status"` and `"pause"` as the
 two verbs routed through `wireStatusPathsOnly` (`wiring.go:172`), which loads nothing beyond
