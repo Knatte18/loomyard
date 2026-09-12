@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -98,9 +99,22 @@ Example:
 			// Step 2: seed the status file, tolerating exactly the already-seeded sentinel so a
 			// re-run works. A stat-then-seed probe here would reintroduce the exact race the
 			// seeder's single lock exists to close, so ErrSeedExists is the only accepted outcome.
-			if err := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent); err != nil && !errors.Is(err, loomshed.ErrSeedExists) {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			// The error is bound rather than collapsed into one branch, so a genuine first seed
+			// (nil error) can be told apart from an ErrSeedExists re-entry below: the friction
+			// directory is cleared only on the former, since the latter is by definition a resume
+			// and resumes are exactly the run whose notes are most worth reading.
+			seedErr := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent)
+			if seedErr != nil && !errors.Is(seedErr, loomshed.ErrSeedExists) {
+				clihelp.SetExit(ctx, output.Err(out, seedErr.Error()))
 				return nil
+			}
+			if c.frictionDir != "" {
+				if seedErr == nil {
+					if err := os.RemoveAll(c.frictionDir); err != nil {
+						logger.Warn("loom: failed to clear the friction directory on first seed; continuing", "dir", c.frictionDir, "error", err)
+					}
+				}
+				friction.EnsureDir(c.frictionDir)
 			}
 			// An already-present status file must be THIS task's own: `lyx fabric add` run from a
 			// task worktree forks the whole pair, `_lyx` task state included, and the driver would
