@@ -36,17 +36,26 @@ implementing  '2026-09-12T11:21:18Z'
 ```yaml
 batches:
   - name: shedengine-step
-    state: pending
+    state: running
+    implementer_session: 5cf2f492-517c-4e98-8dbd-4a33a7bbfbc7
+    start_sha: 5b477148f15297f098eb1ae1610e31af10ed832f
+    verify_baseline_failures: []
   - name: loomshed-interrupt-policy
     state: pending
+    verify_baseline_failures: []
   - name: loomcli-shared-helpers
     state: pending
+    verify_baseline_failures: []
   - name: loom-step-verb
     state: pending
+    verify_baseline_failures: []
   - name: status-interrupt-policy
     state: pending
+    verify_baseline_failures: []
   - name: ly-plugin-supervise-skill
     state: pending
+    verify_baseline_failures: []
   - name: design-doc-and-roadmap
     state: pending
+    verify_baseline_failures: []
 ```
