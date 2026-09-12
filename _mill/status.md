@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-drive-wiring
+phase: holistic-reviewing
 slug: self-report-tier1
 branch: self-report-tier1
 plan: _mill/plan
@@ -39,6 +39,7 @@ implementing  '2026-09-12T12:18:22Z'
 approved-leaf-surfaces  '2026-09-12T12:24:46Z'
 approved-anomaly-detector  '2026-09-12T12:27:57Z'
 approved-drive-wiring  '2026-09-12T12:39:12Z'
+holistic-reviewing  '2026-09-12T12:39:29Z'
 ```
 
 ## Batches
