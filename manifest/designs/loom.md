@@ -470,7 +470,7 @@ The verbs that genuinely build producers (`run`, `drive`) keep failing early and
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight (row 1, generic) | new Go package (`internal/preflightshed`) | ✅ **Done**, engine-only (no cobra module yet) — validates the tier-1/tier-2 preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync) over git/filesystem state, over `internal/preflight.Check`; reusable verbatim by a second product's producer list |
 | Loom-Preflight (row 2, loom's own) | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates that loom's own status file exists and is a coherent fresh seed (no half-finished prior run), over told paths; builds on `internal/state` |
-| `/ly-*` skills | thin wrappers | over `lyx loom run` |
+| `/ly-*` skills | thin wrappers | the first shipped skill, `ly-supervise`, is a supervised step-loop over `lyx loom step` with no phase knowledge of its own |
 
 The new Go specific to loom is the **two modules** (`loom`, `burler`) plus the **webster module** (`internal/websterengine`/`internal/webstercli` — the fat verbs + distillation the Master orchestrator drives) and the `lyx loom status` subcommand;
 beneath them is the shared [execution stack](../../docs/overview.md#execution-stack-orchestration-layers) (`proc`, `reed`, `shuttle`);
