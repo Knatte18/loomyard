@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: self-report-tier2
 branch: self-report-tier2
 plan: _mill/plan
@@ -30,4 +30,27 @@ plan-fix-r2  '2026-09-12T11:28:07Z'
 plan-review-r3  '2026-09-12T11:37:09Z'
 plan-fix-r3  '2026-09-12T11:38:32Z'
 planned  '2026-09-12T11:38:45Z'
+implementing  '2026-09-12T11:39:19Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: friction-leaf
+    state: pending
+  - name: loom-paths-and-config
+    state: pending
+  - name: frictionengine
+    state: pending
+  - name: compose-burler
+    state: pending
+  - name: compose-webster
+    state: pending
+  - name: compose-loom
+    state: pending
+  - name: wiring
+    state: pending
+  - name: docs
+    state: pending
 ```
