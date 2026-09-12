@@ -179,6 +179,7 @@ The full rationale is in the overview's Shared Decisions.
 - **Edits:**
   - `internal/loomcli/wiring_test.go`
   - `internal/webstercli/wiring_test.go`
+  - `internal/loomcli/run.go`
 - **Creates:**
   - `internal/loomcli/friction_test.go`
 - **Deletes:** none
@@ -206,6 +207,14 @@ The full rationale is in the overview's Shared Decisions.
   **`internal/webstercli/wiring_test.go`.**
   Assert that `wireHub` resolves a non-empty friction directory when loom's config enables Tier 2, resolves `""` when it is present-but-empty, and resolves `""` **without returning an error** when `loom.yaml` is absent or unparseable — that last case is the tolerance this CLI's whole resolution depends on.
   Assert `wireStandalone` always resolves `""`.
+
+  `internal/loomcli/run.go` is extended, not merely read: the clear-and-create split committed in
+  card 23 lives inline in `runCmd`'s `RunE` closure, exactly like the reflection call site in
+  `drive.go` did before card 24 factored it into `shouldReflectFriction`/`reflectFriction`. This card
+  extracts the equivalent testable seam here -- a package-level function taking the resolved friction
+  directory and the bound seed error, performing the same clear-on-nil-error/ensure-on-both-branches
+  behaviour -- so `friction_test.go` can drive it directly instead of through the cobra command tree,
+  the same tier-1 pattern `bootstrap_test.go` already uses for `mustSpawnDriver`/`awaitRunLock`.
 - **Commit:** `test(loomcli,webstercli): cover friction wiring, the clear/create split, and the drive envelope`
 
 ## Batch Tests
