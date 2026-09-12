@@ -105,6 +105,12 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 
 `internal/pattern` imports only stdlib, `lyxdirs`, `stencilstore`, `stencil` — never a feature package. Reverse import never allowed.
 
+## Friction Leaf Invariant
+
+`internal/friction` imports only stdlib, `internal/logger`, `internal/stencil`, and `internal/stencilstore` — never a feature package. Reverse import never allowed.
+
+- `internal/logger` is admitted because the marker-absent helper logs rather than returning a bool for seven callers to duplicate, and `internal/friction` already pulls `logger` transitively through `internal/stencilstore`, so the admission widens nothing in practice.
+
 ## Stencil Ownership Invariant
 
 Every producer prompt is read at call time from a told, absolute stencils directory, never embedded bytes.

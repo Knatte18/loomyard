@@ -110,6 +110,15 @@ type websterCLI struct {
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher
 
+	// frictionDir is the absolute friction directory in hub mode, tolerantly resolved from loom's own
+	// config in wireHub, and the empty string in standalone -- a standalone webster run is not a loom
+	// run and has no friction directory. It is the reason this CLI imports internal/loomengine at
+	// all: contracts/stencils/webster/webster-template-master.md drives the batch loop by shelling
+	// out to `lyx webster begin-batch`/`lyx webster recover-batch` as separate processes, so the
+	// per-batch implementer fork's and recovery strand's prompts are composed here, not in
+	// internal/loomcli.
+	frictionDir string
+
 	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw, as-parsed values of the three
 	// standalone-entry persistent flags (--stencils-dir, --plan-dir, --target-dir), each bound by
 	// Command() and read by the wiring function (wiring.go) inside resolvePersistentPreRun. An empty

@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -34,7 +36,21 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 	decisionRecordPath := DiscussionDecisionRecord(layout)
 	supportLogPath := DiscussionSupportLog(layout)
 
-	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, autonomous)
+	var frictionDir string
+	if cfg.Friction != "" {
+		frictionDir = LoomFrictionDir(layout)
+	}
+	notePath := friction.NotePath(frictionDir, "Discussion-Write")
+	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleInterview)
+	if err != nil {
+		// Unlike the other errors in this function, a friction.Directive error is swallowed, never
+		// returned: it is optional bookkeeping, not a binding constraint, so a transient stencil read
+		// failure here must never fail the whole Discussion-Write spawn.
+		logger.Warn("loom: friction directive failed, continuing without one", "role", "discussion-write", "stencil", "loom-template-discussion", "error", err)
+		frictionDirective = ""
+	}
+
+	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, frictionDirective, autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}

@@ -82,6 +82,12 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.ReviewTimeoutMin != 240 {
 		t.Errorf("cfg.ReviewTimeoutMin = %d; want %d", cfg.ReviewTimeoutMin, 240)
 	}
+	if cfg.Friction != "opus[effort=high]" {
+		t.Errorf("cfg.Friction = %q; want %q", cfg.Friction, "opus[effort=high]")
+	}
+	if cfg.FrictionTimeoutMin != 30 {
+		t.Errorf("cfg.FrictionTimeoutMin = %d; want %d", cfg.FrictionTimeoutMin, 30)
+	}
 }
 
 // TestLoadConfig_DiscussionInteractiveTrue verifies a hand-edited loom.yaml with
@@ -96,6 +102,8 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
+friction: opus[effort=high]
+friction_timeout_min: 30
 `)
 
 	cfg, err := LoadConfig(baseDir, "loom")
@@ -119,6 +127,8 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
+friction: opus[effort=high]
+friction_timeout_min: 30
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -142,6 +152,8 @@ plan: "opus[effort"
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
+friction: opus[effort=high]
+friction_timeout_min: 30
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -165,6 +177,8 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: "opus[effort"
 review_timeout_min: 240
+friction: opus[effort=high]
+friction_timeout_min: 30
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -173,6 +187,83 @@ review_timeout_min: 240
 	}
 	if !strings.Contains(err.Error(), "review") {
 		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "review")
+	}
+}
+
+// TestLoadConfig_EmptyFrictionLoadsCleanly verifies a present-but-empty friction value -- Tier 2
+// self-reporting turned off -- loads cleanly and yields the zero value for Config.Friction, unlike
+// the discussion/plan/review role keys, which are always required.
+func TestLoadConfig_EmptyFrictionLoadsCleanly(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+friction: ""
+friction_timeout_min: 30
+`)
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a present-but-empty friction value", baseDir, err)
+	}
+	if cfg.Friction != "" {
+		t.Errorf("cfg.Friction = %q; want \"\" (Tier 2 off)", cfg.Friction)
+	}
+}
+
+// TestLoadConfig_MalformedFrictionSpec verifies a hand-edited loom.yaml with well-formed
+// discussion/plan/review specs but an ungrammatical non-empty friction model-spec fails loud at
+// load time, naming the "friction" key.
+func TestLoadConfig_MalformedFrictionSpec(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+friction: "opus[effort"
+friction_timeout_min: 30
+`)
+
+	_, err := LoadConfig(baseDir, "loom")
+	if err == nil {
+		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed friction spec")
+	}
+	if !strings.Contains(err.Error(), "friction") {
+		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "friction")
+	}
+}
+
+// TestLoadConfig_MissingFrictionKeys verifies a loom.yaml genuinely lacking the friction and
+// friction_timeout_min keys fails LoadConfig with configengine's "missing keys" error rather than
+// defaulting -- the migration contract the Config Strictness Invariant requires for an
+// already-seeded worktree.
+func TestLoadConfig_MissingFrictionKeys(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+`)
+
+	_, err := LoadConfig(baseDir, "loom")
+	if err == nil {
+		t.Fatal("LoadConfig() = _, nil; want non-nil error for a loom.yaml missing the friction keys")
+	}
+	if !strings.Contains(err.Error(), "missing keys") {
+		t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), "missing keys")
+	}
+	if !strings.Contains(err.Error(), "friction") {
+		t.Errorf("LoadConfig() error = %q; want it to name the missing %q key", err.Error(), "friction")
 	}
 }
 
@@ -312,7 +403,7 @@ func containsConfigKey(text, key string) bool {
 	return false
 }
 
-// TestLoadConfig_RejectsNegativeTimeouts pins the load-time guard on the three timeout knobs.
+// TestLoadConfig_RejectsNegativeTimeouts pins the load-time guard on the four timeout knobs.
 // Without it a negative minute count flowed into a shuttleengine.Spec's Timeout and was caught only
 // when the producer it governs first spawned -- which is exactly the deferred failure LoadConfig's
 // own header says the model-spec checks beside it exist to prevent.
@@ -324,6 +415,7 @@ func TestLoadConfig_RejectsNegativeTimeouts(t *testing.T) {
 		{"DiscussionTimeout", "discussion_timeout_min"},
 		{"PlanTimeout", "plan_timeout_min"},
 		{"ReviewTimeout", "review_timeout_min"},
+		{"FrictionTimeout", "friction_timeout_min"},
 	}
 
 	for _, tt := range tests {
@@ -349,7 +441,7 @@ func TestLoadConfig_RejectsNegativeTimeouts(t *testing.T) {
 // Timeout as "defer to shuttle's own run_timeout_min", so zero is a legitimate configuration and must
 // not be swept up by the negative guard.
 func TestLoadConfig_AcceptsZeroTimeouts(t *testing.T) {
-	for _, key := range []string{"discussion_timeout_min", "plan_timeout_min", "review_timeout_min"} {
+	for _, key := range []string{"discussion_timeout_min", "plan_timeout_min", "review_timeout_min", "friction_timeout_min"} {
 		t.Run(key, func(t *testing.T) {
 			dir := t.TempDir()
 			writeLoomConfigWithKey(t, dir, key, "0")

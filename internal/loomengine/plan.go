@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -32,21 +34,25 @@ import (
 )
 
 // composePlanPrompt builds the Plan producer's prompt by reading the "loom-template-plan" stencil
-// from stencilsDir and filling it.
-func composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, patternDirective string) ([]byte, error) {
+// from stencilsDir and filling it. frictionDirective is the caller-resolved Tier 2 note directive for
+// this run -- an empty string means Tier 2 is off or the read failed, and renders as nothing.
+func composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, patternDirective, frictionDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-plan")
 	if err != nil {
 		return nil, err
 	}
+
+	friction.WarnIfMarkerAbsent(template, "loom-template-plan", frictionDirective)
 
 	values := map[string]string{
 		"decision_record_path": decisionRecordPath,
 		"plan_dir":             planDir,
 		"overview_path":        overviewPath,
 		"pattern_directive":    patternDirective,
+		friction.MarkerName:    frictionDirective,
 	}
 
-	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive"})
+	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose plan prompt: %w", err)
 	}
@@ -72,7 +78,22 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg model
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}
-	prompt, err := composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, directive)
+
+	var frictionDir string
+	if cfg.Friction != "" {
+		frictionDir = LoomFrictionDir(layout)
+	}
+	notePath := friction.NotePath(frictionDir, "Plan-Write")
+	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		// Unlike the pattern.Directive call immediately above, a friction.Directive error is
+		// swallowed, never returned: it is optional bookkeeping, not a binding constraint, so a
+		// transient stencil read failure here must never fail the whole Plan-Write spawn.
+		logger.Warn("loom: friction directive failed, continuing without one", "role", "plan-write", "stencil", "loom-template-plan", "error", err)
+		frictionDirective = ""
+	}
+
+	prompt, err := composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, directive, frictionDirective)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}

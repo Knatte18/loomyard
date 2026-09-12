@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -31,6 +32,7 @@ type Engine struct {
 	geom        Geometry
 	cfg         Config
 	stencilsDir string
+	frictionDir string
 }
 
 // New returns an Engine ready to run rounds against shuttle, resolving relative Profile paths
@@ -39,8 +41,12 @@ type Engine struct {
 // geom is the told geometry the caller supplies (hubgeom.BurlerGeometry in hub mode).
 // stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) composePrompt reads
 // burler's four round prompts from at call time via stencilstore.Read.
-func New(shuttle Shuttle, geom Geometry, cfg Config, stencilsDir string) *Engine {
-	return &Engine{shuttle: shuttle, geom: geom, cfg: cfg, stencilsDir: stencilsDir}
+// frictionDir is told rather than derived: burlerengine must not import loomengine, and
+// burlerengine.Geometry is internal/hubgeom's/internal/standalonegeom's to construct under the
+// Told-Geometry Invariant, so an explicit constructor parameter is the remaining told seam. An empty
+// value means Tier 2 is off for this engine.
+func New(shuttle Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
+	return &Engine{shuttle: shuttle, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
 }
 
 // Result is one round's outcome: how the shuttle run classified (Outcome), the parsed verdict and
@@ -75,6 +81,8 @@ type Result struct {
 
 // Run drives one burler round for p, tuned by opts.
 // Sequence: validate p against the engine's worktree root;
+// resolve opts.NoteID against the engine's friction directory and swallow a friction.Directive error
+// as a Warn, exactly as if Tier 2 were off (see composePrompt's frictionDirective parameter);
 // compose its prompt;
 // materialize the three rendered instruction files to a fresh per-round directory under .lyx (via
 // lyxdirs.DotLyxDirName) so the orchestrator prompt can name their absolute paths;
@@ -106,6 +114,16 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, fmt.Errorf("burler: %w", err)
 	}
 
+	// Unlike the pattern.Directive call immediately above, a friction.Directive error is swallowed,
+	// never returned: it is optional bookkeeping, not a binding constraint, so a transient stencil
+	// read failure here must never kill the whole round.
+	notePath := friction.NotePath(e.frictionDir, opts.NoteID)
+	frictionDirective, err := friction.Directive(notePath, e.stencilsDir, friction.RoleReviewFix)
+	if err != nil {
+		logger.Warn("burler: friction directive failed, continuing without one", "role", "review-fix", "stencil", "burler-step-1-explore", "error", err)
+		frictionDirective = ""
+	}
+
 	// AnchorPath-anchored so this per-round instruction dir is a directory
 	// sibling of the durable, fabric-synced _lyx tree, not a second
 	// WorktreePath-rooted .lyx.
@@ -124,7 +142,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	inst2Path := filepath.Join(roundDir, "instruction-2-review.md")
 	inst3Path := filepath.Join(roundDir, "instruction-3-fix.md")
 
-	prompt, files, err := composePrompt(e.stencilsDir, &p, directive, inst1Path, inst2Path, inst3Path)
+	prompt, files, err := composePrompt(e.stencilsDir, &p, directive, frictionDirective, inst1Path, inst2Path, inst3Path)
 	if err != nil {
 		return Result{}, err
 	}

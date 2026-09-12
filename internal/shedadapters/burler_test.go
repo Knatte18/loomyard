@@ -636,6 +636,21 @@ func TestBurlerProducer_Call_RunOptsCarriesRoundToken(t *testing.T) {
 	}
 }
 
+func TestBurlerProducer_Call_RunOptsCarriesNoteID(t *testing.T) {
+	runDir := filepath.Join(t.TempDir(), "webster")
+	writeJudgedRound(t, runDir, 2)
+	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+	if _, _, err := p.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	want := "burler-webster-r3"
+	if runner.gotOpts[0].NoteID != want {
+		t.Errorf("NoteID = %q; want %q", runner.gotOpts[0].NoteID, want)
+	}
+}
+
 func TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry(t *testing.T) {
 	runDir := t.TempDir()
 	reviewPath := roundReviewPath(runDir, 1)

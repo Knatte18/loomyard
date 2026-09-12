@@ -5,12 +5,15 @@
 package loomengine
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -119,7 +122,11 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 		if strings.Contains(prompt, "## Constraints") {
 			t.Errorf("PlanSpec(...).Prompt contains an orphan ## Constraints heading: %q", prompt)
 		}
-		if strings.Contains(prompt, "\n\n\n\n") {
+		// Two adjacent optional markers (pattern_directive, friction_directive) both rendering
+		// empty legitimately produce one more blank line than a single empty marker would --
+		// the threshold below is widened by exactly one newline from its pre-Tier-2 value to
+		// account for that, while still catching any further unintended blank-line growth.
+		if strings.Contains(prompt, "\n\n\n\n\n") {
 			t.Errorf("PlanSpec(...).Prompt contains a stray blank-line block: %q", prompt)
 		}
 	})
@@ -492,5 +499,72 @@ func TestPlanSpec_MalformedModelSpec(t *testing.T) {
 
 	if _, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg); err == nil {
 		t.Fatal("PlanSpec(..., Plan=\"opus[effort\") = _, nil; want non-nil error")
+	}
+}
+
+// TestComposePlanPrompt_FrictionEnabled verifies that, given a real friction directive resolved via
+// friction.NotePath/friction.Directive exactly as PlanSpec resolves one, composePlanPrompt's rendered
+// prompt contains the resolved absolute note path verbatim -- the property that catches a composer
+// wiring the wrong path.
+func TestComposePlanPrompt_FrictionEnabled(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+	frictionDir := filepath.Join(t.TempDir(), "friction")
+	notePath := friction.NotePath(frictionDir, "Plan-Write")
+	if notePath == "" {
+		t.Fatal("friction.NotePath(frictionDir, \"Plan-Write\") = \"\"; want a resolved path")
+	}
+	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		t.Fatalf("friction.Directive(...) = _, %v; want nil error", err)
+	}
+
+	got, err := composePlanPrompt(stencilsDir, "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", directive)
+	if err != nil {
+		t.Fatalf("composePlanPrompt(..., directive) = _, %v; want nil error", err)
+	}
+
+	if !strings.Contains(string(got), notePath) {
+		t.Errorf("composePlanPrompt(...) output does not contain the resolved friction note path %q verbatim", notePath)
+	}
+}
+
+// TestComposePlanPrompt_FrictionDisabled verifies that, with an empty frictionDirective (Tier 2 off)
+// and a stencilsDir carrying no friction-directive stencil at all, composePlanPrompt still renders
+// successfully with no friction content -- proving composePlanPrompt reads no friction stencil of its
+// own, the same no-read guarantee internal/friction's own tests pin by pointing at a stencilsDir a
+// read would fail against.
+func TestComposePlanPrompt_FrictionDisabled(t *testing.T) {
+	stencilsDir := newMinimalStencilsDir(t)
+
+	got, err := composePlanPrompt(stencilsDir, "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", "")
+	if err != nil {
+		t.Fatalf("composePlanPrompt(..., frictionDirective=\"\") = _, %v; want nil error", err)
+	}
+
+	rendered := string(got)
+	if strings.Contains(rendered, "{{") {
+		t.Errorf("composePlanPrompt(..., frictionDirective=\"\") output contains an unrendered marker token:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "Friction note") {
+		t.Error("composePlanPrompt(..., frictionDirective=\"\") output contains friction directive content; want none when Tier 2 is off")
+	}
+}
+
+// TestComposePlanPrompt_FrictionMarkerFreeTemplate verifies that a seeded loom-template-plan stencil
+// whose bytes carry no {{.friction_directive}} literal still composes successfully -- never an error
+// -- while Tier 2 is enabled (a non-empty frictionDirective). This is the operator-edited-stencil and
+// dev-build case: internal/stencilstore/reconcile.go never refreshes a StateEdited stencil, so it is
+// reachable in a real worktree and must degrade to a warning rather than a failed run.
+func TestComposePlanPrompt_FrictionMarkerFreeTemplate(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+	markerFree := bytes.ReplaceAll(stencils.LoomTemplatePlan, []byte("{{.friction_directive}}"), nil)
+	planTemplatePath := filepath.Join(stencilsDir, "loom", "loom-template-plan.md")
+	if err := os.WriteFile(planTemplatePath, markerFree, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", planTemplatePath, err)
+	}
+
+	_, err := composePlanPrompt(stencilsDir, "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", "some friction directive text")
+	if err != nil {
+		t.Fatalf("composePlanPrompt(..., frictionDirective=<non-empty>) with a marker-free template = _, %v; want nil error", err)
 	}
 }

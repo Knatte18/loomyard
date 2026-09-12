@@ -2,8 +2,9 @@
      dedicated, final plan-level verification fork (plan-format).
      It is filled by RenderIntegrationPrompt (render.go) via internal/stencil and written to a prompt file under _lyx/webster/prompts/;
      Master's own Agent-tool fork call is exactly the same "Read this file and follow it exactly: <this file's own path>" idiom used for a batch's own fork prompt.
-     Three markers below are top-level {{.X}} substitutions;
-     stencil.Fill requires all three non-empty.
+     Three markers below are required top-level {{.X}} substitutions;
+     stencil.FillOptional requires all three non-empty.
+     {{.friction_directive}} is the one optional marker (filled via stencil.FillOptional), rendering as nothing when Tier 2 is off.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Webster integration-suite fork — run the plan-level verify once, no commits
@@ -13,6 +14,7 @@ You inherit Master's whole context — the codebase orientation and the plan's f
 Every batch of this plan has already been implemented and committed by the time you are forked: your only job is to run the plan-level verify command below ONCE, at the current HEAD, and report pass or fail.
 You implement NO cards and you make NO commit — not even for a trivial, obviously-correct fix.
 
+{{.friction_directive}}
 ## You are the INTEGRATION fork, not a batch implementer — never run `lyx webster`, never poll
 
 Exactly like a batch's own fork, you inherit Master's own loop instructions — including Master's own "poll for the integration report" loop.

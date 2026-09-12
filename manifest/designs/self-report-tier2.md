@@ -1,6 +1,6 @@
 # self-report Tier 2 — per-agent friction notes, aggregated for unsupervised runs
 
-> **Status: Planned, design settled with the operator 2026-09-12.**
+> **Status: Shipped, design settled with the operator 2026-09-12.**
 > Split out of the former `designs/self-report.md` (which covered both tiers as one doc) so Tier 2 can build independently of Tier 1 and of `loom-step.md` — no code dependency in any direction; all three can build in parallel.
 
 ## The problem: no session has full-run context
@@ -25,11 +25,11 @@ This aggregation-and-reflection machinery exists to work around loom having no s
 
 This does not replace `lyx selfreport create` (shipped) — it adds an automatic trigger on top of the same primitive: today, manual only; this adds the aggregation/reflection agent as a second automatic trigger (alongside Tier 1's direct Go trigger).
 
-## Open questions
+## How the design settled
 
-- Where Tier 2 notes physically live (a per-phase `_lyx/friction/<phase>.md`? appended to the status file?) is not yet pinned.
-- Whether every phase gets this by default, or it's opt-in per producer/profile.
-- Cross-phase semantic friction (a pattern only visible across several phases, but not a Tier-1-detectable structural event) is not addressed here — deferred, not designed.
+- Where notes physically live: `.lyx/loom/friction/`, via `loomengine.LoomFrictionDir` built on `LoomScratchDir`, because the Durable-vs-Ephemeral State Invariant puts never-tracked files under `.lyx` and `_lyx` would drag in the Fabric Git Invariant's commit-seam machinery for a file deleted minutes later.
+- Default-on versus opt-in per producer or profile: default-on, with one global `loom.yaml` key (`friction`) that is both the model spec and the kill switch, because the feature's value is breadth of coverage and per-row opt-in would mean a Tier 2 key on five different recipe engines whose row names are durable on-disk identities.
+- Cross-phase semantic friction: still explicitly deferred, and now recorded as a stated limitation of the shipped design rather than an open question — a Tier 2 note can only ever describe friction inside its own narrow task.
 
 ## Related
 

@@ -402,6 +402,10 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		}
 		attemptOpts := p.opts
 		attemptOpts.Round = attemptToken
+		// p.runDir's base is the segment's own run_subdir recipe value (webster, plan, discussion),
+		// so this stem distinguishes Plan-Burler round 3 from Webster-Burler round 3 rather than
+		// letting them collide in one friction directory.
+		attemptOpts.NoteID = "burler-" + filepath.Base(p.runDir) + "-r" + strconv.Itoa(round)
 
 		result, runErr := p.runner.Run(profile, attemptOpts)
 		if runErr != nil {

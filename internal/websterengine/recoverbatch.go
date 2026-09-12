@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -60,6 +61,12 @@ type RecoverDeps struct {
 	Reed       shuttleengine.ReedOps
 	ShuttleCfg shuttleengine.Config
 	Geom       Geometry
+
+	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
+	// is off. It lives here rather than on Geometry because internal/hubgeom and
+	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
+	// this value needs no geometry derivation.
+	FrictionDir string
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true
@@ -151,7 +158,8 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
+	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
+	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}

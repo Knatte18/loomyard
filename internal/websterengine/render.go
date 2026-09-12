@@ -29,6 +29,16 @@
 // (planparser.Card.SourcePath, `_lyx/plan/NN-<slug>.md`) rendered verbatim by renderCardPointers,
 // never as inlined What/file-op fields — the implementer reads its own card file in its own turn
 // instead of trusting a Go-rendered paraphrase of it.
+//
+// Each of the four Render*Prompt functions also takes a trailing notePath parameter (the composed
+// friction note path from friction.NotePath, or "" when Tier 2 is off) and injects
+// {{.friction_directive}} into its own values map: RenderForkPrompt, RenderRecoveryPrompt, and
+// RenderIntegrationPrompt resolve friction.RoleImplementer; RenderMasterPrompt resolves
+// friction.RoleOrchestrator, since Master never edits code and only forks. A non-nil
+// friction.Directive error is swallowed — logged at Warn via internal/logger, never wrapped and
+// returned — exactly as if Tier 2 were off, per the composer-swallows-a-friction-error Shared
+// Decision; this is deliberately unlike the pattern.Directive error handling sitting beside it in
+// RenderRecoveryPrompt and RenderMasterPrompt, which does propagate.
 
 package websterengine
 
@@ -38,6 +48,8 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -142,24 +154,35 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // promptWorktreeRoot, the pane's own cwd, is the display's relative-spelling base;
 // {{.worktree_root}} is filled from the same caller-supplied promptWorktreeRoot.
 // prevDigest is already rendered as a one-line summary by the caller.
-func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
+// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
+// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
+// friction.Directive error swallowed as a Warn rather than propagated.
+func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
 	}
 
+	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-prefix-fork", "error", err)
+		directive = ""
+	}
+
 	values := map[string]string{
-		"card_pointers": renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
-		"report_path":   reportPath,
-		"self_fix_cap":  fmt.Sprintf("%d", selfFixCap),
-		"worktree_root": promptWorktreeRoot,
-		"prev_digest":   digestLine,
+		"card_pointers":     renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
+		"report_path":       reportPath,
+		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
+		"worktree_root":     promptWorktreeRoot,
+		"prev_digest":       digestLine,
+		friction.MarkerName: directive,
 	}
 	template, err := composeForkTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read fork template: %w", err)
 	}
-	prompt, err := stencil.Fill(template, values)
+	friction.WarnIfMarkerAbsent(template, "webster-prefix-fork", directive)
+	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill fork template: %w", err)
 	}
@@ -174,7 +197,11 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, prom
 // own cwd — is also the card pointers' relative-spelling base (see renderCardPointers);
 // anchorRoot feeds pattern.Directive's own probe alone.
 // pattern_directive is injected if PATTERN is active.
-func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
+// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
+// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
+// friction.Directive error swallowed as a Warn rather than propagated — deliberately unlike the
+// pattern.Directive call immediately above, which does propagate.
+func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -185,6 +212,12 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
 	}
 
+	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-prefix-recovery", "error", err)
+		frictionDirective = ""
+	}
+
 	values := map[string]string{
 		"card_pointers":     renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
 		"report_path":       reportPath,
@@ -192,12 +225,14 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
 		"pattern_directive": directive,
+		friction.MarkerName: frictionDirective,
 	}
 	template, err := composeRecoveryTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive"})
+	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}
@@ -207,22 +242,33 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 // RenderIntegrationPrompt fills webster-template-integration for the plan's single
 // integration-suite fork, read from stencilsDir.
 // Returns an error if plan.Verify is empty.
-func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot, stencilsDir string) ([]byte, error) {
+// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
+// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
+// friction.Directive error swallowed as a Warn rather than propagated.
+func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot, stencilsDir string, notePath string) ([]byte, error) {
 	verify := strings.TrimSpace(plan.Verify)
 	if verify == "" {
 		return nil, fmt.Errorf("webster: render integration prompt: plan carries no plan-level \"## verify:\" section")
 	}
 
+	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-template-integration", "error", err)
+		directive = ""
+	}
+
 	values := map[string]string{
-		"verify":        verify,
-		"report_path":   reportPath,
-		"worktree_root": worktreeRoot,
+		"verify":            verify,
+		"report_path":       reportPath,
+		"worktree_root":     worktreeRoot,
+		friction.MarkerName: directive,
 	}
 	template, err := IntegrationTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read integration template: %w", err)
 	}
-	prompt, err := stencil.Fill(template, values)
+	friction.WarnIfMarkerAbsent(template, "webster-template-integration", directive)
+	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill integration template: %w", err)
 	}
@@ -261,7 +307,12 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // tells it to read (found live in crucible round fable5-high-r3, F-A4).
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath, planDir, integrationReportPath string, selfFixCap, pollWaitS int, worktreeRoot, anchorRoot, stencilsDir string) ([]byte, error) {
+// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
+// friction_directive is injected via friction.RoleOrchestrator when Tier 2 is on — Master never
+// edits code, only forks — with a friction.Directive error swallowed as a Warn rather than
+// propagated, deliberately unlike the pattern.Directive call immediately above, which does
+// propagate.
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath, planDir, integrationReportPath string, selfFixCap, pollWaitS int, worktreeRoot, anchorRoot, stencilsDir string, notePath string) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath
@@ -270,6 +321,12 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 	directive, err := pattern.Directive(anchorRoot, stencilsDir, pattern.RoleOrchestrator)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
+	}
+
+	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleOrchestrator)
+	if err != nil {
+		logger.Warn("webster: friction directive failed, continuing without one", "role", "orchestrator", "stencil", "webster-template-master", "error", err)
+		frictionDirective = ""
 	}
 
 	values := map[string]string{
@@ -283,12 +340,14 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
 		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
 		"pattern_directive":       directive,
+		friction.MarkerName:       frictionDirective,
 	}
 	template, err := MasterTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read master template: %w", err)
 	}
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive"})
+	friction.WarnIfMarkerAbsent(template, "webster-template-master", frictionDirective)
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill master template: %w", err)
 	}

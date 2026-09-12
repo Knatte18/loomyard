@@ -42,6 +42,7 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		Geom:         c.geom,
 		RefMatcher:   c.refMatcher,
 		OpenBisector: openBisector,
+		FrictionDir:  c.frictionDir,
 	}
 }
 

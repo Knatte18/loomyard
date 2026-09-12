@@ -7,27 +7,33 @@ package loomengine
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // composePrompt builds the discussion producer's interview prompt by reading the
-// "loom-template-discussion" stencil from stencilsDir and filling it with the four top-level marker
-// values.
-func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath string, autonomous bool) ([]byte, error) {
+// "loom-template-discussion" stencil from stencilsDir and filling it with the four required
+// top-level marker values plus the optional friction_directive marker. frictionDirective is the
+// caller-resolved Tier 2 note directive for this run -- an empty string means Tier 2 is off or the
+// read failed, and renders as nothing.
+func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, frictionDirective string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {
 		return nil, err
 	}
+
+	friction.WarnIfMarkerAbsent(template, "loom-template-discussion", frictionDirective)
 
 	values := map[string]string{
 		"slug":                 slug,
 		"decision_record_path": decisionRecordPath,
 		"support_log_path":     supportLogPath,
 		"mode_rules":           modeRules(autonomous),
+		friction.MarkerName:    frictionDirective,
 	}
 
-	rendered, err := stencil.Fill(template, values)
+	rendered, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
 	}
