@@ -110,6 +110,8 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
+friction: opus[effort=high]
+friction_timeout_min: 30
 `, discussionInteractive)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)

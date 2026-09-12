@@ -73,6 +73,7 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 		{"loomengine.LoomRunLock", loomengine.LoomRunLock(l)},
 		{"loomengine.LoomDriverLog", loomengine.LoomDriverLog(l)},
 		{"loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l)},
+		{"loomengine.LoomFrictionDir", loomengine.LoomFrictionDir(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
 		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(websterengine.ScratchDir(l.AnchorPath()), "blk"))},
 	}
