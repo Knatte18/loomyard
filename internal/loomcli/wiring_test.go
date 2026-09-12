@@ -593,6 +593,7 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 		{"ValidatePlan", "validate-plan", true},
 		{"Run", "run", false},
 		{"Drive", "drive", false},
+		{"Step", "step", false},
 		{"UnknownVerb", "something-else", false},
 	}
 

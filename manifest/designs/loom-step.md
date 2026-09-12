@@ -1,6 +1,6 @@
 # `lyx loom step` + an external supervisor skill
 
-> **Status: Planned, design settled with the operator 2026-09-12.**
+> **Status: Shipped — `lyx loom step` and the `/ly:ly-supervise` skill both landed 2026-09-12.**
 > Supersedes `designs/llm-driven-loom-alternative.md` — its "full prompt" approach (an LLM re-deriving loom's whole phase sequence in prose) is replaced by the much thinner design below. Independent of the self-report tasks (`self-report-tier1.md`, `self-report-tier2.md`) — related in spirit, no code dependency either direction; all three can build in parallel.
 
 ## The problem this responds to
@@ -17,13 +17,34 @@ Not proposed: an LLM re-implementing loom's phase table (the rejected `llm-drive
 
 ## What needs to happen
 
-1. Design and build `lyx loom step`: confirm it can be a thin wrapper over existing internal dispatch rather than new phase logic; decide its return contract (what a caller needs to know: which phase ran, pass/fail, whether the task is now at a terminal/blocked state).
-2. Write the `/ly-*` supervisor skill: the step-loop instructions, the anomaly-watching/cleanup responsibility, the `lyx selfreport create` call on noticed friction, and the `reed attach`-alongside operator instruction.
+1. **Done** — `lyx loom step` shipped as a thin wrapper over existing internal dispatch, not new phase logic: it bootstraps idempotently exactly as `run` does, then drives `shedengine.Shed`'s own `Step` exactly once and returns.
+   Its return contract is the ten-key envelope recorded below.
+2. **Done** — the `/ly:ly-supervise` skill shipped at `plugins/ly/skills/ly-supervise/SKILL.md`: the step-loop instructions, the anomaly-watching/cleanup responsibility, the `lyx selfreport create` call on noticed friction, and the `reed attach`-alongside operator instruction.
 
-## Open questions
+## The settled contract
 
-- `lyx loom step`'s exact return contract — not yet pinned.
-- Whether the supervisor skill should itself be allowed to advance past a stuck/blocked gate, or must always hand that back to the operator — leans toward the latter (matches crucible's own "the push/merge decision is the operator's" rule) but not decided.
+`lyx loom step`'s success envelope carries exactly ten keys, closed at that set — a key outside these ten has no test and no documented meaning.
+The first six derive directly from `shedengine.StepResult`; the last four are computed by `internal/loomcli`:
+
+- `producer` — the row name `shed.Step` just dispatched.
+- `outcome` — the producer's outcome as a string.
+- `output` — the artifact path the producer wrote, or empty.
+- `next` — the row name `shed.Step` expects to dispatch next.
+- `state` — the phase-machine state after this step (e.g. `running`, `paused`, `blocked`, a terminal state).
+- `reason` — the human-facing explanation attached to `state`, when one exists.
+- `continue` — derived as `state == "running"`, so a caller never carries its own copy of the state vocabulary.
+- `history_length` — the length of the persisted step history after this step.
+- `next_interrupt_policy` — `internal/loomshed`'s `InterruptPolicyFor(next)`, telling a caller whether re-invoking after an interruption on the next row is safe (`"reinvoke"`) or must hand back to the operator (`"handback"`).
+- `status_file` — the absolute path to the task's status file.
+
+A hard producer error, or any other pre-producer failure, is never folded into an `ok` envelope carrying a failed state — it is an error envelope with a non-zero exit, carried through `output.ErrFields`.
+That error envelope's `kind` field carries exactly one of a five-value vocabulary, declared as Go constants in `internal/loomcli/step.go` and asserted as an exact set by a test: `busy` (the run lock is already held), `unseeded` (the status file could not be seeded), `ownership` (the seeded status file belongs to a different task), `bootstrap` (any other pre-producer setup failure), and `producer` (the producer call itself returned a hard error).
+The supervisor skill's one-retry rule applies to the `producer` kind alone — every other kind is handed back to the operator with no retry, because none of them can be fixed by running the same command again.
+
+Whether the supervisor skill may itself advance past a stuck or blocked gate is settled in the direction this doc already leaned: never.
+On any non-running state, and on any error envelope, the skill stops and hands back to the operator.
+It never clears `state`, never edits the status file, never re-seeds, and never pushes.
+This matches crucible's own "the push/merge decision is the operator's" rule.
 
 ## Related
 
