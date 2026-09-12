@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -551,7 +552,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
-		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir)
+		integrationNotePath := friction.NotePath(deps.FrictionDir, "webster-integration")
+		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, integrationNotePath)
 		if err != nil {
 			return RunResult{}, err
 		}
@@ -567,7 +569,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
+	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir, masterNotePath)
 	if err != nil {
 		return RunResult{}, err
 	}

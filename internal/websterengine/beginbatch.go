@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -314,7 +315,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// WorktreeRoot, not AnchorRoot, is correct in both modes here: hub
 	// mode's WorktreeRoot is the anchor path, the exact value this call
 	// rendered before this Geometry split.
-	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
+	notePath := friction.NotePath(deps.FrictionDir, batchName)
+	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}

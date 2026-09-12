@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -157,7 +158,8 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
+	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
+	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}
