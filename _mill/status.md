@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussion-gap-fix-r2
 slug: loom-step
 branch: loom-step
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-09-12T10:10:22Z'
 discussion-fix-r1  '2026-09-12T10:20:47Z'
+discussion-gap-fix-r2  '2026-09-12T10:25:51Z'
 ```
