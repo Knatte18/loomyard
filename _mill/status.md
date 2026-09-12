@@ -71,7 +71,9 @@ batches:
     commit_sha: 5fe1e679b5abf7befb7f4ef19e36779203579a4f
     verify_baseline_failures: []
   - name: ly-plugin-supervise-skill
-    state: pending
+    state: running
+    implementer_session: 569ed2c6-e823-47da-a6d1-7db205be0838
+    start_sha: c99211467b8622f652d61fc711afeb1b0d0209be
     verify_baseline_failures: []
   - name: design-doc-and-roadmap
     state: pending
