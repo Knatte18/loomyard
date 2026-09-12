@@ -111,6 +111,30 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
+// TestDefaultLabels_ReturnsBug verifies that DefaultLabels returns exactly
+// the single-element "bug" default the automatic and manual filing paths
+// share.
+func TestDefaultLabels_ReturnsBug(t *testing.T) {
+	got := DefaultLabels()
+	if len(got) != 1 || got[0] != "bug" {
+		t.Errorf("DefaultLabels() = %v; want [\"bug\"]", got)
+	}
+}
+
+// TestDefaultLabels_ReturnsFreshSlice verifies that two successive calls
+// return slices backed by different arrays, so mutating one call's result
+// cannot corrupt the default seen by the next caller.
+func TestDefaultLabels_ReturnsFreshSlice(t *testing.T) {
+	first := DefaultLabels()
+	second := DefaultLabels()
+
+	first[0] = "mutated"
+
+	if second[0] != "bug" {
+		t.Errorf("second DefaultLabels() call = %v after mutating the first's result; want [\"bug\"] unaffected", second)
+	}
+}
+
 // TestCreateIssue_Success drives the normal successful path: the returned url and number match the
 // server's typed response,
 // and the request sent carries the expected method, path, title, body, and labels in order.

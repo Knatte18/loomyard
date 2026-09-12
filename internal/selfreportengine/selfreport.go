@@ -30,6 +30,10 @@ import (
 // parameters.
 const targetRepo = "Knatte18/loomyard"
 
+// defaultLabel is the label applied when a caller supplies no explicit
+// labels. It is unexported so DefaultLabels is the single way to observe it.
+const defaultLabel = "bug"
+
 // createIssueTimeout bounds CreateIssue's whole call to Issues.Create,
 // including a 401-triggered credential re-resolution and replay performed
 // internally by githubclient's transport. It matches the 30s budget
@@ -41,6 +45,15 @@ const createIssueTimeout = 30 * time.Second
 // NewGitHubClient is the seam through which CreateIssue obtains an authenticated *github.Client,
 // swappable for testing.
 var NewGitHubClient = githubclient.New
+
+// DefaultLabels is the single owner of the label default shared by both the
+// automatic self-report path and the manual "selfreport create" path.
+// It returns a fresh []string{"bug"} on every call, never a shared
+// package-level slice, so a caller that appends to or mutates the returned
+// slice cannot corrupt the default seen by the next caller.
+func DefaultLabels() []string {
+	return []string{defaultLabel}
+}
 
 // CreateIssue files a GitHub issue with the given title, optional body, and labels.
 // It returns the issue's HTML URL and issue number on success.
