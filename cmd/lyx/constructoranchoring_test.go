@@ -21,6 +21,7 @@
 //
 // As of this batch there are two groups, not three: the _lyx-durable group, and the .lyx group in
 // full (loomengine.LoomStatusLock, loomengine.LoomDriverLog, loomengine.LoomBootstrapLock,
+// loomengine.LoomSelfreportFiled, loomengine.LoomSelfreportFiledLock,
 // websterengine.PromptsDir/ScratchDir, logger.LogsDir) -- all
 // AnchorPath-anchored, so every worktree-level .lyx entry sits under exactly one root:
 // filepath.Join(anchor, ".lyx"). A prior slice split this into an already-migrated and a
@@ -94,6 +95,8 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "loomengine.LoomRunLock", loomengine.LoomRunLock(l), filepath.Join(dotLyxBase, "loom", "run.lock"))
 	assertPath(t, "loomengine.LoomDriverLog", loomengine.LoomDriverLog(l), filepath.Join(dotLyxBase, "loom", "driver.log"))
 	assertPath(t, "loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l), filepath.Join(dotLyxBase, "loom", "bootstrap.lock"))
+	assertPath(t, "loomengine.LoomSelfreportFiled", loomengine.LoomSelfreportFiled(l), filepath.Join(dotLyxBase, "loom", "selfreport-filed.json"))
+	assertPath(t, "loomengine.LoomSelfreportFiledLock", loomengine.LoomSelfreportFiledLock(l), filepath.Join(dotLyxBase, "loom", "selfreport-filed.json.lock"))
 	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
@@ -167,13 +170,15 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// left behind.
 	wrongRoot := filepath.Join(worktree, ".lyx")
 	dotLyxConstructors := map[string]string{
-		"loomengine.LoomStatusLock":    loomengine.LoomStatusLock(l),
-		"loomengine.LoomRunLock":       loomengine.LoomRunLock(l),
-		"loomengine.LoomDriverLog":     loomengine.LoomDriverLog(l),
-		"loomengine.LoomBootstrapLock": loomengine.LoomBootstrapLock(l),
-		"websterengine.PromptsDir":     websterengine.PromptsDir(l.AnchorPath()),
-		"websterengine.ScratchDir":     websterengine.ScratchDir(l.AnchorPath()),
-		"logger.LogsDir":               logger.LogsDir(l),
+		"loomengine.LoomStatusLock":          loomengine.LoomStatusLock(l),
+		"loomengine.LoomRunLock":             loomengine.LoomRunLock(l),
+		"loomengine.LoomDriverLog":           loomengine.LoomDriverLog(l),
+		"loomengine.LoomBootstrapLock":       loomengine.LoomBootstrapLock(l),
+		"loomengine.LoomSelfreportFiled":     loomengine.LoomSelfreportFiled(l),
+		"loomengine.LoomSelfreportFiledLock": loomengine.LoomSelfreportFiledLock(l),
+		"websterengine.PromptsDir":           websterengine.PromptsDir(l.AnchorPath()),
+		"websterengine.ScratchDir":           websterengine.ScratchDir(l.AnchorPath()),
+		"logger.LogsDir":                     logger.LogsDir(l),
 	}
 	for name, got := range dotLyxConstructors {
 		if !strings.HasPrefix(got, dotLyxBase) {

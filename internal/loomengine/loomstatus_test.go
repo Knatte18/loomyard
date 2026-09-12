@@ -55,6 +55,70 @@ func TestLoomRunLock(t *testing.T) {
 	}
 }
 
+// TestLoomSelfreportFiled proves LoomSelfreportFiled follows the anchored subpath, mirroring
+// TestLoomRunLock's pair.
+func TestLoomSelfreportFiled(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    filepath.Join("sub", "dir"),
+	}
+
+	want := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "selfreport-filed.json")
+	if got := LoomSelfreportFiled(l); got != want {
+		t.Errorf("LoomSelfreportFiled() = %q; want %q", got, want)
+	}
+}
+
+// TestLoomSelfreportFiled_UnanchoredEqualsWorktreePath proves LoomSelfreportFiled's AnchorPath
+// anchoring coincides with WorktreePath at AnchorRel "." — the same unanchored equivalence
+// TestLoomRunLock_UnanchoredEqualsWorktreePath pins for the run lock, but for the selfreport-filed
+// marker.
+func TestLoomSelfreportFiled_UnanchoredEqualsWorktreePath(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    ".",
+	}
+
+	want := filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "loom", "selfreport-filed.json")
+	if got := LoomSelfreportFiled(l); got != want {
+		t.Errorf("LoomSelfreportFiled() = %q; want %q", got, want)
+	}
+}
+
+// TestLoomSelfreportFiledLock proves LoomSelfreportFiledLock follows the anchored subpath, mirroring
+// TestLoomRunLock's pair.
+func TestLoomSelfreportFiledLock(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    filepath.Join("sub", "dir"),
+	}
+
+	want := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "selfreport-filed.json.lock")
+	if got := LoomSelfreportFiledLock(l); got != want {
+		t.Errorf("LoomSelfreportFiledLock() = %q; want %q", got, want)
+	}
+}
+
+// TestLoomSelfreportFiledLock_UnanchoredEqualsWorktreePath proves LoomSelfreportFiledLock's
+// AnchorPath anchoring coincides with WorktreePath at AnchorRel "." — the same unanchored
+// equivalence TestLoomRunLock_UnanchoredEqualsWorktreePath pins for the run lock, but for the
+// selfreport-filed marker's lock.
+func TestLoomSelfreportFiledLock_UnanchoredEqualsWorktreePath(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    ".",
+	}
+
+	want := filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "loom", "selfreport-filed.json.lock")
+	if got := LoomSelfreportFiledLock(l); got != want {
+		t.Errorf("LoomSelfreportFiledLock() = %q; want %q", got, want)
+	}
+}
+
 func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-HUB"),
