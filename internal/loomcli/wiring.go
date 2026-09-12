@@ -259,13 +259,21 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 
+	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
+	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a
+	// boolean" Shared Decision. Resolving it once here, rather than letting each consumer re-check
+	// loomCfg.Friction itself, is what keeps burlerengine and websterengine's RunDeps from disagreeing
+	// about whether Tier 2 is on.
+	frictionDir := ""
+	if loomCfg.Friction != "" {
+		frictionDir = loomengine.LoomFrictionDir(location)
+	}
+
 	// BurlerGeometry, not WebsterGeometry: this is burler's own geometry, carrying burler's
 	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
 	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
 	// with distinct field sets, not interchangeable constructors of the same shape.
-	// "" for now: the real resolved friction directory is wired in the same change that resolves it
-	// for the other two engines.
-	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, "")
+	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
@@ -276,6 +284,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Config:     websterCfg,
 		Batcher:    activeBatcher,
 		Geom:       websterGeom,
+		// FrictionDir covers the Master and integration prompts only: the per-batch fork and recovery
+		// prompts are composed in a separate `lyx webster` process (begin-batch/recover-batch), which
+		// resolves the same value itself in internal/webstercli, per the
+		// webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
+		FrictionDir: frictionDir,
 		// The reference matcher is pinned to a real fabricengine.NewRefScanner(location), built
 		// eagerly because that constructor only compiles a regexp and cannot fail. It must never be
 		// the never-matching stand-in: that stand-in is permitted only in standalone, where there is
@@ -417,5 +430,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.registry = registry
 	c.runner = runner
 	c.landingCfg = landingCfg
+	c.frictionDir = frictionDir
 	return nil
 }

@@ -53,6 +53,11 @@ type loomCLI struct {
 	// registry is the resolved model-spec registry, carried onto the struct so drive.go can pass
 	// it to landingDeps without a second modelspec.LoadRegistry call.
 	registry modelspec.Registry
+	// frictionDir is the absolute Tier 2 friction directory resolved once in wire, empty when Tier 2
+	// is off. It is carried on the struct so run.go and drive.go read it without re-resolving it or
+	// re-reading loom.yaml a second time. Left at its zero value by wireLightweight, whose verbs are
+	// all read-only and load no module config.
+	frictionDir string
 	// runner is the constructed shuttle runner, carried onto the struct so drive.go can pass it to
 	// landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner
