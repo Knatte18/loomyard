@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-step
 branch: loom-step
 plan: _mill/plan
@@ -28,4 +28,25 @@ plan-fix-r1  '2026-09-12T11:08:58Z'
 plan-review-r2  '2026-09-12T11:19:15Z'
 plan-fix-r2  '2026-09-12T11:20:36Z'
 planned  '2026-09-12T11:20:52Z'
+implementing  '2026-09-12T11:21:18Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shedengine-step
+    state: pending
+  - name: loomshed-interrupt-policy
+    state: pending
+  - name: loomcli-shared-helpers
+    state: pending
+  - name: loom-step-verb
+    state: pending
+  - name: status-interrupt-policy
+    state: pending
+  - name: ly-plugin-supervise-skill
+    state: pending
+  - name: design-doc-and-roadmap
+    state: pending
 ```
