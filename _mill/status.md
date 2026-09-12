@@ -50,7 +50,9 @@ batches:
     commit_sha: 43d3ff08bdea189decbfb9dc6e924d4b1612c7cb
     verify_baseline_failures: []
   - name: anomaly-detector
-    state: pending
+    state: running
+    implementer_session: 8410e91b-23a8-4651-b448-5005065c339e
+    start_sha: d78ee2faa9c6532051eb2f91fda6629742ec35b3
     verify_baseline_failures: []
   - name: drive-wiring
     state: pending
