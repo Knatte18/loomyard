@@ -43,9 +43,14 @@ implementing  '2026-09-12T12:18:22Z'
 ```yaml
 batches:
   - name: leaf-surfaces
-    state: pending
+    state: running
+    implementer_session: 93b8e880-8c74-4aaf-81ef-7560f00ab78a
+    start_sha: 135e580bd72feba69107021000502c07c9c03a90
+    verify_baseline_failures: []
   - name: anomaly-detector
     state: pending
+    verify_baseline_failures: []
   - name: drive-wiring
     state: pending
+    verify_baseline_failures: []
 ```
