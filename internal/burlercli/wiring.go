@@ -128,7 +128,8 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
-	c.engine = burlerengine.New(runner, hubgeom.BurlerGeometry(loc), burlerCfg, stencilsDir)
+	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
+	c.engine = burlerengine.New(runner, hubgeom.BurlerGeometry(loc), burlerCfg, stencilsDir, "")
 	c.mode = "hub"
 	c.stateDir = ""
 	c.stencilsDir = stencilsDir
@@ -186,7 +187,8 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 		return err
 	}
 
-	c.engine = burlerengine.New(runner, standalonegeom.BurlerGeometry(res.Target, res.StateDir), burlerCfg, res.StencilsDir)
+	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
+	c.engine = burlerengine.New(runner, standalonegeom.BurlerGeometry(res.Target, res.StateDir), burlerCfg, res.StencilsDir, "")
 	c.mode = "standalone"
 	c.stateDir = res.StateDir
 	c.stencilsDir = res.StencilsDir

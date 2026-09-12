@@ -7,31 +7,24 @@
 package loomengine
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/friction"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with loom's two stencils plus the three
-// pattern-directive stencils, all copied byte-for-byte from the stencils package's embedded
-// defaults, and returns the directory to pass as stencilsDir.
+// newTestStencilsDir builds a t.TempDir() seeded with loom's two stencils, the three
+// pattern-directive stencils, and the friction-directive-implementer/-interview stencils, all copied
+// byte-for-byte from the stencils package's embedded defaults, and returns the directory to pass as
+// stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	loomDir := filepath.Join(dir, "loom")
-	if err := os.MkdirAll(loomDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-discussion.md"), stencils.LoomTemplateDiscussion, 0o644); err != nil {
-		t.Fatalf("WriteFile(loom-template-discussion.md) = %v; want nil", err)
-	}
-	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-plan.md"), stencils.LoomTemplatePlan, 0o644); err != nil {
-		t.Fatalf("WriteFile(loom-template-plan.md) = %v; want nil", err)
-	}
+	dir := newMinimalStencilsDir(t)
 
 	patternDir := filepath.Join(dir, "pattern")
 	if err := os.MkdirAll(patternDir, 0o755); err != nil {
@@ -45,6 +38,37 @@ func newTestStencilsDir(t *testing.T) string {
 	}
 	if err := os.WriteFile(filepath.Join(patternDir, "pattern-directive-orchestrator.md"), stencils.PatternDirectiveOrchestrator, 0o644); err != nil {
 		t.Fatalf("WriteFile(pattern-directive-orchestrator.md) = %v; want nil", err)
+	}
+
+	frictionDir := filepath.Join(dir, "friction")
+	if err := os.MkdirAll(frictionDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", frictionDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(frictionDir, "friction-directive-implementer.md"), stencils.FrictionDirectiveImplementer, 0o644); err != nil {
+		t.Fatalf("WriteFile(friction-directive-implementer.md) = %v; want nil", err)
+	}
+	if err := os.WriteFile(filepath.Join(frictionDir, "friction-directive-interview.md"), stencils.FrictionDirectiveInterview, 0o644); err != nil {
+		t.Fatalf("WriteFile(friction-directive-interview.md) = %v; want nil", err)
+	}
+	return dir
+}
+
+// newMinimalStencilsDir builds a t.TempDir() seeded with only loom's two stencils -- no
+// pattern-directive or friction-directive stencils at all -- for tests that must prove a composer
+// needs none of those to render its Tier-2-off / PATTERN-inactive path.
+func newMinimalStencilsDir(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	loomDir := filepath.Join(dir, "loom")
+	if err := os.MkdirAll(loomDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-discussion.md"), stencils.LoomTemplateDiscussion, 0o644); err != nil {
+		t.Fatalf("WriteFile(loom-template-discussion.md) = %v; want nil", err)
+	}
+	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-plan.md"), stencils.LoomTemplatePlan, 0o644); err != nil {
+		t.Fatalf("WriteFile(loom-template-plan.md) = %v; want nil", err)
 	}
 	return dir
 }
@@ -66,9 +90,9 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 			decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 			supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-			got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, tt.autonomous)
+			got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", tt.autonomous)
 			if err != nil {
-				t.Fatalf("composePrompt(%q, %q, %q, %q, %v) = _, %v; want nil error", stencilsDir, slug, decisionRecordPath, supportLogPath, tt.autonomous, err)
+				t.Fatalf("composePrompt(%q, %q, %q, %q, \"\", %v) = _, %v; want nil error", stencilsDir, slug, decisionRecordPath, supportLogPath, tt.autonomous, err)
 			}
 			rendered := string(got)
 
@@ -111,7 +135,7 @@ func TestComposePrompt_AutonomousOutputHasNoAutoFlag(t *testing.T) {
 	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 	supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-	got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, true)
+	got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", true)
 	if err != nil {
 		t.Fatalf("composePrompt(..., autonomous=true) = _, %v; want nil error", err)
 	}
@@ -129,11 +153,11 @@ func TestComposePrompt_ModeLanguageDiffers(t *testing.T) {
 	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 	supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-	autonomousOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, true)
+	autonomousOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", true)
 	if err != nil {
 		t.Fatalf("composePrompt(autonomous=true) = _, %v; want nil error", err)
 	}
-	interactiveOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, false)
+	interactiveOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", false)
 	if err != nil {
 		t.Fatalf("composePrompt(autonomous=false) = _, %v; want nil error", err)
 	}
@@ -165,5 +189,72 @@ func TestModeRules(t *testing.T) {
 	}
 	if strings.Contains(autonomous, "--auto") {
 		t.Errorf("modeRules(true) contains %q; want no reference to the nonexistent flag", "--auto")
+	}
+}
+
+// TestComposePrompt_FrictionEnabled verifies that, given a real friction directive resolved via
+// friction.NotePath/friction.Directive exactly as DiscussionSpec resolves one, composePrompt's
+// rendered prompt contains the resolved absolute note path verbatim -- the property that catches a
+// composer wiring the wrong path.
+func TestComposePrompt_FrictionEnabled(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+	frictionDir := filepath.Join(t.TempDir(), "friction")
+	notePath := friction.NotePath(frictionDir, "Discussion-Write")
+	if notePath == "" {
+		t.Fatal("friction.NotePath(frictionDir, \"Discussion-Write\") = \"\"; want a resolved path")
+	}
+	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleInterview)
+	if err != nil {
+		t.Fatalf("friction.Directive(...) = _, %v; want nil error", err)
+	}
+
+	got, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", directive, false)
+	if err != nil {
+		t.Fatalf("composePrompt(..., directive, false) = _, %v; want nil error", err)
+	}
+
+	if !strings.Contains(string(got), notePath) {
+		t.Errorf("composePrompt(...) output does not contain the resolved friction note path %q verbatim", notePath)
+	}
+}
+
+// TestComposePrompt_FrictionDisabled verifies that, with an empty frictionDirective (Tier 2 off) and
+// a stencilsDir carrying no friction-directive stencil at all, composePrompt still renders
+// successfully with no friction content -- proving composePrompt reads no friction stencil of its
+// own, the same no-read guarantee internal/friction's own tests pin by pointing at a stencilsDir a
+// read would fail against.
+func TestComposePrompt_FrictionDisabled(t *testing.T) {
+	stencilsDir := newMinimalStencilsDir(t)
+
+	got, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", "", false)
+	if err != nil {
+		t.Fatalf("composePrompt(..., frictionDirective=\"\", false) = _, %v; want nil error", err)
+	}
+
+	rendered := string(got)
+	if strings.Contains(rendered, "{{") {
+		t.Errorf("composePrompt(..., frictionDirective=\"\", ...) output contains an unrendered marker token:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "Friction note") {
+		t.Error("composePrompt(..., frictionDirective=\"\", ...) output contains friction directive content; want none when Tier 2 is off")
+	}
+}
+
+// TestComposePrompt_FrictionMarkerFreeTemplate verifies that a seeded loom-template-discussion stencil
+// whose bytes carry no {{.friction_directive}} literal still composes successfully -- never an error
+// -- while Tier 2 is enabled (a non-empty frictionDirective). This is the operator-edited-stencil and
+// dev-build case: internal/stencilstore/reconcile.go never refreshes a StateEdited stencil, so it is
+// reachable in a real worktree and must degrade to a warning rather than a failed run.
+func TestComposePrompt_FrictionMarkerFreeTemplate(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+	markerFree := bytes.ReplaceAll(stencils.LoomTemplateDiscussion, []byte("{{.friction_directive}}"), nil)
+	discussionPath := filepath.Join(stencilsDir, "loom", "loom-template-discussion.md")
+	if err := os.WriteFile(discussionPath, markerFree, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", discussionPath, err)
+	}
+
+	_, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", "some friction directive text", false)
+	if err != nil {
+		t.Fatalf("composePrompt(..., frictionDirective=<non-empty>, ...) with a marker-free template = _, %v; want nil error", err)
 	}
 }

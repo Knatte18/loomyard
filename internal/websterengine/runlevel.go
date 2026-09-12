@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -117,6 +118,12 @@ type RunDeps struct {
 	Batcher    batcher.Batcher
 	Geom       Geometry
 	RefMatcher RefMatcher
+
+	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
+	// is off. It lives here rather than on Geometry because internal/hubgeom and
+	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
+	// this value needs no geometry derivation.
+	FrictionDir string
 
 	// Clock is the integration stage's bounded-wait clock seam: nil selects
 	// the production realClock, and a test injects a fake so the
@@ -545,7 +552,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
-		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir)
+		integrationNotePath := friction.NotePath(deps.FrictionDir, "webster-integration")
+		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, integrationNotePath)
 		if err != nil {
 			return RunResult{}, err
 		}
@@ -561,7 +569,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
+	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir, masterNotePath)
 	if err != nil {
 		return RunResult{}, err
 	}

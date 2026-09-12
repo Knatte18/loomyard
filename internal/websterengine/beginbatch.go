@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -81,6 +82,12 @@ type BeginDeps struct {
 	Injector Injector
 	Reed     shuttleengine.ReedOps
 	Geom     Geometry
+
+	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
+	// is off. It lives here rather than on Geometry because internal/hubgeom and
+	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
+	// this value needs no geometry derivation.
+	FrictionDir string
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -308,7 +315,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// WorktreeRoot, not AnchorRoot, is correct in both modes here: hub
 	// mode's WorktreeRoot is the anchor path, the exact value this call
 	// rendered before this Geometry split.
-	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
+	notePath := friction.NotePath(deps.FrictionDir, batchName)
+	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}

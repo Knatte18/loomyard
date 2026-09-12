@@ -35,6 +35,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
@@ -45,6 +46,32 @@ import (
 // filesystem preparation of its own -- see the file header for why wire's hub branch tolerates that.
 func hubLocation(hub, worktreeName, anchorRel string) *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
+}
+
+// seedLoomConfigWithFriction writes <anchorPath>/_lyx/config/loom.yaml with a full eight-key literal
+// whose friction key is the caller-chosen value -- empty to mean Tier 2 is off. All eight keys are
+// written explicitly because configengine.Load is strict on missing keys.
+func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
+	t.Helper()
+	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+	}
+	cfgPath := filepath.Join(configDir, "loom.yaml")
+	contents := fmt.Sprintf(`discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+selfreport: true
+friction: %s
+friction_timeout_min: 30
+`, friction)
+	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
 }
 
 // seedStandalonePlanDir writes one minimal, non-empty ".md" file into dir, satisfying
@@ -780,4 +807,79 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 			t.Errorf("ResolveStandalone() error = %q; want %q", err.Error(), want)
 		}
 	})
+}
+
+// TestWireHub_FrictionDirResolution covers wireHub's tolerant friction-directory resolution: a
+// non-empty friction directory when loom's config enables Tier 2, "" when the friction key is
+// present but empty, and "" without an error when loom.yaml is absent -- the tolerance this CLI's
+// whole resolution depends on, since a `lyx webster` verb must never fail because an unrelated
+// module's config could not be read.
+func TestWireHub_FrictionDirResolution(t *testing.T) {
+	t.Run("FrictionEnabled", func(t *testing.T) {
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+		seedLoomConfigWithFriction(t, loc.AnchorPath(), "opus[effort=high]")
+
+		c := &websterCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+
+		want := loomengine.LoomFrictionDir(loc)
+		if c.frictionDir != want {
+			t.Errorf("c.frictionDir = %q; want %q", c.frictionDir, want)
+		}
+	})
+
+	t.Run("FrictionPresentButEmpty", func(t *testing.T) {
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+		seedLoomConfigWithFriction(t, loc.AnchorPath(), "")
+
+		c := &websterCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+
+		if c.frictionDir != "" {
+			t.Errorf("c.frictionDir = %q; want \"\" when the friction key is present but empty", c.frictionDir)
+		}
+	})
+
+	t.Run("LoomConfigAbsent_ResolvesEmptyWithoutError", func(t *testing.T) {
+		// Deliberately never seed loom.yaml: this fictional hub location's anchor has no _lyx/config
+		// directory at all, so loomengine.LoadConfig fails with its own "not initialized" error --
+		// which must never propagate out of wire.
+		hub := t.TempDir()
+		loc := hubLocation(hub, "warp", ".")
+
+		c := &websterCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil -- an unreadable loom config must never fail a webster verb", err)
+		}
+
+		if c.frictionDir != "" {
+			t.Errorf("c.frictionDir = %q; want \"\" when loom.yaml cannot be loaded", c.frictionDir)
+		}
+	})
+}
+
+// TestWireStandalone_FrictionDirAlwaysEmpty asserts wireStandalone always resolves an empty friction
+// directory: a standalone webster run is not a loom run and has no friction directory.
+func TestWireStandalone_FrictionDirAlwaysEmpty(t *testing.T) {
+	target := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+	seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
+
+	c := &websterCLI{}
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.frictionDir != "" {
+		t.Errorf("c.frictionDir = %q; want \"\" in standalone mode", c.frictionDir)
+	}
 }

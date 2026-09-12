@@ -91,15 +91,16 @@ Example:
 			}
 
 			deps := websterengine.BeginDeps{
-				Plan:     plan,
-				Batches:  batches,
-				State:    st,
-				Roles:    c.roles,
-				Config:   c.cfg,
-				Engine:   c.engine,
-				Injector: c.injector,
-				Reed:     c.reed,
-				Geom:     c.geom,
+				Plan:        plan,
+				Batches:     batches,
+				State:       st,
+				Roles:       c.roles,
+				Config:      c.cfg,
+				Engine:      c.engine,
+				Injector:    c.injector,
+				Reed:        c.reed,
+				Geom:        c.geom,
+				FrictionDir: c.frictionDir,
 			}
 
 			fingerprintBefore := st.PlanFingerprint

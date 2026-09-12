@@ -9,6 +9,7 @@
 package burlerengine
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,7 +122,7 @@ func TestComposePrompt_FillsAllMarkers(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+	orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -141,7 +142,7 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.FixScope = FixScopeSource
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -155,7 +156,7 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.FixScope = FixScopeOverlay
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -173,7 +174,7 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.ToolUse = true
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -187,7 +188,7 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.ToolUse = false
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -204,7 +205,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -218,7 +219,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		p.PriorReviews = []string{filepath.Join(t.TempDir(), "prior-review.md")}
 		p.PriorFixerReports = []string{filepath.Join(t.TempDir(), "prior-fixer-report.md")}
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -236,7 +237,7 @@ func TestComposePrompt_DirectoryAnnotation(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+	orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -266,7 +267,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -284,7 +285,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			{Name: "security", Text: "pay extra attention to security"},
 		}
 
-		orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -304,7 +305,7 @@ func TestComposePrompt_ReturnsThreeInstructionFiles(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	orchestrator, files, err := composePrompt(stencilsDir, &p, "", testInst1Path, testInst2Path, testInst3Path)
+	orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -335,7 +336,7 @@ func TestComposePrompt_BlockHelpersLandInIntendedAsset(t *testing.T) {
 	p.ClusterFan = "standard"
 	p.clusterLenses = []Lens{{Name: "style", Text: "pay extra attention to style"}}
 
-	orchestrator, files, err := composePrompt(stencilsDir, &p, "pattern directive placeholder", testInst1Path, testInst2Path, testInst3Path)
+	orchestrator, files, err := composePrompt(stencilsDir, &p, "pattern directive placeholder", "", testInst1Path, testInst2Path, testInst3Path)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -356,6 +357,49 @@ func TestComposePrompt_BlockHelpersLandInIntendedAsset(t *testing.T) {
 	requireNotContains(t, orchestrator, "pattern directive placeholder")
 	requireNotContains(t, instruction2, "pattern directive placeholder")
 	requireNotContains(t, instruction3, "pattern directive placeholder")
+}
+
+// TestComposePrompt_FrictionDirective proves the friction_directive marker composes the same way
+// pattern_directive does: enabled carries the directive text verbatim into instruction 1, disabled
+// composes cleanly with no directive text, and a marker-free template composes cleanly regardless.
+func TestComposePrompt_FrictionDirective(t *testing.T) {
+	t.Run("enabled", func(t *testing.T) {
+		p := newComposableProfile(t)
+		stencilsDir := newTestStencilsDir(t)
+
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "friction directive placeholder", testInst1Path, testInst2Path, testInst3Path)
+		if err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		got := combinedPrompt(orchestrator, files)
+		requireContains(t, got, "friction directive placeholder")
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		p := newComposableProfile(t)
+		stencilsDir := newTestStencilsDir(t)
+
+		orchestrator, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
+		if err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		got := combinedPrompt(orchestrator, files)
+		requireNotContains(t, got, "friction directive")
+	})
+
+	t.Run("marker-free template", func(t *testing.T) {
+		p := newComposableProfile(t)
+		stencilsDir := newTestStencilsDir(t)
+		markerFree := bytes.ReplaceAll(stencils.BurlerStep1Explore, []byte("{{.friction_directive}}"), nil)
+		if err := os.WriteFile(filepath.Join(stencilsDir, "burler", "burler-step-1-explore.md"), markerFree, 0o644); err != nil {
+			t.Fatalf("WriteFile(marker-free burler-step-1-explore.md) = %v; want nil", err)
+		}
+
+		_, _, err := composePrompt(stencilsDir, &p, "", "friction directive placeholder", testInst1Path, testInst2Path, testInst3Path)
+		if err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+	})
 }
 
 // findLineContaining returns the first line of text containing needle, or
