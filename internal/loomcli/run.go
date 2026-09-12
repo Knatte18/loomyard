@@ -10,7 +10,6 @@ package loomcli
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,12 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -73,68 +68,14 @@ Example:
 
 			slug := seedSlug(c.location.WorktreeName)
 
-			// Step 1: resolve the recorded parent branch, writing the provenance record only for
-			// a legacy worktree created before it existed.
-			recorded, found, err := fabricengine.ReadOrigin(c.location)
+			// Steps 1 through 3: resolve the parent branch, seed the status file, verify seed
+			// ownership, and commit the seed and origin record into the fabric. The stage this
+			// helper also returns is deliberately discarded here: `run` writes the same envelope on
+			// any failure regardless of which sub-step produced it, exactly as before this
+			// extraction; `step` is the caller that maps the stage onto its own refusal-kind
+			// vocabulary.
+			_, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-			parent, writeOrigin, err := resolveParentBranch(recorded, found, parentFlag)
-			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-			if writeOrigin {
-				// loom's envelope deliberately gains no mutation keys here: the Mutation Record
-				// Invariant binds fabric verb outcomes, and loom's own result is not one, so the
-				// recorder is thrown away rather than surfaced.
-				originRec := fabricengine.NewMutations("")
-				if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabricengine.Origin{ParentBranch: parent}); err != nil {
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-			}
-
-			// Step 2: seed the status file, tolerating exactly the already-seeded sentinel so a
-			// re-run works. A stat-then-seed probe here would reintroduce the exact race the
-			// seeder's single lock exists to close, so ErrSeedExists is the only accepted outcome.
-			// The error is bound rather than collapsed into one branch, so a genuine first seed
-			// (nil error) can be told apart from an ErrSeedExists re-entry below: the friction
-			// directory is cleared only on the former, since the latter is by definition a resume
-			// and resumes are exactly the run whose notes are most worth reading.
-			seedErr := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent)
-			if seedErr != nil && !errors.Is(seedErr, loomshed.ErrSeedExists) {
-				clihelp.SetExit(ctx, output.Err(out, seedErr.Error()))
-				return nil
-			}
-			ensureFrictionDirAfterSeed(c.frictionDir, seedErr)
-			// An already-present status file must be THIS task's own: `lyx fabric add` run from a
-			// task worktree forks the whole pair, `_lyx` task state included, and the driver would
-			// otherwise silently resume the inherited task's run under the wrong slug (crucible
-			// round fable5-high-r3, F-B7).
-			if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug); err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-
-			// Step 3: commit the seed and the provenance record into the fabric, unconditionally on
-			// every invocation -- not gated on this invocation's own writeOrigin. The origin
-			// record's path is included every time for the same reason the status file's path
-			// always is: if a prior invocation wrote the record to disk (step 1) but crashed
-			// before this step committed it, resolveParentBranch's next read finds the record
-			// present with a matching value and reports write == false, even though the record
-			// is still untracked in the fabric. Including the path unconditionally makes that
-			// state self-heal on the very next `loom run`, exactly as the status file already
-			// does -- and costs nothing on the ordinary path, since committing an already-clean,
-			// already-tracked path is a no-op (StageAndCommit reports committed == false).
-			// This must precede the driver spawn: the phase machine's very first precondition row
-			// scans the fabric including untracked files, and neither file is on the never-tracked
-			// exclude list, so an uncommitted seed or record would fail that check immediately.
-			commitPaths := []string{loomengine.LoomStatusRel(), fabricengine.OriginRecordRel()}
-			commitRec := fabricengine.NewMutations("")
-			commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
-			if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
@@ -157,51 +98,10 @@ Example:
 			// defer here would release it far too early, at RunE return, rather than at the exact
 			// points the steps below release it themselves.
 
-			if _, err := c.reed.Up(); err != nil {
+			if err := c.ensureStatusStrand(); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
-			}
-			statusResult, err := c.reed.Status()
-			if err != nil {
-				_ = bootstrapLock.Release()
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-			strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands)
-			if strandAction == statusStrandReplace {
-				// A tracked-but-dead entry must be removed before adding, because reed's add has no
-				// upsert semantics and would otherwise leave two strands under one display name.
-				// A removal failure is not fatal to the bootstrap: it costs the operator the status
-				// pane for this run, not the run itself.
-				if _, err := c.reed.RemoveStrand(staleGUID, false); err != nil {
-					logger.Warn("loom: could not remove a dead status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
-					strandAction = statusStrandKeep
-				} else {
-					strandAction = statusStrandAdd
-				}
-			}
-			if strandAction == statusStrandAdd {
-				exe, err := os.Executable()
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				addSpec := reedengine.AddSpec{
-					NameOverride: statusStrandDisplayName,
-					Cmd:          statusStrandCmd(shell.ForGOOS(), exe),
-					Display: render.Display{
-						Anchor:                   render.AnchorBelowParent,
-						ShrinkWhenWaitingOnChild: true,
-					},
-				}
-				_, err = c.reed.AddStrand(addSpec)
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
 			}
 
 			// Step 5: probe the run lock non-blockingly -- releasing it immediately when it was

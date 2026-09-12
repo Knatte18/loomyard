@@ -26,6 +26,16 @@
       },
       "source": "./plugins/scribe",
       "category": "productivity"
+    },
+    {
+      "name": "ly",
+      "description": "Operator surface over lyx's loom verbs: skills that drive a loom task, never where sequencing logic lives",
+      "version": "1.0.0",
+      "author": {
+        "name": "Knatte18"
+      },
+      "source": "./plugins/ly",
+      "category": "productivity"
     }
   ]
 }

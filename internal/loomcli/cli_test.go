@@ -33,7 +33,7 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 }
 
 // TestCommand_RegisteredVerbs_ExactSet asserts that the parent command's registered subcommands are
-// exactly loom's six verbs, no more and no fewer -- a genuine exact-set guard rather than a subset
+// exactly loom's seven verbs, no more and no fewer -- a genuine exact-set guard rather than a subset
 // check, so a stray extra verb fails this test as surely as a missing one.
 //
 // cobra auto-adds a "help" command lazily, on Execute/help generation, not at AddCommand time, so
@@ -53,7 +53,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"drive", "pause", "run", "status", "validate-discussion", "validate-plan"}
+	want := []string{"drive", "pause", "run", "status", "step", "validate-discussion", "validate-plan"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {
