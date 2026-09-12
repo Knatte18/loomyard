@@ -153,6 +153,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "loomengine.LoomRunLock", loomengine.LoomRunLock(l), filepath.Join(dotLyxBase, "loom", "run.lock"))
 	assertPath(t, "loomengine.LoomDriverLog", loomengine.LoomDriverLog(l), filepath.Join(dotLyxBase, "loom", "driver.log"))
 	assertPath(t, "loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l), filepath.Join(dotLyxBase, "loom", "bootstrap.lock"))
+	assertPath(t, "loomengine.LoomSelfreportFiled", loomengine.LoomSelfreportFiled(l), filepath.Join(dotLyxBase, "loom", "selfreport-filed.json"))
+	assertPath(t, "loomengine.LoomSelfreportFiledLock", loomengine.LoomSelfreportFiledLock(l), filepath.Join(dotLyxBase, "loom", "selfreport-filed.json.lock"))
 	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
