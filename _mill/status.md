@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-leaf-surfaces
 slug: self-report-tier1
 branch: self-report-tier1
 plan: _mill/plan
@@ -36,6 +36,7 @@ plan-review-r6  '2026-09-12T12:16:57Z'
 plan-fix-r6  '2026-09-12T12:17:45Z'
 planned  '2026-09-12T12:17:59Z'
 implementing  '2026-09-12T12:18:22Z'
+approved-leaf-surfaces  '2026-09-12T12:24:46Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ implementing  '2026-09-12T12:18:22Z'
 ```yaml
 batches:
   - name: leaf-surfaces
-    state: running
+    state: approved
     implementer_session: 93b8e880-8c74-4aaf-81ef-7560f00ab78a
     start_sha: 135e580bd72feba69107021000502c07c9c03a90
+    commit_sha: 43d3ff08bdea189decbfb9dc6e924d4b1612c7cb
     verify_baseline_failures: []
   - name: anomaly-detector
     state: pending
