@@ -43,7 +43,9 @@ batches:
     commit_sha: 17ffaa9e8fd3b3ca0d2ef1713e3006a296b39a04
     verify_baseline_failures: []
   - name: loomshed-interrupt-policy
-    state: pending
+    state: running
+    implementer_session: 556da1d3-7ebf-468c-9776-1c08b48af4ff
+    start_sha: 2410db0ae6d7d5bb252798b10a60d2e4a4136d8b
     verify_baseline_failures: []
   - name: loomcli-shared-helpers
     state: pending
