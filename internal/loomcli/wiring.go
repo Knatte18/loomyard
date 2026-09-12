@@ -263,7 +263,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
 	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
 	// with distinct field sets, not interchangeable constructors of the same shape.
-	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir)
+	// "" for now: the real resolved friction directory is wired in the same change that resolves it
+	// for the other two engines.
+	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, "")
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},

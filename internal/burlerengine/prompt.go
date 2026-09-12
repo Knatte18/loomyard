@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -35,10 +36,12 @@ type instructionFile struct {
 // composePrompt builds the burler round prompt for p, returning the
 // orchestrator string and three instruction files. patternDirective is not
 // gated on target type because loomyard has no target-type classification;
-// a heuristic would risk silently dropping constraints. stencilsDir is the
-// absolute stencils directory composePrompt reads all four round prompts
-// from via stencilstore.Read.
-func composePrompt(stencilsDir string, p *Profile, patternDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
+// a heuristic would risk silently dropping constraints. frictionDirective is
+// the caller-resolved Tier 2 note directive for this round -- an empty string
+// means Tier 2 is off or the read failed, and renders as nothing.
+// stencilsDir is the absolute stencils directory composePrompt reads all
+// four round prompts from via stencilstore.Read.
+func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
 	roundOrchestratorTemplate, err := stencilstore.Read(stencilsDir, "burler-template-round-orchestrator")
 	if err != nil {
 		return "", nil, err
@@ -58,14 +61,16 @@ func composePrompt(stencilsDir string, p *Profile, patternDirective, inst1Path, 
 	if err != nil {
 		return "", nil, err
 	}
+	friction.WarnIfMarkerAbsent(instruction1Template, "burler-step-1-explore", frictionDirective)
 	instruction1Values := map[string]string{
 		"pattern_directive": patternDirective,
+		friction.MarkerName: frictionDirective,
 		"target":            formatFileSet(p.Target),
 		"fasit":             formatFileSet(p.Fasit),
 		"rubric":            p.Rubric,
 		"tool_use_rules":    toolUseRules(p.ToolUse),
 	}
-	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive"})
+	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive", friction.MarkerName})
 	if err != nil {
 		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}
