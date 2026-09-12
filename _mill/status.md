@@ -50,7 +50,9 @@ batches:
     commit_sha: 4f7952c179d321080149e06e433ae489ab9bcb90
     verify_baseline_failures: []
   - name: loomcli-shared-helpers
-    state: pending
+    state: running
+    implementer_session: b25c7dde-f2b4-4d17-a5f2-3efa160b6695
+    start_sha: cb7828ec6b898978cb5ad24e76955001efbaa94f
     verify_baseline_failures: []
   - name: loom-step-verb
     state: pending
