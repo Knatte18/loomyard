@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: loom-step
 branch: loom-step
-plan: null
+plan: _mill/plan
 parent: main
 task: lyx loom step + external supervisor skill
 task_description: |
@@ -22,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-12T10:35:56Z'
 discussion-fix-r5  '2026-09-12T10:40:35Z'
 discussion-fix-r6  '2026-09-12T10:44:36Z'
 discussed  '2026-09-12T10:44:36Z'
+planning  '2026-09-12T10:57:02Z'
 ```
