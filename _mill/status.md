@@ -64,7 +64,9 @@ batches:
     commit_sha: 6487b35281f3d11d8118888e391d17746f130424
     verify_baseline_failures: []
   - name: status-interrupt-policy
-    state: pending
+    state: running
+    implementer_session: 4ce957cd-1223-439b-9c6e-1c94ca806e0e
+    start_sha: 7a88d08e9ef049bcc7834892e7e316bf4d204ead
     verify_baseline_failures: []
   - name: ly-plugin-supervise-skill
     state: pending
