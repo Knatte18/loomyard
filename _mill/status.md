@@ -57,7 +57,9 @@ batches:
     commit_sha: 7bfe016b568fc02b0f805dad364d23799aa057f3
     verify_baseline_failures: []
   - name: loom-step-verb
-    state: pending
+    state: running
+    implementer_session: 458e2020-6c7b-40a9-818b-c9ab0d3d397a
+    start_sha: 45570fe01009fe428f38015cc18bd5dcb84c121c
     verify_baseline_failures: []
   - name: status-interrupt-policy
     state: pending
