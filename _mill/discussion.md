@@ -14,7 +14,7 @@ That means the class of friction lyx can detect *without* anyone watching — a 
 
 loom already writes an exact record of every one of those events.
 `_lyx/loom/status.json` (`shedengine.Status` + loom's `product` payload, pinned by `contracts/specs/loom-status-spec.md`) carries an append-only `history[]` of one entry per producer call, a `state` enum, and an `error` string naming the halt reason verbatim.
-The bouncer segments additionally write a per-round *finding-identity ledger* (`round-<N>-ledger.md`, with `key`/`rounds`/`status` per finding) whose path each Bouncer publishes as its own history entry's `output` field.
+The bouncer segments additionally write a per-round *finding-identity ledger* (`round-<N>-bouncer-ledger.md`, with `key`/`rounds`/`status` per finding) whose path each Bouncer publishes as its own history entry's `output` field.
 Go can therefore file these reports directly off its own history trail — deterministic, no LLM call, and strictly more complete than an LLM's approximate recall of its own session, since it reads an exact record instead of remembering one.
 
 **Why now:** the design was settled with the operator on 2026-09-12 and split out of the former combined `designs/self-report.md` precisely so Tier 1 could build independently of Tier 2 and of `lyx loom step` — no code dependency in any direction, all three buildable in parallel.
@@ -25,9 +25,10 @@ Tier 1 is the cheap half: it costs no tokens, needs no session watching, and wor
 **In:**
 
 - A new pure, no-I/O anomaly detector in `internal/loomengine` (`anomaly.go`), told a `shedengine.Status`, an entry-time observation, and already-parsed ledger models, returning a slice of detected anomalies.
-- Four detection triggers: crash-resume, escalation-to-human, bounce-budget exhaustion, and a review finding still open after N rounds.
-- An exported ledger-read accessor on `internal/shedadapters`, so the ledger's sole parser stays its sole parser while another package can consume the parsed model.
-- Wiring in `internal/loomcli`'s `drive` verb: read the status file at entry, run the phase machine, then detect and file.
+- Five detection triggers: crash-resume, escalation-to-human, bounce-budget exhaustion, producer hard-failure, and a review finding still open after N rounds.
+- An exported ledger-path predicate and ledger-read accessor on `internal/shedadapters`, so the ledger's sole parser stays its sole parser — and the sole owner of "is this path one of mine" — while another package can consume the parsed model.
+- Wiring in `internal/loomcli`'s `drive` verb: read the status file at entry, run the phase machine, re-read the status file, then detect and file — on both `shed.Run`'s success and error returns.
+- An exported default-label accessor on `internal/selfreportengine`, so the `bug` label literal has one owner across the manual verb and the automatic path.
 - A filing path that renders each anomaly into a deterministic title plus a body and calls `selfreportengine.CreateIssue`.
 - A machine-local filed-marker under `.lyx/loom/`, so a resumed run does not re-file an anomaly it already filed.
 - A `selfreport` boolean key in `loom.yaml` (default `true`) plus its template entry, so filing can be switched off.
@@ -55,10 +56,20 @@ Tier 1 is the cheap half: it costs no tokens, needs no session watching, and wor
 
 ### detection-site
 
-- Decision: detection runs in `internal/loomcli`'s `drive` verb — a status read at drive's *entry* (before `shed.Run`), then a post-`Run` scan over the final status plus the ledgers, then filing.
+- Decision: detection runs in `internal/loomcli`'s `drive` verb — a status read at drive's *entry* (before `shed.Run`), then a post-`Run` re-read of the status file plus the ledgers, then filing.
   `drive` is the only production process that ever calls `Shed.Run` (`lyx loom run` spawns `lyx loom drive` detached; see `internal/loomcli/run.go` step 3).
+- Decision (error-path reachability, pinned): the detect-and-file step runs on **both** of `shed.Run`'s returns — the clean `Result` return *and* the `err != nil` return — with `errors.Is(err, shedengine.ErrShedBusy)` as the single skip.
+  `drive.go`'s current tail returns an error envelope immediately on any non-nil `shed.Run` error (`internal/loomcli/drive.go:132-136`), so the step must be lifted above that early return rather than appended after the success envelope.
+  The error envelope's text and `drive`'s exit code stay exactly as they are.
+- Decision (the detector reads the file, never `Result`): the final status handed to the detector comes from a fresh `state.ReadJSONStrict` of the status file after `Run` returns, not from `Result.Reason`/`Result.History`.
 - Rationale: `shedengine` cannot host detection without breaking its Producer-Seam Invariant, and a purely post-hoc scan cannot see a crash-resume at all — `Run`'s step 3b unconditionally overwrites a non-`running` state to `running` before calling the first producer, and a crashed driver leaves `state: running` behind, so the crash signal exists only at the instant the file is first read.
   Taking the entry observation in `drive`, where the file is already read for `loomengine.VerifySeedOwnership`, costs one extra decode and no new architecture.
+  Running on the error path is not optional: a producer hard error persists `state: "failed"` (`internal/shedengine/run.go`'s `callErr != nil` arm) and returns a non-nil error, so skipping that path would drop the whole failure class — and, worse, the entry-time crash observation lives only in this process's memory and is destroyed by `Run`'s own step-3b write, so a crash-resume followed by a failing producer would be lost permanently, never re-detectable by any later `drive`.
+  Reading the file rather than `Result` follows from the same decision: `Result` is explicitly meaningless when the returned error is non-nil (`shedengine.Result`'s own doc comment — every hard-error path returns an unpopulated `Result`), so the file is the only source that is valid on both paths.
+  `ErrShedBusy` is the one skip because that return means this process never ran the machine at all and never owned the run lock, so anything it observed at entry belongs to a live driver, not to a crash.
+- Rejected: running the step only on the clean-`Result` path, which is what the current code shape would give for free.
+  It silently drops `state: failed` and permanently loses any crash-resume that precedes a producer failure.
+  Also rejected: keeping `drive`'s success envelope as the only insertion point and re-deriving the halt reason from `Result` — meaningless on the error path, per above.
 - Rejected: an injected `OnAnomaly func(...)` closure on `Shed` (precedent exists — `Shed.CommitStatus` is exactly that shape) fired in-lock at each transition.
   It would be exact and would fire mid-run, but it puts a network call inside the run's lifetime, hands the generic engine a product-flavoured concept, and buys nothing Tier 1 needs, since nobody is watching for a mid-run issue anyway.
   Also rejected: a standalone `lyx selfreport scan` verb as the only mechanism — it reintroduces the "somebody has to be present" problem the task exists to remove, and would force geometry wiring onto the deliberately geometry-free `selfreportcli`.
@@ -74,24 +85,27 @@ Tier 1 is the cheap half: it costs no tokens, needs no session watching, and wor
 
 ### ledger-access
 
-- Decision: `internal/shedadapters` gains an exported read accessor over the bouncer ledger file (returning an exported model carrying the round number and each entry's key, rounds, and status).
-  `loomcli` calls it; the detector consumes the model and parses nothing.
-- Rationale: `internal/shedadapters/bouncerfiles.go` already declares itself the owner of the three bouncer file contracts and their strict, fail-loud parsers.
-  An exported accessor keeps that ownership intact — the same posture the repo already pins for other formats (Planparser Sole-Parser, Discussionparser Sole-Parser, Summaryparser Sole-Parser).
-  No import cycle: `shedadapters` imports `burlerengine`, `logger`, `shedengine`, `shuttleengine`, `stencil`, `stencilstore`, `summaryparser`, `websterengine` — never `loomengine` — and `loomcli` already imports `shedadapters` today.
+- Decision: `internal/shedadapters` gains **two** exported surfaces — a path predicate ("is this path one of my ledger files") and a read accessor returning an exported model carrying the round number and each entry's key, rounds, and status.
+  `loomcli` calls both; the detector consumes the model and parses nothing.
+- Rationale: `internal/shedadapters/bouncerfiles.go` already declares itself the owner of the three bouncer file contracts and their strict, fail-loud parsers, and `round.go` already owns their filename shapes.
+  Exporting an accessor keeps that ownership intact — the same posture the repo already pins for other formats (Planparser Sole-Parser, Discussionparser Sole-Parser, Summaryparser Sole-Parser) — and exporting the predicate alongside it is what stops the *caller* from having to re-declare either the filename convention or the recipe's row names in order to recognise a ledger pointer (see `### ledger-discovery`).
+  This is a **new production import edge** — `loomcli` → `shedadapters` exists today only in `internal/loomcli/smoke_attachprobe_test.go`, not in production — and it introduces no cycle: `shedadapters` imports `burlerengine`, `logger`, `shedengine`, `shuttleengine`, `stencil`, `stencilstore`, `summaryparser`, `websterengine`, and no `loom*` package at all.
 - Rejected: duplicating a minimal ledger parser in the consuming package — a second reader of a format with a documented owner, guaranteed to diverge.
   Also rejected: extracting the ledger format into its own sole-parser package — real churn across `shedadapters`' four bouncer files for a format with exactly one producer and, after this task, two consumers.
 
 ### trigger-list-and-thresholds
 
-- Decision: four triggers.
+- Decision: five triggers.
   1. **crash-resume** — the entry-time read observed `state: "running"` with a non-empty `history`, meaning a previous driver process died between two persists.
   2. **escalation-to-human** — final `state: "blocked"` with `error == "stuck with no OnStuck target"`.
      Eight rows escalate this way (`Preflight`, `Loom-Preflight`, `Discussion-Write`, `Plan-Write`, `Batchifier`, `Webster`, `Publish`, `Finalize`).
   3. **bounce-budget exhausted** — final `state: "blocked"` with `error == "bounce budget exhausted"`.
-  4. **recurring review finding** — a ledger entry whose `status` is `open` and whose `rounds` list has three or more entries.
-- Rationale: the first three are read straight off fields `Shed` writes verbatim, with the two blocked reasons being exact string literals `internal/shedengine/run.go` sets (`reason := "stuck with no OnStuck target"` and `reason := "bounce budget exhausted"`).
-  The fourth is the design doc's "N repeated review rounds on the same finding", and the bouncer ledger is the only place finding *identity* exists — `status.json`'s `history[]` records producer and outcome, never a finding.
+  4. **producer hard-failure** — final `state: "failed"`, with `error` carried verbatim.
+  5. **recurring review finding** — a ledger entry whose `status` is `open` and whose `rounds` list has three or more entries.
+- Rationale: the first four are read straight off fields `Shed` writes verbatim, with the two blocked reasons being exact string literals `internal/shedengine/run.go` sets (`reason := "stuck with no OnStuck target"` and `reason := "bounce budget exhausted"`).
+  Trigger 4 exists because the error-path decision above makes it reachable: `Run`'s `callErr != nil` arm persists `state: "failed"` and returns the error, and a run the engine itself classified as an engine-level failure a human must resolve is squarely the structural anomaly this tier files.
+  It is distinguished from the two blocked triggers by `state` alone and matches no `error` literal, since the text there is whatever the producer returned.
+  The fifth is the design doc's "N repeated review rounds on the same finding", and the bouncer ledger is the only place finding *identity* exists — `status.json`'s `history[]` records producer and outcome, never a finding.
   Threshold three, because every review segment carries `max_bounces: 5` and the Bouncer's own seed call permanently consumes one unit: firing at three reports the recurrence while the segment is still alive, rather than only after it has already degenerated into trigger 3.
 - Rejected: dropping the ledger read and reporting a per-segment round *count* from `history[]` alone.
   It is cheaper but answers a different question — "this segment took many rounds" rather than "this specific finding survived many rounds" — and the design doc names the latter.
@@ -99,26 +113,58 @@ Tier 1 is the cheap half: it costs no tokens, needs no session watching, and wor
 
 ### ledger-discovery
 
-- Decision: ledger files are discovered by walking the final status's `history[]` and collecting every non-empty `output` value belonging to a Bouncer row, then reading each distinct path through the `shedadapters` accessor.
-  An empty `output` is skipped.
+- Decision: ledger files are discovered by walking the final status's `history[]`, offering **every** non-empty `output` value to `shedadapters`' exported ledger-path predicate, and reading each distinct path the predicate accepts through the exported accessor.
+  The discriminator is therefore the predicate, owned by `shedadapters` — never a row-name list in the caller, and never a filename pattern re-declared in the caller.
+- Decision (three skips, each for its own reason, none of them fatal):
+  1. An **empty** `output` is skipped before the predicate is consulted.
+  2. A non-empty `output` the predicate **rejects** is skipped and never read, so a fail-loud parser is never handed a non-ledger file.
+  3. A path the predicate accepts but whose read or parse **fails** — including a file that no longer exists — is skipped with a `logger.Warn` and contributes no anomaly.
 - Rationale: `Bouncer.settle` sets `shedengine.OutputPointer{Path: ledgerPath(b.cfg.RunDir, round)}` and returns it on **both** the `APPROVED`/`Done` and the `BLOCKING`/`Stuck` branch, and `Shed.Run` persists `output.Path` into the history entry — so the trail from `status.json` to finding identity already exists on disk and needs no geometry derivation and no knowledge of each segment's `run_subdir` recipe key.
-  The skip is required, not defensive: `Bouncer.seedCall` returns `Stuck` with an explicitly empty pointer, so every segment has at least one history entry with no ledger behind it.
-- Rejected: deriving ledger paths from `loomengine.LoomReviewsDir` joined with each segment's `run_subdir` and globbing rounds.
-  That duplicates recipe knowledge (`run_subdir` is a `contracts/recipes/loom-recipe.yaml` config value) in a second place and would silently go wrong on a recipe edit.
+  Each skip closes a real case, not a hypothetical one:
+  - `Bouncer.seedCall` returns `Stuck` with an explicitly empty pointer, so every segment has at least one history entry with no ledger behind it.
+  - **A non-empty `output` is not evidence of a ledger.** `SingleLLMProducer.mapOutcome` returns `shedengine.OutputPointer{Path: spec.OutputFiles[0]}` on its `Done` branch (`internal/shedadapters/singlellm.go`), so the `Discussion-Write`, `Plan-Write`, and `Webster` rows all publish their own artifact paths into `history[].output` too.
+    Without a discriminator the detector would hand `decision-record.md` to a parser that fails loud on it.
+  - Ledger files are ephemeral by construction — they live under `loomengine.LoomReviewsDir` (`.lyx/loom/reviews/`), which that accessor's own doc comment states is never committed — so a `history[].output` path from an earlier machine, or from before a `.lyx` wipe, legitimately points at nothing.
+  Making all three skips non-fatal is the same failure posture the rest of this task takes: a diagnostics side-channel never fails a loom run.
+- Rejected: a row-name check in the caller (`strings.HasSuffix(producer, "-Bouncer")`, or a literal list of the three Bouncer row names).
+  Row names are `contracts/recipes/loom-recipe.yaml` identities, and the recipe's own header warns that a rename there without a matching constant rename breaks resume — a name list in `loomcli` would be a third place to keep in sync.
+  Also rejected: a filename check in the caller (matching `round-%d-bouncer-ledger.md`).
+  That is exactly the string `internal/shedadapters/round.go`'s `ledgerPath` owns, and re-declaring it in the consumer is the divergence the sole-parser posture exists to prevent — which is why the predicate is exported from `shedadapters` instead.
+  Also rejected: deriving ledger paths from `loomengine.LoomReviewsDir` joined with each segment's `run_subdir` and globbing rounds — that duplicates recipe config knowledge and would silently go wrong on a recipe edit.
 
 ### one-issue-per-anomaly
 
-- Decision: one GitHub issue per distinct anomaly, with a deterministic title of the shape `loom anomaly: <kind> — <slug>` plus, for the recurring-finding trigger, the ledger entry's key appended.
-  Labels: the module's existing `bug` default only.
-- Rationale: the title must be deterministic because it is the dedupe key (see below), and one anomaly per issue is what lets each be closed on its own merits.
-  Sticking to the `bug` label avoids depending on a repo label that may not exist — the `loom anomaly:` title prefix already makes the class greppable and filterable.
-- Rejected: one aggregated issue per `drive` invocation listing every anomaly found.
-  It mixes unrelated causes into one thread that can never be cleanly closed, and its title cannot be deterministic without becoming meaningless.
+- Decision: one GitHub issue per distinct anomaly **occurrence**, not one per task per kind.
+  The title carries a discriminator so two genuinely separate occurrences of the same kind are two issues:
+  - Triggers 1–4 (status-derived): `loom anomaly: <kind> — <slug> — <producer>@<history-length>`, where `<producer>` is `current_producer` as observed for that trigger (the entry-time value for crash-resume, the final value for the other three) and `<history-length>` is `len(history)` in the same observation.
+  - Trigger 5 (recurring finding): `loom anomaly: recurring-finding — <slug> — <ledger-key>`.
+    The ledger key is already the finding's identity, so no positional discriminator is added.
+- Decision: the label list for the automatic path is `selfreportengine`'s exported default (see `### label-ownership`), not a literal re-declared in `loomcli`.
+- Rationale: the title must be deterministic because it is the dedupe key (see `### dedupe-marker`), and one anomaly per issue is what lets each be closed on its own merits.
+  Per-occurrence granularity is the right choice because the *whole* point of the marker is to suppress re-filing **the same halt** on every resume, and a once-per-task-per-kind title would overshoot that into suppressing a *second, unrelated* halt: a task that escalates at `Discussion-Write`, gets fixed, and later escalates at `Webster` must file twice.
+  `<producer>@<history-length>` is the smallest discriminator that separates those two cases while still collapsing the resume case, and it is stable rather than clock-derived: `history[]` is append-only and, per `contracts/specs/loom-status-spec.md`, must never be truncated or compacted, so the same halt re-observed on resume yields byte-identical values while any later halt necessarily sits at a longer history.
+  For crash-resume specifically the discriminator does double duty: a crash is observable exactly once (the next `drive`'s entry read, after which step 3b overwrites the state), so distinctness between crash #1 and crash #2 is the only thing the title has to carry.
+- Rejected: the bare `loom anomaly: <kind> — <slug>` title of the first draft.
+  Combined with a title-keyed marker it permanently suppresses every later distinct anomaly of the same kind in the same task — which reads as "detected once, nothing since" and is indistinguishable from a healthy run.
+  Also rejected: a timestamp or round number as the discriminator.
+  A timestamp makes the resume case file a fresh issue every time, defeating the marker; a round number exists only for the ledger trigger.
+  Also rejected: one aggregated issue per `drive` invocation listing every anomaly found — it mixes unrelated causes into one thread that can never be cleanly closed, and its title cannot be deterministic without becoming meaningless.
+
+### label-ownership
+
+- Decision: `internal/selfreportengine` gains an exported default-label accessor (a `DefaultLabels()` function or an exported `bug` constant — the plan picks the spelling), and `internal/selfreportcli/cli.go`'s existing `labels = []string{"bug"}` fallback is switched to use it in the same change.
+  The automatic filing path in `loomcli` calls the same accessor.
+- Rationale: the `bug` default is today a literal inside `internal/selfreportcli/cli.go`'s `runCreate`, not in the engine — so a second caller of `CreateIssue` that wants the same default would have to re-declare the string, leaving two owners of one convention.
+  Moving it to the engine gives it one owner reachable from both callers, and it is a pure refactor: the manual verb's observable behaviour (omit all `--label` flags, get `bug`) is unchanged.
+- Rejected: `loomcli` declaring its own `[]string{"bug"}` literal.
+  One line, but it is the second declaration of a default that already exists, and the two would drift the first time either is reconsidered.
+  Also rejected: having `loomcli` import `selfreportcli` to reach the existing literal — a cli-to-cli import, against the CLI/Cobra Invariant's `<module>cli` → `<module>engine` direction.
 
 ### dedupe-marker
 
 - Decision: a machine-local filed-marker JSON file at `.lyx/loom/selfreport-filed.json`, written through `internal/state`'s locked/atomic typed primitive with its own sibling lock file, holding the set of already-filed anomaly titles.
   A new `loomengine` accessor exposes the path (and the lock path), beside the existing `LoomScratchDir`.
+  Dedupe granularity is therefore whatever the title shape encodes — per-occurrence, per `### one-issue-per-anomaly` — and the marker itself stays a dumb string set with no parsing of its own.
 - Rationale: without a marker, every resume of a blocked run re-files the same escalation issue, which would make the feature worse than useless.
   `.lyx` is the repo's declared home for never-tracked state at the mirrored subpath of the `_lyx` content it relates to (Durable-vs-Ephemeral State Invariant), and `loomengine` already exposes four accessors under exactly that directory (`LoomStatusLock`, `LoomRunLock`, `LoomDriverLog`, `LoomBootstrapLock`).
   Losing the marker — a fresh clone, a `fabric` re-wire — costs at most one duplicate issue, which is the cheapest failure mode available.
@@ -175,7 +221,8 @@ Reads go through `state.ReadJSONStrict[shedengine.Status](statusPath, statusLock
 - `def.OnStuck == ""` → `reason := "stuck with no OnStuck target"`, persisted as `StateBlocked`.
 - `episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces)` → `reason := "bounce budget exhausted"`, persisted as `StateBlocked`.
 
-Both strings also land in `Result.Reason`, so the detector can equally be told `Result.Reason` rather than re-reading `error` — the plan should pick one and pin it, not read both.
+Both strings also land in `Result.Reason` — but the detector reads the **file**, not `Result`, per the `### detection-site` decision: `Result` is documented as meaningless whenever `Run` returns a non-nil error, and the detect-and-file step runs on that path too.
+A third `error` value exists and matters: the `callErr != nil` arm persists `state: "failed"` with the producer's own error text, which is trigger 4 and matches no literal.
 
 **Why crash-resume is not post-hoc detectable.** `Run`'s step 3b: when step 1's read finds `st.State != StateRunning`, it persists `StateRunning` with an empty error *before* calling the producer, explicitly to stop the status file and the status strand describing a paused/blocked/failed run that is in fact already spawning.
 A crashed driver, by contrast, leaves `state: running` behind, because it died between two persists.
@@ -188,12 +235,16 @@ Detect at entry, file after `Run` returns cleanly.
 
 **The bouncer ledger.** `internal/shedadapters/bouncerfiles.go` owns three file contracts: verdict, finding-identity ledger, focus.
 The ledger's parsed model is `ledgerFile{Round int, Entries []ledgerEntry, Prose string}` with `ledgerEntry{Key string, Rounds []int, Status string}`; `parseLedger` is fail-loud and pins `status` to exactly `open` or `resolved`, `round` to a positive int, and every `rounds` element to a positive int.
-Paths come from `ledgerPath(runDir, round)` in `internal/shedadapters/round.go`.
+Paths come from `ledgerPath(runDir, round)` in `internal/shedadapters/round.go`, which formats `round-%d-bouncer-ledger.md` — its siblings are `round-%d-bouncer-verdict.md` and `round-%d-focus.md`, so the exported predicate must accept only the ledger spelling.
+Note `judgeOutputs` in the same file declares all three as one judge pass's `OutputFiles` set and warns that the spawn and every probe must name byte-identical paths — another reason the filename shape stays inside this package.
 Carry-forward of entries across rounds is stated in the judge prompt and deliberately **not** enforced by `parseLedger` — so a `rounds` list of length ≥ 3 is a claim the judge made, not something the parser guarantees, and the detector must treat a short or missing list as "no anomaly" rather than as corruption.
 
 **Where ledgers live.** `runDir` resolves under `loomengine.LoomReviewsDir` = `.lyx/loom/reviews/`, joined with each segment's `run_subdir` (`discussion`, `plan`, `webster`).
 They are ephemeral by construction — `internal/loomengine/config.go`'s `LoomReviewsDir` doc says so explicitly, and the recipe's `Webster-Bouncer` comment repeats it.
 The detector must therefore tolerate a ledger path in `history[].output` that no longer exists on disk.
+
+**Not every `history[].output` is a ledger.** `SingleLLMProducer.mapOutcome` (`internal/shedadapters/singlellm.go`) returns `OutputPointer{Path: spec.OutputFiles[0]}` on its `Done` branch, so `Discussion-Write`, `Plan-Write`, and `Webster` publish their own artifacts into `output` as well.
+This is why ledger discovery needs the `shedadapters`-owned predicate rather than an "is it non-empty" test.
 
 **The three review segments.** `contracts/recipes/loom-recipe.yaml` has seventeen rows.
 `Discussion-Bouncer`/`Discussion-Burler` (segment `Discussion-Review`), `Plan-Bouncer`/`Plan-Burler` (`Plan-Review`), `Webster-Bouncer`/`Webster-Burler` (`Webster-Review`) — each pair with `max_bounces: 5` and a mutual `on_stuck`.
@@ -203,10 +254,13 @@ The Bouncer is the row that publishes the ledger pointer; the Burler row never r
 `targetRepo` is the hardcoded `"Knatte18/loomyard"` constant; `NewGitHubClient` is an exported, swappable package variable (`var NewGitHubClient = githubclient.New`) — that is the seam the tests use, and it is what makes the filing path testable with no network.
 The whole call is bounded by a 30s `createIssueTimeout`, and errors are already classified three ways (token-unresolvable via `githubclient.ErrTokenUnresolvable`, API rejection via `*github.ErrorResponse`, everything else as unreachable).
 `internal/selfreportcli/cli.go` shows the existing caller shape, including the `nil` body pointer convention: `nil` means "omit the body field entirely", which this task will not use — every anomaly issue gets a body.
+The `bug` default is a literal in that file's `runCreate` (`labels = []string{"bug"}` when no `--label` is given), **not** in the engine — which is what the `### label-ownership` decision moves.
 
 **The drive verb.** `internal/loomcli/drive.go` (147 lines) is the whole insertion site.
-Current order: `ShouldAbort` → stat the status path → `VerifySeedOwnership` → `reed.Up()` → `fabricengine.Open` + branch/origin/parent resolution → build `c.env.Landing` → `loomrecipe.New` → `shed.Run(ctx)` → `output.Ok` envelope with `outcome`, `halted_producer`, `reason`, `history_length`.
-The entry observation goes next to `VerifySeedOwnership` (the file is already being read there); the detect-and-file step goes after `shed.Run` returns and before the envelope, and must not alter the envelope's keys.
+Current order: `ShouldAbort` → stat the status path → `VerifySeedOwnership` → `reed.Up()` → `fabricengine.Open` + branch/origin/parent resolution → build `c.env.Landing` → `loomrecipe.New` → `shed.Run(ctx)` → **`if err != nil { output.Err; return }`** → `output.Ok` envelope with `outcome`, `halted_producer`, `reason`, `history_length`.
+The entry observation goes next to `VerifySeedOwnership` (the file is already being read there).
+The detect-and-file step must be inserted **above** that `err != nil` early return, so it runs before either envelope is emitted, and must alter neither envelope's text nor `drive`'s exit code.
+The `ErrShedBusy` skip is the one condition that bypasses it.
 
 **Config.** `internal/loomengine/config.go`'s `Config` mirrors `loom.yaml`'s seven keys today; `LoadConfig` uses `configengine.Load` (**strict**, per the Config Strictness Invariant — loom is in the strict set) with `ConfigTemplate()`, and validates the three model-specs plus rejects negative timeouts.
 The new `selfreport` key must be added to both `Config` and `internal/loomengine/template.yaml`, with a comment in the template matching the existing style.
@@ -232,8 +286,10 @@ From `CONSTRAINTS.md`, the ones this task is bounded by:
 - **Lyxdirs Single-Declarer Invariant** — no production file outside `internal/lyxdirs` names the `_lyx`/`.lyx` literals in path-construction context.
   Use `lyxdirs.DotLyxDirName`.
 - **CLI / Cobra Invariant** — `<module>cli` imports `<module>engine`; engine never imports cli/cobra; non-empty `Short` on every command; errors are JSON via `internal/output`; every `RunE` checks `clihelp.ShouldAbort` first.
-  This task adds no command and no flag, so no help-tree change — but note it also adds a cross-module edge, `loomcli` → `selfreportengine`.
-  The invariant's stated deviations are `stencilcli` → `stencilstore` and `quarrycli` → `planglyph`; whether this new edge needs recording there is a judgement call for the plan, and it must be settled explicitly rather than left implicit.
+  This task adds no command and no flag, so no help-tree change.
+  It does add two new production cross-module edges — `loomcli` → `selfreportengine` and `loomcli` → `shedadapters` — and **neither needs a `CONSTRAINTS.md` entry**, settled here rather than deferred: the invariant's "Package naming" clause governs the `<module>cli` ↔ `<module>engine` *naming* pair, and its two listed deviations (`stencilcli` → `internal/stencilstore`, `quarrycli` → `internal/planglyph`) are both cases where a cli's engine-side counterpart is not named `<module>engine` at all.
+  It is not a ledger of every cross-module import: production `loomcli` already imports `burlerengine`, `websterengine`, `reedengine`, `fabricengine`, `landingshed`, `batcher`, `shedrecipe`, `shuttleengine`, and `planparser` (`internal/loomcli/wiring.go`, `cli.go`) with no entry for any of them.
+  `loomcli` still imports `loomengine`, so its naming pair is intact and the invariant is satisfied unchanged.
 - **Config Strictness Invariant** — loom is in the strict (`configengine.Load`) set.
   A new `loom.yaml` key without a matching template entry breaks every existing config.
 - **Live-Substrate Spawn Observability** — not triggered: this task starts no OS process.
@@ -257,9 +313,11 @@ Discovered during discussion, and load-bearing:
 - **The entry observation must not be acted on before `Run` returns cleanly.**
   A second `drive` racing a healthy driver reads `state: running` and would file a false crash-resume; gating on `Run` not returning `shedengine.ErrShedBusy` is what closes it.
 - **`history[]` must never be read destructively or compacted.**
-  It stores every producer's bounce budget.
-- **A ledger path from `history[].output` may not exist on disk**, and the seed call's history entry has an empty `output`.
-  Both are normal, neither is corruption.
+  It stores every producer's bounce budget — and, after this task, the `<history-length>` half of every anomaly title's dedupe discriminator depends on that same append-only guarantee.
+- **A ledger path from `history[].output` may not exist on disk**, the seed call's history entry has an empty `output`, and a non-empty `output` may name a producer artifact rather than a ledger.
+  All three are normal, none is corruption.
+- **`drive`'s current shape drops the whole error path.** The detect-and-file step has to be inserted above `drive.go`'s existing `if err != nil` early return, not appended after the success envelope, or `state: failed` and any crash-resume preceding a producer failure are lost permanently.
+- **`shedengine.Result` is meaningless on a non-nil error return**, so the final status must be re-read from the file rather than taken from `Result`.
 
 ## Testing
 
@@ -277,7 +335,8 @@ Cases that must be covered:
 - Final `blocked` with `error == "stuck with no OnStuck target"` → escalation.
 - Final `blocked` with `error == "bounce budget exhausted"` → budget exhaustion.
 - Final `blocked` with some other `error` → neither of the two blocked triggers (no over-matching on `state` alone).
-- Final `failed` → not classified as either blocked trigger.
+- Final `failed` with arbitrary `error` text → producer hard-failure, and **not** classified as either blocked trigger.
+- Title discriminators: two escalations at different producers in one status history → two anomalies with different titles; the same halt observed twice (identical `current_producer` and `len(history)`) → byte-identical titles, so the marker collapses them.
 - Ledger entry `status: open` with `rounds` length 3 → recurring finding; length 2 → not; length 5 → one anomaly, not three.
 - Ledger entry `status: resolved` with a long `rounds` list → no anomaly.
 - Multiple independent anomalies in one status → all reported, deterministically ordered (pin the order; an unordered result cannot be table-asserted).
@@ -286,9 +345,15 @@ Cases that must be covered:
 **`internal/loomengine` — the marker accessor.**
 Assert the exact path shape (`.lyx/loom/<file>`) against a fixture `*lyxcwd.Location`, mirroring how `LoomDriverLog` is asserted today, and register the new accessor in `cmd/lyx/notransients_test.go` and `cmd/lyx/constructoranchoring_test.go`.
 
-**`internal/shedadapters` — the exported ledger accessor.**
-The existing unexported `parseLedger` tests already cover the parse grammar; the new tests cover the exported surface only: a well-formed ledger file round-trips into the exported model, a malformed one reports failure rather than a half-filled model, and an absent file reports failure without panicking.
-Use a `t.TempDir()` fixture file — file I/O is not an expensive spawn and stays Tier 1.
+**`internal/shedadapters` — the exported predicate and ledger accessor.**
+The existing unexported `parseLedger` tests already cover the parse grammar; the new tests cover the exported surface only.
+Accessor: a well-formed ledger file round-trips into the exported model, a malformed one reports failure rather than a half-filled model, and an absent file reports failure without panicking.
+Predicate (TDD candidate — it is the discriminator three rejected alternatives hinged on): accepts `ledgerPath(dir, n)` output for several `n`, and rejects `verdictPath`'s and `focusPath`'s output for the same `n`, a plain `decision-record.md`, a `_lyx/plan` directory path, and the empty string.
+Assert the predicate against the real `ledgerPath`/`verdictPath`/`focusPath` helpers rather than against hand-typed filenames, so a future filename change cannot pass the test while breaking discovery.
+Use a `t.TempDir()` fixture file for the accessor — file I/O is not an expensive spawn and stays Tier 1.
+
+**`internal/selfreportengine` + `internal/selfreportcli` — the label move.**
+Assert the exported default is exactly `["bug"]`, and that `selfreportcli`'s existing no-`--label` behaviour is unchanged — `cli_test.go` already covers that case, so this is a refactor the existing test must keep passing, not new coverage.
 
 **The filing path (TDD candidate).**
 Swap `selfreportengine.NewGitHubClient` — the package variable that exists for exactly this — and assert: one `Issues.Create` call per detected anomaly; the rendered title matches the deterministic shape; the body contains the slug, the halt reason, and (for a recurring finding) the ledger key and rounds; the label list is the `bug` default.
@@ -297,6 +362,12 @@ Then the posture cases: a `CreateIssue` error leaves that title out of the marke
 **Marker round-trip.**
 Write, read back, confirm the set survives; confirm a second detect-and-file over the identical status files nothing.
 This is the regression test for the "every resume re-files the same issue" failure the marker exists to prevent — it deserves its own named test, not a clause inside another.
+Its counterpart is equally load-bearing and equally deserves its own name: a status whose history has advanced to a *second*, distinct halt files a new issue despite the marker already holding the first halt's title.
+That is the over-suppression failure the title discriminator exists to prevent, and a test that only covers the collapse direction would pass on a design that files exactly once per task forever.
+
+**Ledger discovery against a mixed history.**
+A single `history[]` containing: an empty `output` (the Bouncer seed call), a `Discussion-Write` entry whose `output` is `decision-record.md`, a Bouncer entry whose `output` is a real ledger file, and a Bouncer entry whose ledger path no longer exists.
+Assert exactly one ledger is read, the producer artifact is never opened, and neither skip produces an anomaly or an error.
 
 **Config.**
 `selfreport` absent from a `loom.yaml` → strict load supplies the template's `true`.
@@ -306,18 +377,26 @@ Follow `config_test.go`'s existing shape.
 **`internal/loomcli` — the drive wiring.**
 A white-box test asserting the entry observation is taken before `shed.Run` and that the detect-and-file step runs after it, with the envelope's four keys (`outcome`, `halted_producer`, `reason`, `history_length`) unchanged.
 `internal/loomcli/wiring_test.go` and `wiring_commitstatus_test.go` are the precedent for testing a `drive`/`run` seam without a real run.
-One case must assert that a `shedengine.ErrShedBusy` return files nothing at all.
+Three cases are mandatory, one per branch of the error-path decision:
+
+- `shed.Run` returns a clean `Result` → detect-and-file runs, success envelope unchanged.
+- `shed.Run` returns a non-nil error that is **not** `ErrShedBusy` → detect-and-file still runs, and the error envelope's text and exit code are byte-identical to today's.
+- `shed.Run` returns `shedengine.ErrShedBusy` → nothing is detected and nothing is filed.
+
+The middle case is the regression test for the reachability defect; without it the natural implementation (append after the success envelope) passes every other test in this list.
 
 ## Q&A log
 
 - **Q:** Where does detection run — post-hoc in `drive`, an injected `shedengine` closure, or a standalone scan verb? **A:** [auto-pick] Post-hoc scan in `drive`, plus an entry-time status read for crash-resume. **Why:** `shedengine`'s Producer-Seam Invariant pins its imports to stdlib/`state`/`lock`, and `drive` is the only production process that ever calls `Shed.Run`; crash-resume is the one signal a purely post-hoc read cannot see, because `Run`'s step 3b overwrites a non-`running` state before the first producer call.
 - **Q:** Which package owns the detector? **A:** [auto-pick] `anomaly.go` in `internal/loomengine`, pure over told inputs. **Why:** `loomengine` already imports `shedengine` and already houses exactly this shape in `coherence.go` — a pure, no-I/O, exhaustively table-tested Tier-1 validator over a decoded `shedengine.Status`; keeping it pure also keeps `loomengine` free of a `shedadapters` import.
-- **Q:** How does the detector see finding identity? **A:** [auto-pick] `shedadapters` gains an exported ledger accessor; `loomcli` reads and hands the parsed models in. **Why:** `bouncerfiles.go` already declares itself owner of the bouncer file contracts and their strict parsers, matching the repo's other sole-parser invariants; `loomcli` already imports `shedadapters`, and `shedadapters` never imports `loomengine`, so there is no cycle.
-- **Q:** Which triggers, at which thresholds? **A:** [auto-pick] Four — crash-resume, escalation-to-human, bounce-budget exhausted, and a ledger entry still `open` after ≥3 rounds. **Why:** the first three read exact literals `Shed.Run` writes verbatim; the fourth is the design doc's "same finding" clause, which only the ledger can answer. Threshold 3 against `max_bounces: 5` (one unit of which the Bouncer's seed call permanently consumes) fires while the segment is still alive rather than only after it has degenerated into the exhaustion trigger.
-- **Q:** How are ledger files found? **A:** [auto-pick] By walking `history[].output` for non-empty Bouncer pointers. **Why:** `Bouncer.settle` publishes the ledger path on both the `Done` and `Stuck` branches and `Shed.Run` persists it, so the trail already exists on disk — deriving paths from `LoomReviewsDir` + `run_subdir` instead would duplicate recipe config knowledge. The empty-pointer skip is required, not defensive: `seedCall` returns `Stuck` with no pointer.
-- **Q:** One issue per anomaly, or one aggregate per run? **A:** [auto-pick] One per anomaly, deterministic title, `bug` label only. **Why:** the title is the dedupe key so it must be deterministic, one anomaly per issue is independently closable, and sticking to the existing default label avoids depending on a repo label that may not exist.
+- **Q:** How does the detector see finding identity? **A:** [auto-pick] `shedadapters` gains an exported ledger accessor *and* an exported ledger-path predicate; `loomcli` reads and hands the parsed models in. **Why:** `bouncerfiles.go` already declares itself owner of the bouncer file contracts and their strict parsers, and `round.go` owns their filename shapes, matching the repo's other sole-parser invariants. This is a new production edge (`loomcli` imports `shedadapters` only in `smoke_attachprobe_test.go` today) and introduces no cycle, since `shedadapters` imports no `loom*` package.
+- **Q:** Which triggers, at which thresholds? **A:** [auto-pick] Five — crash-resume, escalation-to-human, bounce-budget exhausted, producer hard-failure, and a ledger entry still `open` after ≥3 rounds. **Why:** the first four read exact fields `Shed.Run` writes verbatim (the two blocked reasons are exact literals; `failed` matches on `state` alone since its `error` is whatever the producer returned). The fifth is the design doc's "same finding" clause, which only the ledger can answer. Threshold 3 against `max_bounces: 5` (one unit of which the Bouncer's seed call permanently consumes) fires while the segment is still alive rather than only after it has degenerated into the exhaustion trigger.
+- **Q:** How are ledger files found, given that non-Bouncer rows also publish a non-empty `output`? **A:** [auto-pick] Every non-empty `output` is offered to `shedadapters`' exported ledger-path predicate; only accepted paths are read. **Why:** `Bouncer.settle` publishes the ledger path on both the `Done` and `Stuck` branches and `Shed.Run` persists it, so the trail exists on disk — but `SingleLLMProducer.mapOutcome` publishes producer artifacts the same way, so "non-empty" is not a discriminator. Both candidate discriminators (row names, filename shape) are knowledge another package owns, so the predicate is exported from the owner rather than re-declared in the caller. Three skips, all non-fatal: empty pointer (`seedCall`), predicate rejection, and read/parse failure including an already-wiped ephemeral ledger.
+- **Q:** Does the detect-and-file step run when `shed.Run` returns an error? **A:** [auto-pick] Yes, on both returns, with `ErrShedBusy` the single skip — and the step is inserted above `drive.go`'s existing `if err != nil` early return. **Why:** the `callErr != nil` arm persists `state: "failed"`, so the natural "append after the success envelope" shape would drop that whole class — and because the entry-time crash observation lives only in this process's memory and is destroyed by `Run`'s own step-3b write, a crash-resume followed by a failing producer would be lost permanently, unrecoverable by any later `drive`. It also forces the final status to be re-read from the file, since `Result` is documented meaningless on an error return.
+- **Q:** One issue per anomaly, or one aggregate per run — and per task or per occurrence? **A:** [auto-pick] One per *occurrence*, with `<producer>@<history-length>` in the title for the status-derived triggers and the ledger key for the recurring-finding trigger. **Why:** the marker exists to suppress re-filing the same halt on resume, but a bare `<kind> — <slug>` title overshoots into suppressing every later distinct halt in the same task — a task that escalates at `Discussion-Write`, gets fixed, then escalates at `Webster` must file twice. `history[]` is append-only and contractually never compacted, so that discriminator is stable across resumes of one halt while necessarily differing for any later one; a timestamp would defeat the marker and a round number exists only for the ledger trigger.
+- **Q:** Who owns the `bug` label default for the automatic path? **A:** [auto-pick] `selfreportengine` gains an exported default, and `selfreportcli`'s existing literal switches to it. **Why:** the default lives today as a literal in `selfreportcli`'s `runCreate`, so a second `CreateIssue` caller would re-declare the string and leave two owners of one convention. Moving it to the engine is a pure refactor with no behaviour change to the manual verb, and it avoids a cli-to-cli import.
 - **Q:** How is re-filing on every resume prevented? **A:** [auto-pick] A machine-local `.lyx/loom/selfreport-filed.json` marker via `internal/state`, keyed by title. **Why:** `.lyx` is the declared home for never-tracked state at the mirrored subpath, and `loomengine` already exposes four accessors in that exact directory. A durable marker would need a weft commit at a boundary `drive` does not own; network dedupe adds a fallible call per anomaly per run and breaks the moment someone closes an issue without fixing the cause. Marker loss costs at most one duplicate issue.
 - **Q:** On by default, or opt-in? **A:** [auto-pick] On by default, with `selfreport: false` in `loom.yaml` to disable. **Why:** the tier's whole argument is that it costs nothing and needs no watcher, so opt-in would leave the unattended case filing nothing — but a fork or CI run must be able to stop filing into the hardcoded upstream target. Strict config means the key must ship in `template.yaml`, whose `selfreport: true` line is what makes the default true despite `bool`'s `false` zero value.
 - **Q:** What happens when GitHub is unreachable? **A:** [auto-pick] `logger.Warn` and continue; the run's outcome, exit code, and envelope are untouched, and the title stays out of the marker so the next run retries. **Why:** a diagnostics side-channel must never turn a completed loom run into a reported failure; `Bouncer.runSeedSpawn` sets the same precedent, and omitting the marker write gives a retry with no retry loop.
 - **Q:** What goes in the issue body? **A:** [auto-pick] Anomaly kind, slug and parent, final `state`/`current_producer`/`error` verbatim, the relevant history slice, and the ledger key/rounds/status for a recurring finding. **Why:** the reader will not have the worktree — the status file is under `_lyx` and the ledgers under `.lyx`, in a worktree that may already be torn down — and every field named is already in hand at filing time.
-- **Q:** Does the new `loomcli` → `selfreportengine` edge need recording as a CLI/Cobra Invariant deviation? **A:** [auto-pick] Flagged for the plan to settle explicitly rather than silently introduced. **Why:** the invariant names two existing deviations (`stencilcli` → `stencilstore`, `quarrycli` → `planglyph`), so a third cross-module edge is exactly the kind of thing that should be either recorded or consciously judged out of scope — not left implicit. This is the one open item handed forward.
+- **Q:** Do the new `loomcli` → `selfreportengine` and `loomcli` → `shedadapters` edges need recording as CLI/Cobra Invariant deviations? **A:** [auto-pick] No, and this is settled here rather than handed to the plan. **Why:** the invariant's two listed deviations (`stencilcli` → `stencilstore`, `quarrycli` → `planglyph`) are both cases where a cli's engine-side counterpart is *not named* `<module>engine`; the clause governs that naming pair, not every cross-module import. Production `loomcli` already imports `burlerengine`, `websterengine`, `reedengine`, `fabricengine`, `landingshed`, `batcher`, `shedrecipe`, `shuttleengine`, and `planparser` with no entry for any of them, and it still imports `loomengine`, so its naming pair is intact. No `CONSTRAINTS.md` change; nothing is handed forward.
