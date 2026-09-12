@@ -178,7 +178,7 @@ The validation discipline itself is unchanged — the same distinct-error-per-fi
   - The spawn's `Prompt` names the friction directory.
   - After a successful spawn, the directory is archived to the exact timestamped sibling the injected clock implies **and recreated empty** — assert both the archive's existence and that the original path exists and is empty.
     A second `Reflect` against the same location then reports skipped rather than re-spawning.
-  - A `Shuttle` error, `shuttleengine.OutcomeDied`, and `shuttleengine.OutcomeTimeout` each yield `Report.Status == StatusFailed` with a **nil** error, **and the friction directory is left exactly as it was** — assert the original path still exists with its notes and that no timestamped archive sibling was created.
+  - A `Shuttle` error, `shuttleengine.OutcomeDied`, `shuttleengine.OutcomeTimeout`, and `shuttleengine.OutcomeAsking` each yield `Report.Status == StatusFailed` with a **nil** error, **and the friction directory is left exactly as it was** — assert the original path still exists with its notes and that no timestamped archive sibling was created.
     Assert both halves: a runtime failure leaking out as a non-nil error would defeat the decision that the reflection step can never change the run's outcome.
   - A stale `friction.ReportFileName` present alongside a real note before `Reflect` runs is deleted before the spec is composed, so the composed `Spec.OutputFiles` entry does not already exist.
   - A malformed `Deps` is the **only** case yielding a non-nil error: assert one case per validated field — a nil `Shuttle`, an empty `FrictionDir`, a relative `FrictionDir`, an empty `ArchivePrefix`, and an empty `StencilsDir`.

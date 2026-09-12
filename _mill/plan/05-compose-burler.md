@@ -55,6 +55,7 @@ The external interface batch 7 consumes is `burlerengine.New`'s fifth parameter.
   - `internal/burlerengine/config.go`
   - `internal/stencil/stencil.go`
   - `internal/pattern/pattern.go`
+  - `internal/logger/logger.go`
 - **Edits:**
   - `internal/burlerengine/engine.go`
   - `internal/burlerengine/profile.go`
@@ -74,7 +75,11 @@ The external interface batch 7 consumes is `burlerengine.New`'s fifth parameter.
   Document in `New`'s doc comment why it is told rather than derived: `burlerengine` must not import `loomengine`, and `burlerengine.Geometry` is `internal/hubgeom`/`internal/standalonegeom`'s to construct under the Told-Geometry Invariant, so an explicit constructor parameter is the remaining told seam.
   An empty value means Tier 2 is off for this engine.
 
-  In `Engine.Run`, immediately after the existing `pattern.Directive` call at `internal/burlerengine/engine.go:104`, resolve `notePath := friction.NotePath(e.frictionDir, opts.NoteID)` and `frictionDirective, err := friction.Directive(notePath, e.stencilsDir, friction.RoleReviewFix)`, wrapping an error as `fmt.Errorf("burler: %w", err)` exactly as the `pattern.Directive` error is wrapped.
+  In `Engine.Run`, immediately after the existing `pattern.Directive` call at `internal/burlerengine/engine.go:104`, resolve `notePath := friction.NotePath(e.frictionDir, opts.NoteID)` and `frictionDirective, err := friction.Directive(notePath, e.stencilsDir, friction.RoleReviewFix)`.
+  A non-nil error here is **swallowed, never returned**: log it at `Warn` via `internal/logger` naming the role and the stencil, and continue with an empty directive string, exactly as if Tier 2 were off.
+  Do **not** wrap it as `fmt.Errorf("burler: %w", err)` the way the `pattern.Directive` error one line above is wrapped — that error propagates out of `Run` and is treated as a full task failure by the calling producer, which would kill the run over optional bookkeeping.
+  The `pattern.Directive` call itself keeps its existing propagating handling unchanged;
+  see the overview's "a composer swallows a `friction.Directive` error" Shared Decision for why the two adjacent calls are deliberately not symmetrical.
   Pass `frictionDirective` into `composePrompt` as a new parameter beside `patternDirective`.
 
   **`internal/burlerengine/prompt.go`.**

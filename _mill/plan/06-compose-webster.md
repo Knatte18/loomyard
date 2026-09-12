@@ -84,6 +84,7 @@ It does not land on `websterengine.Geometry`, because `internal/hubgeom` and `in
   - `internal/pattern/pattern.go`
   - `internal/stencil/stencil.go`
   - `internal/stencilstore/reconcile.go`
+  - `internal/logger/logger.go`
 - **Edits:**
   - `internal/websterengine/render.go`
   - `internal/websterengine/beginbatch.go`
@@ -109,7 +110,12 @@ It does not land on `websterengine.Geometry`, because `internal/hubgeom` and `in
 
   **Composers.**
   Give each of the four composers a new trailing `notePath string` parameter and, inside each, resolve `friction.Directive(notePath, stencilsDir, <role>)` with the role from the discussion's own table: `friction.RoleImplementer` for `RenderForkPrompt`, `RenderRecoveryPrompt`, and `RenderIntegrationPrompt`, and `friction.RoleOrchestrator` for `RenderMasterPrompt`, which never edits code and only forks.
-  Wrap a directive error in each composer's own existing `fmt.Errorf("webster: ...: %w", err)` house style.
+
+  A non-nil `friction.Directive` error is **swallowed, never returned**: log it at `Warn` via `internal/logger` naming the role and the stencil, and continue with an empty directive string, exactly as if Tier 2 were off.
+  Do **not** wrap it in each composer's own `fmt.Errorf("webster: ...: %w", err)` house style — a returned error fails the prompt render and therefore the whole run, over optional bookkeeping.
+  The existing `pattern.Directive` error handling in `RenderRecoveryPrompt` (`:184-186`) and `RenderMasterPrompt` (`:271-273`) is left exactly as it is;
+  see the overview's "a composer swallows a `friction.Directive` error" Shared Decision for why the two adjacent calls are deliberately not symmetrical.
+  `internal/websterengine` already uses `internal/logger` in `strand.go`, `integration.go`, and `runlevel.go`, but `render.go` itself does not import it today — add the import to that file.
 
   Each composer adds `friction.MarkerName` to its `values` map and calls `friction.WarnIfMarkerAbsent` after obtaining its template bytes and before filling, passing the stencil name whose file actually carries the marker: `"webster-prefix-fork"` for `RenderForkPrompt`, `"webster-prefix-recovery"` for `RenderRecoveryPrompt`, `"webster-template-integration"` for `RenderIntegrationPrompt`, and `"webster-template-master"` for `RenderMasterPrompt`.
   For the two joined templates the bytes passed to the helper are the **composed** bytes `composeForkTemplate` / `composeRecoveryTemplate` returned, since those are what will actually be filled.

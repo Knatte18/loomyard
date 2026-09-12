@@ -133,6 +133,17 @@ batches:
   failing a successful, already-merged run because an optional bookkeeping agent timed out is strictly worse than filing nothing.
 - **Applies to:** all batches
 
+### Decision: a composer swallows a `friction.Directive` error, never propagates it
+
+- **Decision:** each of the seven composers calls `friction.Directive`, and on a non-nil error logs it at `Warn` via `internal/logger` — naming the role and the stencil — and continues with an **empty** directive, exactly as if Tier 2 were off.
+  The error is never wrapped and returned out of `loomengine.DiscussionSpec` / `loomengine.PlanSpec`, `burlerengine.Engine.Run`, or any of the four `websterengine` `Render*Prompt` functions.
+  This is deliberately **unlike** the `pattern.Directive` call sitting immediately beside it in four of those composers, which does propagate (`internal/loomengine/plan.go:71-74`, `internal/burlerengine/engine.go:104-107`).
+- **Rationale:** `friction.Directive`'s only error path is a stencil read behind an already-successfully-read producer template, which the "every Tier 2 failure is a `Warn`" decision above names explicitly as a `Warn`-only case.
+  Propagating it returns an error out of a Spec/Result constructor, which `shedengine.Run`'s `callErr != nil` branch treats as a full task failure — so with Tier 2 defaulting to on, one transient stencil-read failure at Discussion-Write, Plan-Write, a Burler round, or any webster prompt render would kill the whole task over optional bookkeeping.
+  `pattern.Directive` propagating is correct for PATTERN, whose directive carries binding constraints an agent must not silently lose;
+  a friction note is optional by construction, so the two must not be treated alike merely because they sit on adjacent lines.
+- **Applies to:** 04-compose-loom, 05-compose-burler, 06-compose-webster
+
 ### Decision: documentation lands with the task, not with a single card
 
 - **Decision:** `CONSTRAINTS.md`'s new Friction Leaf Invariant lands in batch 1 (with the package it constrains), and `docs/overview.md`, `manifest/roadmap.md`, and `manifest/designs/self-report-tier2.md` land in batch 8.

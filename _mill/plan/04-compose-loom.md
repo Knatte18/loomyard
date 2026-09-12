@@ -55,6 +55,7 @@ batch 7 changes nothing in `loomengine`.
   - `internal/stencil/stencil.go`
   - `internal/stencilstore/reconcile.go`
   - `internal/pattern/pattern.go`
+  - `internal/logger/logger.go`
 - **Edits:**
   - `internal/loomengine/prompt.go`
   - `internal/loomengine/discussion.go`
@@ -68,7 +69,10 @@ batch 7 changes nothing in `loomengine`.
   The stem is the producer row's own name, which is stable across sites;
   `friction.NotePath` supplies the across-invocations half, which matters here because `Discussion-Write` is re-entered whenever `Discussion-Validate` bounces to it and re-executes on every crash-resume.
   Resolve the directive with `friction.Directive(notePath, stencilsDir, friction.RoleInterview)` and pass it into `composePrompt` as a new trailing parameter.
-  A directive error wraps as `fmt.Errorf("loom: DiscussionSpec: %w", err)`, matching the function's existing wrapping.
+  A non-nil directive error is **swallowed, never returned**: log it at `Warn` via `internal/logger` naming the role and the stencil, and continue with an empty directive string, exactly as if Tier 2 were off.
+  Do not wrap it as `fmt.Errorf("loom: DiscussionSpec: %w", err)` the way this function's other errors are wrapped — propagating it would return an error out of a Spec constructor, which `shedengine.Run` treats as a full task failure, killing the run over optional bookkeeping.
+  This deliberately differs from the `pattern.Directive` call in `PlanSpec` beside it;
+  see the overview's "a composer swallows a `friction.Directive` error" Shared Decision for why the two are not treated alike.
 
   **`internal/loomengine/prompt.go`.**
   `composePrompt` gains a trailing `frictionDirective string` parameter, adds `friction.MarkerName` to its `values` map, calls `friction.WarnIfMarkerAbsent(template, "loom-template-discussion", frictionDirective)` after reading the template and before filling, and converts its `stencil.Fill(template, values)` call at `internal/loomengine/prompt.go:30` to `stencil.FillOptional(template, values, []string{friction.MarkerName})`.
@@ -77,7 +81,8 @@ batch 7 changes nothing in `loomengine`.
 
   **`internal/loomengine/plan.go`.**
   In `PlanSpec`, resolve `frictionDir` and the note path the same way, with the stem `"Plan-Write"` — re-entered whenever `Plan-Validate` or `Plan-Revalidate` bounces, so it needs the same non-clobbering treatment.
-  Resolve the directive with `friction.Directive(notePath, stencilsDir, friction.RoleImplementer)` and pass it into `composePlanPrompt` as a new trailing parameter.
+  Resolve the directive with `friction.Directive(notePath, stencilsDir, friction.RoleImplementer)` and pass it into `composePlanPrompt` as a new trailing parameter, swallowing a non-nil error with a `logger.Warn` exactly as `DiscussionSpec` does above.
+  The `pattern.Directive` call two lines earlier keeps its existing propagating error handling unchanged.
   `composePlanPrompt` adds `friction.MarkerName` to its `values` map, calls `friction.WarnIfMarkerAbsent(template, "loom-template-plan", frictionDirective)`, and widens its existing `stencil.FillOptional` optional-names slice at `internal/loomengine/plan.go:49` from `[]string{"pattern_directive"}` to `[]string{"pattern_directive", friction.MarkerName}` — this composer needs no `Fill` -> `FillOptional` conversion.
 
   Neither Spec factory gains a new exported parameter, and neither creates the friction directory: creation is owned by the three call sites batch 7 wires, and a composer that created it would be one of seven racing creators.

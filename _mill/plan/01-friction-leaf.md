@@ -30,6 +30,7 @@ Batch-local decision that differs from the overview's Shared Decisions: none.
   - `internal/stencil/stencil.go`
   - `internal/stencilstore/reconcile.go`
   - `internal/burlerengine/engine.go`
+  - `internal/logger/logger.go`
 - **Edits:** none
 - **Creates:**
   - `internal/friction/friction.go`
