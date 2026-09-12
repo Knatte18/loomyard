@@ -81,6 +81,12 @@ type BeginDeps struct {
 	Injector Injector
 	Reed     shuttleengine.ReedOps
 	Geom     Geometry
+
+	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
+	// is off. It lives here rather than on Geometry because internal/hubgeom and
+	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
+	// this value needs no geometry derivation.
+	FrictionDir string
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.

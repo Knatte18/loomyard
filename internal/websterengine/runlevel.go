@@ -118,6 +118,12 @@ type RunDeps struct {
 	Geom       Geometry
 	RefMatcher RefMatcher
 
+	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
+	// is off. It lives here rather than on Geometry because internal/hubgeom and
+	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
+	// this value needs no geometry derivation.
+	FrictionDir string
+
 	// Clock is the integration stage's bounded-wait clock seam: nil selects
 	// the production realClock, and a test injects a fake so the
 	// missing-integration-report wait replays instantly instead of blocking

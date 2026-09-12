@@ -60,6 +60,12 @@ type RecoverDeps struct {
 	Reed       shuttleengine.ReedOps
 	ShuttleCfg shuttleengine.Config
 	Geom       Geometry
+
+	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
+	// is off. It lives here rather than on Geometry because internal/hubgeom and
+	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
+	// this value needs no geometry derivation.
+	FrictionDir string
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true
