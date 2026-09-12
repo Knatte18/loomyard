@@ -108,7 +108,7 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 	// reports against LoomYard are the primary use case for this command.
 	labels, _ := cmd.Flags().GetStringArray("label")
 	if len(labels) == 0 {
-		labels = []string{"bug"}
+		labels = selfreportengine.DefaultLabels()
 	}
 
 	url, number, err := selfreportengine.CreateIssue(title, body, labels)

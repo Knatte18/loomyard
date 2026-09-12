@@ -9,11 +9,8 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; a thin `/ly-*` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, cleaning up on a detected crash, and filing friction via `lyx selfreport create`. Supersedes `llm-driven-loom-alternative`. Independent of self-report Tier 1 — no code dependency either direction, and self-report Tier 2 has since shipped independently of both.
+1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; a thin `/ly-*` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, cleaning up on a detected crash, and filing friction via `lyx selfreport create`. Supersedes `llm-driven-loom-alternative`. Independent of the now-Done self-report Tier 1 item — no code dependency either direction — and self-report Tier 2 has since shipped independently of both.
    See [designs/loom-step.md](designs/loom-step.md).
-
-1. **self-report Tier 1: Go-detected structural anomalies** — loom's own status file already records crash-resumes, `stuck` escalations, and repeated review rounds; file these directly via `lyx selfreport create`, no LLM call, no session watching needed. Independent of the `lyx loom step` item above, and self-report Tier 2 has since shipped independently of both.
-   See [designs/self-report-tier1.md](designs/self-report-tier1.md).
 
 ## Someday
 
@@ -92,6 +89,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **Adopt quarry's glyph alphabet as the plan alphabet** — `planparser`/the validator switched a card's symbol declarations from bare names to quarry glyphs, resolved via batched `Resolve`, with placeholder handles (`plan:<expected-glyph>`) for symbols a plan itself creates and mechanical drift detection against the code. Superseded the Someday `quarry-backed plan symbol verification` item.
    See [designs/quarry-glyph-plan-alphabet.md](designs/quarry-glyph-plan-alphabet.md).
+
+1. **self-report Tier 1: Go-detected structural anomalies** — loom's own status file now records crash-resumes, `stuck` escalations, and repeated review rounds, and files these directly via the shipped `selfreport` primitive, with no LLM call and no session watching needed.
+   See [designs/self-report-tier1.md](designs/self-report-tier1.md).
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `status` now reports a `merge_in_progress` boolean, whether THIS pair has a fabric merge parked.
    See the `internal/fabricengine` package documentation's merge section.
