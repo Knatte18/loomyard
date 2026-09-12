@@ -60,7 +60,9 @@ batches:
     commit_sha: 3e90e90d6352bfdb9a5f1e2aa6a251f14bd8bd40
     verify_baseline_failures: ["FAIL\t./internal/frictionengine/... [setup failed]"]
   - name: compose-burler
-    state: pending
+    state: running
+    implementer_session: 7ac01de4-b92d-4e02-b178-59812f9c7c26
+    start_sha: a35f5992f5f6576105589679102d611d40c882c0
     verify_baseline_failures: []
   - name: compose-webster
     state: pending
