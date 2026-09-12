@@ -30,7 +30,7 @@ The first six derive directly from `shedengine.StepResult`; the last four are co
 - `outcome` — the producer's outcome as a string.
 - `output` — the artifact path the producer wrote, or empty.
 - `next` — the row name `shed.Step` expects to dispatch next.
-- `state` — the phase-machine state after this step (e.g. `running`, `stuck`, `blocked`, a terminal state).
+- `state` — the phase-machine state after this step (e.g. `running`, `paused`, `blocked`, a terminal state).
 - `reason` — the human-facing explanation attached to `state`, when one exists.
 - `continue` — derived as `state == "running"`, so a caller never carries its own copy of the state vocabulary.
 - `history_length` — the length of the persisted step history after this step.
