@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomshed-interrupt-policy
+phase: approved-loomcli-shared-helpers
 slug: loom-step
 branch: loom-step
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-09-12T11:20:52Z'
 implementing  '2026-09-12T11:21:18Z'
 approved-shedengine-step  '2026-09-12T11:26:39Z'
 approved-loomshed-interrupt-policy  '2026-09-12T11:28:50Z'
+approved-loomcli-shared-helpers  '2026-09-12T11:37:59Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     commit_sha: 4f7952c179d321080149e06e433ae489ab9bcb90
     verify_baseline_failures: []
   - name: loomcli-shared-helpers
-    state: running
+    state: approved
     implementer_session: b25c7dde-f2b4-4d17-a5f2-3efa160b6695
     start_sha: cb7828ec6b898978cb5ad24e76955001efbaa94f
+    commit_sha: 7bfe016b568fc02b0f805dad364d23799aa057f3
     verify_baseline_failures: []
   - name: loom-step-verb
     state: pending
