@@ -1,0 +1,25 @@
+MILL_REVIEW_BEGIN
+# Review: self-report Tier 1: Go-detected structural anomalies — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 4.5 (Anthropic), tool-use mode
+reviewed_file: plan/
+date: 2026-09-12
+```
+
+## Findings
+
+### [NIT:consistency] "third member of the existing ... pair" is self-contradictory
+**Location:** batch 3 / card 9 (smoke suite disarm doc comment) **Issue:** The requirement asks the doc comment to call the new `selfreport: false` override "the third member of the existing providerless/fast-deadline pair," but a pair by definition has two members, so the phrase reads as internally contradictory. **Fix:** Word the requirement as "extends the existing providerless/fast-deadline pair into a trio" or similar, so the shipped doc comment doesn't repeat the contradiction.
+
+## Verification notes
+
+Cross-checked the plan's mechanism claims directly against source and found them accurate: `configengine.Load`'s strict `MissingKeys` gate and its exact error text (`internal/configengine/config.go`), the two `StateBlocked` error literals and the `StateFailed` verbatim-error path (`internal/shedengine/run.go`), `lock.TryAcquireWriteLock`'s non-blocking probe-then-release shape reused from `run.go`'s own step 5, `state.ReadJSONStrict`/`state.WriteJSON`'s no-mkdir-on-read vs. mkdir-on-write asymmetry (harmless here given the "read failure = empty marker" posture), the `LoomBootstrapLock` three-site/one-row pattern in `constructoranchoring_test.go`/`notransients_test.go` that card 3 mirrors, `writeLoomConfigWithKey`'s existing shape in `config_test.go`, and `drive.go`'s current `shed.Run` / early-return structure that card 9's placement instruction targets. `manifest/roadmap.md`'s repeated-`1.` numbering and `quarry-glyph-plan-alphabet.md`'s Done-doc header shape both match what the plan assumes. The `## All Files Touched` list is an exact union of every card's `Edits:`/`Creates:` across all three batches. The Batch Index DAG (1, 2 independent; 3 depends on [1,2]) is acyclic and every named batch file exists. No Moves anywhere, so no Rename mechanic section is required. Context/Requirements pairing checked for cards 5-9 (the densest cards) with no missing identifier source.
+
+## Verdict
+
+APPROVE
+Plan is internally consistent, source-verified across mechanism claims, and complete; only a trivial wording nit found.
+MILL_REVIEW_END

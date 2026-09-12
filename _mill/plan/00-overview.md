@@ -3,7 +3,7 @@
 ```yaml
 task: 'self-report Tier 1: Go-detected structural anomalies'
 slug: 'self-report-tier1'
-approved: false
+approved: true
 started: '20260912-110828'
 parent: 'main'
 root: ""
