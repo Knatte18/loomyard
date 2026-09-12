@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-friction-leaf
 slug: self-report-tier2
 branch: self-report-tier2
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-review-r3  '2026-09-12T11:37:09Z'
 plan-fix-r3  '2026-09-12T11:38:32Z'
 planned  '2026-09-12T11:38:45Z'
 implementing  '2026-09-12T11:39:19Z'
+approved-friction-leaf  '2026-09-12T11:47:03Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ implementing  '2026-09-12T11:39:19Z'
 ```yaml
 batches:
   - name: friction-leaf
-    state: running
+    state: approved
     implementer_session: 5631f235-57b4-4537-857c-37c7a1bccf2a
     start_sha: 3cbc52ad827cb1ce4c1753f2a4520a191cfedb7c
+    commit_sha: 0bce41a2f95a8b2b30d083ca549ec88718f038c7
     verify_baseline_failures: ["FAIL\t./internal/friction/... [setup failed]"]
   - name: loom-paths-and-config
     state: pending
