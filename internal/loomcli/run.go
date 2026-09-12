@@ -21,9 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -99,51 +96,10 @@ Example:
 			// defer here would release it far too early, at RunE return, rather than at the exact
 			// points the steps below release it themselves.
 
-			if _, err := c.reed.Up(); err != nil {
+			if err := c.ensureStatusStrand(); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
-			}
-			statusResult, err := c.reed.Status()
-			if err != nil {
-				_ = bootstrapLock.Release()
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-			strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands)
-			if strandAction == statusStrandReplace {
-				// A tracked-but-dead entry must be removed before adding, because reed's add has no
-				// upsert semantics and would otherwise leave two strands under one display name.
-				// A removal failure is not fatal to the bootstrap: it costs the operator the status
-				// pane for this run, not the run itself.
-				if _, err := c.reed.RemoveStrand(staleGUID, false); err != nil {
-					logger.Warn("loom: could not remove a dead status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
-					strandAction = statusStrandKeep
-				} else {
-					strandAction = statusStrandAdd
-				}
-			}
-			if strandAction == statusStrandAdd {
-				exe, err := os.Executable()
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				addSpec := reedengine.AddSpec{
-					NameOverride: statusStrandDisplayName,
-					Cmd:          statusStrandCmd(shell.ForGOOS(), exe),
-					Display: render.Display{
-						Anchor:                   render.AnchorBelowParent,
-						ShrinkWhenWaitingOnChild: true,
-					},
-				}
-				_, err = c.reed.AddStrand(addSpec)
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
 			}
 
 			// Step 5: probe the run lock non-blockingly -- releasing it immediately when it was
