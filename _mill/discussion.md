@@ -62,28 +62,49 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
 
 ### `internal/loomcli/run.go` owns creating the directory, once, before any producer runs
 
-- **Decision:** the friction directory is created by a single `os.MkdirAll` in `internal/loomcli/run.go`, immediately beside the seed-time clear.
-  The **clear** is first-seed-only (nil-error `Seed` branch); the **create** is unconditional, on both the first-seed and the `loomshed.ErrSeedExists` re-entry branches, so a resumed run whose `.lyx` tree was swept still gets a directory.
-  No composer and no agent creates it.
-  A failed `MkdirAll` logs at `Warn` via `internal/logger` and the run continues — it never fails `lyx loom run`.
+- **Decision:** one exported ensure-helper (`os.MkdirAll` plus the `Warn`-on-failure rule) is called from **three** places, and no composer or agent ever creates the directory:
+  1. `internal/loomcli/run.go`, beside the seed-time clear.
+  2. `internal/loomcli/drive.go`, at startup, before `shed.Run`.
+  3. `frictionengine.Reflect`, immediately after it archives — it recreates an empty directory rather than leaving the path absent.
+
+  The **clear** stays first-seed-only (`run.go`, nil-error `Seed` branch); the **create** is unconditional at all three sites.
+  A failed `MkdirAll` logs at `Warn` via `internal/logger` and execution continues — it never fails `lyx loom run` or `lyx loom drive`.
+- **Rationale (why drive and Reflect, not just `run.go`):** `lyx loom drive` is a real, documented foreground verb — "the escape hatch for debugging and CI" (`internal/loomcli/drive.go:23–24`) — not a hidden internal.
+  And `Reflect` renames the directory away on a clean reflection, including the `RunBlocked` trigger, so a `blocked → operator investigates → lyx loom drive` sequence would otherwise run with no friction directory at all and lose every note silently.
+  That is precisely the zero-notes-no-signal state this decision exists to prevent, so the two extra call sites are not belt-and-braces — each closes a reachable hole.
+  Recreating inside `Reflect` is one line at the one place that removed the directory, which is cheaper and harder to get wrong than teaching every future caller to re-ensure it.
 - **Rationale:** without an assigned owner, every note write depends on provider-specific parent-directory creation, and a write that silently fails produces exactly the zero-notes-with-no-signal state the missing-marker warn decision exists to prevent.
   `internal/burlerengine/engine.go:112` is the in-tree precedent: it `MkdirAll`s its own `.lyx/burler` directory before writing into it.
   One create at one call site beats seven composer-side creates racing each other, and `run.go` is already the once-per-task hook holding the clear.
   The failure is a `Warn` rather than an error for the same reason every other Tier 2 failure is: optional bookkeeping must never fail a task's run.
-- **Rejected:** composer-side creation per injection (seven call sites racing, and the webster fork path runs concurrently); relying on the agent's own tooling to create parents (provider-specific and unverifiable); hard-erroring on a failed create (fails a real run over optional bookkeeping); creating it inside `Reflect` (far too late — every note is written long before the reflection step).
+- **Rejected:** composer-side creation per injection (seven call sites racing, and the webster fork path runs concurrently); relying on the agent's own tooling to create parents (provider-specific and unverifiable); hard-erroring on a failed create (fails a real run over optional bookkeeping); `run.go` as the *sole* create site (leaves the direct-`drive` and post-archive holes above); having `Reflect` leave the path absent after archiving (the next `drive` then writes nothing, silently).
 
 ### Filename uniqueness comes from a caller-supplied id, never invented by the agent
 
 - **Decision:** `friction.NotePath(frictionDir, id string) string` returns `filepath.Join(frictionDir, id+".md")`, where `id` is a caller-supplied identity string the caller already has.
   The composing caller passes the resulting absolute path into the directive text, so the agent is told exactly one path and never invents a filename.
   `NotePath` sanitizes `id` (reject empty; reject any entry containing a path separator or `..`) rather than trusting it.
-- **Rationale:** every spawn site already holds a unique identity — the producer row name for Discussion-Write and Plan-Write, the round number plus run subdir for a Burler round, the batch identity for a webster fork.
+- **Rationale:** every one of the seven spawn sites already holds a unique identity, so none has to invent one:
+
+  | Site | `id` |
+  | --- | --- |
+  | Discussion-Write | the producer row name (`Discussion-Write`) |
+  | Plan-Write | the producer row name (`Plan-Write`) |
+  | Burler round | the run subdir plus the round number (e.g. `burler-webster-r3`) |
+  | `RenderForkPrompt` | the batch id |
+  | `RenderRecoveryPrompt` | the batch id with a `-recovery` suffix, so a recovery strand never collides with that batch's own fork note |
+  | `RenderIntegrationPrompt` | the fixed literal `webster-integration` — a plan has exactly one integration fork |
+  | `RenderMasterPrompt` | the fixed literal `webster-master` — one Master per run |
+
   Deriving a name from a clock instead would need an injected `func() time.Time` in five packages and would still collide between two forks started inside the same second.
 - **Rejected:** letting the agent choose its own filename (an agent that picks a colliding name silently overwrites another agent's note); a timestamp-derived name (needs a clock seam everywhere and still collides).
 
 ### The directive is injected the way `internal/pattern` already does it
 
-- **Decision:** a new leaf package `internal/friction` exposes `Directive(frictionDir, notePath, stencilsDir string, role Role) (string, error)`, returning role-worded text read from a stencil at call time.
+- **Decision:** a new leaf package `internal/friction` exposes `Directive(notePath, stencilsDir string, role Role) (string, error)`, returning role-worded text read from a stencil at call time.
+  **An empty `notePath` means Tier 2 is off**: `Directive` returns `("", nil)` with no stencil read attempted, exactly as `pattern.Directive` does for an empty `anchorPath` (`internal/pattern/pattern.go:78–84`), and an unknown or zero `Role` behaves the same way.
+  There is no disk probe: Tier 2's enablement is a config value, not a file's existence, so the caller resolves it once and expresses it as an empty-or-not path.
+  `NotePath(frictionDir, id)` likewise returns `""` when `frictionDir` is `""`, so "off" propagates through both calls as an empty string and no composer needs a separate boolean.
   Each of the seven composers fills a `{{.friction_directive}}` marker via `stencil.FillOptional`, so the marker renders as nothing when Tier 2 is off.
   Roles mirror `pattern`'s three: `RoleImplementer` (webster fork, loom plan), `RoleReviewFix` (burler round), `RoleOrchestrator` (webster Master), plus `RoleInterview` for the Discussion-Write interview agent, whose prompt is neither editing nor reviewing.
 - **Rationale:** `internal/pattern` is the exact architectural precedent in this tree for "inject an optional, role-worded directive block into several agent prompts".
@@ -102,14 +123,28 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
   Collapsing them would put a `shuttleengine` dependency into the package three prompt composers import for one string.
 - **Rejected:** one combined `internal/friction` package (widens the leaf's import set for no gain); putting `Directive` on `loomengine` (`burlerengine` and `websterengine` would then import `loomengine`, which they do not today and must not start doing).
 
-### Five spawn sites get the directive; Bouncer and mergeresolve do not
+### Seven spawn sites get the directive; Bouncer and mergeresolve do not
 
-- **Decision:** the directive is injected at Discussion-Write, Plan-Write, the Burler review+fix round, the webster implementer fork, and the webster Master.
+- **Decision:** the directive is injected at seven sites — Discussion-Write, Plan-Write, the Burler review+fix round, and all four `internal/websterengine/render.go` composers: the implementer fork (`RenderForkPrompt`), the cold-start recovery strand (`RenderRecoveryPrompt`), the dedicated integration-suite fork (`RenderIntegrationPrompt`), and the webster Master (`RenderMasterPrompt`).
   The Bouncer's seed and judge agents and the `mergeresolve` conflict-resolution agent are deliberately excluded.
-- **Rationale:** the five included sites are the agents that do substantive work over the codebase and therefore have something to be frustrated by.
+- **Rationale:** the seven included sites are the agents that do substantive work over the codebase and therefore have something to be frustrated by.
+  `RenderRecoveryPrompt` earns its place most obviously of the four webster composers: it is an implementer-class spawn that runs precisely when something has already gone wrong, which is the highest-yield moment in a run for a friction note.
+  `RenderIntegrationPrompt` is a real spawn (rendered and written at `internal/websterengine/runlevel.go:548–560`) doing the same class of work as the fork.
   The Bouncer's seed and judge passes are narrow judgment calls against a strict rubric whose output is parsed by `shedadapters`; adding a side-file instruction to a prompt whose contract is "produce exactly this verdict shape" risks polluting the verdict for a low-value note.
   `mergeresolve` runs inside Finalize, which is the very boundary the reflection step fires after — a note written there would land after aggregation has already read the directory, so it would silently never be seen.
 - **Rejected:** all nine spawn sites (adds an ordering hazard at `mergeresolve` and a verdict-contract hazard at the Bouncer); only the four sites `pattern.Directive` already covers (leaves the discussion interview, the one agent that talks to a human about the task's shape, with no way to record friction when running autonomously).
+
+### How the friction directory reaches each of the three engines
+
+- **Decision:** one resolved value — the friction directory, empty when Tier 2 is off — travels to three engines by three different routes, each matching how that engine already receives told geometry.
+  `internal/loomcli/wiring.go` resolves it once: `loomengine.LoomFrictionDir(location)` when `cfg.Friction != ""`, otherwise `""`.
+  - **`loomengine`** (Discussion-Write, Plan-Write) derives it itself. `DiscussionSpec` and `PlanSpec` already take `layout *lyxcwd.Location` and `cfg Config`, and `loomengine` is the declarer of `LoomFrictionDir`, so it needs no new parameter at all — it calls its own accessor, gated on `cfg.Friction != ""`.
+  - **`burlerengine`** gets a new told `FrictionDir string` on its constructor's config. It must not import `loomengine`, and `hubgeom.BurlerGeometry(location)` carries only `AnchorPath`, so the value is told rather than derived. Filled at the `burlerengine.New(...)` call in `internal/loomcli/wiring.go:266`.
+  - **`websterengine`** gets a new told `FrictionDir string` field on `websterengine.RunDeps`, which `wiring.go` already assembles. `render.go`'s four composers read it from deps and pass the per-spawn note path down.
+- **Rationale:** this is the same told-geometry discipline every other path in the tree follows — the one layer that legitimately resolves geometry (`wiring.go`) resolves it, and each engine is handed what it needs.
+  `loomengine` is the one exception precisely because it *is* the path's declarer, so deriving there is not a Told-Geometry violation but the Cwd Resolution Invariant working as written ("a module's own durable subdirectory is its own constant joined onto `AnchorPath()`").
+  Expressing "off" as an empty path rather than a parallel boolean means no engine can hold an enabled flag that disagrees with its directory.
+- **Rejected:** a `shedrecipe.Env` field (no registry entry reads it, and `Env` is documented as carrying only values the entries read); a package-level global in `internal/friction` (invisible coupling, untestable in parallel); a boolean alongside each directory field (two values that can contradict).
 
 ### The reflection step fires from `loomcli/drive.go`, not from a recipe row
 
@@ -126,7 +161,7 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
 ### One `loom.yaml` key is both the model spec and the kill switch
 
 - **Decision:** `loom.yaml` gains `friction: <model-spec>` and `friction_timeout_min: <int>`, parsed into new `loomengine.Config` fields and resolved through `modelspec.Registry` exactly as `discussion`, `plan`, and `review` already are.
-  An absent or empty `friction` value means Tier 2 is off: no directive is injected at any of the five sites, and no reflection step runs.
+  A present-but-empty `friction` value means Tier 2 is off: no directive is injected at any of the seven sites, and no reflection step runs.
   `internal/loomengine/template.yaml` ships it populated, so the default is on.
 - **Rationale:** the design doc's open question "whether every phase gets this by default, or it's opt-in per producer/profile" resolves to default-on with one global switch.
   Per-row opt-in would mean a Tier 2 config key on five different recipe engines, which is a lot of surface for a feature whose entire value is breadth of coverage — and `loom.yaml` is already where every other run-wide agent knob lives.
@@ -180,7 +215,9 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
   `loomshed.Seed` itself is not touched: its signature (`Seed(statusPath, statusLockPath, slug, parent string) error`, `internal/loomshed/seed.go:37`) gains no friction parameter.
   `lyx loom drive` deliberately never clears.
 - **Rationale:** a `loom` run legitimately resumes across process restarts and crash-resumes, so clearing on every drive invocation would destroy notes written before the crash — exactly the notes most worth reading.
-  The clear lives at the call site rather than inside `Seed` because `Seed`'s told-parameter list is about status seeding, and widening it for an unrelated directory is a worse seam than one `os.RemoveAll` at the one call site (`internal/loomcli/run.go:101`) that already distinguishes a genuine first seed from a re-entry.
+  The clear lives at the call site rather than inside `Seed` because `Seed`'s told-parameter list is about status seeding, and widening it for an unrelated directory is a worse seam than one `os.RemoveAll` at the call site that can cheaply tell the two outcomes apart.
+  Note that `internal/loomcli/run.go:101` does **not** distinguish them today — the shipped line is `if err := loomshed.Seed(...); err != nil && !errors.Is(err, loomshed.ErrSeedExists)`, so both outcomes fall through one branch and the error is never bound.
+  Splitting clear-on-first-seed from create-on-both therefore requires restructuring that statement to bind the error to a variable first; it is not a call added beside an unchanged line, and the plan writer should expect the restructure.
   Drive not clearing is correct rather than a gap: `internal/loomcli/drive.go:61` calls `loomengine.VerifySeedOwnership`, so `drive` requires an already-seeded task and `run` is always what creates one — a drive-only invocation is by definition a resume, which is exactly the case that must keep its notes.
   Archiving rather than deleting keeps the evidence on disk for an operator debugging a filed issue; the whole `.lyx` tree is never tracked and is swept with the worktree.
   The `blocked → operator fixes it → run again → done` path files twice, once per trigger, and the archive is what keeps the second filing about the second run's notes only.
@@ -293,7 +330,14 @@ Neither package changes in this task.
 
 **Config plumbing.**
 `internal/loomengine/template.yaml` carries the shipped defaults and an inline comment per key; `loomengine.Config` is the parsed struct; `loomengine.LoadConfig(baseDir, module)` validates model-spec grammar at load time.
-`internal/loomcli/wiring.go` reads the config and fills `shedrecipe.Env`'s run-wide `Review*` fields — the new friction values follow the same route but land on the `frictionengine.Deps` the drive-time call site builds, not on `Env`, since no registry entry reads them.
+`internal/loomcli/wiring.go` reads the config and fills `shedrecipe.Env`'s run-wide `Review*` fields.
+The new friction values do **not** go on `Env` — no registry entry reads them, and `Env` is documented as carrying only roots and run-wide values its entries read.
+They travel two ways instead, and both start from one resolution in `wiring.go` (`loomengine.LoomFrictionDir(location)` when `cfg.Friction != ""`, else `""`):
+
+- The **model spec and timeout** land on the `frictionengine.Deps` the drive-time call site builds.
+- The **friction directory** reaches the three prompt-composing engines per the "How the friction directory reaches each of the three engines" decision — derived in-package by `loomengine`, told on `burlerengine`'s constructor config (`wiring.go:266`), and told on `websterengine.RunDeps`.
+
+Because "off" is an empty directory string that propagates through `friction.NotePath` and `friction.Directive` as `("", nil)`, no engine carries a separate enabled boolean.
 
 ## Constraints
 
@@ -326,7 +370,8 @@ All new tests are Tier 1 — untagged, offline, fast. No new `integration`/`smok
 
 **`internal/friction`** — the natural TDD candidate; it is pure functions over told strings and a stencil read.
 
-- `Directive` returns the expected stencil's text for each of the four roles, and returns `""` (nil error) when the feature is off.
+- `Directive` returns the expected stencil's text for each of the four roles, and returns `("", nil)` **with no stencil read attempted** for an empty `notePath` — the off case. Assert the no-read part, not just the empty return, since that is what mirrors `pattern.Directive` and keeps a disabled worktree from touching the stencils dir at all.
+- `NotePath("", id)` returns `""`, so "off" composes through both calls without a boolean.
 - An unknown `Role` value is a hard error, not a silent empty string.
 - A missing or unreadable stencil surfaces as an error naming the stencil.
 - The returned directive text contains the told note path verbatim — this is the assertion that catches a composer wiring the wrong path.
@@ -341,7 +386,7 @@ All new tests are Tier 1 — untagged, offline, fast. No new `integration`/`smok
 - Directory present but empty, and directory containing only non-`.md` files → same skipped result.
 - One note present → exactly one spawn; the composed `Spec` carries the configured model/effort/timeout, `Interactive: false`, `ForkSubagents: false`, and a non-empty `OutputFiles`.
 - The spawn's prompt names the friction directory.
-- After a successful spawn the directory is archived to the timestamped sibling and the original path no longer exists; a second `Reflect` against the same location then reports skipped rather than re-spawning.
+- After a successful spawn the directory is archived to the timestamped sibling **and recreated empty** — assert both the archive's existence and that the original path exists and is empty; a second `Reflect` against the same location then reports skipped rather than re-spawning.
 - A directory containing only `ReportFileName` and no other `*.md` → skipped, no spawn: this is the stale-report-from-a-timed-out-run case, and it must not be mistaken for one note.
 - Shuttle returns an error / `OutcomeDied` / `OutcomeTimeout` → `Reflect` returns a `Report` marking failure with a nil error (never a hard error), **and the friction directory is left exactly as it was** — assert the original path still exists and that no timestamped archive sibling was created.
 - A stale `ReportFileName` present before `Reflect` runs is deleted before the spec is composed, so the composed `Spec.OutputFiles` entry does not already exist (this is what `shuttleengine.Spec.validate` would otherwise reject).
@@ -357,6 +402,9 @@ All new tests are Tier 1 — untagged, offline, fast. No new `integration`/`smok
 - A nil-error `Seed` clears a pre-populated friction directory, then creates it.
 - A `loomshed.ErrSeedExists` re-entry leaves existing notes untouched but still ensures the directory exists. This is the crash-resume guarantee and is the one that must not regress.
 - A `MkdirAll` failure leaves the run's own outcome unchanged (assert no error is returned and the seed path still completes).
+- `internal/loomcli/drive.go` ensures the directory at startup too: a `drive` invocation against a location whose friction directory is absent creates it before `shed.Run`.
+
+**Threading** — one test per engine that the friction directory actually arrives: `loomengine` derives it from the `Location` and gates on `cfg.Friction != ""`; `burlerengine`'s constructor config carries it; `websterengine.RunDeps` carries it and all four `render.go` composers read it. In each case, the empty-string (disabled) value must produce a prompt with no directive and no stencil read.
 
 **`contracts/stencils`** — `registry_test.go` covers all five new stencils' registration (the four directive stencils plus the reflection agent's own) automatically in both directions once the files and rows exist. Add content assertions in the `rubric_test.go` style (short distinctive substrings, not whole paragraphs) for the one property that matters: each directive stencil states that writing the note is optional and that an absent note is normal.
 
@@ -390,4 +438,8 @@ All new tests are Tier 1 — untagged, offline, fast. No new `integration`/`smok
 - **Q:** Which webster composers actually get the directive, given `render.go:183` is the recovery prompt rather than the fork? **A:** [auto-pick] all four — `RenderForkPrompt`, `RenderRecoveryPrompt`, `RenderIntegrationPrompt`, `RenderMasterPrompt`. **Why:** all four are real spawns doing substantive work, and recovery in particular runs exactly when something has already gone wrong. This takes the composer count from five to seven and the `Fill` → `FillOptional` conversions from one to three; `RenderForkPrompt` also gains a told path parameter it does not have today.
 - **Q:** Who creates `.lyx/loom/friction/`? **A:** [auto-pick] one `os.MkdirAll` in `internal/loomcli/run.go` beside the clear — clear on first seed only, create on both branches; a failed create is a `Warn`, never a run failure. **Why:** unowned creation means every note write depends on provider-specific parent creation, and a silent write failure is the exact zero-notes-no-signal state Tier 2 exists to prevent. `burlerengine/engine.go:112` is the in-tree precedent.
 - **Q:** Does the operator ever see the `friction` envelope key? **A:** [auto-pick] not via `loom run` — it is `loom drive`'s envelope, which `run.go:230–232` redirects into the driver log. `Reflect` therefore also emits a `logger.Info`. **Why:** `loom run` detaches drive and hands over a tmux session, so the envelope alone would be invisible; the logger sink is the surface the operator actually has.
+- **Q:** How is "Tier 2 off" expressed at the composer boundary, and how does the friction directory reach the three engines? **A:** [auto-pick] off is an empty `notePath`/`frictionDir`, and `Directive`/`NotePath` return empty with no stencil read — mirroring `pattern.Directive`'s empty-`anchorPath` case. The directory is resolved once in `wiring.go` and then derived in-package by `loomengine`, told on `burlerengine`'s constructor config, and told on `websterengine.RunDeps`. **Why:** one value that carries both "enabled" and "where" means no engine can hold a flag that disagrees with its directory; `shedrecipe.Env` is wrong because no registry entry reads these values.
+- **Q:** What creates the friction directory on a direct `lyx loom drive`, given `Reflect` renames it away? **A:** [auto-pick] one ensure-helper called from three sites — `run.go` beside the clear, `drive.go` at startup, and `Reflect` immediately after archiving. **Why:** `drive` is a real documented verb, and a `blocked → investigate → drive` sequence would otherwise run with no directory and lose every note silently. Each extra call site closes a reachable hole, not a hypothetical one.
+- **Q:** Does `run.go:101` already distinguish a first seed from a re-entry? **A:** [auto-pick] no — the shipped line discards the error, so the clear/create split requires restructuring it to bind the error first. Recorded so the plan writer expects the restructure rather than a one-line insertion.
+- **Q:** What are the note ids for recovery, integration, and Master? **A:** [auto-pick] the batch id with a `-recovery` suffix, and the fixed literals `webster-integration` and `webster-master`. **Why:** the suffix stops a recovery strand colliding with that batch's own fork note; the other two are singletons per run, so a literal is unique by construction.
 - **Q:** Does the missing-marker helper log, or return a bool? **A:** [auto-pick] it logs, taking the stencil name as a parameter. **Why:** one implementation instead of seven duplicated `Warn` lines, and it settles the leaf's import set — which is why the Friction Leaf Invariant admits `internal/logger` (already pulled transitively via `stencilstore`).
