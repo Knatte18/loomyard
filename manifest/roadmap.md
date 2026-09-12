@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; a thin `/ly-*` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, cleaning up on a detected crash, and filing friction via `lyx selfreport create`. Supersedes `llm-driven-loom-alternative`. Independent of the now-Done self-report Tier 1 item — no code dependency either direction — and self-report Tier 2 has since shipped independently of both.
-   See [designs/loom-step.md](designs/loom-step.md).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -121,6 +118,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **self-report Tier 2: per-agent friction notes for unsupervised runs** — every one of the seven prompt-composing agents now gets an optional friction-note directive injected into its prompt, default-on via `loom.yaml`'s `friction` model-spec key, and `internal/loomcli`'s drive verb spawns one dedicated reflection agent per run to aggregate whatever notes were written and file them via `lyx selfreport create`.
    See the `internal/friction` and `internal/frictionengine` package documentation, and [designs/self-report-tier2.md](designs/self-report-tier2.md).
+
+1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; the `/ly:ly-supervise` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, and handing back to the operator on any non-running state or error envelope. Supersedes `llm-driven-loom-alternative`.
+   See [designs/loom-step.md](designs/loom-step.md).
 
 ## Maintenance
 
