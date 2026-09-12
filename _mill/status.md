@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shedengine-step
 slug: loom-step
 branch: loom-step
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r2  '2026-09-12T11:19:15Z'
 plan-fix-r2  '2026-09-12T11:20:36Z'
 planned  '2026-09-12T11:20:52Z'
 implementing  '2026-09-12T11:21:18Z'
+approved-shedengine-step  '2026-09-12T11:26:39Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-09-12T11:21:18Z'
 ```yaml
 batches:
   - name: shedengine-step
-    state: running
+    state: approved
     implementer_session: 5cf2f492-517c-4e98-8dbd-4a33a7bbfbc7
     start_sha: 5b477148f15297f098eb1ae1610e31af10ed832f
+    commit_sha: 17ffaa9e8fd3b3ca0d2ef1713e3006a296b39a04
     verify_baseline_failures: []
   - name: loomshed-interrupt-policy
     state: pending
