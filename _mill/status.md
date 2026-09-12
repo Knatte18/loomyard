@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ly-plugin-supervise-skill
+phase: approved-design-doc-and-roadmap
 slug: loom-step
 branch: loom-step
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-loomcli-shared-helpers  '2026-09-12T11:37:59Z'
 approved-loom-step-verb  '2026-09-12T11:43:06Z'
 approved-status-interrupt-policy  '2026-09-12T11:45:34Z'
 approved-ly-plugin-supervise-skill  '2026-09-12T11:47:50Z'
+approved-design-doc-and-roadmap  '2026-09-12T11:49:53Z'
 ```
 
 ## Batches
@@ -78,8 +79,9 @@ batches:
     commit_sha: 05af83000b0f5daff7293f6efaa91412f1be8b1b
     verify_baseline_failures: []
   - name: design-doc-and-roadmap
-    state: running
+    state: approved
     implementer_session: 9bdb02b4-fcee-4b75-aaba-d3291338d5dc
     start_sha: bc323d3cd85b2b02ec11ff3c39ab8a2ba3290b15
+    commit_sha: d98e8cb52dac5ea858908cf18d28204d1667a3f1
     verify_baseline_failures: []
 ```
