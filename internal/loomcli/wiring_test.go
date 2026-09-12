@@ -118,6 +118,32 @@ friction_timeout_min: 30
 	}
 }
 
+// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full seven-key
+// literal, identical to the embedded template's own values except the friction key, which takes the
+// caller-chosen value -- empty to mean Tier 2 is off. All seven keys are written explicitly for the
+// same configengine.Load strictness reason seedLoomConfigWithInteractive already documents.
+func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
+	t.Helper()
+	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+	}
+	cfgPath := filepath.Join(configDir, "loom.yaml")
+	contents := fmt.Sprintf(`discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+friction: %s
+friction_timeout_min: 30
+`, friction)
+	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
 // seeded on disk with loom.yaml and landing.yaml, and its hub seeded with both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
@@ -659,5 +685,51 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	}
 	if c.runner != nil {
 		t.Error("shuttle runner was constructed; want the lightweight path to build no engine")
+	}
+}
+
+// TestWire_FrictionDirFillsBurlerAndWebster asserts wire fills the resolved friction directory into
+// both told engines -- the burlerEngine constructor's fifth argument and
+// c.runDeps.FrictionDir -- when loom.yaml's friction key is non-empty, and fills the empty string
+// into both, and into c.frictionDir, when it is present-but-empty. Every non-empty assertion compares
+// against loomengine.LoomFrictionDir(loc)'s own return value, never a hand-built path literal, the
+// way TestWire_PathFieldsMatchLoomengineAccessors already compares RunRoot against
+// loomengine.LoomReviewsDir(loc).
+func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		friction string
+	}{
+		{"On", "opus[effort=high]"},
+		{"Off", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := hubLocation(t, "warp", ".")
+			seedLoomConfigWithFriction(t, loc.AnchorPath(), tt.friction)
+
+			c := &loomCLI{}
+			if err := c.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+
+			want := ""
+			if tt.friction != "" {
+				want = loomengine.LoomFrictionDir(loc)
+			}
+
+			if c.frictionDir != want {
+				t.Errorf("c.frictionDir = %q; want %q", c.frictionDir, want)
+			}
+			if c.runDeps.FrictionDir != want {
+				t.Errorf("c.runDeps.FrictionDir = %q; want %q", c.runDeps.FrictionDir, want)
+			}
+			if c.env.WebsterDeps.FrictionDir != want {
+				t.Errorf("c.env.WebsterDeps.FrictionDir = %q; want %q", c.env.WebsterDeps.FrictionDir, want)
+			}
+		})
 	}
 }

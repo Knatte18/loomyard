@@ -153,31 +153,13 @@ Example:
 			// bookkeeping, never a gate on landing the work. It fires only on RunDone or
 			// RunBlocked, never RunPaused (the run is not over -- re-filing on every pause would
 			// be noise) and never when err is non-nil (an engine-level fault leaves the run's own
-			// bookkeeping untrustworthy). It can never fire from a recipe row: shedengine.Run
+			// bookkeeping untrustworthy) -- structurally guaranteed here since a non-nil err from
+			// shed.Run already returned above. It can never fire from a recipe row: shedengine.Run
 			// returns immediately on RunBlocked without calling any further producer, so a row can
 			// structurally never cover the stuck half of these two trigger points.
 			frictionStatus := frictionengine.StatusSkipped
-			if c.frictionDir != "" && (result.Outcome == shedengine.RunDone || result.Outcome == shedengine.RunBlocked) {
-				report, err := frictionengine.Reflect(frictionengine.Deps{
-					Shuttle:       c.runner,
-					FrictionDir:   c.frictionDir,
-					ArchivePrefix: loomengine.LoomFrictionArchivePrefix(c.location),
-					StencilsDir:   c.runDeps.Geom.StencilsDir,
-					FrictionSpec:  c.cfg.Friction,
-					Registry:      c.registry,
-					Timeout:       time.Duration(c.cfg.FrictionTimeoutMin) * time.Minute,
-				})
-				if err != nil {
-					// A non-nil error from Reflect is a Deps-validation failure -- a wiring bug -- and
-					// is logged rather than surfaced: failing a successful, already-merged run because
-					// an optional bookkeeping agent could not run is strictly worse than filing
-					// nothing, and RunBlocked is worse still -- an operator staring at a blocked run
-					// does not need a second, unrelated failure layered on top.
-					logger.Warn("loom: friction reflection failed", "dir", c.frictionDir, "error", err)
-					frictionStatus = frictionengine.StatusFailed
-				} else {
-					frictionStatus = report.Status
-				}
+			if shouldReflectFriction(c.frictionDir, result.Outcome) {
+				frictionStatus = c.reflectFriction()
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
@@ -190,4 +172,38 @@ Example:
 			return nil
 		},
 	}
+}
+
+// shouldReflectFriction reports whether driveCmd's RunE should fire the friction reflection step: a
+// non-empty friction directory and an outcome of shedengine.RunDone or shedengine.RunBlocked.
+// It is the pure decision the reflection call site gates on, factored out so a test can drive every
+// outcome without a real Shed.
+func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bool {
+	if frictionDir == "" {
+		return false
+	}
+	return outcome == shedengine.RunDone || outcome == shedengine.RunBlocked
+}
+
+// reflectFriction builds Deps from c's own already-resolved fields and calls frictionengine.Reflect,
+// returning the envelope's "friction" status. A non-nil error from Reflect is a Deps-validation
+// failure -- a wiring bug -- and is logged rather than surfaced: failing a successful, already-merged
+// run because an optional bookkeeping agent could not run is strictly worse than filing nothing, and
+// RunBlocked is worse still -- an operator staring at a blocked run does not need a second, unrelated
+// failure layered on top.
+func (c *loomCLI) reflectFriction() string {
+	report, err := frictionengine.Reflect(frictionengine.Deps{
+		Shuttle:       c.runner,
+		FrictionDir:   c.frictionDir,
+		ArchivePrefix: loomengine.LoomFrictionArchivePrefix(c.location),
+		StencilsDir:   c.runDeps.Geom.StencilsDir,
+		FrictionSpec:  c.cfg.Friction,
+		Registry:      c.registry,
+		Timeout:       time.Duration(c.cfg.FrictionTimeoutMin) * time.Minute,
+	})
+	if err != nil {
+		logger.Warn("loom: friction reflection failed", "dir", c.frictionDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	return report.Status
 }
