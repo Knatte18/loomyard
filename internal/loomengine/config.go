@@ -201,6 +201,7 @@ type Config struct {
 	PlanTimeoutMin        int    `yaml:"plan_timeout_min"`
 	Review                string `yaml:"review"`
 	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
+	Selfreport            bool   `yaml:"selfreport"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.

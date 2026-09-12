@@ -82,6 +82,26 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.ReviewTimeoutMin != 240 {
 		t.Errorf("cfg.ReviewTimeoutMin = %d; want %d", cfg.ReviewTimeoutMin, 240)
 	}
+	if cfg.Selfreport != true {
+		t.Errorf("cfg.Selfreport = %v; want %v", cfg.Selfreport, true)
+	}
+}
+
+// TestLoadConfig_SelfreportFalse verifies a hand-edited loom.yaml with selfreport: false round-trips
+// to Config.Selfreport == false, distinct from the template's own true default -- this, not an
+// omitted key, is how a fork or CI run disarms automatic filing, since configengine.Load's strict
+// loading does not fall back to the template for a key an existing on-disk file omits.
+func TestLoadConfig_SelfreportFalse(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKey(t, baseDir, "selfreport", "false")
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+	}
+	if cfg.Selfreport != false {
+		t.Errorf("cfg.Selfreport = %v; want %v", cfg.Selfreport, false)
+	}
 }
 
 // TestLoadConfig_DiscussionInteractiveTrue verifies a hand-edited loom.yaml with
@@ -89,14 +109,7 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 // the template's own false default.
 func TestLoadConfig_DiscussionInteractiveTrue(t *testing.T) {
 	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: true
-plan: opus[effort=high]
-plan_timeout_min: 120
-review: opus[effort=high]
-review_timeout_min: 240
-`)
+	writeLoomConfigWithKey(t, baseDir, "discussion_interactive", "true")
 
 	cfg, err := LoadConfig(baseDir, "loom")
 	if err != nil {
@@ -112,14 +125,7 @@ review_timeout_min: 240
 // silently carried into the discussion producer's spawn site.
 func TestLoadConfig_MalformedDiscussionSpec(t *testing.T) {
 	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: "opus[effort"
-discussion_timeout_min: 480
-discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
-review: opus[effort=high]
-review_timeout_min: 240
-`)
+	writeLoomConfigWithKey(t, baseDir, "discussion", `"opus[effort"`)
 
 	_, err := LoadConfig(baseDir, "loom")
 	if err == nil {
@@ -135,14 +141,7 @@ review_timeout_min: 240
 // than being silently carried into the plan producer's spawn site.
 func TestLoadConfig_MalformedPlanSpec(t *testing.T) {
 	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: false
-plan: "opus[effort"
-plan_timeout_min: 120
-review: opus[effort=high]
-review_timeout_min: 240
-`)
+	writeLoomConfigWithKey(t, baseDir, "plan", `"opus[effort"`)
 
 	_, err := LoadConfig(baseDir, "loom")
 	if err == nil {
@@ -158,14 +157,7 @@ review_timeout_min: 240
 // "review" key, rather than being silently carried into the review producers' spawn site.
 func TestLoadConfig_MalformedReviewSpec(t *testing.T) {
 	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
-review: "opus[effort"
-review_timeout_min: 240
-`)
+	writeLoomConfigWithKey(t, baseDir, "review", `"opus[effort"`)
 
 	_, err := LoadConfig(baseDir, "loom")
 	if err == nil {
