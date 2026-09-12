@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: self-report-tier1
 branch: self-report-tier1
 plan: _mill/plan
@@ -22,4 +22,5 @@ discussion-gap-fix-r5  '2026-09-12T11:00:08Z'
 discussion-fix-r6  '2026-09-12T11:04:48Z'
 discussed  '2026-09-12T11:04:48Z'
 planning  '2026-09-12T11:13:09Z'
+plan-review-r1  '2026-09-12T11:23:08Z'
 ```
