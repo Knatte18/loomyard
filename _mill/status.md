@@ -78,6 +78,8 @@ batches:
     commit_sha: 05af83000b0f5daff7293f6efaa91412f1be8b1b
     verify_baseline_failures: []
   - name: design-doc-and-roadmap
-    state: pending
+    state: running
+    implementer_session: 9bdb02b4-fcee-4b75-aaba-d3291338d5dc
+    start_sha: bc323d3cd85b2b02ec11ff3c39ab8a2ba3290b15
     verify_baseline_failures: []
 ```
