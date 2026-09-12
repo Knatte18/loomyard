@@ -50,6 +50,7 @@ Batch-local decision: the meta-test lives in `internal/loomrecipe`'s test packag
   - `internal/loomshed/loomshed.go`
   - `internal/loomrecipe/coverage_guard_test.go`
   - `internal/loomrecipe/loomrecipe.go`
+  - `internal/loomrecipe/shape_test.go`
   - `internal/loomrecipe/fixture_test.go`
 - **Edits:** none
 - **Creates:**
@@ -60,9 +61,9 @@ Batch-local decision: the meta-test lives in `internal/loomrecipe`'s test packag
 - **Requirements:**
   In `internal/loomshed/interruptpolicy_test.go`, cover `InterruptPolicyFor`'s own contract: it returns `InterruptPolicyHandback` for `NameWebster`, `InterruptPolicyReinvoke` for at least one row of each other shape (a gate, a writer, a validator, a `Bouncer`, and a `Burler`), the empty string for the empty string, and the empty string for a name that is in no row. Also assert every value in `InterruptPolicies` is one of the two declared constants, so a typo'd third policy word cannot ship.
 
-  In `internal/loomrecipe/interruptpolicy_meta_test.go`, write the meta-test against the **production** authority — the rows `New` actually assembles. Build a real `shedrecipe.Env`/`ShedPaths` pair with the existing `testEnv(t)` helper from `fixture_test.go` and call this package's own `New`, exactly as `TestCoverageGuard_EveryLoomRowHasAnEngine` does. Assert in both directions: every row `New` assembles has an entry in `loomshed.InterruptPolicies`, and every key in `loomshed.InterruptPolicies` names a row `New` actually has — so the table covers exactly those row names, no more and no fewer.
+  In `internal/loomrecipe/interruptpolicy_meta_test.go`, write the meta-test against the **production** authority — the rows `New` actually assembles. Build a real `shedrecipe.Env`/`ShedPaths` pair with the existing `testEnv(t)` helper and call this package's own `New`, exactly as `TestCoverageGuard_EveryLoomRowHasAnEngine` does. `testEnv` is declared in `internal/loomrecipe/shape_test.go`, not in `fixture_test.go`; `fixture_test.go` is listed alongside it because `testEnv` fills its Landing seam via `testLandingDeps`, which is declared there. Assert in both directions: every row `New` assembles has an entry in `loomshed.InterruptPolicies`, and every key in `loomshed.InterruptPolicies` names a row `New` actually has — so the table covers exactly those row names, no more and no fewer.
 
-  Then cross-check against `loomRowEngines`, the unexported package-level `var` already declared in `coverage_guard_test.go`, which this package's test binary can see: assert that every row whose engine is `"Webster"` carries `InterruptPolicyHandback`, and that every row whose engine is anything else carries `InterruptPolicyReinvoke`. Do not redeclare `loomRowEngines` or `testEnv`. Explain in the test's own comment that this is the assertion that keeps a row which changes adapter from silently keeping the wrong policy, and that the engine-name side is what makes the `Webster` exception derivable rather than hand-maintained.
+  Then cross-check against `loomRowEngines`, the unexported package-level `var` already declared in `coverage_guard_test.go`, which this package's test binary can see: assert that every row whose engine is `"Webster"` carries `InterruptPolicyHandback`, and that every row whose engine is anything else carries `InterruptPolicyReinvoke`. Do not redeclare `loomRowEngines`, `testEnv`, or `testLandingDeps` — all three already exist in this package's test binary. Explain in the test's own comment that this is the assertion that keeps a row which changes adapter from silently keeping the wrong policy, and that the engine-name side is what makes the `Webster` exception derivable rather than hand-maintained.
 - **Commit:** `test(loomshed): pin the interrupt-policy table against loom's assembled rows`
 
 ## Batch Tests
