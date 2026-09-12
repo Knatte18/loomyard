@@ -148,6 +148,7 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   - `internal/loomcli/cli.go`
   - `internal/loomcli/run.go`
   - `internal/loomengine/config.go`
+  - `internal/loomengine/configtemplate.go`
   - `internal/loomrecipe/loomrecipe.go`
   - `internal/selfreportengine/selfreport.go`
   - `internal/shedadapters/ledgeraccess.go`
@@ -191,6 +192,11 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   Move the Planned entry for this task in `manifest/roadmap.md` into the Done section, keeping its `See` link line, and renumber nothing — the file uses repeated `1.` markers throughout.
   Rewrite the moved entry's prose into shipped tense to match its Done-section neighbours, which each describe what shipped rather than what is intended: the present-tense framing it carries as a Planned item ("loom's own status file already records …; file these directly via …") becomes a statement of what now happens.
   Drop the Planned entry's two independence clauses in the move — they existed to tell the operator this item could be built in parallel with Tier 2 and `lyx loom step`, which is spent information once it is Done.
+
+  Update the two sibling Planned entries the move leaves stale, in the same edit.
+  The `lyx loom step` entry's "Independent of the two self-report items below" is false once only Tier 2 remains below it, so it becomes the singular form naming that one item.
+  The Tier 2 entry's "Independent of Tier 1 and of the `lyx loom step` item above" now points at an item that is no longer in the Planned section at all, so rephrase it to name Tier 1 as already shipped rather than as a parallel sibling.
+  The repo already keeps such cross-references current rather than letting them rot — the Someday `webster: worktree-per-card parallel execution` entry refers to "The now-Done `Adopt quarry's glyph alphabet as the plan alphabet` item" in exactly this way, and is the phrasing model to follow.
 
   Update `docs/overview.md`'s selfreport module bullet so it names both triggers: the manual verb it already describes, and the automatic Go-detected structural-anomaly path this task adds, filed from `drive` off loom's own status file.
   Change no other line — this task adds no module and no command, so neither the module table nor the execution stack moves.

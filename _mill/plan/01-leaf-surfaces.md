@@ -117,6 +117,7 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 
 - **Context:**
   - `internal/configengine/config.go`
+  - `internal/loomengine/configtemplate.go`
   - `internal/yamlengine/reconcile.go`
 - **Edits:**
   - `internal/loomengine/config.go`
