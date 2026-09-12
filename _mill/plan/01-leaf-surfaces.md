@@ -105,7 +105,9 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   `LoomSelfreportFiled`'s comment must additionally record that losing the marker — a fresh clone, a fabric re-wire — costs at most one duplicate issue, which is why the marker is deliberately machine-local rather than durable.
   Declare the two filenames as unexported package constants beside the existing `loomStatusFileName`, following its own sole-declarer comment style, rather than as inline string literals.
 
-  Register both accessors in the two guard tests in the same card, or the guard will not cover them: add a row to `cmd/lyx/notransients_test.go`'s table beside the existing `loomengine.LoomBootstrapLock` entry, and add the matching `assertPath` lines and map entries to all three sites in `cmd/lyx/constructoranchoring_test.go` that currently list `loomengine.LoomBootstrapLock`.
+  Register both accessors in the two guard tests in the same card, or the guard will not cover them.
+  In `cmd/lyx/notransients_test.go`, give each accessor its own row in `transientSet` — two rows, not one — beside the existing `loomengine.LoomBootstrapLock` entry, since the guard walks that table element by element and an unlisted accessor is simply never checked.
+  In `cmd/lyx/constructoranchoring_test.go`, add the matching `assertPath` lines and map entries for both accessors to all three sites that currently list `loomengine.LoomBootstrapLock`.
   Update `constructoranchoring_test.go`'s file-level comment where it enumerates the loom constructors by name so the list stays accurate.
 
   Add path assertions to `internal/loomengine/loomstatus_test.go` mirroring the existing `TestLoomRunLock` and `TestLoomRunLock_UnanchoredEqualsWorktreePath` pair: one hand-built `lyxcwd.Location` with a non-`"."` `AnchorRel` proving the accessor follows the anchored subpath, and one unanchored case proving it equals the worktree path.
@@ -115,6 +117,7 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 
 - **Context:**
   - `internal/configengine/config.go`
+  - `internal/yamlengine/reconcile.go`
 - **Edits:**
   - `internal/loomengine/config.go`
   - `internal/loomengine/template.yaml`
@@ -124,11 +127,22 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 - **Moves:** none
 - **Requirements:** Add a `Selfreport bool` field with the yaml tag `selfreport` to `loomengine.Config` in `internal/loomengine/config.go`, and a matching `selfreport: true` line to `internal/loomengine/template.yaml` with a trailing comment in the existing style, stating that it switches off automatic filing of Go-detected structural anomalies and that a run against a fork or in CI must set it false so it does not file into the upstream issue tracker.
 
-  The template line is what makes the default true: `bool`'s zero value is `false`, and `LoadConfig` uses `configengine.Load` (strict), which always supplies the template's own value for a key the user's file omits — exactly how `discussion_interactive: false` already behaves.
-  Because loom is in the strict set, a `Config` field without the matching template entry would break every existing `loom.yaml`, so both edits must land together.
+  The template line is what makes the default true, because `bool`'s zero value is `false` — exactly the trap `discussion_interactive: false` already sits beside.
+  But be precise about how strict loading reaches that default, because the obvious assumption is wrong: `configengine.Load` does **not** fall back to the template for a key an existing on-disk file omits.
+  Its shared `load` body runs `yamlengine.MissingKeys(template, fileBytes)` and hard-errors with `missing keys: …; run "lyx config reconcile"` whenever that returns anything, before it ever resolves a value.
+  The template supplies the default only where the whole file is absent, and that path belongs to `LoadOrTemplate`, which loom deliberately does not use — loom is in the strict set per the Config Strictness Invariant.
+
+  The migration consequence is real and must be stated in the template comment rather than discovered at run time: adding this key makes every already-reconciled `loom.yaml` on disk miss it, so loom's config load hard-errors until the operator runs `lyx config reconcile --apply`, which writes the new key in at the template's value.
+  Both edits must still land together — a `Config` field with no template entry is the mirror-image break — but landing them together does not spare an existing worktree the reconcile step.
   Add no validation for this key in `LoadConfig`: unlike the three model-specs and the three timeouts, a bool has no value that can only be a mistake.
 
-  Add two cases to `internal/loomengine/config_test.go` following `seedLoomConfig`'s existing shape: a `loom.yaml` omitting `selfreport` entirely loads with `Selfreport` true (the template's value), and a `loom.yaml` carrying `selfreport: false` loads with `Selfreport` false.
+  Add two cases to `internal/loomengine/config_test.go` following `seedLoomConfig`'s existing shape.
+  First, a `loom.yaml` seeded from the full `ConfigTemplate()` loads with `Selfreport` true — that, not an omitted key, is what exercises the template's default under strict loading;
+  the package's existing well-formed-config test is the shape to follow.
+  Second, a `loom.yaml` seeded from the full template but with `selfreport: false` substituted loads with `Selfreport` false.
+  Do not write a case asserting that a `loom.yaml` omitting `selfreport` entirely loads with `Selfreport` true;
+  that file errors on missing keys, and asserting otherwise would pin behaviour the loader does not have.
+  A third case asserting that an omitting file produces the missing-keys error is optional, not required — `configengine`'s own suite already owns that behaviour.
 - **Commit:** `feat(loomengine): add the selfreport config key and its template default`
 
 ## Batch Tests

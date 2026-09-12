@@ -177,6 +177,8 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   Follow `manifest/designs/quarry-glyph-plan-alphabet.md`'s header shape, listed in Context as the model.
 
   Move the Planned entry for this task in `manifest/roadmap.md` into the Done section, keeping its `See` link line, and renumber nothing — the file uses repeated `1.` markers throughout.
+  Rewrite the moved entry's prose into shipped tense to match its Done-section neighbours, which each describe what shipped rather than what is intended: the present-tense framing it carries as a Planned item ("loom's own status file already records …; file these directly via …") becomes a statement of what now happens.
+  Drop the Planned entry's two independence clauses in the move — they existed to tell the operator this item could be built in parallel with Tier 2 and `lyx loom step`, which is spent information once it is Done.
 
   Update `docs/overview.md`'s selfreport module bullet so it names both triggers: the manual verb it already describes, and the automatic Go-detected structural-anomaly path this task adds, filed from `drive` off loom's own status file.
   Change no other line — this task adds no module and no command, so neither the module table nor the execution stack moves.

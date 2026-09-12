@@ -1,0 +1,38 @@
+MILL_REVIEW_BEGIN
+# Review: self-report Tier 1: Go-detected structural anomalies — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-09-12
+```
+
+## Findings
+
+### [BLOCKING:design] Card 4's config test rests on a false premise about strict Load
+**Location:** 01-leaf-surfaces.md, Card 4
+**Issue:** The card claims `configengine.Load` (strict) "always supplies the template's own value for a key the user's file omits," and mandates a test where a `loom.yaml` omitting `selfreport` entirely "loads with `Selfreport` true." Verified against `internal/configengine/config.go`'s `load` (Context file for this card): on the strict path it calls `yamlengine.MissingKeys(template, fileBytes)` and returns a hard error ("missing keys: …; run \"lyx config reconcile\"") whenever `len(missing) > 0` — it never falls through to supply the template's value. `internal/yamlengine/reconcile.go`'s `MissingKeys` doc confirms it "returns the leaf key-paths present in template but absent from existing." So an on-disk file that omits `selfreport` entirely will **error**, not load with `Selfreport == true`.
+**Fix:** Correct the card's rationale and drop/rewrite the "omitting entirely loads true" test case — under strict `Load`, a key omitted from an already-existing `loom.yaml` fails until `lyx config reconcile --apply`; only `TestLoadConfig_WellFormed` (which seeds the full `ConfigTemplate()`) exercises the true default. Keep the `selfreport: false` explicit-override case as-is.
+
+### [NIT:scope] Card 3 undercounts rows needed in the notransients guard
+**Location:** 01-leaf-surfaces.md, Card 3
+**Issue:** The card says to "add a row to `cmd/lyx/notransients_test.go`'s table beside the existing `loomengine.LoomBootstrapLock` entry" (singular), but two new accessors (`LoomSelfreportFiled`, `LoomSelfreportFiledLock`) both resolve under `.lyx` and both need registering in `transientSet` for the guard to actually cover them, per the card's own "or the guard will not cover them" warning.
+**Fix:** State explicitly that both accessors get their own row in `transientSet`.
+
+### [NIT:scope] Card 5's Context omits the file declaring the outcome constants it references
+**Location:** 02-anomaly-detector.md, Card 5
+**Issue:** The title-rendering requirement refers to counting history entries "whose Outcome is the done outcome" — i.e. `shedengine.Done` — but that constant (and the `Outcome` type / `Stuck`) is declared in `internal/shedengine/producer.go`, which is not listed in Card 5's Context or Edits (only `status.go`/`run.go` are). `run.go` uses `Done`/`Stuck` unqualified in-package, so the identifier is visible but not its declaring file.
+**Fix:** Add `internal/shedengine/producer.go` to Card 5's Context.
+
+### [NIT:consistency] Card 9's roadmap move doesn't address the Done section's tense convention
+**Location:** 03-drive-wiring.md, Card 9
+**Issue:** The card says to move the Planned entry into Done "keeping its See link line" but doesn't direct updating the entry's prose, which is currently written in present/future tense ("loom's own status file already records…"). Every existing Done entry (e.g. the quarry-glyph one) is phrased in completed/shipped tense describing what shipped.
+**Fix:** Add a line directing the entry's prose be rewritten to shipped-tense, consistent with its Done-section neighbors.
+
+## Verdict
+
+REQUEST_CHANGES
+Card 4's config test requirement contradicts strict `Load`'s verified error-on-missing-key behavior; the rest is minor.
+MILL_REVIEW_END

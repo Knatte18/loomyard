@@ -27,6 +27,7 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   - `internal/loomengine/status.go`
   - `internal/shedengine/status.go`
   - `internal/shedengine/run.go`
+  - `internal/shedengine/producer.go`
 - **Edits:** none
 - **Creates:**
   - `internal/loomengine/anomaly.go`
@@ -73,7 +74,9 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   Threshold three, not five, because every review segment carries `max_bounces: 5` and the Bouncer's own seed call permanently consumes one unit — firing at three reports the recurrence while the segment is still alive rather than only after it has degenerated into the bounce-budget trigger.
 
   Render each anomaly's `Title` inside the detector, deterministically, with the discriminator differing per trigger because the triggers differ in whether they are re-observed at all.
-  For the three halt kinds: `loom anomaly: <kind> — <slug> — <producer>#<success-count>`, where `<producer>` is `final.CurrentProducer` and `<success-count>` is the number of entries in `final.History` whose `Producer` equals that name and whose `Outcome` is the done outcome — that is, how many times this row had previously succeeded.
+  For the three halt kinds: `loom anomaly: <kind> — <slug> — <producer>#<success-count>`, where `<producer>` is `final.CurrentProducer` and `<success-count>` is the number of entries in `final.History` whose `Producer` equals that name and whose `Outcome` is `shedengine.Done` — that is, how many times this row had previously succeeded.
+  `Outcome` and its `Done` constant are declared in `internal/shedengine/producer.go`, listed in this card's Context;
+  `run.go` uses them unqualified in-package, so the identifier is visible there but not declared there.
   A count is required rather than a history length because a blocked run's history grows on every resume: a resume of an unfixed escalation re-calls the halting producer and appends another stuck entry, so a length-keyed title would mint a fresh title — and therefore a fresh issue — on every single resume, which is the exact failure the marker exists to prevent.
   Counting that producer's own done entries is invariant under precisely that append and moves only when the row genuinely succeeds.
   For the crash-resume: `loom anomaly: crash-resume — <slug> — <producer>@<history-length>`, using `entry.CurrentProducer` and `entry.HistoryLength`, because a crash-resume is observed at most once and needs no stability under re-observation, only the finer distinctness that separates a crash at one point in the run from a crash at another.
