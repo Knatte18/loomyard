@@ -46,7 +46,9 @@ batches:
     commit_sha: 0bce41a2f95a8b2b30d083ca549ec88718f038c7
     verify_baseline_failures: ["FAIL\t./internal/friction/... [setup failed]"]
   - name: loom-paths-and-config
-    state: pending
+    state: running
+    implementer_session: f7f4820f-8ac1-44f7-a2f8-5dbd4b5402a5
+    start_sha: 6419d46d4f26bb60d9b412a00a4275ed9b0ee971
     verify_baseline_failures: []
   - name: frictionengine
     state: pending
