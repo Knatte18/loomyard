@@ -9,6 +9,9 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; a thin `/ly-*` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, cleaning up on a detected crash, and filing friction via `lyx selfreport create`. Supersedes both `llm-driven-loom-alternative` and `self-report: two-tier friction capture` — see the doc for how self-report's two tiers reconcile against this.
+   See [designs/loom-step-supervisor.md](designs/loom-step-supervisor.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -16,9 +19,6 @@ No build order is implied between these items.
 
 1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system. The now-Done `Adopt quarry's glyph alphabet as the plan alphabet` item unblocks the edges its scheduler would need but does not itself deliver them, so this item stays Someday until picked up on its own.
    See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
-
-1. **LLM-driven orchestration as an alternative to `loom`'s Go phase machine** — genuinely speculative, not a commitment: an LLM plays `loom`'s sequencing role directly (driving the same 15-row producer table by hand) instead of `internal/loomengine`'s Go code, adding continuous live attention Go's periodic gates structurally can't offer — motivated by a real gap the `crucible-loom-glyph-hardening` campaign both demonstrated and complicated (see the doc for the evidence cutting both ways).
-   See [designs/llm-driven-loom-alternative.md](designs/llm-driven-loom-alternative.md).
 
 1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first, so it needs its own look before it can be scoped.
 
@@ -59,9 +59,6 @@ No build order is implied between these items.
 1. **semantic-index** — semantic search over docstrings/comments (Enzyme-inspired: catalysts + embeddings + temporal decay), to find code by concept rather than literal keyword.
    Genuinely speculative, not yet designed in depth.
    See [designs/semantic-index.md](designs/semantic-index.md).
-
-1. **self-report: two-tier friction capture** — loom's per-phase design means no single LLM session has full-run context the way Millhouse's self-report assumes; splits into Go-detected structural anomalies plus per-phase friction notes, aggregated for one reflection agent at natural end points.
-   See [designs/self-report.md](designs/self-report.md).
 
 1. **board: curation/triage automation** — an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via the already-shipped `promote-note` primitive. This is the automation layer on top of that primitive, deferred out of `board: move storage to weft:main`.
    See [designs/curation-triage.md](designs/curation-triage.md).
