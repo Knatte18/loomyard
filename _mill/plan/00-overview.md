@@ -3,7 +3,7 @@
 ```yaml
 task: "lyx loom step + external supervisor skill"
 slug: "loom-step"
-approved: false
+approved: true
 started: "20260912-104814"
 parent: "main"
 root: ""

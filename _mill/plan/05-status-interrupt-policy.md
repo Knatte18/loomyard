@@ -56,7 +56,7 @@ The `depends-on: [4]` edge is for doc serialisation, not code: this batch's only
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  In `manifest/designs/loom.md`, wherever the `lyx loom status` envelope's keys are described, add `interrupt_policy` with a one-sentence description: it carries the interrupt policy for the envelope's own `current_producer`, drawn from `internal/loomshed`'s table, and is empty when `current_producer` names no row. State that the addition is additive — no existing key changes — and that `status` keeps its lightweight wiring.
+  `manifest/designs/loom.md` describes the status **file**'s fields but carries no description of the `lyx loom status` **envelope**'s key set, so there is no key list to append to. The edit site is the Module decomposition table's existing `` `lyx loom status` `` row — the same `| Piece | Form | Notes |` table batch 4 card 13 added a `` `lyx loom step` `` row to. Extend that row's Notes cell to record that the one-shot envelope also carries `interrupt_policy` for its own `current_producer`, drawn from `internal/loomshed`'s table, empty when `current_producer` names no row. Keep the cell on one line, per the repo's table convention, and keep the row's existing strand description intact. State in the cell that the key is additive — no existing key changes — and that `status` keeps its lightweight wiring.
 
   Do not touch the `/ly-*` skills table row: batch 6 owns that edit.
 
