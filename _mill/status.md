@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: self-report-tier1
 branch: self-report-tier1
 plan: _mill/plan
@@ -35,4 +35,17 @@ plan-fix-r5  '2026-09-12T12:08:07Z'
 plan-review-r6  '2026-09-12T12:16:57Z'
 plan-fix-r6  '2026-09-12T12:17:45Z'
 planned  '2026-09-12T12:17:59Z'
+implementing  '2026-09-12T12:18:22Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: leaf-surfaces
+    state: pending
+  - name: anomaly-detector
+    state: pending
+  - name: drive-wiring
+    state: pending
 ```
