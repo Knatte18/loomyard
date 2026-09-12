@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-wiring
+phase: approved-docs
 slug: self-report-tier2
 branch: self-report-tier2
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-compose-burler  '2026-09-12T12:04:09Z'
 approved-compose-webster  '2026-09-12T12:15:00Z'
 approved-compose-loom  '2026-09-12T12:23:42Z'
 approved-wiring  '2026-09-12T12:34:52Z'
+approved-docs  '2026-09-12T12:38:41Z'
 ```
 
 ## Batches
@@ -88,9 +89,10 @@ batches:
     commit_sha: b33e69860a9e3033fc34452e6bbaae3679723033
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: 1add3454-5c49-4d12-a73e-8cd7e3ea91de
     start_sha: 90da32059f9a350b9a3d7530c72ad9963c3922bf
+    commit_sha: 042f8c3749d693df6f0b3d1a0b08ec6b858473fd
     verify_baseline_failures: []
 ```
 ## Inferred-success log
