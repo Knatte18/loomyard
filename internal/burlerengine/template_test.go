@@ -66,7 +66,7 @@ func TestTemplate_StatesClusterForkDiscipline(t *testing.T) {
 		{Name: "style", Text: "pay extra attention to style"},
 	}
 
-	_, files, err := composePrompt(stencilsDir, &p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	_, files, err := composePrompt(stencilsDir, &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -98,7 +98,7 @@ func TestTemplate_OrchestratorExcludesDownstreamBodies(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	orchestrator, _, err := composePrompt(stencilsDir, &p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	orchestrator, _, err := composePrompt(stencilsDir, &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -134,16 +134,18 @@ func orchestratorMarkerValues() map[string]string {
 
 // instruction1MarkerValues returns a values map with every one of
 // instruction 1's four required top-level markers set to a non-empty
-// placeholder, plus pattern_directive — the one optional marker, filled
-// via stencil.FillOptional — set to a placeholder too, so tests can delete
-// one key at a time to prove stencil.FillOptional's per-marker error.
+// placeholder, plus pattern_directive and friction_directive — the two
+// optional markers, filled via stencil.FillOptional — set to a placeholder
+// too, so tests can delete one key at a time to prove stencil.FillOptional's
+// per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
-		"pattern_directive": "## Constraints — do this before you judge or change anything\n\n- Read _lyx/PATTERN.md.",
-		"target":            "target placeholder",
-		"fasit":             "fasit placeholder",
-		"rubric":            "rubric placeholder",
-		"tool_use_rules":    "tool-use placeholder",
+		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read _lyx/PATTERN.md.",
+		"friction_directive": "## Friction note — optional, only if something went wrong",
+		"target":             "target placeholder",
+		"fasit":              "fasit placeholder",
+		"rubric":             "rubric placeholder",
+		"tool_use_rules":     "tool-use placeholder",
 	}
 }
 
@@ -171,10 +173,11 @@ func instruction3MarkerValues() map[string]string {
 
 // TestTemplate_FillsWithAllMarkers asserts each of the four embedded assets fills through stencil
 // when supplied its own full marker set (required markers plus, for instruction 1, the optional
-// pattern_directive), and fails — naming the marker — when any single REQUIRED marker for that
-// asset is absent.
-// pattern_directive is deliberately excluded from instruction 1's deletion sweep: it is the one
-// optional marker across all four assets, so deleting it must not error.
+// pattern_directive and friction_directive), and fails — naming the marker — when any single
+// REQUIRED marker for that asset is absent.
+// pattern_directive and friction_directive are deliberately excluded from instruction 1's deletion
+// sweep: they are the two optional markers across all four assets, so deleting either must not
+// error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -193,7 +196,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "instruction 1 (explore)",
 			template:        stencils.BurlerStep1Explore,
 			values:          instruction1MarkerValues(),
-			optional:        []string{"pattern_directive"},
+			optional:        []string{"pattern_directive", "friction_directive"},
 			requiredMarkers: []string{"target", "fasit", "rubric", "tool_use_rules"},
 		},
 		{
@@ -282,6 +285,50 @@ func TestTemplate_PatternDirectiveOptional(t *testing.T) {
 	})
 }
 
+// TestTemplate_FrictionDirectiveOptional asserts friction_directive behaves as an optional marker on
+// instruction 1, mirroring TestTemplate_PatternDirectiveOptional above: an empty value renders
+// cleanly with no leftover `{{`, a non-empty value places the directive block ahead of the first work
+// instruction, and a marker-free template (the literal {{.friction_directive}} stripped from the
+// shipped bytes) still fills cleanly while a non-empty directive value is supplied — the composer's
+// optional-marker guarantee runs one direction only (see stencil.FillOptional's own doc comment), so
+// a marker's absence from the template must never be an error.
+func TestTemplate_FrictionDirectiveOptional(t *testing.T) {
+	t.Run("empty friction_directive renders cleanly", func(t *testing.T) {
+		values := instruction1MarkerValues()
+		values["friction_directive"] = ""
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		if strings.Contains(text, "{{") {
+			t.Errorf("rendered output contains leftover {{: %q", text)
+		}
+	})
+
+	t.Run("non-empty friction_directive precedes the first work instruction", func(t *testing.T) {
+		values := instruction1MarkerValues()
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		directiveIdx := strings.Index(text, values["friction_directive"])
+		workIdx := strings.Index(text, "## What to review (the target)")
+		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
+			t.Errorf("friction_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
+		}
+	})
+
+	t.Run("marker-free template still fills while a directive value is supplied", func(t *testing.T) {
+		markerFree := strings.ReplaceAll(string(stencils.BurlerStep1Explore), "{{.friction_directive}}", "")
+		values := instruction1MarkerValues()
+		if _, err := stencil.FillOptional([]byte(markerFree), values, []string{"pattern_directive", "friction_directive"}); err != nil {
+			t.Fatalf("stencil.FillOptional() on a marker-free template = %v; want nil", err)
+		}
+	})
+}
+
 // TestComposePrompt_ReadsEditedStencilFromDisk proves composePrompt reads a round prompt from
 // stencilsDir on every call rather than from any compiled-in default: overwriting
 // burler/burler-step-2-review.md on disk with a modified body, after building stencilsDir from the
@@ -299,7 +346,7 @@ func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
 
-	_, files, err := composePrompt(stencilsDir, &p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	_, files, err := composePrompt(stencilsDir, &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
