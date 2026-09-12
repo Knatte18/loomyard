@@ -10,9 +10,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -75,52 +73,7 @@ Example:
 				return nil
 			}
 
-			handle, err := fabricengine.Open(c.location)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			taskBranch, err := handle.CurrentBranch()
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			originURL, err := handle.OriginURL()
-			if err != nil {
-				// scalar-read-errors-refuse-or-defer-by-consumer: only Publish reads OriginURL, and only
-				// when a pull request is actually required, so an unusable origin URL passes through as
-				// an empty string rather than refusing drive itself.
-				originURL = ""
-			}
-			recorded, found, err := fabricengine.ReadOrigin(c.location)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			parentBranch, err := resolveLandingParent(recorded, found, taskBranch)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			syncOpts := fabricengine.EnvSyncOptions()
-			pushBranch := func() error {
-				_, err := handle.PushBranch(syncOpts)
-				return err
-			}
-			c.env.Landing = landingDeps(
-				c.location,
-				c.runDeps.Geom,
-				taskBranch,
-				originURL,
-				parentBranch,
-				syncOpts.SkipPush,
-				pushBranch,
-				c.registry,
-				c.runner,
-				c.landingCfg,
-			)
-
-			shed, err := loomrecipe.New(c.env, c.shedPaths)
+			shed, err := c.buildLoomShed()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

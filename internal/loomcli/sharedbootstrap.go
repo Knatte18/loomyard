@@ -16,9 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -157,4 +159,56 @@ func (c *loomCLI) ensureStatusStrand() error {
 		}
 	}
 	return nil
+}
+
+// buildLoomShed builds the *shedengine.Shed drive.go's RunE runs -- today's shed-construction
+// block from drive.go, held here verbatim and in today's order: open the fabric, read the current
+// branch and origin URL, resolve the recorded origin and the landing parent, assemble Env.Landing,
+// and construct the shed via loomrecipe.New.
+//
+// It returns the constructed shed and a nil error, or a nil shed and the first error encountered,
+// unwrapped.
+func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
+	handle, err := fabricengine.Open(c.location)
+	if err != nil {
+		return nil, err
+	}
+	taskBranch, err := handle.CurrentBranch()
+	if err != nil {
+		return nil, err
+	}
+	originURL, err := handle.OriginURL()
+	if err != nil {
+		// scalar-read-errors-refuse-or-defer-by-consumer: only Publish reads OriginURL, and only
+		// when a pull request is actually required, so an unusable origin URL passes through as an
+		// empty string rather than refusing this build itself.
+		originURL = ""
+	}
+	recorded, found, err := fabricengine.ReadOrigin(c.location)
+	if err != nil {
+		return nil, err
+	}
+	parentBranch, err := resolveLandingParent(recorded, found, taskBranch)
+	if err != nil {
+		return nil, err
+	}
+	syncOpts := fabricengine.EnvSyncOptions()
+	pushBranch := func() error {
+		_, err := handle.PushBranch(syncOpts)
+		return err
+	}
+	c.env.Landing = landingDeps(
+		c.location,
+		c.runDeps.Geom,
+		taskBranch,
+		originURL,
+		parentBranch,
+		syncOpts.SkipPush,
+		pushBranch,
+		c.registry,
+		c.runner,
+		c.landingCfg,
+	)
+
+	return loomrecipe.New(c.env, c.shedPaths)
 }
