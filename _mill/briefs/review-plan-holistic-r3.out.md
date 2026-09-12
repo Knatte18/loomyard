@@ -1,0 +1,23 @@
+MILL_REVIEW_BEGIN
+# Review: self-report Tier 2: per-agent friction notes for unsupervised runs — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 4.5 (Anthropic), self-assessed
+reviewed_file: plan/
+date: 2026-09-12
+```
+
+## Findings
+
+### [NIT:consistency] `WarnIfMarkerAbsent`'s third parameter is misleadingly named
+**Location:** 01-friction-leaf.md Card 1, exercised by 04/05/06's composer cards
+**Issue:** The signature `WarnIfMarkerAbsent(template []byte, stencilName, notePath string)` names its gating parameter `notePath`, but every call site in batches 4/5/6 deliberately passes the composed *directive* text instead (correctly reasoned each time — an empty directive, whether from Tier 2 being off or a swallowed read error, should never warn), so the parameter's declared name never matches what any real caller supplies.
+**Fix:** Rename the parameter (e.g. `value` or `directive`) in Card 1's own signature text so its name matches its actual role across every consumer.
+
+## Verdict
+
+APPROVE
+Verified against source across all 28 cards; every citation checked resolves, and the design is coherent.
+MILL_REVIEW_END

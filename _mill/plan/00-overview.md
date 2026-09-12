@@ -3,7 +3,7 @@
 ```yaml
 task: 'self-report Tier 2: per-agent friction notes for unsupervised runs'
 slug: 'self-report-tier2'
-approved: false
+approved: true
 discussion_sha: 'e045dc6c6fa8df34555d31ef86f42fa8a9f43d34'
 started: '20260912-105329'
 parent: 'main'

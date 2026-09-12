@@ -119,6 +119,7 @@ It does not land on `websterengine.Geometry`, because `internal/hubgeom` and `in
 
   Each composer adds `friction.MarkerName` to its `values` map and calls `friction.WarnIfMarkerAbsent` after obtaining its template bytes and before filling, passing the stencil name whose file actually carries the marker: `"webster-prefix-fork"` for `RenderForkPrompt`, `"webster-prefix-recovery"` for `RenderRecoveryPrompt`, `"webster-template-integration"` for `RenderIntegrationPrompt`, and `"webster-template-master"` for `RenderMasterPrompt`.
   For the two joined templates the bytes passed to the helper are the **composed** bytes `composeForkTemplate` / `composeRecoveryTemplate` returned, since those are what will actually be filled.
+  The helper's third argument is the composed directive, never the note path — see `friction.WarnIfMarkerAbsent`'s own parameter naming in batch 1 card 1.
 
   Fill calls:
 

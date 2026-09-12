@@ -77,7 +77,7 @@ batch 7 changes nothing in `loomengine`.
   **`internal/loomengine/prompt.go`.**
   `composePrompt` gains a trailing `frictionDirective string` parameter, adds `friction.MarkerName` to its `values` map, calls `friction.WarnIfMarkerAbsent(template, "loom-template-discussion", frictionDirective)` after reading the template and before filling, and converts its `stencil.Fill(template, values)` call at `internal/loomengine/prompt.go:30` to `stencil.FillOptional(template, values, []string{friction.MarkerName})`.
   `stencil.Fill` is literally `FillOptional(template, values, nil)`, so this is a one-line change plus the optional-names argument.
-  The `WarnIfMarkerAbsent` call passes the directive rather than the note path: an empty directive is exactly the Tier-2-off case the helper must not warn on, and a non-empty directive is exactly the enabled case where a marker-free template silently drops it.
+  The `WarnIfMarkerAbsent` call passes the directive, which is what that parameter is named for: an empty directive is exactly the case the helper must not warn on — Tier 2 off, or a `friction.Directive` read error the composer already warned about and swallowed — while a non-empty directive is exactly the enabled case where a marker-free template silently drops it.
 
   **`internal/loomengine/plan.go`.**
   In `PlanSpec`, resolve `frictionDir` and the note path the same way, with the stem `"Plan-Write"` — re-entered whenever `Plan-Validate` or `Plan-Revalidate` bounces, so it needs the same non-clobbering treatment.

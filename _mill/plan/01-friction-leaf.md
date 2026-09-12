@@ -58,9 +58,11 @@ Batch-local decision that differs from the overview's Shared Decisions: none.
   Otherwise it selects the role's stencil name, reads it with `stencilstore.Read(stencilsDir, name)`, wraps a read failure as `fmt.Errorf("friction: directive stencil: %w", err)`, and returns `stencil.StripLeadingComment(string(content))` with the literal `notePath` substituted into it.
   Substitution is a plain `strings.ReplaceAll` of the literal token `{{.note_path}}` in the stripped stencil text with `notePath`, performed here rather than through `stencil.Fill`, because the returned text is itself injected as another template's marker value and must never be passed through `Fill` a second time — the same reason `pattern.Directive` strips its banner and returns raw text.
 
-  `WarnIfMarkerAbsent(template []byte, stencilName, notePath string)` returns nothing.
-  It no-ops when `notePath` is empty (Tier 2 off).
+  `WarnIfMarkerAbsent(template []byte, stencilName, directive string)` returns nothing.
+  The third parameter is named `directive`, not `notePath`, because every composer passes the **composed directive text** rather than the note path — an empty directive is the "nothing would have been rendered anyway" case, which covers both Tier 2 being off and a `friction.Directive` read error the composer swallowed, and neither should warn about a missing marker.
+  It no-ops when `directive` is empty.
   Otherwise, when `bytes.Contains(template, []byte(markerLiteral))` is false, it calls `logger.Warn` naming the stencil and the marker and pointing the operator at `lyx stencil diff` and `lyx stencil sync`.
+  The parameter's own doc comment states that callers pass the directive, so a future caller does not pass a note path and silently invert the gate.
   It is the only place in the tree that logs this condition;
   the composers call it and continue.
 
@@ -185,7 +187,7 @@ Batch-local decision that differs from the overview's Shared Decisions: none.
   an unknown and a zero `Role` behave the same way;
   a missing or unreadable stencil surfaces as an error naming the stencil;
   the returned directive text contains the told note path **verbatim**, which is the assertion that catches a composer wiring the wrong path;
-  `WarnIfMarkerAbsent` reports absent for template bytes with no `{{.friction_directive}}` literal and present for bytes carrying it, and fires only on the absent-and-enabled combination — never when `notePath` is empty.
+  `WarnIfMarkerAbsent` reports absent for template bytes with no `{{.friction_directive}}` literal and present for bytes carrying it, and fires only on the absent-and-enabled combination — never when the `directive` argument is empty, which is both the Tier-2-off case and the swallowed-read-error case.
 
   `notepath_test.go` covers `NotePath` against a real `t.TempDir()` with real files, never a stubbed stat, since the guarantee is about the filesystem:
   `NotePath("", id)` returns `""`;
