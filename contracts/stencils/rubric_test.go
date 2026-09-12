@@ -4,6 +4,8 @@
 // subsections require, the nine items loom-rubric-webster-review.md's own sections require, and the
 // marker-value-not-template constraint the two Bouncer stencils' {{.rubric}} interpolation depends
 // on for all three rubrics.
+// It also pins the one property that matters across all four friction directive stencils: each
+// states that writing the note is optional and that an absent note is normal.
 
 package stencils
 
@@ -140,5 +142,34 @@ func TestLoomRubricWebsterReview_CarriesNoStencilMarkers(t *testing.T) {
 
 	if strings.Contains(text, "{{.") {
 		t.Errorf("LoomRubricWebsterReview contains a stencil marker (\"{{.\"); want none")
+	}
+}
+
+// TestFrictionDirectives_StateOptionalAndAbsenceIsNormal asserts each of the four friction directive
+// stencils contains a short, distinctive substring for the one property that matters across all of
+// them: that writing the note is optional, and that an absent note is normal.
+// Following TestLoomRubricDiscussionReview_NamesEveryRequiredItem as precedent, each assertion is a
+// short, distinctive substring rather than a whole paragraph, so ordinary prose edits do not break
+// this test.
+func TestFrictionDirectives_StateOptionalAndAbsenceIsNormal(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+	}{
+		{"FrictionDirectiveImplementer", string(FrictionDirectiveImplementer)},
+		{"FrictionDirectiveReviewFix", string(FrictionDirectiveReviewFix)},
+		{"FrictionDirectiveOrchestrator", string(FrictionDirectiveOrchestrator)},
+		{"FrictionDirectiveInterview", string(FrictionDirectiveInterview)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !strings.Contains(tt.text, "**optional**") {
+				t.Errorf("%s does not contain %q", tt.name, "**optional**")
+			}
+			if !strings.Contains(tt.text, "normal outcome and never an error") {
+				t.Errorf("%s does not contain %q", tt.name, "normal outcome and never an error")
+			}
+		})
 	}
 }
