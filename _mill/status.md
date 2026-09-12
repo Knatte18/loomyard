@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: self-report-tier2
 branch: self-report-tier2
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-compose-webster  '2026-09-12T12:15:00Z'
 approved-compose-loom  '2026-09-12T12:23:42Z'
 approved-wiring  '2026-09-12T12:34:52Z'
 approved-docs  '2026-09-12T12:38:41Z'
+holistic-reviewing  '2026-09-12T12:39:13Z'
 ```
 
 ## Batches
