@@ -74,7 +74,9 @@ batches:
     commit_sha: 9ad507168e7f36292f5cfd57f2221e792b6a426f
     verify_baseline_failures: []
   - name: compose-loom
-    state: pending
+    state: running
+    implementer_session: a394ee58-6572-4fa9-a811-71ee4d25e480
+    start_sha: 6fce9fe79e26940107ebab1004467b5e32ef3a8c
     verify_baseline_failures: []
   - name: wiring
     state: pending
