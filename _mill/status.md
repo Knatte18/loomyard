@@ -67,7 +67,9 @@ batches:
     commit_sha: 8561d3d48e3494d8e165b47f114fdbe64fb1dc21
     verify_baseline_failures: []
   - name: compose-webster
-    state: pending
+    state: running
+    implementer_session: 92de310e-c476-4d4f-95ab-66adae152d68
+    start_sha: 7ed900acae20273f47aa7e2c85498eab57abb783
     verify_baseline_failures: []
   - name: compose-loom
     state: pending
