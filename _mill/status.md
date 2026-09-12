@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-design-doc-and-roadmap
+phase: holistic-reviewing
 slug: loom-step
 branch: loom-step
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-loom-step-verb  '2026-09-12T11:43:06Z'
 approved-status-interrupt-policy  '2026-09-12T11:45:34Z'
 approved-ly-plugin-supervise-skill  '2026-09-12T11:47:50Z'
 approved-design-doc-and-roadmap  '2026-09-12T11:49:53Z'
+holistic-reviewing  '2026-09-12T11:50:15Z'
 ```
 
 ## Batches
