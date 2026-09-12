@@ -41,6 +41,11 @@ const loomStatusFileName = "status.json"
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
 
+// frictionDirName is the relative-path segment loomengine joins onto LoomScratchDir to form the
+// Tier 2 friction leaf's scratch directory.
+// loomengine is this segment's sole declarer.
+const frictionDirName = "friction"
+
 // DiscussionDirRel returns the worktree-anchor-relative form of DiscussionDir's path: the join of
 // lyxdirs.LyxDirName and discussionDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a directory segment
@@ -157,6 +162,29 @@ func LoomScratchDir(l *lyxcwd.Location) string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReviewsDir(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), reviewsDirName)
+}
+
+// LoomFrictionDir returns the path to the Tier 2 friction leaf's scratch directory for this
+// worktree: the per-agent friction notes an unsupervised run's producers append to.
+// Friction notes are never-tracked ephemera consumed within the run and discarded, which is why
+// they live under the ephemeral tree alongside LoomReviewsDir, rather than the durable one.
+// It is built on LoomScratchDir rather than re-joining l.AnchorPath(), lyxdirs.DotLyxDirName, and
+// loomDirName a second time, exactly as LoomReviewsDir is: the Lyxdirs Single-Declarer Invariant
+// forbids a hand-built join naming the .lyx literal a second time in production path construction,
+// and LoomScratchDir is already the accessor that names it once.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomFrictionDir(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), frictionDirName)
+}
+
+// LoomFrictionArchivePrefix returns the absolute path prefix a timestamped archive sibling of
+// LoomFrictionDir is composed from: internal/frictionengine appends its own compact timestamp to
+// this prefix and renames the friction directory onto the result.
+// It exists as a second accessor, rather than being derived by the caller from LoomFrictionDir,
+// so internal/frictionengine stays told rather than deriving, and the "friction" segment is still
+// named in exactly one place.
+func LoomFrictionArchivePrefix(l *lyxcwd.Location) string {
+	return LoomFrictionDir(l) + "-"
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
