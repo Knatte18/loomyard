@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: self-report-tier1
 branch: self-report-tier1
 plan: _mill/plan
@@ -44,6 +44,7 @@ holistic-fixing  '2026-09-12T12:42:40Z'
 holistic-reviewing  '2026-09-12T12:44:13Z'
 holistic-approved  '2026-09-12T12:47:18Z'
 done  '2026-09-12T12:51:00Z'
+pr-pending  '2026-09-12T12:54:30Z'
 ```
 
 ## Batches
