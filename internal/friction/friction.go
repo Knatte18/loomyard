@@ -9,12 +9,18 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
+
+// freeNameScanCeiling bounds NotePath's first-free-suffix scan: exhausting it is not an error path
+// this package reports, so NotePath returns the last candidate the scan reached rather than looping
+// forever.
+const freeNameScanCeiling = 1000
 
 // notePathToken is the literal template token Directive substitutes with the caller-supplied
 // notePath.
@@ -119,6 +125,87 @@ func WarnIfMarkerAbsent(template []byte, stencilName, directive string) {
 		return
 	}
 	logger.Warn("friction: stencil is missing the friction directive marker; a computed directive will render as nothing -- see \"lyx stencil diff\" and \"lyx stencil sync\"", "stencil", stencilName, "marker", markerLiteral)
+}
+
+// NotePath composes a non-clobbering path for a note named by the stem id inside frictionDir.
+//
+// It returns "" when frictionDir is empty, so Tier 2's off state composes through NotePath and
+// Directive alike with no boolean anywhere. It also returns "" for an id that fails sanitization: an
+// empty id, an id containing either path separator ('/' or '\'), an id equal to "." or ".." or
+// containing a ".." path element, and an id whose id+".md" equals ReportFileName -- the last so a
+// caller can never name a note over the reflection agent's own output file.
+//
+// id is treated as a stem, not a final name: NotePath returns filepath.Join(frictionDir, id+".md")
+// when that path does not exist on disk, and otherwise the first free path in the sequence
+// "id-2.md", "id-3.md", ... -- first free, not highest plus one, so a directory holding "id.md" and
+// "id-3.md" but not "id-2.md" resolves to "id-2.md". The scan is bounded at freeNameScanCeiling and
+// returns the last candidate rather than looping forever; exhausting the ceiling is not an error
+// path this package reports. A stat error that is not "not exist" is treated as "the path is taken"
+// and the scan advances, so an unreadable entry never causes an overwrite.
+//
+// The free-name scan is best-effort under concurrency: two spawns racing inside the same directory
+// can both resolve to the same suffix and one note is lost. That is accepted -- concurrent same-site
+// spawns do not occur today, and a lost note is optional bookkeeping. The case this function closes
+// structurally is sequential re-invocation of the same site, which is guaranteed on any bounced or
+// crash-resumed run: Discussion-Write is re-entered whenever Discussion-Validate bounces to it,
+// Plan-Write whenever Plan-Validate or Plan-Revalidate bounces, and recoverSpawn is re-runnable for
+// the same batch -- internal/websterengine/recoverbatch.go timestamp-archives a stale report on each
+// call for exactly that reason.
+func NotePath(frictionDir, id string) string {
+	if frictionDir == "" {
+		return ""
+	}
+	if !validNoteID(id) {
+		return ""
+	}
+
+	candidate := filepath.Join(frictionDir, id+".md")
+	if !pathTaken(candidate) {
+		return candidate
+	}
+
+	for n := 2; n <= freeNameScanCeiling; n++ {
+		candidate = filepath.Join(frictionDir, fmt.Sprintf("%s-%d.md", id, n))
+		if !pathTaken(candidate) {
+			return candidate
+		}
+	}
+	return candidate
+}
+
+// validNoteID reports whether id is safe to use as NotePath's stem: non-empty, free of either path
+// separator, not "." or ".." or a path containing a ".." element, and not a stem whose ".md" name
+// would collide with ReportFileName.
+func validNoteID(id string) bool {
+	if id == "" {
+		return false
+	}
+	if strings.ContainsAny(id, "/\\") {
+		return false
+	}
+	if id == "." || id == ".." {
+		return false
+	}
+	for _, elem := range strings.Split(filepath.ToSlash(id), "/") {
+		if elem == ".." {
+			return false
+		}
+	}
+	if id+".md" == ReportFileName {
+		return false
+	}
+	return true
+}
+
+// pathTaken reports whether path is unavailable for NotePath's first-free scan: it exists, or stat
+// fails with an error other than "not exist" -- an unreadable entry is treated as taken so it can
+// never be silently overwritten.
+func pathTaken(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	return !os.IsNotExist(err)
 }
 
 // EnsureDir creates dir, including any missing parents, and never returns an error: a failed create
