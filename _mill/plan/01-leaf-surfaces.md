@@ -136,10 +136,17 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   Both edits must still land together — a `Config` field with no template entry is the mirror-image break — but landing them together does not spare an existing worktree the reconcile step.
   Add no validation for this key in `LoadConfig`: unlike the three model-specs and the three timeouts, a bool has no value that can only be a mistake.
 
-  Add two cases to `internal/loomengine/config_test.go` following `seedLoomConfig`'s existing shape.
+  **Repair the four existing fixtures this key breaks, in this same card.** `TestLoadConfig_DiscussionInteractiveTrue`, `TestLoadConfig_MalformedDiscussionSpec`, `TestLoadConfig_MalformedPlanSpec`, and `TestLoadConfig_MalformedReviewSpec` each hand-type a full seven-key YAML block and pass it to `seedLoomConfig`.
+  Adding `selfreport` to the template makes all four miss a key, so `MissingKeys` errors before `LoadConfig` ever reaches `yaml.Unmarshal` or `modelspec.Parse` — the interactive test would get a non-nil error where it asserts nil, and the three malformed-spec tests would get a missing-keys error instead of the spec error whose text they match on.
+  That breaks `go test ./internal/loomengine/`, which is this batch's own `verify:`, so the repair is not optional and is not a follow-up.
+  Switch all four to the package's existing `writeLoomConfigWithKey` helper — one call each, overriding the single key that test actually varies (`discussion_interactive` with `true`, and `discussion`/`plan`/`review` each with the quoted malformed spec literal that test already uses) — rather than hand-adding a `selfreport:` line to each block.
+  That helper builds off `ConfigTemplate()` and its own doc comment states it exists so a fixture never drifts from the template's key set, which is exactly the drift that caused this;
+  switching makes the four immune to the next template key as well, where hand-adding a line would leave the same trap armed.
+
+  Add two cases to `internal/loomengine/config_test.go` for the new key itself.
   First, a `loom.yaml` seeded from the full `ConfigTemplate()` loads with `Selfreport` true — that, not an omitted key, is what exercises the template's default under strict loading;
   the package's existing well-formed-config test is the shape to follow.
-  Second, a `loom.yaml` seeded from the full template but with `selfreport: false` substituted loads with `Selfreport` false.
+  Second, `writeLoomConfigWithKey` with `selfreport` set to `false` loads with `Selfreport` false.
   Do not write a case asserting that a `loom.yaml` omitting `selfreport` entirely loads with `Selfreport` true;
   that file errors on missing keys, and asserting otherwise would pin behaviour the loader does not have.
   A third case asserting that an omitting file produces the missing-keys error is optional, not required — `configengine`'s own suite already owns that behaviour.

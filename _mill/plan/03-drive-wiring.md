@@ -5,7 +5,7 @@ task: 'self-report Tier 1: Go-detected structural anomalies'
 batch: 'drive-wiring'
 number: 3
 cards: 3
-verify: go test ./internal/loomcli/ ./internal/loomengine/ && go test ./internal/lyxcwd/ -run TestEnforcement_MarkdownLinks
+verify: go test ./internal/loomcli/ ./internal/loomengine/ && go test -tags smoke -run 'TestSmokeBootstrap_BringsUpSessionStrandAndDriver|TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed' ./internal/loomcli/ && go test ./internal/lyxcwd/ -run TestEnforcement_MarkdownLinks
 depends-on: [1, 2]
 ```
 
@@ -155,6 +155,7 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   - `manifest/designs/quarry-glyph-plan-alphabet.md`
 - **Edits:**
   - `internal/loomcli/drive.go`
+  - `internal/loomcli/smoke_test.go`
   - `manifest/designs/self-report-tier1.md`
   - `manifest/roadmap.md`
   - `docs/overview.md`
@@ -175,6 +176,13 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   The success envelope's four keys and the error envelope's text stay byte-identical, and the verb's exit code is untouched — a diagnostics side-channel never alters `drive`'s outcome.
   Add a short comment at the call site recording why the line sits above the early return, since that placement is the one thing a later edit would most plausibly undo.
 
+  **Disarm the smoke suite in this same card**, because this is the card that first makes filing possible and therefore the last safe moment to do it.
+  `internal/loomcli/smoke_test.go`'s `fastDeadlineLoomConfig` builds its fixture from `loomengine.ConfigTemplate()` with one `strings.Replace`, so it inherits the new `selfreport: true` automatically.
+  That suite drives the real compiled `cmd/lyx` binary as a genuine subprocess — never `RunCLI` in-process, as its own header explains, because the bootstrap spawns its driver through `os.Executable()` — so there is no `selfreportengine.NewGitHubClient` seam to swap in it.
+  Its runs deliberately bounce Discussion-Write until the bounce budget is spent and then block, which is exactly the bounce-budget-exhausted trigger.
+  Combined with the warn-and-continue posture, every `go test -tags smoke ./internal/loomcli/` on a machine with a resolvable GitHub token would file a real issue against the upstream repository and still report a passing test.
+  Add a second `strings.Replace` to `fastDeadlineLoomConfig`, turning the template's `selfreport: true` into `selfreport: false`, and state in its doc comment that this override is the third member of the existing providerless/fast-deadline pair and why it is load-bearing: the suite has no filing seam to stub, so the knob is the only thing standing between it and real issues.
+
   In the same commit, land the documentation.
   Rewrite `manifest/designs/self-report-tier1.md` into the shipped shape the repo's other completed designs use — a status line marking it Done and pointing at the packages' own documentation for as-built detail, then a short description of what shipped: the five triggers and their thresholds, the per-trigger title discriminators, the four-step filing pass, the machine-local marker, the knob and its default, and the failure posture.
   Keep the existing Related links and drop the Open questions section, whose two questions are both now answered.
@@ -193,7 +201,10 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 ## Batch Tests
 
 `verify:` runs `internal/loomcli`, the one package whose files this batch's cards create or edit, plus `internal/loomengine`, which this batch consumes by import rather than touching — it is in the list so a mismatch between the seams batch 2 declared and the way batch 3 calls them surfaces here rather than at the repo-wide done gate.
-Both are followed by the markdown link-integrity gate, scoped by `-run` to the one test that enforces it, since card 9 edits three files inside that gate.
+Because card 9 edits the `smoke`-tagged `internal/loomcli/smoke_test.go`, `verify:` also carries a `-tags smoke` invocation — an untagged run would not compile that file at all, so the fixture change would go unexercised until the repo-wide done gate.
+It is scoped by `-run` to the two tests that drive the machine to a halt through `fastDeadlineLoomConfig`, which is where a filing attempt would fire, rather than to the whole thirteen-test suite: the rest build the same fixture but assert bootstrap and launcher behaviour that the `selfreport` override cannot affect, and the full suite builds the `cmd/lyx` binary and spawns real tmux sessions on every implementer and fixer round.
+Both scoped smoke tests skip outright when tmux is absent from `PATH`, so this adds a real check where the substrate exists and costs nothing where it does not.
+All of the above is followed by the markdown link-integrity gate, scoped by `-run` to the one test that enforces it, since card 9 edits three files inside that gate.
 Only the untagged suites run: the package's `smoke`- and `integration`-tagged files stay out, which is the point of the extraction.
 
 Files covered: `internal/loomcli/selfreport_test.go` (card 7's six branch cases, the two marker tests, the carry-forward collapse, and the mixed-history discovery cases), `internal/loomcli/selfreport_github_test.go` (card 8's engine-boundary argument-shape and posture cases), the package's existing untagged suites including `cli_test.go` and `wiring_commitstatus_test.go`, which must keep passing since card 9 changes `drive`'s envelopes not at all, and `internal/lyxcwd/docslink_test.go`'s markdown enforcement test.

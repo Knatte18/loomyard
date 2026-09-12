@@ -32,7 +32,7 @@ batches:
     name: drive-wiring
     file: 03-drive-wiring.md
     depends-on: [1, 2]
-    verify: go test ./internal/loomcli/ ./internal/loomengine/ && go test ./internal/lyxcwd/ -run TestEnforcement_MarkdownLinks
+    verify: go test ./internal/loomcli/ ./internal/loomengine/ && go test -tags smoke -run 'TestSmokeBootstrap_BringsUpSessionStrandAndDriver|TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed' ./internal/loomcli/ && go test ./internal/lyxcwd/ -run TestEnforcement_MarkdownLinks
 ```
 
 ## Shared Decisions
@@ -63,6 +63,18 @@ batches:
   Ledger content crosses the package boundary as a `loomengine`-declared value type populated by the caller, never as a read call.
 - **Rationale:** `coherence.go` already houses exactly this shape in the same package (a pure, no-I/O, table-tested Tier-1 validator over a decoded `shedengine.Status`), and keeping the data-only boundary is what avoids a `loomengine` → `shedadapters` edge for a task that needs none.
   It is also what keeps every detection, title, and body assertion in a Tier-1 table.
+- **Applies to:** all batches
+
+### Decision: no-test-fixture-may-file-a-real-issue
+
+- **Decision:** no test in this repo may reach a live `CreateIssue`.
+  A test that can stub `selfreportengine.NewGitHubClient` does so;
+  a test that cannot — because it drives the real compiled binary as a subprocess — must set `selfreport: false` in its own loom config fixture instead.
+  Today that is exactly one suite, `internal/loomcli`'s `smoke_test.go`, disarmed in card 9.
+- **Rationale:** the knob's own template comment already says a run in CI or against a fork must set it false;
+  this repo's own smoke suite is the first such run, and nothing else in the plan applied that rule to it.
+  The suite deliberately drives runs into the bounce-budget-exhausted halt, which is a trigger, and the warn-and-continue posture means a filed issue would not fail the test — so the failure mode is silent upstream issue spam, not a red build.
+  Any future test that boots the real binary inherits this rule.
 - **Applies to:** all batches
 
 ### Decision: tier-1-only-tests
@@ -105,6 +117,7 @@ batches:
 - `internal/loomcli/selfreport.go`
 - `internal/loomcli/selfreport_github_test.go`
 - `internal/loomcli/selfreport_test.go`
+- `internal/loomcli/smoke_test.go`
 - `internal/loomengine/anomaly.go`
 - `internal/loomengine/anomaly_test.go`
 - `internal/loomengine/anomalybody.go`
