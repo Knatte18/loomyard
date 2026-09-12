@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-compose-webster
+phase: approved-compose-loom
 slug: self-report-tier2
 branch: self-report-tier2
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-loom-paths-and-config  '2026-09-12T11:51:44Z'
 approved-frictionengine  '2026-09-12T11:57:13Z'
 approved-compose-burler  '2026-09-12T12:04:09Z'
 approved-compose-webster  '2026-09-12T12:15:00Z'
+approved-compose-loom  '2026-09-12T12:23:42Z'
 ```
 
 ## Batches
@@ -74,9 +75,10 @@ batches:
     commit_sha: 9ad507168e7f36292f5cfd57f2221e792b6a426f
     verify_baseline_failures: []
   - name: compose-loom
-    state: running
+    state: approved
     implementer_session: a394ee58-6572-4fa9-a811-71ee4d25e480
     start_sha: 6fce9fe79e26940107ebab1004467b5e32ef3a8c
+    commit_sha: 8890f5bbe32c5f52d7c0892eb37ed5429e85069e
     verify_baseline_failures: []
   - name: wiring
     state: pending
