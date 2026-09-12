@@ -57,6 +57,12 @@ type RunOpts struct {
 	Effort  string
 	Timeout time.Duration
 	Round   string
+	// NoteID is the caller-supplied friction-note stem for this round --
+	// unique across sites, with friction.NotePath supplying uniqueness
+	// across invocations of the same site. An empty NoteID means no note
+	// path is composed for this round, exactly as an empty friction
+	// directory does.
+	NoteID string
 }
 
 // validate normalizes p in place and reports a fail-loud error if not runnable.

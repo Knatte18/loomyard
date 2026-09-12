@@ -140,6 +140,31 @@ var PatternDirectiveReviewFix []byte
 //go:embed pattern/pattern-directive-orchestrator.md
 var PatternDirectiveOrchestrator []byte
 
+// FrictionDirectiveImplementer is the shipped-default friction directive for RoleImplementer.
+//
+//go:embed friction/friction-directive-implementer.md
+var FrictionDirectiveImplementer []byte
+
+// FrictionDirectiveReviewFix is the shipped-default friction directive for RoleReviewFix.
+//
+//go:embed friction/friction-directive-review-fix.md
+var FrictionDirectiveReviewFix []byte
+
+// FrictionDirectiveOrchestrator is the shipped-default friction directive for RoleOrchestrator.
+//
+//go:embed friction/friction-directive-orchestrator.md
+var FrictionDirectiveOrchestrator []byte
+
+// FrictionDirectiveInterview is the shipped-default friction directive for RoleInterview.
+//
+//go:embed friction/friction-directive-interview.md
+var FrictionDirectiveInterview []byte
+
+// FrictionTemplateReflection is the reflection agent's shipped-default prompt template.
+//
+//go:embed friction/friction-template-reflection.md
+var FrictionTemplateReflection []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -173,6 +198,11 @@ var entries = []registryEntry{
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
+	{"friction-directive-implementer", &FrictionDirectiveImplementer},
+	{"friction-directive-review-fix", &FrictionDirectiveReviewFix},
+	{"friction-directive-orchestrator", &FrictionDirectiveOrchestrator},
+	{"friction-directive-interview", &FrictionDirectiveInterview},
+	{"friction-template-reflection", &FrictionTemplateReflection},
 }
 
 // registry implements stencilstore.Registry over entries.

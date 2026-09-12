@@ -86,7 +86,7 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 
 func newEngineForTest(t *testing.T, root string, shuttle Shuttle) *Engine {
 	t.Helper()
-	return New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, newTestStencilsDir(t))
+	return New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, newTestStencilsDir(t), "")
 }
 
 const (
@@ -171,7 +171,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 				},
 			},
 		}
-		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t), "")
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -188,7 +188,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t), "")
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -221,7 +221,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit},
 		}
-		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t), "")
 
 		got, err := e.Run(p, RunOpts{})
 		if err == nil {
@@ -246,7 +246,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit},
 		}
-		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t), "")
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -271,7 +271,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 				ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}},
 			},
 		}
-		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t), "")
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -461,7 +461,7 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 	// an unrelated file-not-found.
 	worktreeRoot := root
 	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
-	e := New(shuttle, Geometry{WorktreeRoot: worktreeRoot, AnchorPath: anchorPath}, Config{}, newTestStencilsDir(t))
+	e := New(shuttle, Geometry{WorktreeRoot: worktreeRoot, AnchorPath: anchorPath}, Config{}, newTestStencilsDir(t), "")
 
 	if _, err := e.Run(p, RunOpts{}); err != nil {
 		t.Fatalf("Run() = %v; want nil error", err)
@@ -588,7 +588,7 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	}
 
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, newTestStencilsDir(t))
+	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, newTestStencilsDir(t), "")
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {

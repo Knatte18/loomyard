@@ -14,6 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -109,6 +111,21 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 
 	anchorPath := loc.AnchorPath()
 
+	// The friction directory is resolved tolerantly, here rather than deferred to loomcli: this is
+	// what makes the per-batch implementer fork and the cold recovery strand actually receive the
+	// directive under `lyx loom run`, since Master drives the batch loop by running
+	// `lyx webster begin-batch <NN>` and `lyx webster recover-batch <NN>` as separate processes, so
+	// their prompts are composed here and not in internal/loomcli/wiring.go -- see the
+	// webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision. A load error, or an
+	// empty Friction key, both leave it "": a `lyx webster` verb must never fail because an unrelated
+	// module's config could not be read, and the whole value is optional bookkeeping.
+	c.frictionDir = ""
+	if loomCfg, err := loomengine.LoadConfig(anchorPath, "loom"); err != nil {
+		logger.Warn("webstercli: could not load loom config; Tier 2 friction notes are disabled for this invocation", "error", err)
+	} else if loomCfg.Friction != "" {
+		c.frictionDir = loomengine.LoomFrictionDir(loc)
+	}
+
 	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
 	if err != nil {
 		return err
@@ -198,6 +215,8 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 // cliwire.ResolveStandalone's own doc comment for the prologue's ordering obligation, which this
 // function's body no longer needs to restate.
 func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag string) error {
+	// c.frictionDir is left at its zero value: a standalone webster run is not a loom run and has no
+	// friction directory.
 	res, err := wireModule.ResolveStandalone(cliwire.StandaloneRequest{
 		Cwd:             cwd,
 		StencilsDirFlag: stencilsDir,

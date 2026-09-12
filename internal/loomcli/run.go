@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -242,6 +244,27 @@ Example:
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
 
 	return cmd
+}
+
+// ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after
+// loomshed.Seed: on a genuine first seed (seedErr is nil), the friction directory is cleared before
+// being recreated, since a fresh task has no notes worth preserving; on an ErrSeedExists re-entry
+// (any other seedErr value), the directory is left untouched and only ensured to exist, since a
+// resume's notes are exactly the ones most worth reading. Both operations are skipped entirely when
+// frictionDir is empty. A failed os.RemoveAll logs at Warn and never fails this call; a failed
+// friction.EnsureDir is handled entirely inside that function, which never returns an error either.
+// Factored out of runCmd's RunE so a test can drive every branch directly, the same tier-1 pattern
+// bootstrap_test.go already uses for mustSpawnDriver/awaitRunLock.
+func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
+	if frictionDir == "" {
+		return
+	}
+	if seedErr == nil {
+		if err := os.RemoveAll(frictionDir); err != nil {
+			logger.Warn("loom: failed to clear the friction directory on first seed; continuing", "dir", frictionDir, "error", err)
+		}
+	}
+	friction.EnsureDir(frictionDir)
 }
 
 // RunAliasCommand returns the run verb registered a second time, as a bare root child ("lyx run"),
