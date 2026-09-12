@@ -58,6 +58,7 @@ The external interface batch 7 consumes is `burlerengine.New`'s fifth parameter.
   - `internal/logger/logger.go`
 - **Edits:**
   - `internal/burlerengine/engine.go`
+  - `internal/burlerengine/engine_test.go`
   - `internal/burlerengine/profile.go`
   - `internal/burlerengine/prompt.go`
   - `internal/burlercli/wiring.go`
