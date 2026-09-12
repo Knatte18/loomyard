@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-paths-and-config
+phase: approved-frictionengine
 slug: self-report-tier2
 branch: self-report-tier2
 plan: _mill/plan
@@ -34,6 +34,7 @@ planned  '2026-09-12T11:38:45Z'
 implementing  '2026-09-12T11:39:19Z'
 approved-friction-leaf  '2026-09-12T11:47:03Z'
 approved-loom-paths-and-config  '2026-09-12T11:51:44Z'
+approved-frictionengine  '2026-09-12T11:57:13Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: 29b8ce0158149075d387b181d2fd1bba05b3c051
     verify_baseline_failures: []
   - name: frictionengine
-    state: running
+    state: approved
     implementer_session: 593d41f2-96fd-4f58-bbe6-e0faf2893868
     start_sha: 7741af8442e0e59c60d51fe1f1a3d1d73800d34a
+    commit_sha: 3e90e90d6352bfdb9a5f1e2aa6a251f14bd8bd40
     verify_baseline_failures: ["FAIL\t./internal/frictionengine/... [setup failed]"]
   - name: compose-burler
     state: pending
