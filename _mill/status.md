@@ -57,6 +57,8 @@ batches:
     commit_sha: c6b770507cbe03856e4a72f6b41da5d05ed66cc7
     verify_baseline_failures: []
   - name: drive-wiring
-    state: pending
+    state: running
+    implementer_session: 01af9a97-c343-4097-b83d-52e0af7a5873
+    start_sha: 815e6ecd5ab6412e633a75698903b365ab83e0fe
     verify_baseline_failures: []
 ```
