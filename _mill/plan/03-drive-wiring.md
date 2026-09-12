@@ -157,6 +157,7 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 - **Edits:**
   - `internal/loomcli/drive.go`
   - `internal/loomcli/smoke_test.go`
+  - `internal/loomcli/wiring_test.go`
   - `manifest/designs/self-report-tier1.md`
   - `manifest/roadmap.md`
   - `docs/overview.md`
