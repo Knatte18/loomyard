@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-status-interrupt-policy
+phase: approved-ly-plugin-supervise-skill
 slug: loom-step
 branch: loom-step
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-loomshed-interrupt-policy  '2026-09-12T11:28:50Z'
 approved-loomcli-shared-helpers  '2026-09-12T11:37:59Z'
 approved-loom-step-verb  '2026-09-12T11:43:06Z'
 approved-status-interrupt-policy  '2026-09-12T11:45:34Z'
+approved-ly-plugin-supervise-skill  '2026-09-12T11:47:50Z'
 ```
 
 ## Batches
@@ -71,9 +72,10 @@ batches:
     commit_sha: 5fe1e679b5abf7befb7f4ef19e36779203579a4f
     verify_baseline_failures: []
   - name: ly-plugin-supervise-skill
-    state: running
+    state: approved
     implementer_session: 569ed2c6-e823-47da-a6d1-7db205be0838
     start_sha: c99211467b8622f652d61fc711afeb1b0d0209be
+    commit_sha: 05af83000b0f5daff7293f6efaa91412f1be8b1b
     verify_baseline_failures: []
   - name: design-doc-and-roadmap
     state: pending
