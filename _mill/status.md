@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussion-gap-fix-r2
 slug: self-report-tier2
 branch: self-report-tier2
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-09-12T10:10:32Z'
 discussion-fix-r1  '2026-09-12T10:21:01Z'
+discussion-gap-fix-r2  '2026-09-12T10:26:38Z'
 ```

@@ -24,12 +24,13 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
 **In:**
 
 - A new leaf package `internal/friction`, mirroring `internal/pattern`'s shape: it owns the friction-note directive text (read from stencils at call time, one variant per agent role) and the note-path composition given a told directory.
-- Three new stencils under `contracts/stencils/friction/`, one per role, registered in `contracts/stencils/stencils.go`.
+- Four new directive stencils under `contracts/stencils/friction/`, one per role, registered in `contracts/stencils/stencils.go`.
 - A new `loomengine.LoomFrictionDir(l)` accessor, built on `LoomScratchDir`, mirroring `LoomReviewsDir`.
 - Injection of an optional `{{.friction_directive}}` marker into five existing agent prompts and their five composers: Discussion-Write (`internal/loomengine/discussion.go`), Plan-Write (`internal/loomengine/plan.go`), the Burler review+fix round (`internal/burlerengine/engine.go`), the webster implementer fork and the webster Master (`internal/websterengine/render.go`).
 - A new engine package `internal/frictionengine` exposing `Reflect(Deps) (Report, error)`: it scans the friction directory, skips out when empty, otherwise spawns one autonomous reflection agent over the aggregated notes via the told `Shuttle` seam, and archives the consumed notes.
 - One new stencil for the reflection agent's own prompt.
 - A single call site in `internal/loomcli/drive.go`, immediately after `shed.Run` returns, firing on `RunDone` and `RunBlocked`.
+- A once-per-task clear of the friction directory in `internal/loomcli/run.go`, beside the existing `loomshed.Seed` call, on the genuine-first-seed branch only.
 - Two new `loom.yaml` keys — `friction` (a model-spec that doubles as the on/off switch) and `friction_timeout_min` — plus their `internal/loomengine/template.yaml` defaults and `Config` fields.
 - A new **Friction Leaf Invariant** in `CONSTRAINTS.md`.
 - Doc updates in the same commit: `manifest/designs/self-report-tier2.md` (close its three Open questions), `docs/overview.md` (two new modules in the module table), `manifest/roadmap.md` (Planned → Done for this item).
@@ -78,7 +79,7 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
 ### `internal/friction` is a leaf; the reflection step is a separate `internal/frictionengine`
 
 - **Decision:** two packages.
-  `internal/friction` imports stdlib, `internal/stencil`, and `internal/stencilstore` only, and is imported by `loomengine`, `burlerengine`, and `websterengine`.
+  `internal/friction` imports stdlib, `internal/logger`, `internal/stencil`, and `internal/stencilstore` only, and is imported by `loomengine`, `burlerengine`, and `websterengine`.
   `internal/frictionengine` holds the reflection step, imports `shuttleengine` for the `Shuttle` seam, and is imported by `loomcli` alone.
   A new **Friction Leaf Invariant** goes into `CONSTRAINTS.md` in the same commit, pinned by a `leaf_enforcement_test.go` modelled on `internal/pattern/leaf_enforcement_test.go`.
 - **Rationale:** this is exactly the `pattern` (leaf, four importers) / `selfreportengine` (engine, one importer) split the tree already uses, and it keeps the prompt-injection half out of the dependency cone of `shuttleengine`.
@@ -145,20 +146,50 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
   Imposing a schema would create a sole-parser obligation (`internal/planparser`, `internal/discussionparser`, `internal/summaryparser` are each the sole parser of their format, and each carries a CONSTRAINTS.md invariant) for zero benefit.
 - **Rejected:** a YAML front-matter schema (a parser, an invariant, and a validation failure mode, all for a file one LLM writes and another LLM reads).
 
-### Consumed notes are archived, not deleted; the directory is cleared at seed time
+### Consumed notes are archived, not deleted; the clear lands beside the `Seed` call in `run.go`
 
-- **Decision:** after the reflection agent returns, `Reflect` renames `.lyx/loom/friction/` to a timestamped sibling `.lyx/loom/friction-<compact-ts>/` using its injected clock, so a second `Reflect` in the same task cannot re-file the same notes.
-  The directory is *not* cleared at the start of every `lyx loom run` — only at seed time, in `loomshed.Seed`'s once-per-task path.
+- **Decision:** after the reflection agent returns **cleanly**, `Reflect` renames `.lyx/loom/friction/` to a timestamped sibling `.lyx/loom/friction-<compact-ts>/` using its injected clock, so a second `Reflect` in the same task cannot re-file the same notes.
+  The once-per-task clear is an `os.RemoveAll` of the friction directory in `internal/loomcli/run.go`, placed immediately beside the existing `loomshed.Seed` call and fired **only when `Seed` returns a nil error** — never on the `loomshed.ErrSeedExists` re-entry branch.
+  `loomshed.Seed` itself is not touched: its signature (`Seed(statusPath, statusLockPath, slug, parent string) error`, `internal/loomshed/seed.go:37`) gains no friction parameter.
+  `lyx loom drive` deliberately never clears.
 - **Rationale:** a `loom` run legitimately resumes across process restarts and crash-resumes, so clearing on every drive invocation would destroy notes written before the crash — exactly the notes most worth reading.
-  `loomshed.Seed` returns `ErrSeedExists` on re-entry and is therefore the one genuinely once-per-task hook.
+  The clear lives at the call site rather than inside `Seed` because `Seed`'s told-parameter list is about status seeding, and widening it for an unrelated directory is a worse seam than one `os.RemoveAll` at the one call site (`internal/loomcli/run.go:101`) that already distinguishes a genuine first seed from a re-entry.
+  Drive not clearing is correct rather than a gap: `internal/loomcli/drive.go:61` calls `loomengine.VerifySeedOwnership`, so `drive` requires an already-seeded task and `run` is always what creates one — a drive-only invocation is by definition a resume, which is exactly the case that must keep its notes.
   Archiving rather than deleting keeps the evidence on disk for an operator debugging a filed issue; the whole `.lyx` tree is never tracked and is swept with the worktree.
   The `blocked → operator fixes it → run again → done` path files twice, once per trigger, and the archive is what keeps the second filing about the second run's notes only.
-- **Rejected:** deleting consumed notes (destroys the evidence behind a freshly filed issue); clearing at every `lyx loom run` (loses crash-resume notes); not archiving at all (a `blocked` run followed by a successful one re-files everything from the first half).
+- **Rejected:** deleting consumed notes (destroys the evidence behind a freshly filed issue); clearing at every `lyx loom run` or in `drive` (loses crash-resume notes); threading a friction path into `loomshed.Seed` (widens a status-seeding signature for an unrelated concern); not archiving at all (a `blocked` run followed by a successful one re-files everything from the first half).
+
+### A failed reflection leaves the notes in place, and the report file is never counted as a note
+
+- **Decision:** two halves, both pinned here rather than left to the plan writer.
+  **(1)** On any reflection failure — a `Shuttle` error, `OutcomeDied`, `OutcomeTimeout` — `Reflect` does **not** archive.
+  The notes stay exactly where they are, so the next trigger in the same task reflects on them.
+  Only a clean agent return archives.
+  **(2)** The reflection agent's own mandatory output file is named by an exported constant in `internal/friction` (`friction.ReportFileName`, `"reflection-report.md"`), it lands inside the friction directory, and `frictionengine`'s `*.md` note scan **excludes that exact filename**.
+  Both the scanner and the reflection `Spec`'s `OutputFiles` entry read the one constant, so they cannot drift.
+  Because `shuttleengine.Spec.validate` rejects an `OutputFiles` entry that already exists, `Reflect` deletes any stale report file at that path before composing the spec.
+- **Rationale:** the notes are the run's un-acted-on signal — a failure means nothing was reflected on and nothing was filed, so archiving them would silently discard the evidence while creating no duplicate-filing risk to avoid.
+  The exclusion is what stops a half-written report from a timed-out run being counted as a note on the next scan, which would otherwise make a failed run look like it produced new friction.
+  The stale-file delete is not optional: without it a timed-out run leaves a file that makes every subsequent `Reflect` fail at spec validation rather than at the agent.
+- **Rejected:** archiving on failure too (discards un-reflected notes and hides the failure from the next trigger); putting the report file outside the friction directory (a second told path for one file, and the archive would then no longer capture the report beside the notes it was written from); scanning by a glob that happens to miss the report name (an implicit coupling that breaks the first time either name changes).
+
+### A stencil that never got the marker warns, rather than degrading silently
+
+- **Decision:** each of the five composers checks the template bytes for the literal `{{.friction_directive}}` marker before filling, and — when Tier 2 is enabled but the marker is absent — logs once at `Warn` via `internal/logger`, naming the stencil and pointing at `lyx stencil diff` / `lyx stencil sync`.
+  The check is a single exported helper in `internal/friction` so all five composers share one implementation.
+- **Rationale:** `internal/stencilstore/reconcile.go` never refreshes a `StateEdited` stencil (`:124`, warn-only) and, in dev mode, does not refresh even a `StateUntouched` one (`:98`, warn-and-keep-the-older-copy).
+  An existing worktree with operator-edited stencils, or any dev build, therefore keeps templates with no `{{.friction_directive}}` marker.
+  `stencil.FillOptional`'s guarantee is one-directional — `unfilledTopLevelMarkers` checks markers in the template that have no value, never a value with no marker — so a directive computed but never rendered is dropped with no error at all, and Tier 2 produces zero notes forever with no signal anywhere.
+  `stencilstore`'s own warnings fire at reconcile time, not at prompt-compose time, so they do not cover this.
+  The check is on the template bytes rather than the rendered output because the marker is an exact literal there, whereas a rendered-output substring test would depend on how `Fill` transformed the inserted block.
+- **Rejected:** accepting silent degradation (a feature that is off with no signal is indistinguishable from a feature that found nothing, which is the exact failure mode Tier 2 exists to fix); hard-erroring on an absent marker (turns an operator's legitimate stencil edit into a failed `loom` run over optional bookkeeping); relying on `lyx stencil sync` being run (nothing makes an operator run it, and a dev build refuses to refresh regardless).
 
 ### The reflection step can never change the run's outcome
 
-- **Decision:** every failure inside `Reflect` — a `Shuttle` error, `OutcomeDied`, `OutcomeTimeout`, an unwritable directory — is logged at `Warn` via `internal/logger` and reported in the `lyx loom run` success envelope under a new `friction` key (`"skipped"`, `"filed"`, or `"failed"`).
+- **Decision:** every failure inside `Reflect` — a `Shuttle` error, `OutcomeDied`, `OutcomeTimeout`, an unwritable directory — is logged at `Warn` via `internal/logger` and reported in the `lyx loom run` success envelope under a new `friction` key (`"skipped"`, `"reflected"`, or `"failed"`).
   It never sets a non-zero exit, never converts `RunDone` into an error, and never replaces the existing `outcome`/`halted_producer`/`reason`/`history_length` keys.
+  The three values are exactly what Go can observe for itself: `"skipped"` (no notes found, no agent spawned), `"reflected"` (the agent ran and returned cleanly), `"failed"` (a `Shuttle` error, `OutcomeDied`, `OutcomeTimeout`, or an unreadable directory).
+  There is deliberately no `"filed"` value: nothing in Go parses the agent's report file, so whether an issue was actually created is not something this envelope can honestly assert — the agent's report file and the GitHub repo are where that answer lives.
 - **Rationale:** the run's outcome is about the task's work.
   Failing a successful, already-merged run because an optional bookkeeping agent timed out would be strictly worse than filing nothing, and the `RunBlocked` case is worse still — an operator staring at a blocked run does not need a second, unrelated failure layered on top.
 - **Rejected:** surfacing a reflection failure as a command error (turns a bookkeeping miss into a run failure); swallowing it silently with no envelope key (the operator cannot tell "clean run, nothing to report" from "the reflection agent died").
@@ -235,7 +266,7 @@ From `CONSTRAINTS.md`, the ones this task must satisfy:
 
 New invariant introduced by this task, to be written into `CONSTRAINTS.md` in the same commit:
 
-- **Friction Leaf Invariant** — `internal/friction` imports only stdlib, `internal/stencil`, and `internal/stencilstore`. Reverse import never allowed. Pinned by a `leaf_enforcement_test.go` modelled on `internal/pattern/leaf_enforcement_test.go`.
+- **Friction Leaf Invariant** — `internal/friction` imports only stdlib, `internal/logger`, `internal/stencil`, and `internal/stencilstore`. Reverse import never allowed. Pinned by a `leaf_enforcement_test.go` modelled on `internal/pattern/leaf_enforcement_test.go`.
 
 Build prerequisite, unchanged: `lyx` links quarry's tree-sitter grammars through cgo, so `CGO_ENABLED=1` and a C compiler on `PATH` are required.
 
@@ -250,6 +281,8 @@ All new tests are Tier 1 — untagged, offline, fast. No new `integration`/`smok
 - A missing or unreadable stencil surfaces as an error naming the stencil.
 - The returned directive text contains the told note path verbatim — this is the assertion that catches a composer wiring the wrong path.
 - `NotePath` rejects an empty `id`, an `id` containing a path separator, and an `id` containing `..`; a valid `id` yields the expected join.
+- The marker-presence helper reports absent for template bytes with no `{{.friction_directive}}` literal and present for bytes carrying it, and the `Warn` fires only on the absent-and-enabled combination — never when Tier 2 is off.
+- `ReportFileName` is a single exported constant, and the note-scan exclusion and the reflection `Spec`'s `OutputFiles` entry are both derived from it (assert they agree rather than asserting two literals).
 - `leaf_enforcement_test.go` asserts the import set, mirroring `internal/pattern/leaf_enforcement_test.go`.
 
 **`internal/frictionengine`** — the second TDD candidate, driven entirely through a fake `Shuttle` seam and a `t.TempDir()` friction directory, following the fake-seam pattern `internal/burlerengine`'s and `internal/shedadapters`' own tests already use.
@@ -259,15 +292,19 @@ All new tests are Tier 1 — untagged, offline, fast. No new `integration`/`smok
 - One note present → exactly one spawn; the composed `Spec` carries the configured model/effort/timeout, `Interactive: false`, `ForkSubagents: false`, and a non-empty `OutputFiles`.
 - The spawn's prompt names the friction directory.
 - After a successful spawn the directory is archived to the timestamped sibling and the original path no longer exists; a second `Reflect` against the same location then reports skipped rather than re-spawning.
-- Shuttle returns an error / `OutcomeDied` / `OutcomeTimeout` → `Reflect` returns a `Report` marking failure with a nil error (never a hard error), and the notes are still archived or still present per whichever the decision fixes — pin it either way so it cannot drift silently.
+- A directory containing only `ReportFileName` and no other `*.md` → skipped, no spawn: this is the stale-report-from-a-timed-out-run case, and it must not be mistaken for one note.
+- Shuttle returns an error / `OutcomeDied` / `OutcomeTimeout` → `Reflect` returns a `Report` marking failure with a nil error (never a hard error), **and the friction directory is left exactly as it was** — assert the original path still exists and that no timestamped archive sibling was created.
+- A stale `ReportFileName` present before `Reflect` runs is deleted before the spec is composed, so the composed `Spec.OutputFiles` entry does not already exist (this is what `shuttleengine.Spec.validate` would otherwise reject).
 - Nil `Shuttle` seam and an empty stencils dir are rejected at construction, matching the `requireSeam`/`requireAbsRoot` discipline `internal/shedrecipe` uses.
 - An injected clock is used for the archive timestamp so the test asserts an exact directory name.
 
 **`internal/loomengine`** — `LoomFrictionDir` returns `<anchor>/.lyx/loom/friction`, asserted the same way `LoomReviewsDir`'s existing test does; the new `Config` fields parse from YAML, an absent `friction` key yields the zero value, and a malformed model spec fails at `LoadConfig`.
 
-**The five composers** — each already has prompt-composition tests. Extend each with: directive present when enabled (assert the note path appears in the composed prompt), and the marker rendering as nothing when disabled. `internal/loomengine/prompt_test.go`, `internal/loomengine/plan_test.go`, `internal/burlerengine`'s template/engine tests, and `internal/websterengine`'s render tests are the files to extend.
+**The five composers** — each already has prompt-composition tests. Extend each with: directive present when enabled (assert the note path appears in the composed prompt), the marker rendering as nothing when disabled, and a template lacking the `{{.friction_directive}}` marker producing a successful compose plus the `Warn` (never an error). `internal/loomengine/prompt_test.go`, `internal/loomengine/plan_test.go`, `internal/burlerengine`'s template/engine tests, and `internal/websterengine`'s render tests are the files to extend.
 
-**`contracts/stencils`** — `registry_test.go` covers the four new stencils' registration automatically in both directions once the files and rows exist. Add content assertions in the `rubric_test.go` style (short distinctive substrings, not whole paragraphs) for the one property that matters: each directive stencil states that writing the note is optional and that an absent note is normal.
+**`internal/loomcli/run.go`** — the once-per-task clear: a nil-error `Seed` clears a pre-populated friction directory, and a `loomshed.ErrSeedExists` re-entry leaves it untouched. The second case is the crash-resume guarantee and is the one that must not regress.
+
+**`contracts/stencils`** — `registry_test.go` covers all five new stencils' registration (the four directive stencils plus the reflection agent's own) automatically in both directions once the files and rows exist. Add content assertions in the `rubric_test.go` style (short distinctive substrings, not whole paragraphs) for the one property that matters: each directive stencil states that writing the note is optional and that an absent note is normal.
 
 **`internal/loomcli`** — a drive-level test asserting the `friction` key appears in the success envelope for `RunDone` and `RunBlocked`, and that a reflection failure leaves `outcome` untouched. If `drive.go`'s existing tests cannot reach that path without a real Shed, assert the seam instead: that the `RunPaused` and non-nil-`err` branches never call the reflection seam at all. Do not add a `smoke`-tagged test for this.
 
@@ -286,7 +323,12 @@ All new tests are Tier 1 — untagged, offline, fast. No new `integration`/`smok
 - **Q:** Who actually files the issue? **A:** [auto-pick] the reflection agent invokes `lyx selfreport create` itself, and additionally writes one mandatory output file recording what it filed. **Why:** it is what the design doc settled with the operator, there is precedent (`lyx quarry` in the plan stencil), and the mandatory file is required regardless — `OutputFiles` is the completion signal, so an empty set could never report Done. The Go-files-it alternative is recorded under Decisions as the fallback if shelling out proves unreliable.
 - **Q:** Does a note have a schema? **A:** [auto-pick] no — freeform markdown, nothing in Go parses it. **Why:** a schema would create a sole-parser obligation and a CONSTRAINTS.md invariant for a file one LLM writes and another LLM reads.
 - **Q:** What happens to notes after reflection? **A:** [auto-pick] archived to a timestamped sibling directory; the directory is cleared only at `loomshed.Seed` time, never on every drive invocation. **Why:** `loom` resumes across crashes, so clearing per-drive would destroy exactly the notes most worth reading; archiving stops a `blocked → fixed → done` task re-filing its first half's notes.
-- **Q:** Can a reflection failure fail the run? **A:** [auto-pick] never — logged at `Warn`, reported under a new `friction` envelope key (`"skipped"`/`"filed"`/`"failed"`), exit code untouched. **Why:** the run's outcome is about the task's work; failing an already-merged run over optional bookkeeping is strictly worse than filing nothing.
+- **Q:** Can a reflection failure fail the run? **A:** [auto-pick] never — logged at `Warn`, reported under a new `friction` envelope key (`"skipped"`/`"reflected"`/`"failed"`), exit code untouched. **Why:** the run's outcome is about the task's work; failing an already-merged run over optional bookkeeping is strictly worse than filing nothing.
 - **Q:** How is the reflection agent's session configured? **A:** [auto-pick] `Interactive: false`, `ForkSubagents: false`, model/effort/timeout from the new config keys, `Role: "friction"`. **Why:** `loom run` is the unattended path so interactive would hang; it has nothing to fan out over, so forks are authorization with no user.
 - **Q:** Dedup against already-open GitHub issues? **A:** [auto-pick] out of scope. **Why:** it needs issue-search capability nothing in this path has, Tier 1 faces the identical question, and it is not in the design doc's scope.
 - **Q:** A new CLI verb or flag? **A:** [auto-pick] neither — the config key is the whole control surface. **Why:** YAGNI, and a flag nobody is present to type is not a control surface on the unattended path.
+- **Q:** Where does the once-per-task clear actually land, given `loomshed.Seed` is told no friction path and `lyx loom drive` never calls it? **A:** [auto-pick] beside the `Seed` call in `internal/loomcli/run.go`, on the nil-error branch only; `Seed`'s signature is untouched and `drive` deliberately never clears. **Why:** `Seed`'s told-parameter list is about status seeding, and `run.go:101` already distinguishes a first seed from an `ErrSeedExists` re-entry. A drive-only invocation is by definition a resume (`drive.go:61` requires an existing seed), which is exactly the case that must keep its notes.
+- **Q:** What happens to the notes when the reflection agent fails? **A:** [auto-pick] they are left in place, not archived; only a clean return archives. **Why:** a failure means nothing was reflected on and nothing was filed, so archiving would discard un-acted-on signal while creating no duplicate-filing risk to avoid.
+- **Q:** Can the agent's own report file be miscounted as a friction note? **A:** [auto-pick] no — it is named by one exported `friction.ReportFileName` constant that both the note scan's exclusion and the `Spec`'s `OutputFiles` entry read, and `Reflect` deletes a stale copy before composing the spec. **Why:** a half-written report from a timed-out run would otherwise look like new friction on the next scan, and `shuttleengine.Spec.validate` rejects an `OutputFiles` entry that already exists.
+- **Q:** What happens when an already-seeded stencil never receives the `{{.friction_directive}}` marker? **A:** [auto-pick] the composer warns via `internal/logger`, naming the stencil and pointing at `lyx stencil diff`/`sync`. **Why:** `reconcile.go:124` never refreshes a `StateEdited` stencil and `:98` refuses in dev mode, while `FillOptional`'s guarantee is one-directional — so without a warning Tier 2 produces zero notes forever, indistinguishable from having found nothing.
+- **Q:** Should the envelope claim `"filed"`? **A:** [auto-pick] no — the values are `"skipped"`/`"reflected"`/`"failed"`. **Why:** nothing in Go parses the agent's report, so whether an issue was created is not something this envelope can honestly assert; `"reflected"` is exactly what Go observed.
