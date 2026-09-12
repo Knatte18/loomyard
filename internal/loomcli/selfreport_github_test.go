@@ -104,7 +104,7 @@ func TestDetectAndFileAnomalies_EngineBoundary_RequestShapes(t *testing.T) {
 	st := haltStatus()
 	st.History = append(st.History, shedengine.HistoryEntry{Producer: "Discussion-Bouncer", Outcome: shedengine.Stuck, Output: "/run/round-3-bouncer-ledger.md", At: "t9"})
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, deps.StatusPath, deps.StatusLockPath, st)
+	writeSelfreportStatus(t, deps.StatusPath, deps.StatusLockPath, st)
 
 	detectAndFileAnomalies(deps)
 
@@ -159,7 +159,7 @@ func TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropa
 
 	st := shedengine.Status{}
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, deps.StatusPath, deps.StatusLockPath, st)
+	writeSelfreportStatus(t, deps.StatusPath, deps.StatusLockPath, st)
 
 	detectAndFileAnomalies(deps) // must not panic on the API rejection
 
@@ -185,7 +185,7 @@ func TestDetectAndFileAnomalies_AlreadyFiledTitle_ProducesNoRequest(t *testing.T
 
 	st := shedengine.Status{}
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, deps.StatusPath, deps.StatusLockPath, st)
+	writeSelfreportStatus(t, deps.StatusPath, deps.StatusLockPath, st)
 
 	// Prime the marker directly with the title this run would otherwise file, mirroring
 	// production's own record step.
@@ -214,7 +214,7 @@ func TestDetectAndFileAnomalies_MarkerReadFailure_TreatedAsEmptyAndFilingProceed
 
 	st := shedengine.Status{}
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, deps.StatusPath, deps.StatusLockPath, st)
+	writeSelfreportStatus(t, deps.StatusPath, deps.StatusLockPath, st)
 
 	// Corrupt the marker file directly -- genuinely malformed JSON, not merely an unknown field --
 	// so state.ReadJSONStrict's decode step fails.
@@ -249,7 +249,7 @@ func TestDetectAndFileAnomalies_MarkerWriteFailure_DoesNotPropagate(t *testing.T
 
 	st := shedengine.Status{}
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, deps.StatusPath, deps.StatusLockPath, st)
+	writeSelfreportStatus(t, deps.StatusPath, deps.StatusLockPath, st)
 
 	detectAndFileAnomalies(deps) // must not panic on the write failure
 

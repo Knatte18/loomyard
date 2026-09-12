@@ -90,8 +90,8 @@ func (f *selfreportTestFixture) deps(ctx context.Context, entry loomengine.Entry
 	}
 }
 
-// writeStatusFile writes st to path/lockPath via the production WriteJSON primitive.
-func writeStatusFile(t *testing.T, path, lockPath string, st shedengine.Status) {
+// writeSelfreportStatus writes st to path/lockPath via the production WriteJSON primitive.
+func writeSelfreportStatus(t *testing.T, path, lockPath string, st shedengine.Status) {
 	t.Helper()
 	if err := state.WriteJSON(path, lockPath, st); err != nil {
 		t.Fatalf("write status file: %v", err)
@@ -141,7 +141,7 @@ func TestDetectAndFileAnomalies_NilRunError_RunsPassAndFiles(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	st := haltStatus()
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, st)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
 	detectAndFileAnomalies(f.deps(context.Background(), loomengine.EntryObservation{}, nil))
 
@@ -158,7 +158,7 @@ func TestDetectAndFileAnomalies_NonBusyRunError_StillRunsPass(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	st := haltStatus()
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, st)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
 	detectAndFileAnomalies(f.deps(context.Background(), loomengine.EntryObservation{}, errors.New("some other failure")))
 
@@ -191,7 +191,7 @@ func TestDetectAndFileAnomalies_SelfreportDisabled_TotalInaction(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	st := haltStatus()
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, st)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
 	deps := f.deps(context.Background(), crashResumeEntry(), nil)
 	deps.Selfreport = false
@@ -228,7 +228,7 @@ func TestDetectAndFileAnomalies_DoneContextWithCrash_FilesExactlyOne(t *testing.
 	f := newSelfreportTestFixture(t)
 	st := haltStatus()
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, st)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -247,7 +247,7 @@ func TestDetectAndFileAnomalies_LiveContext_FilesEverything(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	st := haltStatus()
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, st)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
 	detectAndFileAnomalies(f.deps(context.Background(), crashResumeEntry(), nil))
 
@@ -263,7 +263,7 @@ func TestSelfreportFiledMarker_RoundTrip(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	st := haltStatus()
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, st)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
 	detectAndFileAnomalies(f.deps(context.Background(), loomengine.EntryObservation{}, nil))
 	if len(f.filed) != 1 {
@@ -290,7 +290,7 @@ func TestSelfreportFiledMarker_NewDistinctHaltStillFiles(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	first := haltStatus()
 	first.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, first)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, first)
 
 	detectAndFileAnomalies(f.deps(context.Background(), loomengine.EntryObservation{}, nil))
 	if len(f.filed) != 1 {
@@ -301,7 +301,7 @@ func TestSelfreportFiledMarker_NewDistinctHaltStillFiles(t *testing.T) {
 	second := haltStatus()
 	second.CurrentProducer = "Webster-Write"
 	second.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, second)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, second)
 
 	detectAndFileAnomalies(f.deps(context.Background(), loomengine.EntryObservation{}, nil))
 	if len(f.filed) != 2 {
@@ -369,7 +369,7 @@ func TestRunFilingPass_CarryForwardCollapse(t *testing.T) {
 		},
 	}
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
-	writeStatusFile(t, f.statusPath, f.statusLockPath, st)
+	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
 	deps := withLedgerSeams(f.deps(context.Background(), loomengine.EntryObservation{}, nil), f, store)
 	detectAndFileAnomalies(deps)
