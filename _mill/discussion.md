@@ -181,8 +181,8 @@ Tier 2 closes that gap by adding a second, automatic trigger: each spawned agent
 Its four call sites are `internal/websterengine/render.go:183` (`RoleImplementer`), `internal/websterengine/render.go:270` (`RoleOrchestrator`), `internal/burlerengine/engine.go:104` (`RoleReviewFix`), and `internal/loomengine/plan.go:71` (`RoleImplementer`).
 Each site fills a `pattern_directive` key and calls `stencil.FillOptional(template, values, []string{"pattern_directive"})` — `FillOptional` is what lets the marker render as nothing.
 `internal/pattern/leaf_enforcement_test.go` is the model for the new leaf test.
-The fifth injection site, Discussion-Write, has no `pattern` injection today: `internal/loomengine/discussion.go:20` calls `composePrompt` (`internal/loomengine/prompt.go:17`), which fills `contracts/stencils/loom/loom-template-discussion.md`.
-That composer will need a `FillOptional` conversion, since it may still be using plain `stencil.Fill`.
+The fifth injection site, Discussion-Write, has no `pattern` injection today: `internal/loomengine/discussion.go:37` calls `composePrompt` (`internal/loomengine/prompt.go:17`), which fills `contracts/stencils/loom/loom-template-discussion.md`.
+That composer needs a `FillOptional` conversion: `internal/loomengine/prompt.go:30` uses plain `stencil.Fill` today, which errors on an empty marker value rather than rendering it as nothing.
 
 **Stencil registration.**
 `contracts/stencils/stencils.go` is the single place a stencil's on-disk path and its Go identifier are both named: a `//go:embed <family>/<name>.md` var plus an `entries` row `{"<name>", &Var}`.
