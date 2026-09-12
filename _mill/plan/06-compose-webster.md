@@ -52,7 +52,7 @@ It does not land on `websterengine.Geometry`, because `internal/hubgeom` and `in
   Keep every banner's existing no-conditionals statement, and do not introduce a `{{if}}` or `{{range}}`.
 - **Commit:** `feat(stencils): add the friction_directive marker to webster's four prompt assets`
 
-### Card 20: told `FrictionDir` on the three Deps structs, and the four call sites
+### Card 20: told `FrictionDir` on the three Deps structs
 
 - **Context:**
   - `internal/friction/friction.go`
@@ -71,18 +71,13 @@ It does not land on `websterengine.Geometry`, because `internal/hubgeom` and `in
   Each carries the same doc comment: the absolute friction directory, told by the caller, empty when Tier 2 is off;
   it lives here rather than on `Geometry` because `internal/hubgeom`/`internal/standalonegeom` are the only `Geometry`-struct constructors and this value needs no geometry derivation.
 
-  Update the four composer call sites to compose their own site's note path and pass it in as each composer's new trailing parameter (card 21 adds the parameters):
+  This card adds the three fields and **nothing else** — no call site reads them yet, and the four `render.go` composers still take their current parameter lists.
+  A struct field no code reads compiles cleanly in Go, so the tree builds on this card's own commit.
+  Card 21 is what widens the four composers and updates the four call sites, and it must do both together in one commit: a Go call site passing an argument the function does not accept does not compile, so the signature change and its call sites can never be split across two cards.
+  That is the same reason batch 5's card 17 lands `burlerengine.New`'s fifth parameter and all three of its call sites in one card.
+- **Commit:** `feat(websterengine): add the told FrictionDir field to webster's three Deps structs`
 
-  - `internal/websterengine/beginbatch.go:311` (`RenderForkPrompt`) uses the stem `batchName`, the `"%02d-%s"` batch identity the surrounding code already computes.
-  - `internal/websterengine/recoverbatch.go:154` (`RenderRecoveryPrompt`) uses `batchName + "-recovery"`, so a recovery strand never shares a stem with that batch's own fork note.
-  - `internal/websterengine/runlevel.go:548` (`RenderIntegrationPrompt`) uses the fixed literal `"webster-integration"` — a plan has exactly one integration fork, so a literal is unique by construction.
-  - `internal/websterengine/runlevel.go:564` (`RenderMasterPrompt`) uses the fixed literal `"webster-master"` — one Master per run.
-
-  Each call site composes its path as `friction.NotePath(deps.FrictionDir, <stem>)`, so the empty-directory case propagates as an empty path with no boolean anywhere.
-  No call site creates the friction directory.
-- **Commit:** `feat(websterengine): thread the told friction directory to the four prompt composers`
-
-### Card 21: inject the directive in the four `render.go` composers
+### Card 21: widen the four `render.go` composers, inject the directive, and update their call sites
 
 - **Context:**
   - `internal/friction/friction.go`
@@ -91,12 +86,28 @@ It does not land on `websterengine.Geometry`, because `internal/hubgeom` and `in
   - `internal/stencilstore/reconcile.go`
 - **Edits:**
   - `internal/websterengine/render.go`
+  - `internal/websterengine/beginbatch.go`
+  - `internal/websterengine/recoverbatch.go`
+  - `internal/websterengine/runlevel.go`
   - `internal/websterengine/render_test.go`
   - `internal/websterengine/template_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
+  The signature widening and every call site it breaks land in this one card, because a Go call site passing an argument the function does not accept does not compile and the plan-card contract requires the project to build immediately after each card's own commit.
+
+  **Call sites.**
+  Update the four composer call sites to compose their own site's note path as `friction.NotePath(deps.FrictionDir, <stem>)` — reading the field card 20 added — and pass it as the new trailing argument:
+
+  - `internal/websterengine/beginbatch.go:311` (`RenderForkPrompt`) uses the stem `batchName`, the `"%02d-%s"` batch identity the surrounding code already computes.
+  - `internal/websterengine/recoverbatch.go:154` (`RenderRecoveryPrompt`) uses `batchName + "-recovery"`, so a recovery strand never shares a stem with that batch's own fork note.
+  - `internal/websterengine/runlevel.go:548` (`RenderIntegrationPrompt`) uses the fixed literal `"webster-integration"` — a plan has exactly one integration fork, so a literal is unique by construction.
+  - `internal/websterengine/runlevel.go:564` (`RenderMasterPrompt`) uses the fixed literal `"webster-master"` — one Master per run.
+
+  The empty-directory case propagates through `friction.NotePath` as an empty path, so no call site carries a boolean and no call site creates the friction directory.
+
+  **Composers.**
   Give each of the four composers a new trailing `notePath string` parameter and, inside each, resolve `friction.Directive(notePath, stencilsDir, <role>)` with the role from the discussion's own table: `friction.RoleImplementer` for `RenderForkPrompt`, `RenderRecoveryPrompt`, and `RenderIntegrationPrompt`, and `friction.RoleOrchestrator` for `RenderMasterPrompt`, which never edits code and only forks.
   Wrap a directive error in each composer's own existing `fmt.Errorf("webster: ...: %w", err)` house style.
 
@@ -113,7 +124,8 @@ It does not land on `websterengine.Geometry`, because `internal/hubgeom` and `in
   Update `render.go`'s file header comment and each changed composer's own doc comment to state the new parameter and that `friction_directive` is injected when Tier 2 is on.
 
   **Tests.**
-  `RenderForkPrompt`, `RenderRecoveryPrompt`, `RenderIntegrationPrompt`, and `RenderMasterPrompt` are all exported functions whose signatures this card changes, so extend `internal/websterengine/render_test.go` and `internal/websterengine/template_test.go` — the two files that exercise them — with, for **each of the four** composers:
+  `RenderForkPrompt`, `RenderRecoveryPrompt`, `RenderIntegrationPrompt`, and `RenderMasterPrompt` are all exported functions whose signatures this card changes, and the existing tests call them directly, so those tests must be updated in this same card or the package does not compile.
+  Extend `internal/websterengine/render_test.go` and `internal/websterengine/template_test.go` — the two files that exercise them — with, for **each of the four** composers:
 
   1. **Enabled.** A non-empty note path appears in the composed prompt verbatim.
   2. **Disabled.** An empty note path composes successfully, injects no directive text, and reads no friction stencil.

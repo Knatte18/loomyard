@@ -30,6 +30,7 @@ The full rationale is in the overview's Shared Decisions.
   - `internal/hubgeom/hubgeom.go`
 - **Edits:**
   - `internal/loomcli/wiring.go`
+  - `internal/loomcli/cli.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -44,7 +45,11 @@ The full rationale is in the overview's Shared Decisions.
   Do **not** add a friction field to `shedrecipe.Env`: no registry entry reads these values, and `Env` is documented as carrying only roots and run-wide values its own entries read.
   `loomengine`'s two composers need nothing here — they derive the directory in-package from the `*lyxcwd.Location` and `Config` their Spec factories already take.
 
-  Store `frictionDir` on the `loomCLI` receiver beside the existing `c.cfg`/`c.runner` fields so `drive.go` can read it without re-resolving.
+  Add a `frictionDir string` field to the `loomCLI` struct in `internal/loomcli/cli.go`, placed beside the existing `registry` and `runner` fields and carrying the same shape of doc comment they do: the absolute friction directory resolved once in `wire`, empty when Tier 2 is off, carried on the struct so `run.go` and `drive.go` read it without re-resolving or re-reading `loom.yaml`.
+  The struct is declared in `internal/loomcli/cli.go` and nowhere else, so `internal/loomcli/wiring.go` alone cannot add the field.
+
+  Assign it in `wire` — `c.frictionDir = frictionDir` — beside the existing `c.cfg`/`c.runner` assignments at the end of that function.
+  Leave it at its zero value in `wireLightweight`: every verb on that path is read-only, and that function deliberately loads no module config.
 - **Commit:** `feat(loomcli): resolve the friction directory once and fill the told engines`
 
 ### Card 23: the once-per-task clear and the two ensure sites

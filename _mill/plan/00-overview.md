@@ -195,6 +195,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/frictionengine/reflect_test.go`
 - `internal/frictionengine/seam_enforcement_test.go`
 - `internal/frictionengine/spec.go`
+- `internal/loomcli/cli.go`
 - `internal/loomcli/drive.go`
 - `internal/loomcli/friction_test.go`
 - `internal/loomcli/run.go`
