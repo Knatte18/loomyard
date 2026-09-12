@@ -89,3 +89,9 @@ batches:
     state: pending
     verify_baseline_failures: []
 ```
+
+## Inferred-success log
+
+```text
+'2026-09-12T12:34:36Z'  wiring  round 1
+```
