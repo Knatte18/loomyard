@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-anomaly-detector
+phase: approved-drive-wiring
 slug: self-report-tier1
 branch: self-report-tier1
 plan: _mill/plan
@@ -38,6 +38,7 @@ planned  '2026-09-12T12:17:59Z'
 implementing  '2026-09-12T12:18:22Z'
 approved-leaf-surfaces  '2026-09-12T12:24:46Z'
 approved-anomaly-detector  '2026-09-12T12:27:57Z'
+approved-drive-wiring  '2026-09-12T12:39:12Z'
 ```
 
 ## Batches
@@ -57,8 +58,9 @@ batches:
     commit_sha: c6b770507cbe03856e4a72f6b41da5d05ed66cc7
     verify_baseline_failures: []
   - name: drive-wiring
-    state: running
+    state: approved
     implementer_session: 01af9a97-c343-4097-b83d-52e0af7a5873
     start_sha: 815e6ecd5ab6412e633a75698903b365ab83e0fe
+    commit_sha: 62c22c68678f620cfb3d22dd91a2b644e1454cf6
     verify_baseline_failures: []
 ```
