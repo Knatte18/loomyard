@@ -26,7 +26,9 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 
 - **Context:**
   - `internal/loomengine/anomaly.go`
+  - `internal/loomengine/anomalybody.go`
   - `internal/loomengine/config.go`
+  - `internal/selfreportengine/selfreport.go`
   - `internal/shedadapters/ledgeraccess.go`
   - `internal/shedengine/status.go`
   - `internal/shedengine/errors.go`
@@ -190,7 +192,8 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 
 ## Batch Tests
 
-`verify:` runs `internal/loomcli` and `internal/loomengine` — the two packages this batch's code touches — followed by the markdown link-integrity gate scoped by `-run` to the one test that enforces it, since card 9 edits three files inside that gate.
+`verify:` runs `internal/loomcli`, the one package whose files this batch's cards create or edit, plus `internal/loomengine`, which this batch consumes by import rather than touching — it is in the list so a mismatch between the seams batch 2 declared and the way batch 3 calls them surfaces here rather than at the repo-wide done gate.
+Both are followed by the markdown link-integrity gate, scoped by `-run` to the one test that enforces it, since card 9 edits three files inside that gate.
 Only the untagged suites run: the package's `smoke`- and `integration`-tagged files stay out, which is the point of the extraction.
 
 Files covered: `internal/loomcli/selfreport_test.go` (card 7's six branch cases, the two marker tests, the carry-forward collapse, and the mixed-history discovery cases), `internal/loomcli/selfreport_github_test.go` (card 8's engine-boundary argument-shape and posture cases), the package's existing untagged suites including `cli_test.go` and `wiring_commitstatus_test.go`, which must keep passing since card 9 changes `drive`'s envelopes not at all, and `internal/lyxcwd/docslink_test.go`'s markdown enforcement test.

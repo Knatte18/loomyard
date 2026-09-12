@@ -75,7 +75,7 @@ batches:
 
 ### Decision: docs-land-with-the-observable-change
 
-- **Decision:** the four documentation edits (`manifest/designs/self-report-tier1.md`, `manifest/roadmap.md`, `docs/overview.md`) land in the same card — and therefore the same commit — as the `drive` call-site wiring that makes the feature observable, rather than in a separate docs card or a separate batch.
+- **Decision:** the three documentation edits (`manifest/designs/self-report-tier1.md`, `manifest/roadmap.md`, `docs/overview.md`) land in the same card — and therefore the same commit — as the `drive` call-site wiring that makes the feature observable, rather than in a separate docs card or a separate batch.
 - **Rationale:** CLAUDE.md requires docs for a change to observable CLI behavior to land in the same commit as that change.
   The behavior becomes observable at exactly one card: the `drive` wiring.
   A separate docs card would put the docs in a different commit and violate that rule literally.
