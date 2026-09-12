@@ -53,7 +53,9 @@ batches:
     commit_sha: 29b8ce0158149075d387b181d2fd1bba05b3c051
     verify_baseline_failures: []
   - name: frictionengine
-    state: pending
+    state: running
+    implementer_session: 593d41f2-96fd-4f58-bbe6-e0faf2893868
+    start_sha: 7741af8442e0e59c60d51fe1f1a3d1d73800d34a
     verify_baseline_failures: ["FAIL\t./internal/frictionengine/... [setup failed]"]
   - name: compose-burler
     state: pending
