@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -80,7 +81,8 @@ func (c *loomCLI) statusCmd() *cobra.Command {
 
 Without --watch, it reads the status file once and emits a single JSON
 envelope carrying the current producer, state, error text, pause flag,
-composed activity, history length, and the task's slug/parent.
+composed activity, history length, the task's slug/parent, and the
+interrupt policy for the current producer.
 
 With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity
@@ -133,6 +135,13 @@ Example:
 				}
 			}
 
+			// interrupt_policy reads the same internal/loomshed table step's own
+			// next_interrupt_policy key reads, keyed by st.CurrentProducer -- the value that lets the
+			// supervisor skill branch on an interrupted first step, where no prior step envelope exists
+			// to read a policy from. It is a plain map read keyed by a name this verb already has, so
+			// status keeps its lightweight wiring: no config load and no engine construction are needed
+			// for it. The value is the empty string when current_producer names no row, which is the
+			// caller's signal to omit the key rather than a third policy value.
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"current_producer": st.CurrentProducer,
 				"state":            string(st.State),
@@ -142,6 +151,7 @@ Example:
 				"history_length":   len(st.History),
 				"slug":             product.Slug,
 				"parent":           product.Parent,
+				"interrupt_policy": loomshed.InterruptPolicyFor(st.CurrentProducer),
 			}))
 			return nil
 		},

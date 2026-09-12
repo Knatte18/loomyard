@@ -135,7 +135,10 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated
 // module's broken config, the identical hazard that got status/pause this lightweight path in the
 // first place (see wireLightweight's own doc comment for that history). Every other verb builds or
-// drives producers and keeps the full wire(), including its early config refusal.
+// drives producers and keeps the full wire(), including its early config refusal. "step" is
+// deliberately excluded from this set for that same reason: it drives a producer through
+// shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as
+// "run" and "drive" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
 	case "status", "pause", "validate-discussion", "validate-plan":
@@ -159,16 +162,19 @@ followed by its own LLM review segment that loops until it approves or
 escalates, and finally Publish and Finalize. "run" is the bootstrap verb:
 it seeds the status file, commits the seed, and spawns/attaches the
 detached driver session; "drive" is the no-tmux escape hatch that runs the
-phase machine in the foreground for debugging and CI; "status" reports the
-current phase and, with --watch, tails it, printing a line only when the
-activity changes; "pause" requests a pause at the next producer boundary.
-"validate-discussion" and "validate-plan" are the standalone form of the
-Discussion-Validate and Plan-Validate mechanical gates, callable by the
-writer agent before handoff.
+phase machine in the foreground for debugging and CI; "step" bootstraps
+idempotently and drives exactly one producer, reporting a JSON envelope --
+the single-producer primitive an external supervisor drives; "status"
+reports the current phase and, with --watch, tails it, printing a line
+only when the activity changes; "pause" requests a pause at the next
+producer boundary. "validate-discussion" and "validate-plan" are the
+standalone form of the Discussion-Validate and Plan-Validate mechanical
+gates, callable by the writer agent before handoff.
 
 Example:
   lyx loom run
   lyx loom drive
+  lyx loom step
   lyx loom status
   lyx loom status --watch
   lyx loom pause
@@ -181,7 +187,7 @@ Example:
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
-	parent.AddCommand(c.runCmd(), c.driveCmd(), c.statusCmd(), c.pauseCmd(), c.validateDiscussionCmd(), c.validatePlanCmd())
+	parent.AddCommand(c.runCmd(), c.driveCmd(), c.stepCmd(), c.statusCmd(), c.pauseCmd(), c.validateDiscussionCmd(), c.validatePlanCmd())
 
 	return parent
 }
