@@ -38,6 +38,16 @@ const loomDirName = "loom"
 // loomengine is this segment's sole declarer.
 const loomStatusFileName = "status.json"
 
+// loomSelfreportFiledFileName is the filename of the self-report filed-title marker within
+// loomDirName.
+// loomengine is this segment's sole declarer.
+const loomSelfreportFiledFileName = "selfreport-filed.json"
+
+// loomSelfreportFiledLockFileName is the filename of loomSelfreportFiledFileName's advisory lock
+// within loomDirName.
+// loomengine is this segment's sole declarer.
+const loomSelfreportFiledLockFileName = "selfreport-filed.json.lock"
+
 // reviewsDirName is the relative-path segment loomengine joins onto LoomScratchDir to form the
 // review segments' ephemeral scratch root.
 // loomengine is this segment's sole declarer.
@@ -142,6 +152,29 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "bootstrap.lock")
 }
 
+// LoomSelfreportFiled returns the path to the machine-local marker recording which anomaly titles
+// have already been filed as GitHub issues.
+// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
+// status file per the Durable-vs-Ephemeral State Invariant, since the marker is never tracked.
+// It exists as an accessor rather than an inline path because cmd/lyx's transient guard walks
+// constructors, not call sites.
+// Losing the marker -- a fresh clone, a fabric re-wire -- costs at most one duplicate issue, which
+// is why the marker is deliberately machine-local rather than durable.
+func LoomSelfreportFiled(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, loomSelfreportFiledFileName)
+}
+
+// LoomSelfreportFiledLock returns the path to the advisory lock file guarding concurrent access to
+// LoomSelfreportFiled(l).
+// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
+// status file per the Durable-vs-Ephemeral State Invariant, since the marker it guards is never
+// tracked.
+// It exists as an accessor rather than an inline path because cmd/lyx's transient guard walks
+// constructors, not call sites.
+func LoomSelfreportFiledLock(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, loomSelfreportFiledLockFileName)
+}
+
 // LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.
 // It is AnchorPath-anchored, like LoomRunLock, LoomDriverLog, and LoomBootstrapLock, and names the
 // directory those three already share: lyxdirs.DotLyxDirName joined with loomDirName.
@@ -198,6 +231,7 @@ type Config struct {
 	PlanTimeoutMin        int    `yaml:"plan_timeout_min"`
 	Review                string `yaml:"review"`
 	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
+	Selfreport            bool   `yaml:"selfreport"`
 	Friction              string `yaml:"friction"`
 	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
 }

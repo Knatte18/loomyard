@@ -48,8 +48,8 @@ func hubLocation(hub, worktreeName, anchorRel string) *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
 }
 
-// seedLoomConfigWithFriction writes <anchorPath>/_lyx/config/loom.yaml with a full seven-key literal
-// whose friction key is the caller-chosen value -- empty to mean Tier 2 is off. All seven keys are
+// seedLoomConfigWithFriction writes <anchorPath>/_lyx/config/loom.yaml with a full eight-key literal
+// whose friction key is the caller-chosen value -- empty to mean Tier 2 is off. All eight keys are
 // written explicitly because configengine.Load is strict on missing keys.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
@@ -65,6 +65,7 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
+selfreport: true
 friction: %s
 friction_timeout_min: 30
 `, friction)

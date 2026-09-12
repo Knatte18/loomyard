@@ -16,7 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/selfreportengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/spf13/cobra"
 )
@@ -66,6 +69,12 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+
+			// Observed here, next to the read VerifySeedOwnership just performed, and guarded on
+			// the knob directly: a disabled run must not pay for a lock probe and an extra status
+			// decode on every drive, which is exactly the cost the knob's rationale claims it
+			// avoids.
+			entryObservation := observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 
 			// Ensure the reed substrate before the first producer call. drive adds no strand and
 			// hands no terminal over, but the rows beneath it spawn agents into reed panes, so
@@ -142,6 +151,26 @@ Example:
 			// error envelope rather than a special case here: a second driver against the same
 			// status file is a real refusal, not a race to tolerate.
 			result, err := shed.Run(cmd.Context())
+
+			// Unconditional, and deliberately above the early return below: the hard-error arm
+			// persists the failed state and returns a non-nil error, so appending this after the
+			// success envelope would drop that whole failure class -- and, worse, the entry-time
+			// crash observation lives only in this process's memory, so a crash-resume followed by
+			// a failing producer would be lost permanently, unrecoverable by any later drive.
+			detectAndFileAnomalies(selfreportDeps{
+				Ctx:            cmd.Context(),
+				Selfreport:     c.cfg.Selfreport,
+				Entry:          entryObservation,
+				StatusPath:     c.shedPaths.StatusPath,
+				StatusLockPath: c.shedPaths.StatusLockPath,
+				MarkerPath:     loomengine.LoomSelfreportFiled(c.location),
+				MarkerLockPath: loomengine.LoomSelfreportFiledLock(c.location),
+				RunErr:         err,
+				IsLedgerPath:   shedadapters.IsLedgerPath,
+				ReadLedger:     shedadapters.ReadLedger,
+				FileIssue:      selfreportengine.CreateIssue,
+			})
+
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

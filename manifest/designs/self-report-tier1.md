@@ -1,29 +1,16 @@
 # self-report Tier 1 — Go-detected structural anomalies
 
-> **Status: Planned, design settled with the operator 2026-09-12.**
-> Split out of the former `designs/self-report.md` (which covered both tiers as one doc) so Tier 1 can build independently of Tier 2 and of `loom-step.md` — no code dependency in any direction; all three can build in parallel. Extends the shipped `selfreport` module (`lyx selfreport create`) with an automatic trigger, in addition to today's manual-only invocation.
+> **Status: Done.** See each package's own documentation for as-built detail — `internal/loomengine`'s `anomaly.go`/`anomalybody.go` and `internal/loomcli`'s `selfreport.go`.
 
-## What it is
+## What shipped
 
-`loom`'s own status file (`_lyx/loom/status.json`, see [loom.md](loom.md#state--contracts)) records exactly the kind of anomaly Millhouse's self-report catches by an LLM noticing a pattern in its own transcript: crash-resumes, `stuck` escalations, repeated review rounds on the same finding.
-Go can file these directly off its own history trail — deterministic, no LLM call, and strictly more complete than an LLM's approximate recall of its own session, since it reads an exact record instead of remembering one.
+`lyx loom drive` now detects and files five Tier-1 structural anomalies directly off loom's own status file and its Bouncer ledgers, with no LLM call and no session watching: a crash-resume (a driver that died mid-run, observed at the next drive's entry), an escalation-to-human halt (a blocked run with no `OnStuck` target), a bounce-budget-exhausted halt, a producer-hard-failure halt (a failed run), and a recurring finding (a ledger entry still open after three or more rounds — one less than a segment's own bounce budget, since the Bouncer's seed call permanently consumes one unit of it).
 
-This applies identically regardless of how a task is driven — plain `lyx loom run`, or the step-loop supervisor skill (see [loom-step.md](loom-step.md)). It costs nothing and needs no session watching, so there's no reason to gate it behind either driving mode.
+Each trigger renders a deterministic title discriminator so a re-observed condition never mints a second issue: the three halt kinds key on the current producer and its own count of prior successful (`done`) history entries, the crash-resume keys on the producer and the history length at the moment it was observed, and the recurring finding keys on the Bouncer row name plus the ledger entry's own key (row name included because a ledger key is scoped to its own segment's run directory, with nothing making it unique across the discussion, plan, and webster segments).
 
-## Relationship to the shipped `selfreport` module
+Detection runs as a four-step filing pass after every `shed.Run` call: collapse the detected anomalies to one per distinct title (keeping the fullest rounds list when a recurring finding is carried forward across several ledger files), filter against a machine-local filed-title marker, file one GitHub issue per surviving anomaly via the shipped `selfreport` primitive (`selfreportengine.CreateIssue`, `DefaultLabels()`), and record each title in the marker immediately after its own filing call succeeds. Losing the marker — a fresh clone, a fabric re-wire — costs at most one duplicate issue, which is why it is deliberately machine-local rather than durable.
 
-This does not replace `lyx selfreport create` (shipped) — it adds an automatic trigger on top of the same primitive: today, manual only; Tier 1 has Go itself invoke it directly off the status file's own history, with no LLM judgment call involved.
-
-## What needs to happen
-
-1. Decide which status-file patterns are worth auto-filing (crash-resume, `stuck` escalation, N repeated review rounds on the same finding — a starting list, not exhaustive).
-2. Wire the detection into loom's own status-file write path (or a post-hoc scan) so it fires deterministically, without needing any agent or session present.
-3. Call `lyx selfreport create` with the detected pattern as the filing payload.
-
-## Open questions
-
-- Exact trigger list and thresholds (e.g. "repeated" = how many rounds) — not yet pinned.
-- Whether this is on by default for every task, or opt-in per producer/profile.
+The `selfreport` key in `loom.yaml` (default `true`) gates the whole step, on by default; a run in CI or against a fork must set it `false`, exactly as its own template comment says, or it will file into the upstream `Knatte18/loomyard` issue tracker. Every failure in the detect-and-file path — a filing call, a marker read, a marker write — degrades to a warning and never changes `drive`'s outcome, its exit code, or either envelope: this is a diagnostics side-channel on a long autonomous run, and a GitHub outage or an unresolvable token must never turn a completed loom run into a reported failure.
 
 ## Related
 
