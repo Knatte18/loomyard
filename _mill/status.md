@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-compose-loom
+phase: approved-wiring
 slug: self-report-tier2
 branch: self-report-tier2
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-frictionengine  '2026-09-12T11:57:13Z'
 approved-compose-burler  '2026-09-12T12:04:09Z'
 approved-compose-webster  '2026-09-12T12:15:00Z'
 approved-compose-loom  '2026-09-12T12:23:42Z'
+approved-wiring  '2026-09-12T12:34:52Z'
 ```
 
 ## Batches
@@ -81,15 +82,15 @@ batches:
     commit_sha: 8890f5bbe32c5f52d7c0892eb37ed5429e85069e
     verify_baseline_failures: []
   - name: wiring
-    state: running
+    state: approved
     implementer_session: 76152c1e-65e5-4bb5-9268-9d93de86b86b
     start_sha: 670fe4bd30c94213da43529718aaf9b6c6a940bb
+    commit_sha: b33e69860a9e3033fc34452e6bbaae3679723033
     verify_baseline_failures: []
   - name: docs
     state: pending
     verify_baseline_failures: []
 ```
-
 ## Inferred-success log
 
 ```text
