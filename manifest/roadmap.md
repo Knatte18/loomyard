@@ -9,8 +9,14 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; a thin `/ly-*` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, cleaning up on a detected crash, and filing friction via `lyx selfreport create`. Supersedes both `llm-driven-loom-alternative` and `self-report: two-tier friction capture` — see the doc for how self-report's two tiers reconcile against this.
-   See [designs/loom-step-supervisor.md](designs/loom-step-supervisor.md).
+1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; a thin `/ly-*` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, cleaning up on a detected crash, and filing friction via `lyx selfreport create`. Supersedes `llm-driven-loom-alternative`. Independent of the two self-report items below — no code dependency either direction, all three can build in parallel.
+   See [designs/loom-step.md](designs/loom-step.md).
+
+1. **self-report Tier 1: Go-detected structural anomalies** — loom's own status file already records crash-resumes, `stuck` escalations, and repeated review rounds; file these directly via `lyx selfreport create`, no LLM call, no session watching needed. Independent of Tier 2 and of the `lyx loom step` item above.
+   See [designs/self-report-tier1.md](designs/self-report-tier1.md).
+
+1. **self-report Tier 2: per-agent friction notes for unsupervised runs** — loom's per-phase design means no single LLM session has full-run context the way Millhouse's self-report assumes; every spawned agent's own friction note is aggregated and reflected on by one dedicated agent at natural end points. Scoped specifically to a task run via plain `lyx loom run` with nobody watching live — the `lyx loom step` supervisor skill substitutes for this when it's the one driving. Independent of Tier 1 and of the `lyx loom step` item above.
+   See [designs/self-report-tier2.md](designs/self-report-tier2.md).
 
 ## Someday
 
