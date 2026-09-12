@@ -81,7 +81,9 @@ batches:
     commit_sha: 8890f5bbe32c5f52d7c0892eb37ed5429e85069e
     verify_baseline_failures: []
   - name: wiring
-    state: pending
+    state: running
+    implementer_session: 76152c1e-65e5-4bb5-9268-9d93de86b86b
+    start_sha: 670fe4bd30c94213da43529718aaf9b6c6a940bb
     verify_baseline_failures: []
   - name: docs
     state: pending
