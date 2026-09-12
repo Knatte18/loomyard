@@ -2,10 +2,12 @@
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses
 // internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config
-// file, then validates the discussion, plan, and review role model-specs' grammar via
-// modelspec.Parse, and rejects a negative value on each of the three timeout knobs, so a mistake in
-// any of those six keys fails loud at load time rather than hours into a run when the discussion,
-// plan, or review producer first spawns.
+// file, then validates the discussion, plan, review, and friction role model-specs' grammar via
+// modelspec.Parse, and rejects a negative value on each of the four timeout knobs, so a mistake in
+// any of those eight keys fails loud at load time rather than hours into a run when the discussion,
+// plan, review, or friction producer first spawns.
+// friction is the one role key validated only when non-empty: a present-but-empty value means
+// Tier 2 self-reporting is off, and must load cleanly, unlike the other three role keys.
 
 package loomengine
 
@@ -196,6 +198,8 @@ type Config struct {
 	PlanTimeoutMin        int    `yaml:"plan_timeout_min"`
 	Review                string `yaml:"review"`
 	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
+	Friction              string `yaml:"friction"`
+	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
@@ -226,7 +230,15 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "review", err)
 	}
 
-	// The three timeouts are checked here for the same reason the three model-specs above are: a
+	// friction is validated only when non-empty: a present-but-empty value means Tier 2 is off and
+	// must load cleanly, unlike the three role keys above, which are always required.
+	if cfg.Friction != "" {
+		if _, err := modelspec.Parse(cfg.Friction); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w", "friction", err)
+		}
+	}
+
+	// The four timeouts are checked here for the same reason the four model-specs above are: a
 	// value that can only be a mistake should fail at load time rather than hours into a run when
 	// the producer it governs first spawns. A negative minute count flows into
 	// time.Duration(n) * time.Minute on a shuttleengine.Spec, where it is caught only at spawn or
@@ -241,6 +253,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		{"discussion_timeout_min", cfg.DiscussionTimeoutMin},
 		{"plan_timeout_min", cfg.PlanTimeoutMin},
 		{"review_timeout_min", cfg.ReviewTimeoutMin},
+		{"friction_timeout_min", cfg.FrictionTimeoutMin},
 	} {
 		if knob.minutes < 0 {
 			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; use 0 to defer to shuttle's run_timeout_min", knob.key, knob.minutes)
