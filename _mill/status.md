@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: loom-step
 branch: loom-step
 plan: _mill/plan
@@ -23,4 +23,5 @@ discussion-fix-r5  '2026-09-12T10:40:35Z'
 discussion-fix-r6  '2026-09-12T10:44:36Z'
 discussed  '2026-09-12T10:44:36Z'
 planning  '2026-09-12T10:57:02Z'
+plan-review-r1  '2026-09-12T11:07:48Z'
 ```
