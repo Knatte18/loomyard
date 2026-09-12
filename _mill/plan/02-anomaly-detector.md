@@ -51,7 +51,9 @@ Batch-local decision differing from the overview's Shared Decisions: none.
   Declare `type Anomaly struct` carrying everything the title and body need with no further lookup: `Kind AnomalyKind`, `Title string` (rendered by the detector, never by the caller), `Slug string`, `Parent string`, `State shedengine.State`, `CurrentProducer string`, `Error string`, `History []shedengine.HistoryEntry`, `Round int`, `BouncerRow string`, `LedgerKey string`, `LedgerRounds []int`, `LedgerStatus string`.
   The five trigger-5-only fields are zero for the other four kinds, and `Round` is the ledger file's own round, used by the caller's collapse step to keep the most complete occurrence.
 
-  Declare `func DetectCrashResume(entry EntryObservation, slug string) (Anomaly, bool)` as its own exported function, not merely an internal branch, because the caller must be able to reach trigger 1 alone on a cancelled context without a final status in hand.
+  Declare `func DetectCrashResume(entry EntryObservation) (Anomaly, bool)` as its own exported function, not merely an internal branch, because the caller must be able to reach trigger 1 alone on a cancelled context without a final status in hand.
+  It takes no slug parameter: `entry` already carries `Slug` and `Parent`, and reading them off it is exactly what makes the cancelled-context call site work, since that branch has neither a final status nor a decoded product in hand.
+  A second slug argument would be a value the sole caller could only fill from `entry.Slug` anyway, with nothing stating whether the two are ever allowed to differ.
   It reports an anomaly when, and only when, `entry.Observed` is true, `entry.RunLockHeld` is false, `entry.State` is `shedengine.StateRunning`, and `entry.HistoryLength` is greater than zero.
   A held run lock means a live driver, never a crash.
   An empty history is a fresh seed at `Preflight`, byte-identical on disk to a crash at `Preflight`, so it is deliberately not reported — the alternative would file a crash-resume for every ordinary first drive of every task.

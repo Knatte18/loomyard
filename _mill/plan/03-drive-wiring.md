@@ -75,6 +75,8 @@ Batch-local decision differing from the overview's Shared Decisions: none.
 
   Hand the entry observation, the final status, the decoded product, and the ledger observations to `loomengine.DetectAnomalies`, then run the filing pass in exactly four ordered steps.
   One: collapse by title, reducing the slice to one anomaly per distinct title, keeping the highest `Round` when the duplicates are recurring-finding anomalies and the first occurrence otherwise.
+  Mark that `otherwise` branch unreachable-by-construction in a comment, following the in-repo convention `selfreportengine.CreateIssue`'s own `targetRepo` guard already sets — kept as a defensive guard so a future change to the detector's output fails predictably rather than silently, not because it can fire today.
+  It cannot fire today because only recurring-finding anomalies carry a non-zero `Round`, and one detector call returns at most one crash-resume and at most one halt-kind anomaly, whose title shapes collide neither with each other nor with a recurring-finding title.
   This is required, not defensive tidying — the judge carries an open entry forward losslessly into every later round's ledger, so from round three onward one recurring finding appears in several ledger files at once and would otherwise produce one identically-titled anomaly per file.
   Keeping the highest-round occurrence is what makes the body carry the fullest rounds list.
   Two: filter against the marker, dropping every title it already holds.
