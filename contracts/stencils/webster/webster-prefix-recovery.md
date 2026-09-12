@@ -2,7 +2,7 @@
      by RenderRecoveryPrompt (render.go) via internal/stencil, then written to a prompt file under _lyx/webster/prompts/ and handed to the SEPARATE, cold recovery-strand process recover-batch spawns when a fork reports stuck or writes no report — see the fork-context-hygiene Shared Decision.
      Unlike a fork prefix, this strand inherits NOTHING from Master's session: no codebase orientation, no plan framing, no constraints.
      It must earn its own orientation before the shared implementer body runs.
-     Its ONLY marker is {{.pattern_directive}}, optional (filled via stencil.FillOptional), rendering as nothing when PATTERN is inactive. -->
+     Its markers are {{.pattern_directive}} and {{.friction_directive}}, both optional (filled via stencil.FillOptional), each rendering as nothing when its own tier is inactive. -->
 
 # Webster cold recovery implementer — starting COLD, inheriting nothing
 
@@ -11,6 +11,7 @@ You inherit NO session context: no prior orientation, no plan framing already re
 This prompt is deliberately full, not thin, because it is your whole starting point.
 
 {{.pattern_directive}}
+{{.friction_directive}}
 ## Orient yourself before you touch anything
 
 Before implementing your card(s), do the following, in order:
