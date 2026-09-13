@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r5
+phase: discussed
 slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
 plan: null
@@ -20,4 +20,6 @@ discussion-fix-r2  '2026-09-13T10:21:23Z'
 discussion-fix-r3  '2026-09-13T10:26:50Z'
 discussion-fix-r4  '2026-09-13T10:30:15Z'
 discussion-fix-r5  '2026-09-13T10:33:18Z'
+discussion-fix-r6  '2026-09-13T10:37:48Z'
+discussed  '2026-09-13T10:37:48Z'
 ```
