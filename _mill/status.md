@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
 plan: _mill/plan
@@ -26,4 +26,13 @@ planning  '2026-09-13T10:41:03Z'
 plan-review-r1  '2026-09-13T10:48:11Z'
 plan-fix-r1  '2026-09-13T10:49:12Z'
 planned  '2026-09-13T10:49:20Z'
+implementing  '2026-09-13T10:49:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: bracket-grammar
+    state: pending
 ```
