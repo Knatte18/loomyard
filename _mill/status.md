@@ -37,7 +37,9 @@ batches:
     commit_sha: 420d415a2926ef4a02ddcfcce156dd863e5eeb42
     verify_baseline_failures: []
   - name: production-prose
-    state: pending
+    state: running
+    implementer_session: 620c4c9c-d5bf-46e8-aae2-97a09be6de63
+    start_sha: 05b3776718ba61b28e2f47f3cd5a5f7a84d314be
     verify_baseline_failures: []
   - name: fabricengine-tests
     state: pending
