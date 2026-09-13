@@ -209,6 +209,15 @@ Example:
 					// legible. See dispositionForHandshake for the full argument.
 					logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
 				}
+				if result == awaitRunLockHalted {
+					// The halted disposition's breadcrumb, symmetric with the child-died one above:
+					// on every resume of an already-halted run this arm fires on the handshake's
+					// first poll, before the driver has done anything, so without this line the log
+					// carries zero evidence which handshake path the bootstrap took — including in
+					// the narrow case where the child is not doing post-run bookkeeping but is
+					// genuinely wedged before its first persist (crucible round 2, R2-F3).
+					logger.Info("loom: driver is alive with the machine already halted; proceeding to the handover while it finishes post-run bookkeeping", "pid", childPID, "log", driverLogPath)
+				}
 			}
 
 			// Step 7: this tail is the CLI/Cobra Invariant's interactive-handoff exception. Steps
