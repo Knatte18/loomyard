@@ -267,7 +267,7 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 }
 
 // TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive codifies the CROSS-WORKTREE SCOPE invariant:
-// the tmux server identity is per-HUB (the -L socket derives from the hub) and shared by sibling
+// the tmux server identity is per-hub (the -L socket derives from the hub) and shared by sibling
 // worktrees, so `lyx reed down` in worktree A must tear down ONLY A's session, never worktree B's
 // session, panes, or agents that share the same hub socket. (This psmux port backs each session
 // with its own `psmux.exe server -s <session> -L <socket>` process on the shared socket, so "no
