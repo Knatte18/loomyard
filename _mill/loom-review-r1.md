@@ -20,11 +20,53 @@ Anomaly check per the clean-room constraint: `_mill/` contained `loom-review-pro
 
 ## Executive summary
 
-(filled at the end of Job 1)
+The trio's *pure* logic is genuinely solid and the live drive confirmed it rather than contradicting it: eighteen real `lyx loom step` invocations walked a dummy task through `Preflight → Loom-Preflight → Discussion-Write → Discussion-Validate → Discussion-Review → Plan-Write → Plan-Validate → Plan-Review → Plan-Revalidate → Batchifier → Webster` with **zero envelope-fidelity mismatches**, the `busy` refusal held against a genuinely live producer, the `reinvoke` contract held on a `BurlerProducer` row with no double-spawn, and both self-report tiers fired off one real halt and filed two real GitHub issues end to end.
+
+The defects are all at the **seams the live path added and the unit tests cannot see**: a helper that is written, documented, and tested but never called; a verb that reads a lock whose parent directory nothing has created; a `Bouncer` branch that is the one spawning mode without a live-agent probe; and — the blocking one — a `run` handshake whose central assumption Tier 2 quietly invalidated.
+
+**Top risks, in order:**
+
+1. **F-0 (BLOCKING)** — Tier 2's post-`shed.Run` reflection phase keeps the driver alive with the run lock released, which `run`'s handshake is documented to interpret as "a wedged spawn and nothing else". Every fast halt with a friction note now reports a false bootstrap failure *and* skips the terminal handover — defeating the exact purpose the handshake's own comment defends. Reproduced live.
+2. **F-4 (MEDIUM)** — the `Bouncer`'s re-bounce branch has no live-agent probe, so a crash-resume there abandons a paid-for, still-running seed agent that holds the very file the next row reads. Reproduced live; it also falsifies a sentence in the shipped supervisor skill.
+3. **F-3 (MEDIUM)** — `lyx loom status` and `lyx loom pause` leak an internal lock-path error on any never-bootstrapped task, making both verbs' own "no status file" messages unreachable. This is the `ly-supervise` skill's literal first instruction, and the skill asserts that read "always exists".
+4. **F-1 (MEDIUM)** — `ensureFrictionDirAfterSeed` is never called; the clear-on-first-seed it documents never ships, and its four tests are false-green. Proved live: notes placed before a genuine first seed reached the new task's reflection agent.
+5. **F-2 (MEDIUM)** — `step` fires neither tier and never ensures the friction directory. Tier 2's exemption is documented; Tier 1's is not, anywhere a `step` user would look.
+
+**Counts:** 1 BLOCKING, 4 MEDIUM, 2 LOW, 1 NIT, plus 2 documentation/operability items. Nothing found is a LARGE finding requiring a separate mill-wiki task.
+
+**Merge-readiness opinion (pre-fix): NOT READY.** F-0 alone is a regression on a common path, introduced by this round's own subject, that turns a healthy run into a reported failure and strands the operator outside the session. Everything found is small and local, though — none of it questions the design, and all of it is fixable within this round.
 
 ## Scope assessment — plan-vs-shipped
 
-(filled at the end of Job 1)
+### `loom-step.md` — shipped as designed, one contract with no consumer
+
+| Promised | Shipped | Verdict |
+| --- | --- | --- |
+| Thin wrapper over existing dispatch, no new phase logic | `step.go` calls `shed.Step` once; all routing stays in `shedengine` | met |
+| Ten-key envelope, closed set | exactly ten keys on all 18 live envelopes; `stepKinds` test pins the set | met |
+| Five-value `kind` vocabulary on error envelopes | `busy` observed live; the other four are constants with an exact-set test | met |
+| `continue` derived so the caller carries no state vocabulary | derived at `step.go:96`; held on every envelope | met |
+| `next_interrupt_policy` as the supervisor's re-invocation signal | computed, but no shipped consumer reads it — see D-1 | **drift** |
+| `/ly:ly-supervise` skill with step-loop, anomaly-watching, `selfreport create`, `reed attach` | all present in `SKILL.md` | met |
+| Skill never advances past a stuck/blocked gate | skill says so; `step` returns `continue:false` on every non-running state, verified live twice | met |
+
+No over-reach: `step` adds nothing beyond the documented envelope. The one gap is that it also adds nothing where `drive` does — see F-2.
+
+### `self-report-tier1.md` — shipped as designed
+
+All five kinds are implemented and exhaustively table-tested; the live drive fired `escalation-to-human` for real and filed #240 with the exact documented title shape. The four-step filing pass (collapse → marker filter → file → record-per-success) is implemented exactly as described, and the marker was written with the single expected title. The `selfreport` knob gates the whole step before any read. Degrade-to-warning is honoured throughout.
+
+One scope statement in the doc is narrower than a reader will take it: "`lyx loom drive` now detects and files…" is literally true and is the only place the `step` exemption is even implied. See F-2.
+
+### `self-report-tier2.md` — shipped as designed, and the guard earns its keep
+
+All seven prompt composers inject `{{.friction_directive}}` through `friction.MarkerName` (never a literal), all seven host stencils carry the marker in `contracts/stencils/`, and the four role variants plus the reflection template are all present. Verified by exhaustive call-site audit and confirmed live: the real `Discussion-Write` prompt carried the full interview-variant directive with the composed note path.
+
+Aggregation → one reflection agent → `reflection-report.md` → archive-on-clean-return was verified end to end on a real halt, including the agent filing #241 itself. The "one reflection agent, never several" promise held: exactly one spawned.
+
+`WarnIfMarkerAbsent` is not defensive tidying — it was the only thing that made a real, total Tier-2 outage visible during this round (D-2). Keep it.
+
+Nothing shipped beyond scope. The doc's stated limitation (a Tier-2 note can only describe friction in its own scope) is honoured by construction.
 
 ## Code findings
 
@@ -156,6 +198,55 @@ This also falsifies a documented promise: `plugins/ly/skills/ly-supervise/SKILL.
 
 Fix: give the re-bounce branch the same probe the seed pass already has — attach to a live seed run on `focusPath(RunDir, 1)` and wait on it before concluding the segment is seeded — so the branch either harvests the live seed or acts on genuinely settled state. Then the skill's "there is no orphan" sentence becomes true rather than aspirational.
 
+### F-5 — killing a live Webster Master on a handback reinvoke is logged at Info, below the driver log's default level — LOW — CONFIRMED (reproduced live)
+
+`internal/websterengine/strand.go:108`, against the precedent at `internal/shedadapters/bouncer.go:245`.
+
+`internal/loomshed/interruptpolicy.go`'s own comment is accurate and was confirmed exactly as written: re-invoking an interrupted `Webster` step "kills the in-flight Master and restarts the batch run from state.json", Webster "being the most expensive row in the list, and that cost is the operator's to accept rather than the supervisor skill's."
+
+Reproduced live. `lyx loom step` was killed mid-`Webster` with one live Master (pid 1068947, reed strand `master::52175471`); `lyx loom status` reported `interrupt_policy: handback`. A re-invocation then:
+
+- **did not refuse** — no `busy`, no error envelope, no refusal of any kind;
+- killed pid 1068947 within seconds and started a fresh Master, pid 1070022, strand `master::99f554a0`;
+- printed **nothing** about it at default verbosity. The only `WARN` lines the reinvocation produced were the two unrelated friction-marker ones.
+
+The cost the operator is supposed to be "accepting" is therefore never shown to them. `removeStrandIfLive` does log the teardown, but at `Info`, and `internal/logger`'s default console level is `Warn` (`logger.go:326`, `logger.go:385`); `Info` reaches the durable trace file only. The detached driver's own log — the one `run`'s failure envelope points an operator at — carries `Warn` and above.
+
+The in-repo precedent is unambiguous and argues this exact case: `bouncer.go:245` logs its own expensive reclaim at `Warn`, with the reasoning "An operator whose run suddenly costs a second generation would otherwise find nothing about it in the driver log, the status file, or the run directory." Killing a live Webster Master is strictly the more expensive of the two.
+
+Fix: raise that one line to `Warn` and name the cost in its message.
+
+Note what is **not** a finding here: the absence of a code-level handback guard is correct and correctly documented. `loomshed.InterruptPolicies` is read in exactly two production places — `status.go:154` and `step.go:208` — and both only copy the value onto a JSON envelope. Nothing compares against `InterruptPolicyHandback` anywhere. The `ly-supervise` skill states this honestly ("a later re-invocation would restart it rather than attach to it"), so the skill is not overselling enforcement. See D-1 for the one place the wording does drift.
+
+### F-6 — the friction reflection runs outside the run lock, so a second `lyx loom run` in that window spawns a second driver that races the archive — LOW — PLAUSIBLE (traced, not reproduced)
+
+`internal/loomcli/drive.go:188-191` against `internal/loomcli/run.go:110-161` and `internal/frictionengine/reflect.go:157-169`.
+
+`shedengine.Run` releases the run lock on return. `drive`'s reflection step runs after that return, for up to `friction_timeout_min` (shipped default 30 minutes). Throughout that window the run lock reads as free, so `run`'s `mustSpawnDriver(runLockHeld)` answers true and a second `lyx loom run` spawns a second detached driver.
+
+That second driver calls `friction.EnsureDir` and, at its own halt, `Reflect` again over the same directory. Two reflection agents then hold the same `reflection-report.md` as a declared output, and `archiveFrictionDir`'s `os.Rename` races: whichever loses gets a "no such file or directory" and returns `StatusFailed` after having already paid for its agent.
+
+Nothing is corrupted and nothing is lost — the archive is atomic and `Reflect` degrades to a `Report` rather than an error — so this is cost and confusion, not damage, which is why it is LOW. It shares a root cause with F-0 (the run lock no longer spans the driver's whole useful life) but F-0's fix does not close it: teaching the *handshake* to read the status file leaves `mustSpawnDriver` still looking at the lock.
+
+Not reproduced: doing so means holding a real reflection agent open while racing a second `run` against it, and the campaign's cost declaration rules out running two dummy-task drives concurrently. Recorded as PLAUSIBLE on a code trace.
+
+### F-7 — `collapseAnomaliesByTitle`'s trailing comment describes a guard that is not there — NIT — CONFIRMED
+
+`internal/loomcli/selfreport.go:252-257`.
+
+The loop's final branch ends with a comment and no code:
+
+```go
+if a.Kind == loomengine.AnomalyRecurringFinding { ...; continue }
+// Unreachable by construction: ... Kept as a defensive guard, following the in-repo convention
+// selfreportengine.CreateIssue's own targetRepo guard already sets, so a future change to the
+// detector's output fails predictably rather than silently.
+```
+
+There is no guard. The comment names a specific in-repo precedent (`CreateIssue`'s `targetRepo` check, which really does return an error) and claims this code follows it so a future change "fails predictably rather than silently" — but the actual behaviour is the opposite: a non-recurring duplicate title is silently collapsed onto the first occurrence with nothing reported anywhere.
+
+Harmless today, since the claim that duplicates are unreachable is correct. It matters because this package's comments are load-bearing and this one would mislead the next reader into believing a safety net exists. Fix: either say what the code really does (first-occurrence-wins fall-through) or add the guard the comment advertises.
+
 ## Docs & operability findings
 
 ### D-1 — `next_interrupt_policy` is computed, documented as the supervisor's signal, and read by nobody — LOW
@@ -181,6 +272,10 @@ stencil=loom-template-discussion marker={{.friction_directive}}
 Without `friction.WarnIfMarkerAbsent` (friction.go:120) this would have been a silent, total Tier-2 outage: every producer prompt composed after that moment would have carried no friction directive and no agent would ever have been asked for a note, with nothing anywhere reporting it. The guard is worth keeping and is doing real work.
 
 The fix for the *fixture* was to pin PATH to the dev binary and run `lyx stencil sync` (which restored the marker in all seven host stencils). The general hazard — two lyx builds sharing one hub, the agent-side one silently rewriting shared board state — belongs to `stencilstore`'s reconcile policy, is outside this trio, and is recorded here rather than fixed.
+
+**One detail that makes this sharper than "the operator forgot to set PATH", and that cost this round real time:** the fix did not hold. All seven host stencils were stripped again at 15:33:17, after the 15:31:49 `lyx stencil sync`. The reason is that the reed **tmux server** captures its environment when it starts, and this hub's server had started at 15:26 — before PATH was pinned. Every agent spawned into that server therefore kept resolving the old binary no matter what the driver's own shell had. Correcting PATH for the agents requires restarting the tmux server, not just exporting it.
+
+The practical consequence for this round is worth stating plainly: from 15:33 onward every friction directive in the `dummy-r1` run rendered as nothing, so no producer in that run was ever asked to write a note — which is why `dummy-r1`'s friction directory stayed empty throughout. `WarnIfMarkerAbsent` fired on every single affected composition, which is the only reason this is a paragraph in a report rather than an invisible hole in the coverage.
 
 ## What was tested
 
@@ -283,3 +378,36 @@ Observed, all in one driver pass:
 **F-1 proved live in the same run.** The two friction notes were placed *before* a genuine first seed and survived it, reaching the reflection agent as this task's own friction. That is exactly the outcome `ensureFrictionDirAfterSeed`'s clear-on-first-seed branch was written to prevent, and it is what a never-called helper buys.
 
 **F-0 surfaced in the same run** — `lyx loom run` reported `"driver did not take the run lock"` while that driver was mid-reflection and about to finish cleanly.
+
+### Scenario 5 — the `handback` row, `NameWebster`, driven for real
+
+`dummy-r1` was walked serially from `Plan-Write` to `Batchifier` — one `lyx loom step` at a time, each waited to completion, never two at once — reaching `Webster` at step 18 with `next_interrupt_policy: "handback"`, the only row in the table that carries it.
+
+Step 19 was then launched and SIGKILLed 21 seconds in, with exactly one live Master (pid 1068947, reed strand `master::52175471`) and `_lyx/webster/state.json` already written. Post-kill: Master alive, status `Webster`/`running`, `lyx loom status` → `interrupt_policy: "handback"`.
+
+Step 20 re-invoked `lyx loom step` anyway — the thing the policy exists to advise against. Observed:
+
+- **no refusal of any kind.** No `busy`, no error envelope, no gate.
+- pid 1068947 gone within 3-6 seconds; a fresh Master at pid 1070022, strand `master::99f554a0`.
+- **no warning at default verbosity** about the kill — see F-5.
+- the restarted run then completed correctly: `{"producer":"Webster","outcome":"done","next":"Webster-Bouncer","state":"running","history_length":18,"next_interrupt_policy":"reinvoke"}`, exactly one batch, landing a real commit `1: greeting-constant` touching `src/main.go` (+3/-1).
+
+So `interruptpolicy.go`'s claim is confirmed in both halves: the machine silently restarts rather than resumes, **and** "correctness survives that restart". The handback policy is advisory metadata with zero code-level enforcement, and `plugins/ly/skills/ly-supervise/SKILL.md` is the only thing between an automated caller and that restart. The skill states this accurately.
+
+### Scenario 6 — envelope key-set and vocabulary replay
+
+All 19 captured envelopes were replayed offline against four invariants: exactly the ten documented keys and no eleventh; `continue == (state == "running")`; `reason` non-empty **iff** `state == "blocked"`; `next_interrupt_policy` within the two-value vocabulary.
+
+```
+envelopes with a mismatch: 0
+```
+
+The two deliberately-interrupted invocations wrote no envelope at all, which is the distinct case `ly-supervise`'s "Interrupted invocations" section is written for — confirmed to behave as that section describes.
+
+## What could NOT be verified, and why
+
+- **An agent spontaneously choosing to write a Tier-2 friction note.** The *injection* leg was verified live (the real `Discussion-Write` prompt carried the full interview-variant directive with its composed note path), and the *aggregation → reflection → filing → archive* leg was verified live on `dummy-r2` with hand-placed notes. What was not observed is a producer deciding, of its own judgment, that something went wrong. That is a model-judgment event, not a code behaviour, and it cannot be forced without doctoring the prompt. Compounding it, D-2 meant every directive after 15:33 in the `dummy-r1` run rendered as nothing, so that run could not have produced one.
+- **Windows behaviour** — out of scope per the round prompt; nothing here was verified on Windows and nothing is claimed about it.
+- **F-6** — recorded as PLAUSIBLE on a code trace. Reproducing it needs two concurrent dummy-task drives, which the cost declaration forbids.
+- **Publish and Finalize rows** — `dummy-r1` was deliberately stopped at `Webster-Bouncer`. Both are landing rows outside this trio, both adapters in the remaining review segment had already been exercised twice, and driving to `Finalize` would have spent several more real sessions for no additional coverage of `step`, Tier 1, or Tier 2. A `RunDone`-triggered reflection was therefore not observed; the `RunBlocked` trigger was, and `shouldReflectFriction` treats the two identically (drive.go:213).
+- **`selfreportengine.CreateIssue`'s error-classification branches** (token unresolvable, `*github.ErrorResponse`, network) — the live path succeeded, so only the success branch was exercised live. All three are covered by the package's hermetic tests.
