@@ -34,7 +34,8 @@ func validateCharset(s, kind string, allowed func(rune) bool) error {
 }
 
 // Parse checks s against the strict model-spec grammar and returns the parsed Spec.
-// It recognizes four shapes: alias, alias[k=v,...], engine:model-id, and engine:model-id[k=v,...].
+// It recognizes four shapes: alias, alias[item,...], engine:model-id, and engine:model-id[item,...],
+// where a bracket item is either key=value or a bare token meaning effort=<token>.
 // On success, Params is nil when s had no bracket, or the parsed map otherwise.
 func Parse(s string) (Spec, error) {
 	if s == "" {
@@ -119,37 +120,63 @@ func Parse(s string) (Spec, error) {
 	return spec, nil
 }
 
-// parseBracket parses the comma-separated key=value list inside a spec's bracket.
+// parseBracket parses the comma-separated item list inside a spec's bracket, where each item is
+// either key=value or a bare token meaning effort=<token>.
 // Every rejection is its own named error per the fail-loud grammar contract.
 func parseBracket(inner, fullSpec string) (map[string]string, error) {
 	params := make(map[string]string)
-	for _, pair := range strings.Split(inner, ",") {
-		eq := strings.IndexByte(pair, '=')
-		if eq == -1 {
-			return nil, fmt.Errorf("modelspec: param %q in spec %q has no '=' separator", pair, fullSpec)
-		}
-		key := pair[:eq]
-		value := pair[eq+1:]
+	// firstSegment tracks, per canonical key, the as-written segment that first set it —
+	// needed to name both segments in the duplicate-key error.
+	firstSegment := make(map[string]string)
 
-		if key == "" {
-			return nil, fmt.Errorf("modelspec: empty param key in %q in spec %q", pair, fullSpec)
+	for _, segment := range strings.Split(inner, ",") {
+		if segment == "" {
+			return nil, fmt.Errorf("modelspec: empty param in spec %q", fullSpec)
 		}
-		if value == "" {
-			return nil, fmt.Errorf("modelspec: empty value for param key %q in spec %q", key, fullSpec)
+
+		var canonicalKey, value string
+		eq := strings.IndexByte(segment, '=')
+		if eq == -1 {
+			// Bare token: the whole segment is the value and the canonical key is
+			// always "effort". No effort-value vocabulary gates it — only the
+			// model-id charset, same as any other param value.
+			if err := validateCharset(segment, "param value", isModelIDChar); err != nil {
+				return nil, err
+			}
+			canonicalKey = "effort"
+			value = segment
+		} else {
+			key := segment[:eq]
+			value = segment[eq+1:]
+
+			if key == "" {
+				return nil, fmt.Errorf("modelspec: empty param key in %q in spec %q", segment, fullSpec)
+			}
+			if value == "" {
+				return nil, fmt.Errorf("modelspec: empty value for param key %q in spec %q", key, fullSpec)
+			}
+			if err := validateCharset(key, "param key", isIdentChar); err != nil {
+				return nil, err
+			}
+			if err := validateCharset(value, "param value", isModelIDChar); err != nil {
+				return nil, err
+			}
+
+			canonical, known := bracketKeys[key]
+			if !known {
+				if key == "version" {
+					return nil, fmt.Errorf("modelspec: unknown param key %q in spec %q (the bracket version param is spelled \"v\")", key, fullSpec)
+				}
+				return nil, fmt.Errorf("modelspec: unknown param key %q in spec %q", key, fullSpec)
+			}
+			canonicalKey = canonical
 		}
-		if err := validateCharset(key, "param key", isIdentChar); err != nil {
-			return nil, err
+
+		if first, dup := firstSegment[canonicalKey]; dup {
+			return nil, fmt.Errorf("modelspec: duplicate param key %q in spec %q (segments %q and %q both set it)", canonicalKey, fullSpec, first, segment)
 		}
-		if err := validateCharset(value, "param value", isModelIDChar); err != nil {
-			return nil, err
-		}
-		if _, dup := params[key]; dup {
-			return nil, fmt.Errorf("modelspec: duplicate param key %q in spec %q", key, fullSpec)
-		}
-		if !knownParams[key] {
-			return nil, fmt.Errorf("modelspec: unknown param key %q in spec %q", key, fullSpec)
-		}
-		params[key] = value
+		firstSegment[canonicalKey] = segment
+		params[canonicalKey] = value
 	}
 	return params, nil
 }
