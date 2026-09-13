@@ -113,8 +113,8 @@ func TestBoardDir(t *testing.T) {
 		},
 		{
 			name: "nested hub",
-			hub:  "/repos/loomyard-HUB",
-			want: filepath.Join("/repos/loomyard-HUB", BoardDirName),
+			hub:  "/repos/loomyard-LYXHUB",
+			want: filepath.Join("/repos/loomyard-LYXHUB", BoardDirName),
 		},
 	}
 
@@ -129,6 +129,10 @@ func TestBoardDir(t *testing.T) {
 }
 
 // TestHubPath verifies that HubPath joins parent and name with HubSuffix.
+// The two cases are deliberately expressed differently: "simple repo name" pins the literal
+// -LYXHUB suffix value, so a future change to HubSuffix fails this test, while "nested parent"
+// pins composition through HubSuffix, so the test still covers that HubPath composes from the
+// constant rather than from a hardcoded string of its own.
 func TestHubPath(t *testing.T) {
 	t.Parallel()
 
@@ -142,7 +146,7 @@ func TestHubPath(t *testing.T) {
 			name:     "simple repo name",
 			parent:   "/repos",
 			repoName: "loomyard",
-			want:     filepath.Join("/repos", "loomyard"+HubSuffix),
+			want:     filepath.Join("/repos", "loomyard-LYXHUB"),
 		},
 		{
 			name:     "nested parent",
