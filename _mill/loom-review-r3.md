@@ -72,7 +72,48 @@ Confirmed via `ps` immediately after re-invoking that only ONE `claude` process 
 
 ## Findings (provisional — recorded as spotted, ranked at the end)
 
-(populated incrementally below as each is spotted)
+### F-R3-1 (BLOCKING, CONFIRMED live against a real GitHub repo) — `Publish` can never detect its own merged PR; every merged-PR resume misreports "closed without being merged"
+
+`internal/landingshed/publish.go:198-209` (the switch over `prs[0]` after `client.PullRequests.List(...)`):
+
+```go
+pr := prs[0]
+switch {
+case pr.GetState() == "open":
+    ...
+case pr.GetMerged():
+    return shedengine.Done, shedengine.OutputPointer{}, nil
+default:
+    // Closed and not merged: ...
+    return p.stuckOrCancelled(ctx, "the pull request was closed without being merged")
+}
+```
+
+`Call` resolves the existing PR via `client.PullRequests.List(...)` (the LIST endpoint), then branches on `pr.GetMerged()`. GitHub's List Pull Requests REST endpoint (`GET /repos/{owner}/{repo}/pulls`) never populates the `merged` boolean field on its list items — only the single-PR Get endpoint (`GET /repos/{owner}/{repo}/pulls/{number}`) does. `merged` therefore comes back JSON `null` on every list item regardless of actual merge state, so `pr.GetMerged()` is unconditionally `false` for anything this call ever sees.
+
+**Empirically confirmed against the real GitHub API**, not just reasoned from docs, using my disposable fixture's real merged PR (`Knatte18/lyx-crucible-r3#1`):
+
+```
+$ gh api "repos/Knatte18/lyx-crucible-r3/pulls?state=all&head=Knatte18:greet-lib&base=main" --jq '.[0] | {number, state, merged, merged_at, merge_commit_sha}'
+{"merge_commit_sha":"0448182a7ad66a698886479e1288b4c234fca161","merged":null,"merged_at":"2026-09-13T16:49:32Z","number":1,"state":"closed"}
+
+$ gh api "repos/Knatte18/lyx-crucible-r3/pulls/1" --jq '{number, state, merged, merged_at, merge_commit_sha}'
+{"merge_commit_sha":"0448182a7ad66a698886479e1288b4c234fca161","merged":true,"merged_at":"2026-09-13T16:49:32Z","number":1,"state":"closed"}
+```
+
+**Live repro against loom itself:** drove the `greet-lib` dummy task through `Publish` for real (opened `Knatte18/lyx-crucible-r3#1` via a genuine `lyx loom step` call), merged the PR for real via `gh pr merge 1 --squash`, then re-invoked `lyx loom step`. Instead of advancing to `Finalize`, it returned:
+```
+level=WARN msg="landingshed: producer stuck" producer=Publish reason="the pull request was closed without being merged"
+```
+and the machine went permanently `blocked`/`"stuck with no OnStuck target"` — this is Tier 1's own `AnomalyEscalation` trigger shape, so on a real (non-fixture) task with `selfreport: true` this specific bug would also auto-file a GitHub issue for what is actually a fully successful, merged task, every single time the PR path is used to completion.
+
+**Impact: every task using the shipped default `require_pr_to_base: ["main"]` — i.e. every ordinary PR-gated landing — permanently fails to self-advance past a merged PR.** The operator's own merge action never reaches Finalize on its own; the run needs manual intervention (edit the status file, or otherwise force it) every single time. This is not an edge case; it is the ordinary, designed-for happy path of the one deliberately-untested-until-now scenario the campaign's "genuinely open" list named.
+
+**Root cause of why two prior rounds AND the hermetic suite missed it:** `TestPublish_ClosedAndMergedPR_Done` (`internal/landingshed/publish_test.go:544`) scripts its mock list response as `[{"number":7,"state":"closed","merged":true}]` — hand-setting `"merged":true` on a LIST response, a JSON shape the real GitHub API never actually produces from that endpoint (confirmed above: the real List response's `merged` key is always `null`). The hermetic test is internally consistent with the *code's* assumption rather than with GitHub's real contract, so it stays green while masking exactly this defect. Neither prior round could have caught this without actually merging a real PR against a real GitHub remote and resuming — which the round context explicitly says neither one did (round 1 stopped short, round 2 was blocked by an operator PR it could not merge).
+
+**Suggested fix:** branch on `!pr.GetMergedAt().IsZero()` instead of (or in addition to) `pr.GetMerged()` — `merged_at` IS populated by the List endpoint (confirmed above) and is exactly the signal GitHub's own docs recommend for this. Also correct `TestPublish_ClosedAndMergedPR_Done`'s mock body to the real List shape (`"merged_at": "...timestamp...", "merged": null` — no `"merged": true` on a list item) so the test cannot silently regress back to trusting the wrong field, and add a companion test proving a genuinely-closed-not-merged PR (both `merged` and `merged_at` absent/null) still reports "closed without being merged".
+
+CONFIRMED, not PLAUSIBLE — reproduced end-to-end against a real GitHub repository via loom's own real code path, independent of any prior round.
 
 ## Executive summary
 
