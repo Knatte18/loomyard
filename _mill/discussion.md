@@ -10,7 +10,7 @@ parent: main
 ## Problem
 
 Every model-spec that tunes reasoning effort has to spell out the parameter key: `opus[effort=high]`.
-Effort is the overwhelmingly common bracket param — it appears in `internal/websterengine/template.yaml`, `internal/landingshed/template.yaml`, and across loom/webster config tests — and `effort=` is pure ceremony in every one of them.
+Effort is the overwhelmingly common bracket param — it appears in `internal/loomengine/template.yaml` (four roles), `internal/websterengine/template.yaml`, `internal/landingshed/template.yaml`, and across loom/webster/landingshed config tests — and `effort=` is pure ceremony in every one of them.
 
 Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, implemented in `internal/modelspec/parse.go`:
 
@@ -25,7 +25,7 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 
 - `internal/modelspec/parse.go` — `parseBracket` gains bare-token handling and a bracket-key-spelling vocabulary; `Parse` is untouched.
 - `internal/modelspec/modelspec.go` — new `bracketKeys` map beside `knownParams`; package doc's grammar line and the `spec.Version = resolved.Params["version"]` consumer example stay canonical but the grammar prose gains the shorthand.
-- `internal/modelspec/parse_test.go` — new accept/reject cases; one existing reject case is deleted (see Decisions).
+- `internal/modelspec/parse_test.go` — new accept/reject cases; one existing reject case is deleted and two existing accept cases are rewritten off `version=` (see Testing).
 - `contracts/specs/llm-model-spec.md` — grammar section documents the shorthand; the three `version=` mentions (lines 64, 66, 112) become `v=`.
 - `docs/overview.md` — the shuttle bullet's "the model-spec notation's `version=` param" (line 302) becomes `v=`.
 
@@ -33,7 +33,7 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 
 - **`models.yaml` per-alias defaults.** `Entry.Defaults` already does effort/version defaults per alias and version-pinning via an explicit `model:` id. Confirmed working as wanted; nothing to build. Its YAML key stays spelled `version`, not `v` — the terse form exists for inline brackets only.
 - **Whitespace tolerance.** `Parse` rejects any whitespace rune anywhere in the spec string before structural parsing (`parse.go:47-51`). That stays. `opus[high, v=4.8]` remains a hard error.
-- **Rewriting existing `[effort=...]` call sites.** `effort=` stays valid; `internal/websterengine/template.yaml`, `internal/landingshed/template.yaml`, and the loom/webster/landingshed config tests keep their current spelling.
+- **Rewriting existing `[effort=...]` call sites.** `effort=` stays valid; `internal/loomengine/template.yaml` (`discussion`, `plan`, `review`, `friction`), `internal/websterengine/template.yaml`, `internal/landingshed/template.yaml`, and the loom/webster/landingshed config and wiring tests keep their current spelling. No `.yaml` outside `internal/modelspec` is touched by this task at all.
 - **Effort value vocabulary.** modelspec gains no list of legal effort values.
 - **`internal/shuttleengine` and `claudeengine`.** `Spec.Version` and the version→model-id translation are untouched; this task changes only the notation feeding them.
 - **`docs/reference/model-spec.md`.** Referenced by `internal/modelspec/template.yaml` and `internal/landingshed/template.yaml`, but the file does not exist. Pre-existing dangling reference, unrelated to this change — noted, not fixed.
@@ -56,14 +56,15 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 
 ### Bare and explicit effort in one bracket is a duplicate-key error
 
-- Decision: `opus[high,effort=max]` and `opus[high,max]` both fail with the existing `duplicate param key "effort"` error, naming the canonical key.
-- Rationale: normalizing each segment to its canonical key *before* the existing duplicate check makes this fall out of code already present in `parseBracket`. Silently letting one win would hide an operator's contradiction — the same reasoning the whitespace rule and the whole-spec-replacement precedence rule rest on.
+- Decision: `opus[high,effort=max]` and `opus[high,max]` both fail with a duplicate-key error naming the canonical key **and quoting both offending segments as written** — e.g. `modelspec: duplicate param key "effort" in spec "opus[high,effort=max]" (segments "high" and "effort=max" both set it)`. The existing `duplicate param key` substring is preserved, so `parse_test.go`'s current assertion still holds.
+- Rationale: normalizing each segment to its canonical key *before* the existing duplicate check makes the detection fall out of code already present in `parseBracket`. Silently letting one win would hide an operator's contradiction — the same reasoning the whitespace rule and the whole-spec-replacement precedence rule rest on. Quoting both segments answers the objection that a canonical-key-only message names a spelling the operator never wrote: `opus[v=4.8,v=4.5]` would otherwise report `duplicate param key "version"` against an input containing no `version`, the same defect that rules out folding empty segments into `empty param key` (below). Echoing *only* the as-written spelling is not an option either — for `opus[high,effort=max]` the two segments spell it differently, so there is no single as-written key to name. Naming the canonical key plus both segments is the one form that is complete for every collision.
 - Rejected: last-wins and bare-loses. Both pick a winner for a spec that states two answers.
-- Note: `opus[v=4.8,version=4.8]` cannot arise — `version=` is no longer a legal bracket key at all (below).
+- Rejected: canonical key alone. Names a spelling absent from the input in the `v`/bare cases.
+- Note: `opus[v=4.8,version=4.8]` cannot arise — `version=` is no longer a legal bracket key at all (below), so it fails as an unknown key before any duplicate check.
 
 ### `version=` is removed, not aliased, and its rejection carries a migration hint
 
-- Decision: `opus[version=4.5]` fails with the existing unknown-param-key error, extended to name the replacement — e.g. `modelspec: unknown param key "version" in spec "opus[version=4.5]" (the bracket version param is spelled "v")`.
+- Decision: `opus[version=4.5]` fails with the existing unknown-param-key error, extended to name the replacement — e.g. `modelspec: unknown param key "version" in spec "opus[version=4.5]" (the bracket version param is spelled "v")`. The hint clause is **conditional on the offending key being exactly `version`**: every other unknown key keeps the unadorned message, so `sonnet[speed=fast]` (`parse_test.go:165-169`) still produces `modelspec: unknown param key "speed" in spec "sonnet[speed=fast]"` and its existing assertion passes untouched.
 - Rationale: the task pins this as a rename, not an added alias. Nothing in the repo outside `contracts/specs/llm-model-spec.md`'s own example and `internal/modelspec`'s two test files writes a `version=` bracket, so no production config breaks — but an operator's `webster.yaml` might, and a bare "unknown param key" gives them nothing to act on. The hint is one clause in an error that already exists.
 - Rejected: accepting `version=` as an alias for `v=`. Two spellings for one key is exactly the ambiguity the closed-vocabulary design avoids, and the task states `version=` stops being valid.
 
@@ -75,7 +76,7 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 
 ### `opus[effort]` becomes valid, parsing to `effort=effort`
 
-- Decision: the shorthand rule is uniform — a segment with no `=` is an effort value, even when that value happens to spell a known key. `parseBracket`'s `no '=' separator` error is deleted from the grammar entirely, and with it the `"param with no equals"` case at `internal/modelspec/parse_test.go:186`.
+- Decision: the shorthand rule is uniform — a segment with no `=` is an effort value, even when that value happens to spell a known key. `parseBracket`'s `no '=' separator` error is deleted from the grammar entirely, and with it the `"param with no equals"` case at `internal/modelspec/parse_test.go:175-179`.
 - Rationale: a special case rejecting bare tokens that collide with key names buys nothing — `effort=effort` is not a legal effort value and dies loudly at `claudeengine`, one layer down, exactly where every other bad effort value dies. A grammar with one rule is easier to document and to hold in your head than one with an exception.
 - Rejected: special-casing bare `effort`/`v` as errors. Adds a rule to the pinned grammar to catch a typo the next layer already catches.
 
@@ -140,9 +141,16 @@ All test work is in `internal/modelspec/parse_test.go`, extending the two existi
 - `opus[high!]` → `invalid character` (bare token, value charset).
 - `opus[high, v=4.8]` → `whitespace character`, pinning that the shorthand did not soften the whitespace rule.
 
+**`TestParse_Accepts` — two existing cases must be rewritten off `version=`.** Both currently assert that a `version=` bracket parses successfully, which the rename makes false. Neither is deleted — each is re-spelled in place, keeping its name and its expected `Params` map (the canonical `version` key is unchanged; only the input string moves to `v=`):
+
+- `"alias multiple params"` (`parse_test.go:29-33`): input `sonnet[effort=high,version=4.5]` → `sonnet[effort=high,v=4.5]`. Expected `Params{"effort": "high", "version": "4.5"}` is unchanged — that invariance is precisely the normalization decision under test.
+- `"dotted version value"` (`parse_test.go:44-48`): input `sonnet[version=4.5]` → `sonnet[v=4.5]`. Expected `Params{"version": "4.5"}` unchanged.
+
+These two rewrites plus the one deletion below are the **complete** set of edits to pre-existing cases. If implementation forces a change to any other existing case, something in these decisions was implemented wrong — treat it as a signal, not a test to adjust.
+
 **`TestParse_Rejects` — deleted case:** `"param with no equals"` (`sonnet[effort]`, `internal/modelspec/parse_test.go:175-179`). It moves to the accept table per the uniform-rule decision. Deleting it is the intended, reviewed consequence of that decision, not an oversight.
 
-**Unchanged and expected to stay green:** every other case in both tables, plus `registry_test.go` in full (its `version` literals are canonical-key constructions that never pass through `Parse`), `load_test.go` (`Entry.Defaults` still validates against `knownParams`, which still contains `version`), and `leaf_enforcement_test.go`.
+**Unchanged and expected to stay green:** every case in both tables other than the two rewrites and the one deletion named above — including `"unknown param key"` (`sonnet[speed=fast]`, `parse_test.go:165-169`), whose message keeps its unadorned form because the `v` migration hint fires only for the key `version`. Also `registry_test.go` in full (its `version` literals are canonical-key constructions that never pass through `Parse`), `load_test.go` (`Entry.Defaults` still validates against `knownParams`, which still contains `version`), and `leaf_enforcement_test.go`.
 
 **Verify command:** `go test ./internal/modelspec/...` for the unit work, then `go build ./... && go test ./...` before handoff to catch any consumer that turns out to depend on the deleted `no '=' separator` error string.
 
