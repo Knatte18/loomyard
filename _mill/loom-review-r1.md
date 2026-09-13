@@ -89,9 +89,63 @@ Why this belongs to *this* round rather than to `status`/`pause` generally: it i
 
 Fix: `MkdirAll(filepath.Dir(StatusLockPath))` before the read in both verbs (the same one-liner `step.go:139` already performs for the run lock, for the same stated reason), so the `!found` branch becomes reachable and each verb emits its own documented remedy.
 
+### F-4 — the Bouncer's re-bounce branch abandons a still-live seed agent; it is the one spawning-adapter mode with no live-agent probe — MEDIUM — CONFIRMED (reproduced live)
+
+`internal/shedadapters/bouncer.go:253-262`.
+
+`internal/shedadapters/doc.go`'s "Every spawning adapter probes for a live agent first" section says all four adapters answer "is an agent for this exact step still alive?" before acting, and enumerates the Bouncer's probe sites as "on its seed pass, on its judge pass, and once more at Call entry". That entry-time probe (bouncer.go:200-229) is guarded by `n > 0 && b.judged(n)`, so it covers only the judge-mode case. The **re-bounce** branch — `n == 0` with `round1FocusSeeded()` true — is a fourth mode that spawns nothing, and it returns `Stuck` with no probe of any kind:
+
+```go
+if n == 0 {
+    if b.round1FocusSeeded() {
+        logger.Warn("shedadapters: bouncer segment already seeded; round producer returned no report", ...)
+        if cerr := cancelErr(...); cerr != nil { ... }
+        return shedengine.Stuck, shedengine.OutputPointer{}, nil
+    }
+    return b.seedCall(ctx)
+}
+```
+
+`seedCall` → `runSeedSpawn` (bouncer.go:463) *does* probe-before-archive, and its own doc comment explains why in detail. The re-bounce branch bypasses that path entirely.
+
+Reproduced live, exactly the campaign's reinvoke scenario:
+
+1. `lyx loom step` launched against `Discussion-Bouncer` (seed mode), reaching one live seed agent (pid 1059702, reed strand `bouncer-seed:1:40ebedb2`). Ground truth pre-count: exactly 1 hub-scoped `claude` process, exactly 1 shuttle run dir.
+2. The `lyx loom step` process SIGKILLed 12s in — a driver crash. Agent survived; status still `Discussion-Bouncer`/`running`, history 7; no envelope written (the skill's "interrupted invocation" case); `lyx loom status` reported `interrupt_policy: reinvoke`.
+3. `lyx loom step` re-invoked, as `reinvoke` instructs.
+
+Observed: **no double-spawn** — still exactly 1 agent, same pid, still 1 shuttle run dir. That half of the contract holds and is the more important half.
+But the reinvoked step took the re-bounce branch, returned `outcome: stuck`, routed to `Discussion-Burler`, and left pid 1059702 **running** (age 75s and climbing) holding `round-1-focus.md` as its declared output — the file `Discussion-Burler` then reads as its round directive. Two writers, one file, no ordering.
+
+This also falsifies a documented promise: `plugins/ly/skills/ly-supervise/SKILL.md`'s interrupted-invocation section ends "Outside the handback branch, print no orphaned-agent warning, **because there is no orphan**: the next step attaches to the agent rather than abandoning it." On this branch the next step does abandon it.
+
+Fix: give the re-bounce branch the same probe the seed pass already has — attach to a live seed run on `focusPath(RunDir, 1)` and wait on it before concluding the segment is seeded — so the branch either harvests the live seed or acts on genuinely settled state. Then the skill's "there is no orphan" sentence becomes true rather than aspirational.
+
 ## Docs & operability findings
 
-(filled as spotted)
+### D-1 — `next_interrupt_policy` is computed, documented as the supervisor's signal, and read by nobody — LOW
+
+`internal/loomcli/step.go:208` computes it and `manifest/designs/loom-step.md`'s settled contract describes it as "telling a caller whether re-invoking after an interruption on the next row is safe". The only shipped caller, `plugins/ly/skills/ly-supervise/SKILL.md`, never mentions the key: its interrupted-invocation branch instead spends a second process on `lyx loom status` and reads that verb's `interrupt_policy`.
+
+Both values are the same table (`loomshed.InterruptPolicyFor`), and on the interrupted-step path they agree: step N-1's `next` is step N's `current_producer`. So this is not a correctness bug — it is a contract with no consumer, which is how a key rots. Either the skill should carry the previous envelope's `next_interrupt_policy` forward (one fewer process per interruption, and it works even when the `status` read itself fails — see F-3), or the design doc should say why the status read is preferred. Right now neither document acknowledges the other's existence.
+
+### D-2 — environment observation, NOT a loom defect: a second `lyx` build on the agents' PATH silently downgrades the hub's shared stencils mid-run
+
+Recorded because it cost real debugging time during this round and because the *detection* is a credit to Tier 2's design, not because loom should change.
+
+Loom's own producer prompts instruct the spawned agents to run `lyx` themselves (`lyx board get`, `lyx loom validate-discussion`, and — for the Tier-2 reflection agent — `lyx selfreport create`). Those resolve through PATH inside the reed pane, not through the driver's own `os.Executable()`. On this host PATH resolved `/home/knatte/go/bin/lyx`, a Sep-8 pre-Tier-2 build, while the driver was the freshly-deployed `.dev-bin/lyx`. The agent's first `lyx board get` ran its startup stencil reconcile and rewrote `<hub>/_board/_lyx/stencils/loom/loom-template-{discussion,plan}.md` (mtime 15:29:28, mid-run) to its own older embedded copies — copies with no `{{.friction_directive}}` marker.
+
+What caught it was Tier 2's own guard, working exactly as designed:
+
+```
+level=WARN msg="friction: stencil is missing the friction directive marker; a computed directive
+will render as nothing -- see \"lyx stencil diff\" and \"lyx stencil sync\""
+stencil=loom-template-discussion marker={{.friction_directive}}
+```
+
+Without `friction.WarnIfMarkerAbsent` (friction.go:120) this would have been a silent, total Tier-2 outage: every producer prompt composed after that moment would have carried no friction directive and no agent would ever have been asked for a note, with nothing anywhere reporting it. The guard is worth keeping and is doing real work.
+
+The fix for the *fixture* was to pin PATH to the dev binary and run `lyx stencil sync` (which restored the marker in all seven host stencils). The general hazard — two lyx builds sharing one hub, the agent-side one silently rewriting shared board state — belongs to `stencilstore`'s reconcile policy, is outside this trio, and is recorded here rather than fixed.
 
 ## What was tested
 
