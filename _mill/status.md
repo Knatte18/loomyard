@@ -55,7 +55,9 @@ batches:
     commit_sha: 6fdb8d1e2c1852570adedeca51ee223b8eb6b00b
     verify_baseline_failures: []
   - name: seeded-subtree-commit
-    state: pending
+    state: running
+    implementer_session: 30ba313e-6217-4a6c-a1de-0983e7454a68
+    start_sha: 88e9465faffb3c7cf96fafee20710f639e2217ad
     verify_baseline_failures: []
   - name: specs-seeding-wiring
     state: pending
