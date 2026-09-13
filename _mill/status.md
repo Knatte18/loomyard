@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -22,4 +22,25 @@ discussed  '2026-09-13T11:05:29Z'
 planning  '2026-09-13T11:18:23Z'
 plan-review-r1  '2026-09-13T11:23:48Z'
 planned  '2026-09-13T11:24:09Z'
+implementing  '2026-09-13T11:24:40Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: core-constants
+    state: pending
+  - name: production-prose
+    state: pending
+  - name: fabricengine-tests
+    state: pending
+  - name: peripheral-tests
+    state: pending
+  - name: sandbox-fixture
+    state: pending
+  - name: docs-prose
+    state: pending
+  - name: final-sweep-gate
+    state: pending
 ```
