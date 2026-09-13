@@ -16,7 +16,7 @@ import (
 
 func TestLoomStatusFile(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		// AnchorRel deliberately differs from "." to prove the accessor
 		// follows the anchored subpath, not the bare worktree root.
@@ -31,7 +31,7 @@ func TestLoomStatusFile(t *testing.T) {
 
 func TestLoomStatusLock(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
@@ -44,7 +44,7 @@ func TestLoomStatusLock(t *testing.T) {
 
 func TestLoomRunLock(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
@@ -59,7 +59,7 @@ func TestLoomRunLock(t *testing.T) {
 // TestLoomRunLock's pair.
 func TestLoomSelfreportFiled(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
@@ -76,7 +76,7 @@ func TestLoomSelfreportFiled(t *testing.T) {
 // marker.
 func TestLoomSelfreportFiled_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    ".",
 	}
@@ -91,7 +91,7 @@ func TestLoomSelfreportFiled_UnanchoredEqualsWorktreePath(t *testing.T) {
 // TestLoomRunLock's pair.
 func TestLoomSelfreportFiledLock(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
@@ -108,7 +108,7 @@ func TestLoomSelfreportFiledLock(t *testing.T) {
 // selfreport-filed marker's lock.
 func TestLoomSelfreportFiledLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    ".",
 	}
@@ -121,7 +121,7 @@ func TestLoomSelfreportFiledLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 
 func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    ".",
 	}
@@ -138,7 +138,7 @@ func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 // never-tracked .lyx sibling.
 func TestLoomStatusLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    ".",
 	}
@@ -154,7 +154,7 @@ func TestLoomStatusLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 // TestLoomStatusLock_UnanchoredEqualsWorktreePath pins for the status lock, but for the run lock.
 func TestLoomRunLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    ".",
 	}

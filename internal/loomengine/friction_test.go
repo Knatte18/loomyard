@@ -18,7 +18,7 @@ import (
 // LoomScratchDir already names.
 func TestLoomFrictionDir(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		// AnchorRel deliberately differs from "." to prove the accessor follows the
 		// anchored subpath, not the bare worktree root.
@@ -40,7 +40,7 @@ func TestLoomFrictionDir(t *testing.T) {
 // rather than a second hand-built literal, so the two cannot drift.
 func TestLoomFrictionArchivePrefix(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
