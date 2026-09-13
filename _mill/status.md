@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
-plan: null
+plan: _mill/plan
 parent: main
 task: Deploy cited spec/design docs to target repos like stencils
 task_description: |
@@ -22,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-13T17:10:39Z'
 discussion-gap-fix-r5  '2026-09-13T17:16:40Z'
 discussion-gap-fix-r6  '2026-09-13T17:23:48Z'
 discussed  '2026-09-13T17:23:48Z'
+planning  '2026-09-13T17:40:07Z'
 ```
