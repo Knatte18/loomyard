@@ -24,9 +24,10 @@
 // varies by caller lives outside it, with the caller.
 //
 // cliwire's production dependency set is fixed: the standard library plus internal/standalonestate,
-// internal/standalonegeom, internal/logger, internal/stencilstore, internal/buildinfo, and
-// contracts/stencils. Two exclusions are deliberate. internal/lyxcwd is barred by the Told-Geometry
-// Invariant and is never needed here, since cwd arrives from the caller rather than being resolved.
+// internal/standalonegeom, internal/logger, internal/stencilstore, internal/buildinfo,
+// contracts/stencils, and contracts/specs. Two exclusions are deliberate. internal/lyxcwd is barred
+// by the Told-Geometry Invariant and is never needed here, since cwd arrives from the caller rather
+// than being resolved.
 // internal/planparser is kept out so that webster's own plan-directory layout does not end up
 // living inside a module burler shares; webster supplies its layout as a function value instead.
 //

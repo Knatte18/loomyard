@@ -17,7 +17,7 @@ This prompt is deliberately full, not thin, because it is your whole starting po
 Before implementing your card(s), do the following, in order:
 
 1. Read `_lyx/plan/00-overview.md` in full: the task framing, the Card Index, `## Shared Decisions`, `## Rename mechanic`, and `## verify:`.
-2. Read `CONSTRAINTS.md` in full.
+2. Read `CONSTRAINTS.md` at the repo root in full if present.
 3. Orient to the codebase: read what your card(s) need, plus whatever the constraint and decision docs above point you at — not a gratuitous full-repo tour.
 
 Do this BEFORE the card instructions below — they assume you already hold this orientation, exactly like an in-session fork already holds it from Master.

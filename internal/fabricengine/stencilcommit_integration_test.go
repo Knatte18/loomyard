@@ -25,7 +25,7 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
 
-	res, err := fabricengine.CommitSeededStencils(hub.Path, nil, "lyx: seed stencils", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), fabricengine.StencilsDir(hub.Path), nil, "lyx: seed stencils", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils(nil) error = %v", err)
 	}
@@ -81,7 +81,7 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	}
 
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
-	res, err := fabricengine.CommitSeededStencils(hub.Path, writtenRelPaths, "lyx: seed stencils", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), stencilsDir, writtenRelPaths, "lyx: seed stencils", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils() error = %v", err)
 	}
@@ -142,4 +142,63 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	if !unpushed {
 		t.Errorf("HasUnpushed() (post-seed) = false; want true -- CommitSeededStencils must never push")
 	}
+}
+
+// TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory asserts that driving
+// CommitSeededStencils with the specs subtree's own subtreeRel/subtreeDir pair lands a commit and
+// records the file-written entry under SpecsDir(hub), not StencilsDir(hub) -- the exact partial
+// regression that would result from generalising the pathspec half of the function while leaving the
+// mutation-record half pointed at the stencils directory.
+func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *testing.T) {
+	hub := hubforge.NewHub(t, ".")
+
+	specsDir := fabricengine.SpecsDir(hub.Path)
+	if err := os.MkdirAll(specsDir, 0o755); err != nil {
+		t.Fatalf("mkdir specs dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(specsDir, "format-contract.md"), []byte("spec content\n"), 0o644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+	writtenRelPaths := []string{"format-contract.md"}
+
+	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.SpecsSubtreeRel(), specsDir, writtenRelPaths, "lyx: seed specs", rec)
+	if err != nil {
+		t.Fatalf("CommitSeededStencils() error = %v", err)
+	}
+	if !res.Committed {
+		t.Fatalf("CommitSeededStencils() Committed = false; want true")
+	}
+	if res.SHA == "" {
+		t.Fatalf("CommitSeededStencils() SHA is empty; want a landed commit SHA")
+	}
+
+	wantTarget := hubRelativeTargetForTest(t, hub.Path, filepath.Join(specsDir, "format-contract.md"))
+	found := false
+	for _, e := range rec.Snapshot().Entries() {
+		if e.Kind != fabricengine.KindFileWritten {
+			continue
+		}
+		if e.Target == wantTarget {
+			found = true
+		}
+		if strings.Contains(e.Target, "_lyx/stencils/") {
+			t.Errorf("recorded file_written entry %q under _lyx/stencils/; want it under SpecsDir(hub)", e.Target)
+		}
+	}
+	if !found {
+		t.Errorf("no file_written entry with target %q; want the seeded spec recorded under SpecsDir(hub)", wantTarget)
+	}
+}
+
+// hubRelativeTargetForTest mirrors how the mutation recorder converts a target path: relative to
+// filepath.Dir(hubPath), the same hubRoot the tests in this file pass to NewMutations, so the
+// assertion above compares against exactly what the recorder itself would have produced.
+func hubRelativeTargetForTest(t *testing.T, hubPath, target string) string {
+	t.Helper()
+	rel, err := filepath.Rel(filepath.Dir(hubPath), target)
+	if err != nil {
+		t.Fatalf("filepath.Rel(%q, %q): %v", filepath.Dir(hubPath), target, err)
+	}
+	return filepath.ToSlash(rel)
 }

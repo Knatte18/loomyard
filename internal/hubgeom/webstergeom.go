@@ -28,6 +28,7 @@ func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 		ScratchDir:   websterengine.ScratchDir(anchorPath),
 		PromptsDir:   websterengine.PromptsDir(anchorPath),
 		StencilsDir:  fabricengine.StencilsDir(l.HubPath),
+		SpecsDir:     fabricengine.SpecsDir(l.HubPath),
 		PlanDir:      planparser.PlanDir(anchorPath),
 	}
 }

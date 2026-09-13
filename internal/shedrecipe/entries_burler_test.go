@@ -205,6 +205,32 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
+	t.Run("EmptySpecsDirFailsOnRubricStencilPathOnly", func(t *testing.T) {
+		env := newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "round-rubric", "BLOCKING: a round bug.\n")
+		env.SpecsDir = ""
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"rubric_stencil": "round-rubric"},
+		}
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "SpecsDir")
+	})
+
+	t.Run("EmptySpecsDirConstructsCleanlyWithLiteralRubric", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SpecsDir = ""
+		cfg := minimalBurlerConfig()
+
+		producer, err := burlerRoundEntry("review-round", cfg, env)
+		if err != nil {
+			t.Fatalf("burlerRoundEntry() error = %v; want nil", err)
+		}
+		if producer == nil {
+			t.Fatal("burlerRoundEntry() producer = nil; want non-nil")
+		}
+	})
+
 	// A nil Shuttle is refused rather than tolerated: it is the round's live-agent probe, and a
 	// producer built without it respawns over a still-live round -- two agents writing one review,
 	// and on a fix-scope: source row, two agents committing to one branch. A wiring slip must fail

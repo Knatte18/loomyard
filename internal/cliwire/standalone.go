@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/buildinfo"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -36,10 +37,13 @@ type StandaloneRequest struct {
 // DefaultPlanDir is the mode's own default, carried so a caller can record it for a refusal's
 // recourse text. PlanDir and PlanDirOverridden are the zero value when the module carries no Plan.
 type Standalone struct {
-	Target            string
-	StateDir          string
-	Hash8             string
-	StencilsDir       string
+	Target      string
+	StateDir    string
+	Hash8       string
+	StencilsDir string
+	// SpecsDir is the resolved standalone deployed-specs directory. Unlike StencilsDir it is never
+	// told by a flag -- there is no --specs-dir -- so it is always the derived default.
+	SpecsDir          string
 	PlanDir           string
 	PlanDirOverridden bool
 	DefaultPlanDir    string
@@ -47,8 +51,8 @@ type Standalone struct {
 
 // ResolveStandalone performs the whole ordered standalone prologue: target resolution,
 // standalonestate.Derive, the nested-geometry refusal, the durable-sink redirect, the stencils
-// resolve-and-seed, and plan-dir resolution with override detection. Every fallible step returns the
-// zero Standalone alongside its error, and no step is best-effort.
+// resolve-and-seed, the specs resolve-and-seed, and plan-dir resolution with override detection.
+// Every fallible step returns the zero Standalone alongside its error, and no step is best-effort.
 //
 // The durable sink is armed lazily on the first Info-or-above record, so the redirect below binds
 // only if it runs before anything in the sequence can log; it cannot be first, because it is
@@ -62,6 +66,16 @@ type Standalone struct {
 // and the seed runs only for the derived default so a curated stencil set named by --stencils-dir is
 // never rewritten from under the operator. These asymmetries are deliberate and must not be
 // "simplified" away.
+//
+// The specs seed runs unconditionally, outside the stencils-override guard: --stencils-dir is a
+// stencils override and says nothing about specs, there is no --specs-dir flag and none is being
+// added, and a spec has no customisation story a curated set would express. Inheriting the stencils
+// skip would leave the specs directory resolvable but empty, reproducing the dead reference this
+// task exists to remove in the one mode hardest to notice it. An operator who has edited a deployed
+// spec is still protected, because the reconcile policy is unchanged and its edited-file row warns
+// and never overwrites. Like the stencils seed, its failure is a hard error, for the same reason:
+// nothing else will ever create this directory, so a reconcile failure here would otherwise surface
+// much later as a far less informative prompt-render failure.
 func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 	target, err := m.resolveStandaloneTarget(req.Cwd, req.TargetDirFlag)
 	if err != nil {
@@ -100,11 +114,20 @@ func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 		}
 	}
 
+	// This block sits OUTSIDE the stencils-override guard above, deliberately -- see the function's
+	// own doc comment for why. It logs nothing, so it stays below the durable-sink redirect without
+	// widening the log-free obligation that redirect statement carries.
+	specsDir := standalonegeom.SpecsDir(stateDir)
+	if _, err := stencilstore.Reconcile(specsDir, specs.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
+		return Standalone{}, fmt.Errorf("%s: seed the standalone specs directory %s: %w", m.Name, specsDir, err)
+	}
+
 	result := Standalone{
 		Target:      target,
 		StateDir:    stateDir,
 		Hash8:       hash8,
 		StencilsDir: stencilsDir,
+		SpecsDir:    specsDir,
 	}
 
 	if m.Plan == nil {

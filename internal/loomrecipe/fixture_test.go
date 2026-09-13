@@ -602,6 +602,10 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 	stencilsDir := filepath.Join(dir, "stencils")
 	seedBouncerStencils(t, stencilsDir)
+	specsDir := filepath.Join(dir, "specs")
+	if err := os.MkdirAll(specsDir, 0o755); err != nil {
+		t.Fatalf("mkdir specs dir: %v", err)
+	}
 
 	env = shedrecipe.Env{
 		Cwd:                cwd,
@@ -622,6 +626,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		Shuttle:     loomShuttle,
 		RunRoot:     runRoot,
 		StencilsDir: stencilsDir,
+		SpecsDir:    specsDir,
 		Burler:      &fakeLoomBurler{},
 		Now:         func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 		DiscussionSpec: func() (shuttleengine.Spec, error) {

@@ -127,6 +127,20 @@ func StencilsDir(hub string) string {
 	return filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, stencilsDirName)
 }
 
+// specsDirName is the name of the deployed-specs directory nested under BoardDir's `_lyx` component.
+// It is unexported because "specs" is not a policed geometry token — it needs no
+// geometryTokenOwners row, unlike BoardDirName or lyxdirs.LyxDirName.
+const specsDirName = "specs"
+
+// SpecsDir returns the hub-wide deployed-specs directory shared by every worktree in the hub:
+// <hub>/_board/_lyx/specs.
+// internal/stencilstore receives this value as its baseDir and never joins the intermediate
+// components itself. It deliberately mirrors StencilsDir — the two are siblings under the same
+// `_lyx` tree, one holding producer prompts, the other the normative docs those prompts point at.
+func SpecsDir(hub string) string {
+	return filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, specsDirName)
+}
+
 // HubScratchDir returns the hub-wide, machine-local scratch tree shared by every worktree in the hub:
 // <hub>/_board/.lyx.
 // It is the ephemeral sibling of StencilsDir's durable <hub>/_board/_lyx tree, is always a real

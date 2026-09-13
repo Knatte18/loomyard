@@ -36,7 +36,11 @@ import (
 // composePlanPrompt builds the Plan producer's prompt by reading the "loom-template-plan" stencil
 // from stencilsDir and filling it. frictionDirective is the caller-resolved Tier 2 note directive for
 // this run -- an empty string means Tier 2 is off or the read failed, and renders as nothing.
-func composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, patternDirective, frictionDirective string) ([]byte, error) {
+// specsDir is the told deployed-specs directory, filled into the required specs_dir marker: unlike
+// pattern_directive and friction.MarkerName, specs_dir stays out of the optional-names slice, so a
+// prompt composed without a specs directory fails loudly at composition instead of rendering a blank
+// path into the agent's instructions.
+func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, patternDirective, frictionDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-plan")
 	if err != nil {
 		return nil, err
@@ -49,6 +53,7 @@ func composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, p
 		"plan_dir":             planDir,
 		"overview_path":        overviewPath,
 		"pattern_directive":    patternDirective,
+		"specs_dir":            specsDir,
 		friction.MarkerName:    frictionDirective,
 	}
 
@@ -59,8 +64,9 @@ func composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, p
 	return rendered, nil
 }
 
-// PlanSpec builds the shuttleengine.Spec for one Plan producer run.
-func PlanSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+// PlanSpec builds the shuttleengine.Spec for one Plan producer run. specsDir is told, never
+// derived: this package is bound by the Told-Geometry Invariant and derives no path of its own.
+func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: plan role model-spec: %w", err)
@@ -93,7 +99,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg model
 		frictionDirective = ""
 	}
 
-	prompt, err := composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, directive, frictionDirective)
+	prompt, err := composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, directive, frictionDirective)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}

@@ -22,7 +22,7 @@ You never edit code yourself, you never run git, and you never use a `/model` sw
 {{.friction_directive}}
 ## Orientation — read this ONCE, up front
 
-Before forking anything, read the codebase's structure and conventions, read `CONSTRAINTS.md` in full, and read `{{.plan_dir}}/00-overview.md` once — the task framing, the Card Index, `## Shared Decisions`, `## Rename mechanic`, and `## verify:`.
+Before forking anything, read the codebase's structure and conventions, read `CONSTRAINTS.md` at the repo root in full if present, and read `{{.plan_dir}}/00-overview.md` once — the task framing, the Card Index, `## Shared Decisions`, `## Rename mechanic`, and `## verify:`.
 You do NOT pre-read every card's own `NN-<slug>.md` file: each in-session fork reads its own card file directly via the pointer it is handed, so there is nothing for you to re-derive from it up front.
 This is the stable context every fork you spawn inherits instead of re-deriving it cold each time.
 

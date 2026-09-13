@@ -72,6 +72,59 @@ func newTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
 	return b, cfg
 }
 
+// testBouncerConfigWithSpecsMarker builds a BouncerConfig like testBouncerConfig, but seeds the
+// rubric with a literal {{.specs_dir}} marker and sets cfg.SpecsDir to specsDir -- the fixture the
+// composed-prompt specs_dir assertions need, since testBouncerConfig's own default rubric carries
+// no marker at all.
+func testBouncerConfigWithSpecsMarker(t *testing.T, specsDir string) BouncerConfig {
+	t.Helper()
+
+	cfg := testBouncerConfig(t)
+	cfg.StencilsDir = shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nCite {{.specs_dir}}.\n\nBe thorough and cite evidence.\n")
+	cfg.SpecsDir = specsDir
+	return cfg
+}
+
+// TestBouncer_SeedCall_ComposedPromptStatesSpecsDir asserts the seed call's composed prompt --
+// where the rubric is interpolated as a marker VALUE, never run through the fill itself -- contains
+// the told specs directory and carries no literal "{{.specs_dir}}" marker. A rubric-bytes-only
+// assertion could not catch this: the marker lives inside the rubric value, invisible to a check
+// that never renders it into the surrounding template.
+func TestBouncer_SeedCall_ComposedPromptStatesSpecsDir(t *testing.T) {
+	specsDir := t.TempDir()
+	if !filepath.IsAbs(specsDir) {
+		t.Fatalf("t.TempDir() = %q; want an absolute path", specsDir)
+	}
+
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle.duringRun = func() {
+		path := shuttle.gotSpec.OutputFiles[0]
+		content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+		}
+	}
+
+	cfg := testBouncerConfigWithSpecsMarker(t, specsDir)
+	cfg.Shuttle = shuttle
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+
+	if _, _, err := b.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+
+	prompt := shuttle.gotSpec.Prompt
+	if !strings.Contains(prompt, specsDir) {
+		t.Errorf("seed call composed prompt does not contain the told specs directory %q", specsDir)
+	}
+	if strings.Contains(prompt, "{{.specs_dir}}") {
+		t.Error("seed call composed prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered")
+	}
+}
+
 func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	shuttle := &fakeShuttle{
 		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},

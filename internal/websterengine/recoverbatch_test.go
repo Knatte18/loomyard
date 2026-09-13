@@ -119,7 +119,7 @@ func (e *recoverFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, err
 func (e *recoverFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
-func (e *recoverFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
+func (e *recoverFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
 func (e *recoverFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *recoverFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
@@ -223,6 +223,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 			WebsterDir:   t.TempDir(),
 			ReportsDir:   reportsDir,
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
+			SpecsDir:     fabricengine.SpecsDir(hubPath),
 			// A real (empty) plan directory: the terminal recovery path now runs the same
 			// post-batch mechanical pass record-batch does, which re-baselines the plan
 			// fingerprint over this directory. No card in this fixture declares a handle, so

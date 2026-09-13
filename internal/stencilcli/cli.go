@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -72,39 +73,18 @@ Examples:
 
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List every registered stencil, its board-copy path, and its edit state",
+		Short: "List every registered stencil and deployed spec, its board-copy path, and its edit state",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 
 			out := cmd.OutOrStdout()
-			stencilsDir := fabricengine.StencilsDir(l.HubPath)
-			registry := stencils.Registry()
 
-			type stencilInfo struct {
-				Name  string `json:"name"`
-				Path  string `json:"path"`
-				State string `json:"state"`
-			}
-
-			var list []stencilInfo
-			for _, name := range registry.Names() {
-				shipped, known := registry.Default(name)
-				if !known {
-					continue
-				}
-
-				path := stencilstore.Path(stencilsDir, name)
-				onDisk, readErr := os.ReadFile(path)
-				exists := readErr == nil
-
-				list = append(list, stencilInfo{
-					Name:  name,
-					Path:  path,
-					State: classifyLabel(stencilstore.Classify(onDisk, exists, shipped)),
-				})
-			}
+			list := listRegistryEntries(fabricengine.StencilsDir(l.HubPath), stencils.Registry(), kindStencil)
+			// list is the only remaining verb that surfaces a deployed spec whose state is edited,
+			// which the unchanged reconcile policy depends on an operator being able to see.
+			list = append(list, listRegistryEntries(fabricengine.SpecsDir(l.HubPath), specs.Registry(), kindSpec)...)
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"stencils": list}))
 			return nil
@@ -157,7 +137,7 @@ Examples:
 
 	syncCmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Force-refresh every stencil against the shipped registry, even from a -dev build",
+		Short: "Force-refresh every stencil and deployed spec against the shipped registry, even from a -dev build",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -181,15 +161,39 @@ Examples:
 			}
 
 			rec := fabricengine.NewMutations(filepath.Dir(l.HubPath))
-			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, written, "lyx: seed stencils", rec)
+			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.StencilsSubtreeRel(), stencilsDir, written, "lyx: seed stencils", rec)
 			if commitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), commitErr))
 				return nil
 			}
 
+			// The specs half repeats the stencils half's force-refresh-plus-commit pair against the
+			// deployed-specs subtree, accumulating into the same rec so one envelope reports both
+			// passes' mutations. Its sourceDir is empty for the same reason the seeding pass' is: see
+			// the specs-reconcile-passes-no-source-dir Shared Decision.
+			//
+			// A failure in this half returns through the same shapes the stencils half above already
+			// used -- a force-refresh failure returns a bare output.Err, and a commit failure returns
+			// errWithRecord carrying the record snapshot accumulated so far, which by then already
+			// includes the stencils half's own mutations. Both return early, leaving the stencils
+			// commit landed and reported as partial.
+			specsDir := fabricengine.SpecsDir(l.HubPath)
+			specsWritten, specsErr := stencilstore.ForceRefresh(specsDir, specs.Registry(), "")
+			if specsErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, specsErr.Error()))
+				return nil
+			}
+			specsRes, specsCommitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.SpecsSubtreeRel(), specsDir, specsWritten, "lyx: seed specs", rec)
+			if specsCommitErr != nil {
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), specsCommitErr))
+				return nil
+			}
+
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{
-				"committed": res.Committed,
-				"sha":       res.SHA,
+				"committed":       res.Committed,
+				"sha":             res.SHA,
+				"specs_committed": specsRes.Committed,
+				"specs_sha":       specsRes.SHA,
 			}))
 			return nil
 		},
@@ -216,6 +220,54 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 		return clihelp.Execute(Command(), out, args)
 	}
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
+}
+
+// Kind labels distinguish list's two registry-sourced row classes: kindStencil for a row read
+// against fabricengine.StencilsDir and stencils.Registry, kindSpec for a row read against
+// fabricengine.SpecsDir and specs.Registry.
+//
+// validate, diff, and promote deliberately do not gain a specs pass alongside list and sync.
+// validate compares top-level marker sets via stencil.TopLevelMarkers; a spec is not a template, so
+// both sides are empty and the pass would be a guaranteed no-op that falsely implies a check ran.
+// diff and promote both need a worktree sourceDir, which specs deliberately do not have (see
+// resolveSourceDir and the specs-reconcile-passes-no-source-dir Shared Decision).
+const (
+	kindStencil = "stencil"
+	kindSpec    = "spec"
+)
+
+// stencilInfo is one list row: a registered name's board-copy path and edit state, tagged with which
+// registry class (kindStencil or kindSpec) it came from.
+type stencilInfo struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	State string `json:"state"`
+	Kind  string `json:"kind"`
+}
+
+// listRegistryEntries runs registry's full Names()/Default() loop against baseDir and returns one
+// stencilInfo per known name, tagged with kind. It is the shared body list's two passes (stencils,
+// specs) both call, so the per-registry loop is written once rather than twice.
+func listRegistryEntries(baseDir string, registry stencilstore.Registry, kind string) []stencilInfo {
+	var list []stencilInfo
+	for _, name := range registry.Names() {
+		shipped, known := registry.Default(name)
+		if !known {
+			continue
+		}
+
+		path := stencilstore.Path(baseDir, name)
+		onDisk, readErr := os.ReadFile(path)
+		exists := readErr == nil
+
+		list = append(list, stencilInfo{
+			Name:  name,
+			Path:  path,
+			State: classifyLabel(stencilstore.Classify(onDisk, exists, shipped)),
+			Kind:  kind,
+		})
+	}
+	return list
 }
 
 // classifyLabel maps a stencilstore.State to the three-value vocabulary lyx stencil list reports.

@@ -76,7 +76,7 @@ type (
 
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single
 // t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir,
-// RunRoot, AnchorPath) is created with os.MkdirAll, while a file field (StatusPath,
+// SpecsDir, RunRoot, AnchorPath) is created with os.MkdirAll, while a file field (StatusPath,
 // StatusLockPath, DecisionRecordPath, SupportLogPath) is left as a joined path nobody creates. It
 // fills Shuttle, Burler, and WebsterRun with this file's fakes, fills WebsterDeps with the four
 // required seams non-nil and every other field left zero, fills DiscussionSpec with a closure
@@ -108,6 +108,7 @@ func newTestEnv(t *testing.T) Env {
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		StencilsDir:        mustMkdir("stencils"),
+		SpecsDir:           mustMkdir("specs"),
 		RunRoot:            mustMkdir("run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),

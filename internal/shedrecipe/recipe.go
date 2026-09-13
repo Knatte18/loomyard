@@ -45,6 +45,10 @@ type Env struct {
 	StatusLockPath string
 	// StencilsDir is the told stencils directory, read by SingleLLM and Bouncer.
 	StencilsDir string
+	// SpecsDir is the told deployed-specs directory, read by the Bouncer and BurlerRound entries.
+	// It is a run-wide root, which is exactly the class Env carries, so it belongs here rather
+	// than as a per-row Config key.
+	SpecsDir string
 	// RunRoot is the root every Config run_subdir resolves against, read by Bouncer and
 	// BurlerRound.
 	RunRoot string

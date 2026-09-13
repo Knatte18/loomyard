@@ -145,6 +145,31 @@ func TestClassify(t *testing.T) {
 	})
 }
 
+// TestRelPath pins the family-from-first-token derivation over both stencil and specs names.
+// The two loom-plan-* rows are the point: they pin that the registered names contracts/specs
+// registers both land under one loom/ family directory, from the side of the package that actually
+// performs the derivation, so a future change to the family rule fails here and not only in the
+// specs package.
+func TestRelPath(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"loom-template-plan", "loom/loom-template-plan.md"},
+		{"loom-plan-spec", "loom/loom-plan-spec.md"},
+		{"loom-plan-card-format", "loom/loom-plan-card-format.md"},
+		{"solo", "solo.md"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RelPath(tt.name)
+			if got != tt.want {
+				t.Errorf("RelPath(%q) = %q; want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 // fakeHash returns a syntactically valid 64-lowercase-hex-character stamp value built from a single
 // repeated byte, so tests need not compute a real sha256 sum to exercise ApplyStamp/ParseStamp.
 func fakeHash(b byte) string {

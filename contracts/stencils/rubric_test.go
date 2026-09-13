@@ -2,17 +2,46 @@
 // loom-rubric-webster-review.md's required content: the six items manifest/designs/loom.md's two
 // "Discussion-Review rubric" subsections require, the eight items its "Plan-Review rubric"
 // subsections require, the nine items loom-rubric-webster-review.md's own sections require, and the
-// marker-value-not-template constraint the two Bouncer stencils' {{.rubric}} interpolation depends
-// on for all three rubrics.
+// one-marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for all three
+// rubrics: a rubric may carry the specs_dir marker and nothing else -- the old no-marker-at-all rule
+// relaxed to the same shape rather than deleted, because a second marker is still invisible to the
+// fill at the value-interpolation site and must still fail loudly. It additionally pins that
+// specs_dir renders successfully through the production render helper, and that every stencil
+// carrying a normative citation actually declares the literal {{.specs_dir}} marker.
 // It also pins the one property that matters across all four friction directive stencils: each
 // states that writing the note is optional and that an absent note is normal.
 
 package stencils
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
+
+// rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry: only
+// specs_dir, which internal/shedadapters.ReadRubric fills as the rubric's own single-marker template
+// at read time. A marker outside this set would sit inside the marker VALUE the Bouncer and Burler
+// prompts interpolate the rubric as, invisible to the fill's required-marker check at the template
+// actually being executed, so it must fail here exactly as loudly as the old no-marker-at-all rule
+// made it fail.
+var rubricMarkerAllowlist = map[string]bool{"specs_dir": true}
+
+// assertRubricMarkersWithinAllowlist fails when markers contains any name outside
+// rubricMarkerAllowlist.
+func assertRubricMarkersWithinAllowlist(t *testing.T, rubricName string, markers []string) {
+	t.Helper()
+	for _, marker := range markers {
+		if !rubricMarkerAllowlist[marker] {
+			t.Errorf("%s carries the top-level marker %q, which is outside the one-marker allowlist %v", rubricName, marker, rubricMarkerAllowlist)
+		}
+	}
+}
 
 // TestLoomRubricDiscussionReview_NamesEveryRequiredItem asserts LoomRubricDiscussionReview's bytes
 // contain a distinctive phrase for each of the six items manifest/designs/loom.md's two
@@ -44,16 +73,16 @@ func TestLoomRubricDiscussionReview_NamesEveryRequiredItem(t *testing.T) {
 	}
 }
 
-// TestLoomRubricDiscussionReview_CarriesNoStencilMarkers asserts LoomRubricDiscussionReview's bytes
-// contain no "{{." substring: the rubric is interpolated as a marker value into the Bouncer and
-// Burler prompts, and a marker inside it would either render literally into the judge prompt or,
-// worse, be silently swallowed.
-func TestLoomRubricDiscussionReview_CarriesNoStencilMarkers(t *testing.T) {
-	text := string(LoomRubricDiscussionReview)
-
-	if strings.Contains(text, "{{.") {
-		t.Errorf("LoomRubricDiscussionReview contains a stencil marker (\"{{.\"); want none")
+// TestLoomRubricDiscussionReview_MarkersWithinAllowlist asserts LoomRubricDiscussionReview's
+// top-level marker set is a subset of rubricMarkerAllowlist. This rubric gains no marker in this
+// task, but its allowed set is the same as the other two rubrics' -- an asymmetric rule across the
+// three is how the next author loses the invariant.
+func TestLoomRubricDiscussionReview_MarkersWithinAllowlist(t *testing.T) {
+	markers, err := stencil.TopLevelMarkers(LoomRubricDiscussionReview)
+	if err != nil {
+		t.Fatalf("stencil.TopLevelMarkers(LoomRubricDiscussionReview) = _, %v; want nil error", err)
 	}
+	assertRubricMarkersWithinAllowlist(t, "LoomRubricDiscussionReview", markers)
 }
 
 // TestLoomRubricPlanReview_NamesEveryRequiredItem asserts LoomRubricPlanReview's bytes contain a
@@ -88,16 +117,15 @@ func TestLoomRubricPlanReview_NamesEveryRequiredItem(t *testing.T) {
 	}
 }
 
-// TestLoomRubricPlanReview_CarriesNoStencilMarkers asserts LoomRubricPlanReview's bytes contain no
-// "{{." substring: the rubric is interpolated as a marker value into the Bouncer and Burler prompts,
-// and a marker inside it would either render literally into the judge prompt or, worse, be silently
-// swallowed.
-func TestLoomRubricPlanReview_CarriesNoStencilMarkers(t *testing.T) {
-	text := string(LoomRubricPlanReview)
-
-	if strings.Contains(text, "{{.") {
-		t.Errorf("LoomRubricPlanReview contains a stencil marker (\"{{.\"); want none")
+// TestLoomRubricPlanReview_MarkersWithinAllowlist asserts LoomRubricPlanReview's top-level marker
+// set is a subset of rubricMarkerAllowlist: this rubric now carries specs_dir, and a second marker
+// would still be invisible at the value-interpolation site, so it must still fail loudly.
+func TestLoomRubricPlanReview_MarkersWithinAllowlist(t *testing.T) {
+	markers, err := stencil.TopLevelMarkers(LoomRubricPlanReview)
+	if err != nil {
+		t.Fatalf("stencil.TopLevelMarkers(LoomRubricPlanReview) = _, %v; want nil error", err)
 	}
+	assertRubricMarkersWithinAllowlist(t, "LoomRubricPlanReview", markers)
 }
 
 // TestLoomRubricWebsterReview_NamesEveryRequiredItem asserts LoomRubricWebsterReview's bytes contain
@@ -120,7 +148,7 @@ func TestLoomRubricWebsterReview_NamesEveryRequiredItem(t *testing.T) {
 		{"the plan is the measuring stick and never the subject", "measuring stick and never the subject"},
 		{"a missing ImpactSummary belongs to Plan-Review", "Both belong to "},
 		{"this segment's own round artifacts are never the subject", ".lyx/loom/reviews/webster/"},
-		{"comment-convention compliance points at code-comment-conventions.md", "code-comment-conventions.md"},
+		{"comment-convention compliance checks the target repository's own conventions", "target repository's own conventions"},
 		{"per-card mechanical check names assert-no-callers for a Delete card", "assert-no-callers"},
 	}
 
@@ -133,15 +161,72 @@ func TestLoomRubricWebsterReview_NamesEveryRequiredItem(t *testing.T) {
 	}
 }
 
-// TestLoomRubricWebsterReview_CarriesNoStencilMarkers asserts LoomRubricWebsterReview's bytes contain
-// no "{{." substring: the rubric is interpolated as a marker value into the Bouncer and Burler
-// prompts, and a marker inside it would either render literally into the judge prompt or, worse, be
-// silently swallowed.
-func TestLoomRubricWebsterReview_CarriesNoStencilMarkers(t *testing.T) {
-	text := string(LoomRubricWebsterReview)
+// TestLoomRubricWebsterReview_MarkersWithinAllowlist asserts LoomRubricWebsterReview's top-level
+// marker set is a subset of rubricMarkerAllowlist: this rubric now carries specs_dir, and a second
+// marker would still be invisible at the value-interpolation site, so it must still fail loudly.
+func TestLoomRubricWebsterReview_MarkersWithinAllowlist(t *testing.T) {
+	markers, err := stencil.TopLevelMarkers(LoomRubricWebsterReview)
+	if err != nil {
+		t.Fatalf("stencil.TopLevelMarkers(LoomRubricWebsterReview) = _, %v; want nil error", err)
+	}
+	assertRubricMarkersWithinAllowlist(t, "LoomRubricWebsterReview", markers)
+}
 
-	if strings.Contains(text, "{{.") {
-		t.Errorf("LoomRubricWebsterReview contains a stencil marker (\"{{.\"); want none")
+// TestLoomRubrics_ParseUnderTheRenderHelper asserts each of the three stencil-sourced rubrics
+// renders successfully through internal/shedadapters.ReadRubric given a non-empty specs directory --
+// the production render path every Bouncer and Burler rubric read actually travels. A marker-set
+// check alone cannot see this failure mode: a bare "{{" an author writes in prose has no marker name
+// to inspect and becomes a runtime parse-template error only once the rubric is actually filled.
+func TestLoomRubrics_ParseUnderTheRenderHelper(t *testing.T) {
+	tests := []struct {
+		name string
+		def  []byte
+	}{
+		{"loom-rubric-discussion-review", LoomRubricDiscussionReview},
+		{"loom-rubric-plan-review", LoomRubricPlanReview},
+		{"loom-rubric-webster-review", LoomRubricWebsterReview},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := stencilstore.Path(dir, tt.name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("os.MkdirAll(%q) = %v; want nil error", filepath.Dir(path), err)
+			}
+			if err := os.WriteFile(path, tt.def, 0o644); err != nil {
+				t.Fatalf("os.WriteFile(%q) = %v; want nil error", path, err)
+			}
+
+			if _, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir"); err != nil {
+				t.Errorf("shedadapters.ReadRubric(%q, %q) = _, %v; want nil error", dir, tt.name, err)
+			}
+		})
+	}
+}
+
+// TestStencils_SpecsDirMarkerIsPresent asserts each of the four stencils carrying a normative
+// citation this task rewrote -- the plan template, the two rubrics, and the implementer body --
+// contains the literal {{.specs_dir}} marker. Without this a future edit could quietly revert a
+// citation to a bare path, and only the bare-citation enforcement scan would notice, and only if the
+// reverted path happened to match that scan's prefix rule.
+func TestStencils_SpecsDirMarkerIsPresent(t *testing.T) {
+	tests := []struct {
+		name string
+		def  []byte
+	}{
+		{"loom-template-plan", LoomTemplatePlan},
+		{"loom-rubric-plan-review", LoomRubricPlanReview},
+		{"loom-rubric-webster-review", LoomRubricWebsterReview},
+		{"webster-body-implementer", WebsterBodyImplementer},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !strings.Contains(string(tt.def), "{{.specs_dir}}") {
+				t.Errorf("%s does not contain the literal {{.specs_dir}} marker", tt.name)
+			}
+		})
 	}
 }
 

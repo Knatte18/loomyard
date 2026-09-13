@@ -124,6 +124,9 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := requireAbsRoot("Bouncer", "StencilsDir", env.StencilsDir); err != nil {
 		return nil, err
 	}
+	if err := requireAbsRoot("Bouncer", "SpecsDir", env.SpecsDir); err != nil {
+		return nil, err
+	}
 	if err := requireSeam("Bouncer", "Shuttle", env.Shuttle); err != nil {
 		return nil, err
 	}
@@ -160,6 +163,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		// with no error anywhere.
 		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-review.md", round) },
 		StencilsDir:   env.StencilsDir,
+		SpecsDir:      env.SpecsDir,
 		RubricStencil: rubricStencil,
 		Model:         model,
 		Effort:        effort,

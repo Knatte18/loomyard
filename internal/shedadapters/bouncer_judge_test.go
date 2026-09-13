@@ -94,6 +94,39 @@ func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool
 	return shuttle
 }
 
+// TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir asserts the judge call's composed prompt --
+// where the rubric is interpolated as a marker VALUE, never run through the fill itself -- contains
+// the told specs directory and carries no literal "{{.specs_dir}}" marker. A rubric-bytes-only
+// assertion could not catch this: the marker lives inside the rubric value, invisible to a check
+// that never renders it into the surrounding template.
+func TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir(t *testing.T) {
+	specsDir := t.TempDir()
+	if !filepath.IsAbs(specsDir) {
+		t.Fatalf("t.TempDir() = %q; want an absolute path", specsDir)
+	}
+
+	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg := testBouncerConfigWithSpecsMarker(t, specsDir)
+	cfg.Shuttle = shuttle
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	if _, _, err := b.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+
+	prompt := shuttle.gotSpec.Prompt
+	if !strings.Contains(prompt, specsDir) {
+		t.Errorf("judge call composed prompt does not contain the told specs directory %q", specsDir)
+	}
+	if strings.Contains(prompt, "{{.specs_dir}}") {
+		t.Error("judge call composed prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered")
+	}
+}
+
 func TestBouncer_JudgeCall_Approved(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	b, cfg := newTestBouncer(t, shuttle)

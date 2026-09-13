@@ -1,4 +1,4 @@
-// geometry.go declares Geometry, the eight-field struct webster is told its coordinates through.
+// geometry.go declares Geometry, the nine-field struct webster is told its coordinates through.
 // It declares the type only — no constructor, no validator, and no default; populating every field
 // with a usable absolute path is entirely the caller's obligation, exactly as
 // internal/reedengine/geometry.go does for reed.
@@ -41,6 +41,10 @@ type Geometry struct {
 	ScratchDir string
 	// StencilsDir is the told absolute directory the prompt stencils are read from at call time.
 	StencilsDir string
+	// SpecsDir is the told absolute directory the deployed normative specs are read from by the
+	// agent the prompt is handed to — never by Go. Like every other field on this struct,
+	// populating it with a usable absolute path is entirely the caller's obligation.
+	SpecsDir string
 	// PlanDir is the told directory planparser parses.
 	PlanDir string
 }
