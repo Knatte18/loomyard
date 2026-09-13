@@ -162,6 +162,11 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 ### citation-enforcement-test
 
 - **Decision:** A new test in `package stencils` (beside `rubric_test.go`) scans every registered stencil's post-`StripLeadingComment` body for repo-relative path tokens under `contracts/`, `manifest/`, `docs/`, and `internal/`, failing unless the occurrence is `{{.specs_dir}}`-prefixed or listed on a named allowlist keyed by `(stencil name, token)` with each entry naming its justification.
+- **Token rule, narrowed — a bare prefix match over-fires.** Stencil bodies legitimately carry tokens under these prefixes that are not citations: glyph-grammar examples at `loom-template-plan.md:88` (`internal/boardcli#newListCmd`, `internal/boardcli/list.go`), `:92` (`plan:internal/boardcli/rowjson.go#RowJSON`), `:98-99`, and a mechanism reference at `webster-body-implementer.md:62` (`internal/planglyph`'s `ScopeGuard`).
+  The rule therefore flags only a token that (a) sits under one of the four prefixes, (b) ends in `.md` or `.go`, and (c) contains no `#` and is not `plan:`-prefixed — the two forms that make a token a glyph rather than a path.
+  A bare package reference such as `internal/planglyph` fails (b) and is never flagged.
+  `loom-template-plan.md:88`'s `internal/boardcli/list.go` satisfies all three and **is** flagged, so it takes an allowlist entry justified as "glyph-grammar example, not a citation" — the allowlist carrying a small number of deliberate entries is the design, not a workaround.
+  The `.go` half of (b) is what keeps `internal/shedadapters/bouncerfiles.go` in scope.
 - **Rationale:** This is the actual deliverable.
   Fixing nine sites fixes nine instances; the test closes the class, matching the body's "the fix should close the whole normative class at once, not file-by-file."
   `rubric_test.go` is the in-repo precedent for content-pinning tests in this package, and CONSTRAINTS.md's Markdown Link Integrity invariant is the precedent for the `(file, target)`-keyed allowlist-with-owner shape.
@@ -230,6 +235,15 @@ The final wiring is a plan-level decision; the embed constraint itself is hard a
 A second registry over a second baseDir is a pure call-site addition.
 Note `Reconcile` also seeds `.gitattributes` (`*.md text eol=lf`) into its baseDir, which is correct and wanted for the specs dir too.
 
+**Decision — the specs `Reconcile` passes `sourceDir = ""`.**
+This is what makes "no change to `reconcile.go`" literally true, and it is a real decision rather than an omission.
+`reconcile.go:178` derives a worktree source as `filepath.Join(sourceDir, RelPath(name))` — i.e. `<sourceDir>/loom/<name>.md` — and `stencilcli`'s `resolveSourceDir` hardcodes `<worktree>/contracts/stencils`.
+Neither shape fits the specs: the two travelling docs live in *different* directories (`contracts/specs/` and `manifest/designs/`), and one's basename differs from its registered name (`plan-card-format.md` vs `loom-plan-card-format`).
+A per-name source mapping would fit, but it requires either a `reconcile.go` change or a parallel mapping to keep in sync with the registry — cost paid for a feature specs do not want.
+`sourceDir` exists to drive `warnPortBackDrift`, which serves a **port-back authoring workflow**: an operator edits a board stencil copy, and the warning reminds them to promote it back to the worktree source.
+Specs have no such workflow — the loomyard-side file is the single source of truth and a deployed copy is never authored — so the drift warning has nothing to say.
+**Consequence, stated so it is not discovered later:** board-vs-worktree drift detection, and `diff`/`promote` port-back, are unavailable for specs by design, which is why both verbs are marked "No" in the table above.
+
 **Stamping mutates the deployed copy.**
 `ApplyStamp` prepends or edits a leading `<!-- lyx-stencil: sha256=... -->` banner.
 Both travelling docs currently open with a `# Heading` and then a `> **Status: ...**` blockquote, so neither has a leading HTML comment — `ApplyStamp` will prepend a one-line banner plus a blank line.
@@ -242,11 +256,20 @@ Hub: the root pre-run in `cmd/lyx` (named as a consumer in `contracts/stencils/s
 `internal/stencilcli/cli.go` has `sync` (`ForceRefresh` + `CommitSeededStencils` at line 184) and `validate`.
 Both the hub and standalone paths need the second reconcile added.
 
-**Decided, not left to the plan — existing-verb coverage:**
-`lyx stencil sync` **does** cover specs: it is `ForceRefresh` plus a weft commit, and force-refreshing a stale deployed spec is exactly as useful as force-refreshing a stale stencil.
-Its `CommitSeededStencils` call therefore takes the generalisation alongside `stencilseed.go`'s.
-`lyx stencil validate` **does not** cover specs: `stencilstore.Validate` compares on-disk marker sets against shipped-default marker sets via `stencil.TopLevelMarkers` (`internal/stencilstore/validate.go`), and a spec is not a template — both sides are empty, so the pass is a guaranteed no-op that would only imply a check is happening.
-Neither verb gains new flags or new subcommands, so `no-new-cli-surface` holds.
+**Decided, not left to the plan — per-verb specs disposition.**
+`internal/stencilcli/cli.go:200` registers **five** verbs, and each gets an explicit answer:
+
+| Verb | Covers specs? | Why |
+|---|---|---|
+| `sync` | **Yes** | A second `ForceRefresh` over the specs baseDir, plus the generalised `CommitSeededStencils` — both halves, not only the commit. Force-refreshing a stale deployed spec is as useful as for a stencil, and it is the remedy for an edited one. |
+| `list` | **Yes** | It is the only remaining verb that surfaces a `StateEdited` deployed spec, which `reuse-reconcile-policy-unchanged` depends on an operator being able to see. |
+| `validate` | **No** | `stencilstore.Validate` compares top-level marker sets via `stencil.TopLevelMarkers`; a spec is not a template, so both sides are empty and the pass is a guaranteed no-op that would falsely imply a check ran. |
+| `diff` | **No** | Requires a worktree `sourceDir`, which specs deliberately do not have (see the `sourceDir` decision below). |
+| `promote` | **No** | Port-back has no meaning for a spec: the loomyard-side file is the single source of truth and a deployed copy is never authored. |
+
+Consequence to state plainly: an operator whose deployed spec is `StateEdited` learns *that* it diverged (the `Reconcile` warn line and `list`), not *what* diverged.
+The remedy is `lyx stencil sync`, which force-refreshes it back to the shipped default.
+No verb gains a new flag or subcommand, so `no-new-cli-surface` holds.
 
 **Geometry to mirror.**
 `internal/fabricengine/junctionnames.go:126` `StencilsDir(hub) = filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, stencilsDirName)` with `stencilsDirName = "stencils"` unexported and documented as not a policed geometry token.
@@ -264,7 +287,8 @@ The rubric case is the sharpest trap in this task; `rubric-marker-allowlist` is 
 
 **Told-Geometry Invariant applies.**
 An engine is handed absolute paths and derives none.
-`specs_dir` must be threaded through the same `Geometry` structs and `hubgeom`/`standalonegeom` constructors that already carry `stencilsDir`, never derived inside an engine.
+`specs_dir` follows **whatever route each consumer already uses for `stencilsDir`**, which is not uniform and must not be described as if it were: a geometry field for webster (`internal/hubgeom/webstergeom.go:30` sets `StencilsDir`), and a plain told parameter for loom and shed (`loomengine.PlanSpec(layout, stencilsDir, cfg, reg)`; `internal/standalonegeom/stencilsdir.go:19-21` records explicitly that the value is "carried by callers as a plain string, never as an engine geometry field").
+Either way it is told, never derived inside an engine.
 
 **The travelling docs carry their own dangling cross-repo links.**
 `plan-card-format.md` cites `contracts/specs/loom-plan-spec.md`, `docs/code-comment-conventions.md`, `internal/planparser`, `internal/hubforge`, and a relative link `[code-comment-conventions.md](../../docs/code-comment-conventions.md)`.
@@ -325,13 +349,16 @@ From `CLAUDE.md`:
 **`package stencils` (`contracts/stencils/`) — the primary TDD candidate.**
 Write `citation_enforcement_test.go` first, before touching any stencil body.
 It scans every name in the registry, reads its default bytes, applies `stencil.StripLeadingComment`, and fails on any token matching a repo-relative path under `contracts/`, `manifest/`, `docs/`, or `internal/` unless the occurrence is `{{.specs_dir}}`-prefixed or on the `(stencil name, token)` allowlist.
-Written first it must fail on **every occurrence the audit table lists** — note that is 13 occurrences across 12 rows, since `bouncer-template-judge.md` carries its path at three separate lines (61, 90, 116) — which is the proof it works; it goes green as the rewrites land.
+Written first it must fail on **every occurrence the audit table lists** — 13 occurrences across 12 rows, since `bouncer-template-judge.md` carries its path at three separate lines (61, 90, 116) — which is the proof it works; it goes green as the rewrites land.
+It will also flag the glyph-example occurrences named in `citation-enforcement-test`'s token rule, which are resolved by allowlist entries rather than by rewriting the stencil, so the initial failure set is the audited occurrences **plus** those — do not treat 13 as the expected failure count.
 Scenarios: a normative citation correctly rewritten passes; a bare re-added citation fails; an allowlisted entry passes; an allowlist entry whose token no longer appears anywhere fails as stale.
 
 **`contracts/stencils/rubric_test.go` — extend, and repair two known breaks.**
 Line 123 pins the literal `"code-comment-conventions.md"`, which the `code-comment-conventions-is-misscoped` rewrite removes; that assertion and `docs/code-comment-conventions.md:5`'s retention note both move in the same commit.
 Add a pin that each of the four `{{.specs_dir}}`-carrying stencils actually contains the marker, so a future edit cannot silently drop it back to a bare path.
 Rewrite the three `strings.Contains(text, "{{.")` assertions (lines 54, 98, 143) and the file header comment to the allowlist form per `rubric-marker-allowlist`: assert that the only marker any rubric contains is `specs_dir`, so a second marker — which would still be invisible to `Fill` at the value site — fails exactly as loudly as the old rule did.
+**A marker-set assertion is not sufficient on its own.** Because the helper now runs `stencil.Fill` over rubric bytes, any bare `{{` an author writes in prose — not `{{.`, so no marker name to inspect — becomes a runtime `parse template` error (`internal/stencil/stencil.go:29-31`) that a marker-name check cannot see.
+The rubric test must therefore also assert each rubric **parses successfully under the helper**, which is the assertion that actually covers the new failure mode.
 
 **The rubric-render helper — TDD candidate, and the highest-risk unit in this task.**
 Test it directly, not only through a composed prompt: a rubric carrying `{{.specs_dir}}` renders with the path substituted and the leading stamp banner stripped; a rubric carrying no marker renders unchanged; an empty or absent `specs_dir` value errors rather than rendering blank; and the stamp banner does not survive into the rendered result, so it cannot be interpolated into the middle of a judge prompt as a marker value.
@@ -377,6 +404,8 @@ Assert `specs_dir` is treated as required: rendering with it absent or empty err
 - **Q:** How does the seeded specs tree actually reach weft, given `CommitSeededStencils` hardcodes the stencils subtree? **A:** [auto-pick] Generalise `CommitSeededStencils` over a subtree-relative prefix and call it once per seeded subtree. **Why:** without this the specs tree is written and never staged — `stencilcommit.go:56` joins `lyxdirs.LyxDirName` with `stencilsDirName` directly; a sibling verb would duplicate a function differing only in one constant, and generalising keeps the Fabric Git Invariant's `ScopedPathspec` requirement satisfied in one place.
 - **Q:** Does the specs reconcile run when `--stencils-dir` is told, given standalone seeds stencils only when no override was given? **A:** [auto-pick] Yes — unconditionally, it does not inherit the skip. **Why:** the skip protects an operator's curated *prompt* set; `--stencils-dir` says nothing about specs, no `--specs-dir` flag exists, and inheriting the skip would leave the specs dir resolvable but empty — reproducing the dead reference in the mode hardest to notice it. An operator's own edits stay protected by the unchanged `StateEdited` warn row.
 - **Q:** Do `lyx stencil sync` and `lyx stencil validate` cover specs? **A:** [auto-pick] `sync` yes, `validate` no. **Why:** `sync` is `ForceRefresh` plus a weft commit and is as useful for a stale spec as for a stale stencil; `validate` compares top-level marker sets, which a marker-free spec does not have, so it would be a guaranteed no-op that falsely implies a check ran. Neither gains a flag or subcommand, so `no-new-cli-surface` holds.
+- **Q:** What `sourceDir` does the specs `Reconcile` pass, given the two docs live in different directories and one's basename differs from its registered name? **A:** [auto-pick] `""`. **Why:** `sourceDir` only drives `warnPortBackDrift`, which serves a port-back authoring workflow specs do not have — the loomyard-side file is the single source of truth and a deployed copy is never authored. A per-name mapping would fit but needs either a `reconcile.go` change or a second structure to keep in sync with the registry. Accepted consequence: drift detection and `diff`/`promote` port-back are unavailable for specs by design.
+- **Q:** All five `stencil` verbs — which cover specs? **A:** [auto-pick] `sync` and `list` yes; `validate`, `diff`, `promote` no. **Why:** `sync` is the remedy for an edited spec and needs both a specs `ForceRefresh` and the generalised commit; `list` is the only remaining verb that surfaces `StateEdited`, which the reconcile-policy decision depends on. `validate` compares marker sets a spec has none of, and `diff`/`promote` both need the `sourceDir` specs deliberately lack.
 - **Q:** Registered names, given `RelPath` derives the family dir from the substring before the first `-`? **A:** [auto-pick] `loom-plan-spec` and `loom-plan-card-format`, both landing under `specs/loom/`. **Why:** a bare `plan-card-format` would create a one-file `plan/` family directory; only the registered name changes, the source file is not renamed.
 - **Q:** What stops the next citation from reintroducing this bug? **A:** [auto-pick] A `package stencils` test scanning every stencil body for bare cross-repo path tokens, with an allowlist keyed by `(stencil name, token)`. **Why:** this is the real deliverable — it closes the class rather than nine instances; review discipline already missed this once, and the reverted one-line fix is the evidence.
 - **Q:** New `lyx spec` CLI subtree? **A:** [auto-pick] No — specs reconcile in the same once-per-process pre-run pass, no new verbs. **Why:** YAGNI for two files nobody edits, and the Stencil Ownership Invariant already puts seed/refresh in that pass.
