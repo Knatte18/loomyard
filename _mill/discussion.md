@@ -204,9 +204,10 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   a non-`{{.}}` placeholder token substituted by `strings.ReplaceAll` (invents a second templating syntax alongside `stencil`, and silently no-ops on a typo instead of erroring);
   a bare `strings.ReplaceAll` on the `{{.specs_dir}}` literal (same silent-no-op-on-typo failure mode, and forfeits `Fill`'s empty-value guard).
 - **Collateral this decision creates, which the plan must carry:** `contracts/stencils/rubric_test.go`'s three `strings.Contains(text, "{{.")` assertions (lines 54, 98, 143) and the file's own header comment all encode the no-marker rule and must be rewritten to the allowlist form — asserting the *only* marker present is `specs_dir` — rather than deleted.
-  The **three** stencil-sourced rubric sites the helper replaces are `internal/shedadapters/bouncer.go`'s seed pass (~line 470) and judge pass (~line 566), and `internal/shedrecipe/entries_burler.go`'s `rubricStencil != ""` branch (~line 202).
+  The **three** stencil-sourced rubric sites the helper replaces are `internal/shedadapters/bouncer.go`'s seed pass (~line 516) and judge pass (~line 612), and `internal/shedrecipe/entries_burler.go`'s `rubricStencil != ""` branch (~line 202).
   `internal/burlercli/run.go:63` is **not** a site — its `Rubric` comes from a profile YAML key and is always literal.
-  `bouncer.go:476` and `entries_burler.go:207-211` both carry the same existing comment explaining why the `StripLeadingComment` call is load-bearing: `stencil.Fill` strips a banner from the template it parses but never from a marker *value*, so unstripped bytes would inject the `<!-- lyx-stencil: sha256=... -->` line into the middle of the prompt.
+  `internal/shedadapters/bouncer.go:156` is **also not** a site: `NewBouncer` eagerly `stencilstore.Read`s the rubric purely as a construction-time readability probe and discards the bytes, so it needs no fill and must not be "fixed" into one.
+  `bouncer.go:524` and `entries_burler.go:207-211` both carry the same existing comment explaining why the `StripLeadingComment` call is load-bearing: `stencil.Fill` strips a banner from the template it parses but never from a marker *value*, so unstripped bytes would inject the `<!-- lyx-stencil: sha256=... -->` line into the middle of the prompt.
   That is the strip's purpose and the helper must preserve it — note it is about **value** semantics, not about protecting `Fill`, which already strips its own template (`internal/stencil/stencil.go:27`).
 
 ### registered-names
