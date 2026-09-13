@@ -2,7 +2,8 @@
 
 > **Status: implemented; a durable convention doc, not a module-design draft.**
 > It lived under `manifest/designs/` until the 2026-08-29 designs audit, which found it misfiled: `manifest/` holds planned, not-yet-built work, and the [documentation lifecycle](overview.md#documentation-lifecycle) would read an implemented doc there as a deletion candidate.
-> This doc is not that class — it is the standing rationale for a cross-cutting rule that live producer rubrics still cite (`contracts/stencils/loom/loom-rubric-webster-review.md`, guarded by `contracts/stencils/rubric_test.go`), so it moved here rather than being deleted.
+> This doc is not that class — it is the standing rationale for a cross-cutting rule this repository's own code still follows, so it moved here rather than being deleted.
+> It is kept, not deleted, and no deletion decision is deferred to a later task.
 > The operative rule lives in the `scribe` plugin's `code-quality` skill (Comments section) and `golang-comments` skill (`plugins/scribe/skills/`), installable via loomyard's own marketplace — that skill is the single source an agent actually loads and follows.
 > This document is design rationale — the "why" behind the rule, not the rule text itself, which is restated once below only as context for a reader of this file.
 > No producer-stencil wiring yet: "Load these skills" lines in loom's own producer prompts are planned as a separate, later roadmap item ("loom: Discussion-Write producer"), not this one.
