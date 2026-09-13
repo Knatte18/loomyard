@@ -6,8 +6,13 @@
 
 ## Status
 
-IN PROGRESS — Job 1 (review) underway. This file is being built incrementally per the
-"Log as you go" rule; committed after each meaningful append.
+COMPLETE. Job 1 (review) found one CONFIRMED BLOCKING finding, F-R3-1. Job 2 fixed it, verified hermetically (sabotage-proved) and live against the real, genuinely-merged PR the round itself opened. See `_mill/loom-review-r3-fixer-report.md` for the fix details.
+
+## Severity ranking
+
+1. F-R3-1 — BLOCKING, CONFIRMED, FIXED. See below.
+
+No MEDIUM/LOW/NIT findings this round — a genuine safety-pass outcome for everything except the one path (`Publish`'s merged-PR resume) neither prior round could reach.
 
 ## What was tested
 
@@ -144,7 +149,7 @@ This is a genuine safety pass: two prior rounds converged the general envelope-f
 
 Beyond that: `Finalize`'s live merge-back was independently confirmed correct on the exact post-real-PR-merge state F-R3-1's fix will hand it (already-up-to-date recognition matches `manifest/designs/loom.md`'s own documented claim verbatim). The `RunDone`-triggered friction reflection was independently confirmed to spawn a REAL reflection agent and make a REAL, sensible judgment call over a hand-placed note on a task that walked the WHOLE real phase machine to a genuine terminal `done` (not a hand-built status-file fixture) — closing that genuinely-open item. A second, independent interrupted-and-resumed repro was driven on `Webster-Burler` (a non-Discussion `*-Burler` row, killed genuinely mid-agent — the real `claude` process still alive in its own pane after the driving process was `kill -9`'d) and confirmed clean reattachment with zero double-spawn. The spontaneous-friction-note question produced a third independent null result. No third GitHub issue was filed; `selfreport` stayed `false` throughout.
 
-**Merge-readiness verdict: NOT merge-ready as-is.** F-R3-1 is a real, confirmed defect on the module's own default, most-common configuration and must be fixed (see Job 2 below) before this lands. Once fixed and verified, I have no other residual to carry forward — this would otherwise have been a clean safety pass.
+**Merge-readiness verdict: merge-ready AFTER this round's fix, which is now implemented, hermetically sabotage-proved, and re-verified LIVE against the same real, genuinely-merged PR that exposed it** (`internal/landingshed/publish.go` now checks `!pr.GetMergedAt().IsZero()` instead of `pr.GetMerged()`; re-running the fixed binary against `Knatte18/lyx-crucible-r3#1` — still merged on GitHub throughout — now correctly returns `Done` and advances to `Finalize`). No other residual carried forward; this is otherwise the clean safety pass the round context hoped for.
 
 ## Scope assessment
 

@@ -201,7 +201,15 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		// No second pull request created and no second merge-in. The push at step 5 still ran, so
 		// a resumed call refreshes the pull request with any commits added since.
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("an open pull request already exists against parent branch %q", p.deps.ParentBranch))
-	case pr.GetMerged():
+	case !pr.GetMergedAt().IsZero():
+		// GitHub's List Pull Requests endpoint -- the query above -- never populates the "merged"
+		// boolean field; that field is only ever set on the single-PR Get endpoint's response. Every
+		// PullRequest this switch sees therefore carries a nil Merged, so pr.GetMerged() would be
+		// false unconditionally regardless of the PR's real state -- confirmed live: a genuinely
+		// merged PR queried through this same List call came back with "merged":null and a populated
+		// "merged_at" (crucible round 3, F-R3-1). merged_at IS populated by List, and is GitHub's own
+		// documented signal for "this PR is merged" on a list response, so it is what this branch
+		// checks instead.
 		return shedengine.Done, shedengine.OutputPointer{}, nil
 	default:
 		// Closed and not merged: a human decision to stop, which must never read as proceed.
