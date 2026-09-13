@@ -51,7 +51,7 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 	}
 
 	// RepoName is derived by trimming HubSuffix off the container directory's base
-	// name — this fixture's container has no "-HUB" suffix, so RepoName is simply
+	// name — this fixture's container has no "-LYXHUB" suffix, so RepoName is simply
 	// its base name unchanged.
 	wantRepoName := strings.TrimSuffix(filepath.Base(layout.HubPath), fabricengine.HubSuffix)
 	if layout.RepoName != wantRepoName {
