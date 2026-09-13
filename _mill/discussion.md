@@ -46,7 +46,7 @@ Only the on-disk directory-name suffix changes.
   - `manifest/designs/reed-fabric-standalone-api.md:320` — the measured public-surface identifier list showing `HubSuffix ("-HUB")`.
   - `internal/fabriccli/fabric.go:68,93` — the `lyx fabric clone` Cobra `Long` help text (`<parent>/<warp-name>-HUB`).
   - `internal/fabricengine/clone.go:70,594` and `internal/hubforge/hub.go:141` — doc comments describing the `<name>-HUB` container.
-- `CONSTRAINTS.md` — add a short migration note under **Hub Containment Invariant** (or a new line) recording that `-LYXHUB` is the sole hub suffix and that pre-existing `-HUB` hubs are not migrated. See Decision *Clean break*.
+- `CONSTRAINTS.md` — add a **new top-level `## Hub Suffix Invariant` section**, placed immediately after the existing `## Hub Containment Invariant` (currently at line 52) and before `## gitkit Leaf Invariant`. See Decision *CONSTRAINTS.md placement* for the exact claim recorded and why it is not a bullet on Hub Containment.
 - Verify the full suite passes (`go test ./...` with `CGO_ENABLED=1`) and the enforcement test still policies the new token.
 
 **Out:**
@@ -83,6 +83,14 @@ Only the on-disk directory-name suffix changes.
   Renaming the hub directory invalidates every portal junction and launcher script inside it — the rename would *break* a working hub rather than migrate it.
   Additionally `reedengine.ServerName` derives the tmux `-L` socket key from `filepath.Base(hubPath)` plus a sha256 of the absolute path, so a rename silently orphans any running reed server for that hub.
 - **Rejected:** a `lyx fabric migrate-hub` verb — it would have to rewrite every junction and launcher and reconcile the reed socket identity, which is a substantially larger task than the rename itself, for a cosmetic gain.
+- **Disposition of the old directory — the operator removes it by hand, and the docs must say so.**
+  This is the one genuinely sharp edge of the clean break, and it is not self-evident from the code.
+  `CloneHub` derives `hubPath = HubPath(cwd, name)` in both the two-argument and one-argument forms (`internal/fabricengine/clone.go:158,205`), and *both* its collision guard (`os.Stat(hubPath)` → `"hub already exists at %s"`, lines 165 and 215) and its `--reset` teardown (`resetHub(rec, cwd, hubPath)`, lines 161 and 210) key on that single derived path.
+  After the value swap that path is `<name>-LYXHUB`, so a pre-existing `<name>-HUB` in the same parent is invisible to both: a re-clone is neither refused nor reset, and instead silently creates a **second, parallel hub for the same warp** — its own weft clone, its own `_board`, its own portals and launchers, and its own `reedengine.ServerName` tmux socket (the socket key hashes the absolute path, so the two never collide) — while the old hub keeps running.
+  The documented procedure is therefore: in the old hub, push or abandon any outstanding work and stop its reed server (`lyx reed down`); then remove the `<name>-HUB` directory manually; then `lyx fabric clone` to create the `-LYXHUB` hub.
+  `--reset` is explicitly **not** the tool for this and must not be described as though it were.
+- **Where that procedure is recorded:** in `docs/sandbox-hub.md` (the canonical Hub-path doc) and in the `CONSTRAINTS.md` migration note, **not** in the `lyx fabric clone` Cobra `Long` help text.
+  The help text is read by every future operator forever, long after no `-HUB` hub exists anywhere; a permanent paragraph about a retired suffix is clutter there. `internal/fabriccli/fabric.go`'s help still gets its `<parent>/<warp-name>-HUB` → `-LYXHUB` substitution, but gains no new migration prose.
 
 ### Test-literal classification — three classes, only one changes
 
@@ -104,7 +112,8 @@ Only the on-disk directory-name suffix changes.
 
 - **Decision:** `tools/sandbox/main.go`'s `hubName` becomes `"lyx-test-LYXHUB"`, and all seven `SANDBOX-*-SUITE.md` files plus `docs/sandbox-hub.md`, `docs/sandbox-howto.md`, `docs/overview.md:452` are updated to match.
 - **Rationale:** the sandbox exists to exercise the real `lyx fabric clone` path end to end against a real on-disk hub. A fixture whose name no longer matches what `clone` produces silently reduces the suite's fidelity, and `CONSTRAINTS.md`'s **Sandbox Suite Coverage** invariant makes the suite's accuracy a standing obligation.
-  Sandbox hubs are disposable and explicitly re-cloned (`sandbox/build.cmd -reset`), so this costs the operator one re-clone and nothing else. Per Decision *No physical rename*, the operator re-clones; they do not `mv` the old sandbox hub.
+  Sandbox hubs are disposable and explicitly re-cloned (`sandbox/build.cmd -reset`). Per Decision *No physical rename*, the operator re-clones; they do not `mv` the old sandbox hub.
+  The cost is a re-clone **plus one manual deletion**: `build.cmd -reset` resolves the hub through the same renamed `hubName` constant, so it reaches `lyx-test-LYXHUB` only and leaves the old `lyx-test-HUB` — and any reed server still live on its socket — untouched. This is the same mechanism described under *No physical rename* → *Disposition of the old directory*, and the sandbox docs must carry the same manual-removal step.
 - **Rejected:** leaving the sandbox hub at `-HUB` — the suite would then be the one place in the tree still producing the retired layout.
 
 ### Enforcement registry retires the `-HUB` row
@@ -113,6 +122,23 @@ Only the on-disk directory-name suffix changes.
 - **Rationale:** follows directly from *Clean break* — with no code parsing `-HUB` anywhere, policing it would guard a token that no longer exists.
   Note the file's own standing warning: retired tokens (`_pattern`, `_raddle`) are documented as *deliberately absent* rather than left as dead rows, so retiring `-HUB` outright matches the file's established convention.
 - **Rejected:** keeping both tokens policed — only justified under a dual-parse world, which *Clean break* rejected.
+
+### CONSTRAINTS.md placement — a new `## Hub Suffix Invariant` section, not a bullet on Hub Containment
+
+- **Decision:** add a new top-level section to `CONSTRAINTS.md`, placed immediately after `## Hub Containment Invariant` and before `## gitkit Leaf Invariant`, reading in substance:
+
+  > ## Hub Suffix Invariant
+  >
+  > `-LYXHUB` is the sole hub container suffix. No code parses, trims, or recognises the retired `-HUB`.
+  >
+  > - Declared twice by sanction: `internal/lyxcwd` (private `hubSuffix`, for `RepoName` derivation) and `internal/fabricengine` (exported `HubSuffix`, for `HubPath`). Both move together, and `TestEnforcement_GeometryLiterals`' owner map is the third site that must move with them.
+  > - Hub discovery is name-independent (`filepath.Dir(worktreeRoot)`; structural `looksLikeHub`), so a pre-existing `-HUB` hub still resolves — only `Location.RepoName`, a display-only token, degrades.
+  > - Pre-existing `-HUB` hubs are never renamed in place: portal junctions and launcher scripts embed the hub's absolute path, and `reedengine.ServerName` hashes it into the tmux socket key. The operator removes the old directory by hand and re-clones; `clone --reset` does not reach it.
+
+- **Rationale:** `## Hub Containment Invariant` is about *junctioning* — that no hub-level container (`_board`, `_portals`, `_launchers`) is linked into a worktree. Suffix naming is an unrelated concern, and attaching a naming rule to it as a bullet would misfile the invariant where nobody looks for it.
+  This is a genuine cross-cutting invariant rather than a passing migration note: it spans three files that must change in lockstep and is machine-enforced by `TestEnforcement_GeometryLiterals`, which is exactly `CLAUDE.md`'s bar for a `CONSTRAINTS.md` entry ("Record any new cross-cutting invariant there, same commit").
+- **Rejected:** a bullet under Hub Containment — wrong topic, and it would make a machine-enforced invariant look like a footnote on an unrelated one.
+- **Rejected:** leaving the rule in `docs/sandbox-hub.md` only — that doc is operator-facing procedure; the lockstep-declarer rule is a code-review invariant and belongs where reviewers are required to read it every session.
 
 ### Sanctioned duplication is preserved
 
@@ -233,7 +259,7 @@ Per-module notes:
 
 - `internal/loomengine`, `internal/logger`, `internal/hubgeom`, `internal/tokenvocab`, `internal/weftname`, `cmd/lyx` — these carry synthetic `HubPath` fixtures only. The sweep is mechanical and the tests should pass unchanged in behaviour; no new coverage is owed.
 - `internal/fabricengine` — carries both real assertions and fixtures; needs the most careful per-file pass.
-- `tools/sandbox` — no Go tests; the change is a constant plus documentation.
+- `tools/sandbox` — five test files exist (`main_test.go`, `suite_test.go`, `report_test.go`, `resolve_test.go`, `pathresolve_guard_test.go`). None carries the `-HUB` literal: every one builds hub paths from the `hubName` constant (e.g. `main_test.go:21,49,54-55`, `report_test.go:238`), so they self-update when the constant changes. No literal sweep is owed in the package, but it must still be run as part of `go test ./...` rather than skipped.
 
 ## Q&A log
 
@@ -245,9 +271,8 @@ Per-module notes:
 - **Q:** Should the task offer a physical-rename migration path for existing hubs? **A:** [auto-pick] No — never `mv`, re-create instead. **Why:** portal junctions and launcher scripts embed the hub's absolute path at creation (`portals.go`, `launchers.go`, via `fslink.CreateDirLink`), and `reedengine.ServerName` derives the tmux socket key from the hub basename plus a hash of its absolute path — a rename breaks a working hub rather than migrating it.
 - **Q:** Does the four-byte-longer suffix affect the tmux socket-key cap? **A:** [auto-pick] No code change; review the affected tests. **Why:** `maxSocketSafeBaseBytes = 48` exists precisely to absorb long hub names and the sha256 half preserves uniqueness, but `internal/reedengine/server_test.go`'s boundary cases were written against a four-byte-shorter suffix and must be re-checked for intent.
 
-### Open — scope extension
+### Resolved — scope extension
 
-The brief states: *"The operator may extend this task's scope with a few more small polish items during mill-start — do not assume this rename is the whole task once discussion starts."*
-This run is `--orch`, so no operator was present in Phase: Discuss to supply those items.
-Any additional polish items should be raised in the orchestrator-authored discussion-review round 1 and folded into this file as BLOCKING findings.
-As written, this file covers the rename and nothing beyond it.
+The brief noted that the operator might extend this task with a few small polish items during mill-start.
+This run is `--orch`, so no operator was present in Phase: Discuss, and the orchestrator-authored discussion review (round 1) raised no scope additions.
+That opportunity has passed: **this file covers the rename and nothing beyond it**, and mill-plan should plan exactly this scope.
