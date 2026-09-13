@@ -96,15 +96,20 @@ Only the on-disk directory-name suffix changes.
 
 - **Decision:** every `-HUB` occurrence in a test file falls into exactly one of three classes:
   - **(a) Real-suffix literal → change to `-LYXHUB`.** The string stands for the hub suffix, whether it is a synthetic path fixture (`filepath.Join("home", "user", "repo-HUB")`), a table-test want value, or a socket-key expectation.
-  - **(b) Coincidental substring → leave untouched.** The string contains `-HUB` but does not mean the suffix:
+  - **(b) Coincidental substring → leave untouched, byte for byte.** The string contains `-HUB` but does not denote the hub at all; it is an arbitrary recognisable sentinel whose whole point is to be arbitrary:
     - `internal/fabricengine/destructivegaps_integration_test.go:120` — `const sentinel = "OUTSIDE-PARENT-HUB-CONTENT"`.
     - `internal/fabricengine/clone_reset_guard_test.go:32` — `const sentinel = "NOT-A-HUB-USER-DATA"`.
-    - `internal/reedcli/smoke_teardown_test.go:270` — the prose phrase "per-HUB" in a comment. Judgement call: this *does* reference the hub concept; rewrite the phrase to "per-hub" (lowercase prose) rather than "per-LYXHUB", since it names the concept, not the directory suffix.
   - **(c) Recorded historical capture → leave untouched.** Verbatim text captured from a real past run; editing it would falsify the record:
     - `internal/shuttleengine/claudeengine/startup_test.go:210` — a captured Claude-startup log line containing `/home/hanf/Code/r5sandbox/lyx-test-HUB/r5-crash`.
     - `docs/research/session-fork-spike.md:14` — a dated research note describing where a past live-session spike actually ran.
+  - **(d) Conceptual prose → reword, do not substitute.** The text *does* mean the hub, but names the **concept**, not the directory suffix, so `-LYXHUB` would be wrong there too:
+    - `internal/reedcli/smoke_teardown_test.go:270` — the comment phrase "the tmux server identity is per-HUB". Rewrite to lowercase "per-hub". Not class (b) (it genuinely refers to the hub) and not class (a) (it is not the suffix literal) — hence its own class, so the plan writer is never choosing between a class rule that says "leave untouched" and a per-entry instruction that says "rewrite".
 - **Rationale:** the brief flags this sorting explicitly as work the task owes ("some assert the real suffix value, some just use it as arbitrary test data — needs sorting out which").
-  A mechanical global replace corrupts (b) and falsifies (c).
+  A mechanical global replace corrupts (b), falsifies (c), and produces nonsense in (d).
+- **Distinguishing a live census from a dated log.** Two documents in the inventory are both "snapshots", and they are deliberately treated differently:
+  `manifest/designs/reed-fabric-standalone-api.md:320` is a **live census** — a measured list of the identifiers currently on `internal/fabricengine`'s public surface, including each constant's present value (`HubSuffix ("-HUB")`). Its claim is about the code as it stands, so leaving it unchanged after the swap would make it *false*. It is class (a) and gets substituted.
+  `docs/research/session-fork-spike.md:14` is a **dated run log** — a record of where one past live-session spike actually executed. Its claim is about a moment that already happened and stays true only if left alone. It is class (c).
+  The rule: a document asserting something about the current code is updated with the code; a document asserting what happened on a given date is never retro-edited.
 - **Rejected:** *replace every occurrence mechanically* — corrupts the two sentinels, whose whole point is to be an arbitrary recognisable string, and rewrites history in (c).
 - **Rejected:** *change only the two production declarers and leave all fixtures* — it compiles and passes (class (a) fixtures are synthetic paths that never touch disk), but leaves ~38 files teaching the retired vocabulary to every future reader, which is exactly the rot this task exists to prevent.
 
@@ -181,9 +186,9 @@ This is by design (the cap exists precisely to absorb long names, and the sha256
 
 ### File inventory (51 files carrying the literal, plus `CONSTRAINTS.md`)
 
-`grep -rl -- '-HUB'` over the worktree returns 54 files.
-Three of those are mill task-state under `_mill/` (`status.md`, `discussion.md` itself, and the review files) and are excluded — they are not product source.
-The remaining **51** are enumerated in full below, and the three groups sum to exactly 51: 7 production-source files, 31 test files (29 class-(a) plus 2 that are class-(b)/(c) only), and 13 docs.
+Run `grep -rl -- '-HUB'` over the worktree and discard **every hit under `_mill/`** — that whole tree is mill task-state (`status.md`, `discussion.md` itself, `reviews/`, `briefs/`) and is not product source.
+Its hit count grows with each review round, so no pinned total for it is quoted here on purpose.
+What remains is **51** product-source files, enumerated in full below, and the three groups sum to exactly 51: 7 production-source files, 31 test files (29 containing class-(a) work, plus 2 that are class-(c)/(d) only — `startup_test.go` and `smoke_teardown_test.go`; both class-(b) sentinels sit inside files that already have class-(a) work), and 13 docs.
 
 `CONSTRAINTS.md` is the one in-scope file that does **not** appear in this inventory: it currently contains no `-HUB` literal at all, so it gains a new migration note rather than a substitution (see Scope → In).
 Counting it, the task touches 52 files.
@@ -205,11 +210,11 @@ Counting it, the task touches 52 files.
 Note: several of these reference the constant rather than the literal (`internal/fabricengine/clone_reset_guard_test.go` uses `"warp"+HubSuffix`; `internal/lyxcwd/lyxcwd_test.go:56` uses `fabricengine.HubSuffix`; `internal/fabricengine/junctionnames_test.go:145,151` use `+HubSuffix`).
 Those update themselves and need only a comment/prose review — but the same files also carry hard literals (`junctionnames_test.go:116-117` has `"/repos/loomyard-HUB"`), so each file still needs individual inspection rather than a blanket skip.
 
-**Test files — class (b) or (c), do NOT change the literal:**
-`internal/fabricengine/destructivegaps_integration_test.go:120` (sentinel — but line 119 and 455 use `+fabricengine.HubSuffix` and are class (a), self-updating),
-`internal/fabricengine/clone_reset_guard_test.go:32` (sentinel — other lines in the file are class (a)),
-`internal/shuttleengine/claudeengine/startup_test.go:210` (recorded capture),
-`internal/reedcli/smoke_teardown_test.go:270` (prose — lowercase to "per-hub").
+**Test files — class (b), (c) or (d), do NOT substitute the literal:**
+`internal/fabricengine/destructivegaps_integration_test.go:120` (class (b) sentinel — but lines 119 and 455 use `+fabricengine.HubSuffix` and are class (a), self-updating),
+`internal/fabricengine/clone_reset_guard_test.go:32` (class (b) sentinel — other lines in the file are class (a)),
+`internal/shuttleengine/claudeengine/startup_test.go:210` (class (c) recorded capture),
+`internal/reedcli/smoke_teardown_test.go:270` (class (d) conceptual prose — reword to lowercase "per-hub").
 
 **Docs/prose:**
 `docs/overview.md:452`, `docs/sandbox-hub.md` (7 hits), `docs/sandbox-howto.md:70`, `docs/shared-libs/lyxcwd.md:110`, `manifest/designs/reed-fabric-standalone-api.md:320`,
@@ -252,7 +257,9 @@ Scenarios that must be covered:
   Add an explicit negative case asserting that a hub named `<name>-HUB` now yields `RepoName == "<name>-HUB"` (the documented, accepted degradation from Decision *Clean break*) — this pins the clean-break behaviour so a future reader cannot mistake it for a bug.
 - **Structural discovery is name-blind.** Cover that `looksLikeHub` still accepts a directory named with the old suffix (it has `_board` / a `*-weft` sibling), so an existing hub is not refused. Check whether an existing `internal/fabricengine` test already asserts this; if so, extend rather than duplicate.
 - **Socket-key boundary.** `internal/reedengine/server_test.go` — re-verify the truncation boundary cases (notably line 75's 200-char base, line 122's `base := "loomyard-HUB"`, and line 136's `want := "lyx-loomyard-HUB-"` prefix) still test what they were written to test with a four-byte-longer suffix.
-- **Sentinel integrity.** The two sentinel constants and the recorded capture are unchanged after the sweep — worth a final explicit grep for `-HUB` at the end of implementation, whose only surviving hits should be the four class-(b)/(c) sites plus `_mill/status.md`.
+- **Sentinel integrity.** The two sentinel constants, the two recorded captures, and the class-(d) prose rewrite all come out of the sweep as intended — worth a final explicit `grep -rl -- '-HUB'` at the end of implementation.
+  Discounting everything under `_mill/` (mill task-state, which legitimately keeps discussing the old literal), the only surviving product-source hits should be the four class-(b)/(c) sites: the two sentinels, `startup_test.go:210`, and `session-fork-spike.md:14`.
+  `smoke_teardown_test.go:270` should **not** appear — class (d) rewrites it to lowercase "per-hub".
 - **Full suite green.** `go test ./...` with `CGO_ENABLED=1`. Sandbox suites are manual/operator-driven and are not part of the automated gate; their `.md` updates are doc changes, not test executions.
 
 Per-module notes:
