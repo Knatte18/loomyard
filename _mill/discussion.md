@@ -175,8 +175,11 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 `contracts/stencils/stencils.go`'s own file comment states the rule: "`//go:embed` reaches only files at or below its own directory."
 `contracts/specs/` and `manifest/designs/` are both outside `contracts/stencils/`, so the existing embed site cannot reach either.
 A new embed site is required.
-`contracts/specs/loom-plan-spec.md` is at-or-below a new `contracts/specs/specs.go`, but `manifest/designs/plan-card-format.md` is not — so either the design doc's bytes reach the embed site by a different route, or the embed site sits somewhere that covers both.
-Resolving this is a plan-level decision; the constraint itself is hard and non-negotiable.
+`contracts/specs/loom-plan-spec.md` is at-or-below a new `contracts/specs/specs.go`, but `manifest/designs/plan-card-format.md` is not, and the two have no common ancestor below the repository root.
+`//go:embed` patterns additionally may not contain `..`, so a single site "covering both" would have to be a package at the repository root — a placement this repo does not otherwise use.
+**The expected resolution is therefore two embed sites, not one**: one under `contracts/specs/`, one under or beside `manifest/designs/`, both feeding the *same* logical registry.
+`stencilstore.Registry` is a two-method interface (`Names()`, `Default(name)`) and is indifferent to how many `//go:embed` directives or packages back it, so this is mechanical and low-risk.
+The final wiring is a plan-level decision; the embed constraint itself is hard and non-negotiable, and the root-package option should not be re-litigated.
 
 **`stencilstore` needs no modification.**
 `Reconcile(baseDir string, registry Registry, mode Mode, sourceDir string)` takes both the directory and the registry as arguments, and `Registry` is a two-method interface (`Names()`, `Default(name)`).
