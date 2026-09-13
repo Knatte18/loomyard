@@ -357,6 +357,57 @@ func TestPlanSpec_PromptNeverNamesSupportLog(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesSpecsDir verifies the composed prompt contains the told specs directory
+// verbatim and absolute, and that no literal "{{.specs_dir}}" marker survives rendering -- the
+// composer-level guarantee that a rewritten normative citation actually resolves to a real,
+// openable path rather than a dead reference an agent cannot act on.
+func TestPlanSpec_PromptStatesSpecsDir(t *testing.T) {
+	worktreeRoot := filepath.Join("home", "user", "repo")
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
+
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	specsDir := newTestSpecsDir(t)
+	if !filepath.IsAbs(specsDir) {
+		t.Fatalf("newTestSpecsDir(t) = %q; want an absolute path -- a deployed spec sits outside the agent's own worktree, so only an absolute spelling is reachable", specsDir)
+	}
+
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), specsDir, cfg, reg)
+	if err != nil {
+		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
+	}
+
+	if !strings.Contains(spec.Prompt, specsDir) {
+		t.Errorf("PlanSpec(...).Prompt does not contain the told specs directory %q", specsDir)
+	}
+	if strings.Contains(spec.Prompt, "{{.specs_dir}}") {
+		t.Error("PlanSpec(...).Prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered")
+	}
+}
+
+// TestPlanSpec_EmptySpecsDirErrors verifies composing the Plan prompt with an empty specs directory
+// returns an error rather than a prompt carrying a blank path: specs_dir is a required marker, so a
+// blank render must fail loudly at composition instead of silently reproducing the dead reference
+// this task removes.
+func TestPlanSpec_EmptySpecsDirErrors(t *testing.T) {
+	worktreeRoot := filepath.Join("home", "user", "repo")
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
+
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	if _, err := PlanSpec(layout, newTestStencilsDir(t), "", cfg, reg); err == nil {
+		t.Error("PlanSpec(..., specsDir=\"\") = _, nil; want an error")
+	}
+}
+
 // newTestSpecsDir returns a real, non-empty directory to pass as PlanSpec's/composePlanPrompt's
 // specsDir parameter, alongside newTestStencilsDir. A real directory rather than an empty-string
 // placeholder is required: specs_dir is a required marker, so an empty value would compile and pass
