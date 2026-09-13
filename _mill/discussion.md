@@ -140,7 +140,7 @@ All test work is in `internal/modelspec/parse_test.go`, extending the two existi
 - `opus[high!]` → `invalid character` (bare token, value charset).
 - `opus[high, v=4.8]` → `whitespace character`, pinning that the shorthand did not soften the whitespace rule.
 
-**`TestParse_Rejects` — deleted case:** `"param with no equals"` (`sonnet[effort]`, line 186). It moves to the accept table per the uniform-rule decision. Deleting it is the intended, reviewed consequence of that decision, not an oversight.
+**`TestParse_Rejects` — deleted case:** `"param with no equals"` (`sonnet[effort]`, `internal/modelspec/parse_test.go:175-179`). It moves to the accept table per the uniform-rule decision. Deleting it is the intended, reviewed consequence of that decision, not an oversight.
 
 **Unchanged and expected to stay green:** every other case in both tables, plus `registry_test.go` in full (its `version` literals are canonical-key constructions that never pass through `Parse`), `load_test.go` (`Entry.Defaults` still validates against `knownParams`, which still contains `version`), and `leaf_enforcement_test.go`.
 
