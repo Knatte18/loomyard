@@ -510,9 +510,13 @@ lyx loom run:
                                                            is actually running — OR before it has already
                                                            run and exited, which is what every fast-halting
                                                            run does and which proceeds to step 4 rather than
-                                                           refusing; only a child still alive after the whole
-                                                           attempt budget without ever taking the lock is a
-                                                           wedged spawn and refuses)
+                                                           refusing; OR before it has finished its pass and
+                                                           is still alive doing post-run bookkeeping, which
+                                                           is what a Tier 2 friction reflection is, and which
+                                                           proceeds for the same reason; only a child still
+                                                           alive after the whole attempt budget that never
+                                                           took the lock AND left the machine in `running`
+                                                           is a wedged spawn and refuses)
   4. attach the current terminal to the tmux session     (reed takes the foreground)
 ```
 

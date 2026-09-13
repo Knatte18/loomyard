@@ -21,6 +21,16 @@ Go collects every Tier 2 note emitted during a run (it reads every phase's outpu
 
 This aggregation-and-reflection machinery exists to work around loom having no single full-context session — but a task driven by the step-loop supervisor skill (see [loom-step.md](loom-step.md)) *is* such a session while it's running. When that skill is driving, the supervisor notices friction directly and calls `lyx selfreport create` itself — no separate aggregation pass needed for that run. So Tier 2 as designed here is scoped specifically to a task run via plain `lyx loom run`, with nobody watching live. This is a documentation/scoping note, not a code dependency — Tier 2 can be built and shipped whether or not `loom-step.md`'s skill exists yet.
 
+## The reflection step runs after the run lock is released, and the bootstrap has to know that
+
+`shedengine.Run` releases loom's run lock when it returns, and the reflection step fires after that return — so for the whole of the reflection agent's life (up to `friction_timeout_min`, 30 minutes in the shipped template) the driver process is alive while the run lock reads as free.
+
+That combination did not exist before Tier 2, and `lyx loom run`'s driver handshake was written against its absence: it polled 30 seconds for the spawned driver to take the lock and treated "child alive, lock never taken" as a wedged spawn. A run that halted fast — a blocked `Preflight`, an exhausted bounce budget — and then reflected on even one friction note was therefore reported as a failed bootstrap, and the handover to tmux was skipped, leaving the operator outside the one session where the halt is legible. Found live in crucible round 1.
+
+The handshake now reads the machine's own persisted state as a third signal: a child that is alive with the lock free but whose state has already left `running` has finished its pass, and the bootstrap proceeds to the handover. Only a child that is alive, never took the lock, **and** left the machine in `running` is still a wedged spawn.
+
+The corollary a future change must respect: anything else added after `shed.Run` returns inherits the same property. A post-run phase is invisible to the run lock, so it must not be relied on for mutual exclusion — a second `lyx loom run` started during a reflection will see a free lock and spawn a second driver.
+
 ## Relationship to the shipped `selfreport` module
 
 This does not replace `lyx selfreport create` (shipped) — it adds an automatic trigger on top of the same primitive: today, manual only; this adds the aggregation/reflection agent as a second automatic trigger (alongside Tier 1's direct Go trigger).

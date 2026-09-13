@@ -22,6 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -174,9 +176,22 @@ Example:
 					return true, nil
 				}
 				alive := func() bool { return proc.IsAlive(childPID) }
+				// halted reads the machine's own persisted state, which is the only thing that can
+				// still separate "wedged spawn" from "pass finished, driver still doing post-run
+				// bookkeeping" now that the run lock is released before the friction reflection
+				// runs. A read failure, and a status file that is not there at all, both report
+				// false rather than true: neither is evidence the machine halted, so neither may
+				// shortcut the handshake -- the deadline stays the arbiter in that case.
+				halted := func() bool {
+					st, found, readErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+					if readErr != nil || !found {
+						return false
+					}
+					return st.State != shedengine.StateRunning
+				}
 				wait := func() { time.Sleep(bootstrapHandshakePollInterval) }
 
-				result, err := awaitRunLock(lockHeld, alive, wait, bootstrapHandshakeAttempts)
+				result, err := awaitRunLock(lockHeld, alive, halted, wait, bootstrapHandshakeAttempts)
 				if err != nil {
 					_ = bootstrapLock.Release()
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))
