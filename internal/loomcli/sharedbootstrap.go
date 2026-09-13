@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
@@ -122,6 +123,27 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	}
 
 	return parent, bootstrapStageNone, nil
+}
+
+// ensureStatusLockDir creates the parent directory of the status file's advisory lock, which the
+// read-only query verbs must do before touching internal/state at all.
+//
+// The two paths live in different trees: the status file is durable, under `_lyx`, while its lock is
+// ephemeral, under `.lyx`. internal/lock opens a lock file with O_CREATE and never creates a parent,
+// which is why shedengine.preflight MkdirAlls both lock parents on every Run and Step. Nothing
+// creates the ephemeral directory before a bootstrap has run, so `status` and `pause` against a
+// never-bootstrapped pair used to fail inside lock acquisition -- before the `found` value each of
+// them branches on was ever produced -- and reported an internal "no such file or directory" path
+// instead of their own remedy. Both verbs' carefully-worded "no status file ... run \"lyx loom
+// run\"" messages were unreachable on the one path they exist for.
+//
+// This creates a directory and reads nothing, so it cannot resurrect a deleted status file or mask a
+// genuine absence: `found` still answers that question, and now actually gets asked.
+func ensureStatusLockDir(statusLockPath string) error {
+	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+		return fmt.Errorf("loom: create the status lock's directory %s: %w", filepath.Dir(statusLockPath), err)
+	}
+	return nil
 }
 
 // ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after

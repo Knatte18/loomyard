@@ -20,8 +20,12 @@ That is a second, independent watching layer, not a substitute for this loop.
 ## The pre-loop baseline
 
 Before the first step, take one `lyx loom status` read and record its `current_producer` and `history_length` as the baseline.
-This baseline always exists, and it exists for one reason: the interrupted-step branch later in this loop compares against it.
+It exists for one reason: the interrupted-step branch later in this loop compares against it.
 The very first step of a session — or the first step after an operator re-invokes past the iteration cap — has no prior step envelope to compare with, so the baseline is what makes that comparison possible.
+
+On a task that has never been bootstrapped there is no status file yet, and this read returns an error envelope naming `lyx loom run` as the remedy.
+That is not a failure to report: record an empty baseline and proceed to the first step, which bootstraps the task itself.
+Treat any *other* status error as a hand-back, the same as an error envelope from a step.
 
 ## How to invoke a step
 
