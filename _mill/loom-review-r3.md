@@ -28,6 +28,48 @@ Read in full: `manifest/designs/loom-step.md`, `self-report-tier1.md`, `self-rep
 
 No static-read defect found yet in this pass beyond items noted under Findings below (see there). The code is heavily self-documenting about prior crucible-round fixes (F-0..F-7, R2-F1..F4) with explicit "reproduced live in crucible round N" comments at each hardened seam — consistent with two prior rounds' worth of hardening. Moving to live driving next.
 
+### Live driving — fixture setup
+
+Built a fresh disposable fixture hub (NOT the operator's `lyx-test-HUB`): two brand-new private GitHub repos under my own account, `Knatte18/lyx-crucible-r3` (warp, `--add-readme`) and `Knatte18/lyx-crucible-r3-weft` (weft, empty). Wired via:
+
+```
+lyx fabric clone https://github.com/Knatte18/lyx-crucible-r3-weft.git https://github.com/Knatte18/lyx-crucible-r3.git
+```
+
+into a fresh scratch directory (`r3fixture/`), separate from an apparent PRIOR round's leftover scratch files found already present in this same session's scratchpad path (timestamps ~15:07-16:12 today, several hours before this round started at 18:29 — `.go.bak` files, `walk.sh`, `setup-bares.sh`, `steps/`, `live/`, etc.). Per the clean-room constraint I did not open or read any of those files' contents; I used a freshly-named `r3fixture/` subdirectory instead and left the older files untouched (noting this scratchpad-reuse-across-rounds as a minor process observation, not a loom code defect, in Docs & operability findings below).
+
+Deployed the dev binary (`./deploy-dev`) and overrode config for a cheap dummy task:
+- `loom.yaml`: `discussion`/`plan`/`review` = `sonnet[effort=low]`, `friction` = `haiku[effort=low]` (Tier 2 left ON deliberately, to pursue the RunDone-reflection and spontaneous-note items), `selfreport: false` (mandatory per the cost declaration — never re-enabled).
+- `webster.yaml`: `master`/`recovery` = `sonnet[effort=low]`.
+- `landing.yaml`: `conflict` = `sonnet[effort=low]`.
+- `require_pr_to_base: ["main"]` left at its shipped default so `Publish` genuinely opens a PR against the real GitHub-hosted warp repo.
+
+Created board task `greet-lib` (a trivial "add a Go greet package + test" scope, chosen to keep every phase's real LLM session short) and `lyx fabric add greet-lib`.
+
+Drove the WHOLE run via repeated `lyx loom step` invocations (never `lyx loom run`'s tmux-attach — that needs a real controlling TTY this Bash-tool session doesn't have; `step` needs no terminal handover and is itself one of the two verbs under review, so this doubles as `step`'s own primary exercise). Walked, one real step at a time: `Preflight` -> `Loom-Preflight` -> `Discussion-Write` -> `Discussion-Validate` -> `Discussion-Bouncer` (seed) -> `Discussion-Burler` (round 1) -> `Discussion-Bouncer` (judge, APPROVED round 1) -> `Plan-Write` -> `Plan-Validate` -> `Plan-Bouncer` (seed) -> `Plan-Burler` (round 1) -> `Plan-Bouncer` (judge — see interrupted-repro note below, APPROVED round 1) -> `Plan-Revalidate` -> `Batchifier` -> `Webster` (implementer black box, produced a working `greet/greet.go` + `greet/greet_test.go` + `go.mod`, `go test ./...` green) -> `Webster-Bouncer` (seed) -> `Webster-Burler` (round 1 — see interrupted-repro finding below) -> ...(continuing).
+
+Every envelope observed so far carries exactly the documented ten keys, `continue` tracks `state == "running"` correctly at every step, `next_interrupt_policy` matches `internal/loomshed.InterruptPolicies` at every row including flipping to `"handback"` exactly at `Webster` and back to `"reinvoke"` immediately after. No scope/envelope defect found in this walk.
+
+### Interrupted-and-resumed repro #1 — Plan-Bouncer judge-pass, killed AFTER round settle but BEFORE the outer status persist (independent, real kill)
+
+Attempted a judge-pass mid-agent kill on `Plan-Bouncer`'s round-1 judge call. The judge call completed (verdict/ledger/focus files fully written) faster than my poll-and-kill loop could react — `kill -9` landed on the `lyx loom step` process AFTER the Bouncer's own `settle()` had written `round-1-bouncer-verdict.md`/`round-1-bouncer-ledger.md`/`round-2-focus.md` to disk, but evidently before `shedengine`'s own status-file persist/commit completed (`_lyx/loom/status.json` still read `current_producer: Plan-Bouncer` immediately after the kill, not yet advanced to `Plan-Revalidate`).
+
+Re-invoking `lyx loom step` correctly re-entered `Plan-Bouncer`, found round 1 already `judged` with an APPROVED verdict on disk, and replayed `settle()` — envelope reported `outcome: done`, `next: Plan-Revalidate`. No re-spawn, no lost state, no duplicate side effect. (Initially misread `round-2-focus.md`'s presence as evidence of a BLOCKING verdict; re-checking `bouncer.go`'s `judgeOutputs`/prompt-fill code confirmed the judge's OWN three declared `OutputFiles` always include round n+1's focus path regardless of verdict, so its mere presence proves nothing about which way the verdict went — this was my own mis-read, not a code defect, corrected before drawing any conclusion.) This exercises the "crash between round-settle and outer status persist" path on the Plan segment specifically, a real, valid, independently-reproduced crash-resume, just a later window than a genuine mid-LLM-work kill.
+
+### Interrupted-and-resumed repro #2 — Webster-Burler round 1, killed genuinely mid-agent (CONFIRMED, closes a genuinely-open item)
+
+This is the one the "High-yield focus" list specifically asked for: a `*-Burler` round on a segment OTHER than Discussion, killed while the real agent was still actively working (not merely between its own completion and the outer persist).
+
+Procedure: launched `lyx loom step` for `Webster-Burler` round 1 in the background; within ~2s confirmed via `ps` that a real `claude` subprocess had spawned in its own tmux pane (`--session-id 403fe93f-70c9-4fea-b339-ecd593f92383`, role burler round 1) while neither `round-1-review.md` nor `round-1-fixer-report.md` existed yet (only the pre-existing `round-1-focus.md` from the seed pass). `kill -9`'d the `lyx loom step` PID directly (confirmed gone via `ps -p`), while confirming the `claude` agent PID was still alive and running.
+
+Re-invoked `lyx loom step`. Observed in the driver's own log:
+```
+shuttle: run attached ... strandGUID=d21431e... sessionID=403fe93f-70c9-4fea-b339-ecd593f92383
+shuttle: run finished ... outcome=done cleanedUp=true
+shedadapters: attached to a live burler round instead of respawning ... producer=Webster-Burler engine=burler round=1 sessionID=403fe93f-70c9-4fea-b339-ecd593f92383
+```
+Confirmed via `ps` immediately after re-invoking that only ONE `claude` process carried that session/role (no second Webster-Burler `claude` process ever appeared) — no double-spawn, no two agents racing to write one review, no two sessions holding commit authority over the branch (the concern `NewBurlerProducer`'s own doc comment names explicitly). Final envelope: `outcome: stuck` (routine Burler-to-Bouncer hand-off), `next: Webster-Bouncer`, `history_length: 17`. CONFIRMED, independently reproduced, on the exact code path (`BurlerProducer.probeLiveRound` / `Shuttle.Attach`) neither prior round exercised on a non-Discussion segment.
+
 ## Findings (provisional — recorded as spotted, ranked at the end)
 
 (populated incrementally below as each is spotted)
