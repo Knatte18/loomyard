@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabricengine-tests
+phase: approved-peripheral-tests
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-09-13T11:24:40Z'
 approved-core-constants  '2026-09-13T11:30:10Z'
 approved-production-prose  '2026-09-13T11:32:55Z'
 approved-fabricengine-tests  '2026-09-13T11:36:05Z'
+approved-peripheral-tests  '2026-09-13T11:41:44Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     commit_sha: 538464a4e7164ac3fa9c6f55dff296ed38eae76c
     verify_baseline_failures: []
   - name: peripheral-tests
-    state: running
+    state: approved
     implementer_session: 73726524-dce1-4295-8250-6d1c31a6a536
     start_sha: 290ad8e39386f0dea6a9bab322c980ff8d451190
+    commit_sha: 7e5768d37f74e84588d122a8ea3a0bb1f56b5d99
     verify_baseline_failures: []
   - name: sandbox-fixture
     state: pending
