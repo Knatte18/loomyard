@@ -27,7 +27,7 @@ import (
 const (
 	warpURL = "https://github.com/Knatte18/lyx-test"
 	weftURL = "https://github.com/Knatte18/lyx-test-weft"
-	hubName = "lyx-test-HUB"
+	hubName = "lyx-test-LYXHUB"
 )
 
 // cloneRun is a testability seam for executing the clone command.

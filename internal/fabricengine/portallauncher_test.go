@@ -42,7 +42,7 @@ func wantMenuLauncherName() string {
 func TestPortalsDirAndLaunchersDir(t *testing.T) {
 	t.Parallel()
 
-	hub := filepath.Join("repos", "loomyard-HUB")
+	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	l := &lyxcwd.Location{HubPath: hub, WorktreeName: "loomyard", AnchorRel: "."}
 	slug := "test-wt"
 
@@ -69,7 +69,7 @@ func TestPortalsDirAndLaunchersDir(t *testing.T) {
 func TestMirroredPortalLauncherMethods(t *testing.T) {
 	t.Parallel()
 
-	hub := filepath.Join("repos", "loomyard-HUB")
+	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	worktreeRoot := filepath.Join(hub, "loomyard")
 
 	t.Run("PortalLink", func(t *testing.T) {

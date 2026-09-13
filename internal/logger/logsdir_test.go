@@ -15,7 +15,7 @@ import (
 
 func TestLogsDir_UnanchoredEqualsWorktreePathBased(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    ".",
 	}
@@ -28,7 +28,7 @@ func TestLogsDir_UnanchoredEqualsWorktreePathBased(t *testing.T) {
 
 func TestLogsDir_SubpathAnchoredDiffersFromWorktreePathBased(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}

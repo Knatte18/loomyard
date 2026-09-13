@@ -57,7 +57,7 @@ func anchoringFixture(hubPath, worktreeName, anchorRel string) *lyxcwd.Location 
 // TestConstructorAnchoring_Unanchored asserts every relocated constructor at AnchorRel == "."
 // against a plain filepath.Join computed independently here, for both anchoring groups.
 func TestConstructorAnchoring_Unanchored(t *testing.T) {
-	hub := filepath.Join("home", "user", "repo-HUB")
+	hub := filepath.Join("home", "user", "repo-LYXHUB")
 	l := anchoringFixture(hub, "repo", ".")
 
 	worktree := l.WorktreePath()
@@ -110,7 +110,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 // constructor -- the _lyx-durable group and the .lyx group alike -- moves down by AnchorRel, while
 // HubLogsDir stays byte-identical to its unanchored-fixture value.
 func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
-	hub := filepath.Join("home", "user", "repo-HUB")
+	hub := filepath.Join("home", "user", "repo-LYXHUB")
 	anchorRel := "backend"
 	l := anchoringFixture(hub, "repo", anchorRel)
 

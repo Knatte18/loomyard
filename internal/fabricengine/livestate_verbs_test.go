@@ -57,7 +57,7 @@
 // pathOwnershipFabricHub predicate is that SAME looksLikeHub call (destroy.go:346-350), so a
 // RefusedByGate(CheckOwnership) expectation would fail against a correct binary.
 // This column therefore uses RefusedBefore("is not a fabric hub") and drives exactly two targets: a
-// <derived>-HUB-named directory that is not a hub (refused at the pre-flight, contents surviving —
+// <derived>-LYXHUB-named directory that is not a hub (refused at the pre-flight, contents surviving —
 // R4's `clone --reset` defect), and a real hub (torn down and rebuilt through fabriccli.CloneAndWire,
 // the positive case proving the column is not trivially always-refusing).
 //
@@ -1099,7 +1099,7 @@ func pullCase() VerbCase {
 }
 
 // cloneHubResetNonHubCase builds the CloneHub{Reset: true} column's non-hub target: an operator
-// directory whose name happens to match the derived <name>-HUB path is refused at resetHub's own
+// directory whose name happens to match the derived <name>-LYXHUB path is refused at resetHub's own
 // pre-flight, contents fully surviving — R4's `clone --reset` defect.
 func cloneHubResetNonHubCase() VerbCase {
 	return VerbCase{

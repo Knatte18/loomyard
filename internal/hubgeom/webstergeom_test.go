@@ -27,7 +27,7 @@ func TestWebsterGeometry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
-			hub := filepath.Join(root, "some-hub-HUB")
+			hub := filepath.Join(root, "some-hub-LYXHUB")
 			worktreeName := "some-worktree"
 			worktreeRoot := filepath.Join(hub, worktreeName)
 			anchorPath := filepath.Join(worktreeRoot, tt.anchorRel)

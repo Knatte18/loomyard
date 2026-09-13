@@ -35,7 +35,7 @@ Before starting a session:
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-HUB/lyx-test`).
+**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-LYXHUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**

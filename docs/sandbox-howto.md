@@ -67,7 +67,7 @@ Once the suite session starts, the fingerprint header's `Source: dev` line is th
 
 ### 3. Build the Hub (first time, or when you want a clean slate)
 
-**First time** — clone the Hub to `C:\Code\lyx-test-HUB`:
+**First time** — clone the Hub to `C:\Code\lyx-test-LYXHUB`:
 
 ```cmd
 sandbox/win/build.cmd

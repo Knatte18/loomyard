@@ -251,7 +251,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
-		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_lyx", ".lyx":
+		case "_board", "-weft", "-LYXHUB", "_portals", "_launchers", "_lyx", ".lyx":
 			return true
 		}
 		return false
@@ -265,15 +265,15 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// batch that moved its declaration.
 	//
 	geometryTokenOwners := map[string][]string{
-		// "_board" and "-HUB" are dual-owned: internal/lyxcwd keeps a private
+		// "_board" and "-LYXHUB" are dual-owned: internal/lyxcwd keeps a private
 		// boardDir/boardDirName pair (readRecordedAnchor's sole remaining
 		// reason to know the name) and a private hubSuffix const
 		// (Location.RepoName derives from it), while internal/fabricengine
 		// owns the exported BoardDir/HubPath constructors every other
 		// caller uses. The duplication is sanctioned by this map, not a leak.
-		"_board": {"internal/lyxcwd", "internal/fabricengine"},
-		"-weft":  {"internal/weftname"},
-		"-HUB":   {"internal/lyxcwd", "internal/fabricengine"},
+		"_board":  {"internal/lyxcwd", "internal/fabricengine"},
+		"-weft":   {"internal/weftname"},
+		"-LYXHUB": {"internal/lyxcwd", "internal/fabricengine"},
 		// "_portals" and "_launchers" are fabric's own illusion-maintenance
 		// plumbing: the portal/launcher path surface relocated to
 		// internal/fabricengine in this batch.
@@ -474,8 +474,8 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 				src:  `package p; var _ = slug + "-weft"`,
 			},
 			{
-				name: "const_HUB",
-				src:  `package p; const s = "-HUB"`,
+				name: "const_LYXHUB",
+				src:  `package p; const s = "-LYXHUB"`,
 			},
 		}
 		for _, tt := range positives {

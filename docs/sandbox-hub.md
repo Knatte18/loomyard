@@ -18,18 +18,33 @@ The Hub consists of two dedicated GitHub repositories and a local working direct
 
 ## Hub Location and Structure
 
-The Hub is cloned to `C:\Code\lyx-test-HUB` on Windows, or `$HOME/Code/lyx-test-HUB` on POSIX (the warp basename `lyx-test` + `-HUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveWarpName()`).
+The Hub is cloned to `C:\Code\lyx-test-LYXHUB` on Windows, or `$HOME/Code/lyx-test-LYXHUB` on POSIX (the warp basename `lyx-test` + `-LYXHUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveWarpName()`).
 
 **Important:** The Hub lives **outside `C:\Code\loomyard\`**, so it is never mistaken for part of Loomyard itself and stays separate from the orchestrator codebase.
 
 The Hub directory structure mirrors the lyx topology model:
 
 ```
-C:\Code\lyx-test-HUB/
+C:\Code\lyx-test-LYXHUB/
   ├── lyx-test/           (warp repo worktree)
   ├── lyx-test-weft/      (weft repo worktree)
   └── _board/             (board repo with task store)
 ```
+
+### Disposing of a pre-rename container
+
+A Hub container created before the `-LYXHUB` rename still works.
+Discovery is structural, so it resolves normally;
+the only degradation is the display name derived from its basename.
+
+It is never renamed in place.
+The portal links and launcher scripts inside it were materialised against its absolute path, and the tmux socket key is derived from that same absolute path, so moving the directory breaks a working container rather than migrating it.
+
+The `-reset` flag does not reach it.
+Both the collision guard and the reset teardown key on the container path the code derives, which now carries the new suffix, so a re-clone neither refuses nor removes the old directory — it silently creates a second, parallel container for the same warp, with its own board, its own links, and its own tmux socket, while the old one keeps running.
+
+The procedure is therefore, in order: push or abandon any outstanding work inside the old container, stop its reed server with `lyx reed down`, remove the old directory by hand, then run `lyx fabric clone` to create the new one.
+The `-reset` flag is not the tool for this.
 
 ## Prerequisites
 
@@ -63,7 +78,7 @@ sandbox/posix/build.sh
 
 This command:
 1. Resolves the parent directory (`C:\Code`) from the launcher.
-2. Computes the Hub path as `C:\Code\lyx-test-HUB`.
+2. Computes the Hub path as `C:\Code\lyx-test-LYXHUB`.
 3. Checks if the Hub already exists;
    if not, proceeds to clone.
 4. Runs `lyx fabric clone https://github.com/Knatte18/lyx-test-weft https://github.com/Knatte18/lyx-test` with the parent directory set to `C:\Code`.
@@ -83,7 +98,7 @@ sandbox/posix/build.sh -reset
 ```
 
 The `-reset` flag:
-1. Removes the existing Hub directory at `C:\Code\lyx-test-HUB`.
+1. Removes the existing Hub directory at `C:\Code\lyx-test-LYXHUB`.
 2. Clones a fresh Hub as above.
 
 **Caution:** `-reset` destroys the entire Hub directory, including any local changes or uncommitted work — back up first.
@@ -109,12 +124,12 @@ sandbox/posix/core-suite.sh
 
 This command, run from the lyx repo directory:
 
-1. Locates the Hub warp repo at `C:\Code\lyx-test-HUB\lyx-test`.
+1. Locates the Hub warp repo at `C:\Code\lyx-test-LYXHUB\lyx-test`.
 2. Resolves the `lyx` binary under test (derived `.dev-bin/lyx` first, else PATH as a fallback) and fingerprints it (absolute path, size, modtime, SHA256 prefix,
    and a `Source: dev`/`Source: prod` marker recording which one was picked).
 3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub warp repo, prepending the fingerprint block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`).
    Any previous copy is overwritten so every session starts from a clean slate.
-4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the copied file does not show up as an untracked change inside the warp repo.
+4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-LYXHUB/lyx-test/.git/info/exclude` so the copied file does not show up as an untracked change inside the warp repo.
 5. Launches an interactive `claude --dangerously-skip-permissions` session with the warp repo as the working directory and a single instruction: `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
 
 The agent works entirely as a black box: it sees only `lyx` on PATH and the copied scheme, and must not access the lyx source tree.
@@ -152,7 +167,7 @@ sandbox/posix/fetch.sh
 
 This command:
 
-1. Locates the Hub warp repo at `C:\Code\lyx-test-HUB\lyx-test`.
+1. Locates the Hub warp repo at `C:\Code\lyx-test-LYXHUB\lyx-test`.
 2. Re-fingerprints the `lyx.exe` currently on PATH (for the normal run-then-fetch flow this is the same binary the suite fingerprinted).
 3. Reads `sandbox-report.json` from the warp repo, validates it against the shared sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
 

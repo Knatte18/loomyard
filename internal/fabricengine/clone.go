@@ -67,7 +67,7 @@ type CloneOptions struct {
 // It also embeds MutationRecord, which carries the mutation record accumulated over the call.
 type CloneResult struct {
 	MutationRecord
-	HubPath  string // HubPath is the created <name>-HUB container directory.
+	HubPath  string // HubPath is the created <name>-LYXHUB container directory.
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
 	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.
 	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
@@ -591,7 +591,7 @@ func refuseUncheckedOutWarpClone(warpWorktreePath, warpURL string) error {
 // warp URL recorded on the weft's own `.lyx-warp` binding in the one-argument form, where the
 // operator never sees the name of the directory being deleted at all.
 // An unconditional RemoveAll on a derived path therefore destroyed any directory that merely
-// happened to be called `<name>-HUB`, user content and all, on a flag whose help promises to
+// happened to be called `<name>-LYXHUB`, user content and all, on a flag whose help promises to
 // "remove an existing hub".
 //
 // cwd is the operator-named parent CloneHub normalised at its top: resetHub has no *lyxcwd.Location

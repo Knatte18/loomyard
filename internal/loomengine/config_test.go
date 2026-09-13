@@ -282,7 +282,7 @@ func TestLoomStatusRel(t *testing.T) {
 // value byte-identical to a plain AnchorPath()/LoomStatusRel() join.
 func TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
@@ -307,7 +307,7 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := &lyxcwd.Location{
-				HubPath:      filepath.Join("home", "user", "repo-HUB"),
+				HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 				WorktreeName: "repo",
 				AnchorRel:    tt.anchorRel,
 			}
@@ -340,7 +340,7 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 // four never drift apart.
 func TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 	}
 

@@ -34,7 +34,7 @@ The hub warp repo is initialized at its root, so the agent runs the entire sessi
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's warp repo (`lyx-test-HUB/lyx-test`).
+**The agent under test works exclusively inside the Hub's warp repo (`lyx-test-LYXHUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
@@ -302,7 +302,7 @@ All three must report each entry `"unowned": true` with `"removed": false` and a
 `--force` must NOT get through: force answers "discard this uncommitted work", never "this directory is mine". (Historical: `prune --apply` deleted both, reporting `removed: true`, `ok: true`, exit 0, with no `--force` and no warning -- `git worktree remove` refusing the path was read as licence to `os.RemoveAll` it.)
 Also confirm the gate refuses only what is not fabric's: make a genuine stale pair (delete a `<slug>/` warp worktree directory by hand, leaving its registration) and check `prune --apply` still removes its weft side.
 
-Then `clone --reset`. In an empty directory create `<name>-HUB/important/data.txt`, where `<name>` is the basename your warp URL derives to, and run `lyx fabric clone --reset <weft-url> <warp-url>` there.
+Then `clone --reset`. In an empty directory create `<name>-LYXHUB/important/data.txt`, where `<name>` is the basename your warp URL derives to, and run `lyx fabric clone --reset <weft-url> <warp-url>` there.
 It must be **refused**, naming the path and saying it is not a fabric hub, and `data.txt` must survive.
 The hub name is derived rather than typed -- in the one-argument form it comes from the binding recorded on the weft, so the operator never even sees the name being deleted.
 Then re-run `--reset` against a real hub and confirm the idempotent re-clone still works.

@@ -28,7 +28,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
 
 	want := &ReedState{
-		Socket:      "lyx-loomyard-HUB-abcd1234",
+		Socket:      "lyx-loomyard-LYXHUB-abcd1234",
 		Session:     "internal-reed",
 		StrippedEnv: []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID"},
 		Strands: []Strand{

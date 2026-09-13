@@ -31,9 +31,9 @@ func TestWeftSiblingPath(t *testing.T) {
 		},
 		{
 			name: "nested hub",
-			hub:  "/repos/loomyard-HUB",
+			hub:  "/repos/loomyard-LYXHUB",
 			slug: "main",
-			want: filepath.Join("/repos/loomyard-HUB", "main"+weftname.Suffix),
+			want: filepath.Join("/repos/loomyard-LYXHUB", "main"+weftname.Suffix),
 		},
 	}
 

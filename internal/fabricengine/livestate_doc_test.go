@@ -199,7 +199,7 @@
 //     the cell failed the same way, the offending paths additionally including the clone's own ".git"
 //     directory ("verb-prune-structural-orphan-weft/.git: removed (was dir)").
 //   - (8) the Reset column's non-hub target x CloneHub{Reset} x "." -- R4, `clone --reset` destroyed a
-//     non-hub `<derived>-HUB`. Neutered clone.go's resetHub own pre-flight (the `if !looksLikeHub(hubPath)`
+//     non-hub `<derived>-LYXHUB`. Neutered clone.go's resetHub own pre-flight (the `if !looksLikeHub(hubPath)`
 //     guard, short-circuited to never fire). Ran `-run 'TestCloneHubReset/\./CloneHubReset/NonHubTarget$'`:
 //     the cell failed with "expected pre-flight refusal containing \"is not a fabric hub\"; got err =
 //     reset: remove hub at ...: refusing to reset hub: ownership check failed for ...: ... does not look

@@ -187,7 +187,7 @@ func TestRequireWarpWorktree(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := &lyxcwd.Location{HubPath: filepath.Join("/hub", "myrepo-HUB"), WorktreeName: tt.worktreeName, AnchorRel: "."}
+			l := &lyxcwd.Location{HubPath: filepath.Join("/hub", "myrepo-LYXHUB"), WorktreeName: tt.worktreeName, AnchorRel: "."}
 			err := fabricengine.RequireWarpWorktree(l)
 			if tt.wantErr {
 				if err == nil {

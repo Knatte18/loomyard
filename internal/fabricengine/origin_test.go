@@ -37,7 +37,7 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 // OriginRecordRel at both AnchorRel == "." and a subpath anchor, proving the subpath case moves
 // the record down by the anchor.
 func TestOriginRecordPath_BothAnchors(t *testing.T) {
-	hub := filepath.Join("repos", "loomyard-HUB")
+	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	worktreeRoot := filepath.Join(hub, "loomyard")
 
 	tests := []struct {
@@ -63,7 +63,7 @@ func TestOriginRecordPath_BothAnchors(t *testing.T) {
 // AnchorRel and OriginRecordRel at both AnchorRel == "." and a subpath anchor, asserting the anchor
 // segment is present in the subpath case.
 func TestOriginRecordPathFor_BothAnchors(t *testing.T) {
-	hub := filepath.Join("repos", "loomyard-HUB")
+	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	worktreeRoot := filepath.Join(hub, "loomyard")
 	const slug = "test-wt"
 
@@ -92,7 +92,7 @@ func TestOriginRecordPathFor_BothAnchors(t *testing.T) {
 // TestOriginRecordRel_IsTheSharedSuffix asserts that both OriginRecordPath and OriginRecordPathFor
 // end in OriginRecordRel(), the anchor-relative form both accessors are built from.
 func TestOriginRecordRel_IsTheSharedSuffix(t *testing.T) {
-	hub := filepath.Join("repos", "loomyard-HUB")
+	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	worktreeRoot := filepath.Join(hub, "loomyard")
 	const slug = "test-wt"
 	l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")

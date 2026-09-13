@@ -107,7 +107,7 @@ That follow-up pulls `logger` initialization rework in with it and is out of sco
 **`TestEnforcement` (cwd/root primitives ban):** Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The scan uses a substring check on the raw file bytes (after blanking comments) and fails the build if either token appears in any non-test `.go` file outside the allowlist.
 
-**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_lyx`, `.lyx`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
+**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_board`, `-weft`, `-LYXHUB`, `_portals`, `_launchers`, `_lyx`, `.lyx`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
 Path-construction contexts are:
 
 - An argument to a `filepath.Join(...)` call.

@@ -15,7 +15,7 @@ import (
 
 func TestDiscussionDir(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		// AnchorRel deliberately differs from "." to prove the accessor
 		// follows the anchored subpath, not the bare worktree root.
@@ -30,7 +30,7 @@ func TestDiscussionDir(t *testing.T) {
 
 func TestDiscussionDecisionRecord(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
@@ -43,7 +43,7 @@ func TestDiscussionDecisionRecord(t *testing.T) {
 
 func TestDiscussionSupportLog(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
@@ -56,7 +56,7 @@ func TestDiscussionSupportLog(t *testing.T) {
 
 func TestDiscussionDirRel(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		// AnchorRel deliberately differs from "." to prove the accessor's
 		// relative value composes correctly against DiscussionDir's absolute
@@ -76,7 +76,7 @@ func TestDiscussionDirRel(t *testing.T) {
 
 func TestDiscussionDir_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		AnchorRel:    ".",
 	}
