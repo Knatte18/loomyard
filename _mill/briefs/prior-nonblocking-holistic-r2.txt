@@ -1,0 +1,1 @@
+- shorthand yaml example placed beside the wrong existing line: Location: contracts/specs/llm-model-spec.md:15-19. Issue: Card 5 asks for the new shorthand example line to sit beside the existing explicit-effort reviewer line (reviewer: opus[effort=max]), but the added line (implementer: sonnet[high]) was placed beside the implementer: sonnet[effort=high] line instead.

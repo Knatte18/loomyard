@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-bracket-grammar  '2026-09-13T10:55:32Z'
 holistic-reviewing  '2026-09-13T10:56:05Z'
 holistic-fixing  '2026-09-13T11:00:14Z'
 holistic-reviewing  '2026-09-13T11:02:37Z'
+holistic-approved  '2026-09-13T11:05:19Z'
 ```
 
 ## Batches
