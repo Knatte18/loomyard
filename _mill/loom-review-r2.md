@@ -76,5 +76,16 @@ Re-invoked `lyx loom step -v`. Observed, in order, on stderr:
 
 Post-state: only the `loom-status` strand remains (no orphan pane), exactly one `round-1-focus.md`, shuttle run dir finalized. **F-4's fix generalizes to `Plan-Bouncer` — same probe, same no-abandon outcome. Residual item 1 CLOSED.**
 
-- `Plan-Burler` round 1: stuck→`Plan-Bouncer`, both round-1 artifacts written (history 15 next). No friction note from any producer so far.
+- `Plan-Burler` round 1: stuck→`Plan-Bouncer`, both round-1 artifacts written (history 15). `Plan-Bouncer` judge: APPROVED → done, ledger pointer, next `Plan-Revalidate` (history 16); the judge also wrote round-2-focus.md as its third declared output.
+- Pause-via-step verified: `lyx loom pause` + one `step` returned the documented no-producer envelope (`producer:""`, `outcome:""`, `continue:false`, `state:paused`) and cleared the flag into the paused persist.
+
+### Live repro — F-0's `halted` predicate pressed harder (residual item 2)
+
+Procedure (`.scratch/repro-f0-halted.sh`): with the status file reading `paused` (a genuine old non-running state) and the pause flag re-armed, invoked `lyx loom run` in background and SIGSTOP'd the freshly spawned detached `lyx loom drive` driver the instant `pgrep` saw it — a driver alive, wedged BEFORE any persist, before the run lock, before anything.
+
+Observed: the bootstrap's tmux attach fired at 16:45:49.039 — ~6ms BEFORE the SIGSTOP even landed (.045). The `halted` predicate returned true on the handshake's very first 100ms poll (old state ≠ running), so on ANY resume-from-halt the handshake completes before the driver has done anything at all: wedge detection is structurally zero on the resume path, and the "driver did not take the run lock" refusal is unreachable there.
+
+Assessment — genuinely fine, with this repro as proof, for three reasons: (1) no duplicate-driver hazard — the run lock still arbitrates (a later `run` spawns a second driver, the wedged one gets ErrShedBusy when continued); (2) it fails toward the attach, putting the operator in the one session where the stall is visible (the status pane shows a state that never changes); (3) the alternative — waiting out the budget on every fast-halt resume — is the exact defect F-0 fixed, a far more common failure. The one cheap improvement is P-2's missing Info breadcrumb on the halted disposition, which this repro also demonstrated: the run's own output contains zero evidence which handshake path was taken. **Residual item 2 CLOSED as fine-by-design, with P-2 (log line) as the follow-up fix.**
+
+Cleanup: SIGCONT'd the driver; it consumed the re-armed pause flag, persisted `paused` (flag cleared), exited cleanly (`outcome: paused`, `friction: "skipped"` — also live-verifying that RunPaused never triggers a reflection). Zero stray drivers.
 - Status-strand print-on-change verified live via `tmux capture-pane` on the `loom-status` pane: exactly one line per transition (`loom running | now X | last Y → outcome`), no per-poll ticker flood — the S8/status contract holds under a real step walk.
