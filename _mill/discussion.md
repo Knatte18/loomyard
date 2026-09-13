@@ -63,6 +63,7 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 - A `SpecsDir` derivation in both `internal/fabricengine` (hub) and `internal/standalonegeom` (standalone), mirroring the existing `StencilsDir` pair.
 - Seeding/refreshing the specs directory in the same once-per-process pre-run pass that already reconciles stencils, in both hub and standalone wiring.
 - A `{{.specs_dir}}` stencil marker, plumbed from each affected producer's own render call site, and rewriting the eight normative citations to use it.
+- A shared rubric-render helper that fills `specs_dir` into a rubric at read time, routed through by all four rubric-value sites, plus the matching relaxation of `rubric_test.go`'s no-marker assertions to a one-marker allowlist (see `rubric-marker-allowlist`).
 - Rewording/removing the five non-normative citations per the audit table.
 - A new enforcement test in `package stencils` that fails on any newly-introduced bare cross-repo citation in a stencil body.
 - `CONSTRAINTS.md` update to the Stencil Ownership Invariant (the `//go:embed` clause), plus the module docs the change touches.
@@ -161,6 +162,20 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   Because deployed specs reuse `ModeFor`/`ModeDev` unchanged, they inherit exactly the asymmetry D-2 describes; solving it here would mean solving it for stencils too, which is a strictly larger, separate task.
 - **Rejected:** folding D-2 in (scope explosion; changes `stencilstore` policy this task deliberately leaves alone).
 
+### rubric-marker-allowlist
+
+- **Decision:** `{{.specs_dir}}` **is** placed in the two rubric bodies, and the existing "a rubric contains no stencil marker" constraint is deliberately relaxed to a one-marker allowlist: a rubric may contain `{{.specs_dir}}` and nothing else.
+  The substitution happens at **rubric-read time**, via one shared helper that every rubric-value site routes through: the helper reads the rubric with `stencilstore.Read`, applies `stencil.StripLeadingComment` (as all sites already do), then runs `stencil.Fill` over the stripped rubric bytes with `specs_dir` as its sole value, and only the result is assigned as the `rubric` marker value.
+- **Rationale:** The rubric is never itself executed as a template — `stencil.Fill`'s required-marker check only inspects top-level markers of the template actually being executed, so a `{{.specs_dir}}` sitting inside a *value* is invisible to it and would ship literally into the judge prompt.
+  Filling the rubric as its own single-marker template at read time closes that hole and, because `Fill` errors on an absent or empty required marker, gives `specs_dir` the same loud-early-failure property `specs-dir-marker` requires everywhere else.
+  Doing it in one helper rather than at each site is what keeps the four call sites from drifting.
+- **Rejected:** moving the citation out of the rubric and into the Bouncer/Burler templates, which *are* filled (avoids touching the constraint entirely, but separates a mechanical check from the reference it is checked against — the citation is semantically part of the rubric's own check text, and splitting them is how the next author loses the connection);
+  a non-`{{.}}` placeholder token substituted by `strings.ReplaceAll` (invents a second templating syntax alongside `stencil`, and silently no-ops on a typo instead of erroring);
+  a bare `strings.ReplaceAll` on the `{{.specs_dir}}` literal (same silent-no-op-on-typo failure mode, and forfeits `Fill`'s empty-value guard).
+- **Collateral this decision creates, which the plan must carry:** `contracts/stencils/rubric_test.go`'s three `strings.Contains(text, "{{.")` assertions (lines 54, 98, 143) and the file's own header comment all encode the no-marker rule and must be rewritten to the allowlist form — asserting the *only* marker present is `specs_dir` — rather than deleted.
+  The four rubric-value sites are `internal/shedadapters/bouncer.go`'s seed pass (~line 470) and judge pass (~line 566), `internal/shedrecipe/entries_burler.go:234`, and `internal/burlercli/run.go:63` (which takes `parsed.Rubric` from a recipe, so the fill must happen at or above it).
+  `bouncer.go:476`'s existing comment explains why the `StripLeadingComment` call there is load-bearing — the new helper must preserve that behaviour, not replace it.
+
 ### registered-names
 
 - **Decision:** Registered names are `loom-plan-spec` and `loom-plan-card-format`, so `stencilstore.RelPath` places both under one `loom/` family: `specs/loom/loom-plan-spec.md` and `specs/loom/loom-plan-card-format.md`.
@@ -207,9 +222,11 @@ Both the hub and standalone paths need the second reconcile added; `stencil sync
 **Render call sites for `{{.specs_dir}}`.**
 The four stencils needing the marker are rendered from:
 `loom-template-plan.md` → `composePlanPrompt` in `internal/loomengine/plan.go`;
-`loom-rubric-plan-review.md` and `loom-rubric-webster-review.md` → read as rubric **values** interpolated into the two Bouncer stencils' `{{.rubric}}` marker (see `rubric_test.go`'s "marker-value-not-template constraint" — **a rubric is a value, not a template, so a `{{.specs_dir}}` marker placed in a rubric body will NOT be rendered by `stencil.Fill`; it must be substituted before the rubric is handed over as a value, or the citation must be resolved another way**);
+`loom-rubric-plan-review.md` and `loom-rubric-webster-review.md` → read as rubric **values** interpolated into the two Bouncer stencils' `{{.rubric}}` marker, and into the Burler round prompt's own `"rubric"` value at `internal/burlerengine/prompt.go:70`.
+A rubric is a value, not a template, so a `{{.specs_dir}}` marker placed in a rubric body is invisible to `stencil.Fill`'s required-marker check and would ship literally into the judge prompt.
+The mechanism that resolves this is decided in `rubric-marker-allowlist` above — a shared read-time helper that fills the rubric as its own single-marker template — and is not left to the plan;
 `webster-body-implementer.md` → composed with `WebsterPrefixFork`/`WebsterPrefixRecovery` by `RenderForkPrompt`/`RenderRecoveryPrompt` in `internal/websterengine/render.go`.
-The rubric case is the sharpest trap in this task and must be designed explicitly.
+The rubric case is the sharpest trap in this task; `rubric-marker-allowlist` is its resolution.
 
 **Told-Geometry Invariant applies.**
 An engine is handed absolute paths and derives none.
@@ -270,6 +287,11 @@ Scenarios: a normative citation correctly rewritten passes; a bare re-added cita
 `docs/code-comment-conventions.md:5` claims `rubric_test.go` guards the `code-comment-conventions` citation.
 Verify whether it pins that phrase; if so, the `code-comment-conventions-is-misscoped` rewrite breaks it and both the test and that doc line move in the same commit.
 Add a pin that each of the four `{{.specs_dir}}`-carrying stencils actually contains the marker, so a future edit cannot silently drop it back to a bare path.
+Rewrite the three `strings.Contains(text, "{{.")` assertions (lines 54, 98, 143) and the file header comment to the allowlist form per `rubric-marker-allowlist`: assert that the only marker any rubric contains is `specs_dir`, so a second marker — which would still be invisible to `Fill` at the value site — fails exactly as loudly as the old rule did.
+
+**The rubric-render helper — TDD candidate, and the highest-risk unit in this task.**
+Test it directly, not only through a composed prompt: a rubric carrying `{{.specs_dir}}` renders with the path substituted and the leading stamp banner stripped; a rubric carrying no marker renders unchanged; an empty or absent `specs_dir` value errors rather than rendering blank; and the stamp banner is stripped *before* filling, so a banner containing a marker-like string cannot reach `Fill`.
+Then assert all four rubric-value sites route through it — `internal/shedadapters/bouncer.go`'s seed and judge passes, `internal/shedrecipe/entries_burler.go:234`, and `internal/burlercli/run.go:63` — since a site that reads a rubric directly would reintroduce the bug silently.
 
 **`internal/stencilstore` — new registry, existing machinery.**
 No behavioural change, so no new tests on `Reconcile`/`Classify` themselves.
@@ -303,6 +325,7 @@ Assert `specs_dir` is treated as required: rendering with it absent or empty err
 - **Q:** How does a stencil name the deployed path so it resolves in hub, standalone, and `--stencils-dir` modes? **A:** [auto-pick] A required `{{.specs_dir}}` marker filled at render time. **Why:** a hub-relative literal already failed once in standalone (`webster-template-master.md`'s `plan_dir` banner records it), and `--stencils-dir` is a told override with no sibling guarantee, so the specs dir must be told independently rather than derived from the stencils dir.
 - **Q:** Ship `docs/code-comment-conventions.md` as a third doc, or reword the citation? **A:** [auto-pick] Reword — the reviewer checks the target repo's own conventions. **Why:** the doc is explicitly Go-only loomyard house style; shipping it would have a reviewer enforce the wrong conventions in an arbitrary target repo, which is worse than the dangling path.
 - **Q:** What about the `bouncerfiles.go` and unguarded `CONSTRAINTS.md` citations? **A:** [auto-pick] Drop the `bouncerfiles.go` path keeping the enforcement substance; add "if present" to both `CONSTRAINTS.md` sites. **Why:** a loomyard source path tells a target-repo agent nothing actionable, and an unguarded "read `CONSTRAINTS.md` in full" is dead in a repo without one; `loom-template-discussion.md:42` already has the correct wording to copy.
+- **Q:** How does `{{.specs_dir}}` actually get substituted into a rubric, given a rubric is interpolated as a *value* and never run through `stencil.Fill` as its own template? **A:** [auto-pick] Put the marker in the rubric anyway, relax the no-marker rule to a one-marker allowlist, and fill it at rubric-read time through one shared helper all four rubric-value sites route through. **Why:** `rubric_test.go:54,98,143` currently assert a rubric contains no `{{.` at all, so this is a deliberate constraint change rather than an oversight to work around; filling the rubric as its own single-marker template gives `specs_dir` the same error-on-empty guard it has everywhere else, which neither `strings.ReplaceAll` nor a custom placeholder token would. Moving the citation into the Bouncer/Burler templates was rejected because it separates a mechanical check from the reference it is checked against.
 - **Q:** Registered names, given `RelPath` derives the family dir from the substring before the first `-`? **A:** [auto-pick] `loom-plan-spec` and `loom-plan-card-format`, both landing under `specs/loom/`. **Why:** a bare `plan-card-format` would create a one-file `plan/` family directory; only the registered name changes, the source file is not renamed.
 - **Q:** What stops the next citation from reintroducing this bug? **A:** [auto-pick] A `package stencils` test scanning every stencil body for bare cross-repo path tokens, with an allowlist keyed by `(stencil name, token)`. **Why:** this is the real deliverable — it closes the class rather than nine instances; review discipline already missed this once, and the reverted one-line fix is the evidence.
 - **Q:** New `lyx spec` CLI subtree? **A:** [auto-pick] No — specs reconcile in the same once-per-process pre-run pass, no new verbs. **Why:** YAGNI for two files nobody edits, and the Stencil Ownership Invariant already puts seed/refresh in that pass.
