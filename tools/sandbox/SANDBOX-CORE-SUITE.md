@@ -16,7 +16,7 @@ Before starting a session:
    The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
-   Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) to clone the warp and weft into a fresh `lyx-test-HUB`.
+   Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) to clone the warp and weft into a fresh `lyx-test-LYXHUB`.
 3. **`lyx` on PATH.**
    Confirm `lyx --help` works from any directory.
 
@@ -44,7 +44,7 @@ Outside of S6, creating a nested `_lyx/` is out of scope for a session and not s
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-HUB/lyx-test`).
+**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-LYXHUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
