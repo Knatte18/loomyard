@@ -44,7 +44,9 @@ batches:
     commit_sha: f44db2c3c9951942d1e2d8078ce2cfe969366382
     verify_baseline_failures: []
   - name: fabricengine-tests
-    state: pending
+    state: running
+    implementer_session: e97239b7-ef6d-4f3a-aa62-296429215c40
+    start_sha: 9c4d5f01e5767584b044cbc020415fc225d3dfc0
     verify_baseline_failures: []
   - name: peripheral-tests
     state: pending
