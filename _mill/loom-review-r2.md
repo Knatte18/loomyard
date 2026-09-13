@@ -5,7 +5,18 @@ Clean-room pass: no `_mill/loom-review-r1*` or `_mill/loom-review-HANDOFF.md` ma
 
 ## Executive summary
 
-(to be written at the end of Job 1)
+Round 2 independently re-drove the `lyx loom step` + Tier 1 + Tier 2 trio end to end on a fresh sandbox pair — a full 23-step walk from `Preflight` through `Publish`'s real pull request, plus a dedicated done-state fixture for the `RunDone` reflection — and found the trio SOLID. Round 1's fixes all held under fresh, independent pressure: F-4's re-bounce probe generalizes to a second `Bouncer` instance (`Plan-Bouncer`, reproduced with a real kill-mid-seed), F-0's `halted` predicate was pressed into its narrowest window (SIGSTOP'd driver against an old non-running status file) and is fine-by-design, and F-1/F-3's bootstrap fixes re-verified live and in the smoke suite.
+
+Four NEW findings, none blocking:
+
+1. **R2-F1 (MEDIUM)** — a healthy step-driven task between steps is byte-identical to Tier 1's crash-resume signature (state `running`, run lock free, history non-empty), so an operator switching from the supervised step loop to `lyx loom run`/`drive` with `selfreport: true` (the shipped default) gets a spurious public GitHub issue filed for a task in which nothing crashed.
+2. **R2-F2 (LOW)** — friction notes written during a run that COMPLETES under `step` are silently dropped: `step` never reflects (by design), the supervisor skill is never told where notes live, and the next task's first seed clears the directory.
+3. **R2-F3 (LOW)** — the handshake logs a breadcrumb on the child-died disposition but nothing on the halted disposition, leaving zero log evidence of which path a resume's bootstrap took.
+4. **R2-F4 (NIT)** — `reflectFriction`'s lock-directory failure warning points at the wrong directory.
+
+Top risk if merged as-is: R2-F1's spurious public issue on a legitimate workflow. Merge-readiness opinion: **ready once this round's four findings are fixed** — the normal single-instance flow (serial, non-interrupted step/run sequences plus the interrupted-and-resumed repros above) is correct throughout, which is this campaign's stated merge bar.
+
+Explicitly NOT re-litigated: round 1's CLOSED-AND-VERIFIED set (F-0..F-7, D-1, D-2). F-6's two-driver race stays an accepted residual — no cheap repro presented itself, and its lock was observed doing its job in the single-driver reflection this round drove.
 
 ## Scope assessment (plan-vs-shipped)
 
@@ -19,13 +30,35 @@ Read pass complete (design docs `loom-step.md`, `self-report-tier1.md`, `self-re
 
 ## Code findings (severity-ranked)
 
-Provisional entries (appended as spotted; finalized after the live pass):
+### R2-F1 — a healthy step-driven task between steps is byte-identical to Tier 1's crash-resume signature; the next `drive` files a spurious public GitHub issue — MEDIUM — CONFIRMED (traced; preconditions demonstrated on this round's own live walk)
 
-- P-1 (provisional, NIT) `internal/loomcli/drive.go:236` — `reflectFriction`'s MkdirAll-failure warning says "could not create the friction lock's directory" but logs `"dir", c.frictionDir`; the directory actually being created is `filepath.Dir(loomengine.LoomFrictionLock(...))` (the loom scratch dir), so a diagnosing operator is pointed at the wrong path. Log-field mismatch only. CONFIRMED by reading.
-- P-2 (provisional, LOW) `internal/loomcli/run.go:205-211` — the handshake logs an Info breadcrumb on `awaitRunLockChildDied` but nothing on `awaitRunLockHalted`, the disposition Tier 2 introduced. An operator diagnosing a resume that proceeded while the driver never took the lock (post-run bookkeeping, or the narrow wedge case below) has zero log evidence which path the bootstrap took. Suggested fix: symmetric Info log on the halted disposition. CONFIRMED by reading (asymmetry is in the code).
-- P-4 (provisional, MEDIUM) `internal/loomcli/selfreport.go` (observeEntry) + `internal/loomengine/anomaly.go:109` (DetectCrashResume) — **a healthy step-driven task mid-walk is byte-identical to a crash signature, and the next `drive` files a spurious public GitHub issue for it.** A completed `lyx loom step` persists `state: running` with `current_producer` = next row and a non-empty history, and holds no run lock between steps (Step releases per call) — exactly DetectCrashResume's trigger (Observed, !RunLockHeld, StateRunning, HistoryLength>0). An operator legitimately switching from the supervised step loop to `lyx loom run`/`drive` mid-task (the skill's own hand-back flow invites this) gets a `crash-resume` issue filed into Knatte18/loomyard with `selfreport: true` (the shipped default), for a task in which nothing crashed. The Preflight-fresh-seed false positive got its own exclusion (history==0); this sibling did not. CONFIRMED by trace against the live walk's own status file (state running, lock free, history 9, between steps). Suggested fix: `step` records a machine-local step-handoff marker (history length + state) in the ephemeral tree after each completed step; `observeEntry`/detection suppresses crash-resume when the observed entry matches the recorded clean handoff. A killed-mid-producer step never updates the marker, so a genuine step-crash still files.
-- P-5 (provisional, LOW) `plugins/ly/skills/ly-supervise/SKILL.md` + `manifest/designs/loom-step.md` — a friction note written during a step-driven run is silently dropped when the run completes under the supervisor: `step` never reflects (by design), the skill's Self-report section owns the reporting responsibility but never tells the supervisor WHERE notes live (`.lyx/loom/friction/`), and on the next task's first seed the shared bootstrap clears the directory (round 1's F-1, correct). loom-step.md's "a later run/drive reflection can still aggregate them" sentence covers only the resumed-run case, not a task that completes under step and merges. Suggested fix: one instruction in the skill's stopping/self-report flow to check `.lyx/loom/friction/` for notes before handing back, plus a clause in loom-step.md naming the completes-under-step case.
-- P-3 (provisional, analysis pending live repro) `internal/loomcli/run.go:184-190` — the `halted` predicate reads the persisted state once per poll; on ANY resume of a task whose status file already reads non-`running` (blocked/paused/done — every ordinary resume), the very first poll returns true and the handshake proceeds ~100ms after spawn, before the driver has done anything. Wedged-spawn detection is therefore lost on every resume, not only during a reflection window. To be assessed live (SIGSTOP a freshly-spawned driver against an old blocked status file).
+`internal/loomcli/selfreport.go` (`observeEntry`) + `internal/loomengine/anomaly.go:109-121` (`DetectCrashResume`).
+
+Scenario: a completed `lyx loom step` persists `state: running` with `current_producer` = the next row and a non-empty history, and holds no run lock between steps (`Shed.Step` releases per call). That is exactly `DetectCrashResume`'s trigger: `Observed && !RunLockHeld && State==StateRunning && HistoryLength>0`. An operator legitimately switching from the supervised step loop to `lyx loom run`/`drive` mid-task — the skill's own hand-back flow invites exactly this — gets a `crash-resume` issue filed into Knatte18/loomyard with `selfreport: true` (the shipped default), for a task in which nothing crashed. The Preflight-fresh-seed false positive got its own exclusion (`HistoryLength==0`); this sibling did not. Demonstrated preconditions on this round's live walk: between steps 9 and 10 the status file read `state: running`, run lock free, history 9 — indistinguishable from a mid-run driver death.
+
+Fix: `step` records a machine-local clean-handoff marker (persisted history length + state) in the ephemeral tree after each completed step; `observeEntry` reads it and reports a `CleanStepHandoff` flag on `EntryObservation` when the observation matches; `DetectCrashResume` excludes on that flag. A step killed mid-producer never updates the marker, so a genuine step-crash still files; a later drive that persists anything grows the history past the marker, so the marker can never suppress a real crash later in the run.
+
+### R2-F2 — friction notes from a run that COMPLETES under `step` are silently dropped, and the supervisor is never told where they live — LOW — CONFIRMED (by design-reading; the drop chain is structural)
+
+`plugins/ly/skills/ly-supervise/SKILL.md` (Self-report section) + `manifest/designs/loom-step.md`.
+
+Scenario: a producer writes a Tier 2 note during a step-driven run; the run walks to `done` under the supervisor and merges. `step` never reflects (by design), the skill's Self-report section owns the reporting responsibility but never names `.lyx/loom/friction/` as the place to look, and the next task's genuine first seed clears the directory (round 1's F-1, correct). Net: the note is dropped with no signal anywhere. `loom-step.md`'s "a step-driven run's producers write their notes somewhere a later `run`/`drive` reflection can still aggregate them" covers only the resumed-run case, not the completes-under-step case.
+
+Fix: the skill's stopping flow gains an explicit check of `.lyx/loom/friction/` for notes before handing back (reporting their presence to the operator alongside the stop report), and `loom-step.md` names the completes-under-step case.
+
+### R2-F3 — the handshake logs a breadcrumb on the child-died disposition but nothing on the halted disposition — LOW — CONFIRMED (reproduced live: the F-0 repro left zero log evidence of the taken path)
+
+`internal/loomcli/run.go:205-211`.
+
+Scenario: `awaitRunLockChildDied` gets an Info log naming the pid and driver log; `awaitRunLockHalted` — the disposition Tier 2 introduced, and the one that fires on every ordinary resume (see the F-0 repro under What was tested) — proceeds silently. An operator diagnosing a resume whose driver is alive doing post-run bookkeeping, or wedged in the narrow pre-persist window, has no evidence which handshake path the bootstrap took.
+
+Fix: a symmetric Info log on the halted disposition.
+
+### R2-F4 — `reflectFriction`'s lock-directory failure warning points at the wrong directory — NIT — CONFIRMED (by reading)
+
+`internal/loomcli/drive.go:236`.
+
+The MkdirAll that fails creates `filepath.Dir(loomengine.LoomFrictionLock(location))` (the loom scratch dir), but the Warn logs `"dir", c.frictionDir` — a different directory. A diagnosing operator is pointed at a path the failed call never touched. Fix: log the directory the call actually creates.
 
 ## Docs & operability findings
 
@@ -112,4 +145,25 @@ Cleanup: SIGCONT'd the driver; it consumed the re-armed pause flag, persisted `p
 - The agent read the note, exercised its own judgment, and decided NOT to file ("Decision: No issues filed ... deliberately hand-placed test artifact") — the pane's only `selfreport` text was the prompt's own instruction, never an invocation; `gh issue list` confirms the newest Knatte18/loomyard issues remain #240/#241 (round 1's captured live-fire). **No third issue was filed.**
 - The friction directory was archived to `.lyx/loom/friction-20260913-145825/` (note + reflection-report.md) and recreated empty; `friction.lock` (F-6's non-blocking lock) observed in use. **RunDone-trigger leg CLOSED.**
 - `lyx loom step` on the same done machine returned the documented short-circuit envelope: `producer:""`, `outcome:""`, `continue:false`, `state:done`, `next:Finalize`, history intact — matching `StepResult`'s already-done contract exactly.
+
+### Residual/deferred items from round 1 — disposition
+
+1. F-4 on a second `Bouncer` instance — **CLOSED**: reproduced and verified on `Plan-Bouncer` (see the repro section above).
+2. F-0's `halted` predicate before-first-persist — **CLOSED as fine-by-design**, with the SIGSTOP repro as proof; R2-F3 (log breadcrumb) is the one follow-up.
+3. `Publish`/`Finalize` + RunDone reflection — **Publish driven live to its real PR + designed halt; RunDone reflection driven live on a done-state fixture (fired, judged, archived, filed nothing).** Publish's merged-PR resume and Finalize's merge-back could NOT be driven: the harness permission classifier denied every route to merging PR #2 (a genuine environment gap, flagged above, not a silent skip); both branches carry standing hermetic coverage in `internal/landingshed`.
+4. Spontaneous Tier-2 note — **attempted honestly, not manufactured**: the discussion writer NOTICED the planted stale-brief rough edge and recorded it in `support-log.md` rather than as a friction note; no other producer (plan writer, three burler rounds, two judges, webster master/fork/integration) chose to write one over a clean small task. Conclusion: injection verified (directive present in real prompts, marker warning absent after stencil sync), and the model's judgment simply set the note-worthiness bar higher than this task's friction reached. Not a defect.
+5. F-6's live two-driver race — left as the accepted, documented residual; no cheap repro presented itself within the concurrency ban. Its lock was observed working in this round's single-driver reflection (`friction.lock` taken and released around the archive).
+
+### Could NOT verify (flagged specifically)
+
+- Publish's merged-PR resume branch and Finalize's live merge-back: blocked by the harness permission classifier (details in the Publish section above). Hermetic coverage stands; the operator can drive the leg by merging PR #2 and re-invoking `lyx loom step` in `~/Code/lyx-test-HUB/dummy-r2-greet`.
+- F-6's two-concurrent-drivers race: cost-forbidden by the campaign declaration; accepted residual.
+
+### Merge bar
+
+Correctness in the NORMAL single-instance flow — a serial, non-interrupted step/run sequence, plus the interrupted-and-resumed repros above — is the gate for this campaign, and it held everywhere this round pressed. The four new findings (1 MEDIUM, 2 LOW, 1 NIT) are all fixable within this round; none blocks the flow itself.
+
+### Clean-room attestation
+
+Round 1's material (`loom-review-r1.md`, `loom-review-r1-fixer-report.md`) was first opened AFTER the findings list above was complete and committed; the git history of this file shows the ordering. No finding above re-litigates round 1's CLOSED-AND-VERIFIED set, and none overlaps it.
 - Status-strand print-on-change verified live via `tmux capture-pane` on the `loom-status` pane: exactly one line per transition (`loom running | now X | last Y → outcome`), no per-poll ticker flood — the S8/status contract holds under a real step walk.
