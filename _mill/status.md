@@ -6,6 +6,7 @@ slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'modelspec: bare-effort shorthand and version-to-v rename'
 task_description: |
   modelspec: bare-effort shorthand and version-to-v rename
@@ -34,5 +35,8 @@ implementing  '2026-09-13T10:49:53Z'
 ```yaml
 batches:
   - name: bracket-grammar
-    state: pending
+    state: running
+    implementer_session: 0a9b6f19-e2bc-47a6-965d-757f58a6b680
+    start_sha: 57b761fc9f8344c824693488120da818c838a206
+    verify_baseline_failures: []
 ```
