@@ -39,3 +39,20 @@ Appended incrementally, in order, as each command/scenario returned.
 - `go vet ./internal/loomcli/... ./internal/loomengine/... ./internal/loomshed/... ./internal/loomrecipe/... ./internal/friction/... ./internal/frictionengine/... ./internal/selfreportengine/... ./internal/selfreportcli/... ./internal/shedadapters/... ./internal/websterengine/...` — OK (exit 0).
 - `go test -count=5 <the ten packages + cmd/lyx>` — all ok (loomcli, loomengine, loomshed, loomrecipe, friction, frictionengine, selfreportengine, selfreportcli, shedadapters, websterengine, cmd/lyx), exit 0.
 - `go test ./...` (whole repo) — exit 0, no failures.
+
+### Live substrate — bench setup
+
+- Host had a STALE production `lyx` at `~/go/bin/lyx` (built Sep 8, pre-campaign) — the exact two-lyx stencil-rewrite hazard `manifest/designs/loom.md` documents. Backed it up (`~/go/bin/lyx.stale-crucible-r2`) and installed the freshly built dev binary at the same path so exactly one `lyx` is reachable from the hub; restore at teardown.
+- `./deploy-dev` — built and deployed `lyx @ d8824d96e` to `.dev-bin/lyx`.
+- Bench: the existing `~/Code/lyx-test-HUB` container (legacy suffix, resolves structurally per the Hub Suffix Invariant). An operator-owned `lyx reed attach` terminal on session `lyx-test` appeared at 16:29 and was left untouched.
+- `lyx stencil sync` — refreshed 7 stale hub stencils (incl. `loom-template-discussion`/`loom-template-plan`, which carry the friction marker) and committed to the board repo.
+- `lyx board upsert` — created task `dummy-r2-greet` whose brief/body reference a helper name (`FormatGreeting`) that does not exist on `main` — a genuine stale-brief rough edge for the spontaneous-friction probe, not a doctored prompt.
+- `lyx fabric add dummy-r2-greet` — pair created and pushed.
+- `_lyx/config/loom.yaml` overwritten per the cost declaration: discussion/plan/review `sonnet[effort=low]`, `selfreport: false`, `friction: haiku`, `friction_timeout_min: 10`.
+- Checked: strict `configengine.Load` ERRORS on the stale 7-key `loom.yaml` vintage ("missing keys ... run lyx config reconcile") — a pre-Tier-1 pair can never silently default `selfreport: true`. Not a finding.
+
+### Live substrate — step walk (dummy-r2-greet)
+
+- `lyx loom status` / `lyx loom pause` on the never-bootstrapped pair: both named their own remedy ("no status file ... run \"lyx loom run\"") — F-3 holds live on this exact path.
+- Step 1-4: `Preflight` stuck×4 (blocked, "stuck with no OnStuck target") — correctly refusing on my own uncommitted weft `loom.yaml` edit (`worktree-clean: M _lyx/config/loom.yaml` at Warn on stderr). Envelope fidelity: `continue:false`, `state:blocked`, `next:Preflight`, `next_interrupt_policy:reinvoke`, history_length incrementing per stuck.
+- `lyx fabric sync` committed the config; next step: `Preflight` done → `Loom-Preflight` (history 5), then `Loom-Preflight` done → `Discussion-Write` (history 6), `continue:true` both. Resume-from-blocked re-call worked exactly as designed.
