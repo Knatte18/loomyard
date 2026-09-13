@@ -80,6 +80,8 @@ No build order is implied between these items.
 
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
+1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's `lyx loom run` never calls `shedengine.Shed.Run`; `lyx loom drive` does, while `run` only bootstraps, spawns `drive`, and attaches tmux. Not yet decided; leading proposal so far is swapping `drive`→`run` (matches `Shed.Run`) and renaming today's `run` to something like `start` (bootstrap + attach), plus renaming the `/ly:ly-supervise` skill to something shorter that still says it drives the whole loop (`ly-drive` was the leading candidate over `ly-watch`/`ly-run`, which either undersell or overclaim what the skill does).
+
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
