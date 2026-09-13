@@ -72,6 +72,8 @@ batches:
     commit_sha: 21ec49a58bb64154c84da4e77dedd348ebd49557
     verify_baseline_failures: []
   - name: final-sweep-gate
-    state: pending
+    state: running
+    implementer_session: ae06ce45-82ed-46e4-8181-cf4f7dfee498
+    start_sha: 8c2123cc48be6511f82657ecf1eeb16af663efbc
     verify_baseline_failures: []
 ```
