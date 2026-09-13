@@ -69,7 +69,9 @@ batches:
     commit_sha: dc12decc23eeaa4eaf577754e93e69d865e7c973
     verify_baseline_failures: []
   - name: specs-dir-marker-plumbing
-    state: pending
+    state: running
+    implementer_session: 51be76e3-c135-4e3c-a4d3-3c980926c63b
+    start_sha: 3b57ca4528e468a7f7f2dba21f7e6da1ef1611dc
     verify_baseline_failures: []
   - name: citation-rewrite-and-enforcement
     state: pending
