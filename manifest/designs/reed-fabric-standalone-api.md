@@ -317,7 +317,7 @@ Roughly 50 free functions, roughly 60 types, 7 constants, 6 sentinel errors, rou
 The 15 direct production importers are `cmd/lyx`, `boardcli`, `boardengine`, `burlercli`, `configreg`, `fabriccli`, `hubforge`, `hubgeom`, `ideengine`, `landingshed`, `loomcli`, `mergeresolve`, `preflight`, `stencilcli`, `webstercli`.
 
 **The core observation: the names are hub-layout vocabulary, not git-coordination vocabulary.**
-The measured hub-layout identifiers on the public surface are `BoardDir`, `BoardDirName` (`"_board"`), `BoardWriteLockPath`, `HubSuffix` (`"-HUB"`), `HubPath`, `HubLogsDir`, `HubScratchDir`, `HubReservedNames`, `IsReservedHubName`, `PortalsDir`, `PortalLink`, `LauncherDir`, `WarpLyxLink`, `WarpLyxLinkHere`, `WarpBindingFileName` (`".lyx-warp"`), `StencilsDir`, `StencilBaseByStamp`, `CommitSeededStencils`.
+The measured hub-layout identifiers on the public surface are `BoardDir`, `BoardDirName` (`"_board"`), `BoardWriteLockPath`, `HubSuffix` (`"-LYXHUB"`), `HubPath`, `HubLogsDir`, `HubScratchDir`, `HubReservedNames`, `IsReservedHubName`, `PortalsDir`, `PortalLink`, `LauncherDir`, `WarpLyxLink`, `WarpLyxLinkHere`, `WarpBindingFileName` (`".lyx-warp"`), `StencilsDir`, `StencilBaseByStamp`, `CommitSeededStencils`.
 
 33 exported signatures are parameterized on `*lyxcwd.Location`, a four-field type describing lyx's own directory model — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — so the API is parameterized on lyx's directory model, not on two git URLs.
 
