@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-sandbox-fixture
+phase: approved-docs-prose
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-production-prose  '2026-09-13T11:32:55Z'
 approved-fabricengine-tests  '2026-09-13T11:36:05Z'
 approved-peripheral-tests  '2026-09-13T11:41:44Z'
 approved-sandbox-fixture  '2026-09-13T11:44:20Z'
+approved-docs-prose  '2026-09-13T11:47:54Z'
 ```
 
 ## Batches
@@ -65,9 +66,10 @@ batches:
     commit_sha: ccc72e2b9683888cdfa57ce549bcf39b807ecf16
     verify_baseline_failures: []
   - name: docs-prose
-    state: running
+    state: approved
     implementer_session: ec9a7914-e71b-4ca4-8886-1bcbb83ec19f
     start_sha: 8ad593fcd1dc00d286f2073ea9831c82e2fcd051
+    commit_sha: 21ec49a58bb64154c84da4e77dedd348ebd49557
     verify_baseline_failures: []
   - name: final-sweep-gate
     state: pending
