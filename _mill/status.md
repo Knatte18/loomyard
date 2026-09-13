@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
 plan: _mill/plan
@@ -34,6 +34,7 @@ holistic-fixing  '2026-09-13T11:00:14Z'
 holistic-reviewing  '2026-09-13T11:02:37Z'
 holistic-approved  '2026-09-13T11:05:19Z'
 done  '2026-09-13T11:06:53Z'
+pr-pending  '2026-09-13T11:07:44Z'
 ```
 
 ## Batches
