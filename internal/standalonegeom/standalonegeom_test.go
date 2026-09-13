@@ -54,6 +54,22 @@ func TestStencilsDir(t *testing.T) {
 	}
 }
 
+func TestSpecsDir(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+
+	got := SpecsDir(stateDir)
+
+	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "specs"); got != want {
+		t.Errorf("SpecsDir(%q) = %q; want %q", stateDir, got, want)
+	}
+	// Pins that the two standalone directories never converge.
+	if got == StencilsDir(stateDir) {
+		t.Errorf("SpecsDir(%q) = %q; want != StencilsDir(%q) %q", stateDir, got, stateDir, StencilsDir(stateDir))
+	}
+}
+
 func TestLogsDir(t *testing.T) {
 	t.Parallel()
 
@@ -208,5 +224,13 @@ func TestWebsterGeometry(t *testing.T) {
 	// field must always come from the shared StencilsDir helper, never a re-derived literal.
 	if want := StencilsDir(stateDir); got.StencilsDir != want {
 		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q (StencilsDir(stateDir))", got.StencilsDir, want)
+	}
+	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "specs"); got.SpecsDir != want {
+		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q", got.SpecsDir, want)
+	}
+	// This equality pins the one-construction-site property: WebsterGeometry's SpecsDir field
+	// must always come from the shared SpecsDir helper, never a re-derived literal.
+	if want := SpecsDir(stateDir); got.SpecsDir != want {
+		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q (SpecsDir(stateDir))", got.SpecsDir, want)
 	}
 }

@@ -413,6 +413,14 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		assertErrContains(t, err, "StencilsDir")
 	})
 
+	t.Run("BlankEnvSpecsDir", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		env.SpecsDir = ""
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "SpecsDir")
+	})
+
 	t.Run("NilEnvShuttle", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)

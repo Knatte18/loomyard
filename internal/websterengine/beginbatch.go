@@ -316,7 +316,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// mode's WorktreeRoot is the anchor path, the exact value this call
 	// rendered before this Geometry split.
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
-	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap, notePath)
+	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}

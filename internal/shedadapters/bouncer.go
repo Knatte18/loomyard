@@ -53,6 +53,9 @@ type BouncerConfig struct {
 	// StencilsDir is the absolute stencils directory this Bouncer reads its prompt templates and
 	// rubric from.
 	StencilsDir string
+	// SpecsDir is the absolute deployed-specs directory the rubric's {{.specs_dir}} marker is
+	// filled from.
+	SpecsDir string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
 	// Model, Effort, and Version are an already-resolved triple threaded verbatim into
@@ -152,7 +155,10 @@ func NewBouncer(cfg BouncerConfig) (*Bouncer, error) {
 	// to Stuck until the whole segment's bounce budget was spent. Probing only the rubric is
 	// enough -- the two generic templates are registry-guaranteed and covered by
 	// contracts/stencils/registry_test.go, so the caller-supplied rubric name is the only one
-	// that can be wrong.
+	// that can be wrong. This stays a bare stencilstore.Read rather than a ReadRubric call: it is
+	// a construction-time readability check that discards the bytes, so it needs no fill, and
+	// converting it would make construction fail on an empty SpecsDir for a rubric that carries
+	// no marker at all -- a new failure mode rather than a tightening.
 	if _, err := stencilstore.Read(cfg.StencilsDir, cfg.RubricStencil); err != nil {
 		return nil, fmt.Errorf("shedadapters: NewBouncer: RubricStencil %q: %w", cfg.RubricStencil, err)
 	}
@@ -513,15 +519,11 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		return nil
 	}
 
-	rubricRaw, err := stencilstore.Read(b.cfg.StencilsDir, b.cfg.RubricStencil)
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir)
 	if err != nil {
 		logger.Warn("shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
 		return nil
 	}
-	// stencil.Fill strips a stamp banner from the template it parses but never from a marker
-	// value, so raw rubric bytes would inject a "<!-- lyx-stencil: sha256=... -->" line into the
-	// middle of the prompt: the strip below is load-bearing.
-	rubric := stencil.StripLeadingComment(string(rubricRaw))
 
 	prompt, err := stencil.Fill(seedTemplate, map[string]string{
 		"rubric":     rubric,
@@ -609,11 +611,10 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer judge template unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
-	rubricRaw, err := stencilstore.Read(b.cfg.StencilsDir, b.cfg.RubricStencil)
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir)
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
-	rubric := stencil.StripLeadingComment(string(rubricRaw))
 
 	// The output list is never conditional on the verdict: shuttleengine classifies a run
 	// complete only when every declared output file exists, so a third entry written only on

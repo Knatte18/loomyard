@@ -135,12 +135,12 @@ A field with no content is omitted entirely — never write a `none` sentinel on
 
 **`Uses:` names what the card reads but does not change — never a target.**
 An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read?
-That is the `card-field-overlap` finding — see `contracts/specs/loom-plan-spec.md`'s own Card fields section for the full grammar and the complete validation-check set.
+That is the `card-field-overlap` finding — see `{{.specs_dir}}/loom/loom-plan-spec.md`'s own Card fields section for the full grammar and the complete validation-check set.
 
 Every `Verify:`/`verify:` value — a card's optional `**Verify:**` and the plan-level `## verify:` section — is one or more runnable shell commands, never prose;
 the plan-level `## verify:` is the single integration check run once at the end of the whole plan.
 A per-card `**Verify:**` is exceptional rather than routine, written only for what a package-scoped automatic test run cannot catch on its own — the plan-level `## verify:` section is the single integration check for the whole plan.
-See `manifest/designs/plan-card-format.md`'s Verify model section for the tier definitions themselves — this file does not restate them.
+See `{{.specs_dir}}/loom/loom-plan-card-format.md`'s Verify model section for the tier definitions themselves — this file does not restate them.
 
 ### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`
 

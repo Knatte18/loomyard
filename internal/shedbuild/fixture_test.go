@@ -162,6 +162,7 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		StencilsDir:        mustMkdir("stencils"),
+		SpecsDir:           mustMkdir("specs"),
 		RunRoot:            mustMkdir("run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
