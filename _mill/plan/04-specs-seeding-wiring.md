@@ -62,6 +62,7 @@ Failure posture at each site matches its neighbour exactly: best-effort and logg
 - **Edits:**
   - `internal/cliwire/standalone.go`
   - `internal/cliwire/seam_enforcement_test.go`
+  - `internal/cliwire/doc.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
