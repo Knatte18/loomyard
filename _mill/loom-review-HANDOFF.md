@@ -1,52 +1,51 @@
 # loom-step + self-report crucible campaign — orchestrator handoff
 
 ## Current state
-Round 1 (`opus-high-r1`) complete and independently verified by the orchestrator. Round 2 not yet spawned — waiting on the operator's model + effort pick (rotate away from Opus per the method).
+Round 2 (`fable-high-r2`) complete and independently verified by the orchestrator. Findings are shrinking round over round (r1: 1 BLOCKING+4 MEDIUM+2 LOW+1 NIT; r2: 1 MEDIUM+2 LOW+1 NIT) but round 2 still found a real MEDIUM, so this is NOT yet a converged safety pass. Round 3 not yet spawned — waiting on the operator's model + effort pick, and on a decision about real-world leftovers round 2 created (see "Operator action needed" below) before spawning.
 
-## CLOSED-AND-VERIFIED (round 1, commit range `4e0b3265c..4c875f690`)
+## CLOSED-AND-VERIFIED
 
+### Round 1 (commit range `4e0b3265c..4c875f690`) — see prior handoff version in git history for full detail
+F-0 (BLOCKING), F-1/F-3/F-4 (MEDIUM), F-6 (LOW) personally sabotage-proved by the orchestrator; F-2/F-5/F-7/D-1/D-2 reviewed by diff. Live-fire confirmed real (#240, #241).
+
+### Round 2 (commit range `9998aeb9d..0efef971d`)
 Orchestrator independently reproduced, from a cold checkout, on the committed tree:
+- `go build ./...`, `go vet` (ten packages), `go test -count=5` (ten packages + `./cmd/lyx/...`), `go test ./...` (whole repo) — all green.
+- `go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` — all green, zero real LLM subprocesses.
+- `gh issue list` confirms the newest `Knatte18/loomyard` issues are still #240/#241 — **no third issue was filed this round.**
 
-- `go build ./...` — OK
-- `go vet` over all nine trio packages + shedadapters/websterengine — OK
-- `go test -count=5` over all nine trio packages + `./cmd/lyx/...` — OK
-- `go test ./...` (whole repo) — OK, no regressions
-- `go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` — 15/15 PASS (13 pre-existing + 2 new), zero real LLM subprocesses confirmed by source inspection
+**Sabotage-proved personally:**
+- **R2-F1 (MEDIUM)** `aaddede3e` — two independent sabotages, both failed exactly as claimed: (a) removed `entry.CleanStepHandoff` from `DetectCrashResume`'s exclusion — `TestDetectCrashResume/RunningWithHistory_CleanStepHandoff_None` failed `ok = true; want false`; (b) commented out the `recordStepHandoff` call in `step.go` — `TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus` failed "no clean-handoff marker … after a completed step".
 
-**Sabotage-proved personally** (fix reverted, new/changed test watched fail at the claimed assertion, fix restored, `git diff --stat` empty after each):
-- **F-0 (BLOCKING)** `713ab509a` — removed `awaitRunLockHalted` from `dispositionForHandshake`'s proceed set; `TestDispositionForHandshake/Halted` failed `dispositionForHandshake(2) = 1; want 0`, exactly as the fixer report claimed.
-- **F-1 (MEDIUM)** `1d671f44c` — commented out the `ensureFrictionDirAfterSeed` call site; `TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem` failed "stale friction note still present after a genuine first seed".
-- **F-3 (MEDIUM)** `78a407698` — no-opped `ensureStatusLockDir`; `TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy` failed both subtests with the exact pre-fix internal lock-path leak text.
-- **F-4 (MEDIUM)** `eb6af7720` — removed the `awaitLiveSeed` probe call from the Bouncer's re-bounce branch; `TestBouncer_ReBounceProbesForALiveSeed` failed both subtests ("returned from the re-bounce without probing for a live seed").
-- **F-6 (LOW)** `6a0750a7e` — bypassed the reflection lock's `!free` branch; `TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock` failed with a nil-pointer panic on the bypassed guard (a harder failure than the original assertion, still conclusive: the guard is load-bearing).
+**Reviewed by diff, not independently sabotage-proved** (low-risk: doc/skill text or a single log line): R2-F2 (skill+doc text), R2-F3 (one Info log line), R2-F4 (one log field name).
 
-**Reviewed by diff, not independently sabotage-proved** (low-risk: doc-only or a one-line log-level change): F-2 (doc-only, deliberate — see below), F-5 (`Info`→`Warn` log level), F-7 (comment rewrite), D-1, D-2 (both doc-only).
+**Residual items round 1 seeded — all dispositioned by round 2, independently spot-checked against its review report's live-repro transcripts (procedure, exact commands, exact observed output all present and internally consistent):**
+1. F-4 generalizes to a second `Bouncer` instance — **CLOSED**, reproduced live on `Plan-Bouncer` (kill-mid-seed, re-invoke, attach-not-abandon observed).
+2. F-0's `halted` predicate pressed into its narrowest window (SIGSTOP before first persist) — **CLOSED as fine-by-design**; the one gap it surfaced (no log breadcrumb) became R2-F3.
+3. `Publish`/`Finalize` — Publish driven live to a REAL pull request (`Knatte18/lyx-test#2`) and its designed awaiting-review halt; the merged-PR/Finalize leg blocked on a harness permission gap (agent could not merge the PR), left to the operator, hermetically covered in `internal/landingshed`. `RunDone`-triggered reflection driven live on a dedicated fixture — fired, judged, declined to file, archived correctly.
+4. Spontaneous Tier-2 friction note — attempted honestly (a genuine stale-brief rough edge in the fixture's task board), the writer noticed it but judged it not worth a note. Not a defect; still unobserved.
+5. F-6's live two-driver race — still accepted residual, cost-forbidden to reproduce.
 
-**Live-fire confirmed real**, via `gh issue view`:
-- #240 — `loom anomaly: escalation-to-human — dummy-r2 — Preflight#0` — OPEN, label `bug`, created 2026-09-13T13:40:43Z. The deliberate Tier-1 live-fire.
-- #241 — `Plan spec should document card format spec file path` — OPEN, label `documentation`, created 2026-09-13T13:41:06Z. Filed by Tier 2's reflection agent on its own judgment off the same halt.
+**Docs updated in the same commits, confirmed via `git diff --stat`:** `manifest/designs/self-report-tier1.md`, `loom-step.md`, `plugins/ly/skills/ly-supervise/SKILL.md`. `docs/overview.md`/`CONSTRAINTS.md`/`manifest/roadmap.md` correctly untouched.
 
-**Docs updated in the same commits, confirmed via `git diff --stat`:** `manifest/designs/loom-step.md`, `loom.md`, `self-report-tier1.md`, `self-report-tier2.md`, `plugins/ly/skills/ly-supervise/SKILL.md`, `tools/sandbox/SANDBOX-CORE-SUITE.md`. `docs/overview.md`/`CONSTRAINTS.md` correctly untouched (no module moved, no new cross-cutting invariant). `manifest/roadmap.md` correctly untouched (hardening, not a roadmap move).
+## ⚠️ Operator action needed — real-world leftovers from round 2's live driving
 
-**F-2 is a deliberate documentation-only fix**, not a residual: making `step` fire Tier 1 automatically would let a primitive a supervisor calls up to ~40×/run mint public GitHub issues unattended — an outward-facing design decision, not a hardening defect. The exemption is now documented in three places instead of nowhere; that's the actual fix.
+Round 2 drove live against `~/Code/lyx-test-HUB/`, an **existing** sandbox hub the operator already uses interactively (its own `lyx-test` tmux session, attached by the operator mid-round, was correctly left untouched). This is different from round 1, which built a disposable fixture hub from scratch. Three real side effects need the operator's own decision — the orchestrator has NOT touched any of these:
 
-## Residual seeded for round 2 (see `_mill/loom-review-prompt.md`)
+1. **A real, open pull request**: [Knatte18/lyx-test#2](https://github.com/Knatte18/lyx-test/pull/2). Round 2 was permission-blocked from merging or closing it. Merge it to let a future round drive Publish's merged-PR/Finalize leg live, or close it to abandon that fixture task.
+2. **`~/go/bin/lyx`** (outside this git worktree — a machine-wide binary) was overwritten with the round's freshly-built dev binary, because a stale pre-campaign build there was silently downgrading shared stencils (the same D-2 hazard round 1 documented). The pre-round original is preserved at `~/go/bin/lyx.bak-crucible-r2`. Restore it, or leave the dev binary in place — operator's call.
+3. **Two leftover dummy task pairs** under `~/Code/lyx-test-HUB/`: `dummy-r2-greet` (blocked at Publish awaiting the PR above) and `dummy-r2-reflect` (a done-state fixture, safe to delete any time).
 
-Round 1 itself flagged four things worth a second, independent pass:
-1. F-0's `halted` predicate is a deliberate narrowing of the refusal (proceeds on an already-`blocked` resume before its first persist) — round 1 called this out for a second opinion, not as a defect.
-2. F-6's fix is real and sabotage-proved at the unit level, but the live two-driver race it targets was never reproduced (forbidden by the cost declaration — needs two concurrent dummy-task drives).
-3. No producer spontaneously chose to write a Tier-2 friction note during round 1 — the injection and aggregation/reflection/filing legs were both verified live, but separately (hand-placed notes for the second leg). A model-judgment event, not forceable without doctoring a prompt.
-4. `Publish` and `Finalize` were never driven — `dummy-r1` stopped at `Webster-Bouncer`.
-
-Also worth a second instance's confirmation: **F-4's fix lives in the generic `shedadapters.Bouncer`**, so it should hold identically on `Plan-Bouncer`/`Webster-Bouncer`, not just the `Discussion-Bouncer` instance round 1 drove — round 1 never checked a second segment's re-bounce branch.
+None of this touches `Knatte18/loomyard` or this crucible worktree/branch — it's all in the separate `lyx-test` sandbox repo and the operator's own machine state outside this repo.
 
 ## Live-fire self-report tracking
 
-**Already captured — do NOT re-trigger.** Round 2's dummy-task fixture(s) must set `selfreport: false` and `friction: ""` (round 1 did this on its own fixture after capturing the proof, per hard rule 7).
-
-- Issue #240 (Tier 1) — OPEN, real, confirmed via `gh issue view`.
-- Issue #241 (Tier 2) — OPEN, real, confirmed via `gh issue view`.
-- Closed: **not yet** — campaign has not converged (round 1 found and fixed a BLOCKING defect; a safety pass has not yet run). Close both, labeled as deliberate crucible test-fires, only at final hand-off.
+**Already captured — still do NOT re-trigger.** Unchanged from round 1.
+- Issue #240 (Tier 1) — OPEN, real.
+- Issue #241 (Tier 2) — OPEN, real.
+- Closed: **not yet** — campaign has not converged. Close both, labeled as deliberate crucible test-fires, only at final hand-off.
 
 ## Next action
-Ask the operator for round 2's model + effort pick (rotate away from Opus — Fable or Sonnet — per the method's diversity rationale), then spawn `subagent_type: crucible-reviewer-<effort>` with `model: <pick>`, prompt: "Read `_mill/loom-review-prompt.md` and do exactly what it says." Tag it `<model>-<effort>-r2`.
+1. Get the operator's decision on the three leftovers above (or explicit "leave it, move on").
+2. Ask the operator for round 3's model + effort pick. Sonnet is the one model in the Opus/Fable/Sonnet rotation not yet used — round 2's shrinking-findings trend (no BLOCKING, one MEDIUM) makes round 3 a reasonable candidate for the campaign's safety pass, but that's the operator's call on framing too.
+3. Spawn `subagent_type: crucible-reviewer-<effort>` with `model: <pick>`, prompt: "Read `_mill/loom-review-prompt.md` and do exactly what it says." Tag it `<model>-<effort>-r3`.
