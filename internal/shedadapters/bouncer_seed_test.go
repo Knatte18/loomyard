@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -401,6 +402,116 @@ func TestBouncer_ReBounce(t *testing.T) {
 	}
 	if string(got) != seeded {
 		t.Errorf("round-1-focus.md = %q; want it left byte-identical (%q)", got, seeded)
+	}
+}
+
+// TestBouncer_ReBounceProbesForALiveSeed is the regression guard for the one spawning mode that had
+// no live-agent probe.
+//
+// doc.go's "Every spawning adapter probes for a live agent first" enumerates the Bouncer's probe
+// sites as the seed pass, the judge pass, and the entry-time judge probe -- and the entry-time probe
+// is guarded by `n > 0 && judged(n)`, so it never covers the re-bounce. A parsing round-1 focus file
+// proves the seed agent wrote its one declared output, never that it exited, and shuttle's Wait
+// polls for bare existence at that path. So a driver killed in the window between the write and the
+// agent's own exit lands on this branch with a live seed still holding round-1-focus.md, and
+// returning Stuck without waiting abandons it while the segment's round producer starts reading that
+// very file.
+//
+// Reproduced live in crucible round 1: `lyx loom step` SIGKILLed mid-Discussion-Bouncer seed with
+// exactly one agent alive, then re-invoked. It correctly did not double-spawn -- and left the
+// paid-for agent running behind it, which the ly-supervise skill tells operators cannot happen
+// ("there is no orphan: the next step attaches to the agent rather than abandoning it").
+func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
+	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
+
+	tests := []struct {
+		name        string
+		attachFound bool
+	}{
+		{"LiveSeedIsWaitedOn", true},
+		{"NothingLiveLeavesTheBranchUnchanged", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := &fakeShuttle{
+				result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+				attachFound:  tt.attachFound,
+				attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			}
+			b, cfg := newTestBouncer(t, shuttle)
+
+			if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
+				t.Fatalf("WriteFile(...) = %v; want nil", err)
+			}
+
+			outcome, ptr, err := b.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+
+			if !shuttle.attachCalled {
+				t.Fatal("Call() returned from the re-bounce without probing for a live seed; a live seed agent would be abandoned in its pane")
+			}
+			wantOutputs := []string{focusPath(cfg.RunDir, 1)}
+			if !slices.Equal(shuttle.gotAttachSpec.OutputFiles, wantOutputs) {
+				t.Errorf("re-bounce probe OutputFiles = %v; want %v -- Attach matches on this set alone, so it must equal the seed spawn's own", shuttle.gotAttachSpec.OutputFiles, wantOutputs)
+			}
+			if shuttle.gotAttachSpec.Role != bouncerSeedRole {
+				t.Errorf("re-bounce probe Role = %q; want %q -- it must describe the same run the seed spawn started", shuttle.gotAttachSpec.Role, bouncerSeedRole)
+			}
+			if shuttle.gotAttachSpec.Round != "1" {
+				t.Errorf("re-bounce probe Round = %q; want \"1\"", shuttle.gotAttachSpec.Round)
+			}
+
+			// The branch's own behaviour is unchanged either way: probing is not respawning.
+			if shuttle.called {
+				t.Error("Call() spawned through the shuttle seam on a re-bounce; want the probe only, never a spawn")
+			}
+			if outcome != shedengine.Stuck {
+				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+			}
+			if ptr != (shedengine.OutputPointer{}) {
+				t.Errorf("Call() pointer = %+v; want empty", ptr)
+			}
+			got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
+			if err != nil {
+				t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
+			}
+			if string(got) != seeded {
+				t.Errorf("round-1-focus.md = %q; want it left byte-identical (%q)", got, seeded)
+			}
+		})
+	}
+}
+
+// TestBouncer_ReBounceDegradesOnAnUndeterminableProbe pins that a probe which could not answer the
+// liveness question is never read as "nothing is running": the re-bounce degrades rather than
+// silently proceeding, the same rule awaitLiveJudge's caller already follows.
+func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
+	shuttle := &fakeShuttle{
+		result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		attachErr: errors.New("reed state unreadable"),
+	}
+	b, cfg := newTestBouncer(t, shuttle)
+
+	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
+	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
+		t.Fatalf("WriteFile(...) = %v; want nil", err)
+	}
+
+	outcome, ptr, err := b.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil -- a degraded probe is a warned Stuck, never an engine error", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	}
+	if shuttle.called {
+		t.Error("Call() spawned through the shuttle seam after a failed probe; want no spawn")
 	}
 }
 
