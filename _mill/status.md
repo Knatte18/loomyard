@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-prose
+phase: approved-final-sweep-gate
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-fabricengine-tests  '2026-09-13T11:36:05Z'
 approved-peripheral-tests  '2026-09-13T11:41:44Z'
 approved-sandbox-fixture  '2026-09-13T11:44:20Z'
 approved-docs-prose  '2026-09-13T11:47:54Z'
+approved-final-sweep-gate  '2026-09-13T11:52:27Z'
 ```
 
 ## Batches
@@ -72,8 +73,9 @@ batches:
     commit_sha: 21ec49a58bb64154c84da4e77dedd348ebd49557
     verify_baseline_failures: []
   - name: final-sweep-gate
-    state: running
+    state: approved
     implementer_session: ae06ce45-82ed-46e4-8181-cf4f7dfee498
     start_sha: 8c2123cc48be6511f82657ecf1eeb16af663efbc
+    commit_sha: d6b56295e22f1e33d56e7a137c9f22f246ca6f00
     verify_baseline_failures: []
 ```
