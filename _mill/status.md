@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-citation-rewrite-and-enforcement  '2026-09-13T19:06:41Z'
 holistic-reviewing  '2026-09-13T19:07:00Z'
 holistic-approved  '2026-09-13T19:11:20Z'
 done  '2026-09-13T19:16:27Z'
+pr-pending  '2026-09-13T19:17:01Z'
 ```
 
 ## Batches
