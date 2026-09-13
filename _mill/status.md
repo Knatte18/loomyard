@@ -48,7 +48,9 @@ batches:
     commit_sha: 4ea238c20a90b5ed4dc9b2fc37824ed0f8bdc753
     verify_baseline_failures: []
   - name: specs-geometry
-    state: pending
+    state: running
+    implementer_session: 474e14d1-d9a6-407e-ada5-abcbd121aba4
+    start_sha: 017c2bec3c59ca132e596264b2e22b6f0b3ba0d9
     verify_baseline_failures: []
   - name: seeded-subtree-commit
     state: pending
