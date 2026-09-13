@@ -45,6 +45,10 @@ Appended incrementally, in order, as each command/scenario returned.
 - `go test -count=5 <the ten packages + cmd/lyx>` — all ok (loomcli, loomengine, loomshed, loomrecipe, friction, frictionengine, selfreportengine, selfreportcli, shedadapters, websterengine, cmd/lyx), exit 0.
 - `go test ./...` (whole repo) — exit 0, no failures.
 
+### Live smoke (providerless, safe per cost declaration)
+
+- `go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` — 14 tests, all PASS (incl. round 1's `TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem` and `TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy`), exit 0. Zero real LLM subprocesses, confirmed by runtime (<6s per test).
+
 ### Live substrate — bench setup
 
 - Host had a STALE production `lyx` at `~/go/bin/lyx` (built Sep 8, pre-campaign) — the exact two-lyx stencil-rewrite hazard `manifest/designs/loom.md` documents. Backed it up (`~/go/bin/lyx.stale-crucible-r2`) and installed the freshly built dev binary at the same path so exactly one `lyx` is reachable from the hub; restore at teardown.
