@@ -8,12 +8,14 @@ package loomcli
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -219,7 +221,32 @@ func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bo
 // run because an optional bookkeeping agent could not run is strictly worse than filing nothing, and
 // RunBlocked is worse still -- an operator staring at a blocked run does not need a second, unrelated
 // failure layered on top.
+//
+// The whole call is wrapped in a non-blocking lock on loomengine.LoomFrictionLock, and a lock already
+// held skips the step rather than waiting for it. This step runs AFTER shed.Run has returned, and
+// shed.Run releases the run lock on return -- so for the whole of the reflection agent's life (up to
+// friction_timeout_min, thirty minutes in the shipped template) the run lock reads as free and a
+// second "lyx loom run" spawns a second driver. That second driver is legitimate, but its own
+// reflection would archive the friction directory out from under the first one's live agent while
+// both held the same reflection-report.md as a declared output. Skipping rather than waiting is
+// correct here: the other reflection is already covering these very notes, so there is nothing left
+// for this one to do, and blocking would hold a driver open for another agent's whole deadline.
 func (c *loomCLI) reflectFriction() string {
+	if err := os.MkdirAll(filepath.Dir(loomengine.LoomFrictionLock(c.location)), 0o755); err != nil {
+		logger.Warn("loom: could not create the friction lock's directory; skipping the reflection", "dir", c.frictionDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	reflectionLock, free, err := lock.TryAcquireWriteLock(loomengine.LoomFrictionLock(c.location))
+	if err != nil {
+		logger.Warn("loom: could not probe the friction reflection lock; skipping the reflection", "dir", c.frictionDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	if !free {
+		logger.Warn("loom: another driver is already reflecting over this task's friction notes; skipping", "dir", c.frictionDir)
+		return frictionengine.StatusSkipped
+	}
+	defer func() { _ = reflectionLock.Release() }()
+
 	report, err := frictionengine.Reflect(frictionengine.Deps{
 		Shuttle:       c.runner,
 		FrictionDir:   c.frictionDir,

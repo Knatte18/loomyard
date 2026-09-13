@@ -249,12 +249,15 @@ func collapseAnomaliesByTitle(anomalies []loomengine.Anomaly) []loomengine.Anoma
 			}
 			continue
 		}
-		// Unreachable by construction: only recurring-finding anomalies carry a non-zero Round,
-		// and one loomengine.DetectAnomalies call returns at most one crash-resume and at most
-		// one halt-kind anomaly, whose title shapes collide neither with each other nor with a
-		// recurring-finding title. Kept as a defensive guard, following the in-repo convention
-		// selfreportengine.CreateIssue's own targetRepo guard already sets, so a future change to
-		// the detector's output fails predictably rather than silently.
+		// Falling through here keeps the first occurrence and discards this one, silently. That is
+		// the whole behaviour -- there is deliberately no guard, because the case is unreachable by
+		// construction: only recurring-finding anomalies carry a non-zero Round, and one
+		// loomengine.DetectAnomalies call returns at most one crash-resume and at most one halt-kind
+		// anomaly, whose title shapes collide neither with each other nor with a recurring-finding
+		// title.
+		// If a future change to the detector's output makes it reachable, the symptom is a dropped
+		// anomaly with nothing reported anywhere, so the fix then is to add the guard rather than to
+		// widen this comment.
 	}
 
 	collapsed := make([]loomengine.Anomaly, 0, len(order))

@@ -13,6 +13,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -172,5 +174,72 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 	}
 	if got == "filed" {
 		t.Error("c.reflectFriction() = \"filed\"; that status must never exist")
+	}
+}
+
+// TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock is the regression guard for the
+// second-driver window Tier 2 opened.
+//
+// shedengine.Run releases the run lock on return, and the reflection step fires after that return --
+// so for the whole of the reflection agent's life (friction_timeout_min, thirty minutes in the
+// shipped template) the run lock reads as free and a second "lyx loom run" spawns a second driver.
+// That second driver is a legitimate resume of a halted run, but its own reflection would archive
+// the friction directory out from under the first one's live agent while both held the same
+// reflection-report.md as a declared output.
+//
+// The lock is held here by a separate acquisition standing in for that other driver, and the
+// assertion is that this call skips rather than waits: the other reflection already covers these
+// notes, and blocking would hold a driver open for another agent's whole deadline.
+func TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock(t *testing.T) {
+	t.Parallel()
+
+	hub := t.TempDir()
+	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: "warp", AnchorRel: "."}
+
+	lockPath := loomengine.LoomFrictionLock(loc)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(lockPath), err)
+	}
+	held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("TryAcquireWriteLock(%q) = %v; want nil", lockPath, err)
+	}
+	if !acquired {
+		t.Fatalf("TryAcquireWriteLock(%q) did not acquire a fresh lock", lockPath)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+
+	// Deliberately a relative friction directory, which frictionengine.Reflect's own validateDeps
+	// rejects: reaching Reflect at all would report StatusFailed, so StatusSkipped can only mean the
+	// lock check returned before it.
+	c := &loomCLI{
+		location:    loc,
+		frictionDir: "relative-friction-dir",
+		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
+	}
+
+	if got := c.reflectFriction(); got != frictionengine.StatusSkipped {
+		t.Errorf("c.reflectFriction() with the reflection lock already held = %q; want %q -- a second driver must not reflect over the same notes", got, frictionengine.StatusSkipped)
+	}
+}
+
+// TestReflectFriction_ReleasesTheLockForTheNextDriver asserts the lock is not leaked: once a
+// reflection returns, a later one against the same task must be able to take it. Without the
+// release, the first halt of a task would permanently suppress every later reflection in it.
+func TestReflectFriction_ReleasesTheLockForTheNextDriver(t *testing.T) {
+	t.Parallel()
+
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	c := &loomCLI{
+		location:    loc,
+		frictionDir: "relative-friction-dir",
+		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
+	}
+
+	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
+		t.Fatalf("first c.reflectFriction() = %q; want %q", got, frictionengine.StatusFailed)
+	}
+	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
+		t.Errorf("second c.reflectFriction() = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
 	}
 }

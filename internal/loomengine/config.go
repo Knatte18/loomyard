@@ -222,6 +222,21 @@ func LoomFrictionArchivePrefix(l *lyxcwd.Location) string {
 	return LoomFrictionDir(l) + "-"
 }
 
+// LoomFrictionLock returns the path to the advisory lock guarding the Tier 2 reflection step against
+// a second concurrent reflection over the same friction directory.
+//
+// It is a lock of its own rather than a reuse of the run lock because the run lock cannot cover this
+// step at all: shedengine.Run releases it on return, and the reflection fires after that return, so
+// for the whole of the reflection agent's life the run lock reads as free and a second `lyx loom run`
+// spawns a second driver. That second driver is legitimate -- it is an operator resuming a halted
+// run -- but its own reflection would then archive the friction directory out from under the first
+// one's agent, and both would have declared the same reflection-report.md as an output.
+// The lock file is a sibling of the friction directory rather than a file inside it, because the
+// directory itself is renamed away by the archive step while the lock is still held.
+func LoomFrictionLock(l *lyxcwd.Location) string {
+	return LoomFrictionDir(l) + ".lock"
+}
+
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
 	Discussion            string `yaml:"discussion"`
