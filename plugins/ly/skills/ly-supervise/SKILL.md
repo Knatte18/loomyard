@@ -102,6 +102,10 @@ Loom's two automatic self-report tiers both hang off `lyx loom drive`'s own run,
 That is the trade this design makes: a live supervisor with an operator in the loop instead of a primitive filing public issues on its own, forty times a run.
 Read it as a responsibility, not a gap.
 
+The friction notes live at `.lyx/loom/friction/` under the task worktree root — a fixed location, not phase knowledge.
+Whenever the loop stops — terminal state, blocked, hand-back, or iteration cap — list that directory and name any notes found in the stop report, because nothing else will: `step` never spawns the reflection pass that `drive` runs, and the next task's own first seed clears the directory, so a note left unread here is dropped silently.
+Reading the notes and judging whether one is worth a `lyx selfreport create` call is part of the same operator-gated flow below.
+
 This skill may call `lyx selfreport create` only after the loop has stopped — terminal state, blocked, hand-back, or iteration cap — never between steps, and at most once per supervised run.
 Draft the title and body, show both to the operator, and fire the call only on explicit operator approval.
 The body goes in via `-b -` on stdin and states the row's policy-relevant facts, the envelope fields that were surprising, and the artifact path this loop read.
