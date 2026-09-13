@@ -50,7 +50,7 @@ The four verbs above are the whole of what `lyx quarry` offers you — there is 
 ## Step 3 — Write the plan into `{{.plan_dir}}`
 
 Create `{{.plan_dir}}` first if it does not already exist.
-Write one `00-overview.md` plus one `NN-<card-slug>.md` per card, following this **compact plan-format** spec.
+Write one `00-overview.md` plus one `NN-<card-slug>.md` per card, following this **compact plan-format** spec (the authoritative reference is `contracts/specs/loom-plan-spec.md`; this section summarizes what you need to write one).
 
 ### What a card is
 
