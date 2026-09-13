@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-final-sweep-gate  '2026-09-13T11:52:27Z'
 holistic-reviewing  '2026-09-13T11:52:58Z'
 holistic-approved  '2026-09-13T11:56:37Z'
 done  '2026-09-13T11:58:21Z'
+pr-pending  '2026-09-13T12:00:57Z'
 ```
 
 ## Batches
