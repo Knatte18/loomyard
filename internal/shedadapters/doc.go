@@ -156,10 +156,19 @@
 //
 // All four adapters answer the same question before they start anything: is an agent for this exact
 // step still alive? They answer it in two different ways, and the difference is the engine's, not a
-// policy choice here. SingleLLMProducer, Bouncer (on its seed pass, on its judge pass, and once more
-// at Call entry -- see below), and BurlerProducer all call shuttleengine's Attach seam with the
-// step's own OutputFiles and wait on a match; WebsterProducer inherits websterengine's own
-// entry-time reclaim, which stops a leftover Master rather than attaching to it.
+// policy choice here. SingleLLMProducer, Bouncer (on its seed pass, on its judge pass, on the
+// re-bounce, and once more at Call entry -- see below), and BurlerProducer all call shuttleengine's
+// Attach seam with the step's own OutputFiles and wait on a match; WebsterProducer inherits
+// websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
+//
+// "Every mode" is meant literally, and was not always true. The re-bounce -- an already-seeded
+// segment whose round producer handed back without a report -- spawns nothing, so it looked like a
+// mode with nothing to probe for. It is not: a parsing round-1 focus file proves the seed agent
+// wrote its one declared output, never that it exited, and shuttle's Wait polls for bare existence
+// at that path, so a driver killed between the write and the exit lands on that branch with a live
+// seed still holding the file. Returning Stuck without waiting abandoned it while the segment's
+// round producer began reading the very file it might still be rewriting. Reproduced live, and
+// closed by giving the branch the same probe the seed pass already had.
 //
 // The probe always runs BEFORE the archive, in all three attaching adapters. Archiving renames the
 // very files a live agent is about to write, and shuttle's Wait polls for bare existence at those

@@ -85,7 +85,7 @@ On detecting one, read `lyx loom status` once and branch on that single read:
 Cap the re-invoking branch at **two consecutive** interrupted-and-re-invoked steps against the same row.
 On a third, stop and hand back — something is wrong with the invocation mechanism itself rather than with the run.
 
-Outside the handback branch, print no orphaned-agent warning, because there is no orphan: the next step attaches to the agent rather than abandoning it.
+Outside the handback branch, print no orphaned-agent warning, because there is no orphan: every spawning row's adapter probes for a live agent and waits on it, so the next step attaches rather than abandoning.
 
 ## Self-report
 
