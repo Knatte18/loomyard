@@ -225,4 +225,12 @@ func TestWebsterGeometry(t *testing.T) {
 	if want := StencilsDir(stateDir); got.StencilsDir != want {
 		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q (StencilsDir(stateDir))", got.StencilsDir, want)
 	}
+	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "specs"); got.SpecsDir != want {
+		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q", got.SpecsDir, want)
+	}
+	// This equality pins the one-construction-site property: WebsterGeometry's SpecsDir field
+	// must always come from the shared SpecsDir helper, never a re-derived literal.
+	if want := SpecsDir(stateDir); got.SpecsDir != want {
+		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q (SpecsDir(stateDir))", got.SpecsDir, want)
+	}
 }

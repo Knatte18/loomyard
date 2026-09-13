@@ -69,6 +69,9 @@ func TestWebsterGeometry(t *testing.T) {
 			if want := fabricengine.StencilsDir(hub); got.StencilsDir != want {
 				t.Errorf("WebsterGeometry(l).StencilsDir = %q; want %q", got.StencilsDir, want)
 			}
+			if want := fabricengine.SpecsDir(hub); got.SpecsDir != want {
+				t.Errorf("WebsterGeometry(l).SpecsDir = %q; want %q", got.SpecsDir, want)
+			}
 			if want := planparser.PlanDir(anchorPath); got.PlanDir != want {
 				t.Errorf("WebsterGeometry(l).PlanDir = %q; want %q", got.PlanDir, want)
 			}
