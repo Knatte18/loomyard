@@ -29,7 +29,10 @@ Provisional entries (appended as spotted; finalized after the live pass):
 
 ## Docs & operability findings
 
-(in progress)
+- The four design docs (`loom-step.md`, `self-report-tier1.md`, `self-report-tier2.md`, `loom.md`) match the code as it stands after round 1's fixes on every claim I checked: the ten-key envelope list, the five-kind error vocabulary, the step-exemption paragraphs in both tier docs, the reflection's post-lock-release corollary, the shared-bootstrap friction-directory lifecycle, and the `interrupt_policy` "advice, not a gate" framing.
+- `docs/overview.md` module table and the selfreport/friction rows are current; `manifest/roadmap.md` Done entries for the trio match shipped behavior; `CONSTRAINTS.md`'s Friction Leaf Invariant matches `internal/friction`'s import set (verified by `leaf_enforcement_test.go`'s existence and a read of the imports).
+- `ly-supervise` SKILL.md matches the code on every mechanical claim (five kinds, one-retry-on-producer, status-read `interrupt_policy`, no-orphan claim backed by the adapters' probes). The one gap is P-5 (friction notes invisible to the supervisor) — see Code findings.
+- `tools/sandbox/SANDBOX-CORE-SUITE.md` S8 covers the never-bootstrapped refusal and `interrupt_policy` (round 1's extension); this round surfaced no NEW live/visual behavior S8 fails to cover that belongs in a sandbox scenario (the busy refusal and pause-via-step are exercised by unit + this round's live walk; S8's fixture-based scenario cannot hold a run lock, so a busy-refusal S8 extension would need a live driver and does not fit the suite's hand-written-fixture shape).
 
 ## What was tested
 
