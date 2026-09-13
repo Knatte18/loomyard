@@ -3,7 +3,7 @@
 ```yaml
 task: 'modelspec: bare-effort shorthand and version-to-v rename'
 slug: 'modelspec-effort-shorthand'
-approved: false
+approved: true
 started: '20260913-103908'
 parent: 'main'
 root: ""
@@ -49,6 +49,18 @@ batches:
 
 - **Decision:** the three new or changed error strings are stated verbatim in the cards that produce them and asserted by substring in the test card. The implementer copies them; it does not invent punctuation.
 - **Rationale:** two of the three are asserted across two files written by two different cards, and the test card cannot assert a shape the parser card was free to choose.
+- **Applies to:** all batches
+
+### Decision: the bracket grammar line is pinned verbatim, once
+
+- **Decision:** the one-line bracket grammar is this exact text, and both places that state it copy it character-for-character:
+
+  ```
+  <alias>[item,item,...]        where item is  key=value  |  <effort>
+  ```
+
+  The escape-form line is the same shape with `<provider>:<model-id>` in place of `<alias>`, and states the `item` production by reference rather than repeating it.
+- **Rationale:** the same grammar is stated twice — once in the pinned contract doc's Grammar section and once in the package doc of `internal/modelspec/modelspec.go` — by two different cards. Describing it in prose in both places and asking for "identical wording" is exactly the cross-card drift the error-string decision above already refuses to accept; the literal text belongs in one place and gets copied.
 - **Applies to:** all batches
 
 ### Decision: docs land in the same batch as the code

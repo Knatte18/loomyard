@@ -19,7 +19,7 @@ There is no external interface for a later batch to consume — this is the last
 Batch-local decisions that go beyond the overview's `## Shared Decisions`:
 
 - Card order is load-bearing. The vocabulary map (card 1) must exist before the parser references it (card 2), and the parser must have its new behaviour before the tests assert it (card 3). Cards 4, 5 and 6 are independent of each other but all depend on card 1's map existing.
-- The intermediate commits for cards 2 and 3 are not individually green: card 2 deletes the `no '=' separator` error that card 3's table still asserts against. The batch's `verify:` gate is the correctness boundary, not each card's commit.
+- The intermediate commits for cards 2 and 3 are not individually green. Card 2 makes three pre-existing test cases fail until card 3 lands: the reject case asserting the deleted `no '=' separator` error, and both accept cases whose input still uses the old `version=` bracket spelling, which card 2 turns into an unknown-key rejection. Card 3's requirements fix all three. The batch's `verify:` gate is the correctness boundary, not each card's commit.
 
 ## Cards
 
@@ -39,7 +39,7 @@ Batch-local decisions that go beyond the overview's `## Shared Decisions`:
   Leave `knownParams` itself unchanged in membership — it keeps `effort` and `version` and keeps being the vocabulary `validateAlias` gates `Entry.Defaults` against.
   Correct `knownParams`' own doc comment: its opening clause currently claims it is the closed set of keys a bracket or a registry Defaults map may use, which stops being true once the bracket is gated by `bracketKeys`. Re-scope that clause to `Entry.Defaults` and the canonical `Params` key space, and add a sentence pointing at `bracketKeys` as the bracket-facing spelling layer over it.
   Keep the existing sentence stating that it gates param KEYS ONLY and never model names or aliases — it is still true and is load-bearing for the no-value-validation decision.
-  Rewrite the package doc's one-line grammar, which currently spells both shapes with a `key=value,...` bracket interior, so that the bracket interior reads as a comma-separated list of items where an item is either `key=value` or a bare effort token. Word it identically to the grammar line card 5 pins in the contract doc — the two are the same grammar stated twice and must not drift.
+  Rewrite the package doc's one-line grammar, which currently spells both shapes with a `key=value,...` bracket interior. Copy the alias-form line character-for-character from the overview's Shared Decisions subsection titled "the bracket grammar line is pinned verbatim, once", and give the escape form the same shape with the engine-and-model-id production in place of the alias. Do not paraphrase it — card 5 writes the same pinned text into the contract doc, and the two must not drift.
   Leave the package doc's consumer example untouched: the line assigning from `resolved.Params["version"]` shows the canonical key a consumer reads, which this rename does not change.
 - **Commit:** `feat(modelspec): add bracketKeys spelling vocabulary`
 
@@ -112,7 +112,7 @@ Batch-local decisions that go beyond the overview's `## Shared Decisions`:
 - **Moves:** none
 - **Requirements:**
   Edit the Grammar section in four places, and four `version` mentions further down in three places — one of the four mentions is deliberately left alone.
-  The alias-form grammar line, currently the fenced one-liner spelling the bracket as a comma-separated `key=value` list, becomes a comma-separated list of items with the item production stated on the same line: an item is either `key=value` or a bare effort token. Keep it a single fenced line. Reject the alternation-inside-the-bracket form — it reads as one item of either shape and hides that the comma list mixes both. This exact wording is restated in the package doc of `internal/modelspec/modelspec.go` by card 1; the two must match.
+  The alias-form grammar line, currently the fenced one-liner spelling the bracket as a comma-separated `key=value` list, is replaced character-for-character by the line pinned in the overview's Shared Decisions subsection titled "the bracket grammar line is pinned verbatim, once". Keep it a single fenced line. Do not substitute the alternation-inside-the-bracket form — it reads as one item of either shape and hides that the comma list mixes both. Card 1 writes the same pinned line into the package doc of `internal/modelspec/modelspec.go`; the two must match exactly.
   The bullet immediately under it, which currently says each `key=value` overrides that parameter for this spec only, is extended to say a bracket item is either `key=value` or a bare token, and that a bare token means effort.
   The escape-form grammar line, currently spelling its bracket the same `key=value` way, takes the same item-list form. State the item production once, at the alias-form line, and reference it here rather than repeating it.
   The yaml example block under the Grammar section gains one line showing the shorthand spelling beside the existing explicit-effort reviewer line, so both spellings are visibly legal.
