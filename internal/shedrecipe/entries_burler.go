@@ -12,8 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/stencil"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env,
@@ -45,7 +43,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, err
 	}
 
-	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir)
+	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir, env.SpecsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -145,15 +143,21 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 // setting a value the producer silently discards.
 //
 // rubric_stencil is the one key with no profileYAML counterpart: it names a stencilstore rubric
-// stencil, read via stencilstore and stripped of its leading stencil-store comment banner, to set
-// Profile.Rubric in place of a literal rubric string. Exactly one of rubric and rubric_stencil must
-// be non-empty -- both set, or both empty, is a construction error naming both keys, because neither
-// of Profile.validate's own checks can say which of the two the author meant.
+// stencil, read and filled via shedadapters.ReadRubric, to set Profile.Rubric in place of a literal
+// rubric string. Exactly one of rubric and rubric_stencil must be non-empty -- both set, or both
+// empty, is a construction error naming both keys, because neither of Profile.validate's own checks
+// can say which of the two the author meant.
 //
-// This entry does not check profile's inner required-ness beyond that one rule:
+// The stencil route fills specs_dir at read time; the literal route passes rubric through
+// unfilled, exactly as before. The asymmetry is deliberate: a literal rubric is author-written
+// prose reaching this entry through the rubric config key rather than through the stencil store,
+// and running it through Fill would turn any bare {{ in it into a parse-template error and impose
+// specs-directory semantics on text that never had them.
+//
+// This entry does not check profile's inner required-ness beyond the mutual-exclusivity rule:
 // burlerengine.Profile.validate already rejects an empty Rubric and a Target/Fasit with neither
 // Paths nor Instructions, and duplicating that here would drift from it.
-func burlerRoundProfile(cfg Config, stencilsDir string) (burlerengine.Profile, error) {
+func burlerRoundProfile(cfg Config, stencilsDir, specsDir string) (burlerengine.Profile, error) {
 	targetCfg, err := configMap(cfg, "target", false)
 	if err != nil {
 		return burlerengine.Profile{}, err
@@ -200,15 +204,16 @@ func burlerRoundProfile(cfg Config, stencilsDir string) (burlerengine.Profile, e
 		if err := requireAbsRoot("BurlerRound", "StencilsDir", stencilsDir); err != nil {
 			return burlerengine.Profile{}, err
 		}
-		raw, err := stencilstore.Read(stencilsDir, rubricStencil)
+		// Guarded inside this branch, not at function entry, so a row using a literal rubric: key
+		// still constructs with no specs directory wired, exactly as it does today.
+		if err := requireAbsRoot("BurlerRound", "SpecsDir", specsDir); err != nil {
+			return burlerengine.Profile{}, err
+		}
+		filled, err := shedadapters.ReadRubric(stencilsDir, rubricStencil, specsDir)
 		if err != nil {
 			return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: rubric_stencil %q: %w", rubricStencil, err)
 		}
-		// stencilstore stamps a "<!-- lyx-stencil: sha256=... -->" banner onto every seeded file, and
-		// stencil.Fill strips a banner from the template it parses but never from a marker value, so
-		// unstripped bytes would inject the banner into the middle of the round prompt. This mirrors
-		// what shedadapters' own Bouncer already does with its rubric.
-		rubric = stencil.StripLeadingComment(string(raw))
+		rubric = filled
 	}
 
 	target, err := burlerRoundFileSet("BurlerRound", "target", targetCfg)
