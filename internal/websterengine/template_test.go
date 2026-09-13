@@ -64,6 +64,16 @@ func newTestStencilsDir(t *testing.T) string {
 	return dir
 }
 
+// newTestSpecsDir returns a real, non-empty directory to pass as RenderForkPrompt's/
+// RenderRecoveryPrompt's specsDir parameter, alongside newTestStencilsDir. A real directory rather
+// than an empty-string placeholder is required: specs_dir is a required marker in the shared
+// implementer-job body, so an empty value would compile and pass today only because the body
+// carries no marker yet, and would start failing at run time the moment a later batch inserts it.
+func newTestSpecsDir(t *testing.T) string {
+	t.Helper()
+	return t.TempDir()
+}
+
 // mustMasterTemplate, mustIntegrationTemplate, mustForkTemplate, and mustRecoveryTemplate wrap the
 // matching accessor with a t.Fatalf on error, so call sites unrelated to the error path itself stay
 // terse.
@@ -788,7 +798,7 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 
 	t.Run("empty prevDigest renders the first-batch sentinel", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-seam-extensions.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-seam-extensions.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -798,7 +808,7 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	t.Run("non-empty prevDigest passes through verbatim", func(t *testing.T) {
 		digest := "01-seam-extensions: done head_sha=abc123"
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, digest, "/reports/02-webster-foundation.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderForkPrompt(batch, digest, "/reports/02-webster-foundation.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -831,7 +841,7 @@ func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
 	anchorRoot, stencilsDir := testLayout(t)
-	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 	if err != nil {
 		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 	}
@@ -854,7 +864,7 @@ func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
 	anchorRoot, stencilsDir := testLayout(t)
-	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/04-helptree-rename.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/04-helptree-rename.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 	if err != nil {
 		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 	}
@@ -875,7 +885,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 
 	t.Run("PATTERN inactive", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -896,7 +906,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 
 	t.Run("PATTERN active", func(t *testing.T) {
 		anchorRoot, stencilsDir := patternActiveLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -934,7 +944,7 @@ func TestRenderRecoveryPrompt_MissingPatternStencilErrors(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
 
-	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, ""); err == nil {
+	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, ""); err == nil {
 		t.Fatal("RenderRecoveryPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
 	}
 }
@@ -964,7 +974,7 @@ func TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
 
 	t.Run("anchor root equals prompt worktree root", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -976,7 +986,7 @@ func TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
 		const anchorRoot = "/hub/master-builder"
 		const promptWorktreeRoot = "/standalone/state/worktree"
 
-		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -997,7 +1007,7 @@ func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) 
 
 	t.Run("anchor root equals prompt worktree root", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1008,7 +1018,7 @@ func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) 
 		anchorRoot, stencilsDir := testLayout(t)
 		const promptWorktreeRoot = "/standalone/state/worktree"
 
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1282,7 +1292,7 @@ func TestRenderForkPrompt_FrictionDirective(t *testing.T) {
 	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha.md")
-		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, notePath)
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -1294,7 +1304,7 @@ func TestRenderForkPrompt_FrictionDirective(t *testing.T) {
 		// a clean render proves friction.Directive's empty-notePath early return, not a swallowed
 		// error.
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -1305,7 +1315,7 @@ func TestRenderForkPrompt_FrictionDirective(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		stripFrictionMarker(t, stencilsDir, "webster-prefix-fork")
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha.md")
-		if _, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, notePath); err != nil {
+		if _, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath); err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error even with a marker-free template", err)
 		}
 	})
@@ -1320,7 +1330,7 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha-recovery.md")
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, notePath)
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath)
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1329,7 +1339,7 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 
 	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1340,7 +1350,7 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		stripFrictionMarker(t, stencilsDir, "webster-prefix-recovery")
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha-recovery.md")
-		if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, 2, notePath); err != nil {
+		if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath); err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error even with a marker-free template", err)
 		}
 	})

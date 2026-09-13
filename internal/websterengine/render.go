@@ -39,6 +39,13 @@
 // returned — exactly as if Tier 2 were off, per the composer-swallows-a-friction-error Shared
 // Decision; this is deliberately unlike the pattern.Directive error handling sitting beside it in
 // RenderRecoveryPrompt and RenderMasterPrompt, which does propagate.
+//
+// RenderForkPrompt and RenderRecoveryPrompt each also take a specsDir parameter, immediately after
+// their stencilsDir parameter, filled into the shared implementer-job body's required specs_dir
+// marker. It is required, not optional: a blank render would silently reproduce a dead
+// cross-repository reference in the agent's own instructions. RenderMasterPrompt and
+// RenderIntegrationPrompt gain no such parameter — neither the Master template nor the integration
+// template cites a normative spec.
 
 package websterengine
 
@@ -157,7 +164,9 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
 // friction.Directive error swallowed as a Warn rather than propagated.
-func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int, notePath string) ([]byte, error) {
+// specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
+// required specs_dir marker.
+func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -175,6 +184,7 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, prom
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
+		"specs_dir":         specsDir,
 		friction.MarkerName: directive,
 	}
 	template, err := composeForkTemplate(stencilsDir)
@@ -201,7 +211,9 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, prom
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
 // friction.Directive error swallowed as a Warn rather than propagated — deliberately unlike the
 // pattern.Directive call immediately above, which does propagate.
-func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir string, selfFixCap int, notePath string) ([]byte, error) {
+// specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
+// required specs_dir marker.
+func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -225,6 +237,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
 		"pattern_directive": directive,
+		"specs_dir":         specsDir,
 		friction.MarkerName: frictionDirective,
 	}
 	template, err := composeRecoveryTemplate(stencilsDir)
