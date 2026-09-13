@@ -367,9 +367,12 @@ For the step it was on:
    so a never-booted pane fails fast at `startup_timeout_s` instead of silently waiting out the full run timeout for a misleading `OutcomeTimeout`.
    **Every row that spawns an agent answers this question, and which rows do so is not left implicit here, because for a while it was and only one of them did.**
    `SingleLLMProducer` probes it for `Discussion-Write` and `Plan-Write`;
-   `shedadapters.Bouncer` probes it three times over, for all three segments' `*-Bouncer` rows: on its seed pass, on its judge pass, and once more at `Call` entry before it acts on a verdict already on disk.
-   That third probe is not redundant, and the reason is the gap between what a judgment *records* and what its spawn *declares*: the record is a verdict plus a ledger, while the spawn declares those two plus the next round's focus file, so a crash in between leaves a live judge behind an apparently-final verdict — and the two branches that read such a verdict, the re-entry clear and the BLOCKING replay, spawn nothing themselves and would otherwise never ask.
+   `shedadapters.Bouncer` probes it four times over, for all three segments' `*-Bouncer` rows: on its seed pass, on its judge pass, on the re-bounce, and once more at `Call` entry before it acts on a verdict already on disk.
+   The entry-time probe is not redundant, and the reason is the gap between what a judgment *records* and what its spawn *declares*: the record is a verdict plus a ledger, while the spawn declares those two plus the next round's focus file, so a crash in between leaves a live judge behind an apparently-final verdict — and the two branches that read such a verdict, the re-entry clear and the BLOCKING replay, spawn nothing themselves and would otherwise never ask.
    Attaching there makes that call the judgment's harvest — it settles rather than clearing — while a not-found probe leaves both branches acting on exactly the state they always did.
+   The re-bounce probe closes the same class of gap one branch further along, and it was missing until crucible round 1 drove it live: an already-seeded segment whose round producer handed back without a report spawns nothing, so it looked like a mode with nothing to ask about.
+   It is not — a parsing `round-1-focus.md` proves the seed agent wrote its one declared output, never that it exited, so a `lyx loom step` killed between the write and the exit left a live seed holding that file while the branch returned `Stuck` and the segment's round producer began reading it.
+   The probe there waits on such a seed instead of abandoning it, and costs nothing when nothing is live.
    `shedadapters.BurlerProducer` probes it for all three `*-Burler` rows, matching on the round's own `round-<N>-review.md`/`round-<N>-fixer-report.md` pair, which is exactly the `OutputFiles` set `burlerengine` declares for that round's shuttle run.
    The `Webster` row reaches the same no-duplicate property by a different mechanism it owns itself: `websterengine`'s entry-time reclaim stops a leftover live Master before starting a new one, rather than attaching to it.
    Until the review-segment rows gained the probe, a driver crash inside any segment left that segment's agent alive and the next `lyx loom run` started a second one over it — two agents writing one review, and on the `Webster-Burler` row (`fix-scope: source`) two agents committing to one branch.
@@ -510,9 +513,13 @@ lyx loom run:
                                                            is actually running — OR before it has already
                                                            run and exited, which is what every fast-halting
                                                            run does and which proceeds to step 4 rather than
-                                                           refusing; only a child still alive after the whole
-                                                           attempt budget without ever taking the lock is a
-                                                           wedged spawn and refuses)
+                                                           refusing; OR before it has finished its pass and
+                                                           is still alive doing post-run bookkeeping, which
+                                                           is what a Tier 2 friction reflection is, and which
+                                                           proceeds for the same reason; only a child still
+                                                           alive after the whole attempt budget that never
+                                                           took the lock AND left the machine in `running`
+                                                           is a wedged spawn and refuses)
   4. attach the current terminal to the tmux session     (reed takes the foreground)
 ```
 
@@ -543,8 +550,11 @@ only the *spawn + completion-detection* mechanism differs from a headless model.
 Every stencil loom's agents read tells them to run `lyx` verbs — `lyx board get`, `lyx loom validate-plan`, `lyx webster begin-batch` — and none of them names a binary, so each resolves whatever `lyx` the agent's shell finds.
 `lyx`'s own root pre-run seeds and **commits** the hub's stencils from its embedded registry, so an `lyx` of a different vintage than the driver silently rewrites the very prompt files the run's later rows read at call time, mid-run, and commits the rewrite to the board repo.
 This was observed live: during a crucible round's own pipeline run, an older installed `lyx` reached from an agent's shell reverted three loom stencils nine seconds in, deleting Discussion-Write's `## What you may write` fence and both halves of the plan-approval wording.
-Prefixing the driver's environment PATH does **not** fix it — an agent's shell re-sources the user profile and re-orders PATH back — so the fix belongs in the spawn layer (`shuttle`/`reed`), not here, and is not built.
+Prefixing the driver's environment PATH does **not** fix it — an agent's shell re-sources the user profile and re-orders PATH back, and separately the reed **tmux server captures its environment when it starts**, so a PATH exported after that server came up never reaches any agent spawned into it.
+Crucible round 1 re-observed this and measured the second half: stencils repaired by `lyx stencil sync` at 15:31 were stripped again at 15:33 by an agent in a server that had started at 15:26, five minutes before PATH was pinned. Correcting PATH for the agents therefore means restarting the tmux server, not just exporting it.
+So the fix belongs in the spawn layer (`shuttle`/`reed`), not here, and is not built.
 The operator-side mitigation today is to keep exactly one `lyx` reachable from a hub, and to treat the repeated `stencilstore: dev build does not refresh an untouched stencil` warning as the signal that two are: it names `lyx stencil sync` as the repair.
+Tier 2's own `friction: stencil is missing the friction directive marker` warning (`internal/friction`'s `WarnIfMarkerAbsent`) is the second, sharper signal of the same condition, and in round 1 it was the only thing that made a total Tier-2 outage visible at all — every producer prompt composed after the rewrite carried no friction directive, and without that warning nothing anywhere would have said so.
 
 The consequence for loom: it sits on top of the [`proc → reed → shuttle`](../../docs/overview.md#execution-stack-orchestration-layers) stack, so that stack is on loom's critical path. loom (via its review segments — see the `internal/shedadapters` package documentation — → `burler`, see the `internal/burlerengine` package documentation) calls `shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `reed` (see [overview.md#modules](../../docs/overview.md#modules);
 the strand bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go) and `shuttle` (see the `internal/shuttleengine` package documentation;

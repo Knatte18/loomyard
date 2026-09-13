@@ -29,6 +29,12 @@ const bouncerEngineLabel = "bouncer"
 // a logged attach to be attributable to the pass that started it.
 const bouncerJudgeRole = "bouncer-judge"
 
+// bouncerSeedRole is the shuttleengine.Spec.Role every seed pass carries, pinned as a constant for
+// exactly the reason bouncerJudgeRole is: the seed spawn and the re-bounce branch's probe for a live
+// seed must describe the same run, because Attach matches on the role, round, and OutputFiles alone.
+// A literal in one place and a constant in the other is how the two silently stop matching.
+const bouncerSeedRole = "bouncer-seed"
+
 // BouncerConfig configures one Bouncer instance.
 type BouncerConfig struct {
 	// Name is a log-field and error-text identity only, never compared, parsed, or used for
@@ -254,6 +260,20 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		if b.round1FocusSeeded() {
 			// Re-bounce: the segment was already seeded and the round producer handed control
 			// back without producing round 1's report. Spawn nothing, touch nothing.
+			//
+			// The probe first, for the same reason every other mode probes: a parsing focus file
+			// proves the seed agent wrote its one declared output, never that it finished, and
+			// shuttle's Wait polls for bare existence at that path. A driver killed in the window
+			// between the write and the agent's own exit therefore lands here with a live seed still
+			// holding round-1-focus.md -- and handing back Stuck without waiting abandons it in its
+			// pane while the segment's round producer starts reading the very file it may still be
+			// rewriting. Reproduced live in crucible round 1: `lyx loom step` killed mid-seed, then
+			// re-invoked, took this branch and left a paid-for agent running behind it.
+			// Waiting costs nothing when nothing is live (Attach reports not-found immediately) and
+			// leaves the branch acting on exactly the state it always did.
+			if _, err := b.awaitLiveSeed(); err != nil {
+				return b.degrade(ctx, "shedadapters: bouncer re-bounce seed attach probe failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
+			}
 			logger.Warn("shedadapters: bouncer segment already seeded; round producer returned no report", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1)
 			if cerr := cancelErr(ctx, b.cfg.Name, bouncerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
@@ -317,6 +337,32 @@ func (b *Bouncer) awaitLiveJudge(round int) (bool, error) {
 		return false, nil
 	}
 	logger.Info("shedadapters: attached to a live bouncer judge run instead of acting on its unfinished verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
+	return true, nil
+}
+
+// awaitLiveSeed probes for a still-live seed run for round 1 and, when it finds one, waits on it
+// before reporting true; a not-found probe reports false, and an attach error is returned to the
+// caller rather than swallowed, since a probe that could not determine liveness must never be read
+// as "nothing is running" -- the same rule awaitLiveJudge follows for the judge spec.
+//
+// The spec it probes on carries only what Attach matches: the seed pass's own OutputFiles, role, and
+// round. It must stay byte-identical to runSeedSpawn's spec in those three fields, because Attach
+// matches on them alone and a divergence would silently make every probe here report not-found.
+func (b *Bouncer) awaitLiveSeed() (bool, error) {
+	spec := shuttleengine.Spec{
+		OutputFiles: []string{focusPath(b.cfg.RunDir, 1)},
+		Role:        bouncerSeedRole,
+		Round:       "1",
+	}
+
+	result, attached, err := b.cfg.Shuttle.Attach(spec)
+	if err != nil {
+		return false, err
+	}
+	if !attached {
+		return false, nil
+	}
+	logger.Info("shedadapters: attached to a live bouncer seed run instead of abandoning it on the re-bounce", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
 	return true, nil
 }
 
@@ -494,7 +540,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		Model:       b.cfg.Model,
 		Effort:      b.cfg.Effort,
 		Version:     b.cfg.Version,
-		Role:        "bouncer-seed",
+		Role:        bouncerSeedRole,
 		Round:       "1",
 	}
 

@@ -31,7 +31,7 @@ func mustSpawnDriver(runLockHeld bool) bool {
 	return !runLockHeld
 }
 
-// awaitRunLockResult is the three-way outcome of awaitRunLock.
+// awaitRunLockResult is the four-way outcome of awaitRunLock.
 type awaitRunLockResult int
 
 const (
@@ -40,23 +40,35 @@ const (
 	// awaitRunLockChildDied means the spawned child process is no longer alive, before the lock was
 	// ever observed held.
 	awaitRunLockChildDied
-	// awaitRunLockDeadline means neither of the above happened within the attempt budget.
+	// awaitRunLockHalted means the child is still alive and has never been observed holding the
+	// lock, but the machine's own persisted state has already left running: the driver's phase-machine
+	// pass is over and the process is alive only for post-run bookkeeping.
+	awaitRunLockHalted
+	// awaitRunLockDeadline means none of the above happened within the attempt budget.
 	awaitRunLockDeadline
 )
 
 // awaitRunLock polls at most attempts times for the just-spawned driver to take the run lock.
 //
-// Each iteration first consults lockHeld, returning ready the moment it reports held; only then does
-// it consult alive, returning child-died when the child is already gone; only then does it call wait
-// and loop again. This order is load-bearing: a child that took the lock and is about to exit must
-// still be reported ready, not child-died, because the lock being held is the actual thing the
-// handshake is waiting for, and checking liveness first would race a child that takes the lock and
-// exits within the same poll window.
+// Each iteration consults the three seams in a fixed order — lockHeld, then alive, then halted —
+// and only then calls wait and loops again.
 //
-// lockHeld, alive, and wait are all injected seams so a test can drive this whole poll with no real
-// process, no real lock, and no wall-clock sleep, which the Test Tier Purity Invariant's long-sleep
-// guard would otherwise flag.
-func awaitRunLock(lockHeld func() (bool, error), alive func() bool, wait func(), attempts int) (awaitRunLockResult, error) {
+// lockHeld comes first because the lock being held is the actual thing the handshake waits for:
+// a child that took the lock and is about to exit must still be reported ready, not child-died, and
+// checking liveness first would race a child that takes the lock and exits within one poll window.
+//
+// halted comes last because it is the weakest of the three signals — it says only that the machine
+// is no longer running, which is also true of a status file a wedged driver never touched. It exists
+// because the run lock alone stopped being able to tell "wedged spawn" from "finished, still
+// working": shedengine.Run releases the lock on return, and `lyx loom drive` then spends up to
+// friction_timeout_min in the Tier 2 reflection step with the lock free and the process very much
+// alive. Without this signal a fast halt plus any friction note is reported as a wedged spawn and
+// the bootstrap skips its own terminal handover — see dispositionForHandshake.
+//
+// lockHeld, alive, halted, and wait are all injected seams so a test can drive this whole poll with
+// no real process, no real lock, no real status file, and no wall-clock sleep, which the Test Tier
+// Purity Invariant's long-sleep guard would otherwise flag.
+func awaitRunLock(lockHeld func() (bool, error), alive func() bool, halted func() bool, wait func(), attempts int) (awaitRunLockResult, error) {
 	for i := 0; i < attempts; i++ {
 		held, err := lockHeld()
 		if err != nil {
@@ -67,6 +79,9 @@ func awaitRunLock(lockHeld func() (bool, error), alive func() bool, wait func(),
 		}
 		if !alive() {
 			return awaitRunLockChildDied, nil
+		}
+		if halted() {
+			return awaitRunLockHalted, nil
 		}
 		wait()
 	}
@@ -94,11 +109,21 @@ const (
 // job, so the one place the halt is legible -- the status strand sitting in the session -- is the
 // one place they are not put.
 //
+// awaitRunLockHalted proceeds for exactly the same reason, and covers the case Tier 2 introduced:
+// the driver halted just as fast, but did NOT exit, because `lyx loom drive` runs the friction
+// reflection after shedengine.Run has already returned and released the lock. That step spawns a
+// real agent bounded by friction_timeout_min -- thirty minutes in the shipped template -- against a
+// handshake budget of thirty seconds, so the child is alive, the lock is free, and the machine is
+// done. Before this arm existed that combination landed on the refusal below, which turned every
+// fast halt carrying a friction note into a reported bootstrap failure with no terminal handover:
+// precisely the outcome the paragraph above exists to prevent, reintroduced through a different door.
+//
 // Only awaitRunLockDeadline is a genuine refusal: the child is still alive after the whole attempt
-// budget and has never taken the lock, which is a wedged spawn and nothing else.
+// budget, has never taken the lock, AND the machine never left running -- which is a wedged spawn
+// and nothing else.
 func dispositionForHandshake(result awaitRunLockResult) handshakeDisposition {
 	switch result {
-	case awaitRunLockReady, awaitRunLockChildDied:
+	case awaitRunLockReady, awaitRunLockChildDied, awaitRunLockHalted:
 		return handshakeProceed
 	default:
 		return handshakeRefuse

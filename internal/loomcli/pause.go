@@ -30,6 +30,11 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
+			if err := ensureStatusLockDir(c.shedPaths.StatusLockPath); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
 			err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
 				if !found {
 					return shedengine.Status{}, fmt.Errorf("loom: no status file at %s; there is nothing running to pause -- run \"lyx loom run\" first to bootstrap this task", c.shedPaths.StatusPath)

@@ -36,6 +36,11 @@ func countingWait(count *int) func() {
 	}
 }
 
+// stillRunning is the halted seam for every awaitRunLock test whose scenario is not about the
+// halted arm: it reports the machine still running, which is what keeps those scenarios reaching
+// the arm they are actually about.
+func stillRunning() bool { return false }
+
 func TestAwaitRunLock_ReadyOnLaterIteration(t *testing.T) {
 	calls := 0
 	lockHeld := func() (bool, error) {
@@ -45,7 +50,7 @@ func TestAwaitRunLock_ReadyOnLaterIteration(t *testing.T) {
 	alive := func() bool { return true }
 	waits := 0
 
-	got, err := awaitRunLock(lockHeld, alive, countingWait(&waits), 10)
+	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
 	if err != nil {
 		t.Fatalf("awaitRunLock() unexpected error: %v", err)
 	}
@@ -66,7 +71,7 @@ func TestAwaitRunLock_ChildDied(t *testing.T) {
 	}
 	waits := 0
 
-	got, err := awaitRunLock(lockHeld, alive, countingWait(&waits), 10)
+	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
 	if err != nil {
 		t.Fatalf("awaitRunLock() unexpected error: %v", err)
 	}
@@ -80,7 +85,7 @@ func TestAwaitRunLock_Deadline(t *testing.T) {
 	alive := func() bool { return true }
 	waits := 0
 
-	got, err := awaitRunLock(lockHeld, alive, countingWait(&waits), 5)
+	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 5)
 	if err != nil {
 		t.Fatalf("awaitRunLock() unexpected error: %v", err)
 	}
@@ -98,7 +103,7 @@ func TestAwaitRunLock_LockSeamErrors(t *testing.T) {
 	alive := func() bool { return true }
 	waits := 0
 
-	_, err := awaitRunLock(lockHeld, alive, countingWait(&waits), 10)
+	_, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
 	if !errors.Is(err, wantErr) {
 		t.Errorf("awaitRunLock() error = %v; want %v", err, wantErr)
 	}
@@ -114,12 +119,76 @@ func TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit(t *testing.T) {
 	alive := func() bool { return false }
 	waits := 0
 
-	got, err := awaitRunLock(lockHeld, alive, countingWait(&waits), 10)
+	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
 	if err != nil {
 		t.Fatalf("awaitRunLock() unexpected error: %v", err)
 	}
 	if got != awaitRunLockReady {
 		t.Errorf("awaitRunLock() = %v; want awaitRunLockReady even though alive() would report false", got)
+	}
+}
+
+// TestAwaitRunLock_HaltedWhileChildStillAlive is the regression guard for the defect Tier 2
+// introduced in `lyx loom run`'s handshake. shedengine.Run releases the run lock on return, and
+// `lyx loom drive` then spends up to friction_timeout_min -- thirty minutes in the shipped template
+// -- running the friction reflection agent, against a handshake budget of thirty seconds. Before the
+// halted seam existed, that combination (lock free, child alive, machine finished) fell through to
+// awaitRunLockDeadline, which dispositionForHandshake refuses: a healthy run was reported as
+// "driver did not take the run lock" and the bootstrap skipped its own terminal handover. Reproduced
+// live against a real hub before this test was written.
+func TestAwaitRunLock_HaltedWhileChildStillAlive(t *testing.T) {
+	lockHeld := func() (bool, error) { return false, nil }
+	alive := func() bool { return true }
+	halted := func() bool { return true }
+	waits := 0
+
+	got, err := awaitRunLock(lockHeld, alive, halted, countingWait(&waits), 10)
+	if err != nil {
+		t.Fatalf("awaitRunLock() unexpected error: %v", err)
+	}
+	if got != awaitRunLockHalted {
+		t.Errorf("awaitRunLock() = %v; want awaitRunLockHalted -- a driver whose machine finished but whose process is still doing post-run bookkeeping is not a wedged spawn", got)
+	}
+	if waits != 0 {
+		t.Errorf("awaitRunLock() waited %d times; want 0 -- the halt is observable on the first poll", waits)
+	}
+}
+
+// TestAwaitRunLock_HaltedCheckedAfterAliveCheck pins the seam order: a child that is already gone
+// reports child-died even when halted would also report true, so the more specific signal wins and
+// the existing ChildDied scenario keeps its meaning.
+func TestAwaitRunLock_HaltedCheckedAfterAliveCheck(t *testing.T) {
+	lockHeld := func() (bool, error) { return false, nil }
+	alive := func() bool { return false }
+	halted := func() bool { return true }
+	waits := 0
+
+	got, err := awaitRunLock(lockHeld, alive, halted, countingWait(&waits), 10)
+	if err != nil {
+		t.Fatalf("awaitRunLock() unexpected error: %v", err)
+	}
+	if got != awaitRunLockChildDied {
+		t.Errorf("awaitRunLock() = %v; want awaitRunLockChildDied even though halted() also reports true", got)
+	}
+}
+
+// TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline is the other half of the guard: the
+// halted seam must not make the genuine refusal unreachable. A child that is alive, never takes the
+// lock, and leaves the machine in running is still a wedged spawn and must still hit the deadline.
+func TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline(t *testing.T) {
+	lockHeld := func() (bool, error) { return false, nil }
+	alive := func() bool { return true }
+	waits := 0
+
+	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 4)
+	if err != nil {
+		t.Fatalf("awaitRunLock() unexpected error: %v", err)
+	}
+	if got != awaitRunLockDeadline {
+		t.Errorf("awaitRunLock() = %v; want awaitRunLockDeadline -- the halted arm must not swallow the wedged-spawn refusal", got)
+	}
+	if waits != 4 {
+		t.Errorf("awaitRunLock() waited %d times; want 4", waits)
 	}
 }
 
@@ -195,11 +264,14 @@ func containsSubstring(s, substr string) bool {
 }
 
 // TestDispositionForHandshake pins that only a deadline refuses the bootstrap.
-// The ChildDied row is the regression guard: the verb used to test `result != awaitRunLockReady`,
-// which collapsed a driver that ran and finished into the same refusal as a wedged spawn, reported
-// "driver did not take the run lock" for a run that had taken it and released it, and skipped the
-// tmux handover entirely -- so the status strand showing the actual halt was the one place the
-// operator was not put.
+// The ChildDied row is the original regression guard: the verb used to test
+// `result != awaitRunLockReady`, which collapsed a driver that ran and finished into the same
+// refusal as a wedged spawn, reported "driver did not take the run lock" for a run that had taken it
+// and released it, and skipped the tmux handover entirely -- so the status strand showing the actual
+// halt was the one place the operator was not put.
+// The Halted row guards the same failure arriving through Tier 2's door: a driver whose machine has
+// finished but whose process is still running the friction reflection agent is alive with the lock
+// free, which used to land on the refusal below.
 func TestDispositionForHandshake(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -208,6 +280,7 @@ func TestDispositionForHandshake(t *testing.T) {
 	}{
 		{"Ready", awaitRunLockReady, handshakeProceed},
 		{"ChildDied", awaitRunLockChildDied, handshakeProceed},
+		{"Halted", awaitRunLockHalted, handshakeProceed},
 		{"Deadline", awaitRunLockDeadline, handshakeRefuse},
 	}
 

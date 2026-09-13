@@ -119,6 +119,21 @@ func TestDetectCrashResume(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			// A completed `lyx loom step` leaves exactly the crash signature -- state running, no
+			// lock held, live history -- so the clean-handoff flag is the one thing separating an
+			// operator's step-to-driver handoff from a mid-run driver death (crucible round 2,
+			// R2-F1). Without the exclusion this observation files a spurious public issue.
+			name: "RunningWithHistory_CleanStepHandoff_None",
+			entry: EntryObservation{
+				Observed:         true,
+				RunLockHeld:      false,
+				State:            shedengine.StateRunning,
+				HistoryLength:    3,
+				CleanStepHandoff: true,
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -12,8 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -79,8 +81,11 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	// Step 2: seed the status file, tolerating exactly the already-seeded sentinel so a re-run works.
 	// A stat-then-seed probe here would reintroduce the exact race the seeder's single lock exists to
 	// close, so ErrSeedExists is the only accepted outcome.
-	if err := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent); err != nil && !errors.Is(err, loomshed.ErrSeedExists) {
-		return "", bootstrapStageSeed, err
+	// seedErr is kept rather than discarded because step 2b below needs to tell a genuine first seed
+	// from an ErrSeedExists re-entry, and this is the only place that distinction is observable.
+	seedErr := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent)
+	if seedErr != nil && !errors.Is(seedErr, loomshed.ErrSeedExists) {
+		return "", bootstrapStageSeed, seedErr
 	}
 	// An already-present status file must be THIS task's own: `lyx fabric add` run from a task
 	// worktree forks the whole pair, `_lyx` task state included, and the driver would otherwise
@@ -89,6 +94,14 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug); err != nil {
 		return "", bootstrapStageOwnership, err
 	}
+
+	// Step 2b: Tier 2's once-per-task friction directory handling, positioned after the ownership
+	// check on purpose -- the first-seed branch DELETES the directory, and a status file belonging to
+	// another task must never have its friction notes cleared by this worktree.
+	// Both calling verbs reach this, which is the point: `run` spawns `drive`, which ensures the
+	// directory itself, but `step` spawns no driver at all and would otherwise leave every
+	// step-driven run composing note paths into a directory nothing had created.
+	ensureFrictionDirAfterSeed(c.frictionDir, seedErr)
 
 	// Step 3: commit the seed and the provenance record into the fabric, unconditionally on every
 	// invocation -- not gated on this invocation's own writeOrigin. The origin record's path is
@@ -110,6 +123,54 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	}
 
 	return parent, bootstrapStageNone, nil
+}
+
+// ensureStatusLockDir creates the parent directory of the status file's advisory lock, which the
+// read-only query verbs must do before touching internal/state at all.
+//
+// The two paths live in different trees: the status file is durable, under `_lyx`, while its lock is
+// ephemeral, under `.lyx`. internal/lock opens a lock file with O_CREATE and never creates a parent,
+// which is why shedengine.preflight MkdirAlls both lock parents on every Run and Step. Nothing
+// creates the ephemeral directory before a bootstrap has run, so `status` and `pause` against a
+// never-bootstrapped pair used to fail inside lock acquisition -- before the `found` value each of
+// them branches on was ever produced -- and reported an internal "no such file or directory" path
+// instead of their own remedy. Both verbs' carefully-worded "no status file ... run \"lyx loom
+// run\"" messages were unreachable on the one path they exist for.
+//
+// This creates a directory and reads nothing, so it cannot resurrect a deleted status file or mask a
+// genuine absence: `found` still answers that question, and now actually gets asked.
+func ensureStatusLockDir(statusLockPath string) error {
+	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+		return fmt.Errorf("loom: create the status lock's directory %s: %w", filepath.Dir(statusLockPath), err)
+	}
+	return nil
+}
+
+// ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after
+// loomshed.Seed: on a genuine first seed (seedErr is nil), the friction directory is cleared before
+// being recreated, since a fresh task has no notes worth preserving; on an ErrSeedExists re-entry
+// (any other seedErr value), the directory is left untouched and only ensured to exist, since a
+// resume's notes are exactly the ones most worth reading. Both operations are skipped entirely when
+// frictionDir is empty, which is how Tier 2's off state travels. A failed os.RemoveAll logs at Warn
+// and never fails this call; a failed friction.EnsureDir is handled entirely inside that function,
+// which never returns an error either.
+//
+// It lives here, beside its one caller, rather than in run.go where it was first written: it was
+// never called from there at all. The clear-on-first-seed behaviour this function documents did not
+// ship, and its four unit tests were green over an orphan -- so a worktree whose friction directory
+// still held notes from an earlier task, or from an earlier run that never reached a reflection
+// trigger, fed every one of them to the NEXT task's reflection agent as that task's own friction.
+// Reproduced live in crucible round 1 against a real hub.
+func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
+	if frictionDir == "" {
+		return
+	}
+	if seedErr == nil {
+		if err := os.RemoveAll(frictionDir); err != nil {
+			logger.Warn("loom: failed to clear the friction directory on first seed; continuing", "dir", frictionDir, "error", err)
+		}
+	}
+	friction.EnsureDir(frictionDir)
 }
 
 // ensureStatusStrand ensures the worktree's tmux session is up and its status strand exists --

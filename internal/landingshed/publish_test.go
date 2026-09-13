@@ -526,7 +526,10 @@ func TestPublish_OpenPR_StuckNoCreate(t *testing.T) {
 	p := &Publish{deps: deps, resolver: res}
 
 	srv := newPublishGitHubServer(t, &order)
-	srv.listBody = `[{"number":7,"state":"open","merged":false}]`
+	// No "merged"/"merged_at" key at all: the real List Pull Requests endpoint never sets "merged"
+	// on an open PR and reports "merged_at": null (crucible round 3, F-R3-1) -- an absent key decodes
+	// to the same nil field either way.
+	srv.listBody = `[{"number":7,"state":"open"}]`
 	srv.install(t)
 
 	outcome, _, err := p.Call(context.Background())
@@ -541,6 +544,13 @@ func TestPublish_OpenPR_StuckNoCreate(t *testing.T) {
 	}
 }
 
+// TestPublish_ClosedAndMergedPR_Done pins the fix for crucible round 3's F-R3-1: GitHub's List Pull
+// Requests endpoint never populates the "merged" boolean on any item it returns (confirmed live
+// against a real merged PR -- `gh api ".../pulls?state=all&..."` reports "merged":null even for a
+// genuinely merged PR, while only the single-PR Get endpoint reports "merged":true), so Publish must
+// read "merged_at" instead. This mock's shape is deliberately the REAL List response shape -- no
+// "merged" key at all, only "merged_at" -- specifically so this test cannot again pass against a
+// mock shape the real API would never produce.
 func TestPublish_ClosedAndMergedPR_Done(t *testing.T) {
 	deps := newTestDeps(t)
 	deps.PushBranch = func() error { return nil }
@@ -549,7 +559,7 @@ func TestPublish_ClosedAndMergedPR_Done(t *testing.T) {
 
 	var order []string
 	srv := newPublishGitHubServer(t, &order)
-	srv.listBody = `[{"number":7,"state":"closed","merged":true}]`
+	srv.listBody = `[{"number":7,"state":"closed","merged_at":"2026-09-13T16:49:32Z"}]`
 	srv.install(t)
 
 	outcome, _, err := p.Call(context.Background())
@@ -569,7 +579,9 @@ func TestPublish_ClosedAndUnmergedPR_StuckDistinctFromOpen(t *testing.T) {
 
 	var order []string
 	srv := newPublishGitHubServer(t, &order)
-	srv.listBody = `[{"number":7,"state":"closed","merged":false}]`
+	// No "merged_at": a genuinely closed-and-not-merged PR carries neither "merged" nor "merged_at"
+	// on the real List endpoint.
+	srv.listBody = `[{"number":7,"state":"closed"}]`
 	srv.install(t)
 
 	outcome, _, err := p.Call(context.Background())
@@ -588,7 +600,7 @@ func TestPublish_ClosedAndUnmergedPR_StuckDistinctFromOpen(t *testing.T) {
 	p2 := &Publish{deps: deps2, resolver: res2}
 	var order2 []string
 	srv2 := newPublishGitHubServer(t, &order2)
-	srv2.listBody = `[{"number":8,"state":"open","merged":false}]`
+	srv2.listBody = `[{"number":8,"state":"open"}]`
 	srv2.install(t)
 	if _, _, err := p2.Call(context.Background()); err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)

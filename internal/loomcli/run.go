@@ -16,12 +16,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -174,9 +175,22 @@ Example:
 					return true, nil
 				}
 				alive := func() bool { return proc.IsAlive(childPID) }
+				// halted reads the machine's own persisted state, which is the only thing that can
+				// still separate "wedged spawn" from "pass finished, driver still doing post-run
+				// bookkeeping" now that the run lock is released before the friction reflection
+				// runs. A read failure, and a status file that is not there at all, both report
+				// false rather than true: neither is evidence the machine halted, so neither may
+				// shortcut the handshake -- the deadline stays the arbiter in that case.
+				halted := func() bool {
+					st, found, readErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+					if readErr != nil || !found {
+						return false
+					}
+					return st.State != shedengine.StateRunning
+				}
 				wait := func() { time.Sleep(bootstrapHandshakePollInterval) }
 
-				result, err := awaitRunLock(lockHeld, alive, wait, bootstrapHandshakeAttempts)
+				result, err := awaitRunLock(lockHeld, alive, halted, wait, bootstrapHandshakeAttempts)
 				if err != nil {
 					_ = bootstrapLock.Release()
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))
@@ -194,6 +208,15 @@ Example:
 					// still happens, because the status strand in that session is where the halt is
 					// legible. See dispositionForHandshake for the full argument.
 					logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
+				}
+				if result == awaitRunLockHalted {
+					// The halted disposition's breadcrumb, symmetric with the child-died one above:
+					// on every resume of an already-halted run this arm fires on the handshake's
+					// first poll, before the driver has done anything, so without this line the log
+					// carries zero evidence which handshake path the bootstrap took — including in
+					// the narrow case where the child is not doing post-run bookkeeping but is
+					// genuinely wedged before its first persist (crucible round 2, R2-F3).
+					logger.Info("loom: driver is alive with the machine already halted; proceeding to the handover while it finishes post-run bookkeeping", "pid", childPID, "log", driverLogPath)
 				}
 			}
 
@@ -243,27 +266,6 @@ Example:
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
 
 	return cmd
-}
-
-// ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after
-// loomshed.Seed: on a genuine first seed (seedErr is nil), the friction directory is cleared before
-// being recreated, since a fresh task has no notes worth preserving; on an ErrSeedExists re-entry
-// (any other seedErr value), the directory is left untouched and only ensured to exist, since a
-// resume's notes are exactly the ones most worth reading. Both operations are skipped entirely when
-// frictionDir is empty. A failed os.RemoveAll logs at Warn and never fails this call; a failed
-// friction.EnsureDir is handled entirely inside that function, which never returns an error either.
-// Factored out of runCmd's RunE so a test can drive every branch directly, the same tier-1 pattern
-// bootstrap_test.go already uses for mustSpawnDriver/awaitRunLock.
-func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
-	if frictionDir == "" {
-		return
-	}
-	if seedErr == nil {
-		if err := os.RemoveAll(frictionDir); err != nil {
-			logger.Warn("loom: failed to clear the friction directory on first seed; continuing", "dir", frictionDir, "error", err)
-		}
-	}
-	friction.EnsureDir(frictionDir)
 }
 
 // RunAliasCommand returns the run verb registered a second time, as a bare root child ("lyx run"),
