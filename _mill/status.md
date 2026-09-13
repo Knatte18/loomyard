@@ -6,6 +6,7 @@ slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Deploy cited spec/design docs to target repos like stencils
 task_description: |
   Deploy cited spec/design docs to target repos like stencils
@@ -40,15 +41,23 @@ implementing  '2026-09-13T18:25:47Z'
 ```yaml
 batches:
   - name: specs-registry
-    state: pending
+    state: running
+    implementer_session: c752698d-5fc1-428b-84dc-1930d6882e73
+    start_sha: 477627318a5f954224dd07b79afb62e9f81a2a15
+    verify_baseline_failures: []
   - name: specs-geometry
     state: pending
+    verify_baseline_failures: []
   - name: seeded-subtree-commit
     state: pending
+    verify_baseline_failures: []
   - name: specs-seeding-wiring
     state: pending
+    verify_baseline_failures: []
   - name: specs-dir-marker-plumbing
     state: pending
+    verify_baseline_failures: []
   - name: citation-rewrite-and-enforcement
     state: pending
+    verify_baseline_failures: []
 ```
