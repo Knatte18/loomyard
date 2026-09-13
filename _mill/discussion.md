@@ -26,7 +26,12 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 - `internal/modelspec/parse.go` — `parseBracket` gains bare-token handling and a bracket-key-spelling vocabulary. `Parse`'s **body** is untouched, but three doc comments in this file describe the bracket as key=value-only and must be updated alongside: the file header (`:1-4`, "recognizes exactly four shapes"), `Parse`'s own comment (`:36-38`, "alias[k=v,...]"), and `parseBracket`'s comment (`:122-123`, "the comma-separated key=value list").
 - `internal/modelspec/modelspec.go` — new `bracketKeys` map beside `knownParams`; package doc's grammar line and the `spec.Version = resolved.Params["version"]` consumer example stay canonical but the grammar prose gains the shorthand.
 - `internal/modelspec/parse_test.go` — new accept/reject cases; one existing reject case is deleted and two existing accept cases are rewritten off `version=` (see Testing).
-- `contracts/specs/llm-model-spec.md` — grammar section documents the shorthand. The `version` mentions are **not** uniformly renamed; disposition is per line, following the normalize-to-canonical decision:
+- `contracts/specs/llm-model-spec.md` — the Grammar section, per line:
+  - **:8** (`<alias>[key=value,key=value,...]`) → the production must admit the bare form, e.g. `<alias>[<effort>|key=value,...]` or an equivalent spelling mill-plan settles. This one line is the pinned grammar; leaving it key=value-only would make the contract doc contradict the parser.
+  - **:13** ("each `key=value` overrides that parameter for this spec only") → extended to say a bracket item is either `key=value` or a bare token, and that a bare token means `effort`.
+  - **:24** (escape form, `<provider>:<model-id>[key=value,...]`) → same production change as :8, since the shorthand applies to escape form too.
+  - **:15-19** (the yaml example block) → gains one shorthand line, e.g. `reviewer: opus[max]` beside the existing `opus[effort=max]`, so both spellings are visibly legal.
+  - The `version` mentions below are **not** uniformly renamed; disposition is per line, following the normalize-to-canonical decision:
   - **:64** (`sonnet[version=4.5]`) → `sonnet[v=4.5]`. A bracket-grammar example; the renamed spelling is what an operator types.
   - **:66** ("Combining `version=` with a full model id …") → `v=`. Also about the bracket the operator writes.
   - **:65** ("the generic `version` param") → **unchanged.** This names the resolved param key the provider engine reads (`resolved.Params["version"]`), not a bracket spelling.
@@ -113,7 +118,11 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 
 **No programmatic spec construction exists.** A repo-wide grep for `fmt.Sprintf`-style bracket assembly finds nothing — every model-spec string in the repo is a literal in YAML, a test, or a doc. This is why the blast radius stays inside the five files named in Scope: no Go code needs to learn the new spelling to keep emitting valid specs.
 
-**`version=` occurrences repo-wide** (excluding `_mill/`): `contracts/specs/llm-model-spec.md:64,66,112`; `docs/overview.md:302`; `internal/modelspec/parse_test.go:31,46`; `internal/modelspec/registry_test.go:66,69,149,161`. The `registry_test.go` occurrences are `Spec{Params: {"version": ...}}` literals constructed directly, bypassing `Parse` — they test `Resolve`'s precedence against the **canonical** key and therefore stay correct and unchanged under this task's normalize-to-`version` decision. That is a useful signal for the plan: if a `registry_test.go` change looks necessary, the normalization was implemented wrong.
+**`version` occurrences repo-wide, in two distinct groups** (excluding `_mill/`).
+
+*Literal `version=` bracket spellings — the ones the rename touches:* `contracts/specs/llm-model-spec.md:64,66,112`; `docs/overview.md:302`; `internal/modelspec/parse_test.go:31,46`. (Per the Scope bullet above, `:112`'s and `:65`'s mentions describe the canonical param, not a bracket, so only `:64`/`:66` and `docs/overview.md:302` actually re-spell to `v`.)
+
+*Canonical `"version"` map keys, no `=` anywhere — a repo grep for `version=` does not match these:* `internal/modelspec/registry_test.go:66,69,149,161`; `internal/modelspec/modelspec.go:46,116`; and the seven `resolved.Params["version"]` consumer sites listed under the normalization Decision. The `registry_test.go` occurrences are `Spec{Params: {"version": ...}}` literals constructed directly, bypassing `Parse` — they test `Resolve`'s precedence against the **canonical** key and therefore stay correct and unchanged under this task's normalize-to-`version` decision. That is a useful signal for the plan: if a `registry_test.go` change looks necessary, the normalization was implemented wrong.
 
 **Doc conventions.** Markdown in this repo uses semantic line breaks — one sentence per line, with breaks at internal independent-clause boundaries; never fixed-column hard wrap. `contracts/specs/llm-model-spec.md` is a pinned contract doc kept (not deleted) on landing per `docs/overview.md`'s Documentation Lifecycle.
 
