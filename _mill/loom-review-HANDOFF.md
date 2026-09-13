@@ -1,7 +1,7 @@
 # loom-step + self-report crucible campaign — orchestrator handoff
 
 ## Current state
-Round 2 (`fable-high-r2`) complete and independently verified by the orchestrator. Findings are shrinking round over round (r1: 1 BLOCKING+4 MEDIUM+2 LOW+1 NIT; r2: 1 MEDIUM+2 LOW+1 NIT). Operator decided: round 2 did NOT establish convergence (found a real MEDIUM), so round 3 is spawned as an explicit **safety pass** — `sonnet-xhigh-r3` — per the operator's pick. Re-seeded `_mill/loom-review-prompt.md` accordingly, instructing it to build its OWN disposable fixture hub rather than reuse the operator's `~/Code/lyx-test-HUB` (to avoid a third round of real-world leftovers on top of the two still pending the operator's decision — see below, still unresolved).
+Round 3 (`sonnet-xhigh-r3`, the intended safety pass) complete and independently verified by the orchestrator. **It was NOT clean** — it found and fixed one real BLOCKING bug in territory neither prior round had ever driven to completion (`Publish`'s merged-PR detection). This confirms the method's own precedent (reed/fabric): the round right before the genuinely clean one is never actually clean. A round 4, framed as the real safety pass, is recommended next — not yet spawned, awaiting the operator's model + effort pick. All three rotation models (Opus r1, Fable r2, Sonnet r3) have now been used once; round 4 repeats one, operator's choice (the method suggests the most capable for a final safety pass).
 
 ## CLOSED-AND-VERIFIED
 
@@ -28,6 +28,23 @@ Orchestrator independently reproduced, from a cold checkout, on the committed tr
 
 **Docs updated in the same commits, confirmed via `git diff --stat`:** `manifest/designs/self-report-tier1.md`, `loom-step.md`, `plugins/ly/skills/ly-supervise/SKILL.md`. `docs/overview.md`/`CONSTRAINTS.md`/`manifest/roadmap.md` correctly untouched.
 
+### Round 3 (commit range `06e4c8d1e..c35497f87`)
+Orchestrator independently reproduced, from a cold checkout, on the committed tree:
+- `go build ./...`, `go vet ./...`, `go test ./...` (whole repo) — all green.
+- Independently confirmed the core factual claim via a live `gh api` call of my own (not just trusting the round's transcript): `gh api "repos/Knatte18/lyx-crucible-r3/pulls?state=all" --jq '...'` on the round's own real merged PR returned `{"merged":null,"merged_at":"2026-09-13T16:49:32Z",...}` — proving GitHub's List Pull Requests endpoint genuinely never populates `merged`, exactly as claimed.
+- **Sabotage-proved F-R3-1 (BLOCKING) personally**: reverted `!pr.GetMergedAt().IsZero()` back to `pr.GetMerged()` in `internal/landingshed/publish.go`; `TestPublish_ClosedAndMergedPR_Done` failed `Call() outcome = "stuck"; want "done"`, exactly as claimed. Restored; `git diff --stat` empty; full `internal/landingshed` suite green after.
+- `gh issue list` confirms the newest `Knatte18/loomyard` issues are still #240/#241 — **no third issue was filed.**
+- Confirmed both disposable GitHub repos (`Knatte18/lyx-crucible-r3`, `-weft`) are archived (not deleted — same missing `delete_repo` OAuth scope round 2 also hit) and clearly labeled "safe to delete" in their descriptions. Low-urgency operator cleanup, unlike round 2's leftovers (see below) — these were never live/interactive infrastructure the operator uses.
+
+**Findings this round:** 1 BLOCKING (F-R3-1), 0 MEDIUM/LOW/NIT — genuinely the first round to find nothing beyond the one new-territory defect, which is itself evidence the general envelope/anomaly/friction machinery is solid; the defect sat specifically in the one path (`Publish`'s merged-PR resume) neither round 1 nor round 2 ever drove to completion.
+
+**Residual items closed this round, independently spot-checked against the review report's live-repro transcripts:**
+1. `Publish`'s merged-PR resume — **root-caused, fixed, and re-verified live** against the exact real merged PR that exposed it. This was the single biggest remaining gap across the whole campaign.
+2. `RunDone`-triggered friction reflection on a REAL walked-to-completion run (not a hand-built fixture like round 2 used) — **CLOSED**, reflection agent spawned for real, made a sensible judgment, archived correctly.
+3. A second independent interrupted-and-resumed repro, this time a genuine mid-agent kill on `Webster-Burler` (a non-Discussion `*-Burler` row, a different code path than any prior round drove) — **CLOSED**, clean reattachment, zero double-spawn.
+4. Spontaneous Tier-2 friction note — **third independent null result** across three different models; treated as informative rather than an open item now.
+5. F-6's live two-driver race — still unreproduced after three rounds; remains the campaign's one accepted, honestly-documented residual.
+
 ## ⚠️ Operator action needed — real-world leftovers from round 2's live driving
 
 Round 2 drove live against `~/Code/lyx-test-HUB/`, an **existing** sandbox hub the operator already uses interactively (its own `lyx-test` tmux session, attached by the operator mid-round, was correctly left untouched). This is different from round 1, which built a disposable fixture hub from scratch. Three real side effects need the operator's own decision — the orchestrator has NOT touched any of these:
@@ -46,9 +63,11 @@ None of this touches `Knatte18/loomyard` or this crucible worktree/branch — it
 - Closed: **not yet** — campaign has not converged. Close both, labeled as deliberate crucible test-fires, only at final hand-off.
 
 ## Next action
-Round 3 (`sonnet-xhigh-r3`, safety pass) is spawned. Wait for its notification, then verify independently exactly as rounds 1/2 were verified (cold rebuild/vet/test, sabotage-prove every new/changed test, confirm no fourth GitHub issue, confirm it built its own fixture hub rather than touching `lyx-test-HUB`).
+Round 3 found and fixed a real BLOCKING bug, so it does not itself count as the clean safety pass. Ask the operator for round 4's model + effort pick (repeat one of Opus/Fable/Sonnet — the method suggests the most capable, i.e. Opus, for a final safety pass, but it's the operator's call), re-seed `_mill/loom-review-prompt.md` as round 4's safety pass (residual: F-6's still-unreproduced live race is the only carried-forward item; everything else is now closed), then spawn `subagent_type: crucible-reviewer-<effort>` tagged `<model>-<effort>-r4`.
 
-**Still outstanding, independent of round 3:** the three `lyx-test-HUB` leftovers from round 2 (open PR `Knatte18/lyx-test#2`, swapped `~/go/bin/lyx` binary, two leftover dummy pairs) still await the operator's decision — raise again once round 3 completes if not addressed sooner.
+**Still outstanding, independent of round 4:**
+- The three `lyx-test-HUB` leftovers from round 2 (open PR `Knatte18/lyx-test#2`, swapped `~/go/bin/lyx` binary, two leftover dummy pairs) still await the operator's decision.
+- Round 3's two disposable, already-archived GitHub repos (`Knatte18/lyx-crucible-r3`, `-weft`) — low-urgency, safe-to-delete cleanup whenever convenient.
 
-**If round 3 comes back clean** (no BLOCKING/MEDIUM, ideally nothing at all): per the method, convergence is safety pass + orchestrator's gates + (for a live-substrate module) an operator-assisted check all agreeing. Propose to the operator that this is convergence, note the campaign's stated residuals honestly (F-6's live race never reproduced across three rounds; Publish/Finalize's merged-PR leg's live status depends on what round 3 managed to drive), and move to hand-off: close issues #240/#241 (labeled as deliberate crucible test-fires) and let the operator decide on push/merge.
-**If round 3 finds something**: re-seed for a round 4, rotating model again (all three of Opus/Fable/Sonnet will have been used by then — repeat one, operator's choice).
+**If round 4 comes back clean** (nothing found): per the method, convergence is safety pass + orchestrator's gates + (for a live-substrate module) an operator-assisted check all agreeing. Propose to the operator that this is convergence, state the campaign's one honest residual (F-6's live race never reproduced across four rounds — accepted, documented, not blocking), and move to hand-off: close issues #240/#241 (labeled as deliberate crucible test-fires) and let the operator decide on push/merge.
+**If round 4 finds something**: keep going — re-seed for round 5, rotate model again (repeating is now unavoidable since all three have been used).
