@@ -64,7 +64,7 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 - Seeding/refreshing the specs directory in the same once-per-process pre-run pass that already reconciles stencils, in both hub and standalone wiring.
 - Generalising `fabricengine.CommitSeededStencils` over a subtree-relative prefix so the seeded `_lyx/specs/` tree is actually staged and committed to weft, not merely written (see `specs-dir-mirrors-stencils-dir`).
 - A `{{.specs_dir}}` stencil marker, plumbed from each affected producer's own render call site, and rewriting the eight normative citations to use it.
-- A shared rubric-render helper that fills `specs_dir` into a rubric at read time, routed through by all four rubric-value sites, plus the matching relaxation of `rubric_test.go`'s no-marker assertions to a one-marker allowlist (see `rubric-marker-allowlist`).
+- A shared rubric-render helper that fills `specs_dir` into a rubric at read time, routed through by the **three stencil-sourced** rubric sites only — literal `rubric:` values are explicitly untouched — plus the matching relaxation of `rubric_test.go`'s no-marker assertions to a one-marker allowlist (see `rubric-marker-allowlist`).
 - Rewording/removing the five non-normative citations per the audit table.
 - A new enforcement test in `package stencils` that fails on any newly-introduced bare cross-repo citation in a stencil body.
 - `CONSTRAINTS.md` update to the Stencil Ownership Invariant (the `//go:embed` clause), plus the module docs the change touches.
@@ -95,8 +95,11 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 - **Decision:** Deployed copies live at `<hub>/_board/_lyx/specs/` in hub mode and at the `standalonegeom` equivalent of `<stateDir>/.../specs` in standalone mode — an exact structural mirror of `StencilsDir`, declared by a new `SpecsDir` function in each of `internal/fabricengine/junctionnames.go` and `internal/standalonegeom`.
 - **Decision (weft-commit half):** Seeding is only half the hub path — `cmd/lyx/stencilseed.go:129` commits what `Reconcile` wrote via `fabricengine.CommitSeededStencils`, whose pathspec is hardcoded to the stencils subtree (`internal/fabricengine/stencilcommit.go:56`: `stencilsRel := path.Join(lyxdirs.LyxDirName, stencilsDirName)`).
   A seeded `_lyx/specs/` tree would therefore be written but never staged.
-  **`CommitSeededStencils` is generalised over a subtree-relative prefix** — the prefix becoming a parameter rather than a hardcoded join — and called once per seeded subtree, rather than adding a sibling verb.
+  **`CommitSeededStencils` is generalised over a seeded subtree** — and over it *twice*, not once: the pathspec prefix at line 56 **and** the absolute directory used for the mutation record at line 65 (`filepath.Join(StencilsDir(hub), relPath)`) both become parameters.
+  Generalising only the prefix would file seeded specs under the stencils directory in the `*Mutations` record, violating the Mutation Record Invariant.
+  It is then called once per seeded subtree, rather than adding a sibling verb.
   Both calls keep passing a positive-only file list through `ScopedPathspec`, exactly as today.
+  **Two production callers move with it**, not one: `cmd/lyx/stencilseed.go:129` and `internal/stencilcli/cli.go:184` (the `stencil sync` path).
 - **Rationale:** Same durable/tracked `_lyx` tree as stencils, same told-never-derives discipline, and — with the generalisation above — genuinely the same weft-commit path rather than an assumed one.
   Generalising beats a sibling verb because the two call sites would otherwise be byte-identical apart from one constant, and the Fabric Git Invariant's `ScopedPathspec` requirement is then satisfied in one place instead of two.
   `"specs"` is not a policed geometry token (same reasoning `stencilsDirName`'s own comment gives for `"stencils"`), so it needs no `geometryTokenOwners` row.
@@ -124,7 +127,15 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   `specs_dir` is a **required** marker on every stencil that carries it (plain `stencil.Fill` semantics, or a required name under `FillOptional`) — never optional, since a blank render would silently reproduce exactly the dead-reference bug this task exists to fix.
 - **Rationale:** A hub-relative literal breaks in standalone mode for exactly the reason `webster-template-master.md`'s own banner records for `plan_dir`: "the standalone Master proved unable to see a plan it was told about only in hub-relative terms."
   Critically, `--stencils-dir` is a told override (`cliwire.Module.RefuseUnreadableStencilsDir`, `cliwire/standalone.go`) with no sibling guarantee, so the specs dir must be resolved and told independently — it can never be derived as a sibling of whatever stencils dir was told.
-- **Rejected:** a hard-coded `_lyx/specs/...` hub-relative string (breaks standalone, breaks under `--stencils-dir`).
+- **Decision (seeding under a told `--stencils-dir`):** The specs `Reconcile` runs **unconditionally** in standalone, including in the told-override branch.
+  It does not inherit the stencils skip.
+- **Rationale:** `internal/cliwire/standalone.go:91-101` seeds stencils only when `stencilsDir == ""`, deliberately, so lyx never rewrites a curated stencil set an operator told it to use.
+  That rationale is about operator-authored **prompts** and does not extend to a normative spec: `--stencils-dir` is a stencils override and says nothing about specs, there is no `--specs-dir` flag (and none is being added, per `no-new-cli-surface`), and a spec has no customisation story that a curated set would express.
+  If the specs reconcile inherited the skip, the specs dir would resolve but stay empty and `{{.specs_dir}}` would point at nothing — reproducing exactly the dead reference this task exists to remove, in the one mode hardest to notice it.
+  An operator who *has* edited a deployed spec is still protected: `reuse-reconcile-policy-unchanged` keeps the `StateEdited` warn-and-never-overwrite row.
+- **Rejected:** a hard-coded `_lyx/specs/...` hub-relative string (breaks standalone, breaks under `--stencils-dir`);
+  sharing the stencils skip (silently empties the specs dir in exactly the told-dir case `specs-dir-marker` exists to survive);
+  adding a `--specs-dir` flag to make the skip symmetric (new CLI surface for two files, against `no-new-cli-surface`).
 
 ### code-comment-conventions-is-misscoped
 
@@ -228,8 +239,14 @@ The `lyx-stencil:` key name is now slightly inaccurate for a spec; leave it — 
 **Existing call sites to extend for seeding.**
 Standalone: `internal/cliwire/standalone.go` calls `stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), "")` around line 95.
 Hub: the root pre-run in `cmd/lyx` (named as a consumer in `contracts/stencils/stencils.go`'s `Registry()` doc comment, alongside `internal/stencilcli`).
-`internal/stencilcli/cli.go` has `sync` (`ForceRefresh`) and `validate`.
-Both the hub and standalone paths need the second reconcile added; `stencil sync`/`validate` covering specs is a judgment call for the plan (the `no-new-cli-surface` decision means no new *verbs*, not necessarily that existing verbs ignore specs).
+`internal/stencilcli/cli.go` has `sync` (`ForceRefresh` + `CommitSeededStencils` at line 184) and `validate`.
+Both the hub and standalone paths need the second reconcile added.
+
+**Decided, not left to the plan — existing-verb coverage:**
+`lyx stencil sync` **does** cover specs: it is `ForceRefresh` plus a weft commit, and force-refreshing a stale deployed spec is exactly as useful as force-refreshing a stale stencil.
+Its `CommitSeededStencils` call therefore takes the generalisation alongside `stencilseed.go`'s.
+`lyx stencil validate` **does not** cover specs: `stencilstore.Validate` compares on-disk marker sets against shipped-default marker sets via `stencil.TopLevelMarkers` (`internal/stencilstore/validate.go`), and a spec is not a template — both sides are empty, so the pass is a guaranteed no-op that would only imply a check is happening.
+Neither verb gains new flags or new subcommands, so `no-new-cli-surface` holds.
 
 **Geometry to mirror.**
 `internal/fabricengine/junctionnames.go:126` `StencilsDir(hub) = filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, stencilsDirName)` with `stencilsDirName = "stencils"` unexported and documented as not a policed geometry token.
@@ -274,6 +291,12 @@ From `CONSTRAINTS.md`, in order of how directly each binds this task:
   This task adds a second embed site and a second seeded directory, so **this invariant's text must be updated in the same commit**.
 - **Told-Geometry Invariant** — an engine derives no paths of its own and never imports `internal/lyxcwd`; `internal/hubgeom` and `internal/standalonegeom` are the only `Geometry`-struct constructors.
   `specs_dir` is told, never derived.
+- **Hub Containment Invariant** — no hub-level container is ever junctioned into a worktree; `_board` is reachable from the hub only.
+  This is what makes the **agent-reachability premise** explicit: a deployed spec at `<hub>/_board/_lyx/specs/...` is *outside* the agent's own worktree, so `{{.specs_dir}}` must render an **absolute** path and the agent must be able to read outside its worktree root.
+  That holds for the autonomous producer agents these four stencils drive — they run with `--dangerously-skip-permissions` (`internal/shuttleengine/claudeengine/command.go:87-89`) — and is the reason a hub-relative spelling is not merely inconvenient but unusable.
+  Record this premise rather than leaving it implicit; it is load-bearing for `specs-dir-marker`.
+- **Mutation Record Invariant** — every mutating fabric verb accumulates a `*Mutations` record and every mutating result type exposes it under a fixed envelope key set.
+  Binding on the `CommitSeededStencils` generalisation: the mutation record's absolute directory must follow the seeded subtree, not stay pinned to `StencilsDir(hub)`.
 - **Fabric Git Invariant (warp + weft)** — "Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`," and every git op goes through `internal/fabricengine` in Go, in-process.
   Binding on the generalised `CommitSeededStencils` and its new specs-subtree call.
 - **Shed Recipe Registry Invariant** — every registry value constructs a `shedengine.ShedProducer` through one `map[string]Constructor` reached only via `Lookup`/`Names`, with "no direct import of `lyxcwd`; every path is told."
@@ -302,7 +325,7 @@ From `CLAUDE.md`:
 **`package stencils` (`contracts/stencils/`) — the primary TDD candidate.**
 Write `citation_enforcement_test.go` first, before touching any stencil body.
 It scans every name in the registry, reads its default bytes, applies `stencil.StripLeadingComment`, and fails on any token matching a repo-relative path under `contracts/`, `manifest/`, `docs/`, or `internal/` unless the occurrence is `{{.specs_dir}}`-prefixed or on the `(stencil name, token)` allowlist.
-Written first it must fail on all nine current sites, which is the proof it works; it goes green as the rewrites land.
+Written first it must fail on **every occurrence the audit table lists** — note that is 13 occurrences across 12 rows, since `bouncer-template-judge.md` carries its path at three separate lines (61, 90, 116) — which is the proof it works; it goes green as the rewrites land.
 Scenarios: a normative citation correctly rewritten passes; a bare re-added citation fails; an allowlisted entry passes; an allowlist entry whose token no longer appears anywhere fails as stale.
 
 **`contracts/stencils/rubric_test.go` — extend, and repair two known breaks.**
@@ -328,7 +351,9 @@ Check whether `TestEnforcement_GeometryLiterals`'s `geometryTokenOwners` needs a
 **Seeding — integration.**
 A hermetic test (hub built via `internal/hubforge` per the hubforge Fabric-Fixture Invariant, or `t.TempDir()` where the seam allows) that a fresh hub's pre-run creates `<hub>/_board/_lyx/specs/loom/loom-plan-spec.md` with a parseable stamp and a `.gitattributes`, and that a second run writes nothing.
 Same for standalone via `cliwire`.
-Key scenario: a **told `--stencils-dir`** still yields a resolvable specs dir — this is the case that motivates `specs-dir-marker` and the one most likely to regress.
+Key scenario: a **told `--stencils-dir`** still yields a specs dir that is both resolvable **and populated** — asserting the seeded spec file exists on disk, not merely that the path resolves.
+This is the case `specs-dir-marker` and the unconditional-reconcile decision both exist for, and the one most likely to regress silently, since a resolvable-but-empty dir reproduces the original dead reference while looking correct.
+Also assert the rendered `specs_dir` value is absolute, per the agent-reachability premise in Constraints.
 
 **Render — the rubric trap.**
 Assert each of the four affected prompts renders with `specs_dir` substituted and no literal `{{.specs_dir}}` surviving in the final prompt text.
@@ -350,6 +375,8 @@ Assert `specs_dir` is treated as required: rendering with it absent or empty err
 - **Q:** How does `{{.specs_dir}}` actually get substituted into a rubric, given a rubric is interpolated as a *value* and never run through `stencil.Fill` as its own template? **A:** [auto-pick] Put the marker in the rubric anyway, relax the no-marker rule to a one-marker allowlist, and fill it at rubric-read time through one shared helper all four rubric-value sites route through. **Why:** `rubric_test.go:54,98,143` currently assert a rubric contains no `{{.` at all, so this is a deliberate constraint change rather than an oversight to work around; filling the rubric as its own single-marker template gives `specs_dir` the same error-on-empty guard it has everywhere else, which neither `strings.ReplaceAll` nor a custom placeholder token would. Moving the citation into the Bouncer/Burler templates was rejected because it separates a mechanical check from the reference it is checked against.
 - **Q:** Does the rubric-fill helper apply to every rubric value, or only stencil-sourced ones? **A:** [auto-pick] Stencil-sourced only — three sites, and a literal `rubric:` passes through untouched. **Why:** `entries_burler.go:191-196` makes `rubric` and `rubric_stencil` mutually exclusive, and `burlercli/run.go`'s profile `rubric:` has no stencil route at all; filling a literal would turn any `{{` in author prose into a `parse template` error and impose specs-dir semantics on text that never had them. `burlercli/run.go:63` is therefore not a helper site — an earlier draft wrongly listed it as one of four.
 - **Q:** How does the seeded specs tree actually reach weft, given `CommitSeededStencils` hardcodes the stencils subtree? **A:** [auto-pick] Generalise `CommitSeededStencils` over a subtree-relative prefix and call it once per seeded subtree. **Why:** without this the specs tree is written and never staged — `stencilcommit.go:56` joins `lyxdirs.LyxDirName` with `stencilsDirName` directly; a sibling verb would duplicate a function differing only in one constant, and generalising keeps the Fabric Git Invariant's `ScopedPathspec` requirement satisfied in one place.
+- **Q:** Does the specs reconcile run when `--stencils-dir` is told, given standalone seeds stencils only when no override was given? **A:** [auto-pick] Yes — unconditionally, it does not inherit the skip. **Why:** the skip protects an operator's curated *prompt* set; `--stencils-dir` says nothing about specs, no `--specs-dir` flag exists, and inheriting the skip would leave the specs dir resolvable but empty — reproducing the dead reference in the mode hardest to notice it. An operator's own edits stay protected by the unchanged `StateEdited` warn row.
+- **Q:** Do `lyx stencil sync` and `lyx stencil validate` cover specs? **A:** [auto-pick] `sync` yes, `validate` no. **Why:** `sync` is `ForceRefresh` plus a weft commit and is as useful for a stale spec as for a stale stencil; `validate` compares top-level marker sets, which a marker-free spec does not have, so it would be a guaranteed no-op that falsely implies a check ran. Neither gains a flag or subcommand, so `no-new-cli-surface` holds.
 - **Q:** Registered names, given `RelPath` derives the family dir from the substring before the first `-`? **A:** [auto-pick] `loom-plan-spec` and `loom-plan-card-format`, both landing under `specs/loom/`. **Why:** a bare `plan-card-format` would create a one-file `plan/` family directory; only the registered name changes, the source file is not renamed.
 - **Q:** What stops the next citation from reintroducing this bug? **A:** [auto-pick] A `package stencils` test scanning every stencil body for bare cross-repo path tokens, with an allowlist keyed by `(stencil name, token)`. **Why:** this is the real deliverable — it closes the class rather than nine instances; review discipline already missed this once, and the reverted one-line fix is the evidence.
 - **Q:** New `lyx spec` CLI subtree? **A:** [auto-pick] No — specs reconcile in the same once-per-process pre-run pass, no new verbs. **Why:** YAGNI for two files nobody edits, and the Stencil Ownership Invariant already puts seed/refresh in that pass.
