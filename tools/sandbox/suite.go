@@ -25,7 +25,7 @@ import (
 
 // Suite-specific constants.
 const (
-	// warpDirName is the subdirectory under the Hub (lyx-test-HUB) that holds
+	// warpDirName is the subdirectory under the Hub (lyx-test-LYXHUB) that holds
 	// the warp repo clone. The Hub layout is <parent>/<hubName>/<warpDirName>.
 	warpDirName = "lyx-test"
 )
