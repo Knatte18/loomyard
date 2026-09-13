@@ -30,17 +30,26 @@ implementing  '2026-09-13T11:24:40Z'
 ```yaml
 batches:
   - name: core-constants
-    state: pending
+    state: running
+    implementer_session: e1c7ef24-bb7a-419a-9a46-5b3cba70c439
+    start_sha: 5e959db65ce02e771efe77b5c94a4dcecbfc70d3
+    verify_baseline_failures: []
   - name: production-prose
     state: pending
+    verify_baseline_failures: []
   - name: fabricengine-tests
     state: pending
+    verify_baseline_failures: []
   - name: peripheral-tests
     state: pending
+    verify_baseline_failures: []
   - name: sandbox-fixture
     state: pending
+    verify_baseline_failures: []
   - name: docs-prose
     state: pending
+    verify_baseline_failures: []
   - name: final-sweep-gate
     state: pending
+    verify_baseline_failures: []
 ```
