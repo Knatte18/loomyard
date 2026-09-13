@@ -34,7 +34,9 @@ The first six derive directly from `shedengine.StepResult`; the last four are co
 - `reason` — the human-facing explanation attached to `state`, when one exists.
 - `continue` — derived as `state == "running"`, so a caller never carries its own copy of the state vocabulary.
 - `history_length` — the length of the persisted step history after this step.
-- `next_interrupt_policy` — `internal/loomshed`'s `InterruptPolicyFor(next)`, telling a caller whether re-invoking after an interruption on the next row is safe (`"reinvoke"`) or must hand back to the operator (`"handback"`).
+- `next_interrupt_policy` — `internal/loomshed`'s `InterruptPolicyFor(next)`, telling a caller whether re-invoking after an interruption on the next row re-attaches to the live agent (`"reinvoke"`) or restarts its work from persisted state (`"handback"`, the `Webster` row alone).
+  It is **advice, not a gate**: the table is read in exactly two production places — this key and `lyx loom status`'s own `interrupt_policy` — and both only copy the value onto an envelope. Nothing in `step` or `run` compares against it, refuses a re-invocation, or warns about one. The supervisor skill is the whole enforcement mechanism, and it says so.
+  The skill deliberately branches on `lyx loom status`'s `interrupt_policy` rather than on this key: the status read is a fresh fact taken *after* an interruption, and it is the only one available on the first step of a session, where no previous envelope exists. This key is the same value for the same row, kept on the envelope so a caller that has one can check the two agree.
 - `status_file` — the absolute path to the task's status file.
 
 A hard producer error, or any other pre-producer failure, is never folded into an `ok` envelope carrying a failed state — it is an error envelope with a non-zero exit, carried through `output.ErrFields`.

@@ -82,6 +82,14 @@ On detecting one, read `lyx loom status` once and branch on that single read:
   This is loom's own designed crash-resume, not a retry of something unknown.
 - If nothing differs and the policy is `handback`, stop and hand back, saying plainly that a live agent may still be running in its pane, and that a later re-invocation would restart it rather than attach to it.
 
+Read the policy off `lyx loom status`, not off the previous step's envelope, even though the previous envelope's `next_interrupt_policy` names the same row and the same table.
+The status read is a fresh fact taken after the interruption, and it is the only one available on the very first step of a session, where no previous envelope exists.
+The two agreeing is the point, not a redundancy to optimise away: if they ever disagree, the status file is authoritative and something is wrong worth handing back over.
+
+Nothing in loom enforces `handback`.
+The policy is advisory metadata for this loop to act on — re-invoking a `handback` row is not refused, not warned about on the envelope, and not blocked in any way; it kills the in-flight agent and restarts that row's work from its own persisted state.
+This loop is the only thing standing between an automated caller and that restart, which is why the branch above stops rather than deciding for the operator.
+
 Cap the re-invoking branch at **two consecutive** interrupted-and-re-invoked steps against the same row.
 On a third, stop and hand back — something is wrong with the invocation mechanism itself rather than with the run.
 
