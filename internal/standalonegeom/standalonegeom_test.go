@@ -54,6 +54,22 @@ func TestStencilsDir(t *testing.T) {
 	}
 }
 
+func TestSpecsDir(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+
+	got := SpecsDir(stateDir)
+
+	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "specs"); got != want {
+		t.Errorf("SpecsDir(%q) = %q; want %q", stateDir, got, want)
+	}
+	// Pins that the two standalone directories never converge.
+	if got == StencilsDir(stateDir) {
+		t.Errorf("SpecsDir(%q) = %q; want != StencilsDir(%q) %q", stateDir, got, stateDir, StencilsDir(stateDir))
+	}
+}
+
 func TestLogsDir(t *testing.T) {
 	t.Parallel()
 
