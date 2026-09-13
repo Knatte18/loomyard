@@ -30,7 +30,7 @@ import (
 var socketUnsafeChars = regexp.MustCompile(`[:/\\ ]`)
 
 func TestServerName_Deterministic(t *testing.T) {
-	hub := filepath.Join(t.TempDir(), "loomyard-HUB")
+	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
 	got1 := ServerName(hub)
 	got2 := ServerName(hub)
 	if got1 != got2 {
@@ -39,7 +39,7 @@ func TestServerName_Deterministic(t *testing.T) {
 }
 
 func TestServerName_SocketSafe(t *testing.T) {
-	hub := filepath.Join(t.TempDir(), "loomyard-HUB")
+	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
 	got := ServerName(hub)
 	if socketUnsafeChars.MatchString(got) {
 		t.Errorf("ServerName(%q) = %q contains a socket-unsafe character", hub, got)
@@ -59,7 +59,7 @@ func TestServerName_SocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 	if socketUnsafeChars.MatchString(got) {
 		t.Errorf("ServerName(%q) = %q contains a socket-unsafe character; tmux cannot open a socket for it", root, got)
 	}
-	if got == ServerName(filepath.Join(root, "elsewhere-HUB")) {
+	if got == ServerName(filepath.Join(root, "elsewhere-LYXHUB")) {
 		t.Errorf("ServerName(%q) collided with a distinct hub; substitution must not touch the identity half", root)
 	}
 }
@@ -72,13 +72,17 @@ func TestServerName_SocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 // Two distinct long-named hubs are asserted apart alongside the bound, since truncation must not
 // change hub identity any more than the separator substitution above does.
 func TestServerName_BoundedForALongHubBasename(t *testing.T) {
-	longBase := strings.Repeat("h", 200) + "-HUB"
+	longBase := strings.Repeat("h", 200) + "-LYXHUB"
 	parent := t.TempDir()
 
 	got := ServerName(filepath.Join(parent, longBase))
 	// The measured ceiling is 92 for the default socket directory; the bound
 	// asserted here is the one the cap actually promises, with headroom for a
 	// longer TMUX_TMPDIR.
+	// maxSocketSafeBaseBytes caps the readable half regardless of the suffix's
+	// length, and this basename is already far past the cap before the suffix
+	// is even considered, so the four extra bytes the -HUB -> -LYXHUB rename
+	// adds change nothing about this bound.
 	const wantAtMost = maxSocketSafeBaseBytes + len("lyx-") + len("-") + 8
 	if len(got) > wantAtMost {
 		t.Errorf("ServerName(<200-char hub basename>) = %q (%d bytes); want at most %d — tmux cannot open a socket for an over-long key", got, len(got), wantAtMost)
@@ -119,7 +123,7 @@ func TestTruncateAtRuneBoundary(t *testing.T) {
 }
 
 func TestServerName_DistinctForDistinctHubsSharingBasename(t *testing.T) {
-	base := "loomyard-HUB"
+	base := "loomyard-LYXHUB"
 	hubA := filepath.Join(t.TempDir(), "a", base)
 	hubB := filepath.Join(t.TempDir(), "b", base)
 
@@ -131,9 +135,9 @@ func TestServerName_DistinctForDistinctHubsSharingBasename(t *testing.T) {
 }
 
 func TestServerName_HasHubBasenameAndPrefix(t *testing.T) {
-	hub := filepath.Join(t.TempDir(), "loomyard-HUB")
+	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
 	got := ServerName(hub)
-	want := "lyx-loomyard-HUB-"
+	want := "lyx-loomyard-LYXHUB-"
 	if len(got) < len(want) || got[:len(want)] != want {
 		t.Errorf("ServerName(%q) = %q, want prefix %q", hub, got, want)
 	}
@@ -290,14 +294,16 @@ func TestSanitizeSessionName_OutputAlwaysPassesValidation(t *testing.T) {
 // which answers such a key with a stderr line and exit 0.
 // The hub-mode teller cannot reach these cases (ServerName substitutes separators out at the
 // derivation), which is exactly why they need their own coverage here.
+// Neither of the first two cases below is length-sensitive, so both accept unchanged across the
+// -HUB -> -LYXHUB rename.
 func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
 	tests := []struct {
 		name      string
 		socketKey string
 		wantErr   bool
 	}{
-		{"derived hub-mode key", "lyx-loomyard-HUB-deadbeef", false},
-		{"dots are fine in a socket key", "lyx-svc.v2-HUB-deadbeef", false},
+		{"derived hub-mode key", "lyx-loomyard-LYXHUB-deadbeef", false},
+		{"dots are fine in a socket key", "lyx-svc.v2-LYXHUB-deadbeef", false},
 		{"posix separator", "lyx-/-deadbeef", true},
 		{"windows separator", `lyx-\-deadbeef`, true},
 		{"empty", "", true},

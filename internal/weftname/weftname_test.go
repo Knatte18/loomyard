@@ -22,7 +22,7 @@ func TestSiblingPath(t *testing.T) {
 		want      string
 	}{
 		{"simple", "/h", "feat", filepath.Join("/h", "feat-weft")},
-		{"nested_container", "/repos/loomyard-HUB", "main", filepath.Join("/repos/loomyard-HUB", "main-weft")},
+		{"nested_container", "/repos/loomyard-LYXHUB", "main", filepath.Join("/repos/loomyard-LYXHUB", "main-weft")},
 		{"multi_segment_base", "/h", "my-feature", filepath.Join("/h", "my-feature-weft")},
 	}
 	for _, tt := range tests {

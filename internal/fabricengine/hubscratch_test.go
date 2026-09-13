@@ -24,7 +24,7 @@ import (
 // `.lyx` tree and the durable `_lyx` tree sit side by side inside `_board`, never one inside the
 // other.
 func TestHubScratchDir_IsBoardAnchored(t *testing.T) {
-	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-HUB")
+	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-LYXHUB")
 
 	got := fabricengine.HubScratchDir(hub)
 	want := filepath.Join(fabricengine.BoardDir(hub), lyxdirs.DotLyxDirName)
@@ -42,7 +42,7 @@ func TestHubScratchDir_IsBoardAnchored(t *testing.T) {
 // subpath-anchored hub: HubScratchDir takes a bare hub string and must never pick up AnchorRel,
 // because the board's `_lyx`/`.lyx` trees are flat.
 func TestHubScratchDir_IgnoresAnchorRel(t *testing.T) {
-	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-HUB")
+	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-LYXHUB")
 
 	unanchored := fabricengine.HubScratchDir(hub)
 	l := &lyxcwd.Location{HubPath: hub, AnchorRel: "backend"}
@@ -57,7 +57,7 @@ func TestHubScratchDir_IgnoresAnchorRel(t *testing.T) {
 // filepath.Join(fabricengine.HubScratchDir(hub), "logs") for a synthetic hub path — the derivation
 // HubLogsDir's own doc comment states.
 func TestHubLogsDir_IsHubScratchDirLogsSubdir(t *testing.T) {
-	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-HUB")
+	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-LYXHUB")
 
 	got := fabricengine.HubLogsDir(hub)
 	want := filepath.Join(fabricengine.HubScratchDir(hub), "logs")

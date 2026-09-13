@@ -432,6 +432,20 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 		}
 	})
 
+	// AcceptsLegacySuffixedHubDirectory pins that looksLikeHub is purely structural, so a container
+	// created before the suffix rename still resolves as a hub and is never refused on the strength
+	// of its name.
+	t.Run("AcceptsLegacySuffixedHubDirectory", func(t *testing.T) {
+		t.Parallel()
+		hub := filepath.Join(t.TempDir(), "loomyard-HUB")
+		if err := os.MkdirAll(filepath.Join(hub, fabricengine.BoardDirName), 0o755); err != nil {
+			t.Fatalf("mkdir board: %v", err)
+		}
+		if !fabricengine.LooksLikeHubForTest(hub) {
+			t.Errorf("LooksLikeHubForTest(legacy-suffixed hub) = false; want true")
+		}
+	})
+
 	t.Run("RefusesNeitherMarker", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()

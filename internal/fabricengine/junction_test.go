@@ -39,7 +39,7 @@ func wireTestJunction(t *testing.T, link, target string) {
 func TestWorktreePath(t *testing.T) {
 	t.Parallel()
 
-	l := &lyxcwd.Location{HubPath: filepath.Join("home", "user", "project-HUB")}
+	l := &lyxcwd.Location{HubPath: filepath.Join("home", "user", "project-LYXHUB")}
 	slug := "test-wt"
 
 	got := WorktreePath(l, slug)

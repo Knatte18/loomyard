@@ -138,7 +138,7 @@ func copyBares(tb testing.TB) (warpBare, weftBare string) {
 // of the bare template and driven through fabriccli.CloneAndWire, ready for a verb under test to run
 // against.
 type Hub struct {
-	// Path is the hub root, the <name>-HUB container directory.
+	// Path is the hub root, the <name>-LYXHUB container directory.
 	Path string
 	// Anchor is the resolved AnchorRel value, "." or "backend".
 	Anchor string

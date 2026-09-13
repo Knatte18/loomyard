@@ -104,10 +104,10 @@ func BoardWriteLockPath(hub string) string {
 const BoardDirName = "_board"
 
 // HubSuffix is the suffix appended to a repo name to form the hub container directory (e.g.
-// "loomyard" → "loomyard-HUB").
+// "loomyard" → "loomyard-LYXHUB").
 // Use HubPath(parent, name) to obtain the full path.
 // internal/lyxcwd keeps its own private copy because Location.RepoName derives from it.
-const HubSuffix = "-HUB"
+const HubSuffix = "-LYXHUB"
 
 // BoardDir returns the absolute path to the board data directory inside hub.
 func BoardDir(hub string) string {

@@ -17,7 +17,7 @@ func TestWarpLayoutFor_FastPathCarriesEveryField(t *testing.T) {
 
 	base := &lyxcwd.Location{
 		RepoName:     "mono",
-		HubPath:      filepath.Join(t.TempDir(), "mono-HUB"),
+		HubPath:      filepath.Join(t.TempDir(), "mono-LYXHUB"),
 		WorktreeName: "mono",
 		AnchorRel:    "backend",
 	}

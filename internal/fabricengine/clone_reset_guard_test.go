@@ -4,7 +4,7 @@
 // and from the warp URL recorded on the weft's own binding in the one-argument form, where the
 // operator never sees the name of the directory being deleted.
 // Before the guard, --reset ran an unconditional RemoveAll on that derived path, so any directory
-// that merely happened to be called `<name>-HUB` was destroyed, user content and all.
+// that merely happened to be called `<name>-LYXHUB` was destroyed, user content and all.
 //
 // These tests drive resetHub directly rather than CloneHub, so they spawn no git and stay in the
 // untagged Tier-1 tier per the Test Tier Purity Invariant.

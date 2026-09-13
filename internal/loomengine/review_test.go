@@ -67,7 +67,7 @@ func TestResolveReview_MalformedSpec(t *testing.T) {
 // already names.
 func TestLoomReviewsDir(t *testing.T) {
 	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
 		// AnchorRel deliberately differs from "." to prove the accessor follows the
 		// anchored subpath, not the bare worktree root.
