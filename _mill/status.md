@@ -76,6 +76,8 @@ batches:
     commit_sha: fb51fa871f61ccd542e03b85f7af23a2620d3bb0
     verify_baseline_failures: []
   - name: citation-rewrite-and-enforcement
-    state: pending
+    state: running
+    implementer_session: 64223005-b82f-4447-8506-6a1d76f3a387
+    start_sha: c516ddda92719cd5c15a6ac3c429d28952deb8a0
     verify_baseline_failures: []
 ```
