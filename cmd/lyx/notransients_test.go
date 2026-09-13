@@ -87,7 +87,7 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 // AnchorRel == "." and AnchorRel == "backend", so the assertion holds at both the unanchored and
 // subpath-anchored geometries.
 func TestNoTransientsUnderLyx(t *testing.T) {
-	hub := filepath.Join("home", "user", "repo-HUB")
+	hub := filepath.Join("home", "user", "repo-LYXHUB")
 
 	fixtures := []struct {
 		name      string
