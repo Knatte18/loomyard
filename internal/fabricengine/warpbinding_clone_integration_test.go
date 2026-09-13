@@ -35,7 +35,7 @@ func seedWeftBinding(t *testing.T, dir, bareRemote, warpURL string) {
 }
 
 // noProbeResidueInParent asserts that clonParent contains neither a directory named after
-// derivedName-HUB nor any directory whose name begins with the probe's throwaway-clone prefix — the
+// derivedName-LYXHUB nor any directory whose name begins with the probe's throwaway-clone prefix — the
 // filesystem property the pre-hub probe exists to guarantee on every failure path.
 // It reads the prefix through fabricengine.WarpProbeDirPrefixForTest so this file has a single source
 // of truth for the literal, shared with TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm below.
