@@ -79,6 +79,18 @@ After confirming F-R3-1 above, continued exercising the untested surface on the 
 - **Spontaneous friction note (third independent null result):** across the WHOLE real `greet-lib` run — Discussion-Write, Plan-Write, the Webster fork implementer, and all three Burler review-fix rounds, every one of which had `{{.friction_directive}}` available in its own prompt — not one agent wrote a friction note of its own before I hand-placed the test one above. Consistent with the round context's framing: three independent models across three rounds now agree the bar for "worth a note" sits above ordinary smooth-task friction. Reporting this as the informative null result it is, not as an open defect.
 - **No third GitHub issue filed:** `selfreport: false` throughout: confirmed no `selfreportengine.CreateIssue`/`gh`-style call was ever made by loom itself during this whole run (the only real GitHub API calls made all session were mine directly: opening/listing/merging the PR). The reflection agent's own judgment also independently declined to file anything.
 
+### Live smoke suite
+
+`go test -tags smoke ./internal/loomcli/... -run Smoke -v -count=1` — all 13 smoke test functions PASS (17.5s), including `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning` (the hermetic sibling of my own live Webster-Burler repro above) and `TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus`. No regression. This suite is providerless (per the cost declaration, confirmed by reading the file header again) and does not touch `landingshed`/`Publish`, so it could never have caught F-R3-1 — consistent with F-R3-1 needing a real GitHub remote to surface at all.
+
+### Root-cause cross-check for F-R3-1
+
+Grepped the whole repo for other occurrences of the same anti-pattern (`GetMerged()` after a `PullRequests.List` call): `publish.go:204` is the ONLY call site in the entire codebase (`internal/selfreportengine` never touches pull requests at all; `landingshed`'s own integration test, `publish_integration_test.go`, never exercises the merged-PR branch either — its scripted List handler only ever returns `"[]"` or a freshly-created open PR). The defect and its blast radius are fully isolated to this one call site and the one hermetic unit test whose mock diverges from the real API shape.
+
+### Sandbox suite (S8) — no extension needed
+
+Read `tools/sandbox/SANDBOX-CORE-SUITE.md`'s S8 in full. S8 is a cheap, fixture-based (hand-written status.json), no-real-LLM human-dogfooding checklist for `lyx loom status`/`pause` — a deliberately different testing shape from this round's real-PR/real-agent-kill scenarios, which are far too expensive for that suite's own intended cadence. F-R3-1's fix is a package-level Go unit test in `internal/landingshed`, not a sandbox scenario. No S8 extension made; `sandbox_coverage_test.go` was not touched and needs no attention here.
+
 ## Findings (provisional — recorded as spotted, ranked at the end)
 
 ### F-R3-1 (BLOCKING, CONFIRMED live against a real GitHub repo) — `Publish` can never detect its own merged PR; every merged-PR resume misreports "closed without being merged"
@@ -126,12 +138,27 @@ CONFIRMED, not PLAUSIBLE — reproduced end-to-end against a real GitHub reposit
 
 ## Executive summary
 
-(written last, once the full picture is in)
+This is a genuine safety pass: two prior rounds converged the general envelope-fidelity/anomaly-detection/friction-directive machinery, and this round's independent clean-room static read found nothing new to add there — the code is unusually well self-documented about its own prior-round fixes. Where this round earns its keep is exactly where the round context predicted: the untested surface neither prior round's method could reach without a genuine, real, merged pull request against a real GitHub remote.
+
+**One CONFIRMED BLOCKING finding (F-R3-1):** `internal/landingshed/publish.go`'s merged-PR resume check (`pr.GetMerged()`) reads a field GitHub's List Pull Requests REST endpoint never populates — confirmed with a live `gh api` call against a genuinely-merged PR the round itself opened and merged on a disposable fixture repo. Every task using the shipped default `require_pr_to_base: ["main"]` therefore permanently fails to self-advance past its own merged PR: `Publish` reports "the pull request was closed without being merged" and blocks the run for a human, forever, on what is actually a fully successful landing. On a real (non-fixture) task with `selfreport: true` this also mis-files as Tier 1's `AnomalyEscalation` on every single occurrence. Masked by a hermetic unit test whose mocked List response hand-sets a field shape the real API never produces. This is the single most consequential result of the round, precisely because it sits on the ordinary, most-used happy path (a task whose PR gets reviewed and merged) rather than an edge case.
+
+Beyond that: `Finalize`'s live merge-back was independently confirmed correct on the exact post-real-PR-merge state F-R3-1's fix will hand it (already-up-to-date recognition matches `manifest/designs/loom.md`'s own documented claim verbatim). The `RunDone`-triggered friction reflection was independently confirmed to spawn a REAL reflection agent and make a REAL, sensible judgment call over a hand-placed note on a task that walked the WHOLE real phase machine to a genuine terminal `done` (not a hand-built status-file fixture) — closing that genuinely-open item. A second, independent interrupted-and-resumed repro was driven on `Webster-Burler` (a non-Discussion `*-Burler` row, killed genuinely mid-agent — the real `claude` process still alive in its own pane after the driving process was `kill -9`'d) and confirmed clean reattachment with zero double-spawn. The spontaneous-friction-note question produced a third independent null result. No third GitHub issue was filed; `selfreport` stayed `false` throughout.
+
+**Merge-readiness verdict: NOT merge-ready as-is.** F-R3-1 is a real, confirmed defect on the module's own default, most-common configuration and must be fixed (see Job 2 below) before this lands. Once fixed and verified, I have no other residual to carry forward — this would otherwise have been a clean safety pass.
 
 ## Scope assessment
 
-(written after the code read is complete)
+Plan-vs-shipped: unchanged from rounds 1/2's own conclusions, independently re-confirmed by actually walking a real task end to end through all fifteen (of the doc's) / seventeen (of the recipe's) rows, including the two rows (`Publish`, `Finalize`) neither prior round drove live. `step`'s ten-key envelope, Tier 1's exemption on the `step` path, and Tier 2's friction-directory lifecycle all matched their design docs exactly, observed directly rather than inferred from source. No deferred-that-should-be-v1 and no shipped-beyond-scope found. `Plan-Sweep`'s absence is confirmed correct (never reached in the real recipe; `Plan-Write` ran directly after `Discussion-Bouncer`'s approval, matching the recipe's 17-row list, not the design table's 15-row display list).
+
+The one place scope and correctness meet: `Publish`'s "merged PR" outcome is IN scope (the design doc and the shipped code both clearly intend it — `case pr.GetMerged(): return shedengine.Done`) but is UNREACHABLE as implemented, which is a correctness defect rather than a scope gap.
 
 ## Docs & operability findings
 
-(populated incrementally)
+No doc/skill drift found against the code as directly observed live. Specifically re-checked, live, against the trio's own claims:
+- `loom-step.md`'s ten-key envelope and `next_interrupt_policy` semantics — matched exactly across every one of the ~24 real step calls in this round's dummy run, including the `reinvoke`<->`handback` flip precisely at the `Webster` row and back.
+- `self-report-tier1.md`'s "step is deliberately exempt" claim — confirmed: no anomaly-detection code path is reachable from `step` at all (traced in `step.go`; `detectAndFileAnomalies` is only ever called from `drive.go`).
+- `self-report-tier2.md`'s friction-directory lifecycle (`.lyx/loom/friction/`, cleared on first seed, ensured on re-entry, archived-with-timestamp-then-recreated on a reflection) — matched exactly, including the archive naming shape (`friction-20260913-165526/`).
+- `loom.md`'s claim about a merged-PR's "visible side reports already-up-to-date while the other genuinely merges" — independently confirmed live (see above), verbatim match to the actual observed `Finalize` behavior.
+- `ly-supervise/SKILL.md` — its error-kind vocabulary, the `busy`/`producer`-retry-once rule, and its `.lyx/loom/friction/` directory reference all matched the real envelopes and paths observed. No drift.
+
+**Process observation, NOT a loom code finding (not counted in severity ranking, not something Job 2 fixes):** this round's session scratchpad directory (`/tmp/claude-.../scratchpad/`) already contained a substantial set of files (`.go.bak` backups, `walk.sh`, `setup-bares.sh`, `steps/`, `live/`, timestamped several hours before this round started) that read as a PRIOR round's live-driving workspace, not cleaned up and evidently reachable by a later round's session under this crucible method's current scratchpad-naming scheme. Per the clean-room constraint I did not open or read any of those files' contents and worked in a freshly-named `r3fixture/` subdirectory instead, so no contamination of this round's own independent findings occurred — but the orchestrator may want to consider whether the crucible method's own hygiene needs a directive to tear down (or the harness to isolate) a round's scratchpad at round end, so a future round's clean-room guarantee does not depend on the next round's agent noticing stale timestamps and choosing not to look.
