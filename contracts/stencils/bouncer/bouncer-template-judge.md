@@ -58,7 +58,7 @@ Frontmatter rules, all strict:
   verdict file is rejected, and your verdict is DISCARDED as if you never answered.
   Escape any double quote inside the rationale as `\"`.
 - `rationale` is non-empty.
-- This format is enforced by the parser in `internal/shedadapters/bouncerfiles.go`.
+- This format is parsed mechanically, and any deviation from it fails the parse.
 
 ### Ledger file (`{{.ledger_path}}`)
 
@@ -87,7 +87,7 @@ Frontmatter rules, all strict:
   this ledger, as either `status: open` (still applies) or `status: resolved` (no longer applies),
   never silently dropped.
   Losing a recurring finding breaks the cross-round record for every later call.
-- This format is enforced by the parser in `internal/shedadapters/bouncerfiles.go`.
+- This format is parsed mechanically, and any deviation from it fails the parse.
 
 Below the closing `---`, write a distilled cross-round prose narrative -- summarize and compress
 freely, but the ledger itself must stay lossless per the rule above.
@@ -113,7 +113,7 @@ Frontmatter rules, all strict:
 - `focus` is a list of strings, possibly empty.
 - Both list keys are always present, even when empty -- never omit either key, and never write a
   scalar where a list is required.
-- This format is enforced by the parser in `internal/shedadapters/bouncerfiles.go`;
+- This format is parsed mechanically, and any deviation from it fails the parse;
   a file the parser rejects is discarded and replaced with an empty-lists fallback.
 
 Below the closing `---`, prose rationale is optional.

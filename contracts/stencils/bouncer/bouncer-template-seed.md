@@ -47,7 +47,7 @@ Frontmatter rules, all strict:
 - `focus` is a list of strings, possibly empty.
 - Both list keys are always present, even when empty -- never omit either key, and never write a
   scalar where a list is required.
-- This format is enforced by the parser in `internal/shedadapters/bouncerfiles.go`;
+- This format is parsed mechanically, and any deviation from it fails the parse;
   a file the parser rejects is discarded and replaced with an empty-lists fallback.
 
 Below the closing `---`, prose rationale is optional.
