@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-peripheral-tests
+phase: approved-sandbox-fixture
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-core-constants  '2026-09-13T11:30:10Z'
 approved-production-prose  '2026-09-13T11:32:55Z'
 approved-fabricengine-tests  '2026-09-13T11:36:05Z'
 approved-peripheral-tests  '2026-09-13T11:41:44Z'
+approved-sandbox-fixture  '2026-09-13T11:44:20Z'
 ```
 
 ## Batches
@@ -58,9 +59,10 @@ batches:
     commit_sha: 7e5768d37f74e84588d122a8ea3a0bb1f56b5d99
     verify_baseline_failures: []
   - name: sandbox-fixture
-    state: running
+    state: approved
     implementer_session: 5bb29269-a174-40e2-b20e-c2269b1a4f63
     start_sha: 5701c5c57442ee746789fd981b19bfd165e93ec9
+    commit_sha: ccc72e2b9683888cdfa57ce549bcf39b807ecf16
     verify_baseline_failures: []
   - name: docs-prose
     state: pending
