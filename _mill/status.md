@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-bracket-grammar
 slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-review-r1  '2026-09-13T10:48:11Z'
 plan-fix-r1  '2026-09-13T10:49:12Z'
 planned  '2026-09-13T10:49:20Z'
 implementing  '2026-09-13T10:49:53Z'
+approved-bracket-grammar  '2026-09-13T10:55:32Z'
 ```
 
 ## Batches
@@ -35,8 +36,9 @@ implementing  '2026-09-13T10:49:53Z'
 ```yaml
 batches:
   - name: bracket-grammar
-    state: running
+    state: approved
     implementer_session: 0a9b6f19-e2bc-47a6-965d-757f58a6b680
     start_sha: 57b761fc9f8344c824693488120da818c838a206
+    commit_sha: 32364c1c203bf1f993d7384ce799b4c01eab359c
     verify_baseline_failures: []
 ```
