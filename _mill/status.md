@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-docs-prose  '2026-09-13T11:47:54Z'
 approved-final-sweep-gate  '2026-09-13T11:52:27Z'
 holistic-reviewing  '2026-09-13T11:52:58Z'
 holistic-approved  '2026-09-13T11:56:37Z'
+done  '2026-09-13T11:58:21Z'
 ```
 
 ## Batches
