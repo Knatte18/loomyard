@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-core-constants
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -23,6 +23,7 @@ planning  '2026-09-13T11:18:23Z'
 plan-review-r1  '2026-09-13T11:23:48Z'
 planned  '2026-09-13T11:24:09Z'
 implementing  '2026-09-13T11:24:40Z'
+approved-core-constants  '2026-09-13T11:30:10Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-09-13T11:24:40Z'
 ```yaml
 batches:
   - name: core-constants
-    state: running
+    state: approved
     implementer_session: e1c7ef24-bb7a-419a-9a46-5b3cba70c439
     start_sha: 5e959db65ce02e771efe77b5c94a4dcecbfc70d3
+    commit_sha: 420d415a2926ef4a02ddcfcce156dd863e5eeb42
     verify_baseline_failures: []
   - name: production-prose
     state: pending
