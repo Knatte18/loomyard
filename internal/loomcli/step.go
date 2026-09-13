@@ -205,6 +205,13 @@ Example:
 				return nil
 			}
 
+			// Record the clean-handoff marker before reporting: a completed step's persisted
+			// aftermath is byte-identical to a mid-run driver death, and this marker is the one
+			// thing that lets the next drive's Tier-1 entry observation tell the two apart
+			// (crucible round 2, R2-F1). A step killed mid-producer never reaches this line, so a
+			// genuine step-crash still reports.
+			recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)
+
 			nextPolicy := loomshed.InterruptPolicyFor(res.Next)
 			clihelp.SetExit(ctx, output.Ok(out, stepEnvelope(res, nextPolicy, c.shedPaths.StatusPath)))
 			return nil

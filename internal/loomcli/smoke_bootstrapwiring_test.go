@@ -26,6 +26,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // plantFrictionNote writes a friction note named name inside loc's Tier 2 friction directory --
@@ -88,6 +90,47 @@ func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testi
 
 	if _, statErr := os.Stat(resumePath); statErr != nil {
 		t.Errorf("friction note written during this task is gone after a re-entry (stat err=%v); want it kept -- only a genuine first seed clears", statErr)
+	}
+}
+
+// TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus is the wiring guard for the step
+// clean-handoff marker (crucible round 2, R2-F1): recordStepHandoff and its consume/detect halves
+// are unit-tested in stephandoff_test.go, but a helper nothing calls stays green over an orphan --
+// the exact shape F-1 shipped in -- so this test drives the real `lyx loom step` binary and asserts
+// the marker landed beside the ephemeral tree's other loom files, matching the persisted status.
+//
+// Without the marker, a completed step leaves state running with a live history and a free run
+// lock, which is byte-identical to a mid-run driver death: the next `lyx loom drive` with
+// selfreport on then files a spurious crash-resume GitHub issue for a task in which nothing
+// crashed.
+//
+// Like its siblings, this test spawns zero real LLM subprocesses: it dispatches at most the
+// pure-Go precondition rows.
+func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T) {
+	exe := buildLyxBinary(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	registerBootstrapTeardown(t, loc, worktree)
+
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+	if err != nil {
+		t.Fatalf("loom step: %v; output: %s", err, stdout)
+	}
+
+	persisted, found, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+	if err != nil || !found {
+		t.Fatalf("read persisted status after step: found=%v err=%v", found, err)
+	}
+
+	marker, found, err := state.ReadJSONStrict[stepHandoffMarker](loomengine.LoomStepHandoff(loc), loomengine.LoomStepHandoffLock(loc))
+	if err != nil {
+		t.Fatalf("read step clean-handoff marker: %v", err)
+	}
+	if !found {
+		t.Fatalf("no clean-handoff marker at %s after a completed step; want one matching the persisted status -- without it the next drive files a spurious crash-resume", loomengine.LoomStepHandoff(loc))
+	}
+	if marker.HistoryLength != len(persisted.History) || marker.State != string(persisted.State) {
+		t.Errorf("clean-handoff marker = {history %d, state %q}; want {history %d, state %q} to match the persisted status",
+			marker.HistoryLength, marker.State, len(persisted.History), persisted.State)
 	}
 }
 

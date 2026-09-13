@@ -175,6 +175,29 @@ func LoomSelfreportFiledLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, loomSelfreportFiledLockFileName)
 }
 
+// LoomStepHandoff returns the path to the machine-local clean-handoff marker `lyx loom step`
+// records after every completed step: the persisted history length and state as that step left
+// them.
+// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
+// status file per the Durable-vs-Ephemeral State Invariant, since the marker is never tracked.
+// It exists because a completed step leaves the status file byte-identical to a mid-run driver
+// death -- state running, run lock free, history non-empty -- so without this marker the next
+// drive's Tier-1 entry observation files a spurious crash-resume issue for a task in which nothing
+// crashed. A step killed mid-producer never writes it, so a genuine step-crash still reports.
+// Losing the marker -- a fresh clone, a fabric re-wire -- costs at most one spurious issue, the
+// same trade LoomSelfreportFiled already accepts, which is why it is machine-local rather than
+// durable.
+func LoomStepHandoff(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "step-handoff.json")
+}
+
+// LoomStepHandoffLock returns the path to the advisory lock file guarding concurrent access to
+// LoomStepHandoff(l).
+// It is AnchorPath-anchored under the ephemeral tree, exactly as the marker it guards.
+func LoomStepHandoffLock(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "step-handoff.json.lock")
+}
+
 // LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.
 // It is AnchorPath-anchored, like LoomRunLock, LoomDriverLog, and LoomBootstrapLock, and names the
 // directory those three already share: lyxdirs.DotLyxDirName joined with loomDirName.

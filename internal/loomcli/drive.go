@@ -76,7 +76,7 @@ Example:
 			// the knob directly: a disabled run must not pay for a lock probe and an extra status
 			// decode on every drive, which is exactly the cost the knob's rationale claims it
 			// avoids.
-			entryObservation := observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			entryObservation := observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
 
 			// Ensure the reed substrate before the first producer call. drive adds no strand and
 			// hands no terminal over, but the rows beneath it spawn agents into reed panes, so
