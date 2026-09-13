@@ -62,3 +62,16 @@ Appended incrementally, in order, as each command/scenario returned.
 - **Spontaneous-friction probe, observation 1:** the writer NOTICED the stale-brief rough edge — support-log.md records "No `FormatGreeting` helper exists yet, despite the task brief phrasing this as 'extend'" — but chose to absorb it into the discussion rather than write a friction note (`.lyx/loom/friction/` stayed empty). Genuine model judgment, not forced; recorded honestly.
 - `Discussion-Validate`: done, next `Discussion-Bouncer`, history 8.
 - Confirmed loom's Burler rounds are single-agent (no cluster fan wired in loomrecipe) — per-round live cost bounded to one review-fix agent + one judge.
+- `Discussion-Bouncer` seed: stuck→`Discussion-Burler`, `round-1-focus.md` written, empty output pointer (history 9). `Discussion-Burler` round 1: stuck→`Discussion-Bouncer`, output round-1-review.md (history 10). `Discussion-Bouncer` judge: APPROVED → done, output round-1-bouncer-ledger.md, next `Plan-Write` (history 11). No friction note from the burler round either.
+- `Plan-Write`: done, plan written (2 cards), next `Plan-Validate` (history 12). `Plan-Validate`: done, output `_lyx/plan`, next `Plan-Bouncer` (history 13).
+
+### Live repro — F-4 generalization on a SECOND Bouncer instance (Plan-Bouncer)
+
+Procedure (`.scratch/repro-pbouncer-kill.sh` in the dummy pair): invoked `lyx loom step` (Plan-Bouncer seed pass) in background, watched for `.lyx/loom/reviews/plan/round-1-focus.md`, and `kill -9`'d the step driver the instant the file appeared (16:42:23.744) — inside the write-to-exit window. Verified the seed agent `bouncer-seed:1:7ea5842a` was STILL LIVE in its reed pane with the focus file parsed on disk.
+
+Re-invoked `lyx loom step -v`. Observed, in order, on stderr:
+1. `shuttle: run attached` (runDir `78ece423...`, strandGUID `7ea5842a...`)
+2. `shedadapters: attached to a live bouncer seed run instead of abandoning it on the re-bounce` — `producer=Plan-Bouncer`, round 1
+3. the expected `bouncer segment already seeded; round producer returned no report` Warn, envelope stuck → next `Plan-Burler` (history 14).
+
+Post-state: only the `loom-status` strand remains (no orphan pane), exactly one `round-1-focus.md`, shuttle run dir finalized. **F-4's fix generalizes to `Plan-Bouncer` — same probe, same no-abandon outcome. Residual item 1 CLOSED.**
