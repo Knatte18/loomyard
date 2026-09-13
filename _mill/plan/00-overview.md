@@ -3,7 +3,7 @@
 ```yaml
 task: "Rename hub container suffix from -HUB to -LYXHUB"
 slug: "hub-suffix-lyxhub"
-approved: false
+approved: true
 started: "20260913-110942"
 parent: "main"
 root: ""
