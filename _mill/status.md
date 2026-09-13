@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: planned
 slug: hub-suffix-lyxhub
 branch: hub-suffix-lyxhub
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussion-fix-r3  '2026-09-13T11:05:29Z'
 discussed  '2026-09-13T11:05:29Z'
 planning  '2026-09-13T11:18:23Z'
 plan-review-r1  '2026-09-13T11:23:48Z'
+planned  '2026-09-13T11:24:09Z'
 ```
