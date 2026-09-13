@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-specs-dir-marker-plumbing
+phase: approved-citation-rewrite-and-enforcement
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-specs-geometry  '2026-09-13T18:33:52Z'
 approved-seeded-subtree-commit  '2026-09-13T18:38:10Z'
 approved-specs-seeding-wiring  '2026-09-13T18:45:19Z'
 approved-specs-dir-marker-plumbing  '2026-09-13T18:54:13Z'
+approved-citation-rewrite-and-enforcement  '2026-09-13T19:06:41Z'
 ```
 
 ## Batches
@@ -76,8 +77,9 @@ batches:
     commit_sha: fb51fa871f61ccd542e03b85f7af23a2620d3bb0
     verify_baseline_failures: []
   - name: citation-rewrite-and-enforcement
-    state: running
+    state: approved
     implementer_session: 64223005-b82f-4447-8506-6a1d76f3a387
     start_sha: c516ddda92719cd5c15a6ac3c429d28952deb8a0
+    commit_sha: f9bb924e4d7a8c6426011560355e8e56b7db5b52
     verify_baseline_failures: []
 ```
