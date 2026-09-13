@@ -1,7 +1,7 @@
 # loom-step + self-report crucible campaign — orchestrator handoff
 
 ## Current state
-Round 2 (`fable-high-r2`) complete and independently verified by the orchestrator. Findings are shrinking round over round (r1: 1 BLOCKING+4 MEDIUM+2 LOW+1 NIT; r2: 1 MEDIUM+2 LOW+1 NIT) but round 2 still found a real MEDIUM, so this is NOT yet a converged safety pass. Round 3 not yet spawned — waiting on the operator's model + effort pick, and on a decision about real-world leftovers round 2 created (see "Operator action needed" below) before spawning.
+Round 2 (`fable-high-r2`) complete and independently verified by the orchestrator. Findings are shrinking round over round (r1: 1 BLOCKING+4 MEDIUM+2 LOW+1 NIT; r2: 1 MEDIUM+2 LOW+1 NIT). Operator decided: round 2 did NOT establish convergence (found a real MEDIUM), so round 3 is spawned as an explicit **safety pass** — `sonnet-xhigh-r3` — per the operator's pick. Re-seeded `_mill/loom-review-prompt.md` accordingly, instructing it to build its OWN disposable fixture hub rather than reuse the operator's `~/Code/lyx-test-HUB` (to avoid a third round of real-world leftovers on top of the two still pending the operator's decision — see below, still unresolved).
 
 ## CLOSED-AND-VERIFIED
 
@@ -46,6 +46,9 @@ None of this touches `Knatte18/loomyard` or this crucible worktree/branch — it
 - Closed: **not yet** — campaign has not converged. Close both, labeled as deliberate crucible test-fires, only at final hand-off.
 
 ## Next action
-1. Get the operator's decision on the three leftovers above (or explicit "leave it, move on").
-2. Ask the operator for round 3's model + effort pick. Sonnet is the one model in the Opus/Fable/Sonnet rotation not yet used — round 2's shrinking-findings trend (no BLOCKING, one MEDIUM) makes round 3 a reasonable candidate for the campaign's safety pass, but that's the operator's call on framing too.
-3. Spawn `subagent_type: crucible-reviewer-<effort>` with `model: <pick>`, prompt: "Read `_mill/loom-review-prompt.md` and do exactly what it says." Tag it `<model>-<effort>-r3`.
+Round 3 (`sonnet-xhigh-r3`, safety pass) is spawned. Wait for its notification, then verify independently exactly as rounds 1/2 were verified (cold rebuild/vet/test, sabotage-prove every new/changed test, confirm no fourth GitHub issue, confirm it built its own fixture hub rather than touching `lyx-test-HUB`).
+
+**Still outstanding, independent of round 3:** the three `lyx-test-HUB` leftovers from round 2 (open PR `Knatte18/lyx-test#2`, swapped `~/go/bin/lyx` binary, two leftover dummy pairs) still await the operator's decision — raise again once round 3 completes if not addressed sooner.
+
+**If round 3 comes back clean** (no BLOCKING/MEDIUM, ideally nothing at all): per the method, convergence is safety pass + orchestrator's gates + (for a live-substrate module) an operator-assisted check all agreeing. Propose to the operator that this is convergence, note the campaign's stated residuals honestly (F-6's live race never reproduced across three rounds; Publish/Finalize's merged-PR leg's live status depends on what round 3 managed to drive), and move to hand-off: close issues #240/#241 (labeled as deliberate crucible test-fires) and let the operator decide on push/merge.
+**If round 3 finds something**: re-seed for a round 4, rotating model again (all three of Opus/Fable/Sonnet will have been used by then — repeat one, operator's choice).
