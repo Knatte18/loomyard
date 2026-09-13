@@ -24,10 +24,10 @@ import (
 // constants, never inline string literals.
 const (
 	// hubSuffix is the suffix appended to a repo name to form the hub container directory
-	// (e.g. "loomyard" → "loomyard-HUB"). It stays private to lyxcwd: RepoName derives
+	// (e.g. "loomyard" → "loomyard-LYXHUB"). It stays private to lyxcwd: RepoName derives
 	// from it below, but the exported HubPath(parent, name) constructor moved to
 	// internal/fabricengine, which declares its own copy of this literal.
-	hubSuffix = "-HUB"
+	hubSuffix = "-LYXHUB"
 )
 
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
