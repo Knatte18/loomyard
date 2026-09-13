@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-specs-seeding-wiring  '2026-09-13T18:45:19Z'
 approved-specs-dir-marker-plumbing  '2026-09-13T18:54:13Z'
 approved-citation-rewrite-and-enforcement  '2026-09-13T19:06:41Z'
 holistic-reviewing  '2026-09-13T19:07:00Z'
+holistic-approved  '2026-09-13T19:11:20Z'
 ```
 
 ## Batches
