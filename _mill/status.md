@@ -58,7 +58,9 @@ batches:
     commit_sha: 7e5768d37f74e84588d122a8ea3a0bb1f56b5d99
     verify_baseline_failures: []
   - name: sandbox-fixture
-    state: pending
+    state: running
+    implementer_session: 5bb29269-a174-40e2-b20e-c2269b1a4f63
+    start_sha: 5701c5c57442ee746789fd981b19bfd165e93ec9
     verify_baseline_failures: []
   - name: docs-prose
     state: pending
