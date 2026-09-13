@@ -89,6 +89,11 @@ Outside the handback branch, print no orphaned-agent warning, because there is n
 
 ## Self-report
 
+Nothing files automatically while this loop is driving.
+Loom's two automatic self-report tiers both hang off `lyx loom drive`'s own run, and `lyx loom step` runs neither — so on a supervised task, a blocked halt, a producer failure, and a friction note left behind all pass unreported unless this skill reports them.
+That is the trade this design makes: a live supervisor with an operator in the loop instead of a primitive filing public issues on its own, forty times a run.
+Read it as a responsibility, not a gap.
+
 This skill may call `lyx selfreport create` only after the loop has stopped — terminal state, blocked, hand-back, or iteration cap — never between steps, and at most once per supervised run.
 Draft the title and body, show both to the operator, and fire the call only on explicit operator approval.
 The body goes in via `-b -` on stdin and states the row's policy-relevant facts, the envelope fields that were surprising, and the artifact path this loop read.

@@ -41,6 +41,10 @@ A hard producer error, or any other pre-producer failure, is never folded into a
 That error envelope's `kind` field carries exactly one of a five-value vocabulary, declared as Go constants in `internal/loomcli/step.go` and asserted as an exact set by a test: `busy` (the run lock is already held), `unseeded` (the status file could not be seeded), `ownership` (the seeded status file belongs to a different task), `bootstrap` (any other pre-producer setup failure), and `producer` (the producer call itself returned a hard error).
 The supervisor skill's one-retry rule applies to the `producer` kind alone — every other kind is handed back to the operator with no retry, because none of them can be fixed by running the same command again.
 
+**Neither self-report tier fires from `step`, and that is deliberate.** Tier 1's detection hangs off `shed.Run` and Tier 2's reflection fires after it, so both belong to `lyx loom drive` (and therefore to `lyx loom run`, which spawns it) and neither runs on the step path. The substitution is the supervisor itself: it is the full-context session those tiers exist to reconstruct after the fact, and it files through `lyx selfreport create` with explicit operator approval rather than a primitive it calls up to forty times per run filing public issues unattended. Recorded here rather than left inferable — a reader of `self-report-tier1.md` alone cannot tell whether `step` is excluded or merely unmentioned.
+
+What `step` *does* share with `drive` is the Tier 2 friction directory: the shared bootstrap clears it on a genuine first seed and ensures it on a re-entry, for both verbs, so a step-driven run's producers write their notes somewhere a later `run`/`drive` reflection can still aggregate them.
+
 Whether the supervisor skill may itself advance past a stuck or blocked gate is settled in the direction this doc already leaned: never.
 On any non-running state, and on any error envelope, the skill stops and hands back to the operator.
 It never clears `state`, never edits the status file, never re-seeds, and never pushes.
