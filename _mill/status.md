@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
-plan: null
+plan: _mill/plan
 parent: main
 task: 'modelspec: bare-effort shorthand and version-to-v rename'
 task_description: |
@@ -22,4 +22,5 @@ discussion-fix-r4  '2026-09-13T10:30:15Z'
 discussion-fix-r5  '2026-09-13T10:33:18Z'
 discussion-fix-r6  '2026-09-13T10:37:48Z'
 discussed  '2026-09-13T10:37:48Z'
+planning  '2026-09-13T10:41:03Z'
 ```
