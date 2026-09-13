@@ -88,4 +88,9 @@ Observed: the bootstrap's tmux attach fired at 16:45:49.039 — ~6ms BEFORE the 
 Assessment — genuinely fine, with this repro as proof, for three reasons: (1) no duplicate-driver hazard — the run lock still arbitrates (a later `run` spawns a second driver, the wedged one gets ErrShedBusy when continued); (2) it fails toward the attach, putting the operator in the one session where the stall is visible (the status pane shows a state that never changes); (3) the alternative — waiting out the budget on every fast-halt resume — is the exact defect F-0 fixed, a far more common failure. The one cheap improvement is P-2's missing Info breadcrumb on the halted disposition, which this repro also demonstrated: the run's own output contains zero evidence which handshake path was taken. **Residual item 2 CLOSED as fine-by-design, with P-2 (log line) as the follow-up fix.**
 
 Cleanup: SIGCONT'd the driver; it consumed the re-armed pause flag, persisted `paused` (flag cleared), exited cleanly (`outcome: paused`, `friction: "skipped"` — also live-verifying that RunPaused never triggers a reflection). Zero stray drivers.
+
+### Live — terminal rows (residual item 3)
+
+- `Plan-Revalidate`: done (history 17). `Batchifier`: done, next `Webster` with `next_interrupt_policy: "handback"` — the table's one handback row correctly surfaced on a real envelope (history 18).
+- While the Webster step held the run lock: a second `lyx loom step` refused with `{"kind":"busy", ...}` naming `lyx loom pause` as the remedy, exit 1, BEFORE any bootstrap side effects — the early-probe contract verified live.
 - Status-strand print-on-change verified live via `tmux capture-pane` on the `loom-status` pane: exactly one line per transition (`loom running | now X | last Y → outcome`), no per-poll ticker flood — the S8/status contract holds under a real step walk.
