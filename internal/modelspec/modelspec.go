@@ -14,7 +14,7 @@
 //
 // (registry lookup), or the same shape in escape form (no registry lookup):
 //
-//	<engine>:<model-id>[item,item,...]        where item is  key=value  |  <effort>
+//	<engine>:<model-id>[item,item,...]        where item is the same shape as above
 //
 // Alias form vs escape form: a Spec is either an alias (Alias non-empty, Engine
 // and Model both empty) or an escape-form pair (Engine and Model both non-empty,

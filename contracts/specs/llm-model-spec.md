@@ -15,8 +15,8 @@
 ```yaml
 implementer: sonnet                    # registry defaults apply
 implementer: sonnet[effort=high]       # override one param
-implementer: sonnet[high]              # shorthand for the same override
 reviewer:    opus[effort=max]
+reviewer:    opus[max]                 # shorthand for the same override
 ```
 
 **Escape form** for models not (yet) in the registry — no registry edit needed to try a new model id:
