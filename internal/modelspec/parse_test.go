@@ -1,7 +1,8 @@
 // parse_test.go table-drives Parse against the strict grammar: one table of specs that must be
 // accepted (with the exact Spec they must produce),
 // and one table of specs that must be rejected (with an exact substring every error must contain,
-// naming the offending token or character).
+// naming the offending token or character, plus an optional second substring for cases that also
+// pin an appended detail such as a migration hint).
 
 package modelspec
 
@@ -28,7 +29,7 @@ func TestParse_Accepts(t *testing.T) {
 		},
 		{
 			name: "alias multiple params",
-			in:   "sonnet[effort=high,version=4.5]",
+			in:   "sonnet[effort=high,v=4.5]",
 			want: Spec{Alias: "sonnet", Params: map[string]string{"effort": "high", "version": "4.5"}},
 		},
 		{
@@ -43,8 +44,43 @@ func TestParse_Accepts(t *testing.T) {
 		},
 		{
 			name: "dotted version value",
-			in:   "sonnet[version=4.5]",
+			in:   "sonnet[v=4.5]",
 			want: Spec{Alias: "sonnet", Params: map[string]string{"version": "4.5"}},
+		},
+		{
+			name: "bare effort shorthand",
+			in:   "opus[high]",
+			want: Spec{Alias: "opus", Params: map[string]string{"effort": "high"}},
+		},
+		{
+			name: "bare effort shorthand combined with v=",
+			in:   "opus[high,v=4.8]",
+			want: Spec{Alias: "opus", Params: map[string]string{"effort": "high", "version": "4.8"}},
+		},
+		{
+			name: "v= alone",
+			in:   "sonnet[v=4.5]",
+			want: Spec{Alias: "sonnet", Params: map[string]string{"version": "4.5"}},
+		},
+		{
+			name: "escape form bare effort shorthand",
+			in:   "claude:claude-opus-5[high]",
+			want: Spec{Engine: "claude", Model: "claude-opus-5", Params: map[string]string{"effort": "high"}},
+		},
+		{
+			name: "bare token literally spelled effort",
+			in:   "sonnet[effort]",
+			want: Spec{Alias: "sonnet", Params: map[string]string{"effort": "effort"}},
+		},
+		{
+			name: "bare token that looks like a version number",
+			in:   "sonnet[4.5]",
+			want: Spec{Alias: "sonnet", Params: map[string]string{"effort": "4.5"}},
+		},
+		{
+			name: "v= and bare effort shorthand, order independent",
+			in:   "opus[v=4.8,high]",
+			want: Spec{Alias: "opus", Params: map[string]string{"effort": "high", "version": "4.8"}},
 		},
 	}
 	for _, tt := range tests {
@@ -76,6 +112,10 @@ func TestParse_Rejects(t *testing.T) {
 		name       string
 		in         string
 		wantSubstr string
+		// alsoSubstr, when non-empty, is a second substring the error must
+		// also contain — used for cases pinning both the base rejection and
+		// an appended migration hint or detail.
+		alsoSubstr string
 	}{
 		{
 			name:       "empty input",
@@ -173,9 +213,57 @@ func TestParse_Rejects(t *testing.T) {
 			wantSubstr: "unknown engine",
 		},
 		{
-			name:       "param with no equals",
-			in:         "sonnet[effort]",
-			wantSubstr: "no '=' separator",
+			name:       "unknown param key version, migration hint",
+			in:         "sonnet[version=4.5]",
+			wantSubstr: "unknown param key",
+			alsoSubstr: `the bracket version param is spelled "v"`,
+		},
+		{
+			name:       "duplicate param key, bare effort vs key=value effort",
+			in:         "opus[high,effort=max]",
+			wantSubstr: "duplicate param key",
+			alsoSubstr: `(segments "high" and "effort=max" both set it)`,
+		},
+		{
+			name:       "duplicate param key, two bare effort tokens",
+			in:         "opus[high,max]",
+			wantSubstr: "duplicate param key",
+		},
+		{
+			name:       "duplicate param key, two v= segments",
+			in:         "opus[v=4.8,v=4.5]",
+			wantSubstr: "duplicate param key",
+			alsoSubstr: `(segments "v=4.8" and "v=4.5" both set it)`,
+		},
+		{
+			name:       "unknown key check fires before duplicate check",
+			in:         "opus[v=4.8,version=4.8]",
+			wantSubstr: "unknown param key",
+		},
+		{
+			name:       "empty param, trailing comma",
+			in:         "opus[high,]",
+			wantSubstr: "empty param in spec",
+		},
+		{
+			name:       "empty param, leading comma",
+			in:         "opus[,high]",
+			wantSubstr: "empty param in spec",
+		},
+		{
+			name:       "empty param, middle comma run",
+			in:         "opus[a,,b]",
+			wantSubstr: "empty param in spec",
+		},
+		{
+			name:       "bare token bad charset",
+			in:         "opus[high!]",
+			wantSubstr: "invalid character",
+		},
+		{
+			name:       "whitespace inside bracket not softened by shorthand",
+			in:         "opus[high, v=4.8]",
+			wantSubstr: "whitespace character",
 		},
 	}
 	for _, tt := range tests {
@@ -186,6 +274,9 @@ func TestParse_Rejects(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantSubstr) {
 				t.Errorf("Parse(%q) error = %q; want substring %q", tt.in, err.Error(), tt.wantSubstr)
+			}
+			if tt.alsoSubstr != "" && !strings.Contains(err.Error(), tt.alsoSubstr) {
+				t.Errorf("Parse(%q) error = %q; want substring %q", tt.in, err.Error(), tt.alsoSubstr)
 			}
 			if !strings.HasPrefix(err.Error(), "modelspec: ") {
 				t.Errorf("Parse(%q) error = %q; want prefix \"modelspec: \"", tt.in, err.Error())

@@ -5,23 +5,24 @@
 ## Grammar
 
 ```
-<alias>[key=value,key=value,...]
+<alias>[item,item,...]        where item is  key=value  |  <effort>
 ```
 
 - The alias is one word, resolved via the [registry](#the-registry--modelsyaml).
 - The bracket part is optional;
-  each `key=value` overrides that parameter for this spec only.
+  each item is either `key=value`, overriding that parameter for this spec only, or a bare token, which means effort.
 
 ```yaml
 implementer: sonnet                    # registry defaults apply
 implementer: sonnet[effort=high]       # override one param
 reviewer:    opus[effort=max]
+reviewer:    opus[max]                 # shorthand for the same override
 ```
 
 **Escape form** for models not (yet) in the registry — no registry edit needed to try a new model id:
 
 ```
-<provider>:<model-id>[key=value,...]
+<provider>:<model-id>[item,item,...]        where item is the same shape as above
 ```
 
 ```yaml
@@ -61,9 +62,9 @@ Pinning is always an active choice:
 
 - **In the registry** — set an explicit model id (e.g. steer away from a fresh release you don't trust yet: `model: claude-sonnet-5`).
   One line in one file.
-- **Per spec** — `sonnet[version=4.5]`.
+- **Per spec** — `sonnet[v=4.5]`.
   The provider engine translates the generic `version` param to its own id scheme. claudeengine's rule is generic over any bare single-word model value — not a closed alias list, so an operator-added alias translates on an old binary with no recompile (`sonnet` + `4.5` → `claude-sonnet-4-5`, `fable` + `5` → `claude-fable-5`).
-  Combining `version=` with a full model id (one containing a dash, e.g. the escape form) is a hard error: the id already pins its own version, so a second pin is a contradiction.
+  Combining `v=` with a full model id (one containing a dash, e.g. the escape form) is a hard error: the id already pins its own version, so a second pin is a contradiction.
   Provider naming conventions live in the provider engine only — see [Provider seam](#provider-seam).
 
 **Reproducibility trade-off, signed off:** the same plan run a month apart may hit different models.
@@ -109,7 +110,7 @@ claudeengine already hard-errors on an invalid `--effort` for exactly this reaso
 ## Provider seam
 
 Registry data is provider-invariant (alias → engine name + model string + param defaults).
-Everything provider-*specific* — CLI flags, `version=` id translation, large-window variant realization — lives in the provider engine (`internal/shuttleengine/claudeengine`) per the Shuttle Provider-Seam Invariant in `CONSTRAINTS.md`.
+Everything provider-*specific* — CLI flags, `version` id translation, large-window variant realization — lives in the provider engine (`internal/shuttleengine/claudeengine`) per the Shuttle Provider-Seam Invariant in `CONSTRAINTS.md`.
 
 ## Roles that use this notation
 
