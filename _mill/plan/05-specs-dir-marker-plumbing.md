@@ -5,7 +5,7 @@ task: Deploy cited spec/design docs to target repos like stencils
 batch: specs-dir-marker-plumbing
 number: 5
 cards: 7
-verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomengine/... ./internal/websterengine/... ./internal/loomcli/... ./internal/burlercli/... ./internal/burlerengine/...
+verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomrecipe/... ./internal/loomengine/... ./internal/websterengine/... ./internal/loomcli/... ./internal/burlercli/... ./internal/burlerengine/...
 depends-on: [2, 4]
 ```
 
@@ -137,6 +137,10 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   - `internal/shedrecipe/recipe.go`
   - `internal/shedrecipe/entries_bouncer.go`
   - `internal/shedrecipe/entries_burler.go`
+  - `internal/shedrecipe/fixture_test.go`
+  - `internal/shedrecipe/entries_simple_test.go`
+  - `internal/loomrecipe/fixture_test.go`
+  - `internal/loomrecipe/shape_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -155,6 +159,12 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   The two config keys are already mutually exclusive, so a literal rubric never reaches the helper; running author-written prose through `Fill` would turn any bare `{{` in it into a parse-template error.
   Extend `burlerRoundProfile`'s doc comment where it describes `rubric_stencil` to say that the stencil route now fills `specs_dir` at read time while the literal route passes through unfilled, and that the asymmetry is deliberate.
 
+  The two new guards break every existing test fixture that builds an `Env` without the field, so those fixtures move in this same card.
+  In `internal/shedrecipe/fixture_test.go`, add a `SpecsDir` entry to the shared `Env` builder beside its existing `StencilsDir` entry, created the same way as its siblings — a real subdirectory under the fixture's own temporary root, since the guard requires an absolute path that exists.
+  In `internal/shedrecipe/entries_simple_test.go`, do the same for the `Env` it builds, and add a `SpecsDir` row to its missing-root table beside the existing `StencilsDir` row, so the new guard is covered by the same mechanism that already covers its sibling rather than only being satisfied by the fixture.
+  In `internal/loomrecipe/fixture_test.go` and `internal/loomrecipe/shape_test.go`, add the field at each of the three sites that construct an `Env` with a stencils directory.
+  These four files are in a package no card otherwise touches, which is why this batch's verify scope names it explicitly — without that, the break would surface only at the repository-wide done gate.
+
   Do not add a `specs_dir` recipe config key, and do not add `specs_dir` to the SingleLLM entry's fill-token set — no SingleLLM-rendered stencil carries the marker.
 - **Commit:** `feat(shedrecipe): thread the told specs directory into the Bouncer and BurlerRound entries`
 
@@ -165,6 +175,8 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   - `internal/stencilstore/reconcile.go`
 - **Edits:**
   - `internal/loomengine/plan.go`
+  - `internal/loomengine/plan_test.go`
+  - `internal/loomengine/config_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -179,6 +191,11 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   Change `PlanSpec`'s signature from `(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry)` to `(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry)`, and pass `specsDir` through to `composePlanPrompt`.
   Document the new parameter as told, never derived — this package is bound by the Told-Geometry Invariant and derives no path of its own.
 
+  Both signatures have many existing test call sites, and all of them move in this same card or the batch's own verify fails to compile: roughly sixty-five calls across `internal/loomengine/plan_test.go` and `internal/loomengine/config_test.go`.
+  Thread a REAL, non-empty specs directory through every one of them — do not patch the arity with an empty-string placeholder.
+  An empty value compiles and passes today, because the plan stencil carries no marker yet; the moment batch 6 inserts the marker into that stencil, every such call starts failing at run time with an unfilled-required-marker error, and the failure would land in a batch whose cards never touched these files.
+  Add one shared test helper alongside the existing stencils-directory helper these tests already use, returning a directory for the specs side, and call it at every site rather than repeating a literal.
+
   Leave `DiscussionSpec` and the Discussion producer's own composer untouched: the discussion stencil cites no normative spec, so giving it a marker value it never consumes would be noise.
   Do not change `PlanSpec`'s returned `shuttleengine.Spec` fields.
 - **Commit:** `feat(loomengine): thread the told specs directory into the Plan prompt`
@@ -192,6 +209,7 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   - `internal/websterengine/render.go`
   - `internal/websterengine/beginbatch.go`
   - `internal/websterengine/recoverbatch.go`
+  - `internal/websterengine/template_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -207,6 +225,10 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   In `internal/websterengine/beginbatch.go`, the `RenderForkPrompt` call gains `deps.Geom.SpecsDir` beside its existing `deps.Geom.StencilsDir` argument.
   In `internal/websterengine/recoverbatch.go`, the `RenderRecoveryPrompt` call gains the same.
 
+  Roughly thirty-four existing calls to the two renderers live in `internal/websterengine/template_test.go`, and all of them move in this same card or the batch's own verify fails to compile.
+  Thread a real, non-empty specs directory through every one of them, for the same reason card 21 gives for its own call sites: an empty placeholder compiles and passes only until batch 6 puts the marker into the shared implementer body, after which every such call fails at run time in a batch that never touched this file.
+  The renderer tests live in that file, not in the neighbouring render-helpers test file, which covers the card-pointer and plan-directory-display helpers only.
+
   Update `internal/websterengine/render.go`'s file comment where it enumerates what each renderer fills, so the new marker is named there alongside the friction directive rather than discovered from the signature.
 - **Commit:** `feat(websterengine): thread the told specs directory into both implementer prompts`
 
@@ -220,6 +242,7 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   - `internal/websterengine/geometry.go`
 - **Edits:**
   - `internal/loomcli/wiring.go`
+  - `internal/loomcli/wiring_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -231,6 +254,8 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
 
   Both values come off the already-built webster geometry rather than from a fresh `fabricengine.SpecsDir(location.HubPath)` call, for the reason the surrounding code already follows for the stencils directory: one resolution, one spelling, no chance of two parts of the stack disagreeing about where the directory is.
 
+  `internal/loomcli/wiring_test.go` also calls the Plan producer's spec factory at the pre-change arity and moves with it, threading the same told value rather than an empty placeholder.
+
   No change is needed in webster's own CLI wiring: its geometry builder already carries `SpecsDir` in both modes, and unlike the stencils directory there is no flag that can override it after the builder returns.
   No change is needed in burler's CLI wiring either: its rubric arrives from a profile YAML key and is always literal, so it never reaches the render helper.
   Do not add a specs-directory field or flag to either.
@@ -238,7 +263,7 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
 
 ## Batch Tests
 
-`verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomengine/... ./internal/websterengine/... ./internal/loomcli/... ./internal/burlercli/... ./internal/burlerengine/...`
+`verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomrecipe/... ./internal/loomengine/... ./internal/websterengine/... ./internal/loomcli/... ./internal/burlercli/... ./internal/burlerengine/...`
 
 The scope is every package a card edits, plus the two burler packages that must stay green for the negative half of this batch.
 `internal/burlercli` and `internal/burlerengine` are in scope deliberately even though no card edits them: card 20's whole asymmetry claim is that a literal `rubric:` value still passes through unfilled, and those two packages own the literal route — the profile-YAML decode and the round prompt's own `rubric` value.

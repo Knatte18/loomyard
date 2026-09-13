@@ -42,7 +42,7 @@ batches:
     name: specs-dir-marker-plumbing
     file: 05-specs-dir-marker-plumbing.md
     depends-on: [2, 4]
-    verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomengine/... ./internal/websterengine/... ./internal/loomcli/... ./internal/burlercli/... ./internal/burlerengine/...
+    verify: go test ./internal/shedadapters/... ./internal/shedrecipe/... ./internal/loomrecipe/... ./internal/loomengine/... ./internal/websterengine/... ./internal/loomcli/... ./internal/burlercli/... ./internal/burlerengine/...
   - number: 6
     name: citation-rewrite-and-enforcement
     file: 06-citation-rewrite-and-enforcement.md
@@ -208,10 +208,16 @@ batches:
 - `internal/fabricengine/specsdir_test.go`
 - `internal/fabricengine/stencilcommit.go`
 - `internal/fabricengine/stencilcommit_integration_test.go`
+- `internal/fabricengine/stencilhistory_integration_test.go`
 - `internal/hubgeom/webstergeom.go`
+- `internal/hubgeom/webstergeom_test.go`
 - `internal/loomcli/wiring.go`
+- `internal/loomcli/wiring_test.go`
+- `internal/loomengine/config_test.go`
 - `internal/loomengine/plan.go`
 - `internal/loomengine/plan_test.go`
+- `internal/loomrecipe/fixture_test.go`
+- `internal/loomrecipe/shape_test.go`
 - `internal/shedadapters/bouncer.go`
 - `internal/shedadapters/bouncer_judge_test.go`
 - `internal/shedadapters/bouncer_seed_test.go`
@@ -219,6 +225,8 @@ batches:
 - `internal/shedadapters/rubric_test.go`
 - `internal/shedrecipe/entries_bouncer.go`
 - `internal/shedrecipe/entries_burler.go`
+- `internal/shedrecipe/entries_simple_test.go`
+- `internal/shedrecipe/fixture_test.go`
 - `internal/shedrecipe/recipe.go`
 - `internal/standalonegeom/specsdir.go`
 - `internal/standalonegeom/standalonegeom_test.go`
@@ -229,6 +237,6 @@ batches:
 - `internal/websterengine/geometry.go`
 - `internal/websterengine/recoverbatch.go`
 - `internal/websterengine/render.go`
-- `internal/websterengine/render_test.go`
+- `internal/websterengine/template_test.go`
 - `manifest/designs/designs.go`
 - `manifest/designs/loom.md`

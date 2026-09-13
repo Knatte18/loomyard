@@ -270,7 +270,7 @@ The two unguarded `CONSTRAINTS.md` instructions are fixed by hand AND covered by
   - `internal/shedadapters/rubric.go`
   - `contracts/stencils/loom/loom-rubric-plan-review.md`
 - **Edits:**
-  - `internal/websterengine/render_test.go`
+  - `internal/websterengine/template_test.go`
   - `internal/loomengine/plan_test.go`
   - `internal/shedadapters/bouncer_judge_test.go`
   - `internal/shedadapters/bouncer_seed_test.go`
@@ -283,7 +283,7 @@ The two unguarded `CONSTRAINTS.md` instructions are fixed by hand AND covered by
   In `internal/loomengine/plan_test.go`, extend the Plan prompt coverage so it asserts the composed prompt contains the told specs directory and contains no literal `{{.specs_dir}}` substring afterwards.
   Add a second assertion that composing with an empty specs directory returns an error rather than a prompt with a blank path — the required-marker guarantee, asserted at the composer rather than inferred from the fill helper.
 
-  In `internal/websterengine/render_test.go`, add the same pair for both implementer prompts: the in-session fork prompt and the cold recovery prompt each render the told specs directory, neither leaves a literal marker behind, and each errors on an empty value.
+  In `internal/websterengine/template_test.go` — the file the two renderers' tests actually live in, not the neighbouring render-helpers test file — add the same pair for both implementer prompts: the in-session fork prompt and the cold recovery prompt each render the told specs directory, neither leaves a literal marker behind, and each errors on an empty value.
   Both matter because the marker lives in the shared job body that both prompts compose.
 
   For the two rubrics, assert at the point the composed Bouncer prompt is produced, not at rubric-read time.

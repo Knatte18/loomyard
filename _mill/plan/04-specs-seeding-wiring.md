@@ -114,6 +114,10 @@ Failure posture at each site matches its neighbour exactly: best-effort and logg
   Force-refreshing is the documented remedy for a deployed spec an operator has edited, so both halves are needed, not only the commit.
   Report both commits in the envelope: keep the existing `committed` and `sha` keys for the stencils commit and add `specs_committed` and `specs_sha` for the second, rather than silently overwriting the first pair.
 
+  A failure in the specs half — from either its force-refresh or its commit — returns through the same shapes the stencils half already uses, not through a new one: a force-refresh failure returns a bare `output.Err`, and a commit failure returns `errWithRecord` carrying the record snapshot accumulated so far, which by then already includes the stencils half's own mutations.
+  Both return early, leaving the stencils commit landed and reported as partial.
+  State this explicitly rather than leaving the second half's failure posture to be inferred from the first half's.
+
   Leave `validate`, `diff`, and `promote` untouched, and record why in a short comment beside the specs `list` loop.
   `validate` compares top-level marker sets via `stencil.TopLevelMarkers`; a spec is not a template, so both sides are empty and the pass would be a guaranteed no-op that falsely implies a check ran.
   `diff` and `promote` both need a worktree `sourceDir`, which specs deliberately do not have.

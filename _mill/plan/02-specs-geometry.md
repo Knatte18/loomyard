@@ -105,6 +105,8 @@ Batch-local decision: `"specs"` gets no `geometryTokenOwners` row, for the same 
   - `internal/websterengine/geometry.go`
   - `internal/hubgeom/webstergeom.go`
   - `internal/standalonegeom/webstergeom.go`
+  - `internal/hubgeom/webstergeom_test.go`
+  - `internal/standalonegeom/standalonegeom_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -118,6 +120,11 @@ Batch-local decision: `"specs"` gets no `geometryTokenOwners` row, for the same 
 
   Update `internal/websterengine/geometry.go`'s file comment where it describes the struct as eight-field, since it becomes nine.
   Make the same arithmetic correction in `internal/standalonegeom/webstergeom.go`'s doc comment, which states that none of webster's eight values is hash-derived.
+
+  Assert the new field at the layer that fills it, in both geometry tests, beside each one's existing stencils-directory assertion.
+  In `internal/hubgeom/webstergeom_test.go`, add `got.SpecsDir == fabricengine.SpecsDir(hub)`.
+  In `internal/standalonegeom/standalonegeom_test.go`'s webster-geometry coverage, add both assertions the stencils field already carries there: the expected literal join, and the equality against the shared `SpecsDir(stateDir)` helper — the second is what pins the one-construction-site property, that the field always comes from the shared helper rather than a re-derived literal.
+  Without these the field ships untested at this layer: both tests compare field by field rather than exhaustively, so the batch verify would pass with the field left empty.
 
   Nothing reads the new field yet — batch 5 is what threads it into a rendered prompt.
   Do not add a validator, a default, or a constructor to `websterengine.Geometry`; the type deliberately declares fields only.

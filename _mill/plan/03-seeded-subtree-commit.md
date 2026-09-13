@@ -103,6 +103,7 @@ Renaming it would touch every caller and every test for no gain, and its doc com
   - `internal/fabricengine/junctionnames.go`
 - **Edits:**
   - `internal/fabricengine/stencilcommit_integration_test.go`
+  - `internal/fabricengine/stencilhistory_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -114,7 +115,11 @@ Renaming it would touch every caller and every test for no gain, and its doc com
   the commit lands (a non-empty SHA and `Committed: true`), and the resulting mutation record's file-written entry names a path under `SpecsDir(hub)` rather than under `StencilsDir(hub)`.
   The second assertion is the one that fails if a future edit reverts the mutation-record half of the generalisation while leaving the pathspec half in place — the exact partial regression card 9's doc comment warns about, and the one a passing commit would otherwise hide.
 
-  Keep the file's `//go:build integration` tag and its existing hub fixture construction through `internal/hubforge`, per the hubforge Fabric-Fixture Invariant — no hand-assembled hub.
+  There is a THIRD call site, in a different file, and it must move in this same card or batch 3's own verify fails to compile: `internal/fabricengine/stencilhistory_integration_test.go`'s `seedStencil` helper calls the verb at the old arity.
+  Update that one call to pass `StencilsSubtreeRel()` and `StencilsDir(hub.Path)`, changing nothing else in that file — it exercises stencil history, not the commit verb's own contract, and its existing assertions are unrelated to this generalisation.
+  Card 9's instruction to leave the stencil-history production file alone covers a different file and does not cover this test.
+
+  Keep both files' `//go:build integration` tag and their existing hub fixture construction through `internal/hubforge`, per the hubforge Fabric-Fixture Invariant — no hand-assembled hub.
 - **Commit:** `test(fabricengine): pin the seeded-subtree generalisation in both halves`
 
 ## Batch Tests
