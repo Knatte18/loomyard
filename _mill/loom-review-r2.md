@@ -163,6 +163,14 @@ Cleanup: SIGCONT'd the driver; it consumed the re-armed pause flag, persisted `p
 
 Correctness in the NORMAL single-instance flow — a serial, non-interrupted step/run sequence, plus the interrupted-and-resumed repros above — is the gate for this campaign, and it held everywhere this round pressed. The four new findings (1 MEDIUM, 2 LOW, 1 NIT) are all fixable within this round; none blocks the flow itself.
 
+### Teardown
+
+- `lyx reed down` in both dummy pairs — `{"ok":true}` for `dummy-r2-greet` and `dummy-r2-reflect`; their sessions and every agent pane gone.
+- `pgrep -af "loom drive|loom step"` — zero stray drivers or steps.
+- The tmux server (`lyx-lyx-test-HUB-d919e29a`) still hosts exactly ONE session: the operator's own `lyx-test` (attached, opened by the operator at 16:29 before this round's driving began). Deliberately left untouched — it is not this round's to kill.
+- Bench binary: `~/go/bin/lyx` left at the freshly built `aaddede3e` (so the operator's follow-up on PR #2 runs the binary matching the synced stencils); the pre-round original preserved at `~/go/bin/lyx.bak-crucible-r2`.
+- Leftovers for the operator, stated plainly: sandbox PR Knatte18/lyx-test#2 (open; permission-blocked for this agent), the two dummy worktree pairs in `~/Code/lyx-test-HUB/` (`dummy-r2-greet` blocked at Publish awaiting that PR; `dummy-r2-reflect` a done-state fixture safe to remove), and the `dummy-r2-greet` branch pushed to the lyx-test remotes by `fabric add`/Publish.
+
 ### Clean-room attestation
 
 Round 1's material (`loom-review-r1.md`, `loom-review-r1-fixer-report.md`) was first opened AFTER the findings list above was complete and committed; the git history of this file shows the ordering. No finding above re-litigates round 1's CLOSED-AND-VERIFIED set, and none overlaps it.
