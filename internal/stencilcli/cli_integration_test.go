@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -115,11 +116,14 @@ func TestStencilCLI_ListAndValidate(t *testing.T) {
 	}
 
 	registryNames := stencils.Registry().Names()
-	if len(list) != len(registryNames) {
-		t.Fatalf("stencil list returned %d entries; want %d (%v)", len(list), len(registryNames), registryNames)
+	specsNames := specs.Registry().Names()
+	wantTotal := len(registryNames) + len(specsNames)
+	if len(list) != wantTotal {
+		t.Fatalf("stencil list returned %d entries; want %d (%d stencils + %d specs)", len(list), wantTotal, len(registryNames), len(specsNames))
 	}
 
 	seen := make(map[string]string, len(list))
+	kindCounts := make(map[string]int, 2)
 	for _, item := range list {
 		m, ok := item.(map[string]any)
 		if !ok {
@@ -127,7 +131,18 @@ func TestStencilCLI_ListAndValidate(t *testing.T) {
 		}
 		name, _ := m["name"].(string)
 		state, _ := m["state"].(string)
+		kind, _ := m["kind"].(string)
 		seen[name] = state
+		if kind != "stencil" && kind != "spec" {
+			t.Errorf("list entry %q has kind %q; want %q or %q", name, kind, "stencil", "spec")
+		}
+		kindCounts[kind]++
+	}
+	if kindCounts["stencil"] != len(registryNames) {
+		t.Errorf("list entries with kind %q = %d; want %d", "stencil", kindCounts["stencil"], len(registryNames))
+	}
+	if kindCounts["spec"] != len(specsNames) {
+		t.Errorf("list entries with kind %q = %d; want %d", "spec", kindCounts["spec"], len(specsNames))
 	}
 	for _, name := range registryNames {
 		state, ok := seen[name]
@@ -137,6 +152,11 @@ func TestStencilCLI_ListAndValidate(t *testing.T) {
 		}
 		if state != "untouched" {
 			t.Errorf("stencil %q state = %q; want %q immediately after a fresh sync", name, state, "untouched")
+		}
+	}
+	for _, name := range specsNames {
+		if _, ok := seen[name]; !ok {
+			t.Errorf("stencil list missing entry for spec %q", name)
 		}
 	}
 
