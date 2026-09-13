@@ -224,8 +224,9 @@ batches:
 - `internal/shedadapters/rubric.go`
 - `internal/shedadapters/rubric_test.go`
 - `internal/shedrecipe/entries_bouncer.go`
+- `internal/shedrecipe/entries_bouncer_test.go`
 - `internal/shedrecipe/entries_burler.go`
-- `internal/shedrecipe/entries_simple_test.go`
+- `internal/shedrecipe/entries_burler_test.go`
 - `internal/shedrecipe/fixture_test.go`
 - `internal/shedrecipe/recipe.go`
 - `internal/standalonegeom/specsdir.go`

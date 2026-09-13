@@ -138,7 +138,8 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   - `internal/shedrecipe/entries_bouncer.go`
   - `internal/shedrecipe/entries_burler.go`
   - `internal/shedrecipe/fixture_test.go`
-  - `internal/shedrecipe/entries_simple_test.go`
+  - `internal/shedrecipe/entries_bouncer_test.go`
+  - `internal/shedrecipe/entries_burler_test.go`
   - `internal/loomrecipe/fixture_test.go`
   - `internal/loomrecipe/shape_test.go`
 - **Creates:** none
@@ -159,11 +160,20 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
   The two config keys are already mutually exclusive, so a literal rubric never reaches the helper; running author-written prose through `Fill` would turn any bare `{{` in it into a parse-template error.
   Extend `burlerRoundProfile`'s doc comment where it describes `rubric_stencil` to say that the stencil route now fills `specs_dir` at read time while the literal route passes through unfilled, and that the asymmetry is deliberate.
 
+  Replacing the read-and-strip pair leaves both the `internal/stencilstore` and the `internal/stencil` imports unused in `internal/shedrecipe/entries_burler.go`, which fails the build — those three lines are each package's only use in that file.
+  Remove both imports, after checking nothing else in the file still uses either.
+  This is the same hazard card 19 flags for its own file, and here it applies to two packages rather than one.
+
   The two new guards break every existing test fixture that builds an `Env` without the field, so those fixtures move in this same card.
   In `internal/shedrecipe/fixture_test.go`, add a `SpecsDir` entry to the shared `Env` builder beside its existing `StencilsDir` entry, created the same way as its siblings — a real subdirectory under the fixture's own temporary root, since the guard requires an absolute path that exists.
-  In `internal/shedrecipe/entries_simple_test.go`, do the same for the `Env` it builds, and add a `SpecsDir` row to its missing-root table beside the existing `StencilsDir` row, so the new guard is covered by the same mechanism that already covers its sibling rather than only being satisfied by the fixture.
   In `internal/loomrecipe/fixture_test.go` and `internal/loomrecipe/shape_test.go`, add the field at each of the three sites that construct an `Env` with a stencils directory.
-  These four files are in a package no card otherwise touches, which is why this batch's verify scope names it explicitly — without that, the break would surface only at the repository-wide done gate.
+  Those two files are in a package no card otherwise touches, which is why this batch's verify scope names it explicitly — without that, the break would surface only at the repository-wide done gate.
+
+  The shared fixture populating the field is what keeps existing tests green, which also means it leaves both new guards with zero negative-path coverage unless one is written deliberately.
+  Add that coverage beside each guard's existing stencils-directory analogue, in the two files that actually own it.
+  In `internal/shedrecipe/entries_bouncer_test.go`, add a blank-specs-directory subtest mirroring the existing blank-stencils-directory one: build the standard env, blank the new field, call the entry, and assert the error names the field.
+  In `internal/shedrecipe/entries_burler_test.go`, add the same mirroring the existing rubric-stencil-only blank-stencils-directory subtest — blanking the field must fail on the rubric-stencil path — and add its companion negative beside the existing literal-rubric subtest: a blank specs directory with a LITERAL rubric must still construct cleanly, since that guard sits inside the stencil branch and must never fire on the literal route.
+  Do not put these rows in the value-only entries' table test: that file covers nine value-only entries by its own header, and neither of these two is among them, so a row added there would exercise neither guard.
 
   Do not add a `specs_dir` recipe config key, and do not add `specs_dir` to the SingleLLM entry's fill-token set — no SingleLLM-rendered stencil carries the marker.
 - **Commit:** `feat(shedrecipe): thread the told specs directory into the Bouncer and BurlerRound entries`
