@@ -5,7 +5,7 @@ task: Deploy cited spec/design docs to target repos like stencils
 batch: specs-seeding-wiring
 number: 4
 cards: 5
-verify: go test ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/... && go test -tags integration ./cmd/lyx/... ./internal/cliwire/...
+verify: go test ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/... && go test -tags integration ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/...
 depends-on: [1, 2, 3]
 ```
 
@@ -99,6 +99,7 @@ Failure posture at each site matches its neighbour exactly: best-effort and logg
   - `internal/stencilstore/stencilstore.go`
 - **Edits:**
   - `internal/stencilcli/cli.go`
+  - `internal/stencilcli/cli_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -117,6 +118,11 @@ Failure posture at each site matches its neighbour exactly: best-effort and logg
   A failure in the specs half — from either its force-refresh or its commit — returns through the same shapes the stencils half already uses, not through a new one: a force-refresh failure returns a bare `output.Err`, and a commit failure returns `errWithRecord` carrying the record snapshot accumulated so far, which by then already includes the stencils half's own mutations.
   Both return early, leaving the stencils commit landed and reported as partial.
   State this explicitly rather than leaving the second half's failure posture to be inferred from the first half's.
+
+  Widening `list` breaks an existing integration assertion, which moves in this same card: `internal/stencilcli/cli_integration_test.go`'s list-and-validate test asserts the returned entry count equals the stencils registry's own name count, and that equality fails the moment the specs rows join the same slice.
+  Change that assertion to the sum of both registries' name counts, and extend the test's per-name loop so the specs names are checked for presence too rather than silently ignored.
+  Add one assertion the widening makes worth having: every returned row carries a `kind` of either the stencil label or the spec label, and the count of each matches its own registry's name count — so a future change that appends rows from one registry under the other's label fails here.
+  Leave the rest of that test alone, including its validate half, which specs deliberately do not reach.
 
   Leave `validate`, `diff`, and `promote` untouched, and record why in a short comment beside the specs `list` loop.
   `validate` compares top-level marker sets via `stencil.TopLevelMarkers`; a spec is not a template, so both sides are empty and the pass would be a guaranteed no-op that falsely implies a check ran.
@@ -182,11 +188,13 @@ Failure posture at each site matches its neighbour exactly: best-effort and logg
 
 ## Batch Tests
 
-`verify: go test ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/... && go test -tags integration ./cmd/lyx/... ./internal/cliwire/...`
+`verify: go test ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/... && go test -tags integration ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/...`
 
 The untagged half compiles and runs the three packages the cards edit, catching a missed call-site signature or a broken envelope in `internal/stencilcli`.
 
 The `-tags integration` half is required, not optional: cards 15 and 16 both create files carrying the `//go:build integration` constraint, so the untagged invocation never compiles them.
 It is scoped to the two packages those files live in rather than the repository, since no other package's tagged tests change in this batch.
 
-`internal/stencilcli` has no integration-tagged test in this batch: card 14's `sync` change is exercised end-to-end by card 15's hub assertions, which cover the same `ForceRefresh` + `CommitSeededStencils` pair through the seeding path, and `list` is a pure read over the same directory those assertions already prove is populated.
+`internal/stencilcli` is in the tagged half too, and deliberately so: card 14 edits that package's own integration test, whose entry-count assertion the `list` widening breaks.
+Without the package in the tagged scope, that regression would be invisible to every batch verify in this plan and would surface only at the final repository-wide done gate, after the whole plan had already landed.
+Card 14's `sync` change needs no separate tagged coverage of its own — card 15's hub assertions exercise the same force-refresh and commit pair through the seeding path.

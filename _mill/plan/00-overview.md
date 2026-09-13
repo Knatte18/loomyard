@@ -37,7 +37,7 @@ batches:
     name: specs-seeding-wiring
     file: 04-specs-seeding-wiring.md
     depends-on: [1, 2, 3]
-    verify: go test ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/... && go test -tags integration ./cmd/lyx/... ./internal/cliwire/...
+    verify: go test ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/... && go test -tags integration ./cmd/lyx/... ./internal/cliwire/... ./internal/stencilcli/...
   - number: 5
     name: specs-dir-marker-plumbing
     file: 05-specs-dir-marker-plumbing.md
@@ -233,6 +233,7 @@ batches:
 - `internal/standalonegeom/standalonegeom_test.go`
 - `internal/standalonegeom/webstergeom.go`
 - `internal/stencilcli/cli.go`
+- `internal/stencilcli/cli_integration_test.go`
 - `internal/stencilstore/stencilstore_test.go`
 - `internal/websterengine/beginbatch.go`
 - `internal/websterengine/geometry.go`
