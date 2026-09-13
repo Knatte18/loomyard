@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-seeded-subtree-commit
+phase: approved-specs-seeding-wiring
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
@@ -37,6 +37,7 @@ implementing  '2026-09-13T18:25:47Z'
 approved-specs-registry  '2026-09-13T18:30:33Z'
 approved-specs-geometry  '2026-09-13T18:33:52Z'
 approved-seeded-subtree-commit  '2026-09-13T18:38:10Z'
+approved-specs-seeding-wiring  '2026-09-13T18:45:19Z'
 ```
 
 ## Batches
@@ -62,9 +63,10 @@ batches:
     commit_sha: 61be1d3b14514fdbcfe489a0e5c88836fc763d55
     verify_baseline_failures: []
   - name: specs-seeding-wiring
-    state: running
+    state: approved
     implementer_session: f4ff5e70-d22c-4244-8723-4b7ae36ad81a
     start_sha: c31313915c25832835f2e739da23d422e29dbbfe
+    commit_sha: dc12decc23eeaa4eaf577754e93e69d865e7c973
     verify_baseline_failures: []
   - name: specs-dir-marker-plumbing
     state: pending
