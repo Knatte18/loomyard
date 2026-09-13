@@ -38,6 +38,9 @@ This does not replace `lyx selfreport create` (shipped) — it adds an automatic
 ## How the design settled
 
 - Where notes physically live: `.lyx/loom/friction/`, via `loomengine.LoomFrictionDir` built on `LoomScratchDir`, because the Durable-vs-Ephemeral State Invariant puts never-tracked files under `.lyx` and `_lyx` would drag in the Fabric Git Invariant's commit-seam machinery for a file deleted minutes later.
+- The directory's lifecycle is owned by the **shared bootstrap**, not by either driving verb: `seedAndCommitBootstrap` clears it on a genuine first seed and only ensures it on an `ErrSeedExists` re-entry, so `lyx loom run` and `lyx loom step` behave identically.
+  It is deliberately not `drive`'s job alone — `step` spawns no driver, and a step-driven task would otherwise compose note paths into a directory nothing had created, while a reused worktree would feed an earlier task's leftover notes to the next task's reflection agent.
+  Both halves were live defects found in crucible round 1.
 - Default-on versus opt-in per producer or profile: default-on, with one global `loom.yaml` key (`friction`) that is both the model spec and the kill switch, because the feature's value is breadth of coverage and per-row opt-in would mean a Tier 2 key on five different recipe engines whose row names are durable on-disk identities.
 - Cross-phase semantic friction: still explicitly deferred, and now recorded as a stated limitation of the shipped design rather than an open question — a Tier 2 note can only ever describe friction inside its own narrow task.
 

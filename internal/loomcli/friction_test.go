@@ -1,5 +1,5 @@
 // friction_test.go covers the Tier 2 friction wiring this batch's driveCmd/runCmd call sites own: the
-// once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for runCmd, drive's own
+// once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, drive's own
 // unconditional ensure, and the reflection-trigger decision shouldReflectFriction/reflectFriction
 // implement for driveCmd. Every test here is untagged Tier 1: it spawns no subprocess, drives no
 // real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
