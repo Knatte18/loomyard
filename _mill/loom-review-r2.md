@@ -75,3 +75,6 @@ Re-invoked `lyx loom step -v`. Observed, in order, on stderr:
 3. the expected `bouncer segment already seeded; round producer returned no report` Warn, envelope stuck → next `Plan-Burler` (history 14).
 
 Post-state: only the `loom-status` strand remains (no orphan pane), exactly one `round-1-focus.md`, shuttle run dir finalized. **F-4's fix generalizes to `Plan-Bouncer` — same probe, same no-abandon outcome. Residual item 1 CLOSED.**
+
+- `Plan-Burler` round 1: stuck→`Plan-Bouncer`, both round-1 artifacts written (history 15 next). No friction note from any producer so far.
+- Status-strand print-on-change verified live via `tmux capture-pane` on the `loom-status` pane: exactly one line per transition (`loom running | now X | last Y → outcome`), no per-poll ticker flood — the S8/status contract holds under a real step walk.
