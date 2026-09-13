@@ -1,7 +1,12 @@
 # loom-step + self-report crucible campaign — orchestrator handoff
 
-## Current state
-Round 3 (`sonnet-xhigh-r3`, the intended safety pass) complete and independently verified by the orchestrator. **It was NOT clean** — it found and fixed one real BLOCKING bug in territory neither prior round had ever driven to completion (`Publish`'s merged-PR detection). This confirms the method's own precedent (reed/fabric): the round right before the genuinely clean one is never actually clean. A round 4, framed as the real safety pass, is recommended next — not yet spawned, awaiting the operator's model + effort pick. All three rotation models (Opus r1, Fable r2, Sonnet r3) have now been used once; round 4 repeats one, operator's choice (the method suggests the most capable for a final safety pass).
+## Current state — CAMPAIGN HANDED OFF, MERGING AFTER ROUND 3, ROUND 4 DEFERRED
+
+Round 3 (`sonnet-xhigh-r3`, the intended safety pass) complete and independently verified by the orchestrator. **It was NOT clean** — it found and fixed one real BLOCKING bug in territory neither prior round had ever driven to completion (`Publish`'s merged-PR detection). This confirms the method's own precedent (reed/fabric): the round right before the genuinely clean one is never actually clean.
+
+**Operator decision:** merge now rather than spawn round 4 immediately. The campaign's actual safety pass (a round that finds nothing) has therefore NOT happened — this is a deliberate, informed choice to land three rounds of real, independently-verified fixes rather than hold them hostage to an open-ended loop. Round 4's scope is captured as its own mill-wiki task, `crucible-loom-step-selfreport-r4`, explicitly deferred until after `deploy-specs-like-stencils` lands (`depends_on` set in the wiki). Wrap-up hygiene done: issues #240 and #241 (the campaign's one deliberate live-fire, across both self-report tiers) are closed, each with a comment explaining it was a deliberate crucible test-fire.
+
+**This file's job is now done** — it lives in this branch's git history for anyone reconstructing what happened, but the live handoff pointer for continuing this work is the `crucible-loom-step-selfreport-r4` wiki task, not this file.
 
 ## CLOSED-AND-VERIFIED
 
