@@ -150,6 +150,8 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   This change falsifies that retention rationale, not just one sentence.
   **Disposition:** the doc is kept and its retention note rewritten to rest on its remaining standing — it is the rationale for a cross-cutting rule this repo's own code still follows — rather than on a producer-rubric citation that will no longer exist.
   It is not deleted, and no separate deletion decision is deferred to the plan.
+  **Third collateral site:** `manifest/designs/loom.md:276` is the Webster-Review rubric's durable transcription record, explicitly "kept in step with the stencil," and its comment-convention bullet carries the markdown link `[code-comment-conventions.md](../../docs/code-comment-conventions.md)` — the very item being reworded.
+  It is reworded in step with the stencil, in the same commit, both because CLAUDE.md requires the module doc to land with the change and because Markdown Link Integrity binds that link.
 
 ### background-citations-lose-the-path
 
@@ -157,7 +159,11 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   `webster-template-master.md:25` and `webster-prefix-recovery.md:20` gain "if present" on their `CONSTRAINTS.md` instruction, matching the wording already used in `loom-template-discussion.md:42` and `loom-template-plan.md:34`.
 - **Rationale:** Naming a loomyard source file tells an agent in a target repo nothing it can act on; the enforcement fact is the part that changes its behaviour.
   An unguarded "read `CONSTRAINTS.md` in full" is a dead instruction in a repo without one.
-- **Rejected:** leaving them (they are the same class of bug, and the enforcement test in `citation-enforcement-test` would flag them anyway).
+- **`CONSTRAINTS.md` is outside the scanner's class — stated, not assumed.** `CONSTRAINTS.md` is a repo-**root** token under none of `contracts/`, `manifest/`, `docs/`, `internal/`, so `citation-enforcement-test`'s prefix-based rule can never see either unguarded site.
+  It must not simply be added to the prefix set either: `CONSTRAINTS.md` is a legitimate *target-repo* path that stencils are supposed to name — the defect is the missing "if present" guard, not the token.
+  **Decision:** the two sites are fixed by hand, **and** the enforcement test gains one narrow companion assertion that does close this class — any stencil body mentioning `CONSTRAINTS.md` must also carry "if present" in the same sentence.
+  That is cheap, testable, and covers the unguarded-root-doc class properly rather than leaving it to review discipline.
+- **Rejected:** leaving them (they are the same class of bug); relying on `citation-enforcement-test`'s prefix rule to catch them (it structurally cannot — see above).
 
 ### citation-enforcement-test
 
@@ -199,7 +205,7 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   That behaviour change is rejected outright, not merely unscoped.
 - **Rationale:** The rubric is never itself executed as a template — `stencil.Fill`'s required-marker check only inspects top-level markers of the template actually being executed, so a `{{.specs_dir}}` sitting inside a *value* is invisible to it and would ship literally into the judge prompt.
   Filling the rubric as its own single-marker template at read time closes that hole and, because `Fill` errors on an absent or empty required marker, gives `specs_dir` the same loud-early-failure property `specs-dir-marker` requires everywhere else.
-  Doing it in one helper rather than at each site is what keeps the four call sites from drifting.
+  Doing it in one helper rather than at each site is what keeps the three call sites from drifting.
 - **Rejected:** moving the citation out of the rubric and into the Bouncer/Burler templates, which *are* filled (avoids touching the constraint entirely, but separates a mechanical check from the reference it is checked against — the citation is semantically part of the rubric's own check text, and splitting them is how the next author loses the connection);
   a non-`{{.}}` placeholder token substituted by `strings.ReplaceAll` (invents a second templating syntax alongside `stencil`, and silently no-ops on a typo instead of erroring);
   a bare `strings.ReplaceAll` on the `{{.specs_dir}}` literal (same silent-no-op-on-typo failure mode, and forfeits `Fill`'s empty-value guard).
@@ -243,7 +249,7 @@ Neither shape fits the specs: the two travelling docs live in *different* direct
 A per-name source mapping would fit, but it requires either a `reconcile.go` change or a parallel mapping to keep in sync with the registry — cost paid for a feature specs do not want.
 `sourceDir` exists to drive `warnPortBackDrift`, which serves a **port-back authoring workflow**: an operator edits a board stencil copy, and the warning reminds them to promote it back to the worktree source.
 Specs have no such workflow — the loomyard-side file is the single source of truth and a deployed copy is never authored — so the drift warning has nothing to say.
-**Consequence, stated so it is not discovered later:** board-vs-worktree drift detection, and `diff`/`promote` port-back, are unavailable for specs by design, which is why both verbs are marked "No" in the table above.
+**Consequence, stated so it is not discovered later:** board-vs-worktree drift detection, and `diff`/`promote` port-back, are unavailable for specs by design, which is why both verbs are marked "No" in the per-verb table below.
 
 **Stamping mutates the deployed copy.**
 `ApplyStamp` prepends or edits a leading `<!-- lyx-stencil: sha256=... -->` banner.
@@ -265,7 +271,7 @@ Both the hub and standalone paths need the second reconcile added.
 | `sync` | **Yes** | A second `ForceRefresh` over the specs baseDir, plus the generalised `CommitSeededStencils` — both halves, not only the commit. Force-refreshing a stale deployed spec is as useful as for a stencil, and it is the remedy for an edited one. |
 | `list` | **Yes** | It is the only remaining verb that surfaces a `StateEdited` deployed spec, which `reuse-reconcile-policy-unchanged` depends on an operator being able to see. |
 | `validate` | **No** | `stencilstore.Validate` compares top-level marker sets via `stencil.TopLevelMarkers`; a spec is not a template, so both sides are empty and the pass is a guaranteed no-op that would falsely imply a check ran. |
-| `diff` | **No** | Requires a worktree `sourceDir`, which specs deliberately do not have (see the `sourceDir` decision below). |
+| `diff` | **No** | Requires a worktree `sourceDir`, which specs deliberately do not have (see the `sourceDir` decision above). |
 | `promote` | **No** | Port-back has no meaning for a spec: the loomyard-side file is the single source of truth and a deployed copy is never authored. |
 
 Consequence to state plainly: an operator whose deployed spec is `StateEdited` learns *that* it diverged (the `Reconcile` warn line and `list`), not *what* diverged.
@@ -350,7 +356,10 @@ From `CLAUDE.md`:
 **`package stencils` (`contracts/stencils/`) — the primary TDD candidate.**
 Write `citation_enforcement_test.go` first, before touching any stencil body.
 It scans every name in the registry, reads its default bytes, applies `stencil.StripLeadingComment`, and fails on any token matching a repo-relative path under `contracts/`, `manifest/`, `docs/`, or `internal/` unless the occurrence is `{{.specs_dir}}`-prefixed or on the `(stencil name, token)` allowlist.
-Written first it must fail on **every occurrence the audit table lists** — 13 occurrences across 12 rows, since `bouncer-template-judge.md` carries its path at three separate lines (61, 90, 116) — which is the proof it works; it goes green as the rewrites land.
+Written first it must fail on **every occurrence the audit tables list** — the two tables hold **13 rows**, and the flaggable occurrences number **15**, because two rows cite *two* paths each (`loom-rubric-plan-review.md:15` and `loom-rubric-webster-review.md:16`) and `bouncer-template-judge.md` carries its path at three separate lines (61, 90, 116).
+Per row: judge ×3, seed ×1, webster-review 16 ×2 / 51 ×1 / 54 ×1, plan-review 15 ×2 / 31 ×1 / 38 ×1, plan 138 ×1 / 143 ×1, body-implementer 27 ×1.
+The two `CONSTRAINTS.md` rows contribute **zero** flaggable occurrences — they are a repo-root token outside the prefix rule, covered by the separate companion assertion in `background-citations-lose-the-path`.
+Failing on all 15 is the proof the scan works; it goes green as the rewrites land.
 It will also flag the glyph-example occurrences named in `citation-enforcement-test`'s token rule, which are resolved by allowlist entries rather than by rewriting the stencil, so the initial failure set is the audited occurrences **plus** those — do not treat 13 as the expected failure count.
 Scenarios: a normative citation correctly rewritten passes; a bare re-added citation fails; an allowlisted entry passes; an allowlist entry whose token no longer appears anywhere fails as stale.
 
