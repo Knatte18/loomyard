@@ -349,7 +349,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// takes no autonomous argument: the Plan producer is autonomous by design and hard-codes
 		// Interactive: false internally.
 		PlanSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.PlanSpec(location, websterGeom.StencilsDir, loomCfg, registry)
+			return loomengine.PlanSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the
@@ -378,15 +378,16 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ApprovePlan: func() error {
 			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
 		},
-		// StencilsDir, RunRoot, Burler, and Now are filled for both review segments --
-		// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike. StencilsDir is
-		// websterGeom.StencilsDir -- the same value the DiscussionSpec and PlanSpec closures above
-		// already capture directly -- so this is one value read from one place, not a second copy
-		// that could drift from theirs. Now is filled explicitly with time.Now rather than left nil,
-		// even though nil defaults to time.Now inside the underlying constructors, because the
-		// Bouncer's archive-filename collision suffix is the one place a test wants to inject a
-		// clock.
+		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments --
+		// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike. StencilsDir and
+		// SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir -- the same values the
+		// DiscussionSpec and PlanSpec closures above already capture directly -- so each is one
+		// value read from one place, not a second copy that could drift from theirs. Now is filled
+		// explicitly with time.Now rather than left nil, even though nil defaults to time.Now
+		// inside the underlying constructors, because the Bouncer's archive-filename collision
+		// suffix is the one place a test wants to inject a clock.
 		StencilsDir: websterGeom.StencilsDir,
+		SpecsDir:    websterGeom.SpecsDir,
 		RunRoot:     loomengine.LoomReviewsDir(location),
 		Burler:      burlerEngine,
 		Now:         time.Now,
