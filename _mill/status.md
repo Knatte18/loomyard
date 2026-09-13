@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
@@ -32,4 +32,23 @@ plan-fix-r3  '2026-09-13T18:16:19Z'
 plan-review-r4  '2026-09-13T18:24:15Z'
 plan-fix-r4  '2026-09-13T18:25:13Z'
 planned  '2026-09-13T18:25:23Z'
+implementing  '2026-09-13T18:25:47Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: specs-registry
+    state: pending
+  - name: specs-geometry
+    state: pending
+  - name: seeded-subtree-commit
+    state: pending
+  - name: specs-seeding-wiring
+    state: pending
+  - name: specs-dir-marker-plumbing
+    state: pending
+  - name: citation-rewrite-and-enforcement
+    state: pending
 ```
