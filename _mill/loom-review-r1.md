@@ -30,6 +30,41 @@ Anomaly check per the clean-room constraint: `_mill/` contained `loom-review-pro
 
 (severity-ranked; provisional entries are jotted here as they are spotted and firmed up later)
 
+### F-0 — Tier 2 broke `lyx loom run`'s driver handshake: a fast-halting run with any friction note reports a false "driver did not take the run lock" and skips the terminal handover — BLOCKING — CONFIRMED (reproduced live)
+
+`internal/loomcli/bootstrap.go:99-106` (`dispositionForHandshake`), `internal/loomcli/run.go:163-198`, against `internal/loomcli/drive.go:188-191`.
+
+`shedengine.Run` releases the run lock on return (`defer runLock.Release()`, run.go:319 in shedengine). Tier 2 added a phase to `drive` that runs **after** that return: `shouldReflectFriction` → `reflectFriction` → a real LLM agent bounded by `friction_timeout_min`, whose shipped default is **30 minutes**.
+
+`run`'s handshake polls for at most `bootstrapHandshakeAttempts * bootstrapHandshakePollInterval` = 300 × 100ms = **30 seconds** for the spawned driver to take the run lock, and `awaitRunLock` returns `awaitRunLockDeadline` when the child is still alive and the lock was never seen held. `dispositionForHandshake` maps that to `handshakeRefuse`, on the strength of its own stated reasoning:
+
+> Only awaitRunLockDeadline is a genuine refusal: the child is still alive after the whole attempt budget and has never taken the lock, **which is a wedged spawn and nothing else.**
+
+That is no longer true. A driver that halts faster than the first poll and then spends longer than 30s in the friction reflection is alive, has released the lock, and is doing exactly the right thing.
+
+Reproduced live on `dummy-r2`, whose only arrangement was a dirty worktree (so `Preflight` halts) and two friction notes:
+
+```
+$ lyx loom run
+{"error":"loom: driver did not take the run lock; see .../dummy-r2/.lyx/loom/driver.log","ok":false}
+```
+
+The driver it had just declared wedged went on, in that same minute, to file issue #240, spawn the reflection agent, file issue #241, write `reflection-report.md`, archive the friction directory, and exit cleanly:
+
+```
+(driver.log tail) {"friction":"reflected","halted_producer":"Preflight","history_length":1,
+                   "ok":true,"outcome":"blocked","reason":"stuck with no OnStuck target"}
+```
+
+Two harms, and the second is the worse one:
+
+1. A healthy run is reported as a bootstrap failure on the envelope, pointing the operator at a driver log that shows success.
+2. The `handshakeRefuse` arm returns **before run.go's step 7**, so the tmux handover never happens. `dispositionForHandshake`'s own comment explains why that matters — "the one place the halt is legible — the status strand sitting in the session — is the one place they are not put" — and that is precisely what now happens on the case the comment was written to protect.
+
+This fires on the *common* path, not an exotic one: the comment itself names "a blocked Preflight or Loom-Preflight, an exhausted bounce budget" as the fast-halt cases, friction is default-on in the shipped `template.yaml`, and any halt with at least one note left behind triggers a reflection.
+
+Fix: the handshake must be able to tell "wedged spawn" from "machine finished, post-run bookkeeping still running". The run lock alone can no longer carry that distinction, but the status file can: give `awaitRunLock` a third injected predicate reporting whether the persisted state has left `running`, and treat that as a proceed rather than a deadline. That keeps the genuine wedged-spawn refusal (child alive, lock never taken, machine never left `running`) while restoring the handover on every fast halt.
+
 ### F-1 — `ensureFrictionDirAfterSeed` is dead code; the once-per-task friction clear never runs — MEDIUM — CONFIRMED
 
 `internal/loomcli/run.go:257`.
