@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: modelspec-effort-shorthand
 branch: modelspec-effort-shorthand
 plan: _mill/plan
@@ -23,4 +23,5 @@ discussion-fix-r5  '2026-09-13T10:33:18Z'
 discussion-fix-r6  '2026-09-13T10:37:48Z'
 discussed  '2026-09-13T10:37:48Z'
 planning  '2026-09-13T10:41:03Z'
+plan-review-r1  '2026-09-13T10:48:11Z'
 ```
