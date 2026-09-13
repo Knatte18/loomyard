@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-specs-registry
+phase: approved-specs-geometry
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
@@ -35,6 +35,7 @@ plan-fix-r4  '2026-09-13T18:25:13Z'
 planned  '2026-09-13T18:25:23Z'
 implementing  '2026-09-13T18:25:47Z'
 approved-specs-registry  '2026-09-13T18:30:33Z'
+approved-specs-geometry  '2026-09-13T18:33:52Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     commit_sha: 4ea238c20a90b5ed4dc9b2fc37824ed0f8bdc753
     verify_baseline_failures: []
   - name: specs-geometry
-    state: running
+    state: approved
     implementer_session: 474e14d1-d9a6-407e-ada5-abcbd121aba4
     start_sha: 017c2bec3c59ca132e596264b2e22b6f0b3ba0d9
+    commit_sha: 6fdb8d1e2c1852570adedeca51ee223b8eb6b00b
     verify_baseline_failures: []
   - name: seeded-subtree-commit
     state: pending
