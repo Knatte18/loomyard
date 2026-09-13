@@ -153,7 +153,14 @@ No path is ever constructed from `RepoName`. This is what makes *Clean break* sa
 `-LYXHUB` is four bytes longer than `-HUB`, so a hub whose basename now lands between 45 and 48 bytes will truncate four characters earlier in the human-readable half of the socket key.
 This is by design (the cap exists precisely to absorb long names, and the sha256 half preserves uniqueness) and needs no code change — but `internal/reedengine/server_test.go` has a length-boundary case at line 75 (`longBase := strings.Repeat("h", 200) + "-HUB"`) that should be reviewed for whether its intent survives the swap.
 
-### File inventory (52 files; `_mill/status.md` excluded as mill task-state)
+### File inventory (51 files carrying the literal, plus `CONSTRAINTS.md`)
+
+`grep -rl -- '-HUB'` over the worktree returns 54 files.
+Three of those are mill task-state under `_mill/` (`status.md`, `discussion.md` itself, and the review files) and are excluded — they are not product source.
+The remaining **51** are enumerated in full below, and the three groups sum to exactly 51: 7 production-source files, 31 test files (29 class-(a) plus 2 that are class-(b)/(c) only), and 13 docs.
+
+`CONSTRAINTS.md` is the one in-scope file that does **not** appear in this inventory: it currently contains no `-HUB` literal at all, so it gains a new migration note rather than a substitution (see Scope → In).
+Counting it, the task touches 52 files.
 
 **Production source — value/comment change (class a):**
 `internal/lyxcwd/lyxcwd.go`, `internal/fabricengine/junctionnames.go`, `internal/fabricengine/clone.go` (comments only), `internal/fabriccli/fabric.go` (Cobra help text), `internal/hubforge/hub.go` (comment only), `tools/sandbox/main.go`, `tools/sandbox/suite.go` (comment only).
