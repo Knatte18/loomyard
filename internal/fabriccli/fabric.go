@@ -65,7 +65,7 @@ Example:
 	cloneCmd = &cobra.Command{
 		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
-		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-HUB)
+		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-LYXHUB)
 and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
 subpath, repo-wide config, warp junctions, and per-worktree module configs —
 a single command, no follow-up activation step required. Warp junctions are
@@ -90,7 +90,7 @@ Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 The teardown is refused unless the target really is a fabric hub — it must hold
 a _board entry or a weft sibling. The hub name is derived rather than typed (in
 the one-argument form, from the binding recorded on the weft), so a directory
-that merely happens to be named <name>-HUB is reported and left alone.
+that merely happens to be named <name>-LYXHUB is reported and left alone.
 
 Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the warp
 repo instead of its root — e.g. --subpath backend for a monorepo where lyx
