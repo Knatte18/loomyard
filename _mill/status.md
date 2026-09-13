@@ -62,7 +62,9 @@ batches:
     commit_sha: 61be1d3b14514fdbcfe489a0e5c88836fc763d55
     verify_baseline_failures: []
   - name: specs-seeding-wiring
-    state: pending
+    state: running
+    implementer_session: f4ff5e70-d22c-4244-8723-4b7ae36ad81a
+    start_sha: c31313915c25832835f2e739da23d422e29dbbfe
     verify_baseline_failures: []
   - name: specs-dir-marker-plumbing
     state: pending
