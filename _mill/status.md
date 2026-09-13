@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: deploy-specs-like-stencils
 branch: deploy-specs-like-stencils
 plan: _mill/plan
@@ -25,4 +25,5 @@ discussed  '2026-09-13T17:23:48Z'
 planning  '2026-09-13T17:40:07Z'
 plan-review-r1  '2026-09-13T17:50:02Z'
 plan-fix-r1  '2026-09-13T17:53:40Z'
+plan-review-r2  '2026-09-13T18:03:20Z'
 ```
