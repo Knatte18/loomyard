@@ -232,8 +232,11 @@ func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bo
 // correct here: the other reflection is already covering these very notes, so there is nothing left
 // for this one to do, and blocking would hold a driver open for another agent's whole deadline.
 func (c *loomCLI) reflectFriction() string {
-	if err := os.MkdirAll(filepath.Dir(loomengine.LoomFrictionLock(c.location)), 0o755); err != nil {
-		logger.Warn("loom: could not create the friction lock's directory; skipping the reflection", "dir", c.frictionDir, "error", err)
+	// The logged "dir" is the lock's own parent — the directory this MkdirAll actually creates —
+	// not c.frictionDir, which is a sibling this call never touches (crucible round 2, R2-F4).
+	lockDir := filepath.Dir(loomengine.LoomFrictionLock(c.location))
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		logger.Warn("loom: could not create the friction lock's directory; skipping the reflection", "dir", lockDir, "error", err)
 		return frictionengine.StatusFailed
 	}
 	reflectionLock, free, err := lock.TryAcquireWriteLock(loomengine.LoomFrictionLock(c.location))
