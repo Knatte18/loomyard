@@ -20,8 +20,12 @@ That is a second, independent watching layer, not a substitute for this loop.
 ## The pre-loop baseline
 
 Before the first step, take one `lyx loom status` read and record its `current_producer` and `history_length` as the baseline.
-This baseline always exists, and it exists for one reason: the interrupted-step branch later in this loop compares against it.
+It exists for one reason: the interrupted-step branch later in this loop compares against it.
 The very first step of a session — or the first step after an operator re-invokes past the iteration cap — has no prior step envelope to compare with, so the baseline is what makes that comparison possible.
+
+On a task that has never been bootstrapped there is no status file yet, and this read returns an error envelope naming `lyx loom run` as the remedy.
+That is not a failure to report: record an empty baseline and proceed to the first step, which bootstraps the task itself.
+Treat any *other* status error as a hand-back, the same as an error envelope from a step.
 
 ## How to invoke a step
 
@@ -78,12 +82,29 @@ On detecting one, read `lyx loom status` once and branch on that single read:
   This is loom's own designed crash-resume, not a retry of something unknown.
 - If nothing differs and the policy is `handback`, stop and hand back, saying plainly that a live agent may still be running in its pane, and that a later re-invocation would restart it rather than attach to it.
 
+Read the policy off `lyx loom status`, not off the previous step's envelope, even though the previous envelope's `next_interrupt_policy` names the same row and the same table.
+The status read is a fresh fact taken after the interruption, and it is the only one available on the very first step of a session, where no previous envelope exists.
+The two agreeing is the point, not a redundancy to optimise away: if they ever disagree, the status file is authoritative and something is wrong worth handing back over.
+
+Nothing in loom enforces `handback`.
+The policy is advisory metadata for this loop to act on — re-invoking a `handback` row is not refused, not warned about on the envelope, and not blocked in any way; it kills the in-flight agent and restarts that row's work from its own persisted state.
+This loop is the only thing standing between an automated caller and that restart, which is why the branch above stops rather than deciding for the operator.
+
 Cap the re-invoking branch at **two consecutive** interrupted-and-re-invoked steps against the same row.
 On a third, stop and hand back — something is wrong with the invocation mechanism itself rather than with the run.
 
-Outside the handback branch, print no orphaned-agent warning, because there is no orphan: the next step attaches to the agent rather than abandoning it.
+Outside the handback branch, print no orphaned-agent warning, because there is no orphan: every spawning row's adapter probes for a live agent and waits on it, so the next step attaches rather than abandoning.
 
 ## Self-report
+
+Nothing files automatically while this loop is driving.
+Loom's two automatic self-report tiers both hang off `lyx loom drive`'s own run, and `lyx loom step` runs neither — so on a supervised task, a blocked halt, a producer failure, and a friction note left behind all pass unreported unless this skill reports them.
+That is the trade this design makes: a live supervisor with an operator in the loop instead of a primitive filing public issues on its own, forty times a run.
+Read it as a responsibility, not a gap.
+
+The friction notes live at `.lyx/loom/friction/` under the task worktree root — a fixed location, not phase knowledge.
+Whenever the loop stops — terminal state, blocked, hand-back, or iteration cap — list that directory and name any notes found in the stop report, because nothing else will: `step` never spawns the reflection pass that `drive` runs, and the next task's own first seed clears the directory, so a note left unread here is dropped silently.
+Reading the notes and judging whether one is worth a `lyx selfreport create` call is part of the same operator-gated flow below.
 
 This skill may call `lyx selfreport create` only after the loop has stopped — terminal state, blocked, hand-back, or iteration cap — never between steps, and at most once per supervised run.
 Draft the title and body, show both to the operator, and fire the call only on explicit operator approval.

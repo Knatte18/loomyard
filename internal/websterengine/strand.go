@@ -101,11 +101,23 @@ func removeStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
 	if !live {
 		return nil
 	}
-	// Logged at Info because this teardown kills a real, live agent process — a lifecycle teardown
-	// per CONSTRAINTS.md's Live-Substrate Spawn Observability rule, and the single event an operator
+	// Logged because this teardown kills a real, live agent process — a lifecycle teardown per
+	// CONSTRAINTS.md's Live-Substrate Spawn Observability rule, and the single event an operator
 	// diagnosing a crashed run most needs to see, since without it a resumed run's log shows only
 	// the replacement being started and nothing about the one it stopped.
-	logger.Info("websterengine: stopping a leftover live strand before respawning it", "strandGUID", guid)
+	//
+	// At Warn, not Info: internal/logger's default console level is Warn, and the detached driver's
+	// own log — the one `lyx loom run` points an operator at — carries Warn and above, so at Info
+	// this reached the durable trace file and nothing anybody is sent to. That matters most on
+	// exactly the row it matters most for. loomshed.InterruptPolicies maps Webster alone to
+	// "handback" precisely because re-invoking an interrupted Webster step reaches this line, kills
+	// the in-flight Master, and restarts the batch run from state.json — "the most expensive row in
+	// the list", whose cost that table's own comment says "is the operator's to accept". An operator
+	// cannot accept a cost nothing tells them about. Confirmed live in crucible round 1: a
+	// handback-row reinvocation killed a live Master and restarted it with no output at default
+	// verbosity at all. shedadapters.Bouncer's own expensive-reclaim Warn sets this precedent and
+	// argues the same case.
+	logger.Warn("websterengine: stopping a leftover live strand before respawning it; an in-flight batch run restarts from state.json rather than resuming", "strandGUID", guid)
 	if _, err := reed.RemoveStrand(guid, false); err != nil {
 		return fmt.Errorf("websterengine: remove kept strand %s before respawn: %w", guid, err)
 	}

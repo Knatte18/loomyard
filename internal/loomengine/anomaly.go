@@ -46,6 +46,12 @@ type EntryObservation struct {
 	HistoryLength   int
 	Slug            string
 	Parent          string
+	// CleanStepHandoff is true when the observation matches the clean-handoff marker the last
+	// completed `lyx loom step` recorded (same history length, same state) -- a task an operator is
+	// handing from the supervised step loop to a driver, byte-identical on disk to a mid-run driver
+	// death and excluded from trigger 1 for that reason. The caller consumes the marker and reports
+	// the match here; this package performs no read of its own.
+	CleanStepHandoff bool
 }
 
 // LedgerObservation is one ledger entry plus the round its file claimed and the producer field of
@@ -101,13 +107,17 @@ const recurringFindingThreshold = 3
 // exactly what makes the cancelled-context call site work, since that branch has neither a final
 // status nor a decoded product in hand.
 // It reports an anomaly when, and only when, entry.Observed is true, entry.RunLockHeld is false,
-// entry.State is shedengine.StateRunning, and entry.HistoryLength is greater than zero. A held run
-// lock means a live driver, never a crash. An empty history is a fresh seed at Preflight,
-// byte-identical on disk to a crash at Preflight, so it is deliberately not reported -- the
-// alternative would file a crash-resume for every ordinary first drive of every task. A paused,
-// blocked, or failed entry state is an ordinary human resume, not a crash.
+// entry.State is shedengine.StateRunning, entry.HistoryLength is greater than zero, and
+// entry.CleanStepHandoff is false. A held run lock means a live driver, never a crash. An empty
+// history is a fresh seed at Preflight, byte-identical on disk to a crash at Preflight, so it is
+// deliberately not reported -- the alternative would file a crash-resume for every ordinary first
+// drive of every task. A clean step handoff is that exclusion's sibling one row further along: a
+// completed `lyx loom step` also leaves state running with a live history and no lock held, so
+// without its marker every operator handing a supervised task to a driver would file a spurious
+// crash-resume (crucible round 2, R2-F1). A paused, blocked, or failed entry state is an ordinary
+// human resume, not a crash.
 func DetectCrashResume(entry EntryObservation) (Anomaly, bool) {
-	if !entry.Observed || entry.RunLockHeld || entry.State != shedengine.StateRunning || entry.HistoryLength <= 0 {
+	if !entry.Observed || entry.RunLockHeld || entry.State != shedengine.StateRunning || entry.HistoryLength <= 0 || entry.CleanStepHandoff {
 		return Anomaly{}, false
 	}
 	return Anomaly{

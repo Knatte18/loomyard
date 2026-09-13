@@ -8,12 +8,14 @@ package loomcli
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -74,7 +76,7 @@ Example:
 			// the knob directly: a disabled run must not pay for a lock probe and an extra status
 			// decode on every drive, which is exactly the cost the knob's rationale claims it
 			// avoids.
-			entryObservation := observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			entryObservation := observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
 
 			// Ensure the reed substrate before the first producer call. drive adds no strand and
 			// hands no terminal over, but the rows beneath it spawn agents into reed panes, so
@@ -219,7 +221,35 @@ func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bo
 // run because an optional bookkeeping agent could not run is strictly worse than filing nothing, and
 // RunBlocked is worse still -- an operator staring at a blocked run does not need a second, unrelated
 // failure layered on top.
+//
+// The whole call is wrapped in a non-blocking lock on loomengine.LoomFrictionLock, and a lock already
+// held skips the step rather than waiting for it. This step runs AFTER shed.Run has returned, and
+// shed.Run releases the run lock on return -- so for the whole of the reflection agent's life (up to
+// friction_timeout_min, thirty minutes in the shipped template) the run lock reads as free and a
+// second "lyx loom run" spawns a second driver. That second driver is legitimate, but its own
+// reflection would archive the friction directory out from under the first one's live agent while
+// both held the same reflection-report.md as a declared output. Skipping rather than waiting is
+// correct here: the other reflection is already covering these very notes, so there is nothing left
+// for this one to do, and blocking would hold a driver open for another agent's whole deadline.
 func (c *loomCLI) reflectFriction() string {
+	// The logged "dir" is the lock's own parent — the directory this MkdirAll actually creates —
+	// not c.frictionDir, which is a sibling this call never touches (crucible round 2, R2-F4).
+	lockDir := filepath.Dir(loomengine.LoomFrictionLock(c.location))
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		logger.Warn("loom: could not create the friction lock's directory; skipping the reflection", "dir", lockDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	reflectionLock, free, err := lock.TryAcquireWriteLock(loomengine.LoomFrictionLock(c.location))
+	if err != nil {
+		logger.Warn("loom: could not probe the friction reflection lock; skipping the reflection", "dir", c.frictionDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	if !free {
+		logger.Warn("loom: another driver is already reflecting over this task's friction notes; skipping", "dir", c.frictionDir)
+		return frictionengine.StatusSkipped
+	}
+	defer func() { _ = reflectionLock.Release() }()
+
 	report, err := frictionengine.Reflect(frictionengine.Deps{
 		Shuttle:       c.runner,
 		FrictionDir:   c.frictionDir,

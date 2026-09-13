@@ -102,6 +102,11 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
+			if err := ensureStatusLockDir(c.shedPaths.StatusLockPath); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
 			st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: decode status file "+c.shedPaths.StatusPath+": "+err.Error()))
