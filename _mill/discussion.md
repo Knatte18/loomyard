@@ -62,6 +62,7 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 - A new embed site for the two normative docs, and a second `stencilstore.Registry` implementation over them.
 - A `SpecsDir` derivation in both `internal/fabricengine` (hub) and `internal/standalonegeom` (standalone), mirroring the existing `StencilsDir` pair.
 - Seeding/refreshing the specs directory in the same once-per-process pre-run pass that already reconciles stencils, in both hub and standalone wiring.
+- Generalising `fabricengine.CommitSeededStencils` over a subtree-relative prefix so the seeded `_lyx/specs/` tree is actually staged and committed to weft, not merely written (see `specs-dir-mirrors-stencils-dir`).
 - A `{{.specs_dir}}` stencil marker, plumbed from each affected producer's own render call site, and rewriting the eight normative citations to use it.
 - A shared rubric-render helper that fills `specs_dir` into a rubric at read time, routed through by all four rubric-value sites, plus the matching relaxation of `rubric_test.go`'s no-marker assertions to a one-marker allowlist (see `rubric-marker-allowlist`).
 - Rewording/removing the five non-normative citations per the audit table.
@@ -92,7 +93,12 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 ### specs-dir-mirrors-stencils-dir
 
 - **Decision:** Deployed copies live at `<hub>/_board/_lyx/specs/` in hub mode and at the `standalonegeom` equivalent of `<stateDir>/.../specs` in standalone mode — an exact structural mirror of `StencilsDir`, declared by a new `SpecsDir` function in each of `internal/fabricengine/junctionnames.go` and `internal/standalonegeom`.
-- **Rationale:** Same durable/tracked `_lyx` tree as stencils, same told-never-derives discipline, same weft-commit story.
+- **Decision (weft-commit half):** Seeding is only half the hub path — `cmd/lyx/stencilseed.go:129` commits what `Reconcile` wrote via `fabricengine.CommitSeededStencils`, whose pathspec is hardcoded to the stencils subtree (`internal/fabricengine/stencilcommit.go:56`: `stencilsRel := path.Join(lyxdirs.LyxDirName, stencilsDirName)`).
+  A seeded `_lyx/specs/` tree would therefore be written but never staged.
+  **`CommitSeededStencils` is generalised over a subtree-relative prefix** — the prefix becoming a parameter rather than a hardcoded join — and called once per seeded subtree, rather than adding a sibling verb.
+  Both calls keep passing a positive-only file list through `ScopedPathspec`, exactly as today.
+- **Rationale:** Same durable/tracked `_lyx` tree as stencils, same told-never-derives discipline, and — with the generalisation above — genuinely the same weft-commit path rather than an assumed one.
+  Generalising beats a sibling verb because the two call sites would otherwise be byte-identical apart from one constant, and the Fabric Git Invariant's `ScopedPathspec` requirement is then satisfied in one place instead of two.
   `"specs"` is not a policed geometry token (same reasoning `stencilsDirName`'s own comment gives for `"stencils"`), so it needs no `geometryTokenOwners` row.
 - **Rejected:** a `specs/` subfolder nested inside the stencils dir (collides with `RelPath`'s `<family>/` derivation, and conflates a told stencils override with specs); `<hub>/_board/_lyx/docs/` ("docs" understates that these are pinned normative contracts).
 
@@ -128,7 +134,11 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   Shipping it into an arbitrary target repo would have a reviewer enforce the *wrong* conventions there — a worse defect than the dangling path.
   This is precisely the task body's "if a stencil cites one of these purely for context, the citation itself is probably the thing to fix" case.
 - **Rejected:** deploying it as a third normative doc (imposes loomyard's Go style on non-Go target repos).
-- **Gotcha:** `docs/code-comment-conventions.md:5` names `contracts/stencils/rubric_test.go` as the guard for this very citation. Check whether `rubric_test.go` pins the phrase, and update both the test and that doc line if so.
+- **Collateral, determinate:** `contracts/stencils/rubric_test.go:123` **does** pin the literal `"code-comment-conventions.md"`, so the rewrite breaks that assertion and it moves in the same commit.
+  More consequentially, `docs/code-comment-conventions.md:5` keeps that doc out of the Documentation-Lifecycle deletion class *specifically because* "live producer rubrics still cite" it, naming `rubric_test.go` as the guard.
+  This change falsifies that retention rationale, not just one sentence.
+  **Disposition:** the doc is kept and its retention note rewritten to rest on its remaining standing — it is the rationale for a cross-cutting rule this repo's own code still follows — rather than on a producer-rubric citation that will no longer exist.
+  It is not deleted, and no separate deletion decision is deferred to the plan.
 
 ### background-citations-lose-the-path
 
@@ -165,7 +175,12 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
 ### rubric-marker-allowlist
 
 - **Decision:** `{{.specs_dir}}` **is** placed in the two rubric bodies, and the existing "a rubric contains no stencil marker" constraint is deliberately relaxed to a one-marker allowlist: a rubric may contain `{{.specs_dir}}` and nothing else.
-  The substitution happens at **rubric-read time**, via one shared helper that every rubric-value site routes through: the helper reads the rubric with `stencilstore.Read`, applies `stencil.StripLeadingComment` (as all sites already do), then runs `stencil.Fill` over the stripped rubric bytes with `specs_dir` as its sole value, and only the result is assigned as the `rubric` marker value.
+  The substitution happens at **rubric-read time**, via one shared helper routed through by every **stencil-sourced** rubric site: the helper reads the rubric with `stencilstore.Read`, applies `stencil.StripLeadingComment` (as all such sites already do), then runs `stencil.Fill` over the stripped rubric bytes with `specs_dir` as its sole value, and only the result is assigned as the `rubric` marker value.
+- **Scope of the helper — stencil-sourced rubrics only.** A rubric reaches a producer by one of two mutually exclusive routes, and only the first goes through the helper.
+  `internal/shedrecipe/entries_burler.go:191-196` enforces that exactly one of the config keys `rubric` (a literal string) and `rubric_stencil` (a stencilstore name) is set.
+  A **literal** `rubric:` value — from that key, or from `internal/burlercli/run.go`'s profile YAML `rubric:` key, which has no stencil route at all — is author-written prose that is never filled, never stripped, and passes through exactly as today.
+  Running a literal rubric through `Fill` would turn any `{{` an author wrote in prose into a `parse template` error (`internal/stencil/stencil.go:29-31`) and would impose specs-dir semantics on text that never had them.
+  That behaviour change is rejected outright, not merely unscoped.
 - **Rationale:** The rubric is never itself executed as a template — `stencil.Fill`'s required-marker check only inspects top-level markers of the template actually being executed, so a `{{.specs_dir}}` sitting inside a *value* is invisible to it and would ship literally into the judge prompt.
   Filling the rubric as its own single-marker template at read time closes that hole and, because `Fill` errors on an absent or empty required marker, gives `specs_dir` the same loud-early-failure property `specs-dir-marker` requires everywhere else.
   Doing it in one helper rather than at each site is what keeps the four call sites from drifting.
@@ -173,8 +188,10 @@ No other file under `contracts/specs/` or `manifest/designs/` is cited from any 
   a non-`{{.}}` placeholder token substituted by `strings.ReplaceAll` (invents a second templating syntax alongside `stencil`, and silently no-ops on a typo instead of erroring);
   a bare `strings.ReplaceAll` on the `{{.specs_dir}}` literal (same silent-no-op-on-typo failure mode, and forfeits `Fill`'s empty-value guard).
 - **Collateral this decision creates, which the plan must carry:** `contracts/stencils/rubric_test.go`'s three `strings.Contains(text, "{{.")` assertions (lines 54, 98, 143) and the file's own header comment all encode the no-marker rule and must be rewritten to the allowlist form — asserting the *only* marker present is `specs_dir` — rather than deleted.
-  The four rubric-value sites are `internal/shedadapters/bouncer.go`'s seed pass (~line 470) and judge pass (~line 566), `internal/shedrecipe/entries_burler.go:234`, and `internal/burlercli/run.go:63` (which takes `parsed.Rubric` from a recipe, so the fill must happen at or above it).
-  `bouncer.go:476`'s existing comment explains why the `StripLeadingComment` call there is load-bearing — the new helper must preserve that behaviour, not replace it.
+  The **three** stencil-sourced rubric sites the helper replaces are `internal/shedadapters/bouncer.go`'s seed pass (~line 470) and judge pass (~line 566), and `internal/shedrecipe/entries_burler.go`'s `rubricStencil != ""` branch (~line 202).
+  `internal/burlercli/run.go:63` is **not** a site — its `Rubric` comes from a profile YAML key and is always literal.
+  `bouncer.go:476` and `entries_burler.go:207-211` both carry the same existing comment explaining why the `StripLeadingComment` call is load-bearing: `stencil.Fill` strips a banner from the template it parses but never from a marker *value*, so unstripped bytes would inject the `<!-- lyx-stencil: sha256=... -->` line into the middle of the prompt.
+  That is the strip's purpose and the helper must preserve it — note it is about **value** semantics, not about protecting `Fill`, which already strips its own template (`internal/stencil/stencil.go:27`).
 
 ### registered-names
 
@@ -257,6 +274,11 @@ From `CONSTRAINTS.md`, in order of how directly each binds this task:
   This task adds a second embed site and a second seeded directory, so **this invariant's text must be updated in the same commit**.
 - **Told-Geometry Invariant** — an engine derives no paths of its own and never imports `internal/lyxcwd`; `internal/hubgeom` and `internal/standalonegeom` are the only `Geometry`-struct constructors.
   `specs_dir` is told, never derived.
+- **Fabric Git Invariant (warp + weft)** — "Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`," and every git op goes through `internal/fabricengine` in Go, in-process.
+  Binding on the generalised `CommitSeededStencils` and its new specs-subtree call.
+- **Shed Recipe Registry Invariant** — every registry value constructs a `shedengine.ShedProducer` through one `map[string]Constructor` reached only via `Lookup`/`Names`, with "no direct import of `lyxcwd`; every path is told."
+  Reaching the burler rubric site means threading the specs dir through `shedbuild` → `shedrecipe` (`burlerRoundProfile(cfg, stencilsDir)`, `entries_burler.go:156`) and through `shedadapters.BouncerConfig`, which today carries `StencilsDir` and no specs sibling.
+  The specs dir arrives as a **new told parameter beside `StencilsDir`**, never derived.
 - **Durable-vs-Ephemeral State Invariant** — `_lyx` holds tracked content only; every never-tracked file lives under `.lyx` at the mirrored subpath.
   Deployed specs are durable tracked weft content under `_lyx`, exactly like stencils.
 - **Cliwire Sole-Wiring Invariant** — a `<module>cli` never re-implements mode-derived state/plan/stencils resolution; it declares a `cliwire.Module` descriptor and calls in.
@@ -283,15 +305,15 @@ It scans every name in the registry, reads its default bytes, applies `stencil.S
 Written first it must fail on all nine current sites, which is the proof it works; it goes green as the rewrites land.
 Scenarios: a normative citation correctly rewritten passes; a bare re-added citation fails; an allowlisted entry passes; an allowlist entry whose token no longer appears anywhere fails as stale.
 
-**`contracts/stencils/rubric_test.go` — extend, and check for a break.**
-`docs/code-comment-conventions.md:5` claims `rubric_test.go` guards the `code-comment-conventions` citation.
-Verify whether it pins that phrase; if so, the `code-comment-conventions-is-misscoped` rewrite breaks it and both the test and that doc line move in the same commit.
+**`contracts/stencils/rubric_test.go` — extend, and repair two known breaks.**
+Line 123 pins the literal `"code-comment-conventions.md"`, which the `code-comment-conventions-is-misscoped` rewrite removes; that assertion and `docs/code-comment-conventions.md:5`'s retention note both move in the same commit.
 Add a pin that each of the four `{{.specs_dir}}`-carrying stencils actually contains the marker, so a future edit cannot silently drop it back to a bare path.
 Rewrite the three `strings.Contains(text, "{{.")` assertions (lines 54, 98, 143) and the file header comment to the allowlist form per `rubric-marker-allowlist`: assert that the only marker any rubric contains is `specs_dir`, so a second marker — which would still be invisible to `Fill` at the value site — fails exactly as loudly as the old rule did.
 
 **The rubric-render helper — TDD candidate, and the highest-risk unit in this task.**
-Test it directly, not only through a composed prompt: a rubric carrying `{{.specs_dir}}` renders with the path substituted and the leading stamp banner stripped; a rubric carrying no marker renders unchanged; an empty or absent `specs_dir` value errors rather than rendering blank; and the stamp banner is stripped *before* filling, so a banner containing a marker-like string cannot reach `Fill`.
-Then assert all four rubric-value sites route through it — `internal/shedadapters/bouncer.go`'s seed and judge passes, `internal/shedrecipe/entries_burler.go:234`, and `internal/burlercli/run.go:63` — since a site that reads a rubric directly would reintroduce the bug silently.
+Test it directly, not only through a composed prompt: a rubric carrying `{{.specs_dir}}` renders with the path substituted and the leading stamp banner stripped; a rubric carrying no marker renders unchanged; an empty or absent `specs_dir` value errors rather than rendering blank; and the stamp banner does not survive into the rendered result, so it cannot be interpolated into the middle of a judge prompt as a marker value.
+Then assert all three stencil-sourced sites route through it — `internal/shedadapters/bouncer.go`'s seed and judge passes and `internal/shedrecipe/entries_burler.go`'s `rubricStencil` branch — since a site that reads a rubric directly would reintroduce the bug silently.
+Assert the negative too, which is the half most likely to regress: a **literal** `rubric:` value containing `{{` survives untouched through both `internal/shedrecipe/entries_burler.go`'s literal branch and `internal/burlercli/run.go`'s profile decode, rather than erroring as a malformed template.
 
 **`internal/stencilstore` — new registry, existing machinery.**
 No behavioural change, so no new tests on `Reconcile`/`Classify` themselves.
@@ -326,6 +348,8 @@ Assert `specs_dir` is treated as required: rendering with it absent or empty err
 - **Q:** Ship `docs/code-comment-conventions.md` as a third doc, or reword the citation? **A:** [auto-pick] Reword — the reviewer checks the target repo's own conventions. **Why:** the doc is explicitly Go-only loomyard house style; shipping it would have a reviewer enforce the wrong conventions in an arbitrary target repo, which is worse than the dangling path.
 - **Q:** What about the `bouncerfiles.go` and unguarded `CONSTRAINTS.md` citations? **A:** [auto-pick] Drop the `bouncerfiles.go` path keeping the enforcement substance; add "if present" to both `CONSTRAINTS.md` sites. **Why:** a loomyard source path tells a target-repo agent nothing actionable, and an unguarded "read `CONSTRAINTS.md` in full" is dead in a repo without one; `loom-template-discussion.md:42` already has the correct wording to copy.
 - **Q:** How does `{{.specs_dir}}` actually get substituted into a rubric, given a rubric is interpolated as a *value* and never run through `stencil.Fill` as its own template? **A:** [auto-pick] Put the marker in the rubric anyway, relax the no-marker rule to a one-marker allowlist, and fill it at rubric-read time through one shared helper all four rubric-value sites route through. **Why:** `rubric_test.go:54,98,143` currently assert a rubric contains no `{{.` at all, so this is a deliberate constraint change rather than an oversight to work around; filling the rubric as its own single-marker template gives `specs_dir` the same error-on-empty guard it has everywhere else, which neither `strings.ReplaceAll` nor a custom placeholder token would. Moving the citation into the Bouncer/Burler templates was rejected because it separates a mechanical check from the reference it is checked against.
+- **Q:** Does the rubric-fill helper apply to every rubric value, or only stencil-sourced ones? **A:** [auto-pick] Stencil-sourced only — three sites, and a literal `rubric:` passes through untouched. **Why:** `entries_burler.go:191-196` makes `rubric` and `rubric_stencil` mutually exclusive, and `burlercli/run.go`'s profile `rubric:` has no stencil route at all; filling a literal would turn any `{{` in author prose into a `parse template` error and impose specs-dir semantics on text that never had them. `burlercli/run.go:63` is therefore not a helper site — an earlier draft wrongly listed it as one of four.
+- **Q:** How does the seeded specs tree actually reach weft, given `CommitSeededStencils` hardcodes the stencils subtree? **A:** [auto-pick] Generalise `CommitSeededStencils` over a subtree-relative prefix and call it once per seeded subtree. **Why:** without this the specs tree is written and never staged — `stencilcommit.go:56` joins `lyxdirs.LyxDirName` with `stencilsDirName` directly; a sibling verb would duplicate a function differing only in one constant, and generalising keeps the Fabric Git Invariant's `ScopedPathspec` requirement satisfied in one place.
 - **Q:** Registered names, given `RelPath` derives the family dir from the substring before the first `-`? **A:** [auto-pick] `loom-plan-spec` and `loom-plan-card-format`, both landing under `specs/loom/`. **Why:** a bare `plan-card-format` would create a one-file `plan/` family directory; only the registered name changes, the source file is not renamed.
 - **Q:** What stops the next citation from reintroducing this bug? **A:** [auto-pick] A `package stencils` test scanning every stencil body for bare cross-repo path tokens, with an allowlist keyed by `(stencil name, token)`. **Why:** this is the real deliverable — it closes the class rather than nine instances; review discipline already missed this once, and the reverted one-line fix is the evidence.
 - **Q:** New `lyx spec` CLI subtree? **A:** [auto-pick] No — specs reconcile in the same once-per-process pre-run pass, no new verbs. **Why:** YAGNI for two files nobody edits, and the Stencil Ownership Invariant already puts seed/refresh in that pass.
