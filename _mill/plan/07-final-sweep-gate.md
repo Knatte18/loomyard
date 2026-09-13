@@ -29,6 +29,9 @@ Batch-local decision beyond `## Shared Decisions`: this batch's card is verifica
   - `internal/shuttleengine/claudeengine/startup_test.go`
   - `docs/research/session-fork-spike.md`
   - `internal/reedcli/smoke_teardown_test.go`
+  - `CONSTRAINTS.md`
+  - `internal/lyxcwd/reponame_test.go`
+  - `internal/reedengine/server_test.go`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
@@ -36,15 +39,19 @@ Batch-local decision beyond `## Shared Decisions`: this batch's card is verifica
 - **Requirements:**
   Run a recursive listing of every file still containing the retired token — `grep -rl -- '-HUB' .` from the worktree root — and discard every hit under the mill task-state tree, which is not product source and legitimately keeps discussing the old token in its own transcripts.
 
-  What remains must be exactly four files, and for the stated reason in each case:
+  What remains must be exactly seven files, and for the stated reason in each case:
   - `internal/fabricengine/clone_reset_guard_test.go` — the `sentinel` const whose value is an arbitrary recognisable marker containing the token as a substring, never the hub suffix.
     Confirm the file's header comment was substituted and only the const value survives.
-  - `internal/fabricengine/destructivegaps_integration_test.go` — the `sentinel` const of the same kind.
-    Confirm only the const value survives and the new name-blindness subtest is present.
+  - `internal/fabricengine/destructivegaps_integration_test.go` — the `sentinel` const of the same kind, plus the `AcceptsLegacySuffixedHubDirectory` name-blindness subtest, which deliberately builds its fixture path with the retired suffix to prove `looksLikeHub` never inspects the container's own name.
+    Confirm only the const value and that one subtest's literal survive.
   - `internal/shuttleengine/claudeengine/startup_test.go` — a verbatim captured startup log line from a past real run.
     It is a record of what happened, not a claim about current code, and is never retro-edited.
   - `docs/research/session-fork-spike.md` — a dated research note recording where a past live-session spike actually ran.
     Same reason.
+  - `CONSTRAINTS.md` — the Hub Suffix Invariant section (added by core-constants) names the retired token by design, as the very thing the invariant declares no code parses, trims, or recognises any more.
+    This is documentation of current rule, not stale prose, and core-constants' Card 1 specifies this literal text verbatim.
+  - `internal/lyxcwd/reponame_test.go` — `TestBuildLocation_RepoNameSuffixTrimming`'s degradation case (added by core-constants' Card 3) pins that a hub basename still carrying the retired suffix is not trimmed, by design; the literal is the fixture the case exists to exercise, not sweep residue.
+  - `internal/reedengine/server_test.go` — two comments (added by peripheral-tests' Card 14, per that card's explicit instruction to record the re-check conclusion) explaining why the socket-key boundary assertions are unaffected by "the -HUB -> -LYXHUB rename"; historical/explanatory prose about this very task, not a claim about a currently-recognised suffix.
 
   `internal/reedcli/smoke_teardown_test.go` must not appear in the surviving set: its single occurrence was conceptual prose, reworded to lowercase rather than substituted.
   If it does appear, that rewording was missed.
