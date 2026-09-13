@@ -166,7 +166,8 @@ After it lands, every route supplies a `specs_dir` value that no template yet co
 
   The two new guards break every existing test fixture that builds an `Env` without the field, so those fixtures move in this same card.
   In `internal/shedrecipe/fixture_test.go`, add a `SpecsDir` entry to the shared `Env` builder beside its existing `StencilsDir` entry, created the same way as its siblings — a real subdirectory under the fixture's own temporary root, since the guard requires an absolute path that exists.
-  In `internal/loomrecipe/fixture_test.go` and `internal/loomrecipe/shape_test.go`, add the field at each of the three sites that construct an `Env` with a stencils directory.
+  In `internal/loomrecipe/fixture_test.go` and `internal/loomrecipe/shape_test.go`, add the field at each of the two sites that construct a shed-recipe `Env` with a stencils directory — one per file.
+  Both files also contain a landing-dependencies literal carrying its own identically-named stencils-directory field; that is a different struct with no specs sibling and must not be edited.
   Those two files are in a package no card otherwise touches, which is why this batch's verify scope names it explicitly — without that, the break would surface only at the repository-wide done gate.
 
   The shared fixture populating the field is what keeps existing tests green, which also means it leaves both new guards with zero negative-path coverage unless one is written deliberately.

@@ -3,7 +3,7 @@
 ```yaml
 task: "Deploy cited spec/design docs to target repos like stencils"
 slug: "deploy-specs-like-stencils"
-approved: false
+approved: true
 started: "20260913-173726"
 parent: "main"
 root: ""
