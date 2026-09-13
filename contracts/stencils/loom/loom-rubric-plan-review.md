@@ -12,7 +12,7 @@ The subject under review is the current plan: `_lyx/plan/00-overview.md` and the
 The plan directory may also hold `archive-*/` subdirectories, which are rotations of superseded plans;
 they are out of scope, and a finding raised against one is never legitimate.
 
-The format contract is `contracts/specs/loom-plan-spec.md`, and the Card model it implements is described in `manifest/designs/plan-card-format.md`.
+The format contract is `{{.specs_dir}}/loom/loom-plan-spec.md`, and the Card model it implements is described in `{{.specs_dir}}/loom/loom-plan-card-format.md`.
 This rubric points at both and restates neither.
 The mechanical checks over that contract are already enforced — twenty-seven of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
 
@@ -28,14 +28,14 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 Do not flag any of the following as a finding:
 
 - **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The twenty-eight check IDs `contracts/specs/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-seven of the twenty-eight upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+  The twenty-eight check IDs `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-seven of the twenty-eight upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
   Plan-time completeness of that intersection is explicitly not provable;
   the real gate is the post-merge build and test.
 - **A `Rename`, `Move`, `Prosa`, or `Custom` card carrying no `ImpactSummary`.**
-  It is required for `Edit` and `Delete` only, per the per-type table in `manifest/designs/plan-card-format.md`.
+  It is required for `Edit` and `Delete` only, per the per-type table in `{{.specs_dir}}/loom/loom-plan-card-format.md`.
   For `Rename` the reason is specific: a correctly executed AST-aware rename is binary, with no graded blast radius to summarise.
 
 ## Also flag
