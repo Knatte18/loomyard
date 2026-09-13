@@ -126,7 +126,7 @@ func seedStencilsAt(hub, worktree string) {
 		return
 	}
 
-	res, err := fabricengine.CommitSeededStencils(hub, written, "lyx: seed stencils", fabricengine.NewMutations(filepath.Dir(hub)))
+	res, err := fabricengine.CommitSeededStencils(hub, fabricengine.StencilsSubtreeRel(), baseDir, written, "lyx: seed stencils", fabricengine.NewMutations(filepath.Dir(hub)))
 	if err != nil {
 		logger.Warn("stencilseed: commit seeded stencils failed", "error", err)
 		return

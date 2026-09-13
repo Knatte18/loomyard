@@ -181,7 +181,7 @@ Examples:
 			}
 
 			rec := fabricengine.NewMutations(filepath.Dir(l.HubPath))
-			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, written, "lyx: seed stencils", rec)
+			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.StencilsSubtreeRel(), stencilsDir, written, "lyx: seed stencils", rec)
 			if commitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), commitErr))
 				return nil
