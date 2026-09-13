@@ -51,7 +51,9 @@ batches:
     commit_sha: 538464a4e7164ac3fa9c6f55dff296ed38eae76c
     verify_baseline_failures: []
   - name: peripheral-tests
-    state: pending
+    state: running
+    implementer_session: 73726524-dce1-4295-8250-6d1c31a6a536
+    start_sha: 290ad8e39386f0dea6a9bab322c980ff8d451190
     verify_baseline_failures: []
   - name: sandbox-fixture
     state: pending
