@@ -8,8 +8,13 @@
 // pinned contract is contracts/specs/llm-model-spec.md; this package is its as-built
 // implementation.
 //
-// Grammar, in one line: <alias>[key=value,...] (registry lookup) or
-// <engine>:<model-id>[key=value,...] (escape form, no registry lookup).
+// Grammar, in one line:
+//
+//	<alias>[item,item,...]        where item is  key=value  |  <effort>
+//
+// (registry lookup), or the same shape in escape form (no registry lookup):
+//
+//	<engine>:<model-id>[item,item,...]        where item is  key=value  |  <effort>
 //
 // Alias form vs escape form: a Spec is either an alias (Alias non-empty, Engine
 // and Model both empty) or an escape-form pair (Engine and Model both non-empty,
@@ -106,14 +111,28 @@ type Resolved struct {
 	Params map[string]string
 }
 
-// knownParams is the closed set of parameter keys a bracket or a registry
-// Defaults map may use. It gates param KEYS ONLY — never model names or
-// aliases — preserving the pinned new-model-without-recompile requirement: a
-// brand-new model is adopted via a models.yaml entry or the escape form on an
-// old binary, with no change to this set required.
+// knownParams is the closed set of canonical parameter keys an Entry's
+// Defaults map may use, and the canonical key space every bracket param
+// normalizes into via bracketKeys. It gates param KEYS ONLY — never model
+// names or aliases — preserving the pinned new-model-without-recompile
+// requirement: a brand-new model is adopted via a models.yaml entry or the
+// escape form on an old binary, with no change to this set required.
+// See bracketKeys for the bracket-facing spelling layer over this set.
 var knownParams = map[string]bool{
 	"effort":  true,
 	"version": true,
+}
+
+// bracketKeys is the closed set of accepted bracket key spellings, mapping
+// each spelling to the canonical Params key it normalizes to. It is the
+// bracket-facing spelling layer over knownParams: its values are canonical
+// Params keys, and its value set must remain a subset of knownParams' key
+// set. A bracket key spelling and its canonical key may differ — "v" maps to
+// "version" — so a bracket never yields a Params key that is not also in
+// knownParams.
+var bracketKeys = map[string]string{
+	"effort": "effort",
+	"v":      "version",
 }
 
 // knownEngines is the closed set of provider engine names a registry Entry's
