@@ -36,7 +36,7 @@ func TestPlanSpec(t *testing.T) {
 	}
 	wantTimeout := 120 * time.Minute
 
-	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -80,7 +80,7 @@ func TestPlanSpec_PromptFilled(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -110,7 +110,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
-		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 		if err != nil {
 			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 		}
@@ -146,7 +146,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
-		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 		if err != nil {
 			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 		}
@@ -343,7 +343,7 @@ func TestPlanSpec_PromptNeverNamesSupportLog(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -355,6 +355,16 @@ func TestPlanSpec_PromptNeverNamesSupportLog(t *testing.T) {
 	if strings.Contains(spec.Prompt, supportLogPath) {
 		t.Errorf("PlanSpec(...).Prompt contains the support log's own absolute path %q; the Plan producer must never read the support log", supportLogPath)
 	}
+}
+
+// newTestSpecsDir returns a real, non-empty directory to pass as PlanSpec's/composePlanPrompt's
+// specsDir parameter, alongside newTestStencilsDir. A real directory rather than an empty-string
+// placeholder is required: specs_dir is a required marker, so an empty value would compile and pass
+// today only because the plan stencil carries no marker yet, and would start failing at run time the
+// moment a later batch inserts the marker.
+func newTestSpecsDir(t *testing.T) string {
+	t.Helper()
+	return t.TempDir()
 }
 
 // renderedPlanPrompt returns the prompt PlanSpec renders for template-content assertions.
@@ -369,7 +379,7 @@ func renderedPlanPrompt(t *testing.T) string {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -395,7 +405,7 @@ func TestPlanSpec_AnchoredUnderAnchorPathNotWorktreePath(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -449,7 +459,7 @@ func TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
-		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 		if err != nil {
 			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 		}
@@ -475,7 +485,7 @@ func TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
-		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg)
 		if err != nil {
 			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 		}
@@ -497,7 +507,7 @@ func TestPlanSpec_MalformedModelSpec(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	if _, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg); err == nil {
+	if _, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg); err == nil {
 		t.Fatal("PlanSpec(..., Plan=\"opus[effort\") = _, nil; want non-nil error")
 	}
 }
@@ -518,7 +528,7 @@ func TestComposePlanPrompt_FrictionEnabled(t *testing.T) {
 		t.Fatalf("friction.Directive(...) = _, %v; want nil error", err)
 	}
 
-	got, err := composePlanPrompt(stencilsDir, "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", directive)
+	got, err := composePlanPrompt(stencilsDir, newTestSpecsDir(t), "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", directive)
 	if err != nil {
 		t.Fatalf("composePlanPrompt(..., directive) = _, %v; want nil error", err)
 	}
@@ -536,7 +546,7 @@ func TestComposePlanPrompt_FrictionEnabled(t *testing.T) {
 func TestComposePlanPrompt_FrictionDisabled(t *testing.T) {
 	stencilsDir := newMinimalStencilsDir(t)
 
-	got, err := composePlanPrompt(stencilsDir, "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", "")
+	got, err := composePlanPrompt(stencilsDir, newTestSpecsDir(t), "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", "")
 	if err != nil {
 		t.Fatalf("composePlanPrompt(..., frictionDirective=\"\") = _, %v; want nil error", err)
 	}
@@ -563,7 +573,7 @@ func TestComposePlanPrompt_FrictionMarkerFreeTemplate(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", planTemplatePath, err)
 	}
 
-	_, err := composePlanPrompt(stencilsDir, "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", "some friction directive text")
+	_, err := composePlanPrompt(stencilsDir, newTestSpecsDir(t), "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", "some friction directive text")
 	if err != nil {
 		t.Fatalf("composePlanPrompt(..., frictionDirective=<non-empty>) with a marker-free template = _, %v; want nil error", err)
 	}
