@@ -65,7 +65,9 @@ batches:
     commit_sha: ccc72e2b9683888cdfa57ce549bcf39b807ecf16
     verify_baseline_failures: []
   - name: docs-prose
-    state: pending
+    state: running
+    implementer_session: ec9a7914-e71b-4ca4-8886-1bcbb83ec19f
+    start_sha: 8ad593fcd1dc00d286f2073ea9831c82e2fcd051
     verify_baseline_failures: []
   - name: final-sweep-gate
     state: pending
