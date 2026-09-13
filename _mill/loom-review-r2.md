@@ -93,4 +93,5 @@ Cleanup: SIGCONT'd the driver; it consumed the re-armed pause flag, persisted `p
 
 - `Plan-Revalidate`: done (history 17). `Batchifier`: done, next `Webster` with `next_interrupt_policy: "handback"` — the table's one handback row correctly surfaced on a real envelope (history 18).
 - While the Webster step held the run lock: a second `lyx loom step` refused with `{"kind":"busy", ...}` naming `lyx loom pause` as the remedy, exit 1, BEFORE any bootstrap side effects — the early-probe contract verified live.
+- `Webster` step: done, output `_lyx/webster/summary.md`, next `Webster-Bouncer` (history 19). Real Master session (`master::a24445f8`, sonnet[effort=low]) drove 2 batches + integration; both batch commits landed on the warp branch; integration report `status: OK`. No friction note from any webster agent (fork/master/integration) — the task offered them no genuine friction.
 - Status-strand print-on-change verified live via `tmux capture-pane` on the `loom-status` pane: exactly one line per transition (`loom running | now X | last Y → outcome`), no per-poll ticker flood — the S8/status contract holds under a real step walk.
