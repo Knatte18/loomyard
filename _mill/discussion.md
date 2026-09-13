@@ -23,10 +23,14 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 
 **In:**
 
-- `internal/modelspec/parse.go` — `parseBracket` gains bare-token handling and a bracket-key-spelling vocabulary; `Parse` is untouched.
+- `internal/modelspec/parse.go` — `parseBracket` gains bare-token handling and a bracket-key-spelling vocabulary. `Parse`'s **body** is untouched, but three doc comments in this file describe the bracket as key=value-only and must be updated alongside: the file header (`:1-4`, "recognizes exactly four shapes"), `Parse`'s own comment (`:36-38`, "alias[k=v,...]"), and `parseBracket`'s comment (`:122-123`, "the comma-separated key=value list").
 - `internal/modelspec/modelspec.go` — new `bracketKeys` map beside `knownParams`; package doc's grammar line and the `spec.Version = resolved.Params["version"]` consumer example stay canonical but the grammar prose gains the shorthand.
 - `internal/modelspec/parse_test.go` — new accept/reject cases; one existing reject case is deleted and two existing accept cases are rewritten off `version=` (see Testing).
-- `contracts/specs/llm-model-spec.md` — grammar section documents the shorthand; the three `version=` mentions (lines 64, 66, 112) become `v=`.
+- `contracts/specs/llm-model-spec.md` — grammar section documents the shorthand. The `version` mentions are **not** uniformly renamed; disposition is per line, following the normalize-to-canonical decision:
+  - **:64** (`sonnet[version=4.5]`) → `sonnet[v=4.5]`. A bracket-grammar example; the renamed spelling is what an operator types.
+  - **:66** ("Combining `version=` with a full model id …") → `v=`. Also about the bracket the operator writes.
+  - **:65** ("the generic `version` param") → **unchanged.** This names the resolved param key the provider engine reads (`resolved.Params["version"]`), not a bracket spelling.
+  - **:112** ("`version=` id translation", under Provider seam) → drop the `=`, keep the word: "`version` id translation". Same reason as :65 — the provider side never sees `v`. Renaming it to `v=` would document a spelling that does not exist on that side of the seam.
 - `docs/overview.md` — the shuttle bullet's "the model-spec notation's `version=` param" (line 302) becomes `v=`.
 
 **Out:**
@@ -75,7 +79,9 @@ Two changes to the bracket grammar in `contracts/specs/llm-model-spec.md`, imple
 
 - Decision: add `bracketKeys = map[string]string{"effort": "effort", "v": "version"}` in `modelspec.go` — accepted bracket spelling → canonical `Params` key. `parseBracket` looks up `bracketKeys` instead of `knownParams`. `knownParams` keeps its current canonical membership (`effort`, `version`) and keeps being the vocabulary `load.go`'s `validateAlias` gates `Entry.Defaults` against.
 - Rationale: the bracket surface and the `Params`/`Defaults` key space are now genuinely different vocabularies; one map cannot express both. Splitting them keeps `validateAlias` untouched and makes the defaults-key-stays-`version` requirement structural rather than incidental.
+- Invariant between the two, and it is **in scope to test**: every value in `bracketKeys` must be a key in `knownParams` (`bracketKeys`' value set ⊆ `knownParams`' key set). The reverse containment is deliberately not required — a canonical param settable only via `Defaults`, with no bracket spelling, is a legitimate future shape. Without the forward assertion, adding a param to `bracketKeys` alone would let a bracket produce a `Params` key that `Entry.Defaults` rejects, and no existing test would notice. A three-line table test in `modelspec_test.go` (or alongside the parse tests) pins it; `knownParams`' doc comment gains a one-line pointer saying `bracketKeys` is the bracket-facing spelling layer over it.
 - Rejected: redefining `knownParams` to `{effort, v}`. Would force `models.yaml` defaults to `v:` too, contradicting the task.
+- Rejected: leaving the relationship implicit. Two closed vocabularies with no stated sync obligation is exactly the shape that rots silently.
 
 ### `opus[effort]` becomes valid, parsing to `effort=effort`
 
@@ -159,6 +165,8 @@ These two rewrites plus the one deletion below are the **complete** set of edits
 **`TestParse_Rejects` — deleted case:** `"param with no equals"` (`sonnet[effort]`, `internal/modelspec/parse_test.go:175-179`). It moves to the accept table per the uniform-rule decision. Deleting it is the intended, reviewed consequence of that decision, not an oversight.
 
 **Unchanged and expected to stay green:** every case in both tables other than the two rewrites and the one deletion named above — including `"unknown param key"` (`sonnet[speed=fast]`, `parse_test.go:165-169`), whose message keeps its unadorned form because the `v` migration hint fires only for the key `version`. Also `registry_test.go` in full (its `version` literals are canonical-key constructions that never pass through `Parse`), `load_test.go` (`Entry.Defaults` still validates against `knownParams`, which still contains `version`), and `leaf_enforcement_test.go`.
+
+**Vocabulary-sync test (new):** assert that every value in `bracketKeys` is a key in `knownParams`, per the vocabulary Decision's stated invariant. A small standalone test, not a `Parse` case.
 
 **Verify command:** `go test ./internal/modelspec/...` for the unit work, then `go build ./... && go test ./...` before handoff to catch any consumer that turns out to depend on the deleted `no '=' separator` error string.
 
