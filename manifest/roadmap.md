@@ -9,8 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — a convention change, not a design task: launch both through `lyx reed add` instead of an ad hoc terminal. Satisfies the watchdog and orchestrator halves of the Next Up `born-as-strand` item below.
-
 1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the header pane conflates three unrelated jobs (content, session keepalive, watchdog hosting); split each onto its own purpose-built mechanism.
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
@@ -112,6 +110,8 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — the generated VS Code `folderOpen` task is now the reed launch chain, with both binary paths stamped absolute; `lyx reed add` gained `--if-absent` so reopening a worktree is idempotent; and the `/ly:ly-supervise` skill now treats the session running it as the orchestrator strand itself, rather than telling the operator to open a second one.
 
 1. **Adopt quarry's glyph alphabet as the plan alphabet** — `planparser`/the validator switched a card's symbol declarations from bare names to quarry glyphs, resolved via batched `Resolve`, with placeholder handles (`plan:<expected-glyph>`) for symbols a plan itself creates and mechanical drift detection against the code. Superseded the Someday `quarry-backed plan symbol verification` item.
    See [designs/quarry-glyph-plan-alphabet.md](designs/quarry-glyph-plan-alphabet.md).
