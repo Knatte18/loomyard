@@ -323,15 +323,15 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	}
 }
 
-// TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath pins that the header split-window call
+// TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath pins that the Selvage split-window call
 // pins its pane to Geometry.PaneCwd, not Geometry.AnchorPath — the two are distinct on newTestEngine's
 // fixture (lock_test.go), so this assertion cannot pass by coincidence.
-// This covers only the header split site: the new-session spawn site is not reachable from this
+// This covers only the Selvage split site: the new-session spawn site is not reachable from this
 // seam, since it builds its argv and runs it through the os/exec package's Command function
 // directly rather than through e.tmux — that half of the same change is covered by the tagged reed
 // suites this batch's verify: also runs (contract_integration_test.go,
 // mouse_boot_integration_test.go).
-func TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
+func TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
 	e := newTestEngine(t)
 
 	const existingPaneID = "%0"
@@ -355,8 +355,8 @@ func TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
 	}
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureHeaderPaneLocked(st); err != nil {
-		t.Fatalf("ensureHeaderPaneLocked: %v", err)
+	if err := e.ensureSelvagePaneLocked(st); err != nil {
+		t.Fatalf("ensureSelvagePaneLocked: %v", err)
 	}
 
 	found := false
@@ -380,14 +380,14 @@ func TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
 	}
 }
 
-// TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure pins the validateSplitCreatedNewPane
+// TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure pins the validateSplitCreatedNewPane
 // guard at its call site (against regression).
-func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
+func TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
 	e := newTestEngine(t)
 
-	// One alive, non-header pane (%0) — the new-session initial pane a fresh
-	// boot leaves before any header exists. It is the only pane, so it is both
-	// the topmost split target and the id psmux's silent-split shape re-prints.
+	// One alive, non-Selvage pane (%0) — the new-session initial pane a fresh
+	// boot leaves before Selvage exists. It is the only pane, so it is both
+	// the bottommost split target and the id psmux's silent-split shape re-prints.
 	const existingPaneID = "%0"
 	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
 
@@ -397,7 +397,7 @@ func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
 			return listPanesOut, nil
 		case "split-window":
 			// psmux silent failure: exit 0, no new pane, an EXISTING pane's id
-			// printed on stdout. Trusting it would bind the header to %0.
+			// printed on stdout. Trusting it would bind Selvage to %0.
 			return existingPaneID + "\n", nil
 		default:
 			// send-keys / kill-pane etc. — only reached if the guard is
@@ -408,41 +408,41 @@ func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
 	}
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	err := e.ensureHeaderPaneLocked(st)
+	err := e.ensureSelvagePaneLocked(st)
 	if err == nil {
-		t.Fatalf("ensureHeaderPaneLocked accepted a silent-split failure (bound header to pre-existing pane %q); the validateSplitCreatedNewPane guard at this call site is missing or bypassed", existingPaneID)
+		t.Fatalf("ensureSelvagePaneLocked accepted a silent-split failure (bound Selvage to pre-existing pane %q); the validateSplitCreatedNewPane guard at this call site is missing or bypassed", existingPaneID)
 	}
-	if !strings.Contains(err.Error(), "split header pane") {
-		t.Errorf("error = %v, want it to name the header split failure", err)
+	if !strings.Contains(err.Error(), "split Selvage pane") {
+		t.Errorf("error = %v, want it to name the Selvage split failure", err)
 	}
-	if st.HeaderPaneID != "" {
-		t.Errorf("HeaderPaneID = %q, want unchanged (never bound to the pre-existing strand pane on a rejected rebuild)", st.HeaderPaneID)
+	if st.SelvagePaneID != "" {
+		t.Errorf("SelvagePaneID = %q, want unchanged (never bound to the pre-existing strand pane on a rejected rebuild)", st.SelvagePaneID)
 	}
 }
 
-// TestEnsureHeaderPaneLocked_RecoversWhenTheTopPaneIsTooSmallToSplit is the regression guard for the
-// R4 review's R4-F4: an untracked one-row header band at the physical top of the window made every
-// header rebuild impossible, wedging up and resume permanently with "no space for new pane" while
-// status kept reporting the session healthy.
+// TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit is the regression guard for
+// the R4 review's R4-F4: an untracked one-row Selvage band at the physical bottom of the window made
+// every Selvage rebuild impossible, wedging up and resume permanently with "no space for new pane"
+// while status kept reporting the session healthy.
 //
-// Reproduced live before the fix: with a session up and the default one-row header band laid out,
+// Reproduced live before the fix: with a session up and the default one-row Selvage band laid out,
 // removing .lyx/reed.json — a never-tracked machine-local tree, exactly what `git clean -xdf` in the
 // worktree deletes — left `lyx reed up` and `lyx reed resume` failing identically on every
 // subsequent invocation, with `lyx reed down` the only (unnamed) escape.
 //
-// The scripted substrate below is the shape that produced it: a one-row pane at pane_top 0 that
-// tmux refuses to split, and a tall pane below it. The assertions are that the even-vertical re-tile
-// is actually issued and that the retried split's pane becomes the header — a fix that only improved
-// the error message fails both.
-func TestEnsureHeaderPaneLocked_RecoversWhenTheTopPaneIsTooSmallToSplit(t *testing.T) {
+// The scripted substrate below is the shape that produced it: a one-row pane at the largest pane_top
+// that tmux refuses to split, and a tall pane above it. The assertions are that the even-vertical
+// re-tile is actually issued and that the retried split's pane becomes Selvage — a fix that only
+// improved the error message fails both.
+func TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit(t *testing.T) {
 	e := newTestEngine(t)
 
-	const oneRowTopPaneID = "%1"
+	const oneRowBottomPaneID = "%1"
 	const tallPaneID = "%0"
-	const rebuiltHeaderPaneID = "%7"
+	const rebuiltSelvagePaneID = "%7"
 	// pane_id pane_dead pane_top pane_width pane_height pane_pid
-	wedged := oneRowTopPaneID + " 0 0 100 1 4321\n" + tallPaneID + " 0 2 100 48 4322\n"
-	retiled := oneRowTopPaneID + " 0 0 100 25 4321\n" + tallPaneID + " 0 26 100 24 4322\n"
+	wedged := tallPaneID + " 0 0 100 48 4321\n" + oneRowBottomPaneID + " 0 48 100 1 4322\n"
+	retiled := tallPaneID + " 0 0 100 24 4321\n" + oneRowBottomPaneID + " 0 25 100 25 4322\n"
 
 	reTiled := false
 	splitAttempts := 0
@@ -465,35 +465,35 @@ func TestEnsureHeaderPaneLocked_RecoversWhenTheTopPaneIsTooSmallToSplit(t *testi
 				// tmux's real refusal against a one-row pane: exit 1, no pane.
 				return "", errors.New("exit status 1: no space for new pane")
 			}
-			return rebuiltHeaderPaneID + "\n", nil
+			return rebuiltSelvagePaneID + "\n", nil
 		default:
 			return "", nil
 		}
 	}
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureHeaderPaneLocked(st); err != nil {
-		t.Fatalf("ensureHeaderPaneLocked() = %v; want nil (the header rebuild must recover from a one-row top pane, not wedge the worktree)", err)
+	if err := e.ensureSelvagePaneLocked(st); err != nil {
+		t.Fatalf("ensureSelvagePaneLocked() = %v; want nil (the Selvage rebuild must recover from a one-row bottom pane, not wedge the worktree)", err)
 	}
 	if !reTiled {
-		t.Errorf("ensureHeaderPaneLocked never issued the even-vertical re-tile; without it the retried split has no room either")
+		t.Errorf("ensureSelvagePaneLocked never issued the even-vertical re-tile; without it the retried split has no room either")
 	}
 	if splitAttempts != 2 {
 		t.Errorf("split-window attempts = %d; want exactly 2 (one refused, one retried behind the re-tile)", splitAttempts)
 	}
-	if st.HeaderPaneID != rebuiltHeaderPaneID {
-		t.Errorf("HeaderPaneID = %q; want %q (the pane the retried split created)", st.HeaderPaneID, rebuiltHeaderPaneID)
+	if st.SelvagePaneID != rebuiltSelvagePaneID {
+		t.Errorf("SelvagePaneID = %q; want %q (the pane the retried split created)", st.SelvagePaneID, rebuiltSelvagePaneID)
 	}
 }
 
-// TestEnsureHeaderPaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys is P1: it pins that the
-// header pane is booted by handing split-window e.cfg.Shell as its own trailing shell-command
+// TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys is P1: it pins that
+// Selvage is booted by handing split-window e.cfg.Shell as its own trailing shell-command
 // argument, not by typing it into an interactive shell afterwards via send-keys. Both halves matter
 // — a fix that carries the command on the argv but still sends keys, or vice versa, must fail this.
 //
 // No #{pane_current_command} assertion is added: that value is shell-dependent and this fake-tmux
 // substrate never runs a real shell.
-func TestEnsureHeaderPaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *testing.T) {
+func TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *testing.T) {
 	e := newTestEngine(t)
 
 	const existingPaneID = "%0"
@@ -521,8 +521,8 @@ func TestEnsureHeaderPaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *te
 	}
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureHeaderPaneLocked(st); err != nil {
-		t.Fatalf("ensureHeaderPaneLocked: %v", err)
+	if err := e.ensureSelvagePaneLocked(st); err != nil {
+		t.Fatalf("ensureSelvagePaneLocked: %v", err)
 	}
 
 	fIndex := -1
@@ -546,18 +546,18 @@ func TestEnsureHeaderPaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *te
 		t.Errorf("split-window trailing command argument = %q, want %q (e.cfg.Shell, launched the same way new-session launches the session's first pane)", launchArg, e.cfg.Shell)
 	}
 	if sendKeysCalls != 0 {
-		t.Errorf("send-keys calls = %d, want 0 (the header pane must launch its own command on the split, not be typed into via send-keys)", sendKeysCalls)
+		t.Errorf("send-keys calls = %d, want 0 (Selvage must launch its own command on the split, not be typed into via send-keys)", sendKeysCalls)
 	}
 }
 
-// TestEnsureHeaderPaneLocked_RecordsThePaneIDAfterLaunch pins that the split pane's id is recorded
+// TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch pins that the split pane's id is recorded
 // onto state even under go test's fake-tmux substrate, which never runs a real shell — recording
 // must not depend on anything the launched command actually does. This used to also pin a
 // suppressed, commandless launch under go test; that suppression mechanism is gone along with the
-// header pane's re-exec, so the launch itself is covered by
-// TestEnsureHeaderPaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys and this test narrows to the
+// header pane's re-exec Selvage replaces, so the launch itself is covered by
+// TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys and this test narrows to the
 // recording half.
-func TestEnsureHeaderPaneLocked_RecordsThePaneIDAfterLaunch(t *testing.T) {
+func TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch(t *testing.T) {
 	e := newTestEngine(t)
 
 	const existingPaneID = "%0"
@@ -576,31 +576,31 @@ func TestEnsureHeaderPaneLocked_RecordsThePaneIDAfterLaunch(t *testing.T) {
 	}
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureHeaderPaneLocked(st); err != nil {
-		t.Fatalf("ensureHeaderPaneLocked: %v", err)
+	if err := e.ensureSelvagePaneLocked(st); err != nil {
+		t.Fatalf("ensureSelvagePaneLocked: %v", err)
 	}
 
-	if st.HeaderPaneID != newPaneID {
-		t.Errorf("HeaderPaneID = %q, want %q", st.HeaderPaneID, newPaneID)
+	if st.SelvagePaneID != newPaneID {
+		t.Errorf("SelvagePaneID = %q, want %q", st.SelvagePaneID, newPaneID)
 	}
 }
 
-// TestEnsureHeaderPaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand reuses
-// TestEnsureHeaderPaneLocked_RecoversWhenTheTopPaneIsTooSmallToSplit's wedged/retiled scripted
-// substrate (a one-row top pane the first split-window refuses, an even-vertical re-tile, then a
-// successful retry) but with launch enabled, and pins that the RETRIED split-window call — not just
-// a hypothetical first one — carries the launch command too. A retry path that dropped launchCmd
-// would boot a recovered header as an interactive shell, silently reopening this batch's noise class
-// on exactly the wedged-worktree recovery path R4-F4 exists for.
-func TestEnsureHeaderPaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand(t *testing.T) {
+// TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand reuses
+// TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit's wedged/retiled scripted
+// substrate (a one-row bottom pane the first split-window refuses, an even-vertical re-tile, then a
+// successful retry), and pins that the RETRIED split-window call — not just a hypothetical first
+// one — carries the launch command too. A retry path that dropped launchCmd would boot a recovered
+// Selvage as a commandless shell, silently reopening this batch's noise class on exactly the
+// wedged-worktree recovery path R4-F4 exists for.
+func TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand(t *testing.T) {
 	e := newTestEngine(t)
 
-	const oneRowTopPaneID = "%1"
+	const oneRowBottomPaneID = "%1"
 	const tallPaneID = "%0"
-	const rebuiltHeaderPaneID = "%7"
+	const rebuiltSelvagePaneID = "%7"
 	// pane_id pane_dead pane_top pane_width pane_height pane_pid
-	wedged := oneRowTopPaneID + " 0 0 100 1 4321\n" + tallPaneID + " 0 2 100 48 4322\n"
-	retiled := oneRowTopPaneID + " 0 0 100 25 4321\n" + tallPaneID + " 0 26 100 24 4322\n"
+	wedged := tallPaneID + " 0 0 100 48 4321\n" + oneRowBottomPaneID + " 0 48 100 1 4322\n"
+	retiled := tallPaneID + " 0 0 100 24 4321\n" + oneRowBottomPaneID + " 0 25 100 25 4322\n"
 
 	reTiled := false
 	var retriedSplitArgs []string
@@ -620,18 +620,18 @@ func TestEnsureHeaderPaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand(t *testi
 				return "", errors.New("exit status 1: no space for new pane")
 			}
 			retriedSplitArgs = append([]string{}, args...)
-			return rebuiltHeaderPaneID + "\n", nil
+			return rebuiltSelvagePaneID + "\n", nil
 		default:
 			return "", nil
 		}
 	}
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureHeaderPaneLocked(st); err != nil {
-		t.Fatalf("ensureHeaderPaneLocked() = %v; want nil", err)
+	if err := e.ensureSelvagePaneLocked(st); err != nil {
+		t.Fatalf("ensureSelvagePaneLocked() = %v; want nil", err)
 	}
-	if st.HeaderPaneID != rebuiltHeaderPaneID {
-		t.Fatalf("HeaderPaneID = %q; want %q (the pane the retried split created)", st.HeaderPaneID, rebuiltHeaderPaneID)
+	if st.SelvagePaneID != rebuiltSelvagePaneID {
+		t.Fatalf("SelvagePaneID = %q; want %q (the pane the retried split created)", st.SelvagePaneID, rebuiltSelvagePaneID)
 	}
 
 	if len(retriedSplitArgs) == 0 {
@@ -639,27 +639,27 @@ func TestEnsureHeaderPaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand(t *testi
 	}
 	launchArg := retriedSplitArgs[len(retriedSplitArgs)-1]
 	if launchArg != e.cfg.Shell {
-		t.Errorf("retried split-window trailing argument = %q, want %q (a retried header must never boot commandless)", launchArg, e.cfg.Shell)
+		t.Errorf("retried split-window trailing argument = %q, want %q (a retried Selvage must never boot commandless)", launchArg, e.cfg.Shell)
 	}
 }
 
-// TestTopmostPaneID asserts the header split target is chosen by pane_top rather than by list-panes
-// order, which tmux does not guarantee is top-to-bottom.
-func TestTopmostPaneID(t *testing.T) {
+// TestBottommostPaneID asserts the Selvage split target is chosen by pane_top rather than by
+// list-panes order, which tmux does not guarantee is top-to-bottom.
+func TestBottommostPaneID(t *testing.T) {
 	tests := []struct {
 		name string
 		live []LivePane
 		want string
 	}{
 		{"sole pane", []LivePane{{ID: "%0", Top: 0}}, "%0"},
-		{"already first", []LivePane{{ID: "%1", Top: 0}, {ID: "%0", Top: 2}}, "%1"},
-		{"not first in list order", []LivePane{{ID: "%0", Top: 26}, {ID: "%1", Top: 0}}, "%1"},
-		{"three panes, middle listed first", []LivePane{{ID: "%2", Top: 10}, {ID: "%0", Top: 30}, {ID: "%1", Top: 0}}, "%1"},
+		{"already last", []LivePane{{ID: "%0", Top: 0}, {ID: "%1", Top: 2}}, "%1"},
+		{"not last in list order", []LivePane{{ID: "%1", Top: 26}, {ID: "%0", Top: 0}}, "%1"},
+		{"three panes, tallest-top listed first", []LivePane{{ID: "%2", Top: 30}, {ID: "%0", Top: 10}, {ID: "%1", Top: 0}}, "%2"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := topmostPaneID(tt.live); got != tt.want {
-				t.Errorf("topmostPaneID(%v) = %q; want %q", tt.live, got, tt.want)
+			if got := bottommostPaneID(tt.live); got != tt.want {
+				t.Errorf("bottommostPaneID(%v) = %q; want %q", tt.live, got, tt.want)
 			}
 		})
 	}

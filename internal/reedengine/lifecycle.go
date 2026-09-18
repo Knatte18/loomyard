@@ -551,9 +551,9 @@ func bottommostPaneID(live []LivePane) string {
 // Invariant makes disposable (a plain `git clean -xdf` in the worktree does it), and a process
 // death in the window between the split above and the SaveState that records its id.
 //
-// The physical-position requirement is symmetric to the header's former top placement: render.Rules
-// emits the band cell LAST and paneIDsByTop resequences by pane_top, so a Selvage pane that is not
-// physically bottom-most would invert cell heights on the very first select-layout.
+// The physical-position requirement is symmetric to the header's former top-placement requirement:
+// render.Rules emits the band cell LAST and paneIDsByTop resequences by pane_top, so a Selvage pane
+// that is not physically bottom-most would invert cell heights on the very first select-layout.
 //
 // select-layout even-vertical evens every pane's height using tmux's own built-in layout — no reed
 // layout string is computed or applied here, so anyPlacedStrand's empty-layout hazard (apply.go) is
@@ -648,20 +648,20 @@ func (e *Engine) Up() (UpResult, error) {
 		// live strand. Clear every binding: a just-booted session hosts none
 		// of the prior strands. Up leaves them not-live (Resume rebuilds them).
 		// The stripped env keys are stamped for diagnosis — reed.json records
-		// what the server spawn actually removed. HeaderPaneID is cleared
+		// what the server spawn actually removed. SelvagePaneID is cleared
 		// alongside every strand binding for the identical reason — a
 		// reborn session's reused pane id would otherwise be mistaken for
-		// the still-live header pane — so ensureHeaderPaneLocked below
+		// the still-live Selvage pane — so ensureSelvagePaneLocked below
 		// rebuilds it fresh; the clear lives here, not inside
-		// clearAllPaneBindings itself, since the header is not a strand
+		// clearAllPaneBindings itself, since Selvage is not a strand
 		// binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
-			st.HeaderPaneID = ""
+			st.SelvagePaneID = ""
 		}
 
-		if err := e.ensureHeaderPaneLocked(st); err != nil {
+		if err := e.ensureSelvagePaneLocked(st); err != nil {
 			return err
 		}
 
@@ -669,11 +669,11 @@ func (e *Engine) Up() (UpResult, error) {
 			return err
 		}
 
-		// len(st.Strands) deliberately excludes the header pane: the header
-		// is not in st.Strands (Shared Decision header-is-not-a-strand), so
-		// this count is already correct by construction. Do not "fix" a
-		// future off-by-one here by adding the header — it must never be
-		// counted as a strand.
+		// len(st.Strands) deliberately excludes Selvage: Selvage is not in
+		// st.Strands (Shared Decision header-is-not-a-strand), so this
+		// count is already correct by construction. Do not "fix" a future
+		// off-by-one here by adding Selvage — it must never be counted as
+		// a strand.
 		result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
 		return nil
 	})
@@ -698,19 +698,19 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		// On a server rebirth the reborn session reuses pane ids, so a stale
 		// binding would look live to reconcile below and wrongly skip relaunch.
 		// Clear every binding first so all non-hidden strands are rebuilt.
-		// HeaderPaneID is cleared alongside them for the identical reason —
+		// SelvagePaneID is cleared alongside them for the identical reason —
 		// a reborn session's reused pane id would otherwise be mistaken for
-		// the still-live header pane — so ensureHeaderPaneLocked below
+		// the still-live Selvage pane — so ensureSelvagePaneLocked below
 		// rebuilds it fresh before any strand replay below runs; the clear
-		// lives here, not inside clearAllPaneBindings itself, since the
-		// header is not a strand binding.
+		// lives here, not inside clearAllPaneBindings itself, since Selvage
+		// is not a strand binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
-			st.HeaderPaneID = ""
+			st.SelvagePaneID = ""
 		}
 
-		if err := e.ensureHeaderPaneLocked(st); err != nil {
+		if err := e.ensureSelvagePaneLocked(st); err != nil {
 			return err
 		}
 
@@ -1123,10 +1123,9 @@ func (e *Engine) requireSessionLocked() error {
 		return nil
 	}
 
-	// len(st.Strands) deliberately excludes the header pane (see
-	// noSessionMessage's doc comment): st.HeaderPaneID is a separate field,
-	// never part of Strands, so this count is already correct by
-	// construction.
+	// len(st.Strands) deliberately excludes Selvage (see noSessionMessage's
+	// doc comment): st.SelvagePaneID is a separate field, never part of
+	// Strands, so this count is already correct by construction.
 	strandCount := 0
 	st, loadErr := LoadState(e.stateDir())
 	if st != nil {
@@ -1166,11 +1165,11 @@ func (e *Engine) Status() (StatusResult, error) {
 		// the strand's process is running, not whether tmux still lists a
 		// (dead) pane for it.
 		aliveIDs := aliveIDSet(live)
-		// This loop iterates st.Strands only — the header pane is
-		// deliberately never reported as a strand here (it is not one; see
-		// ReedState.HeaderPaneID). Status still succeeds (the session is up)
-		// when st.Strands is empty but the header pane is alive; a future
-		// edit must not "fix" a missing header row by appending one here.
+		// This loop iterates st.Strands only — Selvage is deliberately
+		// never reported as a strand here (it is not one; see
+		// ReedState.SelvagePaneID). Status still succeeds (the session is
+		// up) when st.Strands is empty but Selvage is alive; a future edit
+		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
 			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID]}

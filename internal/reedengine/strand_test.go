@@ -419,7 +419,7 @@ func TestAlivePanePIDs(t *testing.T) {
 // descendant-closure roots from EVERY pane the session listed, dead ones included, while
 // RemoveStrand correctly filtered to alive panes only. tmux keeps reporting a dead pane's recorded
 // #{pane_pid} indefinitely (remain-on-exit is on for every reed session, and reconcile deliberately
-// KEEPS the last dead pane and any dead header corpse), so once the OS recycled that pid, Down would
+// KEEPS the last dead pane and any dead Selvage corpse), so once the OS recycled that pid, Down would
 // expand an unrelated process's whole subtree, block on it for the full reapExitTimeout, and then
 // SIGKILL it.
 // The dead-pane row is the assertion that matters; the pid-less row pins that the two forms share
@@ -605,8 +605,8 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 	}
 
 	st := &ReedState{
-		HeaderPaneID: thisSessionPane,
-		Strands:      []Strand{{GUID: "copied", Name: "copied", PaneID: siblingPane, Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		SelvagePaneID: thisSessionPane,
+		Strands:       []Strand{{GUID: "copied", Name: "copied", PaneID: siblingPane, Display: render.Display{Anchor: render.AnchorBelowParent}}},
 	}
 	if err := SaveState(e.stateDir(), st); err != nil {
 		t.Fatalf("SaveState: %v", err)
