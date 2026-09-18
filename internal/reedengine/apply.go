@@ -91,7 +91,7 @@ func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 		params: render.Params{
 			CollapsedStripRows: e.cfg.CollapsedStripRows,
 			MinFullRows:        e.cfg.MinFullRows,
-			Selvage:            render.Selvage{PaneID: headerPaneID, HeightRows: e.cfg.Header.HeightRows},
+			Selvage:            render.Selvage{PaneID: headerPaneID, HeightRows: e.cfg.Selvage.HeightRows},
 		},
 		paneOrder: paneIDsByTop(live),
 	}
@@ -198,7 +198,7 @@ type applyResult struct {
 //
 // select-layout with a layout string whose dimensions disagree with the live
 // window exits 0 and silently rescales the layout proportionally, so every
-// absolute row budget reed computes (Header.HeightRows, CollapsedStripRows,
+// absolute row budget reed computes (Selvage.HeightRows, CollapsedStripRows,
 // MinFullRows) was being scaled by live_height/cfg.Height on any window that
 // is not exactly cfg.Height rows tall — this is why the box passed to
 // planLayout below is always the live one, not the configured one.

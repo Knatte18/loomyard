@@ -159,7 +159,7 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog, and header template before any tmux round trip.
+// capability, debug_log, mouse, watchdog, and status-line template before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -185,8 +185,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, err
 	}
 
-	// Validate the header template in the same pre-tmux block — it reads
-	// only cfg+geometry (HeaderText makes no tmux round trip), so like
+	// Validate the status-line template in the same pre-tmux block — it reads
+	// only cfg+geometry (StatusLineText makes no tmux round trip), so like
 	// debug_log and mouse it must fail the boot before anything is spawned.
 	// An earlier version validated only AFTER the session existed, which
 	// left a half-created session behind on a bad template — and, on the
@@ -199,7 +199,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// path into that trap; a set-option failure between spawn and return
 	// can still theoretically lose the signal, but has no config-shaped
 	// trigger.
-	if err := e.ValidateHeader(); err != nil {
+	if err := e.ValidateStatusLine(); err != nil {
 		return false, nil, err
 	}
 
@@ -239,7 +239,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			return false, nil, fmt.Errorf("list panes: %w", err)
 		}
 		if len(live) > 0 {
-			// The header template was already validated in the pre-tmux
+			// The status-line template was already validated in the pre-tmux
 			// block above, so this healthy already-up path returns directly.
 			return false, nil, nil
 		}

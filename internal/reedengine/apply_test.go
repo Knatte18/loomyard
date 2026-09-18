@@ -85,7 +85,7 @@ func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
 	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
-	e.cfg.Header.HeightRows = 1
+	e.cfg.Selvage.HeightRows = 1
 
 	strands := []Strand{
 		{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
@@ -503,7 +503,7 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
 	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
-	e.cfg.Header.HeightRows = 1
+	e.cfg.Selvage.HeightRows = 1
 
 	rec := &applyHookRecorder{}
 	e.tmux.execHook = newApplyRecordingHook(rec)
@@ -561,7 +561,7 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 		e := newTestEngine(t)
 		e.cfg.Width, e.cfg.Height = 100, 21
 		e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
-		e.cfg.Header.HeightRows = 1
+		e.cfg.Selvage.HeightRows = 1
 		e.cfg.Watchdog = watchdog
 
 		rec := &applyHookRecorder{}

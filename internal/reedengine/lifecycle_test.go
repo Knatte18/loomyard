@@ -33,7 +33,7 @@ func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.DebugLog = "0"
 	e.cfg.Mouse = "off"
-	e.cfg.Header.Template = "{{.bogus}}"
+	e.cfg.StatusLine.Template = "{{.bogus}}"
 
 	_, err := e.Up()
 	if err == nil {
